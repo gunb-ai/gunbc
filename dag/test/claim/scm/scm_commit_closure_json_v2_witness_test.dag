@@ -97,6 +97,7 @@ import gunbc.scm.checkout {
   CheckoutRefused,
   MissingObject,
   ObjectIsAuthoredSource,
+  ObjectIsCorpusManifest,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.scm.supersession {
@@ -131,6 +132,7 @@ import gunbc.scm.role_requirement_integration {
   RoleRequirementsContested,
   TargetRootMissing,
   TargetRootIsAuthoredSource,
+  TargetRootIsCorpusManifest,
   TargetChildMissing,
   TargetChildIsAuthoredSource,
   BindingLocatorCollision,
@@ -276,6 +278,7 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
         ClosureDocFormatUnrecognized { found: _ } => "format"
         ClosureDocRootPositionUnresolved { reference: _ } => "root_position"
         ClosureDocRootIsAuthoredSource { reference: _ } => "root_source"
+        ClosureDocRootIsCorpusManifest { reference: _ } => "root_manifest"
         ClosureDocObjectTableRefused { cause: t } =>
           match t {
             ObjectTableUnknownKindTag { found: _ } => "kind"
@@ -284,9 +287,16 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
             ObjectTableUnknownLabelTag { found: _ } => "label"
             ObjectTableEdgeTargetUnresolved { reference: _ } => "edge_target"
             ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
+            ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
+            ObjectTableManifestPathEmpty => "manifest_path_empty"
+            ObjectTableManifestSourceUnresolved { reference: _ } => "manifest_source"
+            ObjectTableManifestSourceIsSemanticNode { reference: _ } => "manifest_source_node"
+            ObjectTableManifestSourceIsCorpusManifest { reference: _ } => "manifest_source_manifest"
+            ObjectTableMemberReadRefused { cause: _ } => "table_member_read"
+            ObjectTableUnexpectedMember { context: _, key: _ } => "table_unexpected_member"
             ObjectTableObjectCollision { identity: _ } => "collision"
           }
-        ClosureDocUnexpectedMember { context: _, key: _ } => "unexpected_member"
+        ClosureDocUnexpectedMember { key: _ } => "unexpected_member"
         ClosureDocTargetReferenceRefused { cause: _ } => "target_reference"
       }
   }
@@ -1081,6 +1091,7 @@ fn scm_image_checkout_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
           match c {
             MissingObject { identity: _ } => "missing"
             ObjectIsAuthoredSource { identity: _ } => "authored_source"
+            ObjectIsCorpusManifest { identity: _ } => "corpus_manifest"
           }
       }
   }
@@ -1312,8 +1323,10 @@ fn scm_image_integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> St
       match cause {
         TargetRootMissing { identity: _ } => "root_missing"
         TargetRootIsAuthoredSource { identity: _ } => "root_source"
+        TargetRootIsCorpusManifest { identity: _ } => "root_manifest"
         TargetChildMissing { role: _, identity: _ } => "child_missing"
         TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
+        TargetChildIsCorpusManifest { role: _, identity: _ } => "child_manifest"
         BindingLocatorCollision { role: _, identity: _ } => "collision"
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
         DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: _ } => "kind"

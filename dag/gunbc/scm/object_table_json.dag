@@ -46,41 +46,90 @@ module gunbc.scm.object_table_json
 // requires a bare binding over a foreign authority's population, which is the tell DESIGN already
 // names, rather than an innocuous-looking per-cause arm.
 //
-// WHY NOT WALL IT HERE: the proposed remedy -- have decode_object_table expose its own outcome
-// boundary before translation -- rests on a premise that is false as measured. decode_object_step
-// produces four ClosureDocMemberReadRefused causes and a ClosureDocUnexpectedMember cause alongside
-// the object-table ones, so that operation's failure population is genuinely MIXED. Narrowing its
-// result to ObjectTableDecodeRefusal would make the type claim an owner for causes it does not own --
-// the same defect this module exists to remove, pointing the other way.
+// THE TRIGGER FIRED, AND THE REMEDY IT NAMED IS NOW BUILT. This paragraph used to say the wall was
+// unavailable, and the reason it gave was true when written: decode_object_step raised member-read
+// and unexpected-member causes alongside the object-table ones, so its failure population was
+// genuinely MIXED and narrowing its result would have made the type claim an owner for causes it did
+// not own. The stated next-rung trigger was a decode_object_table whose member-read and
+// unexpected-member causes are themselves owned elsewhere, leaving a residue this module can own
+// outright.
 //
-// NEXT-RUNG TRIGGER: a decode_object_table whose member-read and unexpected-member causes are
-// themselves owned elsewhere, leaving a residue this module can own outright. That is a separate cut
-// with its own census, not a line in this one.
+// That is exactly what the corpus-manifest cut produced. Those causes are arms of
+// ObjectTableDecodeRefusal now, together with the target-reference and entry-shape causes, so the
+// population is no longer mixed and decode_object_table's result is narrowed to this type. The
+// closure document wraps once at its own boundary rather than supplying the vocabulary the table
+// refuses in.
+//
+// WHAT THAT DOES AND DOES NOT BUY. A consumer of the object table no longer receives a
+// ClosureDocRefusal at all, so the wrapper it could have collapsed is not in its hands. The collapse
+// remains writable one layer up, by a consumer of ClosureDocRefusal binding
+// `ClosureDocObjectTableRefused { cause: _ }` bare -- that is one module, one arm, and a bare binding
+// over a foreign authority's population, which is the tell rather than the wall.
+//
+// NEXT-RUNG TRIGGER, restated for what is left: module privacy in .dag, which would let the
+// delegating classifier be the only reachable route from a closure refusal to a standing. Until then
+// the residue is mechanically preventable and this comment is the thing saying so.
 
 import std.types { String }
 import gunbc.scm.object_store { ObjectId }
+import gunbc.scm.target_reference { TargetReferenceRefusal }
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadMissing,
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+}
 import gunbc.scm.load_standing {
   LoadStanding,
   LoadDocumentMalformed,
   LoadIdentityCollision,
 }
 
-// SEVEN CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
+// FOURTEEN CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
 //
-// Six of these say the document does not conform to a schema this build claims to understand: a tag
-// naming a kind, connective, behavior or label that is not in the closed vocabulary, or an edge
-// target naming a position the document does not carry -- or naming one it DOES carry that holds an
-// authored source where a child edge requires a program. Those are malformed bytes to a reader that
-// should have understood them. The last is the one boundary at which a file can still be presented
-// in a node position: inside the model the reference types make it unwritable, but a document is
-// bytes and can say anything, so the wall there is a typed refusal rather than a constructor.
+// All but one say the document does not conform to a schema this build claims to understand: an
+// entry member that is missing, duplicated or the wrong shape, a member the closed set does not
+// admit, a tag naming a kind, connective, behavior or label outside the closed vocabulary, or a
+// reference naming a position the document does not carry -- or naming one it DOES carry that holds
+// the wrong kind of object for the position that named it. Those are malformed bytes to a reader
+// that should have understood them. The wrong-kind arms are the one boundary at which a file or a
+// manifest can still be presented in a node position, or a node in a manifest entry's source: inside
+// the model the reference types make each unwritable, but a document is bytes and can say anything,
+// so the wall there is a typed refusal rather than a constructor.
 //
-// ObjectTableObjectCollision is NOT that, and conflating it with the other SIX is the error this type
+// ObjectTableObjectCollision is NOT that, and conflating it with the other THIRTEEN is the error this type
 // exists to prevent. Two distinct records claiming one structural locator is an honest hash
 // coincidence between two legitimate objects, not damage to either. It is a limitation of the
 // locator's representation, and the remedy is to widen the locator -- never to discard a generation.
+// THE MEMBER SETS OF AN OBJECT-TABLE ENTRY, WHICH ARE NOT FACTS ABOUT ANY DOCUMENT THAT EMBEDS ONE.
+//
+// These lived in gunbc.scm.commit_closure_json_v2's context coproduct while that module was the only
+// table consumer. It no longer is, and three of them -- the authored-source entry, the manifest entry
+// and a manifest entry's own members -- describe shapes a commit-closure document cannot contain at
+// all. The test that moved them is whether the context could exist in a repository object table with
+// no closure document anywhere near it; for every arm here the answer is yes.
+//
+// The node-entry and kind and edge shapes come too, and NOT because there are now two consumers.
+// They come because {kind, children}, the kind variants and the edge variants are literally the same
+// schema in both tables. Duplicating them per consumer would give one schema two authorities, which
+// is the fork this move exists to close rather than a symmetry worth having.
+type ObjectTableMemberContext
+  = ObjectTableSemanticNodeMembers
+  | ObjectTableAuthoredSourceMembers
+  | ObjectTableCorpusManifestMembers
+  | ObjectTableManifestEntryMembers
+  | ObjectTableTypeKindMembers
+  | ObjectTableAtomKindMembers
+  | ObjectTableComputationKindMembers
+  | ObjectTableNamedEdgeMembers
+  | ObjectTablePositionalEdgeMembers
+
 type ObjectTableDecodeRefusal
-  = ObjectTableUnknownKindTag { found: String }
+  = ObjectTableMemberReadRefused { cause: MemberReadRefusal }
+  | ObjectTableTargetReferenceRefused { cause: TargetReferenceRefusal }
+  | ObjectTableUnexpectedMember { context: ObjectTableMemberContext, key: String }
+  | ObjectTableUnknownKindTag { found: String }
   | ObjectTableUnknownConnectiveTag { found: String }
   | ObjectTableUnknownBehaviorTag { found: String }
   | ObjectTableUnknownLabelTag { found: String }
@@ -98,12 +147,21 @@ type ObjectTableDecodeRefusal
 // shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
 // the same rule from the other side -- a new format is a new classifier beside its own refusals.
 //
-// This match is exhaustive over the twelve and assigns per cause, never per group. The collision arm is
+// This match is exhaustive over the fourteen and assigns per cause, never per group. The collision arm is
 // the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
 // permitting supersession.
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
   match cause {
     ObjectTableObjectCollision { identity: _ } => LoadIdentityCollision
+    ObjectTableMemberReadRefused { cause: c } =>
+      match c {
+        MemberReadSubjectNotObject => LoadDocumentMalformed
+        MemberReadMissing { key: _ } => LoadDocumentMalformed
+        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+      }
+    ObjectTableUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+    ObjectTableTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
     ObjectTableUnknownKindTag { found: _ } => LoadDocumentMalformed
     ObjectTableUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
     ObjectTableUnknownBehaviorTag { found: _ } => LoadDocumentMalformed

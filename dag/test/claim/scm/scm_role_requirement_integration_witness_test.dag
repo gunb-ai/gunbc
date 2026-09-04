@@ -52,6 +52,7 @@ import gunbc.scm.role_requirement_integration {
   RoleRequirementIntegrationRefused,
   RoleRequirementIntegrationRefusal,
   TargetRootIsAuthoredSource,
+  TargetRootIsCorpusManifest,
   TargetChildIsAuthoredSource,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForRoleRequirementIntegration,
@@ -197,6 +198,7 @@ fn refusal_locates(
             && ((removed as String) == (required as String))
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
@@ -322,6 +324,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
@@ -521,6 +524,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
@@ -684,6 +688,7 @@ fn integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
       match cause {
         TargetRootMissing { identity: _ } => "root_missing"
         TargetRootIsAuthoredSource { identity: _ } => "root_source"
+        TargetRootIsCorpusManifest { identity: _ } => "root_manifest"
         TargetChildMissing { role: _, identity: _ } => "child_missing"
         TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
         BindingLocatorCollision { role: _, identity: _ } => "collision"

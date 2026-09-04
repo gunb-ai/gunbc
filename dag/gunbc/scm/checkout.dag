@@ -42,13 +42,13 @@ type Commit {
 // bytes that are right there, which is the not-applicable-rendered-as-malformed failure -- the two
 // have opposite remedies. It is also not silently skippable: reconstructing the node without that
 // child would hand back a program the commit does not name.
+// A THIRD NEGATIVE, NAMED FOR WHAT IT FOUND. A corpus manifest at a required node is not a file and
+// not an absence: it is repository inventory sitting where a program was named. Reporting it as
+// either would hand back a well-formed refusal about the wrong object kind, and only one of the
+// three has a remedy that is even the same shape.
 type CheckoutRefusal
   = MissingObject { identity: ObjectId }
   | ObjectIsAuthoredSource { identity: ObjectId }
-  // A THIRD NEGATIVE, NAMED FOR WHAT IT FOUND. A corpus manifest at a required node is not a file
-  // and not an absence: it is repository inventory sitting where a program was named. Reporting it
-  // as either would hand back a well-formed refusal about the wrong object kind, and only one of
-  // the three has a remedy that is even the same shape.
   | ObjectIsCorpusManifest { identity: ObjectId }
 
 type CheckoutOutcome

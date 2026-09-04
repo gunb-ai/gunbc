@@ -163,6 +163,7 @@ fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => repo
   }
 }
 
@@ -741,6 +742,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
         RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
+        RepositoryCommitRootIsCorpusManifest { root: _ } => "commit_root_manifest"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "commit_duplicate"
         RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "commit_parent"
@@ -1107,6 +1109,7 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
   }
 }
 
@@ -1189,6 +1192,7 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
   }
 }
 
@@ -1235,6 +1239,7 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
       ) {
         RepositoryCommitMintRootIsAuthoredSource { root: r } =>
           object_id_eq(left: r, right: file.locator)
+        RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
         RepositoryCommitMinted { repository: _, reference: _ } => false
         RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
         RepositoryCommitMintParentMissing { parent: _ } => false
@@ -1256,6 +1261,7 @@ test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
   ) {
     RepositoryCommitMinted { repository: _, reference: _ } => true
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false

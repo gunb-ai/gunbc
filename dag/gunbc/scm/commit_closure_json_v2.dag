@@ -217,7 +217,7 @@ type ClosureDocRefusal
   | ClosureDocRootPositionUnresolved { reference: String }
   | ClosureDocRootIsAuthoredSource { reference: String }
   | ClosureDocRootIsCorpusManifest { reference: String }
-  | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
+  | ClosureDocUnexpectedMember { key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
 
@@ -260,22 +260,41 @@ type ClosureDocEncodeRefusal
 // The context is a closed coproduct rather than a String because the member sets differ BY VARIANT:
 // an Atom kind carries `identity` and a Conj kind must not, so "unexpected here" is only meaningful
 // relative to which shape was being read.
-type ClosureDocMemberContext
-  = ClosureDocEnvelopeMembers
-  | ClosureDocObjectRecordMembers
-  | ClosureDocAuthoredSourceMembers
-  | ClosureDocCorpusManifestMembers
-  | ClosureDocManifestEntryMembers
-  | ClosureDocTypeKindMembers
-  | ClosureDocAtomKindMembers
-  | ClosureDocComputationKindMembers
-  | ClosureDocNamedEdgeMembers
-  | ClosureDocPositionalEdgeMembers
-
-fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
+// ONE ARM, BECAUSE THE CLOSURE DOCUMENT HAS EXACTLY ONE MEMBER SET OF ITS OWN.
+//
+// This coproduct used to carry nine. The other eight described object-table entries -- a node entry,
+// the kind variants, the edge variants, and after the manifest arrived an authored-source entry, a
+// manifest entry and a manifest entry's own members -- and they moved to gunbc.scm.object_table_json
+// because none of them is a fact about a closure document. The test that decided each was whether
+// the context could exist in a repository object table with no closure document anywhere near it.
+//
+// The node-entry and kind and edge shapes went down too, and NOT because there are two table
+// consumers now. They went because those are literally one schema in both tables, so keeping a copy
+// here would give one schema two authorities -- the fork the move exists to close, not a symmetry
+// worth preserving.
+// AND WITH ONE MEMBER SET LEFT, THE CONTEXT FIELD GOES TOO. A discriminator that can hold exactly
+// one value discriminates nothing; carrying it would be one fact written in two places, and every
+// consumer would have to match an arm that cannot vary. The context returns the day a second closure
+// member set exists, and not before.
+fn member_set_refusal(v: JsonValue, allowed: List<String>) -> ClosureDocRefusal? {
   match unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
-    Present { value: key } => Present { value: ClosureDocUnexpectedMember { context: context, key: key } }
+    Present { value: key } => Present { value: ClosureDocUnexpectedMember { key: key } }
+  }
+}
+
+// THE SAME QUESTION ASKED OF AN OBJECT-TABLE ENTRY, and it is a separate function rather than one
+// function over a widened context because the two answers now belong to different authorities. A
+// shared one would have to return whichever refusal type its caller wanted, which is the upward
+// borrowing this cut removes.
+fn table_member_set_refusal(
+  v: JsonValue,
+  allowed: List<String>,
+  context: ObjectTableMemberContext
+) -> ObjectTableDecodeRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } => Present { value: ObjectTableUnexpectedMember { context: context, key: key } }
   }
 }
 
@@ -829,7 +848,7 @@ fn encode_closure_document(image: WellKindedClosure) -> JsonValue {
 
 type ConnectiveDecode
   = ConnectiveDecoded { connective: Connective }
-  | ConnectiveDecodeFailed { cause: ClosureDocRefusal }
+  | ConnectiveDecodeFailed { cause: ObjectTableDecodeRefusal }
 
 // The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
 // that supplies one is not silently carrying an ignored field into a program whose identity does not
@@ -839,20 +858,20 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
     match read_string_member(v: kind_value, key: "identity") {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
-      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
-      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
+      _ => ConnectiveDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
   else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
   else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
   else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
-  else { ConnectiveDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownConnectiveTag { found: tag } } } }
+  else { ConnectiveDecodeFailed { cause: ObjectTableUnknownConnectiveTag { found: tag } } }
 }
 
 type BehaviorDecode
   = BehaviorDecoded { behavior: Behavior }
-  | BehaviorDecodeFailed { cause: ClosureDocRefusal }
+  | BehaviorDecodeFailed { cause: ObjectTableDecodeRefusal }
 
 fn decode_behavior(tag: String) -> BehaviorDecode {
   if tag == "value" { BehaviorDecoded { behavior: Value } }
@@ -861,12 +880,12 @@ fn decode_behavior(tag: String) -> BehaviorDecode {
   else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
   else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
   else if tag == "match" { BehaviorDecoded { behavior: Match } }
-  else { BehaviorDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownBehaviorTag { found: tag } } } }
+  else { BehaviorDecodeFailed { cause: ObjectTableUnknownBehaviorTag { found: tag } } }
 }
 
 type KindDecode
   = KindDecoded { kind: NodeKind }
-  | KindDecodeFailed { cause: ClosureDocRefusal }
+  | KindDecodeFailed { cause: ObjectTableDecodeRefusal }
 
 // THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
 // checked earlier: `identity` is required on an atom and forbidden on every other connective, so
@@ -874,10 +893,10 @@ type KindDecode
 // means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
 // silently played no part in the node that resulted.
 fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
-  match member_set_refusal(
+  match table_member_set_refusal(
     v: kind_value,
     allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
-    context: if ctag == "atom" { ClosureDocAtomKindMembers } else { ClosureDocTypeKindMembers }
+    context: if ctag == "atom" { ObjectTableAtomKindMembers } else { ObjectTableTypeKindMembers }
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -889,10 +908,10 @@ fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
 }
 
 fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
-  match member_set_refusal(
+  match table_member_set_refusal(
     v: kind_value,
     allowed: ["kind", "behavior"],
-    context: ClosureDocComputationKindMembers
+    context: ObjectTableComputationKindMembers
   ) {
     Present { value: c } => KindDecodeFailed { cause: c }
     Absent =>
@@ -905,24 +924,24 @@ fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
 
 fn decode_kind(kind_value: JsonValue) -> KindDecode {
   match read_string_member(v: kind_value, key: "kind") {
-    MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "type" {
         match read_string_member(v: kind_value, key: "connective") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
-        KindDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownKindTag { found: tag } } }
+        KindDecodeFailed { cause: ObjectTableUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    _ => KindDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -944,33 +963,33 @@ fn resolve_reference(positions: DecodePositions, reference: String) -> ScmObject
 
 type LabelDecode
   = LabelDecoded { label: EdgeLabel }
-  | LabelDecodeFailed { cause: ClosureDocRefusal }
+  | LabelDecodeFailed { cause: ObjectTableDecodeRefusal }
 
 // The member set here is the whole EDGE object, `target` included, because the label tag is what
 // closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
 // whose name went nowhere.
 fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
-  match member_set_refusal(
+  match table_member_set_refusal(
     v: edge_value,
     allowed: ["label", "name", "target"],
-    context: ClosureDocNamedEdgeMembers
+    context: ObjectTableNamedEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent =>
       match read_string_member(v: edge_value, key: "name") {
-        MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
           LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+        _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
       }
   }
 }
 
 fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
-  match member_set_refusal(
+  match table_member_set_refusal(
     v: edge_value,
     allowed: ["label", "target"],
-    context: ClosureDocPositionalEdgeMembers
+    context: ObjectTablePositionalEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent => LabelDecoded { label: Positional }
@@ -979,16 +998,16 @@ fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
 
 fn decode_label(edge_value: JsonValue) -> LabelDecode {
   match read_string_member(v: edge_value, key: "label") {
-    MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
-        LabelDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownLabelTag { found: tag } } }
+        LabelDecodeFailed { cause: ObjectTableUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    _ => LabelDecodeFailed { cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -999,7 +1018,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
 // claims, not inspection, are what establish this is right.
 type EdgeAcc {
   edges: List<StoredEdge>
-  refusal: ClosureDocRefusal?
+  refusal: ObjectTableDecodeRefusal?
 }
 
 // THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
@@ -1049,13 +1068,13 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
         LabelDecoded { label: label } =>
           match read_member(v: edge_value, key: "target") {
             MemberFailed { cause: c } =>
-              EdgeAcc { edges: acc.edges, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+              EdgeAcc { edges: acc.edges, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
             MemberObject { value: target_value } =>
               match decode_target_reference(target_value: target_value) {
                 TargetReferenceRefused { cause: c } =>
                   EdgeAcc {
                     edges: acc.edges,
-                    refusal: Present { value: ClosureDocTargetReferenceRefused { cause: c } },
+                    refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
                   }
                 TargetUncontained { digest: identity } =>
                   EdgeAcc {
@@ -1078,24 +1097,24 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                     Present { value: AuthoredSourceRef(_) } =>
                       EdgeAcc {
                         edges: acc.edges,
-                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } } },
+                        refusal: Present { value: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } },
                       }
                     Present { value: CorpusManifestRef(_) } =>
                       EdgeAcc {
                         edges: acc.edges,
-                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } } },
+                        refusal: Present { value: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } },
                       }
                     Absent =>
                       EdgeAcc {
                         edges: acc.edges,
-                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetUnresolved { reference: reference } } },
+                        refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
                       }
                   }
               }
             _ =>
               EdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "target" } } },
+                refusal: Present { value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "target" } } },
               }
           }
       }
@@ -1106,10 +1125,10 @@ type DecodeAcc {
   store: ObjectStore
   positions: DecodePositions
   next: Int
-  refusal: ClosureDocRefusal?
+  refusal: ObjectTableDecodeRefusal?
 }
 
-fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
+fn decode_acc_refused(acc: DecodeAcc, cause: ObjectTableDecodeRefusal) -> DecodeAcc {
   DecodeAcc {
     store: acc.store,
     positions: acc.positions,
@@ -1141,10 +1160,10 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
     Absent =>
       match read_member(v: object_value, key: "manifest") {
         MemberArray { elements: entry_values } =>
-          match member_set_refusal(
+          match table_member_set_refusal(
             v: object_value,
             allowed: ["manifest"],
-            context: ClosureDocCorpusManifestMembers
+            context: ObjectTableCorpusManifestMembers
           ) {
             Present { value: c } => decode_acc_refused(acc: acc, cause: c)
             Absent => decode_corpus_manifest(acc: acc, entry_values: entry_values)
@@ -1152,12 +1171,12 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
         MemberString { value: _ } =>
           decode_acc_refused(
             acc: acc,
-            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
           )
         MemberObject { value: _ } =>
           decode_acc_refused(
             acc: acc,
-            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
           )
         MemberFailed { cause: manifest_cause } =>
           match manifest_cause {
@@ -1166,17 +1185,17 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             MemberReadDuplicated { key: k } =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadDuplicated { key: k } }
               )
             MemberReadWrongShape { key: k } =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: k } }
               )
             MemberReadSubjectNotObject =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadSubjectNotObject }
               )
           }
       }
@@ -1193,10 +1212,10 @@ fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> Deco
     Absent =>
       match read_member(v: object_value, key: "source") {
         MemberString { value: text } =>
-          match member_set_refusal(
+          match table_member_set_refusal(
             v: object_value,
             allowed: ["source"],
-            context: ClosureDocAuthoredSourceMembers
+            context: ObjectTableAuthoredSourceMembers
           ) {
             Present { value: c } => decode_acc_refused(acc: acc, cause: c)
             Absent => decode_authored_source(acc: acc, text: text)
@@ -1204,20 +1223,20 @@ fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> Deco
         MemberArray { elements: _ } =>
           decode_acc_refused(
             acc: acc,
-            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
           )
         MemberObject { value: _ } =>
           decode_acc_refused(
             acc: acc,
-            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
+            cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
           )
         MemberFailed { cause: c } =>
           match c {
             MemberReadMissing { key: _ } =>
-              match member_set_refusal(
+              match table_member_set_refusal(
                 v: object_value,
                 allowed: ["kind", "children"],
-                context: ClosureDocObjectRecordMembers
+                context: ObjectTableSemanticNodeMembers
               ) {
                 Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
                 Absent => decode_object_members(acc: acc, object_value: object_value)
@@ -1225,17 +1244,17 @@ fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> Deco
             MemberReadDuplicated { key: k } =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadDuplicated { key: k } }
               )
             MemberReadWrongShape { key: k } =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: k } }
               )
             MemberReadSubjectNotObject =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+                cause: ObjectTableMemberReadRefused { cause: MemberReadSubjectNotObject }
               )
           }
       }
@@ -1250,13 +1269,13 @@ fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> Deco
 // AuthoredSourceTarget is its own type.
 type ManifestEntryAcc {
   entries: List<CorpusManifestEntry>
-  refusal: ClosureDocRefusal?
+  refusal: ObjectTableDecodeRefusal?
 }
 
 fn manifest_entry_refused(acc: ManifestEntryAcc, cause: ObjectTableDecodeRefusal) -> ManifestEntryAcc {
   ManifestEntryAcc {
     entries: acc.entries,
-    refusal: Present { value: ClosureDocObjectTableRefused { cause: cause } },
+    refusal: Present { value: cause },
   }
 }
 
@@ -1281,7 +1300,7 @@ fn decode_manifest_source(
     TargetReferenceRefused { cause: c } =>
       ManifestEntryAcc {
         entries: acc.entries,
-        refusal: Present { value: ClosureDocTargetReferenceRefused { cause: c } },
+        refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
       }
     TargetUncontained { digest: identity } =>
       manifest_entry_with(acc: acc, path: path, source: AuthoredSourceTarget { locator: identity })
@@ -1323,10 +1342,10 @@ fn decode_manifest_entry(
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match member_set_refusal(
+      match table_member_set_refusal(
         v: entry_value,
         allowed: ["path", "source"],
-        context: ClosureDocManifestEntryMembers
+        context: ObjectTableManifestEntryMembers
       ) {
         Present { value: c } =>
           ManifestEntryAcc { entries: acc.entries, refusal: Present { value: c } }
@@ -1335,7 +1354,7 @@ fn decode_manifest_entry(
             MemberFailed { cause: c } =>
               ManifestEntryAcc {
                 entries: acc.entries,
-                refusal: Present { value: ClosureDocMemberReadRefused { cause: c } },
+                refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
               }
             MemberString { value: path } =>
               if path == "" {
@@ -1345,7 +1364,7 @@ fn decode_manifest_entry(
                   MemberFailed { cause: c } =>
                     ManifestEntryAcc {
                       entries: acc.entries,
-                      refusal: Present { value: ClosureDocMemberReadRefused { cause: c } },
+                      refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
                     }
                   MemberObject { value: source_value } =>
                     decode_manifest_source(
@@ -1358,7 +1377,7 @@ fn decode_manifest_entry(
                     ManifestEntryAcc {
                       entries: acc.entries,
                       refusal: Present {
-                        value: ClosureDocMemberReadRefused {
+                        value: ObjectTableMemberReadRefused {
                           cause: MemberReadWrongShape { key: "source" }
                         }
                       },
@@ -1369,7 +1388,7 @@ fn decode_manifest_entry(
               ManifestEntryAcc {
                 entries: acc.entries,
                 refusal: Present {
-                  value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
+                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
                 },
               }
           }
@@ -1396,9 +1415,7 @@ fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> Deco
             CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
               decode_acc_refused(
                 acc: acc,
-                cause: ClosureDocObjectTableRefused {
-                  cause: ObjectTableObjectCollision { identity: i }
-                },
+                cause: ObjectTableObjectCollision { identity: i },
               )
             CorpusManifestStored { store: next_store, manifest: manifest } =>
               DecodeAcc {
@@ -1427,7 +1444,7 @@ fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
         store: acc.store,
         positions: acc.positions,
         next: acc.next,
-        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
+        refusal: Present { value: ObjectTableObjectCollision { identity: i } },
       }
     SourceStored { store: next_store, source: source } =>
       DecodeAcc {
@@ -1449,7 +1466,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
     Absent =>
       match read_member(v: object_value, key: "kind") {
         MemberFailed { cause: c } =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
         MemberObject { value: kind_value } =>
           match decode_kind(kind_value: kind_value) {
             KindDecodeFailed { cause: c } =>
@@ -1457,7 +1474,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             KindDecoded { kind: kind } =>
               match read_member(v: object_value, key: "children") {
                 MemberFailed { cause: c } =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
                 MemberArray { elements: child_values } =>
                   match fold(
                     child_values,
@@ -1477,7 +1494,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                                 store: acc.store,
                                 positions: acc.positions,
                                 next: acc.next,
-                                refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
+                                refusal: Present { value: ObjectTableObjectCollision { identity: i } },
                               }
                             Stored { store: next_store, node: node } =>
                               DecodeAcc {
@@ -1499,7 +1516,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                     positions: acc.positions,
                     next: acc.next,
                     refusal: Present {
-                      value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+                      value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
                     },
                   }
               }
@@ -1510,7 +1527,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             positions: acc.positions,
             next: acc.next,
             refusal: Present {
-              value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+              value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
             },
           }
       }
@@ -1534,10 +1551,10 @@ fn decode_node_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match member_set_refusal(
+      match table_member_set_refusal(
         v: object_value,
         allowed: ["kind", "children"],
-        context: ClosureDocObjectRecordMembers
+        context: ObjectTableSemanticNodeMembers
       ) {
         Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
         Absent => decode_object_members(acc: acc, object_value: object_value)
@@ -1574,11 +1591,7 @@ fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
       if format != closure_document_format_tag {
         ClosureDocRefused { cause: ClosureDocFormatUnrecognized { found: format } }
       } else {
-        match member_set_refusal(
-          v: v,
-          allowed: ["format", "objects", "root"],
-          context: ClosureDocEnvelopeMembers
-        ) {
+        match member_set_refusal(v: v, allowed: ["format", "objects", "root"]) {
           Present { value: c } => ClosureDocRefused { cause: c }
           Absent => decode_closure_document_body(v: v)
         }
@@ -1587,6 +1600,10 @@ fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
   }
 }
 
+// THE WRAP IS THE LAYER BOUNDARY, AND IT IS ONE CONSTRUCTOR BECAUSE THE TABLE NOW SPEAKS FOR
+// ITSELF. Every cause arriving from decode_node_table was raised by the object table about one of
+// its entries, so the closure's only job here is to say where it came from -- not to have supplied
+// the vocabulary the table refused in, which is what it used to do.
 fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
@@ -1594,7 +1611,7 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
       match decode_node_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
-            Present { value: c } => ClosureDocRefused { cause: c }
+            Present { value: c } => ClosureDocRefused { cause: ClosureDocObjectTableRefused { cause: c } }
             Absent =>
               match read_member(v: v, key: "root") {
                 MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
@@ -1685,24 +1702,12 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
         MemberReadDuplicated { key: _ } => LoadDocumentMalformed
         MemberReadWrongShape { key: _ } => LoadDocumentMalformed
       }
-    ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+    ClosureDocUnexpectedMember { key: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
     ClosureDocRootIsAuthoredSource { reference: _ } => LoadDocumentMalformed
     ClosureDocRootIsCorpusManifest { reference: _ } => LoadDocumentMalformed
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
-    ClosureDocTargetReferenceRefused { cause: c } =>
-      match c {
-        TargetReferenceMemberReadRefused { cause: m } =>
-          match m {
-            MemberReadSubjectNotObject => LoadDocumentMalformed
-            MemberReadMissing { key: _ } => LoadDocumentMalformed
-            MemberReadDuplicated { key: _ } => LoadDocumentMalformed
-            MemberReadWrongShape { key: _ } => LoadDocumentMalformed
-          }
-        TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
-        TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
-        TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
-      }
+    ClosureDocTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
   }
 }
 

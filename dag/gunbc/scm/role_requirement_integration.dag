@@ -184,6 +184,7 @@ type ResolvedRole {
 type RoleRequirementIntegrationRefusal
   = TargetRootMissing { identity: ObjectId }
   | TargetRootIsAuthoredSource { identity: ObjectId }
+  | TargetRootIsCorpusManifest { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
   | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
   | TargetChildIsCorpusManifest { role: Symbol, identity: ObjectId }
@@ -285,6 +286,8 @@ fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
     NodeRecordAbsent { identity: i } => TargetUnreadable { cause: TargetRootMissing { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       TargetUnreadable { cause: TargetRootIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      TargetUnreadable { cause: TargetRootIsCorpusManifest { identity: i } }
     NodeRecordFound(record) =>
       TargetRead {
         roles: reverse(fold(record.children, init: [], f: fn(acc, stored) {

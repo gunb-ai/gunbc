@@ -1386,6 +1386,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCommitRootNotInObjectTable { root: _ } => LoadDocumentMalformed
     RepositoryCommitRootIsAuthoredSource { root: _ } => LoadDocumentMalformed
+    RepositoryCommitRootIsCorpusManifest { root: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => LoadDocumentMalformed
     RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => LoadDocumentMalformed

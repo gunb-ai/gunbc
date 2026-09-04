@@ -52,7 +52,7 @@ import gunbc.scm.repository_envelope {
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectTableRefused,
   ClosureDocMemberReadRefused,
-  ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers,
+  ClosureDocUnexpectedMember,
   ClosureDocTargetReferenceRefused,
   closure_document_load_standing, loaded_closure_standing,
 }
@@ -197,7 +197,7 @@ test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
 test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
   let protocol = closure_document_load_standing(cause: ClosureDocFormatUnrecognized { found: "v9" })
   let member = closure_document_load_standing(
-    cause: ClosureDocUnexpectedMember { context: ClosureDocEnvelopeMembers, key: "provenance" }
+    cause: ClosureDocUnexpectedMember { key: "provenance" }
   )
   let tag = object_table_load_standing(cause: ObjectTableUnknownKindTag { found: "quantum" })
   standing_eq(a: protocol, b: LoadUnsupportedProtocol)
