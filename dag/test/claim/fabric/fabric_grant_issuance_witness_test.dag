@@ -63,8 +63,7 @@ data fixture_contract: WorkContract = WorkContract {
   output_contract: "outputs:1",
 }
 
-data subject_work: Work<NonEmptyStr> =
-  work_for(principal: "gunbc", contract: fixture_contract, requirements: fixture_requirements)
+data subject_work: Work<NonEmptyStr> = work_for(principal: "gunbc", contract: fixture_contract, requirements: fixture_requirements)
 
 data other_contract: WorkContract = WorkContract {
   program: "gunbc.required-witnesses-build.program:2",
@@ -76,13 +75,11 @@ data other_contract: WorkContract = WorkContract {
   output_contract: "outputs:1",
 }
 
-data other_work: Work<NonEmptyStr> =
-  work_for(principal: "gunbc", contract: other_contract, requirements: fixture_requirements)
+data other_work: Work<NonEmptyStr> = work_for(principal: "gunbc", contract: other_contract, requirements: fixture_requirements)
 
 // Same contract, DIFFERENT principal. FabricIdentity equality is over the pair, so this work is
 // not the subject work even though the derived key half is identical -- the cross-tenant case.
-data foreign_work: Work<NonEmptyStr> =
-  work_for(principal: "other-tenant", contract: fixture_contract, requirements: fixture_requirements)
+data foreign_work: Work<NonEmptyStr> = work_for(principal: "other-tenant", contract: fixture_contract, requirements: fixture_requirements)
 
 data first_attempt: Attempt<NonEmptyStr> = Attempt {
   id: FabricIdentity { principal: "gunbc", key: "attempt-1" },
@@ -255,19 +252,20 @@ test fn one_admitted_offer_yields_one_committed_grant() -> Bool {
 // its principal is the WORK's. Asserting "committed" alone would pass against an issuer that
 // grants the wrong thing.
 test fn the_committed_grant_names_the_exact_work_and_attempt() -> Bool {
-  committed_grants(o: issue(
+  let issued = committed_grants(o: issue(
     work: subject_work,
     attempt: first_attempt,
     offer: admitted_offer,
     outstanding: [],
     account: funded_account,
     ledger: thread_appropriation,
-  )) |> all(g =>
+  ))
+  issued.length() == 1 && (issued |> all(g =>
     g.context.work.key == subject_work.id.key
       && g.context.work.principal == "gunbc"
       && g.id.principal == "gunbc"
       && g.context.attempt.key == "attempt-1"
-  )
+  ))
 }
 
 // DUPLICATE-GRANT. A second issuance for one attempt is refused by that name.
