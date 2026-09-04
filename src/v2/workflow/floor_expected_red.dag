@@ -1027,7 +1027,7 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // rule for the kinds this slice uses: v2 self-host lane work, not a witness edit.
 //
 // ITS REMOVAL TRIGGER IS NOT RESTATED HERE, DELIBERATELY: it is already modeled, with population
-// and blocker, in `gunbc.guarantee_stall` `self_host_candidate_generation_add_slice_stall`.
+// and blocker, in `gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall`.
 // Copying those fields into a comment would fork that authority into prose that drifts on its own
 // (DESIGN 2/3, and 4c's rule that an annotation must not restate what a declaration says), and no
 // `Accepted` program can read a comment, so the copy could never be the thing that is checked.
