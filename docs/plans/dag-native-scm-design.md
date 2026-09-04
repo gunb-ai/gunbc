@@ -285,10 +285,10 @@ and a stale authority describing an operation nobody can invoke is the premise c
 documents against its own CI paragraph:
 
 ```
-merge(store, target, target_dependencies, proposals)
-  -> Merged { store, commit, roles }
-   | MergeRolesContested { role, alternatives }
-   | MergeRefused { cause }
+integrate_role_requirements(store, target, target_dependencies, proposals)
+  -> RoleRequirementsIntegrated { store, commit, roles }
+   | RoleRequirementsContested { role, alternatives }
+   | RoleRequirementIntegrationRefused { cause }
 accept(store, commit, authority, contract) -> appended; never changes the commit
 checkout(store, commit) -> CheckedOut { program } | CheckoutRefused { cause }
 ```
@@ -300,13 +300,13 @@ deleted node when one proposal adds `k` depending on `f` while the other deletes
 supplies every fact outside the implication frontier, and **silence means preserve it**. Proposals
 became a list because a contest is a property of the whole population, not a pair.
 
-**Why the outcome arms are named for less than they conclude.** `MergeRefused` rather than
+**Why the outcome arms are named for less than they conclude.** `RoleRequirementIntegrationRefused` rather than
 `CouldNotLand`: the engine cannot establish terminality — an unsupported dependency kind may be
-unmodelled implementation, a missing target root an incomplete fetch. `MergeRolesContested` rather
+unmodelled implementation, a missing target root an incomplete fetch. `RoleRequirementsContested` rather
 than `ChoiceRequired`: this layer establishes that distinct alternatives exist; that a *user* must
 choose requires proving they survive the admitted equivalence quotient, that the candidate
 population is closed, and that no further machine work resolves them — none of which lives here.
-**`MergeRolesContested` is complete over the proposal population supplied to that call and proves
+**`RoleRequirementsContested` is complete over the proposal population supplied to that call and proves
 nothing about global candidate-space closure.** That boundary is held by this paragraph and the type
 name, not structurally; the landing seam is where it becomes structural.
 
@@ -317,7 +317,7 @@ silence already means preserve: a delete by omission would read as "leave it alo
 of the request. Both sides normalize to a requested state (`DesiredRoleValue`) before any contest is
 decided, so identical authorings are **agreement**, not a question with identical alternatives.
 Distinct bindings combine by construction; two different requested states at one binding produce
-`MergeRolesContested` carrying **every** distinct alternative — accumulated over the whole
+`RoleRequirementsContested` carrying **every** distinct alternative — accumulated over the whole
 population so arrival order cannot decide which evidence survives, and never latest-wins,
 first-wins, or branch-priority-wins.
 

@@ -35,8 +35,8 @@ import std.minted_identity { MintedId, minted_id_eq }
 // EXACTLY ONE PARENT, AND THIS IS THE DECISION THAT WOULD BE UNWRITABLE LATER, so it is derived from
 // what the model's own merge does rather than from what git does.
 //
-// gunbc.scm.merge `merge` takes ONE target Commit and a LIST OF PROPOSALS, and answers `Merged`
-// carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
+// gunbc.scm.role_requirement_integration `integrate_role_requirements` takes ONE target Commit and
+// a LIST OF PROPOSALS, and answers `RoleRequirementsIntegrated` carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
 // root, no message and no identity in history. So a merge in THIS model combines one commit with N
 // things that were never commits, and the result has exactly one commit antecedent. Git's second
 // parent exists because git merges two BRANCHES, which are two commits; that shape has no referent

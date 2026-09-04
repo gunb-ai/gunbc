@@ -26,7 +26,7 @@ import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
 import gunbc.scm.object_store { SemanticNodeObjectRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
-import gunbc.scm.merge {
+import gunbc.scm.proposal {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,

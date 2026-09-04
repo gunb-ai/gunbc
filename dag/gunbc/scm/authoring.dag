@@ -14,7 +14,7 @@ module gunbc.scm.authoring
 
 import std.types { Bool, List, String }
 import v2.std.node { Symbol }
-import gunbc.scm.merge {
+import gunbc.scm.proposal {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,
@@ -22,9 +22,9 @@ import gunbc.scm.merge {
   requirement_role,
 }
 
-// THE ROLE-CONFLICT RULE IS DERIVED, AND IT LANDS OPPOSITE TO merge's -- WHICH IS THE POINT.
+// THE ROLE-CONFLICT RULE IS DERIVED, AND IT LANDS OPPOSITE TO THE INTEGRATION'S -- WHICH IS THE POINT.
 //
-// gunbc.scm.merge `apply_requirement` states its rule in the strongest terms available: "ONLY THE
+// gunbc.scm.role_requirement_integration `apply_requirement` states its rule in the strongest terms available: "ONLY THE
 // FIRST AUTHORING RESOLVES THE ROLE. A later competing authoring is recorded as an alternative and
 // must NOT overwrite it: silently taking the last writer is the fabricated winner this outcome type
 // exists to refuse." Read naively, that settles this module too, and `add` would have to refuse the

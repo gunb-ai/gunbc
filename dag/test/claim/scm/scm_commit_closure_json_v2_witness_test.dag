@@ -119,19 +119,19 @@ import gunbc.scm.load_standing {
   LoadIdentityCollision,
   LoadRequiresNodeAtAuthoredSource,
 }
-import gunbc.scm.merge {
-  MergeOutcome,
-  Merged,
-  MergeRefused,
-  MergeRolesContested,
+import gunbc.scm.role_requirement_integration {
+  RoleRequirementIntegrationOutcome,
+  RoleRequirementsIntegrated,
+  RoleRequirementIntegrationRefused,
+  RoleRequirementsContested,
   TargetRootMissing,
   TargetRootIsAuthoredSource,
   TargetChildMissing,
   TargetChildIsAuthoredSource,
   BindingLocatorCollision,
   RequiredDependencyRemoved,
-  DependencyKindUnsupportedForMerge,
-  merge,
+  DependencyKindUnsupportedForIntegration,
+  integrate_role_requirements,
 }
 import gunbc.scm.object_table_json {
   ObjectTableUnknownKindTag,
@@ -1299,11 +1299,11 @@ fn scm_image_empty_node_entry() -> JsonValue {
 //
 // What remains here is the ROLE PATH ITSELF: a document whose root has a named child merges, which
 // is the control the moved claim needs and the reason this reader stays.
-fn scm_image_merge_refusal_tag(o: MergeOutcome) -> String {
+fn scm_image_merge_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
   match o {
-    Merged { store: _, commit: _, roles: _ } => "merged"
-    MergeRolesContested { role: _, alternatives: _ } => "contested"
-    MergeRefused { cause: cause } =>
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => "merged"
+    RoleRequirementsContested { role: _, alternatives: _ } => "contested"
+    RoleRequirementIntegrationRefused { cause: cause } =>
       match cause {
         TargetRootMissing { identity: _ } => "root_missing"
         TargetRootIsAuthoredSource { identity: _ } => "root_source"
@@ -1311,7 +1311,7 @@ fn scm_image_merge_refusal_tag(o: MergeOutcome) -> String {
         TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
         BindingLocatorCollision { role: _, identity: _ } => "collision"
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => "kind"
+        DependencyKindUnsupportedForIntegration { dependent: _, required: _, kind: _ } => "kind"
       }
   }
 }
@@ -1377,7 +1377,7 @@ fn scm_image_merge_tag_for(document: JsonValue) -> String {
     ClosureDocRefused { cause: _ } => "document_refused"
     ClosureDocLoaded { store: store, root: root } =>
       scm_image_merge_refusal_tag(
-        o: merge(
+        o: integrate_role_requirements(
           store: store,
           target: commit_of_root(root: root),
           target_dependencies: [],
@@ -1427,7 +1427,7 @@ fn scm_image_role_over_a_node_document() -> JsonValue {
   )
 }
 
-test fn scm_image_a_role_whose_value_is_a_node_merges() -> Bool {
+test fn scm_image_a_role_whose_value_is_a_node_integrates() -> Bool {
   scm_image_merge_tag_for(document: scm_image_role_over_a_node_document()) == "merged"
 }
 

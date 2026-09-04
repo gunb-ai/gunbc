@@ -18,7 +18,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
 }
-import gunbc.scm.merge { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
+import gunbc.scm.proposal { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
 import gunbc.scm.authoring { author_requirement, empty_proposal }
 import gunbc.scm.status {
   repository_status,
