@@ -8,6 +8,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_rows_of_class,
   census_total_count
 }
 
@@ -66,6 +67,7 @@ type BrandArm {
   name: String
   source: String
   expect_blocking: Bool
+  expect_class: String
 }
 
 // THE FOUR FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
@@ -79,32 +81,38 @@ data brand_arms: List<BrandArm> = [
   BrandArm {
     name: "collision",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_collide\")\ntype BniB = String where brand(\"bni_collide\")\nfn bni_f(a: BniA) -> BniB { a as BniB }\n",
-    expect_blocking: true
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
   },
   BrandArm {
     name: "mismatch",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as BniB }\n",
-    expect_blocking: true
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
   },
   BrandArm {
     name: "construct",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\nfn bni_f(s: String) -> BniA { s as BniA }\n",
-    expect_blocking: false
+    expect_blocking: false,
+    expect_class: ""
   },
   BrandArm {
     name: "dual",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\nfn bni_g(a: BniA) -> BniA { a }\nfn bni_f(a: BniA) -> BniA { bni_g(a: a) }\n",
-    expect_blocking: false
+    expect_blocking: false,
+    expect_class: ""
   },
   BrandArm {
     name: "strip",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as String as BniB }\n",
-    expect_blocking: false
+    expect_blocking: false,
+    expect_class: ""
   },
   BrandArm {
     name: "undeclared_site",
     source: "module bni_probe\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: String where brand(\"bni_inline\")) -> BniB { a as BniB }\n",
-    expect_blocking: true
+    expect_blocking: true,
+    expect_class: "InternalError"
   }
 ]
 
@@ -120,9 +128,29 @@ fn arm_blocking_count(a: BrandArm) -> Int {
   }
 }
 
+// COUNT THE INTENDED DIAGNOSTIC, NOT ANY REFUSAL. gunbc.compile_diagnostic_census states that the
+// row set is the WHOLE COMPILE's and that only a count scoped to a class -- or a differential --
+// is exact. A bare `blocking >= 1` therefore accepts ANY blocking diagnostic as evidence of this
+// wall, so the arm would stay green if the nominal check regressed while some unrelated refusal
+// appeared in its place. That is a check whose subject is wider than the claim it is cited for
+// (codex review 60451).
+fn arm_class_blocking_count(a: BrandArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: a.expect_class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE SECOND CONJUNCT IS WHAT MAKES THE SCOPE EXACT RATHER THAN MERELY NARROWER. Requiring the
+// targeted count to EQUAL the total blocking count means an unrelated blocking diagnostic in the
+// same fixture reds the arm instead of silently satisfying it, so the arm cannot be carried by a
+// refusal it did not intend. Together the two conjuncts say: this fixture refuses, it refuses with
+// the class this wall emits, and it refuses with NOTHING ELSE.
 fn arm_agrees(a: BrandArm) -> Bool {
   let blocking = arm_blocking_count(a: a)
-  if a.expect_blocking { blocking >= 1 } else { blocking == 0 }
+  let targeted = arm_class_blocking_count(a: a)
+  if a.expect_blocking { targeted >= 1 && targeted == blocking } else { blocking == 0 }
 }
 
 fn arm_names() -> List<String> {
@@ -162,10 +190,20 @@ test fn b_every_arm_behaves_as_declared() -> Bool {
 // so a name that matches no arm yields the same negative that an unrunnable probe does and reds
 // against every non-negative expectation below, rather than silently selecting nothing.
 
-fn arm_blocking_by_name(wanted: String) -> Int {
+// BY-NAME LOOKUPS COUNT THE INTENDED CLASS for the same reason arm_agrees does; the accepting
+// side keeps a TOTAL count below, because "accepted" must mean no blocking diagnostic of ANY class
+// rather than merely none of the class this wall emits.
+fn arm_total_blocking_by_name(wanted: String) -> Int {
   brand_arms
     |> filter(a => a.name == wanted)
     |> map(a => arm_blocking_count(a: a))
+    |> fold(init: 0, f: (acc, n) => acc + n)
+}
+
+fn arm_blocking_by_name(wanted: String) -> Int {
+  brand_arms
+    |> filter(a => a.name == wanted)
+    |> map(a => arm_class_blocking_count(a: a))
     |> fold(init: 0 - 1, f: (acc, v) => v)
 }
 
@@ -175,11 +213,11 @@ fn arm_blocking_by_name(wanted: String) -> Int {
 // and the one a permanently-green decoration could not carry.
 
 test fn b_collision_and_dual_are_distinguished() -> Bool {
-  arm_blocking_by_name(wanted: "collision") >= 1 && arm_blocking_by_name(wanted: "dual") == 0
+  arm_blocking_by_name(wanted: "collision") >= 1 && arm_total_blocking_by_name(wanted: "dual") == 0
 }
 
 test fn b_mismatch_and_construct_are_distinguished() -> Bool {
-  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_blocking_by_name(wanted: "construct") == 0
+  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "construct") == 0
 }
 
 // THE REGRESSION CONTROL. mismatch and strip differ ONLY by the intervening `as String`, so this
@@ -187,7 +225,7 @@ test fn b_mismatch_and_construct_are_distinguished() -> Bool {
 // the assertion the first version of this wall would have failed, and it does not retire.
 
 test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
-  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_blocking_by_name(wanted: "strip") == 0
+  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "strip") == 0
 }
 
 // THE UNDETERMINABLE-SITE RED. This is the arm the first wall got WRONG rather than missing: the
