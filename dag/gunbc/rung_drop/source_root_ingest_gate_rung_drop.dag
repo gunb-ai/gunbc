@@ -1,0 +1,67 @@
+module gunbc.rung_drop.source_root_ingest_gate_rung_drop
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// THE FLOOR CUT OWED THIS DECLARATION AND FILED NONE. Recorded 2026-08-21 against the cut of
+// 2026-08-15, not against any change since.
+//
+// WHY IT WAS MISSED, which is the part worth keeping: nobody deleted this gate. It was re-homed
+// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci_materialization
+// Receipt 6 records that re-homing as what dropped the declared floor resolve count from 3 to 1 --
+// and the cadence was deleted outright three weeks later. That is why the gate is absent from the
+// cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers.
+//
+// WHY THE TEMPORARY RUNG IS OFF THE LADDER RATHER THAN LOW ON IT. The class is not a guarantee
+// that fell a step; it is an OPERATION that lost its only route. There is nothing to mitigate,
+// because nothing can be attempted. Placing it on the ladder would imply a residual guarantee
+// that does not exist. Same shape as the regen-cut producer declaration in DESIGN.
+//
+// WHAT THIS IS NOT: a missing integration. Everything the gate composes is built and believed
+// correct -- four invocation sites, the composing gate, the admission roster, and a cost receipt
+// that measured it twice. It needs a caller, which makes it the cheapest item on the re-add queue.
+//
+// THE COUPLING, so the passenger error is not committed a second time: re-adding the falsifier
+// cadence does NOT restore this gate. The cadence is being re-derived from first principles rather
+// than restored, so nothing inherits by having once ridden along, and closing the cadence row does
+// not close this one.
+//
+// EVIDENCE GRADE, because this is a claim about an absence: the invocation sites, the callers, the
+// scheduling arm below and the three absent files were each read directly. "No other scheduler
+// exists" rests entirely on .github/workflows holding exactly two files, which is checkable in one
+// command and is the whole basis. No execution was attempted. The day a third workflow lands, this
+// row can become false with nobody having touched it.
+//
+// DECLARED 2026-08-28 IN gunbc.instruments.ci_gates AND ROSTERED NOWHERE UNTIL NOW. It is read by
+// that module's SourceRootIngestGate arm, which refuses with this row's own rendering; the row moves
+// here and the gate imports it, because where a declaration is CONSUMED is not where it is declared.
+
+data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
+  identity: "source_root_ingest_gate" as NonEmptyStr,
+
+  subject: "v2.workflow.source_root_ingest_gate",
+
+  declared: "2026-08-28",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
+    population: [
+    "v2.workflow.source_root_ingest_gate",
+    "v2.workflow.source_root_ingest_transport",
+    "v2.workflow.compiler_closure_ingest_transport",
+    "v2.workflow.module_binding_supply_transport",
+    "src/v1/stage0/src/bin/discover_owned_data.rs",
+    "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
+    "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
+    "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+    ],
+    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes SHARED-CAPABILITY HAZARD, recorded on all three rows that carry it rather than on whichever lands last, because landing order is not knowable at authoring time: this trigger's cadence half is the SAME capability three declared drops wait on -- source_root_ingest_gate_rung_drop, deleted_cadence_reference_drop, and witness_deferral_freeze_forward_rule_rung_drop half (a) -- over DISJOINT populations. Measured 2026-09-03: the required run's own phase announcement enumerates exactly five phases across two lanes (build owns regen and generated-artifact, witnesses owns parse, namespace-wave-admission and floor), and `schedule:`/`cron:` appear zero times across all three workflow files, so the shared blocker is a MISSING CATEGORY rather than a missing invocation. The hazard is therefore not that the trigger is wrong but that ONE event fires three triggers while one author watches one row: whoever lands the first cadence must retire all three or leave the others standing on a trigger that has already fired, which is the precise inverse of retired-by-its-trigger-and-by-nothing-else."
+  }
+}
