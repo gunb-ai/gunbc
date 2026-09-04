@@ -169,7 +169,7 @@ test fn crs812_suggested_price_and_included_parts_are_carried() -> Bool {
 }
 
 test fn crs812_open_gaps_are_declared_and_counted() -> Bool {
-  crs812_gap_count() == 3
+  crs812_gap_count() == 4
 }
 
 // ---------------- Arista DCS-7050S-52 ----------------
