@@ -64,6 +64,10 @@ test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
   }
 }
 
+// EXTENTS ON BOTH AXES. An earlier form of this pair computed x only, and the containment witness
+// below compared it against the FRAME span rather than the body -- which review caught. The body is
+// inset vertically (y 120..1080), so a feature at y 0 sits outside it while lying inside the frame,
+// and the check would have passed on exactly the case it is named for.
 fn feature_min_x(f: MarkFeature) -> Nat {
   match f {
     MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => frame_length_tenths(l: x)
@@ -81,12 +85,62 @@ fn feature_max_x(f: MarkFeature) -> Nat {
   }
 }
 
+fn feature_min_y(f: MarkFeature) -> Nat {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => frame_length_tenths(l: y)
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      frame_length_tenths(l: cy) - frame_length_tenths(l: r)
+  }
+}
+
+fn feature_max_y(f: MarkFeature) -> Nat {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
+      frame_length_tenths(l: y) + frame_length_tenths(l: h)
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      frame_length_tenths(l: cy) + frame_length_tenths(l: r)
+  }
+}
+
+// The BODY's own extents, read from the body rather than restated. A literal here would be a second
+// authority for the rectangle the module already declares, and would keep passing if the body moved.
+fn body_bounds_hold(min_x: Nat, max_x: Nat, min_y: Nat, max_y: Nat) -> Bool {
+  match mark_body {
+    MarkCircle { center_x: cx, center_y: cy, radius: r } => false
+    MarkRoundedRect { x: bx, y: by, width: bw, height: bh, corner_radius: bcr } =>
+      min_x >= frame_length_tenths(l: bx)
+        && max_x <= frame_length_tenths(l: bx) + frame_length_tenths(l: bw)
+        && min_y >= frame_length_tenths(l: by)
+        && max_y <= frame_length_tenths(l: by) + frame_length_tenths(l: bh)
+  }
+}
+
+fn feature_inside_body(f: MarkFeature) -> Bool {
+  body_bounds_hold(
+    min_x: feature_min_x(f: f), max_x: feature_max_x(f: f),
+    min_y: feature_min_y(f: f), max_y: feature_max_y(f: f),
+  )
+}
+
 // Every cut must land in material. A feature outside the body would be an opening cut through air --
 // on screen a stray dot, in plastic a hole in the board the insert is supposed to cover.
 test fn w_every_feature_lies_inside_the_body() -> Bool {
-  let inside = gunb_stoic_giant_mark.features
-    |> filter(f => feature_min_x(f: f) >= 0 && feature_max_x(f: f) <= mark_frame_span)
-    |> count
+  let inside = gunb_stoic_giant_mark.features |> filter(f => feature_inside_body(f: f)) |> count
   let total = gunb_stoic_giant_mark.features |> count
   total == 3 && inside == total
+}
+
+// THE DISCRIMINATING RED FOR THE CHECK ABOVE, which it did not have. A feature at y 0 lies inside
+// the FRAME and outside the BODY, so it separates the two readings: under the previous
+// frame-relative comparison this would have been reported as contained.
+data mark_feature_above_the_body: MarkFeature = MarkCircle {
+  center_x: frame_length(tenths: 600),
+  center_y: frame_length(tenths: 0),
+  radius: frame_length(tenths: 96),
+}
+
+test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bool {
+  feature_inside_body(f: mark_feature_above_the_body) == false
+    && feature_min_x(f: mark_feature_above_the_body) >= 0
+    && feature_max_x(f: mark_feature_above_the_body) <= mark_frame_span
 }
