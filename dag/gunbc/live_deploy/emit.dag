@@ -472,6 +472,7 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: spec.names.publication_principal },
       ServiceGroup { name: spec.names.publication_principal },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
       ExecStart { command: join([
@@ -617,6 +618,7 @@ fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       ExecStart { command: join([
         svc.serve_binary as String,
@@ -672,6 +674,7 @@ fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
     ],
