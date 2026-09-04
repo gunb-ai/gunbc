@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.variant_owner_identity_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data variant_owner_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "runtime variant equality and native-representation selection derive from exact owner-module plus declaration identity, never parent/arm lexemes",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_interpreter::cross_claim_memo_tests::same_spelled_variants_from_distinct_owners_reproduce_identity_residual", tail: Cons { head: "v1_interpreter::cross_claim_memo_tests::typed_bool_literals_do_not_need_lexeme_shorthands_but_zero_still_does", tail: Empty {} } } },
+  next_rung_trigger: "NS-0B threads its exact owner-module plus declaration-name identity through VariantValueBinding, Value::Variant, hashing, and PortableValue::Variant; the same-spelled-owner residual changes from reproducing equality to requiring inequality, and the intentional Nat Zero native representation is selected by that identity rather than by the raw Zero lexeme"
+}

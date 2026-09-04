@@ -1,0 +1,21 @@
+module gunbc.guarantee_stall.heterogeneous_child_list_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a type's child list may hold BOTH a type node and a field node, and v1.04_types child_type_node tells them apart by whether `inferred` is populated -- a stamp v1.02_parse field_to_child_node writes at PARSE TIME as Resolved, before any resolution has run. A child list that mixes the two kinds makes that accessor return the FIELD node where its caller expects the TYPE, with no diagnostic",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "v1.02_parse variant_to_child_node",
+      "v1.02_parse outputs_to_inferred",
+      "v1.02_parse parse_type_after_kw",
+      "v1.02_parse parse_type_body_from_prefix",
+      "v1.02_parse parse_type_expr"
+    ]
+  },
+  next_rung_trigger: "v1.04_types child_type_node no longer INFERS SHAPE FROM PROVENANCE -- it discriminates a type child from a field child by something that states the kind, rather than by whether a derived-data slot happens to be occupied. The trigger is that CAPABILITY and not any artifact that would contribute to one: a tag added while the accessor still reads `inferred`-presence satisfies an artifact and leaves the hazard exactly where it is, which is the direction DESIGN section 4b(3) says this machinery structurally cannot see. Emptying the slot BEFORE that lands is the failure this row exists to prevent, not the repair -- it would silently reclassify every field child into the wrong arm at once"
+}
