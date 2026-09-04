@@ -1,5 +1,10 @@
 module gunbc.fleet_intent_network
 
+import std.types { NonEmptyStr }
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import product.network_topology {
   NetworkAttachmentRole,
   NetworkEndpoint,
@@ -11,6 +16,11 @@ import product.network_topology {
   ContainerBridgeSecondary,
   TailscaleEndpoint,
   LanGateway,
+  FabricationAppliance,
+  NetworkEndpointSubject,
+  EndpointHost,
+  EndpointAsset,
+  EndpointSubjectUnregistered,
   Lan,
   DockerBridge,
   TailscaleOverlay,
@@ -84,7 +94,7 @@ data operator_docker_bridge_secondary_srv1_segment: NetworkSegment = NetworkSegm
 
 data srv1_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-host-lan",
-  host: Present { value: operator_host_srv1 },
+  subject: EndpointHost { host: operator_host_srv1 },
   address: "192.168.1.185",
   role: HostOperatingSystem,
   locality: Lan,
@@ -92,7 +102,7 @@ data srv1_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv2_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv2-host-lan",
-  host: Present { value: operator_host_srv2 },
+  subject: EndpointHost { host: operator_host_srv2 },
   address: "192.168.1.188",
   role: HostOperatingSystem,
   locality: Lan,
@@ -100,7 +110,7 @@ data srv2_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv1_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-bmc",
-  host: Present { value: operator_host_srv1 },
+  subject: EndpointHost { host: operator_host_srv1 },
   address: "192.168.1.183",
   role: BmcOutOfBand,
   locality: Lan,
@@ -108,7 +118,7 @@ data srv1_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv2-bmc",
-  host: Present { value: operator_host_srv2 },
+  subject: EndpointHost { host: operator_host_srv2 },
   address: "192.168.1.184",
   role: BmcOutOfBand,
   locality: Lan,
@@ -116,7 +126,7 @@ data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv3-bmc",
-  host: Present { value: operator_host_srv3 },
+  subject: EndpointHost { host: operator_host_srv3 },
   address: "192.168.1.192",
   role: BmcOutOfBand,
   locality: Lan,
@@ -124,7 +134,7 @@ data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv4-bmc",
-  host: Present { value: operator_host_srv4 },
+  subject: EndpointHost { host: operator_host_srv4 },
   address: "192.168.1.195",
   role: BmcOutOfBand,
   locality: Lan,
@@ -132,7 +142,7 @@ data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv4-host-lan",
-  host: Present { value: operator_host_srv4 },
+  subject: EndpointHost { host: operator_host_srv4 },
   address: "192.168.1.196",
   role: HostOperatingSystem,
   locality: Lan,
@@ -169,7 +179,7 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv3-host-lan",
-  host: Present { value: operator_host_srv3 },
+  subject: EndpointHost { host: operator_host_srv3 },
   address: "192.168.1.221",
   role: HostOperatingSystem,
   locality: Lan,
@@ -207,7 +217,7 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 // therefore reported by that join and not asserted here.
 data srv5_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv5-host-lan",
-  host: Present { value: operator_host_srv5 },
+  subject: EndpointHost { host: operator_host_srv5 },
   address: "192.168.1.226",
   role: HostOperatingSystem,
   locality: Lan,
@@ -215,7 +225,7 @@ data srv5_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv6-host-lan",
-  host: Present { value: operator_host_srv6 },
+  subject: EndpointHost { host: operator_host_srv6 },
   address: "192.168.1.225",
   role: HostOperatingSystem,
   locality: Lan,
@@ -223,7 +233,7 @@ data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
-  host: Present { value: operator_host_srv1 },
+  subject: EndpointHost { host: operator_host_srv1 },
   address: "100.69.18.126",
   role: TailscaleEndpoint,
   locality: TailscaleOverlay,
@@ -231,7 +241,7 @@ data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data srv2_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv2-tailscale",
-  host: Present { value: operator_host_srv2 },
+  subject: EndpointHost { host: operator_host_srv2 },
   address: "100.73.169.40",
   role: TailscaleEndpoint,
   locality: TailscaleOverlay,
@@ -239,9 +249,52 @@ data srv2_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
 
 data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "operator-lan-gateway",
-  host: none,
+  subject: EndpointSubjectUnregistered,
   address: "192.168.1.1",
   role: LanGateway,
+  locality: Lan,
+}
+
+// THE PRINTER IS AN APPLIANCE ON THE OPERATOR LAN, NOT A HOST. `host` is absent because no
+// HostIdentity names it and inventing one would be a second name for printer_01. Its reachability
+// zone is HostLan, which network_reachability already says ContainerRunner cannot reach -- so every
+// route from this repo to this address is brokered through a host on the segment, by the model and
+// not by a workaround.
+data printer_01_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-01-lan",
+  subject: EndpointAsset { asset: printer_01 },
+  address: "192.168.1.234",
+  role: FabricationAppliance,
+  locality: Lan,
+}
+
+// BOTH PRINTER RESERVATIONS, TRANSCRIBED FROM THE OPERATOR'S LIVE CR1000A TABLE ON 2026-09-04. The
+// table reports Static, Active and expiry Never for both bindings. These rows carry MAC and status;
+// each endpoint projects the same address into the topology until NetworkEndpoint.address reaches
+// the grounded IpAddress carrier named by the dissolve-on row.
+data printer_01_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:66:2A:28" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 234),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-01" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:60:AC:14" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 235),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-02" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-02-lan",
+  subject: EndpointAsset { asset: printer_02 },
+  address: "192.168.1.235",
+  role: FabricationAppliance,
   locality: Lan,
 }
 
@@ -266,6 +319,8 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv4_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
+    printer_01_lan_endpoint,
+    printer_02_lan_endpoint,
   ],
 }
 

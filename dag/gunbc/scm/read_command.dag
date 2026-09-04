@@ -31,7 +31,7 @@ import gunbc.scm.repository_load {
 }
 import gunbc.scm.log { CommitLog, repository_log }
 import gunbc.scm.status { RepositoryStatus, repository_status }
-import gunbc.scm.merge { Proposal }
+import gunbc.scm.proposal { Proposal }
 
 // THE VERB IS A TYPE ARGUMENT, NOT AN ARM. Selecting a verb from argv is dispatch, and dispatch is
 // realization (DESIGN section 3), so a `ScmReadCommand = Log | Status` coproduct here would pull
