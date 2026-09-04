@@ -42,6 +42,7 @@ import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.produced_operand_substitution_stall { produced_operand_substitution_stall }
 import gunbc.guarantee_stall.split_non_emptiness_unmodelled_stall { split_non_emptiness_unmodelled_stall }
+import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -143,6 +144,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   operation_argv_binding_wall_stall,
   produced_operand_substitution_stall,
   split_non_emptiness_unmodelled_stall,
+  roster_re_enumerates_its_own_rows_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
