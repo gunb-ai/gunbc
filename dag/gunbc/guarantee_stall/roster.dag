@@ -1,0 +1,189 @@
+module gunbc.guarantee_stall.roster
+
+// THE ROSTER IS THE ENUMERATION AND THE FOLDS OVER IT, held apart from `gunbc.guarantee_stall`
+// because the import graph's one structural law is acyclicity: every row module imports the
+// `GuaranteeStall` type from that module, so the module carrying the type cannot import the rows
+// back. The type is the shape, the files are the facts, and this module is the list.
+//
+// ORDER IS SOURCE ORDER AND IS LOAD-BEARING for the same reason the failure-mode roster's is: a
+// consumer that renders rows renders them in roster order, so sorting this list would reorder
+// every projection derived from it. Append at the end.
+
+import std.types { List, Bool }
+import v2.std.algebra { fold_list }
+import gunbc.guarantee_stall { GuaranteeStall }
+import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
+import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
+import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
+import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
+import gunbc.guarantee_stall.runner_microvm_guest_size_derivation_stall { runner_microvm_guest_size_derivation_stall }
+import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
+import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
+import gunbc.guarantee_stall.heterogeneous_child_list_stall { heterogeneous_child_list_stall }
+import gunbc.guarantee_stall.doc_graph_orphan_population_stall { doc_graph_orphan_population_stall }
+import gunbc.guarantee_stall.doc_graph_dangling_link_population_stall { doc_graph_dangling_link_population_stall }
+import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_live_closure_gate_stall }
+import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
+import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
+import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
+import gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall { self_host_candidate_generation_add_slice_stall }
+import gunbc.guarantee_stall.non_fold_residue_roster_stall { non_fold_residue_roster_stall }
+import gunbc.guarantee_stall.retained_rust_live_tree_migration_stall { retained_rust_live_tree_migration_stall }
+import gunbc.guarantee_stall.variant_owner_identity_stall { variant_owner_identity_stall }
+import gunbc.guarantee_stall.gitattributes_committed_emit_drift_stall { gitattributes_committed_emit_drift_stall }
+import gunbc.guarantee_stall.wall_deadline_shared_fill_attribution_stall { wall_deadline_shared_fill_attribution_stall }
+import gunbc.guarantee_stall.builtin_parameter_name_forked_across_hand_authored_sites_stall { builtin_parameter_name_forked_across_hand_authored_sites_stall }
+import gunbc.guarantee_stall.algebra_operation_associativity_undeclarable_stall { algebra_operation_associativity_undeclarable_stall }
+import gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall { deployed_repository_empty_root_bootstrap_stall }
+import gunbc.guarantee_stall.prose_declared_rung_drop_stall { prose_declared_rung_drop_stall }
+import gunbc.guarantee_stall.two_nat_authorities_stall { two_nat_authorities_stall }
+import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_model_scope_live_cover_stall }
+import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
+import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
+
+// THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
+// carried here verbatim rather than split across the row modules they describe. Their membership
+// is DEICTIC -- "the fifteen executing identities below", "these four pre-existing facts" -- and
+// nothing in the rows themselves records which cohort a row arrived in, so a per-row assignment
+// would be an authored guess about a measurement nobody can re-derive. They are moved rather than
+// reworded, and the roster is the one module that sees every row at once, which is the only place
+// a claim about a SET of rows can be true.
+
+// DECLINED-LIVE-TREE CENSUS, observed by required-floor run 32882641450 after the root decline
+// stopped hiding these subjects. The fifteen executing identities below project TEN facts. They
+// are stalls rather than drops: no guarantee stopped holding in this change; the facts were outside
+// the ladder because no required consumer executed them. `ClimbableButUnbuilt` states that each
+// repair is specifiable. Assignment is a dashboard routing fact and deliberately does not live in
+// this semantic carrier.
+
+// REQUIRED-FLOOR RUN 32918791246 exposed these four pre-existing facts after the
+// DeclinedLiveTree arm stopped withholding their nine witness identities. None of their carriers
+// is changed by that deletion. They are declared rung drops rather than expected-red enrolments:
+// the witnesses remain ordinary, executing failures until the separately routed repair lands.
+// The work-item identity is part of each next-rung trigger, so ownership survives a squash merge
+// beside the bounded population and the semantic condition that ends the drop.
+
+// THE THREE CITED WORK ITEMS ARE ALREADY status=done AND THEIR CONDITIONS ARE NOT MET, measured
+// 2026-08-28 against the dashboard and against required-floor run 33140608194. adhoc-89fcf94a-bdd,
+// adhoc-3cb769e0-0a6 and adhoc-a3b0e05f-374 all report done, while frontier_cover_of_live_extdeps_tree_holds
+// is one of that run's 47 FAIL rows and a direct count puts 21 live dag/extdeps modules outside the
+// scope frontier's union of scope_carrier_paths, scope_machinery_exempt_paths and the legacy manifest.
+// So the node ids are PROVENANCE for who was asked, never evidence that the climb happened: a closed
+// work item beside an unmet condition is the reported-results-versus-committed-claims gap, and reading
+// "it lands" as satisfied would inflate three classes that are still at the bottom of the ladder.
+// EACH TRIGGER'S OPERATIVE HALF IS THE SEMANTIC CLAUSE AFTER THE COLON, which is what a later reader
+// must re-measure; the rows are authored that way and survive their work items unchanged.
+
+// THE ROSTER, AND WHY IT IS A FOLD RATHER THAN ONE EXEMPLAR PER ROW.
+//
+// Every GuaranteeStall row was a DECLARATION nothing observed. The witness exercised ONE of them
+// by name, so the rest were typed prose -- correct in shape, consumed by nothing, and exactly the
+// inert-carrier failure DESIGN section 5 names: coverage by illusion, worse than absent because a
+// registered-looking row is cited as registration. Found in review of the third row, and true of
+// the first two since they landed.
+//
+// A PER-ROW WITNESS WOULD BE THE SAME DEFECT WEARING MORE TESTS: N copies of one assertion, each
+// proving the FUNCTIONS work and none proving THAT ROW is enrolled, with the coverage tracking how
+// many authors remembered rather than how many rows exist. The fold makes the obligation scale
+// with the population instead.
+//
+// THE ROSTER IS HAND-MAINTAINED AND THAT IS A REAL WEAKNESS, stated rather than buried. A row
+// added above and not added here is invisible to the fold -- the same staleness these rows warn
+// about, one level up. Declaration IDENTITIES are derivable today: v2.std.decl_index
+// data_decl_type_facts enumerates every top-level data declaration with its declared type. The
+// VALUES needed by this List<GuaranteeStall> are not. DeclFact.node is an initializer-identity
+// projection. gunbc.seed_closed_vocabulary_wildcard_census files the NotVariantValue answer for
+// initializer forms outside that projection's ExprRecordLit and ExprVar arms as
+// FabricatedSubstitution. Independently, a measured ExprRecordLit takes
+// marshal_plain_record_projection, whose marshal_field_initializer_projection path collapses field
+// values needed to reconstruct the GuaranteeStall, including primitive string and list payloads
+// nested under ClimbBlocker and StallPopulation, to NotVariantValue through
+// variant_value_from_typechecked_expr; no census row currently files that field-value site. So the
+// alternative today is still this authored roster or no consumer, but
+// declaration enumeration is no longer the blocker.
+// TRIGGER: fail-closed typed data-value reflection enumerates exactly every top-level data
+// declaration under the gunbc.guarantee_stall module tree whose declared type is GuaranteeStall,
+// and no declaration outside it, and projects each fully evaluated value in deterministic roster
+// order,
+// SUFFICIENT FOR reconstructing every field of every GuaranteeStall row and refusing any initializer
+// form or field value it cannot project rather than substituting NotVariantValue. At that point this
+// list is DERIVED and an unenrolled row has no spelling. A declaration-identity,
+// initializer-shape, or corpus-wide GuaranteeStall surface alone does not satisfy the trigger.
+
+data all_guarantee_stalls: List<GuaranteeStall> = [
+  pre_resolve_entry_closure_module_identity_stall,
+  merge_admission_terminal_verdict_stall,
+  generated_artifact_registry_membership_stall,
+  authority_target_same_expression_equivalence_stall,
+  runner_microvm_guest_size_derivation_stall,
+  import_eligibility_resolution_stall,
+  next_rung_trigger_enforcement_stall,
+  heterogeneous_child_list_stall,
+  doc_graph_orphan_population_stall,
+  doc_graph_dangling_link_population_stall,
+  enforcement_live_closure_gate_stall,
+  mandatory_tag_live_corpus_stall,
+  parse_ingest_grammar_relation_stall,
+  required_regen_host_derivation_stall,
+  self_host_candidate_generation_add_slice_stall,
+  non_fold_residue_roster_stall,
+  retained_rust_live_tree_migration_stall,
+  variant_owner_identity_stall,
+  gitattributes_committed_emit_drift_stall,
+  wall_deadline_shared_fill_attribution_stall,
+  builtin_parameter_name_forked_across_hand_authored_sites_stall,
+  algebra_operation_associativity_undeclarable_stall,
+  deployed_repository_empty_root_bootstrap_stall,
+  prose_declared_rung_drop_stall,
+  two_nat_authorities_stall,
+  external_model_scope_live_cover_stall,
+  observation_heartbeat_lockstep_stall,
+  operation_argv_binding_wall_stall,
+]
+
+// THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
+//
+// These four stalls were DECLARED in the stall carrier and absent from all_guarantee_stalls, so the three
+// walls written over that roster ranged over 21 of the 25 rows the carrier then declared. The walls were
+// green because their input was short, which is exactly the shape
+// gunbc.recurring_failure_mode check_subject_narrower_than_its_declared_claim names: a green check
+// whose declared subject is a strict superset of the population it actually ranges over.
+//
+// WHAT THIS CHECK COVERS AND WHAT IT DOES NOT, stated because a check that does not state its own
+// denominator cannot be distinguished from a complete one. It covers exactly these four subjects:
+// if any is dropped from the roster again, the fold refuses. It does NOT detect a NEW stall
+// declared and left unrostered -- that requires a corpus-wide census of GuaranteeStall
+// declarations joined against the roster, which is a separate obligation and is gated on whether
+// its RED is authorable at all (a stall declared in a module the roster cannot import may not be
+// expressible in any fixture, and a check whose RED has nowhere to live is a decoration).
+//
+// PRESENCE-EXACTLY-ONCE, NOT SET EQUALITY, and the asymmetry is deliberate: a new stall row must
+// be admitted without editing this list, while a lost one must refuse. Exactly-once also refuses
+// a DOUBLE entry, which set membership would accept and which reads as a merge that applied twice.
+// PINNED BY REFERENCE TO THE DECLARATIONS, NOT BY TRANSCRIBING THEIR SUBJECTS. An earlier draft
+// listed the four subjects as string literals and got all four WRONG -- the real subjects are full
+// sentences, so the fold would have found zero matches and refused, or worse, been "fixed" by
+// copying the prose in. A copied string is a second authority for text this file already declares,
+// and it rots the moment a subject is reworded. Naming the declaration is the section 3 move, and
+// after the one-file-per-row split the declaration is named by IMPORT, which refuses at resolve if
+// the row module is renamed or deleted rather than silently matching nothing.
+data restored_stalls: List<GuaranteeStall> = [
+  two_nat_authorities_stall,
+  external_model_scope_live_cover_stall,
+  observation_heartbeat_lockstep_stall,
+  operation_argv_binding_wall_stall,
+]
+
+fn every_restored_stall_is_rostered_once(ss: List<GuaranteeStall>) -> Bool {
+  fold_list(
+    xs: restored_stalls,
+    empty: true,
+    cons: fn(acc, want) {
+      acc && fold_list(
+        xs: ss,
+        empty: 0,
+        cons: fn(n, s) { if s.subject == want.subject { n + 1 } else { n } },
+      ) == 1
+    },
+  )
+}
