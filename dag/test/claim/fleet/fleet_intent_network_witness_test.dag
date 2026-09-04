@@ -1,5 +1,7 @@
 module test.claim.fleet_intent_network
 
+import extdeps.dhcp.v4 { Active }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
@@ -66,6 +68,7 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv1_tailscale_endpoint,
   srv2_tailscale_endpoint,
   printer_01_lan_endpoint,
+  printer_02_lan_endpoint,
 ]
 
 test fn fleet_intent_network_topology_membership_is_an_identity_join() -> Bool {
@@ -141,6 +144,24 @@ test fn fleet_intent_network_srv5_srv6_enrolled_at_their_reserved_addresses() ->
 test fn w_the_printer_endpoint_names_the_registered_printer_asset() -> Bool {
   printer_01_lan_endpoint.subject == EndpointAsset { asset: printer_01 }
     && printer_01_lan_endpoint.role == FabricationAppliance
+    && printer_02_lan_endpoint.subject == EndpointAsset { asset: printer_02 }
+    && printer_02_lan_endpoint.address == "192.168.1.235"
+    && printer_02_lan_endpoint.role == FabricationAppliance
+}
+
+test fn w_both_printer_addresses_are_active_static_mac_bound_reservations() -> Bool {
+  printer_01_lan_reservation.mac_address == "68:EE:8F:66:2A:28" as MacAddress
+    && printer_01_lan_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 234)
+    && printer_01_lan_reservation.lease == StaticDhcpReservation {
+         reservation_label: "printer-01" as NonEmptyStr,
+         status: Active,
+       }
+    && printer_02_lan_reservation.mac_address == "68:EE:8F:60:AC:14" as MacAddress
+    && printer_02_lan_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 235)
+    && printer_02_lan_reservation.lease == StaticDhcpReservation {
+         reservation_label: "printer-02" as NonEmptyStr,
+         status: Active,
+       }
 }
 
 // AND THE GATEWAY IS UNREGISTERED, NOT UNBOUND. It is a real device this repository holds no
