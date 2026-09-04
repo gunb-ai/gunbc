@@ -1,0 +1,41 @@
+module test.claim.roadmap.roadmap_belt_commit_witness_test
+
+import std.types { Bool, String, Int }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderEventsRefused }
+
+test fn commit_is_needed_for_a_completed_dirty_worktree() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderCompleted { activity: "done" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+  ) {
+    CommitNeeded { message } => message == "dispatch: n1 aabc"
+    CommitNotNeeded { reason: _ } => false
+  }
+}
+
+test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderCompleted { activity: "done" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: "",
+  ) {
+    CommitNotNeeded { reason: _ } => true
+    CommitNeeded { message: _ } => false
+  }
+}
+
+test fn commit_is_not_needed_while_the_provider_runs() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderRunning { activity: "x" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+  ) {
+    CommitNotNeeded { reason: _ } => true
+    CommitNeeded { message: _ } => false
+  }
+}

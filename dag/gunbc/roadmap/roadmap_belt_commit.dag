@@ -1,0 +1,29 @@
+module gunbc.roadmap.roadmap_belt_commit
+
+import std.types { String, NonEmptyStr }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderEventsRefused }
+
+type BeltCommitDecision
+  = CommitNeeded { message: NonEmptyStr }
+  | CommitNotNeeded { reason: NonEmptyStr }
+
+fn belt_commit_message(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["dispatch: ", node_id, " a", attempt_key], "") as NonEmptyStr
+}
+
+fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attempt_key: String, entries_nul: String) -> BeltCommitDecision {
+  match provider {
+    ProviderNotStarted => CommitNotNeeded { reason: "provider not completed" }
+    ProviderStarting { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderRunning { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderCompleted { activity: _ } => {
+      if entries_nul == "" {
+        CommitNotNeeded { reason: "worktree clean" }
+      } else {
+        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
+      }
+    }
+    ProviderFailed { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderEventsRefused { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
+  }
+}
