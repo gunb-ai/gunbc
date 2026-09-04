@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.append_only_carrier_whose_serialization_shares_a_merge_region
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data append_only_carrier_whose_serialization_shares_a_merge_region: RecurringFailureMode = RecurringFailureMode {
+  identity: "append_only_carrier_whose_serialization_shares_a_merge_region" as NonEmptyStr,
+
+  receipts: [
+    "**a carrier that every lane is INSTRUCTED to append to, serialized so that independent appends occupy the same merge region, makes conflict a CERTAINTY rather than a risk** (INVALID STATE: two lanes add logically disjoint content -- different rows, different subjects, no shared meaning -- and the textual merge refuses, because the serialization put their edits on the same line or at the same end of the same list. Nothing is contested. The authors do not disagree about anything. The conflict is manufactured entirely by the layout of the bytes. HARM: it is paid by every lane, on every append, forever, and it is paid in the most expensive currency available -- a human or agent hand-resolving a merge whose correct answer is mechanically determined. Worse, hand-resolution of a mechanical union is where REAL content gets dropped, because the resolver is pattern-matching rather than reading.",
+
+    "TWO CARRIERS, ONE MECHANISM, AND THEY ARE FILED AS ONE ROW BECAUSE ONE CAPABILITY RETIRES BOTH. `gunbc.rung_drop` rows serialize as multi-kilobyte SINGLE-LINE blobs, so two lanes editing disjoint FIELDS OF ONE ROW conflict on that line -- three lanes hit it in one night. `gunbc.recurring_failure_mode.roster` is an append-only list with a PARALLEL import block, so two lanes appending different rows conflict twice, once per block. Different shapes -- one row too wide, one list too append-hot -- and the same defect: THE UNIT OF MERGE IS COARSER THAN THE UNIT OF EDIT. Specimens unify on mechanism and never on symptom, and the test that these are one class is that a serialization in which independent appends do not share a merge region retires both at once.",
+
+    "RECEIPT: THREE BRANCHES OF ONE SESSION CONFLICTED ON THE ROSTER SIMULTANEOUSLY, WITHIN EIGHT MINUTES, ON THE SAME TWO BLOCKS. Main had appended two rows; each branch had appended its own. The resolution was a union in identical order in both blocks and was mechanical in all three -- no judgement was exercised, and none was available to exercise. That is the diagnostic signature: if every resolution of a conflict class is the same mechanical operation, the conflict carried no information and the merge was asking a question with a computable answer.",
+
+    "THE RESOLUTION HAS ITS OWN TRAP, AND A SET-GRAIN CHECK WALKS INTO IT. Roster ORDER is load-bearing in the generated projection, so the union must agree as an ORDERED SEQUENCE and not merely as a set -- a reordering changes the emitted bytes while every membership test stays green. The verification that does work is diffing the import block against the roster list as sequences; the verification that looks equivalent and is not is comparing their lengths or their sets.",
+
+    "DISTINCT FROM THE GENERATED-PROJECTION CONFLICT THAT ACCOMPANIES IT, AND THE BOUNDARY DECIDES THE REMEDY. When both sides change a generated artifact, NEITHER side's bytes are the projection of the merged authorities, so the correct answer is a regeneration and a hand-resolution is definitionally wrong. Here both sides' bytes are AUTHORED and both are correct; the union IS the answer and the only defect is that a machine is not computing it. One class must refuse resolution, the other must not require it.",
+
+    "RECOGNITION RULE: FOR EVERY CARRIER THE PROCESS INSTRUCTS LANES TO APPEND TO, ASK WHETHER TWO INDEPENDENT APPENDS SHARE A MERGE REGION. If they do, the conflict rate is a function of LANE CONCURRENCY and not of disagreement, so it rises with adoption -- the carrier gets worse exactly as the practice it supports succeeds. The tell is a conflict whose every historical resolution was the same mechanical union, and the sharper tell is a carrier whose instructions tell every lane to write to one place while its serialization assumes one writer.",
+
+    "RUNG FOUND AT: mitigatable, and the mitigation is that a resolver reads both sides and unions them by hand. CEILING: structurally impossible -- a serialization in which an independent append occupies its own merge region admits no textual collision between disjoint appends, so the invalid state has no constructor rather than being caught by a check. NEXT-RUNG TRIGGER, a CAPABILITY and not either carrier's cleanup: independent appends to a shared carrier do not share a merge region, AND the carrier's derived order is computed rather than authored, so that membership and order cannot disagree. Splitting rung_drop into one row per file, or reformatting the roster, satisfies neither half and leaves every other append-hot carrier in the tree exposed in the same way.",
+  ],
+
+  evidence: [],
+}

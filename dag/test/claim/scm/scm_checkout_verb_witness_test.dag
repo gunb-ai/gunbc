@@ -33,7 +33,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootMissing,
   mint_repository_commit,
 }
-import gunbc.scm.merge { Proposal }
+import gunbc.scm.proposal { Proposal }
 import gunbc.scm.status {
   StatusCheckout,
   NothingCheckedOut,
