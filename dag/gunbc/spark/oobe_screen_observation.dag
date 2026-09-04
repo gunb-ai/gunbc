@@ -12,9 +12,6 @@ import extdeps.automation.playwright {
 }
 import extdeps.systems.nvidia_dgx_spark_setup {
   OobeSetupField,
-  OobeInterfaceSession,
-  dgx_spark_oobe_session_2026_09_02,
-  dgx_spark_oobe_session_2026_09_03,
   OobeLanguage,
   OobeTimeZone,
   OobeKeyboardLayout,
@@ -325,17 +322,19 @@ type ObservedScreenTransition {
   to_route: OobeScreenRoute
 }
 
-// A RECEIPT NAMES THE EXACT SESSION IT SAW -- ITS OWN, NEVER AN AGGREGATE. Carrying the screens
-// alone would bind this run to whatever the canonical rows say today, so editing the vendor model
-// would silently rewrite history; that is the hazard the extdeps consolidation created and this
-// field closes. What the field may NOT do is assert more than the sitting establishes, which the
-// first version did by pointing both runs at a four-screen revision dated 09-03: the 09-02 run
-// cannot have seen a screen first observed the next day.
+// ONE RUN IS ONE SITTING, SO THE RUN IS THE SESSION -- there is no second screen list to keep
+// honest. Two earlier shapes were wrong in opposite directions. The first pointed every run at a
+// shared four-screen revision dated 09-03, so the 09-02 receipt claimed a screen first observed the
+// next day. The second gave each run its own session row in the VENDOR module, which both inverted
+// the layer -- when we looked is our fact, not NVIDIA's -- and authored each sitting's screens
+// twice, needing a join to keep the copies agreeing. The join compared ROUTE SPELLING, so two
+// materially different /welcome/account screens would have satisfied it.
+//
+// What a receipt cites is therefore its own screen list, and the vendor rows those screens ARE.
 type OobeScreenObservationRun {
   environment: OobePortalObservationEnvironment
   portal_reach: OobePortalReach
   observed_on: Rfc3339Timestamp
-  interface_session: OobeInterfaceSession
   screens: List<ObservedOobeScreen>
   observed_transitions: List<ObservedScreenTransition>
   termination: OobeWalkTermination
@@ -356,7 +355,6 @@ data dgx_spark_0c75_oobe_prefix_run: OobeScreenObservationRun = OobeScreenObserv
   },
   portal_reach: PortalReachUnrecorded,
   observed_on: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
-  interface_session: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_session_2026_09_02,
   screens: [
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_welcome,
     extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
@@ -411,7 +409,6 @@ data dgx_spark_0c75_oobe_account_run: OobeScreenObservationRun = OobeScreenObser
     },
   },
   observed_on: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
-  interface_session: extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_oobe_session_2026_09_03,
   screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
   observed_transitions: [],
   termination: gunbc.spark.oobe_screen_observation.observed_account_walk_termination,
@@ -436,9 +433,31 @@ fn observed_transitions_across_runs() -> List<ObservedScreenTransition> {
 // certainty a receipt may not carry. An actuator that needs the four screens to be one interface
 // must first RETIRE this row by re-observing, not by reasoning about it.
 type InterfaceContinuityEvidence
-  = SessionsProvenSameInterface { firmware_identity: NonEmptyStr }
-  | SessionContinuityUnobserved { missing: NonEmptyStr }
+  = SittingsProvenSameInterface { earlier: Rfc3339Timestamp, later: Rfc3339Timestamp, firmware_identity: NonEmptyStr }
+  | SittingContinuityUnobserved { earlier: Rfc3339Timestamp, later: Rfc3339Timestamp, missing: NonEmptyStr }
 
-data spark_0c75_session_continuity: InterfaceContinuityEvidence = SessionContinuityUnobserved {
-  missing: "no firmware or image identity was displayed by the wizard or requested by the probe, so the 2026-09-02 and 2026-09-03 sittings are not joined" as NonEmptyStr,
+data spark_0c75_sitting_continuity: InterfaceContinuityEvidence = SittingContinuityUnobserved {
+  earlier: "2026-09-02T02:39:00Z" as Rfc3339Timestamp,
+  later: "2026-09-03T02:42:20Z" as Rfc3339Timestamp,
+  missing: "no firmware or image identity was displayed by the wizard or requested by the probe" as NonEmptyStr,
+}
+
+// AND IT HAS A CONSUMER, WHICH IS THE WHOLE POINT OF DECLARING IT. The historical union may answer
+// "which screens have ever been observed"; it may NOT answer "which screens form one verified
+// interface, or one traversable walk". Anything that needs the second question answered enters here
+// and is refused with the reason, so the refusal cannot be routed around by folding the union
+// instead.
+type VerifiedInterfaceRequest
+  = VerifiedInterfaceRefused { cause: InterfaceContinuityEvidence }
+  | VerifiedInterfaceAcross { screens: List<ObservedOobeScreen> }
+
+fn verified_interface_across_sittings() -> VerifiedInterfaceRequest {
+  match spark_0c75_sitting_continuity {
+    SittingsProvenSameInterface { earlier: _, later: _, firmware_identity: _ } =>
+      VerifiedInterfaceAcross { screens: observed_screens_across_runs() }
+    SittingContinuityUnobserved { earlier: e, later: l, missing: m } =>
+      VerifiedInterfaceRefused {
+        cause: SittingContinuityUnobserved { earlier: e, later: l, missing: m },
+      }
+  }
 }

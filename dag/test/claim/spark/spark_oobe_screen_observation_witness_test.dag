@@ -41,7 +41,6 @@ import extdeps.systems.nvidia_dgx_spark_setup {
   FieldMinimumLength,
   FieldMustEqual,
   ObservedFieldValidationRule,
-  OobeInterfaceSession,
   OobeScreenRoute,
   PresentsNoConfigurableField,
   SubmitsSelections,
@@ -79,9 +78,13 @@ import gunbc.spark.oobe_screen_observation {
   dgx_spark_0c75_oobe_prefix_run,
   OobeScreenObservationRun,
   InterfaceContinuityEvidence,
-  SessionsProvenSameInterface,
-  SessionContinuityUnobserved,
-  spark_0c75_session_continuity,
+  SittingsProvenSameInterface,
+  SittingContinuityUnobserved,
+  spark_0c75_sitting_continuity,
+  VerifiedInterfaceRequest,
+  VerifiedInterfaceRefused,
+  VerifiedInterfaceAcross,
+  verified_interface_across_sittings,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -685,58 +688,38 @@ test fn w_account_route_rendered_without_its_predecessors_completing() -> Bool {
     }
 }
 
-// EVERY SCREEN A RUN CLAIMS BELONGS TO THE SESSION IT CITES. The two fields were independent, so
-// this was legal and invisible: a run citing a session whose screen set omits /welcome/account
-// while claiming to have watched exactly that screen. It is not an immutability problem -- it is an
-// ordinary missing join, and it is the relation the route tranche would have inherited.
-fn session_covers_route(session: OobeInterfaceSession, route: OobeScreenRoute) -> Bool {
-  fold(session.screens, init: false,
-    f: (acc, s) => acc || (s.route as String) == (route as String))
-}
 
-fn run_screens_are_within_its_session(run: OobeScreenObservationRun) -> Bool {
-  fold(run.screens, init: true,
-    f: (acc, s) => acc && session_covers_route(session: run.interface_session, route: s.route))
-}
 
-test fn w_each_run_only_claims_screens_its_cited_session_carries() -> Bool {
-  fold(oobe_observation_runs, init: true,
-    f: (acc, run) => acc && run_screens_are_within_its_session(run: run))
-}
 
-// THE POSITIVE CONTROL: the join is capable of failing. A run whose screens are drawn from a
-// revision that does not carry them must be rejected by the same predicate, or the witness above is
-// green because the predicate is green for everything.
-test fn w_the_session_join_rejects_a_screen_outside_the_session() -> Bool {
-  !session_covers_route(
-    session: OobeInterfaceSession {
-      session: "control/welcome-only" as NonEmptyStr,
-      screens: [oobe_screen_welcome],
-    },
-    route: oobe_screen_account.route,
-  )
-}
 
-// THE 09-02 RUN'S SESSION DOES NOT CARRY THE ACCOUNT SCREEN, which is the discriminating input for
-// the defect this replaces: the earlier model pointed both runs at one four-screen revision dated
-// 09-03, so the September 2 receipt claimed an interface containing a screen first seen the next
-// day. If the two sessions are ever re-aggregated without a measured firmware identity, this is red.
-test fn w_the_september_2_session_does_not_reach_the_account_screen() -> Bool {
-  !session_covers_route(
-    session: dgx_spark_0c75_oobe_prefix_run.interface_session,
-    route: oobe_screen_account.route,
-  )
-  && session_covers_route(
-    session: dgx_spark_0c75_oobe_account_run.interface_session,
-    route: oobe_screen_account.route,
-  )
-}
 
 // AND THE JOIN BETWEEN THE TWO SITTINGS IS EXPLICITLY UNOBSERVED. A model that simply omitted the
 // relation would read the same as one that had checked it, so the refusal is carried and asserted.
 test fn w_interface_continuity_between_the_two_sittings_is_unobserved() -> Bool {
-  match spark_0c75_session_continuity {
-    SessionsProvenSameInterface { firmware_identity: _ } => false
-    SessionContinuityUnobserved { missing: _ } => true
+  match spark_0c75_sitting_continuity {
+    SittingsProvenSameInterface { earlier: _, later: _, firmware_identity: _ } => false
+    SittingContinuityUnobserved { earlier: e, later: l, missing: _ } =>
+      (e as String) == "2026-09-02T02:39:00Z" && (l as String) == "2026-09-03T02:42:20Z"
   }
+}
+
+// AND THE REFUSAL IS ON THE PATH ANYTHING NEEDING A VERIFIED INTERFACE MUST TAKE. A carrier nothing
+// consumes is a decoration; this is the consumer, and it refuses today. It flips to
+// VerifiedInterfaceAcross only when a firmware identity joins the sittings, which is the act that
+// retires the debt -- not a re-reading of the same evidence.
+test fn w_a_verified_interface_across_sittings_is_refused_not_assembled() -> Bool {
+  match verified_interface_across_sittings() {
+    VerifiedInterfaceAcross { screens: _ } => false
+    VerifiedInterfaceRefused { cause: c } => match c {
+      SittingsProvenSameInterface { earlier: _, later: _, firmware_identity: _ } => false
+      SittingContinuityUnobserved { earlier: _, later: _, missing: _ } => true
+    }
+  }
+}
+
+// THE HISTORICAL UNION STILL ANSWERS ITS OWN QUESTION. Refusing the verified-interface request must
+// not have cost us the fact that four screens have been observed at some time; if it had, the
+// refusal would be a regression wearing honesty's clothes.
+test fn w_the_union_still_reports_every_screen_ever_observed() -> Bool {
+  length(observed_screens_across_runs()) == 4
 }

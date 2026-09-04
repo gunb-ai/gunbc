@@ -435,30 +435,14 @@ type ObservedOobeScreen {
 // language selector is one screen early. That off-by-one is exactly the kind of defect a
 // guessed flow produces and a measured one cannot.
 // ------------------------------------------------------------------------------------------
-// AN OBSERVATION SESSION IS WHAT A RECEIPT CITES, AND WE HAVE NEVER MEASURED A FIRMWARE IDENTITY.
+// WHAT THIS MODULE DOES NOT DECLARE: WHEN WE LOOKED.
 //
-// The first version of this called itself a REVISION and carried all four screens under one date.
-// That fabricated a join: three screens were watched on 2026-09-02 and the account screen on
-// 2026-09-03, and nothing this repository measured says the unit presented the same interface on
-// both days. A firmware or image version would say it; the wizard never showed one, and the probe
-// never asked. So a receipt citing the aggregate asserted a temporal certainty its evidence does not
-// carry -- DESIGN §4b's external reality, fabricated rather than observed or refused.
-//
-// So what is declared here is ONE SESSION: the screens seen on one unit, on one date, in one sitting.
-// Whether two sessions saw the same underlying interface is a question about OUR evidence and is
-// answered in the observing layer, where its refusal can be modeled; it is deliberately not
-// answerable from these rows.
-//
-// IMMUTABILITY IS CONVENTIONAL, and the rung honesty from the previous head stands unchanged: a
-// session row is APPENDED, never edited, and nothing enforces that. The receipt's cited SUBJECT is
-// structural -- a run carries an OobeInterfaceSession, so "whatever the rows say today" has no
-// constructor -- while byte-stability of the cited row is mitigatable only, no witness can catch an
-// in-place edit, and the next-rung trigger is a compiler-computed content hash over a declaration
-// subtree, which std.content_hash does not offer today.
-type OobeInterfaceSession {
-  session: NonEmptyStr
-  screens: List<ObservedOobeScreen>
-}
+// A previous head carried an OobeInterfaceSession here, grouping screens by the sitting that saw
+// them. That was a layer inversion of exactly the kind this PR exists to fix: the screens are
+// NVIDIA's interface and belong here, but WHICH ONES WE WATCHED, ON WHAT DAY, AND WHETHER TWO
+// SITTINGS SAW ONE INTERFACE are facts about our observation and live in
+// gunbc.spark.oobe_screen_observation. It also duplicated the run's own screen list, so one sitting
+// was authored twice and a join was needed to keep the copies honest.
 
 data oobe_screen_welcome: ObservedOobeScreen = ObservedOobeScreen {
   route: "/welcome" as OobeScreenRoute,
@@ -673,19 +657,3 @@ type ClientUsernameAdmission
     }
 
 
-// THE TWO SESSIONS, EACH CARRYING EXACTLY WHAT ITS SITTING SAW. Neither is a claim about the other:
-// the 09-02 sitting halted at the EULA and never reached the account screen, and the 09-03 sitting
-// went straight to the account screen and saw none of the three before it.
-data dgx_spark_oobe_session_2026_09_02: OobeInterfaceSession = OobeInterfaceSession {
-  session: "2026-09-02/spark-0c75" as NonEmptyStr,
-  screens: [
-    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_welcome,
-    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_settings,
-    extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_eula,
-  ],
-}
-
-data dgx_spark_oobe_session_2026_09_03: OobeInterfaceSession = OobeInterfaceSession {
-  session: "2026-09-03/spark-0c75" as NonEmptyStr,
-  screens: [extdeps.systems.nvidia_dgx_spark_setup.oobe_screen_account],
-}

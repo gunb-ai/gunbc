@@ -267,24 +267,26 @@ type SecretTrafficRefusalCause
 // renderer -> ephemeral session -> pi1 -> unit; what is admitted here is the pi1 local-forward leg
 // alone. Calling that field route_subject invited the route tranche to inherit a whole-path
 // admission from one hop's evidence.
-type ObservedForwardingUse {
+type ForwardingPayloadStanding
+  = PayloadObservedInUse { payload: ForwardingPayloadClass }
+  | PayloadRefusedInUse { payload: ForwardingPayloadClass, cause: SecretTrafficRefusalCause }
+
+// ONE LEG, ONE RUN, N PAYLOAD STANDINGS -- BECAUSE TWO FIELDS THAT AGREE TODAY ARE NOT ONE FACT.
+//
+// The previous shape gave the admitted decision and the refused decision each their OWN leg subject
+// and run. They referenced the same rows, so they agreed; nothing MADE them agree, and the witness
+// comparing them was validating a coincidence. "Observation was admitted and secrets were refused ON
+// THE SAME ROUTE" is then a claim about two values rather than a property of one, and the route
+// tranche would have inherited a relation an edit to either row could silently break.
+//
+// So the subject is carried ONCE, above the standings that share it. Divergence is not caught here,
+// it is unwritable -- §5's construction over validation, applied to a relation rather than a field.
+type ObservedLegUse {
   observed_through: ForwarderLocus
   forwarding_leg_subject: ForwardingAdmissionSubject
   attested_by: OobeScreenObservationRun
-  payload: ForwardingPayloadClass
+  standings: List<ForwardingPayloadStanding>
 }
-
-// THE REFUSAL NAMES THE SAME LEG THE ADMISSION DOES. Without a subject on the refused arm,
-// "observation was admitted and secrets were refused ON THE SAME ROUTE" was two unjoined facts: an
-// admission measured on leg A and a refusal about leg B satisfied every witness we had.
-type ForwardingUseDecision
-  = ForwardingUseObserved { observed: ObservedForwardingUse }
-  | ForwardingUseRefused {
-      forwarding_leg_subject: ForwardingAdmissionSubject,
-      attested_by: OobeScreenObservationRun,
-      payload: ForwardingPayloadClass,
-      cause: SecretTrafficRefusalCause,
-    }
 
 // ------------------------------------------------------------------------------------------
 // WHAT THIS MODULE DELIBERATELY NO LONGER DECLARES, AND WHY THE DELETION IS THE FIX.
@@ -354,16 +356,28 @@ data machine_pi1: ObservedMachineIdentity = UnallocatedMachineObservation {
   observed_label: "pi1" as NonEmptyStr,
 }
 
+// SRV4'S BUILDS ARE READ FROM THE RUN THAT MEASURED THEM, NOT RE-AUTHORED BESIDE IT.
+//
+// This row used to write playwright_1_62_1 and chromium_151_0_7922_34 itself while the account
+// observation run separately recorded the same two facts. They agreed, and nothing MADE them agree:
+// a re-measurement that updated the run would leave this row asserting the old build, and the
+// assessment would still call it complete evidence. Projecting the run's environment makes the
+// renderer's build identity the SAME VALUE as the measurement, so there is one authority and the
+// question "which run established this" has an answer in the source rather than in a reader's head.
 data renderer_srv4_briansrls: RendererObservation = RendererObservation {
   machine: gunbc.spark.oobe_execution_placement.machine_srv4,
   account: "briansrls" as PosixLoginName,
   architecture: Aarch64,
   runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
-  package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+  package: PlaywrightPackagePresent {
+    build: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run.environment.playwright_build,
+  },
   browser: PlaywrightBrowserPresent {
     browser: ProvisionedBrowser {
       cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
-      build_identity: ChromiumBuildIdentified { build: chromium_151_0_7922_34 },
+      build_identity: ChromiumBuildIdentified {
+        build: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run.environment.chromium_build,
+      },
     },
   },
 }
@@ -480,34 +494,28 @@ data pi1_local_forward_to_unit_admission: ForwardingAdmission = ForwardingAdmitt
 }
 
 // ------------------------------------------------------------------------------------------
-// WHAT THE MEASURED ROUTE MAY CARRY -- TWO DECISIONS, BECAUSE THERE ARE TWO QUESTIONS.
+// WHAT THE MEASURED LEG MAY CARRY -- TWO STANDINGS UNDER ONE SUBJECT, BECAUSE THERE ARE TWO
+// QUESTIONS AND ONE ROUTE.
 //
-// The route worked for observation and is refused for credentials, and both are now sayable at
-// once. Recording only the refusal, as the first revision did, left the observation admission in
-// prose; recording only the admission would let the eventual FillSecretControl inherit an
-// observation route's success as permission.
-data measured_observation_use: ForwardingUseDecision = ForwardingUseObserved {
-  observed: ObservedForwardingUse {
-    observed_through: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
-    forwarding_leg_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
-    attested_by: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
-    payload: ObservationPayload,
-  },
-}
-
-data measured_secret_use: ForwardingUseDecision = ForwardingUseRefused {
+// The leg worked for observation and is refused for credentials, and both are sayable at once under
+// the subject and run they were measured on. Recording only the refusal, as the first revision did,
+// left the observation admission in prose; recording only the admission would let the eventual
+// FillSecretControl inherit an observation leg's success as permission; recording them as two
+// independent values, as the last revision did, let them describe different legs.
+data measured_leg_use: ObservedLegUse = ObservedLegUse {
+  observed_through: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
   forwarding_leg_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
   attested_by: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
-  payload: SecretBearingPayload,
-  cause: ProxyLocusNotAdmittedForCredentials {
-    proxy_locus: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
-  },
+  standings: [
+    PayloadObservedInUse { payload: ObservationPayload },
+    PayloadRefusedInUse {
+      payload: SecretBearingPayload,
+      cause: ProxyLocusNotAdmittedForCredentials {
+        proxy_locus: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
+      },
+    },
+  ],
 }
-
-data measured_route_use_decisions: List<ForwardingUseDecision> = [
-  gunbc.spark.oobe_execution_placement.measured_observation_use,
-  gunbc.spark.oobe_execution_placement.measured_secret_use,
-]
 
 // ------------------------------------------------------------------------------------------
 // THE ADMISSIONS. These are the production decision procedures, and they exist because the first
@@ -681,30 +689,30 @@ fn relays_with_complete_evidence() -> Int {
 // finding, not a tie to break, so it gets its own arm and no admitted use can come from it.
 type ForwardingUseSelection
   = ForwardingUseDecisionMissing { payload: ForwardingPayloadClass }
-  | ForwardingUseDecisionUnique { decision: ForwardingUseDecision }
-  | ForwardingUseDecisionAmbiguous { payload: ForwardingPayloadClass, decisions: List<ForwardingUseDecision> }
+  | ForwardingUseDecisionUnique { standing: ForwardingPayloadStanding }
+  | ForwardingUseDecisionAmbiguous { payload: ForwardingPayloadClass, standings: List<ForwardingPayloadStanding> }
 
-fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
-  match d {
-    ForwardingUseObserved { observed: o } => o.payload
-    ForwardingUseRefused { forwarding_leg_subject: _, attested_by: _, payload: p, cause: _ } => p
+fn standing_payload(s: ForwardingPayloadStanding) -> ForwardingPayloadClass {
+  match s {
+    PayloadObservedInUse { payload: p } => p
+    PayloadRefusedInUse { payload: p, cause: _ } => p
   }
 }
 
-fn decisions_for_payload(want: ForwardingPayloadClass) -> List<ForwardingUseDecision> {
-  fold(measured_route_use_decisions, init: [],
-    f: (acc, d) => if (decision_payload(d: d) == want) { append(acc, d) } else { acc })
+fn standings_for_payload(want: ForwardingPayloadClass) -> List<ForwardingPayloadStanding> {
+  fold(measured_leg_use.standings, init: [],
+    f: (acc, s) => if (standing_payload(s: s) == want) { append(acc, s) } else { acc })
 }
 
 fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
-  fold(decisions_for_payload(want: want),
+  fold(standings_for_payload(want: want),
     init: ForwardingUseDecisionMissing { payload: want },
     f: (acc, d) => match acc {
-      ForwardingUseDecisionMissing { payload: _ } => ForwardingUseDecisionUnique { decision: d }
-      ForwardingUseDecisionUnique { decision: first } =>
-        ForwardingUseDecisionAmbiguous { payload: want, decisions: [first, d] }
-      ForwardingUseDecisionAmbiguous { payload: p, decisions: ds } =>
-        ForwardingUseDecisionAmbiguous { payload: p, decisions: append(ds, d) }
+      ForwardingUseDecisionMissing { payload: _ } => ForwardingUseDecisionUnique { standing: d }
+      ForwardingUseDecisionUnique { standing: first } =>
+        ForwardingUseDecisionAmbiguous { payload: want, standings: [first, d] }
+      ForwardingUseDecisionAmbiguous { payload: p, standings: ds } =>
+        ForwardingUseDecisionAmbiguous { payload: p, standings: append(ds, d) }
     })
 }
 

@@ -79,13 +79,12 @@ import gunbc.spark.oobe_execution_placement {
   RelayIdentityUnallocated,
   RelayCarriesNoRadio,
   RelayRadioUnassociated,
-  ForwardingUseDecision,
-  ForwardingUseRefused,
-  ForwardingUseObserved,
-  ObservedForwardingUse,
+  ObservedLegUse,
+  ForwardingPayloadStanding,
+  PayloadObservedInUse,
+  PayloadRefusedInUse,
   ForwardingAdmissionSubject,
-  measured_observation_use,
-  measured_secret_use,
+  measured_leg_use,
   ForwardingPayloadClass,
   ObservationPayload,
   SecretBearingPayload,
@@ -307,15 +306,15 @@ test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool {
 test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool {
   match use_decision_for(want: ObservationPayload) {
     ForwardingUseDecisionMissing { payload: _ } => false
-    ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
-    ForwardingUseDecisionUnique { decision: obs } => match obs {
-      ForwardingUseRefused { payload: _, cause: _ } => false
-      ForwardingUseObserved { observed: _ } => match use_decision_for(want: SecretBearingPayload) {
+    ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+    ForwardingUseDecisionUnique { standing: obs } => match obs {
+      PayloadRefusedInUse { payload: _, cause: _ } => false
+      PayloadObservedInUse { payload: _ } => match use_decision_for(want: SecretBearingPayload) {
         ForwardingUseDecisionMissing { payload: _ } => false
-        ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
-        ForwardingUseDecisionUnique { decision: sec } => match sec {
-          ForwardingUseObserved { observed: _ } => false
-          ForwardingUseRefused { payload: _, cause: c } => match c {
+        ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+        ForwardingUseDecisionUnique { standing: sec } => match sec {
+          PayloadObservedInUse { payload: _ } => false
+          PayloadRefusedInUse { payload: _, cause: c } => match c {
             ProxyLocusNotAdmittedForCredentials { proxy_locus: _ } => true
             TransportNotConfidential { unit_endpoint: _ } => false
           }
@@ -369,10 +368,10 @@ test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool {
 test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool {
   match use_decision_for(want: SecretBearingPayload) {
     ForwardingUseDecisionMissing { payload: _ } => false
-    ForwardingUseDecisionAmbiguous { payload: _, decisions: _ } => false
-    ForwardingUseDecisionUnique { decision: d } => match d {
-      ForwardingUseObserved { observed: _ } => false
-      ForwardingUseRefused { payload: p, cause: _ } => match p {
+    ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+    ForwardingUseDecisionUnique { standing: d } => match d {
+      PayloadObservedInUse { payload: _ } => false
+      PayloadRefusedInUse { payload: p, cause: _ } => match p {
         SecretBearingPayload => true
         ObservationPayload => false
       }
@@ -468,11 +467,13 @@ test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool {
   }
 }
 
-// BOTH OUTCOMES NAME THE SAME LEG AND THE SAME RUN, WHICH IS WHAT "ON THE SAME ROUTE" HAS TO MEAN.
-// The predecessor checked the admitted side's port and the run's halt route, and left the refusal
-// carrying no subject at all -- so an admission measured on one leg and a refusal about a different
-// one satisfied a witness whose name said they were the same route. It also wildcarded the
-// principal, the direction and the target host, any of which could change without turning it red.
+// THE LEG AND RUN ARE NOW STRUCTURALLY SHARED, SO THIS WITNESS SHRANK ON PURPOSE. Its predecessor
+// compared the admitted decision's leg spelling against the refused decision's and asserted they
+// matched -- a check that could only ever validate a coincidence, because two independent fields
+// referencing the same row agree until someone edits one. ObservedLegUse carries the subject ONCE
+// above both standings, so "the same leg" has no counterexample to write and the comparison has no
+// content. What remains worth asserting is what the shared subject IS: the pi1 local-forward leg to
+// the unit, attested by the run that halted at the account screen.
 fn host_spelling(host: NetworkHost) -> String {
   match render_network_host(host: host) {
     Present { value: v } => v as String
@@ -493,22 +494,13 @@ fn leg_spelling(sub: ForwardingAdmissionSubject) -> String {
   + (sub.target.port as String)
 }
 
-test fn w_observation_and_secret_decisions_name_one_leg_and_one_run() -> Bool {
-  match measured_observation_use {
-    ForwardingUseRefused { forwarding_leg_subject: _, attested_by: _, payload: _, cause: _ } => false
-    ForwardingUseObserved { observed: o } =>
-      leg_spelling(sub: o.forwarding_leg_subject) == "briansrls@pi1 -L 10.92.7.127:80"
-      && match measured_secret_use {
-        ForwardingUseObserved { observed: _ } => false
-        ForwardingUseRefused { forwarding_leg_subject: rs, attested_by: ra, payload: _, cause: _ } =>
-          leg_spelling(sub: rs) == leg_spelling(sub: o.forwarding_leg_subject)
-          && (ra.observed_on as String) == (o.attested_by.observed_on as String)
-          && match o.attested_by.termination {
-            WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
-            WalkReachedFlowCompletion => false
-          }
-      }
-  }
+test fn w_the_measured_leg_use_names_its_exact_leg_and_run() -> Bool {
+  leg_spelling(sub: measured_leg_use.forwarding_leg_subject) == "briansrls@pi1 -L 10.92.7.127:80"
+    && match measured_leg_use.attested_by.termination {
+      WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
+      WalkReachedFlowCompletion => false
+    }
+    && length(measured_leg_use.standings) == 2
 }
 
 // A CACHE ENTRY WITHOUT AN IDENTIFIED BUILD IS NOT COMPLETE EVIDENCE, ASSERTED ON THE PRODUCTION
