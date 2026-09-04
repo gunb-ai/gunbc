@@ -1,0 +1,106 @@
+module v2.workflow.required_ci_measurement_shell
+
+import std.types { String, List }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_test_bracket,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.workflow.required_ci_measurement { required_ci_measurement_unreached_json }
+
+data required_ci_instrument_path: String = "target/release/claim_executor"
+data required_ci_measurement_build_unreached_cause: String = "instrument could not be built"
+data required_ci_measurement_build_outcome_var: String = "REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME"
+data required_ci_measurement_build_success: String = "success"
+
+fn required_ci_test(words: List<Node>) -> Node {
+  bash_build_test_bracket(words: words)
+}
+
+fn required_ci_command(words: List<String>) -> Node {
+  bash_build_command_with_words(words: words |> map(w => bash_build_word_lit(text: w)))
+}
+
+fn required_ci_measurement_finalize_stmts(receipt_path: String) -> List<Node> {
+  [bash_build_if_from_stmts(
+    cond: required_ci_test(words: [
+      bash_build_word_lit(text: "!"),
+      bash_build_word_lit(text: "-f"),
+      bash_build_word_lit(text: receipt_path)
+    ]),
+    then_stmts: [
+      bash_build_if_from_stmts(
+        cond: required_ci_test(words: [
+          bash_build_word_var(name: required_ci_measurement_build_outcome_var),
+          bash_build_word_lit(text: "="),
+          bash_build_word_lit(text: required_ci_measurement_build_success)
+        ]),
+        then_stmts: [required_ci_command(words: [
+          required_ci_instrument_path,
+          "--measurement-unreached-receipt",
+          receipt_path,
+          "--measurement-unreached-cause",
+          "measurement process exited before producing a receipt"
+        ])]
+      ),
+      bash_build_if_from_stmts(
+        cond: required_ci_test(words: [
+          bash_build_word_var(name: required_ci_measurement_build_outcome_var),
+          bash_build_word_lit(text: "!="),
+          bash_build_word_lit(text: required_ci_measurement_build_success)
+        ]),
+        then_stmts: [bash_build_with_redir_to_file(
+          inner: required_ci_command(words: [
+            "printf",
+            "%s\\n",
+            required_ci_measurement_unreached_json(cause: required_ci_measurement_build_unreached_cause)
+          ]),
+          path: bash_build_word_lit(text: receipt_path)
+        )]
+      )
+    ]
+  )]
+}
+
+fn required_ci_measurement_adjudicate_stmts(receipt_path: String) -> List<Node> {
+  [
+    bash_build_if_from_stmts(
+      cond: required_ci_test(words: [
+        bash_build_word_var(name: required_ci_measurement_build_outcome_var),
+        bash_build_word_lit(text: "="),
+        bash_build_word_lit(text: required_ci_measurement_build_success)
+      ]),
+      then_stmts: [required_ci_command(words: [
+        required_ci_instrument_path,
+        "--adjudicate-measurement-receipt",
+        receipt_path
+      ])]
+    ),
+    bash_build_if_from_stmts(
+      cond: required_ci_test(words: [
+        bash_build_word_var(name: required_ci_measurement_build_outcome_var),
+        bash_build_word_lit(text: "!="),
+        bash_build_word_lit(text: required_ci_measurement_build_success)
+      ]),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: required_ci_command(words: [
+            "echo",
+            concat(
+              "required-ci: adjudication REFUSED standing=measurement_unreached cause=",
+              required_ci_measurement_build_unreached_cause
+            )
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr
+        ),
+        bash_build_exit(code: "1")
+      ]
+    )
+  ]
+}

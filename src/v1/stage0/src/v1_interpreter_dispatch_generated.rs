@@ -617,14 +617,12 @@ macro_rules! eval_call_bridge__v2_std_concept_index_arm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdFnIndexArm {
     V4BridgeFnArrowDeclFactsLive,
-    V4BridgeFnArrowDeclSubstrateIsWholeTree,
 }
 
 #[rustfmt::skip]
 pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBridgeStdFnIndexArm> {
     match spelling {
         "fn_arrow_decl_facts_live" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive),
-        "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
         _ => None,
     }
 }
@@ -632,25 +630,6 @@ pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBr
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_std_fn_index_arm {
     ("v4_bridge.fn_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive };
-    ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeLensAffectedSetCorpusDependencyViewArm {
-    V4BridgeCorpusDependencyViewPerPrSubstrateRefuse,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view(spelling: &str) -> Option<EvalCallBridgeLensAffectedSetCorpusDependencyViewArm> {
-    match spelling {
-        "corpus_dependency_view_per_pr_substrate_refuse" => Some(EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-    ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
