@@ -1022,8 +1022,8 @@ fn rust_loop_target_model_staging() -> TargetModel {
 }
 
 // Minimum-viable TargetModel for tests that never inspect the target contents.
-// Used by terminal-gate test which only checks execution status, never the
-// TargetModel fields.
+// Used by vacuity-classification and terminal-gate tests which only check
+// transport mode or execution status, never the TargetModel fields.
 fn rust_minimal_target_model_staging() -> TargetModel {
   TargetModel {
     produced_decl_support: ProducedDeclUnwired,
