@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.projection_inputs_read_as_its_output
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data projection_inputs_read_as_its_output: RecurringFailureMode = RecurringFailureMode {
+  identity: "projection_inputs_read_as_its_output" as NonEmptyStr,
+
+  receipts: [
+    "**a projection's INPUT rows read as the values it PUBLISHES** (a module declares source rows and a function that maps, filters or flat-maps them into something else. A reader looking for a value greps the module, FINDS THE STRING IN THE SOURCE ROWS, and concludes the projection carries it. The projection carries a different field of those same rows. ",
+
+    "**WHAT MAKES IT SURVIVE EVERY DILIGENCE WE HAVE IS THAT IT IS GREP-VERIFIABLE IN THE WRONG DIRECTION.** The file genuinely contains the string. So a search CONFIRMS the false premise, a second reader checking the first reader's citation confirms it again, and THE MORE CAREFULLY THE CHECK IS PERFORMED THE MORE CONFIDENT BOTH READERS BECOME. Nobody is careless: they are reading a file that contains the value and publishes something else, and the containment tree the namespace authority walks does not distinguish a row's field from a projection's result. ",
+
+    "**THE DOWNSTREAM SHAPE IS AN ARGUMENT THAT PROVES THE OBSERVATION IS IMPOSSIBLE.** A false premise about what a projection publishes propagates into every hypothesis built on it, so each candidate explanation is eliminated correctly and the phenomenon still occurs. WHEN EVERY AVAILABLE HYPOTHESIS PREDICTS THE OBSERVED THING CANNOT HAPPEN, THE REASONING CONTAINS A WRONG FACT AND ONLY A MEASUREMENT CAN SAY WHICH -- more static reading cannot help, because static reading is the SOURCE of the error. That inference is this row's most transferable content. ",
+
+    "SPECIMEN, gunbc#10354 against gunbc#10319. `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` publishes `roster_arms_for_identity(..) |> map(a => a.authored_spelling)`, and the rows one screen above it carry `arm_identity: \"free_call.compile_dag_rust_emit_check\"` while `gunbc.v1_interpreter_primitive_surface` carries `authored_spelling: \"compile_dag_rust_emit_check\"` for the same arm. THE PUBLISHED SURFACE IS BARE SPELLINGS; THE EIGHT `free_call.` STRINGS ARE THE PROJECTION'S INPUTS. A consumer built the identity form and compared it against that list, the two vocabularies never intersected, and the preemption-reachability column reported the benign value for 3602 of 3602 claims -- including a witness authored to falsify it. Two independent readers asserted the surface contained the identity form, one citing the file and one checking that citation. ",
+
+    "**THE DETECTION WAS AN INSTRUMENT, AND IT HAD TO BE.** A probe printing the dispatch count beside the reach produced `dispatches=2 last_builtin=compile_dag_rust_emit_check reach=cooperatively_pollable`: the hook ran, saw the exact arm, and the comparison rejected it. That single line separated `the hook is not on the path` from `the identity test is wrong`, which four rounds of reading the same files had not. ",
+
+    "**THE REPAIR NEARLY WENT TO THE WRONG SIDE, AND THE RULE THAT PREVENTED IT IS THE ROW'S PRACTICAL HALF: BEFORE CHANGING WHAT A PROJECTION PUBLISHES, ENUMERATE ITS CONSUMERS -- THE SIDE WITH ONE CONSUMER IS THE SIDE THAT IS WRONG.** The first patch changed the projection to publish the identity, which would have reddened a grandfather population, an admission predicate and the identity join binding them, because that whole tower is authored in the bare vocabulary. One grep of the consumers before building cost five minutes; the same discovery after a red would have cost a tower-wide revert. ",
+
+    "AND AN ADJACENT TELL WORTH THE SAME GREP: A UNIT TEST CAN ENSHRINE THE DEFECT. Five green tests coexisted with a column reporting nothing, because one of them armed the surface with the INPUT vocabulary and another asserted that the OUTPUT vocabulary must NOT match. A test that encodes the bug is worse than no test -- it converts every future attempt to fix the bug into a red, so the defect acquires a defender -- and the repair is to DELETE it rather than adjust it. ",
+
+    "RECOGNITION RULE: WHEN CITING WHAT A PROJECTION CONTAINS, READ THE PROJECTION'S RETURN EXPRESSION, NEVER ITS SOURCE ROWS, and name the FIELD as well as the module -- `publishes a.authored_spelling`, not `contains the operation`. A citation that a grep can confirm from the input rows is not a citation about the output. ",
+
+    "BOUNDED AGAINST NEIGHBOURS. It is not `stable_citation_mutable_referent`: nothing here mutates, and both readings are stable and reproducible. It is not `a_carrier_can_cite_the_wrong_mechanism`: the citation names the right module and the right authority, and only the FIELD is wrong. And it is not an ordinary transcription error, because nothing was transcribed -- the reader looked at the live source and drew a false conclusion from a true observation. ",
+
+    "RUNG FOUND AT: BELOW THE LADDER when a consumer ships against the false premise, because the resulting mechanism reports a constant while presenting as an observation, which is fabricated plausible output. ",
+
+    "ATTAINABLE CEILING: STRUCTURALLY IMPOSSIBLE, and it is decidable, which is what makes this a wall rather than a ratchet. A projection whose members are typed by their VOCABULARY -- an arm identity and an authored spelling as distinct types rather than both as `String` -- cannot be compared across vocabularies at all, and the mismatch becomes a compile refusal at the consumer instead of a constant column in production. ",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: DISTINCT TYPES FOR DISPATCH-ARM IDENTITY AND AUTHORED SPELLING, CARRIED THROUGH THE SURFACE PROJECTION AND ITS CONSUMERS -- sufficient for comparing one against the other to be unwritable rather than merely wrong. `Add a test that the surface contains the expected spelling` is the artifact-grained version and discharges nothing: the suite that shipped this defect contained exactly such a test, written against the wrong vocabulary, and it passed.)",
+  ],
+
+  evidence: [],
+}
