@@ -1082,13 +1082,23 @@ pub struct TransitionAdmission {
 ///   as 183 OPEN rows. Keeping those would have left 183 stale rows refusing every later unrelated
 ///   PR.
 ///
-/// THIS IS THE THIRD TIME ON THIS BRANCH that a resolution step was inferred instead of read: the
-/// module-to-file step was transliterated from a module path, the spelling-to-owner step was taken
-/// from the import path instead of the declaration, and now the declaration set itself was built
-/// from a pattern that did not cover the language. Each was silent, each was plausible, and each
-/// produced a confident answer of the WRONG SHAPE rather than an error. The standing lesson is the
-/// same one three times: an index that can be incomplete must be able to say SO, because "absent"
-/// and "I did not look there" are different facts that this file keeps conflating.
+/// THE CLASS, NAMED PRECISELY: A PARTIAL OBSERVER RETURNED THE NEGATIVE VALUE OF A TOTAL OBSERVER.
+/// That is what makes these failures dangerous rather than merely incomplete. A parser that cannot
+/// see continuation-joined literals does not report "I could not read this row" -- it reports the
+/// row set WITHOUT it, which is the same type and shape a complete parser returns. An index that
+/// does not know coproduct variants does not report "I do not index that form" -- it returns the
+/// EMPTY OWNER SET, which is exactly what a total index returns for a spelling nothing declares.
+/// In both cases "not inspected" collapsed into "absent", and the caller cannot tell them apart
+/// because the answer is well formed and of the right type. It is only the MEANING that is wrong.
+///
+/// SO THE OBLIGATION IS ON THE OBSERVER, NOT THE CALLER: anything here that reads the corpus and
+/// can be partial must be able to SAY it was partial -- report the forms it does not cover, or
+/// refuse -- because a caller has no way to distinguish a true negative from an unexamined one.
+/// This is the third instance on this branch. The module-to-file step transliterated a module path
+/// and returned an empty read; the spelling-to-owner step read the import path and returned a
+/// non-match; the declaration index used a pattern that did not cover the language and returned an
+/// empty owner set. Three different steps, one shape, and every one of them silently produced the
+/// negative answer a total observer would have produced only if the fact were genuinely absent.
 ///
 /// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
 /// `admission_consumed_at_base` resolves the full (module, enclosing declaration, spelling) subject
