@@ -221,7 +221,41 @@ type ContinuationShapeSeen
   = ShapeUnset
   | ShapeSeen { key: NonEmptyStr }
 
-type PageFoldState<I> {
+// THE STATE HAS NO CONSTRUCTOR OUTSIDE THIS MODULE, AND THAT IS WHAT MAKES THE OUTCOME CLAIM TRUE.
+//
+// `PageFoldOutcome` carrying items only on the closed arm is worth nothing if a caller can hand
+// `page_fold_finish` a state that SAYS it closed. As a plain record this type admitted exactly
+// that: `status: FoldEnded` beside forged items, zero pages read and an empty demand history is a
+// perfectly well-typed value, and `page_fold_finish` would have turned it into `PagesClosed` --
+// so the guarantee rested on callers choosing to use `page_fold_begin` and `page_fold_observe`
+// rather than on anything the compiler enforces. That is validation wearing a constructor's
+// clothes, and reporting it as structural was rung inflation on this module's central claim.
+//
+// `sole_constructor` refuses construction outside `std.page_fold`, so the only way to obtain a
+// state at all is `page_fold_begin`, and the only way to move one is `page_fold_observe`. Those
+// two are the entire writer set, and both maintain the invariant, so `FoldEnded` is reachable
+// only from an observation that carried `ContinuationClosed` -- the authority's own statement that
+// the listing ended.
+//
+// WHAT THIS DOES NOT CLAIM. The arms still carry fields that are meaningless on some of them (a
+// demand history on an ended fold), so contradictory FIELD COMBINATIONS remain writable INSIDE
+// this module even though no state at all is writable outside it. Splitting the status into
+// coproduct arms that carry only their own valid fields would close that too; it is a further
+// climb against this module's two internal writers, not the boundary that consumers stand behind.
+//
+// THE DISCRIMINATING RED IS A RESOLVE REFUSAL, AND IT WAS EXECUTED RATHER THAN ARGUED. A probe
+// forging `status: FoldEnded` beside items from the witness module -- the exact state finding 1
+// named -- was authored and run, and the compiler refused it, located:
+//
+//   page_fold_witness_test.dag:482:16: error: sole_constructor type 'PageFoldState'
+//   cannot be constructed outside its defining module
+//
+// The probe is AUTHORABLE and was run; what it cannot be is ENROLLED, because a module carrying it
+// does not resolve, so it has no passing row to contribute. That distinction is the honest one: the
+// wall is proven to fire by execution, and the reason no row appears in the suite is the refusal's
+// own strength rather than an unbuilt harness. The probe is not committed -- an unresolvable module
+// would red the corpus -- so this comment is where the receipt lives.
+type PageFoldState<I> sole_constructor {
   subject: PageFoldSubject
   bound: PageBound
   pages_read: Int
@@ -386,10 +420,14 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
   }
 }
 
-// THE OUTCOME CARRIES THE ITEMS ONLY ON THE CLOSED ARM. This is the whole safety claim of the
-// module stated as a constructor: there is no way to obtain a list of items from a fold that did
-// not reach the authority's own end-of-listing, so a truncated listing is not a value a consumer
-// can hold, let alone one it can mistake for a complete one.
+// THE OUTCOME CARRIES THE ITEMS ONLY ON THE CLOSED ARM. This is the module's safety claim stated
+// as a constructor: a consumer cannot hold a list of items from a fold that did not reach the
+// authority's own end-of-listing, let alone mistake one for a complete listing.
+//
+// THE CLAIM IS LOAD-BEARING ONLY BECAUSE `PageFoldState` IS `sole_constructor`. This arm is
+// reachable from `page_fold_finish`, which reads a state -- so without a construction wall on the
+// state the sentence above would be false, satisfiable by forging a closed-looking state rather
+// than by reading a closed listing. The two facts are one guarantee and neither half stands alone.
 type PageFoldOutcome<I>
   = PagesClosed {
       subject: PageFoldSubject
