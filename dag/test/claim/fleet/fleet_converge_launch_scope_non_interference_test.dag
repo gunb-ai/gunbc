@@ -44,8 +44,9 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // observed_timers. Runner slots have a position on FullHostConverge, not on the launch constructor,
 // so the invalid state is structurally impossible in an Accepted program. DESIGN 4b(4) requires the
 // discriminating RED and its positive control to remain enrolled after that climb. They therefore
-// live here as source handed to the compiler: the clean constructor must be accepted, while the
-// same constructor carrying observed_slots must receive the exact FieldNotFound refusal.
+// live here as source handed to the compiler: clean constructors must be accepted, while the same
+// constructors carrying the five relocated fields or an arbitrary sentinel must receive their
+// exact FieldNotFound refusals.
 //
 // This is intentionally production-specific rather than another general payload-arm fixture. The
 // generic field wall is independently exercised by test.claim.infer_record_lit_variant_field_witness;
@@ -64,6 +65,7 @@ fn launch_environment_probe_source(
   all_once: String,
   all_terminal: String,
   all_emission: String,
+  sentinel: String,
 ) -> String {
   join([
     "module probe_launch_environment_scope\n",
@@ -76,12 +78,13 @@ fn launch_environment_probe_source(
     "fn all_once() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_once, " } }\n",
     "fn all_terminal() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_terminal, " } }\n",
     "fn all_emission() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_emission, " } }\n",
+    "fn sentinel() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", sentinel, " } }\n",
   ], "")
 }
 
 data clean_census: CompileDiagnosticCensus =
   compile_dag_diagnostic_census(launch_environment_probe_source(
-    slots: "", activation: "", caps: "", fabric: "", all_once: "", all_terminal: "", all_emission: "",
+    slots: "", activation: "", caps: "", fabric: "", all_once: "", all_terminal: "", all_emission: "", sentinel: "",
   ))
 
 data foreign_axis_census: CompileDiagnosticCensus =
@@ -94,6 +97,7 @@ data foreign_axis_census: CompileDiagnosticCensus =
       all_once: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
       all_terminal: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
       all_emission: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
+      sentinel: ", __launch_excess_field_probe: []",
     ),
   )
 
@@ -141,6 +145,7 @@ fn only_expected_identity_differs(
   expected_c: String,
   expected_d: String,
   expected_e: String,
+  expected_f: String,
 ) -> Bool {
   all(
     concat(diagnostic_identities(census: clean), diagnostic_identities(census: refused)),
@@ -149,6 +154,7 @@ fn only_expected_identity_differs(
       || id == expected_c
       || id == expected_d
       || id == expected_e
+      || id == expected_f
       || identity_count(census: clean, wanted: id) == identity_count(census: refused, wanted: id),
   )
 }
@@ -158,22 +164,25 @@ data observed_activation_readiness_field_not_found: String = "FieldNotFound|obse
 data observed_unit_standings_field_not_found: String = "FieldNotFound|observed_unit_standings|true"
 data observed_caps_field_not_found: String = "FieldNotFound|observed_caps|true"
 data observed_fabric_cells_field_not_found: String = "FieldNotFound|observed_fabric_cells|true"
+data launch_sentinel_field_not_found: String = "FieldNotFound|__launch_excess_field_probe|true"
 
 // THE POSITIVE AND RED ARE ONE ENROLLED CLAIM. Refusing both sources would make the discriminating
 // RED meaningless, while separating them would pay the same two live-tree compilations twice under
-// the per-claim floor budget. The clean half admits seven canonical constructors; the mutated half
-// rejects the seven former smuggling sites at their twenty foreign field occurrences.
-test fn the_seven_foreign_axis_constructors_are_refused_at_all_twenty_fields() -> Bool {
+// the per-claim floor budget. The clean half admits eight canonical constructors; the mutated half
+// rejects the seven former foreign-axis sites at their twenty field occurrences and the eighth
+// arbitrary sentinel site that establishes the constructor's general closedness.
+test fn the_eight_excess_field_constructors_are_refused_at_all_twenty_one_fields() -> Bool {
   census_ran(census: clean_census)
     && blocking_count(census: clean_census) == 0
     && identity_count(census: clean_census, wanted: observed_slots_field_not_found) == 0
     && census_ran(census: foreign_axis_census)
-    && blocking_count(census: foreign_axis_census) == blocking_count(census: clean_census) + 20
+    && blocking_count(census: foreign_axis_census) == blocking_count(census: clean_census) + 21
     && identity_count(census: foreign_axis_census, wanted: observed_slots_field_not_found) == 4
     && identity_count(census: foreign_axis_census, wanted: observed_activation_readiness_field_not_found) == 4
     && identity_count(census: foreign_axis_census, wanted: observed_unit_standings_field_not_found) == 4
     && identity_count(census: foreign_axis_census, wanted: observed_caps_field_not_found) == 4
     && identity_count(census: foreign_axis_census, wanted: observed_fabric_cells_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: launch_sentinel_field_not_found) == 1
     && only_expected_identity_differs(
          clean: clean_census,
          refused: foreign_axis_census,
@@ -182,6 +191,7 @@ test fn the_seven_foreign_axis_constructors_are_refused_at_all_twenty_fields() -
          expected_c: observed_unit_standings_field_not_found,
          expected_d: observed_caps_field_not_found,
          expected_e: observed_fabric_cells_field_not_found,
+         expected_f: launch_sentinel_field_not_found,
        )
 }
 
