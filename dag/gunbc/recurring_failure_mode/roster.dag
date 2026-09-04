@@ -57,6 +57,7 @@ import gunbc.recurring_failure_mode.alias_resolution_collides_with_kernel_spelli
 import gunbc.recurring_failure_mode.restored_bytes_reviewed_as_authorship { restored_bytes_reviewed_as_authorship }
 import gunbc.recurring_failure_mode.stale_buffer_write_reverts_outside_its_own_diff { stale_buffer_write_reverts_outside_its_own_diff }
 import gunbc.recurring_failure_mode.review_summary_inverts_roles_and_affirms_the_join { review_summary_inverts_roles_and_affirms_the_join }
+import gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that_prints_it { printed_remedy_is_mangled_by_the_medium_that_prints_it }
 import gunbc.recurring_failure_mode.fabricated_debt { fabricated_debt }
 import gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content { yaml_inline_comment_ingested_as_scalar_content }
 import gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target { accepted_source_emits_uncompilable_target }
@@ -164,6 +165,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   restored_bytes_reviewed_as_authorship,
   stale_buffer_write_reverts_outside_its_own_diff,
   review_summary_inverts_roles_and_affirms_the_join,
+  printed_remedy_is_mangled_by_the_medium_that_prints_it,
   fabricated_debt,
   yaml_inline_comment_ingested_as_scalar_content,
   accepted_source_emits_uncompilable_target,

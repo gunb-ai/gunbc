@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that_prints_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data printed_remedy_is_mangled_by_the_medium_that_prints_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "printed_remedy_is_mangled_by_the_medium_that_prints_it" as NonEmptyStr,
+
+  receipts: [
+    "**a refusal prints a repair command, and the command as PRINTED is not the command as AUTHORED** (the authored string is correct; the transport that renders it -- a shell echo, a YAML scalar, a log formatter -- consumes characters on the way out, so the reader pastes something the author never wrote). ",
+
+    "**IT IS NOT `restoration_promise_names_a_route_that_does_not_exist`, AND THE BOUNDARY IS WHERE THE DEFECT LIVES.** There the named route does not exist; here it exists, the author names it correctly, and the RENDERING is what breaks. So every by-name instrument agrees the remedy is present: grep finds the command, the authored list reads correctly under review, and the emitted-artifact drift gate is byte-exact against an authority that carries the same defect. ",
+
+    "**MEASURED, BOTH ARMS ON ONE SCRIPT, 2026-09-04, `gunbc.generated_artifact_merge_driver`.** The merge driver echoes each recipe line inside DOUBLE quotes, because the lines are templates and `$merged_path` must interpolate. The heal arm's row-identity command is written between backticks, so bash ran the capture group as a command substitution: `.githooks/generated-artifact-merge: line 13: ([a-z0-9_]*): command not found`, twice, and the printed instruction came out as `sed -n 's/^- .*/\\1/p'` with the group DELETED. ",
+
+    "THE HARM IS NOT THE STDERR NOISE. An author pasting the printed form extracts zero rows from both sides, and the set difference over two empty sets is empty, which the recipe's own words read as MUST BE EMPTY -- so the mangled remedy reports the vacuous pass the intact remedy exists to prevent, at the exact moment a generated projection is unmerged and rows are at risk. ",
+
+    "**THE SECOND ARM ON THE SAME SCRIPT IS THE ORDINARY SHAPE OF THE CLASS**: the author-regeneration recipe's last command ended `claim_executor --required-regen-fixed-point` with no `--source-root`, and that binary's argument guard sits ABOVE the fixed-point branch, so the run exits 2 before reaching a mode that reads no roots at all. Reading the mode says the flag is unnecessary; running the binary says it is mandatory. ",
+
+    "**RECOGNITION RULE: a command inside a diagnostic is not reviewed by reading it -- it is reviewed by EXECUTING THE EMITTED ARTIFACT and pasting what came out.** Two questions, in order: does the rendered text equal the authored text (shell-active characters are the usual thief: backtick, dollar, backslash, quote), and does the rendered text, run verbatim, reach the effect it promises rather than an argument guard. A remedy whose failure mode is a VACUOUS PASS ranks above one whose failure mode is a refusal, because only the refusal announces itself. ",
+
+    "**RUNG: 2 (mechanically preventable) -- `test.claim.generated_artifact_merge_driver_recipe` reads the EMITTED script rather than the authored list and refuses the unescaped form, and `test.claim.generated_artifact_merge_driver_real_execution` runs the script through a real three-way merge. ",
+
+    "CEILING: 4, and the constructor is the missing one: these lines are shell text assembled by `concat`, so nothing distinguishes a literal from an interpolated reference, and the escaping decision has no carrier to attach to. ",
+
+    "NEXT-RUNG TRIGGER, a CAPABILITY and not an artifact: a modeled command carrier whose arguments and variable references are declared rather than spelled -- rendering to a transport then escapes by construction and an unbound reference refuses to compile -- which is the same shape `extdeps.exec.command` `shell_command_render` already holds for argv and which these diagnostics do not use.)",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,65 @@
+module test.claim.generated_artifact_merge_driver_recipe
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
+import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REPAIR RECIPE IS A COMMAND, AND A COMMAND THAT REFUSES WHEN PASTED IS NOT A REPAIR. This file
+// is the enrolled evidence for that property over the emitted driver, and it exists because the
+// property held false twice on the same script at once, each defect invisible to every other
+// instrument in the tree:
+//
+//   - the author-regeneration arm's LAST command ended `claim_executor --required-regen-fixed-point`
+//     with no --source-root, and claim_executor's argument guard exits 2 on exactly that. The author
+//     reaches it after two builds and two regen passes, so the cost is paid before the refusal.
+//   - the heal arm's set-difference command is written between backticks, and the driver echoes its
+//     lines inside DOUBLE quotes, so bash ran the capture group as a command substitution and printed
+//     the instruction with the capture group deleted. The pasted result extracts no rows, and the
+//     comparison then reports EMPTY -- a pass measured over two empty sets, which is the exact
+//     vacuous green the recipe exists to prevent.
+//
+// THE SUBJECT IS THE EMITTED SCRIPT, NOT THE AUTHORED LIST, because the second defect lives in the
+// quoting and is invisible in the authored string. These assertions are string reads over the
+// emitter's output and cannot claim the command RUNS; the wet arm that executes the script is
+// test.claim.generated_artifact_merge_driver_real_execution. What they do close is the class that
+// was actually live: a recipe line that git renders differently from how its author wrote it.
+
+fn emitted_driver_script() -> String {
+  expected_generated_artifact_merge_driver_sh(
+    regen_command: ci_heal_author_commit_regen_command,
+    heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+  )
+}
+
+// claim_executor refuses every mode below its argument guard with `provide at least one
+// --source-root`, and the fixed-point call is below it. The RED is the recipe as it stood.
+test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(
+    s: script,
+    pattern: "--required-regen-fixed-point --source-root dag --source-root src/v2"
+  )
+    && string_contains(s: script, pattern: "--required-regen-fixed-point\" >&2") == false
+}
+
+// The backtick must reach the reader as a backtick, which inside the emitted double quotes means
+// it must be escaped in the script bytes. Unescaped, bash consumes it before the author sees it.
+test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(s: script, pattern: "s/^- \\`\\([a-z0-9_]*\\)\\`.*/\\1/p")
+    && string_contains(s: script, pattern: "s/^- `\\([a-z0-9_]*\\)`.*/\\1/p") == false
+}
+
+// The two heal-delegated projections carry different row identities: a failure mode is a slug
+// bullet, a rung drop is a heading. One extractor must name both, or the check reads zero rows on
+// the file it cannot parse and reports a pass it never measured.
+test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(s: script, pattern: "s/^- \\`\\([a-z0-9_]*\\)\\`.*/\\1/p")
+    && string_contains(s: script, pattern: "s/^### \\(.*\\) — .*/\\1/p")
+}
