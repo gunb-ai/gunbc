@@ -84,31 +84,8 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 //
 // THAT TRIGGER IS STILL OPEN AND THE CHANGE BELOW DID NOT CLOSE IT, which is stated here because
 // the adjacent DIRECTORY half just landed and the two are easy to read as one. What landed is the
-// directory subject: it is admitted once and carried as `FilePath`. The `name` half is unchanged --
-// `filesystem_entry_presence` still takes `name: String`, `FilesystemEstablishedAbsence.name` is
-// still a `String`, and `filesystem_established_absence_path` therefore still composes an admitted
-// prefix with an UNADMITTED component. So `name: "a/b.json"` still introduces a level the listing
-// was never asked about.
-//
-// AND THE RESIDUE IS FOUR SIGNATURES, NOT THREE. An earlier draft of this row listed only the three
-// above and was INCOMPLETE, which matters because a residue stated at identity grain is a claim
-// about the whole open population and an undercount reads as a promise. The fourth is
-// `filesystem_file_observation`'s own `path: String` parameter. It is supplied INDEPENDENTLY of the
-// listing, and on the read-succeeded arm it is returned unexamined:
-// `FilesystemReadSucceeded { content: c } => FilesystemFileRead { path: path, content: c }`.
-// Nothing relates that `path` to the listing's `directory` and `name`, so a caller may hand in a
-// listing for `work/repo.json` together with a successful read of `/some/other/file` and receive
-// one `FilesystemFileRead` carrying the unrelated path and its bytes. That is the same
-// subject-substitution class the absence half closed by DERIVING its path from the carrier, and it
-// predates this change. Migrating `name` alone while `path` stays independently selected would NOT
-// close the class -- which is exactly why it belongs on this list rather than being discovered later
-// as a surprise.
-//
-// AND `filesystem_file_observation` IS TWO INDEPENDENT INGRESSES, NOT ONE. Its signature accepts a
-// raw `name: String` as well as the raw `path`, and forwards that name straight into
-// `filesystem_entry_presence`. So migrating `filesystem_entry_presence`'s parameter alone would NOT
-// remove the raw ingress: this function stays directly callable with an arbitrary name and keeps
-// feeding it through. Both strings on this one signature are open.
+// directory subject: it is admitted once and carried as `FilePath`. The name half is untouched, so
+// `name: "a/b.json"` still introduces a level the listing was never asked about.
 //
 // RESIDUE AT IDENTITY GRAIN, named rather than counted -- five identities:
 //   1. `filesystem_entry_presence`'s `name` parameter
@@ -116,6 +93,16 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 //   3. `filesystem_established_absence_path`'s composition of an unadmitted component
 //   4. `filesystem_file_observation`'s `name` parameter
 //   5. `filesystem_file_observation`'s `path` parameter
+//
+// (4) AND (5) ARE TWO INDEPENDENT INGRESSES ON ONE SIGNATURE, which is why migrating (1) alone
+// would not close anything: `filesystem_file_observation` stays directly callable with an arbitrary
+// name and keeps forwarding it into `filesystem_entry_presence`. And its `path` is supplied
+// independently of the listing and returned unexamined on the read-succeeded arm --
+// `FilesystemReadSucceeded { content: c } => FilesystemFileRead { path: path, content: c }` --
+// so a caller may hand in a listing for `work/repo.json` together with a successful read of
+// `/some/other/file` and receive one `FilesystemFileRead` carrying the unrelated path and its bytes.
+// That is the same subject-substitution class the absence half closed by DERIVING its path from the
+// carrier, and it predates this change.
 //
 // SCOPE OF THAT ROSTER, stated so it is not read as an unqualified module-wide census: it covers the
 // TWO PRODUCTION FOLDS through which consumers observe, and nothing else. The low-level helper
