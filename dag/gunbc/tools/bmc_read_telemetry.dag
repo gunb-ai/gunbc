@@ -32,7 +32,6 @@ func bmc_read_telemetry() -> ProcessExit
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
 
-              /* ONE netrc resolution for BOTH credential-bearing calls (per the directive: one resolution per workflow, not per call). The credential binding lives for the match arm scope only. */
               let cred = netrc_resolve(file: netrc_file as FilePath, host: bmc)
               match cred {
                 NetrcResolved { login: l, password: p } => {
