@@ -1,0 +1,209 @@
+module test.claim.import_binding_inertness_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitFailure, exit_failure }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  ResolvedCallTarget,
+  ResolvedCallTargetRow,
+  CallBoundToSourceDeclaration,
+  CallBoundToRuntimePrimitive,
+  CallTargetUndetermined,
+  CallSemanticsAbsent,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// GATE 1 OF THE IMPORT-DELETION CUTOVER, STATED AS AN INVARIANT AND NOT AS A MEASUREMENT:
+// AN IMPORT DECLARATION HAS ZERO BINDING AUTHORITY.
+//
+// Four subjects differ ONLY in their import declarations -- import provider A, import provider B, no
+// import at all, and two imports in reversed order. Every other byte is identical. After the
+// import-name universe is deleted, all four must produce the SAME EXACT RESOLVER OUTCOME for the
+// bare call: the same candidate population, the same selected declaration, the same refusal
+// constructor. This claims NOTHING about whether that common outcome is CORRECT -- only that imports
+// no longer decide it.
+//
+// WHY IDENTICAL SIGNATURES ARE LOAD-BEARING RATHER THAN INCIDENTAL. cut.a and cut.b declare the same
+// spelling with the SAME arity and the SAME types. An arity or type difference would let type
+// checking expose a wrong choice, and the gate would then be resting on a diagnostic rather than on
+// resolution. With them identical, an illicit selection stays COMPILE-GREEN and nothing but the
+// resolver's own target identity can tell the two apart. That is why this is asserted over
+// ResolvedCallTarget and never over accept/refuse: accept/refuse cannot see a WRONG selection, only
+// a missing one.
+//
+// AND THE TARGET IS READ, NEVER INFERRED. No counts, no diagnostic-message matching, no spelling
+// joins, and nothing read out of emitted Rust. CallBoundToSourceDeclaration carries the owner module
+// path and the declaration name that CALLABLE LOOKUP ITSELF recorded.
+//
+// THE DESTRUCTIVE CONTROL IS MANDATORY AND IT IS WHY THIS FILE LANDS BEFORE THE DELETION. Against
+// today's main this invariant MUST FAIL, because import authority still decides the answer. A wall
+// whose red was never authorable is a decoration -- permanently green by construction, carrying no
+// information, and worse than absent because it gets cited as coverage. So the red is recorded here
+// as the PROOF THAT THE CONTROL DISCRIMINATES, and the test is authored in the direction that will
+// hold after the cut rather than in the direction that passes today.
+//
+// WHAT THE DESTRUCTIVE CONTROL ACTUALLY SHOWED, RE-DERIVABLE FROM THE TWO PROBES AT THE FOOT OF
+// THIS FILE RATHER THAN TRUSTED FROM THIS COMMENT. Against main before any deletion, the invariant
+// is RED and the three arms fail in TWO DIFFERENT WAYS, which is a sharper result than one failure:
+// importing cut.a and importing cut.b each compile CLEAN and bind the call to the module that was
+// imported, so the import declaration selects the declaration; and with NO import the compile
+// REFUSES outright and produces no call-target row at all. Reordering two import declarations is
+// ALREADY INERT. So the surviving authority is provider SELECTION and import PRESENCE, and not
+// declaration ORDER -- three different survivors, of which one is already dead.
+//
+// AND THE NO-IMPORT ARM ANSWERS A SECOND QUESTION THIS PROGRAM HAD OPEN. A bare call to a spelling
+// declared in an unimported module that IS in the pool does not quietly bind: callable lookup
+// refuses. That matters because the step 0 reference-occurrence census reported bindings disposed as
+// POOL COINCIDENCE -- bound to a provider absent from the consumer's import list. Those two
+// observations disagree, and they come from different walks: the census reads the STRUCTURAL
+// CANDIDATE traversal, this reads what callable lookup recorded. A pool-coincidence row there is
+// therefore not evidence that callable lookup would accept the same binding here.
+//
+// THE ROOT THIS MUST CATCH IS TWO FIELDS AND NOT ONE. The plan called source_visible_names "the
+// import universe"; TypeEnv.authored_import_names is the other half, and it is not passive history --
+// author_named_visibility treats it as the authority for whether the author listed a name, and
+// CALLABLE LOOKUP CONSUMES THAT RESULT when deciding its candidate population. Deleting the first
+// while leaving the second preserves a NARROWER import-name universe inside callable resolution: a
+// root cut that looks complete and is not. This fixture is written to go red on EITHER survivor,
+// because it asserts over the resolved target of a bare call rather than over any field's presence.
+
+// TWO PROVIDERS, ONE SPELLING, IDENTICAL SIGNATURES. The whole subject rests on these being
+// indistinguishable to everything except resolution.
+data cut_provider_a: String = "module cut.a\n\nfn cut_probe(cut_v: Int) -> Int { cut_v }\n"
+data cut_provider_b: String = "module cut.b\n\nfn cut_probe(cut_v: Int) -> Int { cut_v }\n"
+
+// A THIRD MODULE EXISTING ONLY TO GIVE THE REORDERING ARM A SECOND IMPORT TO REORDER. It declares a
+// spelling nothing else mentions, so it cannot participate in the binding under test.
+data cut_provider_c: String = "module cut.c\n\nfn cut_unrelated_marker(cut_w: Int) -> Int { cut_w }\n"
+
+// THE FOUR CONSUMERS. Every byte outside the import block is identical, so any difference in the
+// resolved target of `cut_probe` is attributable to the import declarations and to nothing else.
+data cut_entry_imports_a: String = "module cut.entry\n\nimport cut.a { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n"
+data cut_entry_imports_b: String = "module cut.entry\n\nimport cut.b { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n"
+data cut_entry_imports_none: String = "module cut.entry\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n"
+data cut_entry_imports_ac: String = "module cut.entry\n\nimport cut.a { cut_probe }\nimport cut.c { cut_unrelated_marker }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n"
+data cut_entry_imports_ca: String = "module cut.entry\n\nimport cut.c { cut_unrelated_marker }\nimport cut.a { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n"
+
+fn cut_run(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("cut/a.dag", cut_provider_a),
+      fixture_source("cut/b.dag", cut_provider_b),
+      fixture_source("cut/c.dag", cut_provider_c),
+      fixture_source("cut/entry.dag", entry)
+    ],
+    entry: "cut/entry.dag"
+  })
+}
+
+fn cut_targets(outcome: MultiModuleCompileFixtureOutcome) -> List<ResolvedCallTargetRow> {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, call_targets: t, source_digest: _, compiler_digest: _ } => t
+    FixtureCompileRefused { module_count: _, diagnostics: _, call_targets: t, source_digest: _, compiler_digest: _ } => t
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+// THE OUTCOME KEY. Two subjects agree exactly when the bare call's target is the SAME CONSTRUCTOR
+// with the SAME FIELDS -- so a change of owner module, a change from bound to undetermined, and a
+// call lookup never visited are all distinguishable from one another.
+fn cut_target_key(target: ResolvedCallTarget) -> String {
+  match target {
+    CallBoundToSourceDeclaration { owner_module_path: owner, decl_name: decl } =>
+      concat("bound:", concat(owner, concat(":", decl)))
+    CallBoundToRuntimePrimitive { primitive_name: p } => concat("primitive:", p)
+    CallTargetUndetermined => "undetermined"
+    CallSemanticsAbsent => "no-call-semantics"
+  }
+}
+
+// THE BARE CALL'S KEY IN ONE SUBJECT. A subject that produced no row for it answers with a distinct
+// marker rather than with an empty string, so "the call was not observed" can never read as "the
+// call agreed".
+fn cut_bare_call_key(entry: String) -> String {
+  let rows = cut_targets(outcome: cut_run(entry: entry)) |> filter(row => row.authored_name == "cut_probe")
+  match first(rows) {
+    Absent => "no-row-for-the-bare-call"
+    Present { value: row } => cut_target_key(target: row.target)
+  }
+}
+
+// CONTROL 0 -- THE FIXTURE IS LIVE AND CONTAINMENT WORKS. The `import cut.a` arm must produce a row
+// for the bare call at all. Without this, four subjects agreeing on "no-row-for-the-bare-call" would
+// satisfy the invariant below for the worst possible reason.
+test fn the_bare_call_is_observed_at_all() -> Bool {
+  cut_bare_call_key(entry: cut_entry_imports_a) != "no-row-for-the-bare-call"
+}
+
+// THE DESTRUCTIVE CONTROL, AND IT IS EXPECTED RED AGAINST TODAY'S MAIN. Import authority still
+// decides the answer today, so importing cut.a and importing cut.b select different declarations and
+// these keys differ. When the import-name universe is deleted -- BOTH source_visible_names AND
+// authored_import_names -- all four arms must collapse onto one key.
+//
+// IT IS ASSERTED IN THE POST-CUT DIRECTION ON PURPOSE. Authoring it to pass today would mean
+// authoring the defect, and the day the cut landed nothing would have gone green to mark it.
+test fn an_import_declaration_has_zero_binding_authority() -> Bool {
+  let with_a = cut_bare_call_key(entry: cut_entry_imports_a)
+  let with_b = cut_bare_call_key(entry: cut_entry_imports_b)
+  let with_none = cut_bare_call_key(entry: cut_entry_imports_none)
+  let with_ac = cut_bare_call_key(entry: cut_entry_imports_ac)
+  let with_ca = cut_bare_call_key(entry: cut_entry_imports_ca)
+  with_a == with_b && with_a == with_none && with_a == with_ac && with_a == with_ca
+}
+
+// THE REORDERING HALF, SEPARATED SO ITS RED IS READABLE ON ITS OWN. Two import statements in
+// reversed order is meaning-preserving under any reading, so this arm is the one most likely to be
+// already-green -- and if it is, the invariant above is failing on provider SELECTION rather than on
+// declaration ORDER, which are different survivors and different repairs.
+test fn reordering_import_declarations_does_not_change_the_bare_call() -> Bool {
+  cut_bare_call_key(entry: cut_entry_imports_ac) == cut_bare_call_key(entry: cut_entry_imports_ca)
+}
+
+// THE INSTRUMENT THAT RE-DERIVES THE FIVE KEYS, an entry point rather than a transcribed list, so
+// the arrangement that produces the red is reachable from the thing that owns it rather than copied
+// into prose (DESIGN section 6). Run it with
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/import_binding_inertness_witness_test.dag \
+//     --function import_inertness_probe
+// It exits NONZERO because a probe that exited 0 would be reporting a verdict it never reached.
+fn import_inertness_probe() -> ProcessExit {
+  exit_failure(reason: join([
+    concat("imports-a       ", cut_bare_call_key(entry: cut_entry_imports_a)),
+    concat("imports-b       ", cut_bare_call_key(entry: cut_entry_imports_b)),
+    concat("imports-none    ", cut_bare_call_key(entry: cut_entry_imports_none)),
+    concat("imports-a-then-c", cut_bare_call_key(entry: cut_entry_imports_ac)),
+    concat("imports-c-then-a", cut_bare_call_key(entry: cut_entry_imports_ca))
+  ], "\n"))
+}
+
+// WHY THE NO-IMPORT ARM CARRIES NO ROW, ASKED RATHER THAN ASSUMED. "No row for the bare call" is
+// ambiguous between three states that matter differently to the cutover: the compile REFUSED before
+// lookup ran, the call resolved to nothing, or the node carried no call semantics. The probe below
+// renders the outcome arm and the blocking diagnostic count per subject so the difference is read
+// rather than guessed.
+fn cut_outcome_label(outcome: MultiModuleCompileFixtureOutcome) -> String {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: d, call_targets: _, source_digest: _, compiler_digest: _ } =>
+      concat("completed diagnostics=", to_string(count(d)))
+    FixtureCompileRefused { module_count: _, diagnostics: d, call_targets: t, source_digest: _, compiler_digest: _ } =>
+      concat("REFUSED diagnostics=", concat(to_string(count(d)), concat(" call_target_rows=", to_string(count(t)))))
+    FixtureInstrumentRefused { cause: c } => concat("instrument-refused: ", c as String)
+  }
+}
+
+fn import_inertness_outcome_probe() -> ProcessExit {
+  exit_failure(reason: join([
+    concat("imports-a        ", cut_outcome_label(outcome: cut_run(entry: cut_entry_imports_a))),
+    concat("imports-b        ", cut_outcome_label(outcome: cut_run(entry: cut_entry_imports_b))),
+    concat("imports-none     ", cut_outcome_label(outcome: cut_run(entry: cut_entry_imports_none)))
+  ], "\n"))
+}
