@@ -15,6 +15,8 @@ import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
+import gunbc.harness.harness_turn { harness_stop_reason_truncated }
+import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
 
 // WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
 //
@@ -140,4 +142,22 @@ test fn one_response_fits_inside_the_working_window() -> Bool {
 // the value is measured by the interpreter rather than by the author's mental model of it.
 test fn the_request_deadline_derives_to_the_expected_seconds() -> Bool {
   second_count(s: harness_request_deadline) == 641
+}
+
+// A TRUNCATED TOOL CALL MUST NOT BE TREATED AS A COMPLETE ONE. This pins the predicate the round arm
+// consults before executing anything. It matters more than its size suggests: the failure it
+// prevents is SILENT -- a heredoc cut off at the token ceiling writes a partial file and returns
+// exit 0, so nothing downstream would have reported a problem. The arm that used to sit here
+// branched on whether tool calls were PRESENT, which is a question that is always true when the
+// model is working, and never on whether they were COMPLETE.
+test fn a_max_tokens_stop_is_recognised_as_truncation() -> Bool {
+  harness_stop_reason_truncated(reason: MaxTokens)
+}
+
+// THE DISCRIMINATING CONTROL, and it is the half that makes the witness above mean anything: an
+// ORDINARY tool-call stop must NOT be read as truncation. A predicate that answered true for every
+// stop reason would satisfy the witness above and refuse every round the harness ever runs.
+test fn an_ordinary_tool_use_stop_is_not_truncation() -> Bool {
+  !harness_stop_reason_truncated(reason: ToolUse)
+    && !harness_stop_reason_truncated(reason: EndTurn)
 }

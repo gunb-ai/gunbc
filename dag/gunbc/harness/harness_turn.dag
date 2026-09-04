@@ -210,6 +210,7 @@ type HarnessTurnOutcome
   | TurnResponseUnreadable { cause: String }
   | TurnRequestUnwritable { path: String, detail: String }
   | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
+  | TurnTruncatedMidToolCall { output_tokens: Int, ceiling: Int, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -221,6 +222,8 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } =>
       "context-window-exhausted"
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } =>
+      "truncated-mid-tool-call"
   }
 }
 
@@ -247,6 +250,15 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
         " input tokens after ", to_string(value: n),
         " tool rounds, against a declared budget of ", to_string(value: b),
         "; the turn stopped rather than issuing a request the engine would refuse mid-run",
+      ], "")
+    TurnTruncatedMidToolCall { output_tokens: o, ceiling: c, steps_taken: n } =>
+      join([
+        "the provider stopped at the max_tokens ceiling of ", to_string(value: c),
+        " after ", to_string(value: n), " tool rounds, having emitted ", to_string(value: o),
+        " output tokens, with a tool call still open. Its arguments are truncated, so the command was",
+        " NOT executed: this harness writes files by heredoc, and running a cut-off command would",
+        " have written a partial file and returned success. Raise the ceiling if the work genuinely",
+        " needs a longer single call; the refusal is not evidence that it does.",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -402,6 +414,30 @@ fn harness_execute_and_encode(
 }
 
 // ONE ROUND: write the request, post it, decode the answer.
+// A TOOL CALL THAT RAN OUT OF TOKENS IS NOT A TOOL CALL. The provider reports max_tokens when it
+// stopped because the ceiling was reached rather than because the answer ended, and a tool_use block
+// cut off at that boundary is TRUNCATED -- its arguments are whatever fitted. This harness's one
+// tool runs a shell command, and its declared write forms are heredoc and in-place edit, so a
+// truncated command is a PARTIAL FILE WRITE that returns exit 0. The loop would then continue
+// against a tree it had silently corrupted, which is the fabricated-plausible-output failure DESIGN
+// section 5 forbids, arrived at through a hole nobody opened deliberately: the round arm branched on
+// whether tool calls were PRESENT and never asked whether they were COMPLETE.
+//
+// THE REFUSAL IS NOT A SMALLER CEILING. Raising max_tokens moves the boundary; it does not remove
+// it, and a ceiling large enough for every possible file is not a thing that exists. The wall is
+// that a truncated call must not execute at all.
+fn harness_stop_reason_truncated(reason: AnthropicStopReason) -> Bool {
+  match reason {
+    MaxTokens => true
+    EndTurn => false
+    ToolUse => false
+    StopSequence => false
+    PauseTurn => false
+    Refusal => false
+    ModelContextWindowExceeded => false
+  }
+}
+
 fn harness_post_round(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -560,7 +596,28 @@ fn harness_turn_loop(
           clock: clock_unix_millis_read(),
         )
         let uses = harness_tool_use_blocks(blocks: blocks)
-        if list_length(items: uses) == 0 {
+        if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
+          let truncated = concat(events, [
+            usage,
+            harness_event_turn_failed(
+              message: join([
+                "the provider stopped at the max_tokens ceiling of ",
+                to_string(value: config.max_tokens),
+                " with a tool call still open, so its arguments are truncated; refusing to execute a",
+                " partial command rather than write an incomplete file and continue",
+              ], ""),
+            ),
+          ])
+          match harness_write_events(config: config, events: truncated) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+            HarnessEventsWritten =>
+              TurnTruncatedMidToolCall {
+                output_tokens: output_tokens,
+                ceiling: config.max_tokens,
+                steps_taken: steps_taken + 1,
+              }
+          }
+        } else if list_length(items: uses) == 0 {
           let text = harness_blocks_text(blocks: blocks)
           let completed = concat(events, [
             usage,
