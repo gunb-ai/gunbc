@@ -9,7 +9,7 @@ import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -206,18 +206,24 @@ fn call_node(callee: String) -> Node {
   }
 }
 
-// THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
-// from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
-// those of its IMMEDIATE children — because the skeleton the Rust marshal produces hoists callee
-// atoms onto the body root. A first version of this fixture wrapped the callee atom inside the call
-// node, one level deeper. Nothing was reachable, and BOTH discrimination rows below agreed for that
-// reason rather than for the reason they claim: the leak-is-found row went red, and the
-// leak-outside-the-graph row went green while proving nothing at all. That is the empty-fixture
-// failure in miniature — two rows in apparent agreement, one shared wrong cause — so the shape is
-// recorded here rather than silently corrected.
+// THE FN-ARROW SKELETON IS NOT FLAT, AND THE FIXTURE MUST NOT BE EITHER. A first version of this
+// fixture wrapped the callee atom inside the call node, one level deeper, and nothing was
+// reachable: BOTH discrimination rows below then agreed for that reason rather than for the reason
+// they claim — the leak-is-found row went red, and the leak-outside-the-graph row went green while
+// proving nothing at all. The fixture was flattened to accommodate that, on the belief that the
+// marshal hoists callee atoms onto the body root.
 //
-// A CALL EDGE is therefore a bare atom child of the body root; a LEAKING CALL is a call node child,
-// which determinism_findings reaches because it folds the whole subtree.
+// THAT BELIEF WAS FALSE, and flattening the fixture is what hid it. The marshal (marshal_generic)
+// emits every node as a Conj record carrying its callee atom as a positional child, so a callee is
+// at depth one only when the body IS that one call; a `let`-block body carries its callees two or
+// more levels down; the live-corpus population that hid below the root is counted by
+// v2.lens.fn_index_depth_agreement. call_reachable_decls now reads `decl.output` TRANSITIVELY
+// (atom_identities_in_subtree), and the nested rows below hold that grain: they are red against a
+// depth-one reader and are the reason a flat-only fixture may not stand alone.
+//
+// A CALL EDGE at the root is a bare atom child of the body root; a NESTED CALL EDGE is that atom
+// one statement-record deeper, which is what a real block body looks like; a LEAKING CALL is a call
+// node child, which determinism_findings reaches because it folds the whole subtree.
 
 fn body_referencing(callee: String) -> Node {
   Node {
@@ -316,4 +322,125 @@ test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
       primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee)
     ]
   )
+}
+
+// ── the nested-body grain: a depth-one reader is blind here ───────────────────────────────────
+
+// A block body as the marshal actually emits one: the body root is a Conj of STATEMENT records,
+// and the callee atom is a positional child of a statement — not of the root.
+fn nested_body_referencing(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn nested_calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: nested_body_referencing(callee: callee),
+    params: []
+  }
+}
+
+// RED CONTROL AGAINST DEPTH ONE. The same two-hop cross-module leak as above, reached through an
+// entry whose call sits one statement-record below its body root. A depth-one reader finds no
+// callee on the entry at all, reaches nothing, and returns zero findings.
+test fn leak_reached_through_a_nested_body_is_found() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        nested_calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+        primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: leaking_callee),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: deterministic_callee)
+      ]
+    )
+  ) > 0
+}
+
+// THE DISCRIMINATOR THAT KEEPS THE DEEPER READ FROM BECOMING "FOLD EVERYTHING". Same nested entry,
+// leak moved out of the call graph. A transitive read of a declaration's OWN body must not become a
+// transitive read of the corpus: this row is green only because reachability still decides.
+test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        nested_calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+        primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) == 0
+}
+
+// ── the atom channel has several senders, and the one exclusion that is DECLARED ──────────────
+
+// `marshal_generic` emits one indistinguishable positional atom edge for a call's callee, a
+// record-constructor spelling, a parameter reference, a nullary variant value and a string
+// literal, so a deeper read of the atom channel follows more than calls. Of those senders only
+// two are excludable from declared structure: a path-shaped literal, and a reference to one of
+// the declaration's OWN parameters, whose lexemes `FnArrowDecl.params` carries.
+//
+// THIS ROW IS THE PARAMETER EXCLUSION'S DISCRIMINATOR AND NOTHING ELSE. The entry's body
+// references `orphan_fn`, which is also the entry's own parameter name and also the name of a
+// leaking declaration in the fixture's module closure. Without the exclusion the walk follows
+// the parameter reference into `orphan_fn` and reports a leak no call reaches; with it, the row
+// is green. The remaining senders -- constructors, variant values, non-path literals -- are NOT
+// excludable and are NOT claimed to be: no fixture here can express them, because the skeleton
+// gives them no distinguishing shape, which is the capability named in
+// v2.std.fn_index `callees_from_node`.
+
+fn decl_with_param(qualified_name: String, name: String, param: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: nested_body_referencing(callee: callee),
+    params: [ FnArrowParam { name: symbol_intern_lexeme(lexeme: param), node: atom_node(lexeme: param) } ]
+  }
+}
+
+test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        decl_with_param(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          param: "orphan_fn",
+          callee: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) == 0
+}
+
+// POSITIVE CONTROL ON THAT EXCLUSION, so the row above is not green merely because the fixture
+// reaches nothing: the SAME body and the SAME callee, with the parameter renamed, does reach the
+// leak. Only the parameter name differs between the two rows.
+test fn the_same_reference_without_the_parameter_collision_is_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        decl_with_param(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          param: "unrelated_param",
+          callee: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) > 0
 }

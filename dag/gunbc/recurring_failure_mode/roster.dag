@@ -107,6 +107,7 @@ import gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism { a_
 import gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_of_pass { required_evidence_absent_reads_as_evidence_of_pass }
 import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_censored_cost_read_as_exact }
 import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
+import gunbc.recurring_failure_mode.fixture_flattened_to_the_reader_grain_it_should_falsify { fixture_flattened_to_the_reader_grain_it_should_falsify }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -205,4 +206,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   required_evidence_absent_reads_as_evidence_of_pass,
   right_censored_cost_read_as_exact,
   guard_precondition_discharged_by_the_route_that_uses_it,
+  fixture_flattened_to_the_reader_grain_it_should_falsify,
 ]

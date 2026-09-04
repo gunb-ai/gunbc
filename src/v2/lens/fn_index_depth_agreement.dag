@@ -1,0 +1,196 @@
+module v2.lens.fn_index_depth_agreement
+
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
+import v2.std.collection { Absent, List, Present }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count }
+import v2.std.text { String }
+import v2.std.fn_index {
+  FnArrowDecl,
+  atom_identities_in_node,
+  atom_identities_in_subtree,
+  callees_from_node,
+  fn_arrow_decl_facts_live,
+  param_names_of
+}
+
+// THE INSTRUMENT BEHIND TWO CLAIMS IN v2.std.fn_index, so that neither is a transcribed number.
+//
+// CLAIM ONE — the depth-one `atom_identities_in_node` is extensionally the fold_node reader that
+// #10156 replaced. `legacy_atoms` below is that reader reconstructed exactly, discarded child atoms
+// and all; `disagreeing_with_legacy` is the count of live declarations on which the two differ, and
+// it is what the exit verdict reads. This is the claim's discriminating control: change either
+// reader's grain and the run refuses.
+//
+// CLAIM TWO — depth one is the wrong grain at a declaration ROOT. `root_callees_lost_to_depth_one`
+// counts live declarations whose callees are invisible to a depth-one read of `decl.output` but
+// visible to a transitive one. It is the population `call_reachable_decls` could not leave before
+// `callees_from_node` was moved onto `atom_identities_in_subtree`.
+//
+// CLAIM THREE -- the size of the over-approximation the deeper read inherits.
+// `param_collisions` counts live declarations that reference one of their OWN parameters by a
+// lexeme that also names a declaration, which is the one sender in the shared atom channel that
+// `callees_from_node` can now exclude from declared structure. It is the population that would
+// become false call edges without that exclusion; the residue (record constructors, variant
+// values, non-path literals) is not measurable here for the same reason it is not excludable --
+// the skeleton gives it no distinguishing shape.
+//
+// NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live`, the zero-arity
+// whole-tree acquisition whose cost is the standing blocker recorded in
+// v2.test.claim.enforcement.determinism_transitive_witness; enrolling a whole-corpus subject on the
+// per-subject line would repeat exactly the finding that file documents. The grain claims are held
+// at the floor by fixture rows there; this is the re-derivation entry point for the corpus numbers.
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever
+}
+
+data empty_symbol_list: List<Symbol> = []
+data no_terminal_callees: List<String> = []
+
+fn agreement_symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn snoc_unique(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if contains(xs: xs, item: sym, eq: agreement_symbol_eq) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: sym)
+  }
+}
+
+type LegacyAtomState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn legacy_init(n: Node) -> LegacyAtomState {
+  LegacyAtomState { node: n, atoms: empty_symbol_list }
+}
+
+fn legacy_step(acc: LegacyAtomState, _edge: Edge, child: LegacyAtomState) -> LegacyAtomState {
+  let atoms = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } => snoc_unique(xs: acc.atoms, sym: sym)
+    Absent => acc.atoms
+  }
+  LegacyAtomState { node: acc.node, atoms: atoms }
+}
+
+fn legacy_atoms(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(
+    n: node,
+    algebra: NodeFold { init: legacy_init, step: legacy_step }
+  ).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => snoc_unique(xs: from_descendants, sym: sym)
+    Absent => from_descendants
+  }
+}
+
+fn agreement_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn decl_named(decls: List<FnArrowDecl>, name: String) -> Bool {
+  any(xs: decls, predicate: fn(d) { agreement_string_eq(a: d.name, b: name) })
+}
+
+fn param_collides_with_a_declaration(
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> Bool {
+  any(
+    xs: param_names_of(decl: decl),
+    predicate: fn(pname) { decl_named(decls: decls, name: pname) }
+  )
+}
+
+type DepthAgreementTally {
+  decls: Int
+  disagreeing_with_legacy: Int
+  depth_one_atom_total: Int
+  subtree_atom_total: Int
+  root_callees_lost_to_depth_one: Int
+  param_collisions: Int
+  subtree_node_total: Int
+}
+
+data empty_tally: DepthAgreementTally = DepthAgreementTally {
+  decls: 0,
+  disagreeing_with_legacy: 0,
+  depth_one_atom_total: 0,
+  subtree_atom_total: 0,
+  root_callees_lost_to_depth_one: 0,
+  param_collisions: 0,
+  subtree_node_total: 0
+}
+
+fn bump_when(count: Int, flag: Bool) -> Int {
+  match flag {
+    true => count + 1
+    false => count
+  }
+}
+
+fn tally_decl(
+  acc: DepthAgreementTally,
+  decl: FnArrowDecl,
+  decls: List<FnArrowDecl>
+) -> DepthAgreementTally {
+  let depth_one = length(xs: atom_identities_in_node(node: decl.output))
+  let legacy = length(xs: legacy_atoms(node: decl.output))
+  let subtree = length(xs: atom_identities_in_subtree(node: decl.output))
+  let deep_callees = length(
+    xs: callees_from_node(
+      node: decl.output,
+      terminal_callee_symbols: no_terminal_callees,
+      param_names: param_names_of(decl: decl)
+    )
+  )
+  DepthAgreementTally {
+    decls: acc.decls + 1,
+    disagreeing_with_legacy: bump_when(
+      count: acc.disagreeing_with_legacy,
+      flag: !(depth_one == legacy)
+    ),
+    depth_one_atom_total: acc.depth_one_atom_total + depth_one,
+    subtree_atom_total: acc.subtree_atom_total + subtree,
+    root_callees_lost_to_depth_one: bump_when(
+      count: acc.root_callees_lost_to_depth_one,
+      flag: depth_one == 0 && deep_callees > 0
+    ),
+    param_collisions: bump_when(
+      count: acc.param_collisions,
+      flag: param_collides_with_a_declaration(decl: decl, decls: decls)
+    ),
+    subtree_node_total: acc.subtree_node_total + node_subtree_count(n: decl.output)
+  }
+}
+
+fn fn_index_depth_agreement_tally() -> DepthAgreementTally {
+  let decls = fn_arrow_decl_facts_live()
+  fold_list(
+    xs: decls,
+    empty: empty_tally,
+    cons: fn(acc, decl) { tally_decl(acc: acc, decl: decl, decls: decls) }
+  )
+}
+
+fn fn_index_depth_agreement() -> ProcessExit {
+  let tally = fn_index_depth_agreement_tally()
+  if tally.decls == 0 {
+    exit_failure(
+      reason: "fn_arrow_decl_facts_live returned no declarations; the agreement verdict would be vacuous"
+    )
+  } else if tally.disagreeing_with_legacy > 0 {
+    exit_failure(
+      reason: "atom_identities_in_node no longer agrees with the fold_node reader #10156 replaced"
+    )
+  } else {
+    ExitSuccess
+  }
+}
