@@ -245,6 +245,7 @@ data arista_7050s_52_open_gaps: List<String> = [
   "The datasheet gives throughput in the model-comparison table only; no separate switching-capacity figure is published, so the two are the same number and that is stated, not derived.",
   "Weight (17 lb / 7.71 kg) is published in the datasheet's physical-characteristics section but no Weight measure exists in std.measure; the figure is deliberately not modelled as a bare Int to avoid an untyped number, and a consumer that needs it should extend std.measure first.",
   "The 7050S-52-F (front-to-rear) and 7050S-52-R (rear-to-front) airflow variants share this chassis row; the operator's order is for the base DCS-7050S-52 and the variant suffix, if any, will be read off the delivered unit.",
+  "operating_altitude_ft (10000 ft) is a Length with a non-metric unit. No Foot scale exists in std.measure (only SquareFoot for area); a Length-scale Foot would need a new Scale arm, which is its own PR. Carried as bare Int with the unit in the field name, same gap as mtbf_hours in extdeps.network.mikrotik_crs812.",
 ]
 
 fn arista_7050s_52_gap_count() -> Int {

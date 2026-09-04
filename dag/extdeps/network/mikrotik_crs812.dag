@@ -235,8 +235,9 @@ data crs812_dimensions_datasheet: Crs812Dimensions = Crs812Dimensions {
 // MTBF is a duration measured in hours. No Hour type exists at the Scale level (Minute uses the
 // Sixty prefix; Hour would need Sixty*Sixty = 3600, which no existing Scale arm provides).
 // A correct Hour type requires adding a new Scale arm, which is a load-bearing std change and
-// its own PR. The figure is therefore carried as a bare Int with the unit in the field name,
-// following the same pattern as operating_altitude_ft in extdeps.network.arista.
+// its own PR. The figure is therefore carried as a bare Int with the unit in the field name
+// (mtbf_hours). Same gap as operating_altitude_ft in extdeps.network.arista_7050s_52 — see the
+// open-gap row there for the precedent.
 type Crs812EnvironmentalFacts {
   operating_temp_min: Celsius
   operating_temp_max: Celsius

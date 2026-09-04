@@ -247,7 +247,7 @@ test fn arista_management_facts_are_carried() -> Bool {
 }
 
 test fn arista_open_gaps_are_declared_and_counted() -> Bool {
-  arista_7050s_52_gap_count() == 3
+  arista_7050s_52_gap_count() == 4
 }
 
 // ---------------- the shared shape, populated by three rows ----------------
