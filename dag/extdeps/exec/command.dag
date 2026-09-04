@@ -12,6 +12,7 @@ import gunbc.remote_shell_command {
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
   RemoteExecCommandRefusalCause,
+  remote_exec_command_rendered,
   remote_exec_command_string,
 }
 
@@ -181,7 +182,8 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
     SshExec { ssh_target: t, interpretation: interp } =>
       match remote_exec_command_string(argv: map(argv_words(command: command), a => a as NonEmptyStr), interpretation: interp) {
         RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
-        RemoteExecCommandBuilt { command: s } =>
+        RemoteExecCommandBuilt { command: sealed } =>
+          let s = remote_exec_command_rendered(command: sealed)
           CommandOverTransportBuilt {
             command: argv_command(
               program: sshpass_binary_name,
