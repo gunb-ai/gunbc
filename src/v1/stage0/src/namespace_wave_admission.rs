@@ -1032,8 +1032,18 @@ pub struct TransitionAdmission {
 /// narrated once -- the rule main's TWENTY-FOURTH states for the six rows before it, applied to the
 /// entry that would otherwise double-record it.
 ///
-const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
-
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04), PAID BECAUSE THIS CHANGE TOUCHES THE ROSTER. The sixteen
+/// `gunbc#10197` rung-drop per-row split rows are deleted, and their label with them. #10197 is on
+/// main (`0c031e6da4e`), and `gunbc.design_ledgers` there already imports `rung_drop_roster` from
+/// `gunbc.rung_drop.roster` by name -- so the base binds each admitted spelling to the admitted
+/// target and every one of those rows is CONSUMED, not stale.
+///
+/// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND NOT BY ANY OTHER, which is the whole point of
+/// the mechanism and is worth stating exactly. `consumed_due` is `roster_touched && !consumed.is_empty()`:
+/// a consumed row does NOT refuse unrelated pull requests, and it comes due on the roster file's own
+/// next touch. This change is that touch. Carrying them forward while editing the same file is the
+/// one thing the predicate is written to prevent.
+///
 /// OLLAMA-CHOICE RECLASSIFICATION (2026-09-04, gunbc#10358). `gunbc.model.choice` advertised a
 /// runtime-neutral domain it never served: every runtime identity was minted solely from Ollama
 /// release authority, the configuration carrier was an `ObservedOllamaLaunchConfiguration`, and the
@@ -1054,9 +1064,24 @@ const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#
 /// `gunbc.spark.serving_convergence_withholding` and `std.measure` -- carry the old module name only
 /// in prose, which the binding channel does not and should not observe.
 ///
-/// TRIGGER: these rows go when #10358 merges. Once the rename is on main, merge commit and base both
-/// carry it, no run can produce these deltas, and all 255 report stale -- which refuses every
-/// unrelated PR. The shrink is the fix, not housekeeping.
+/// TRIGGER, STATED AS THE MECHANISM ACTUALLY IMPLEMENTS IT. An earlier draft of this paragraph said
+/// the rows would report STALE and refuse EVERY unrelated PR. Both halves were wrong, and the
+/// correction matters because the wrong version overstates this cohort's blast radius.
+///
+/// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
+/// `admission_consumed_at_base` holds and the rows report CONSUMED -- not stale. A stale row matches
+/// no delta; a consumed row is one the base has already satisfied. Different states, different
+/// reporters.
+///
+/// Consumed rows are NOT globally blocking. The refusal predicate is
+/// `consumed_due = roster_touched && !consumed_admissions.is_empty()`, so they come due on the
+/// roster file's OWN next touch and on no other change -- an enrolled unit test names exactly that
+/// behaviour. Unrelated pull requests are unaffected.
+///
+/// They also cannot be removed in the cut that merges the rename: this change needs them PRESENT to
+/// admit its own wave. Deletion belongs to the first post-merge change that touches this roster, and
+/// an immediate dedicated cleanup is the intended shrink rather than waiting for an unrelated lane
+/// to inherit the debt.
 const OLLAMA_CHOICE_RECLASS_LABEL: &str = "ollama-choice reclassification gunbc#10358 2026-09-04";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
@@ -3618,166 +3643,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "with_memory_observations",
             spelling: "OllamaRunnerMemoryObservation",
             target: "gunbc.model.ollama_choice",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "rung_drop_blocks",
-            spelling: "rung_drop_roster",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.deleted_cadence_reference_census_witness_test",
-            in_declaration: "green_drop_on_dark_cadence",
-            spelling: "deleted_cadence_reference_drop",
-            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.deleted_cadence_reference_census_witness_test",
-            in_declaration: "red_drop_on_live_cadence",
-            spelling: "deleted_cadence_reference_drop",
-            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_declaration_witness_test",
-            in_declaration: "a_prose_declaration_refuses_the_off_ladder_question",
-            spelling: "floor_cut_heal",
-            target: "gunbc.rung_drop.floor_cut_heal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_declaration_witness_test",
-            in_declaration: "a_prose_declaration_renders_as_its_paragraph",
-            spelling: "floor_cut_heal",
-            target: "gunbc.rung_drop.floor_cut_heal",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_declaration_witness_test",
-            in_declaration: "rung_drop_message_discriminates_between_rows",
-            spelling: "source_root_ingest_gate_rung_drop",
-            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_declaration_witness_test",
-            in_declaration: "rung_drop_message_names_subject_and_trigger",
-            spelling: "source_root_ingest_gate_rung_drop",
-            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_declaration_witness_test",
-            in_declaration: "source_root_ingest_gate_drop_is_off_ladder",
-            spelling: "source_root_ingest_gate_rung_drop",
-            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "every_consolidated_typed_row_is_still_rostered",
-            spelling: "rung_drop_roster",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "every_prose_declaration_agrees_with_its_closed_arm",
-            spelling: "rung_drop_roster",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "standing_list_excludes_every_retired_drop",
-            spelling: "cited_symbol_census",
-            target: "gunbc.rung_drop.cited_symbol_census",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "standing_list_excludes_every_retired_drop",
-            spelling: "rung_drop_roster",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "standing_list_excludes_every_retired_drop",
-            spelling: "standing_rung_drops",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "the_roster_carries_both_declaration_arms",
-            spelling: "rung_drop_roster",
-            target: "gunbc.rung_drop.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.rung_drop_standing_partition_witness_test",
-            in_declaration: "the_roster_carries_both_declaration_arms",
-            spelling: "source_root_ingest_gate_rung_drop",
-            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.ci_gates",
-            in_declaration: "run_spec_gate",
-            spelling: "source_root_ingest_gate_rung_drop",
-            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
