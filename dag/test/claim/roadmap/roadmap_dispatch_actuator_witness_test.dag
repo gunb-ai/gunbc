@@ -83,7 +83,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_live_sessions_from_entries,
   fixture_projection_standing_refusal_tmux_entry,
   classify_dispatch_request,
-  dispatch_provider_instance_for,
+  dispatch_provider_instance_for_kind,
   session_lease_reuses_process_port_classifier_shape,
   hostile_node_id_stays_single_argv_token,
   DispatchPermitted,
@@ -662,7 +662,7 @@ test fn witness_live_sessions_panel_rows() -> Bool {
         let row = dispatch_live_session_row_for_scope(
           entry: entry,
           scope: scope,
-          instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+          instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
         )
         row.node_id == "panel-a"
           && row.session_name == "gunbc-dispatch-panel-a"

@@ -478,6 +478,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_12)),
     ] },
+    StaticRule { selector: ClassSelector { name: "surface-link" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
     StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
       decl(prop: FontWeight, value: "600"),
       decl(prop: FontSize, value: scale_var(t: text_15)),

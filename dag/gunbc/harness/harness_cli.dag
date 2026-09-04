@@ -1,0 +1,162 @@
+module gunbc.harness.harness_cli
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import gunbc.harness.harness_turn {
+  HarnessTurnConfig, HarnessTurnOutcome,
+  TurnProviderStopped, TurnStepBudgetExhausted, TurnTransportRefused,
+  TurnResponseUnreadable, TurnRequestUnwritable,
+  harness_run_turn, harness_outcome_label, harness_outcome_detail,
+}
+import gunbc.harness.harness_wire { harness_router_backend_url, harness_router_model }
+
+// THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
+// rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
+// this artifact as the one that looks finished without running.
+
+// The model is the SERVING desired value, not a literal. gunbc.spark.serving_desired is the single
+// authority for which model these hosts are converged to hold, and a second spelling here would
+// disagree with it the first time that row is amended -- which has already happened once, when the
+// desired model moved to deepseek-v4-gguf:no-h3-stop.
+// THE WIRE PROJECTION IS CITED, NOT REBUILT. The first wet run cast the OllamaModelRef straight to
+// String and sent `OllamaModelRef { name: deepseek-v4-gguf, tag: no-h3-stop }` -- the record's
+// rendering, not its wire form -- and the backend answered `invalid model name`. Building
+// `name + ":" + tag` here instead would have worked and been the DESIGN section 3 violation:
+// extdeps.ollama.api already owns how a model reference is spelled on the wire, and a second
+// spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
+// backend carried a structured cause; that is the argument for keeping the body on a failed post.
+fn harness_default_model() -> String {
+  harness_router_model
+}
+
+// THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
+// harness_timeout_kill_exit_code records: the 124 exit is what makes "the harness killed this"
+// decidable, and BSD has no timeout at all.
+data harness_macbook_timeout_program: FilePath = "/opt/homebrew/bin/gtimeout" as FilePath
+
+data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as FilePath
+
+data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
+
+data harness_default_duration_limit_seconds: Int = 120
+
+data harness_default_step_budget: Int = 8
+
+data harness_default_max_tokens: Int = 2048
+
+data harness_default_system_prompt: String = "You are a coding harness worker running inside the gunbc repository. You have one tool, run_command, which runs a shell command in the repository root and returns its combined output and exit code. Use it when you need to observe the repository. Be brief."
+
+fn harness_macbook_environment() -> HarnessToolEnvironment {
+  HarnessToolEnvironment {
+    working_directory: harness_macbook_working_directory,
+    timeout_program: harness_macbook_timeout_program,
+    duration_limit_seconds: harness_default_duration_limit_seconds,
+  }
+}
+
+fn harness_macbook_config() -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: harness_router_backend_url(),
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    system_prompt: harness_default_system_prompt,
+    request_scratch_path: harness_request_scratch_path,
+    environment: harness_macbook_environment(),
+  }
+}
+
+// THE PROBE PROMPT IS CHOSEN TO BE DISCRIMINATING, not to be easy. It cannot be answered from the
+// model's own knowledge, so a turn that returns a plausible answer WITHOUT a tool round has failed
+// the thing this run is testing -- which is the tool loop, not the model's fluency. The count is
+// whatever the repository actually holds at run time; the property under test is that the harness
+// posted, received a tool_use, executed it, posted the result back, and received a terminal.
+data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
+
+fn harness_probe_outcome() -> HarnessTurnOutcome {
+  harness_run_turn(
+    config: harness_macbook_config(),
+    prompt: harness_probe_prompt,
+    step_budget: harness_default_step_budget,
+  )
+}
+
+// A PROVIDER TERMINAL EXITS ZERO AND A HARNESS REFUSAL DOES NOT, and the exit code says which
+// happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
+// correctness: that is external verification's subject, and a harness that graded its own worker's
+// answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
+fn harness_probe_cli() -> ProcessExit {
+  let outcome = harness_probe_outcome()
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      ExitSuccess
+    _ =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+        ], ""),
+      }
+  }
+}
+
+// THE WORKER ENTRY THE BELT SPAWNS. Its two facts arrive as named arguments rather than through the
+// environment, because `gunbc run` has had --arg since the scm read landed and the belt's own
+// annotation saying otherwise ("gunbc run --function cannot pass an argument (no --arg flag)") is
+// stale -- measured against `gunbc run --help` on 2026-09-03, which lists it. That staleness is why
+// belt_dispatch_node_cli reads its node id from GUNBC_BELT_NODE_ID; repairing that is not this
+// lane's, but repeating the workaround here would propagate a dead constraint into new code.
+//
+// The working directory is the ATTEMPT WORKTREE, not the repository root, and that is the whole
+// point of taking it as an argument: an attempt edits its own checkout, and a harness that ran its
+// commands in the shared repo root would write outside the attempt's boundary while every receipt
+// said otherwise.
+fn harness_worker_config(worktree: FilePath) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: harness_router_backend_url(),
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    system_prompt: harness_worker_system_prompt,
+    request_scratch_path: harness_request_scratch_path,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: harness_macbook_timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+data harness_worker_system_prompt: String = "You are a coding worker running inside a git worktree for one roadmap task. You have one tool, run_command, which runs a shell command in the worktree and returns its combined output and exit code. Make the exact change the brief asks for and nothing else. Verify your work with run_command before you finish. Do not commit; the harness handles publication."
+
+data harness_worker_step_budget: Int = 24
+
+// EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
+// terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
+// satisfies the node is decided by the belt's pinned verification against the attempt head, which
+// is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
+fn harness_worker_cli(worktree: String, brief: String) -> ProcessExit {
+  let outcome = harness_run_turn(
+    config: harness_worker_config(worktree: worktree as FilePath),
+    prompt: brief,
+    step_budget: harness_worker_step_budget,
+  )
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      ExitSuccess
+    _ =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+        ], ""),
+      }
+  }
+}
+
+fn harness_probe_report() -> String {
+  let outcome = harness_probe_outcome()
+  join([
+    "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
+    harness_outcome_detail(outcome: outcome), "\n",
+  ], "")
+}
