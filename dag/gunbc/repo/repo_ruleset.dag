@@ -1216,9 +1216,9 @@ fn repo_ruleset_observed_actuation_admission(
 // one the inverted cause was lying about. It carries the reader identity, because the refusal is a
 // property of the credential rather than of the moment, and a retry cannot discharge it.
 //
-// The terminal arm is ActuationRealizationUnbound: with nothing held, this tree still carries no
-// admitted write realization, and admission may never silently become a write. #10204 owns the
-// read-back transaction after operator sign-off.
+// The terminal arm is RepositoryRulesetActuationRealizationUnbound: with nothing held, this tree
+// still carries no admitted write realization, and admission may never silently become a write.
+// #10204 owns the read-back transaction after operator sign-off.
 fn repo_ruleset_actuation_admission(
   subject: RepositoryRulesetConvergenceSubject,
   observed: RulesetObservation,
@@ -1295,12 +1295,14 @@ fn world_repo_ruleset_differences(
 }
 
 // An admitted subject still refuses here, and the cause it refuses with must name the state the
-// admission ESTABLISHED rather than one it ruled out. Admission is reached only when the bypass
-// roster projects, no live rule is unexpected, and the desire IS signed -- so refusing an admitted
-// subject with UnsignedDesire would assert the negation of what was just decided. The honest cause
-// is ActuationUnbound: this tree carries no admitted write realization, which is exactly why the
-// arm refuses. #10204 owns the read-back transaction after operator sign-off; admission cannot
-// silently become a write. (Found in review on gunbc#10324: the arm is unreachable today, so it
+// admission ESTABLISHED rather than one it ruled out. Admission is reached only once the bypass
+// roster projects, no live rule is unexpected, and no signed policy is left unrepresented -- so a
+// cause asserting any of those would assert the negation of what was just decided. No such cause
+// remains constructible: the five located causes carry no unsigned-desire standing at all, which
+// is the earlier inversion having been fixed in the type rather than in the arm. The honest cause
+// is RepositoryRulesetActuationRealizationUnbound: this tree carries no admitted write
+// realization, which is exactly why the arm refuses. #10204 owns the read-back transaction after
+// operator sign-off; admission cannot silently become a write. (Found in review on gunbc#10324: the arm is unreachable today, so it
 // misdiagnoses nothing in production -- but a diagnostic that is wrong only once a writer lands is
 // wrong at the one moment it is read.)
 fn world_repo_ruleset_apply(
