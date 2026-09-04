@@ -943,6 +943,390 @@ pub fn darwin_physical_memory_bytes() -> Option<u64> {
     None
 }
 
+/// The bind request an executor may carry, read from `GUNBC_BIND_MEMORY_CGROUP_BYTES`.
+///
+/// DELIBERATELY NOT `GUNBC_MEMORY_BUDGET_BYTES`, and the separation is the point rather than
+/// naming taste. That variable is a PLANNING request: it asks consumers to plan against a
+/// smaller number and constrains no allocation (measured inert — halving it moved resident
+/// memory by 0.05%), while remaining live as a refusal trigger. This one asks the KERNEL for a
+/// limit, and once granted it is enforced against every allocation whether or not any consumer
+/// consults it. One is a wish and the other is a wall; reading both from one variable would
+/// make a run's boundedness depend on which reader looked.
+///
+/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRequest`.
+pub const BIND_MEMORY_CGROUP_ENV: &str = "GUNBC_BIND_MEMORY_CGROUP_BYTES";
+
+/// The cgroup this executor creates for itself when it binds. One fixed leaf under the tree
+/// root, because a per-run name would leave a growing population of empty groups behind on a
+/// reused runner and nothing in this repository would own deleting them.
+pub const BIND_MEMORY_CGROUP_LEAF: &str = "gunbc.bound";
+
+/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRefusalCause`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CgroupBindRefusalCause {
+    MemoryControllerUnavailable,
+    CgroupTreeNotWritable,
+    RequestNotBelowMachineMemory { requested: u64, machine: u64 },
+    MachineMemoryUnreadable,
+    RequestUnreadable { raw: String },
+    RequestNotAboveCurrentUsage { requested: u64, current: u64 },
+    CurrentUsageUnreadable,
+}
+
+/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindRequest`. Absent and unreadable are
+/// different answers: silence is the correct response to a question nobody asked and never to one
+/// asked badly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CgroupBindRequest {
+    Requested { bound: u64 },
+    Unreadable { raw: String },
+}
+
+/// Authority: `gunbc.memory_cgroup_binding` `CgroupBindDecision`. Four outcomes and only one of
+/// them writes; `Refused` is the only one that stops the line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CgroupBindDecision {
+    NotRequested,
+    UnnecessaryLimitAlreadyBinds { source: HostBudgetSource },
+    Applicable { bound: u64 },
+    Refused { cause: CgroupBindRefusalCause },
+}
+
+/// The pure decision, mirroring `gunbc.memory_cgroup_binding` `cgroup_bind_decision`. Every
+/// input is a parameter so the discriminating cases are reachable from a test on any machine —
+/// the same shape `resolve_host_budget` uses, and for the same reason: the states worth walling
+/// are ones the CI machine does not have.
+pub fn cgroup_bind_decision(
+    request: Option<&CgroupBindRequest>,
+    existing: Option<&HostBudgetObservation>,
+    machine_memory: Option<u64>,
+    current_usage: Option<u64>,
+    memory_controller_available: bool,
+    cgroup_tree_writable: bool,
+) -> CgroupBindDecision {
+    let Some(request) = request else {
+        return CgroupBindDecision::NotRequested;
+    };
+    let bound = match request {
+        CgroupBindRequest::Unreadable { raw } => {
+            return CgroupBindDecision::Refused {
+                cause: CgroupBindRefusalCause::RequestUnreadable { raw: raw.clone() },
+            }
+        }
+        CgroupBindRequest::Requested { bound } => *bound,
+    };
+    // THE NO-OP ARM MUST PROVE THE SUBJECT IT CLAIMS. `bounds_this_process` is the authority
+    // already modelling which sources hard-bound this process: memory.max does, memory.high (a
+    // reclaim throttle allocations may cross) and Darwin physical memory (a fact about the
+    // machine) do not. Treating every observation as "already bound" suppressed a requested
+    // KERNEL bind under a memory.high slice and on macOS, and told the operator a limit bound
+    // them when nothing hard-bounded them at all.
+    if let Some(observed) = existing {
+        if observed.source.bounds_this_process() {
+            return CgroupBindDecision::UnnecessaryLimitAlreadyBinds {
+                source: observed.source.clone(),
+            };
+        }
+    }
+    if !memory_controller_available {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::MemoryControllerUnavailable,
+        };
+    }
+    if !cgroup_tree_writable {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    let Some(machine) = machine_memory else {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::MachineMemoryUnreadable,
+        };
+    };
+    if bound >= machine {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::RequestNotBelowMachineMemory {
+                requested: bound,
+                machine,
+            },
+        };
+    }
+    let Some(current) = current_usage else {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CurrentUsageUnreadable,
+        };
+    };
+    if bound <= current {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::RequestNotAboveCurrentUsage {
+                requested: bound,
+                current,
+            },
+        };
+    }
+    CgroupBindDecision::Applicable { bound }
+}
+
+/// This process's own resident set in bytes, from `/proc/self/status` `VmRSS`.
+///
+/// Read for one question: whether the requested bound would be fatal the instant it is written.
+/// A `memory.max` at or below what the process already holds kills the run before any later
+/// admission arm could report the bound as too small, so "an undersized bound refuses loudly
+/// later" is false at the bottom of the range unless this is checked first. Like
+/// `machine_memory_total_bytes`, it never becomes anybody's budget.
+pub fn self_resident_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    status.lines().find_map(|line| {
+        let rest = line.strip_prefix("VmRSS:")?;
+        let kib: u64 = rest.split_whitespace().next()?.parse().ok()?;
+        kib.checked_mul(1024)
+    })
+}
+
+/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_refusal_cause_text`.
+pub fn cgroup_bind_refusal_cause_text(cause: &CgroupBindRefusalCause) -> String {
+    match cause {
+        CgroupBindRefusalCause::MemoryControllerUnavailable => {
+            "the memory controller is not available in this cgroup2 tree, so no memory.max can \
+             be written here; the executor cannot give itself an enforceable limit and must not \
+             proceed as though it had one"
+                .to_string()
+        }
+        CgroupBindRefusalCause::CgroupTreeNotWritable => {
+            "the cgroup2 tree is not writable by this process, so the requested bound cannot be \
+             created; a bound that cannot be written is not a bound and this run has none"
+                .to_string()
+        }
+        CgroupBindRefusalCause::RequestNotBelowMachineMemory { requested, machine } => format!(
+            "the requested memory bound is not strictly below this machine's memory (requested \
+             {requested} bytes, machine {machine} bytes), so the limit could never be reached \
+             and would bound nothing while being cited as a bound; size the executor larger \
+             than the bound rather than raising the bound to the executor"
+        ),
+        CgroupBindRefusalCause::MachineMemoryUnreadable => {
+            "this machine's memory is unreadable, so whether the requested bound could bind at \
+             all is UNKNOWN; refuse rather than write a limit that may be a decoration"
+                .to_string()
+        }
+        CgroupBindRefusalCause::RequestUnreadable { raw } => format!(
+            "a memory bound was REQUESTED and cannot be read as a byte count ({raw}); a request \
+             that cannot be understood is refused rather than treated as no request, because \
+             proceeding unbounded is precisely what the operator asked not to happen"
+        ),
+        CgroupBindRefusalCause::RequestNotAboveCurrentUsage { requested, current } => format!(
+            "the requested memory bound is not above what this process ALREADY holds (requested \
+             {requested} bytes, currently resident {current} bytes), so writing it would kill \
+             the run at the moment it takes effect, before any later admission check could \
+             report anything; this says nothing about whether the bound is large enough for the \
+             work, only that it is not instantly fatal"
+        ),
+        CgroupBindRefusalCause::CurrentUsageUnreadable => {
+            "this process's own resident size is unreadable, so whether the requested bound \
+             would be instantly fatal is UNKNOWN; refuse rather than write a limit that may kill \
+             the run before it can diagnose anything"
+                .to_string()
+        }
+    }
+}
+
+/// The refusal rendering. `None` on every non-refusing arm, so a caller that logs a cause
+/// unconditionally cannot fabricate one for a decision that did not refuse.
+/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_decision_refusal_text`.
+pub fn cgroup_bind_refusal_diagnostic(decision: &CgroupBindDecision) -> Option<String> {
+    match decision {
+        CgroupBindDecision::Refused { cause } => Some(format!(
+            "MemoryCgroupBindRefused: {}",
+            cgroup_bind_refusal_cause_text(cause)
+        )),
+        _ => None,
+    }
+}
+
+/// The announcement, so a log distinguishes a run that bound itself from one that was already
+/// bounded from one that asked for neither — three states that all continue and are otherwise
+/// indistinguishable downstream.
+/// Authority: `gunbc.memory_cgroup_binding` `cgroup_bind_decision_note`.
+pub fn cgroup_bind_note(decision: &CgroupBindDecision) -> String {
+    match decision {
+        CgroupBindDecision::NotRequested => "memory-cgroup-bind: not requested".to_string(),
+        CgroupBindDecision::UnnecessaryLimitAlreadyBinds { source } => format!(
+            "memory-cgroup-bind: unnecessary, a limit already binds this process: {}",
+            source.label()
+        ),
+        CgroupBindDecision::Applicable { bound } => {
+            format!("memory-cgroup-bind: applying memory.max={bound}")
+        }
+        CgroupBindDecision::Refused { cause } => {
+            format!(
+                "MemoryCgroupBindRefused: {}",
+                cgroup_bind_refusal_cause_text(cause)
+            )
+        }
+    }
+}
+
+/// `/proc/meminfo` MemTotal in bytes.
+///
+/// READ FOR ONE QUESTION ONLY and it is not a budget question: whether a requested bound could
+/// bind at all. `resolve_host_budget` deleted its meminfo arms deliberately — a host-shared
+/// reading standing in for a process-scoped bound is DESIGN §5's absorbing substitution, and it
+/// is what got `main_wet` SIGKILLed with no diagnostic. Nothing here reverses that: this number
+/// never becomes anybody's budget, and when it is absent the bind REFUSES rather than assuming
+/// the request fits.
+pub fn machine_memory_total_bytes() -> Option<u64> {
+    let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+    meminfo.lines().find_map(|line| {
+        let rest = line.strip_prefix("MemTotal:")?;
+        let kib: u64 = rest.split_whitespace().next()?.parse().ok()?;
+        kib.checked_mul(1024)
+    })
+}
+
+/// Whether the cgroup2 tree root lists the `memory` controller.
+fn cgroup_memory_controller_available() -> bool {
+    std::fs::read_to_string("/sys/fs/cgroup/cgroup.controllers")
+        .map(|s| s.split_whitespace().any(|c| c == "memory"))
+        .unwrap_or(false)
+}
+
+/// Whether this process may create the child group this bind would use, and whether THIS call is
+/// what created it. Probed by performing the creation rather than by inspecting permission bits:
+/// the question is whether the write succeeds, and anything short of performing it is a
+/// prediction.
+///
+/// AN ALREADY-EXISTING LEAF IS NOT EVIDENCE OF ANYTHING, which is the correction this signature
+/// carries (reported by tidy-swift-334 on #10465). The previous form mapped `AlreadyExists` to
+/// `true`, so a run that created the leaf and then refused left residue that the NEXT run read
+/// back as proof of its own writability — a prediction sourced from an earlier failure instead
+/// of from permission bits, and blind to permissions revoked in between. Existence is therefore
+/// reported as `created: false` and settles nothing; the only writability evidence this module
+/// accepts is a write it performed, and the `memory.max` write that follows is the one that
+/// decides.
+fn cgroup_leaf_create(dir: &Path) -> Option<bool> {
+    match std::fs::create_dir(dir) {
+        Ok(()) => Some(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Some(false),
+        Err(_) => None,
+    }
+}
+
+/// Undo a leaf THIS call created. Only ever asked about a directory `cgroup_leaf_create` reported
+/// creating, so a group that was already there — another run's, or an operator's — is never
+/// removed by a refusal.
+fn cgroup_leaf_remove_if_created(dir: &Path, created: bool) {
+    if created {
+        let _ = std::fs::remove_dir(dir);
+    }
+}
+
+/// Create the bound, move this process into it, and return the executed decision.
+///
+/// THE ORDER IS THE SAFETY PROPERTY, AND IT IS STRONGER THAN THE FIRST REVISION CLAIMED. The
+/// decision is taken first from an observation read through the ordinary budget path, so a
+/// machine that already binds this process is never written to; NO ARM THAT REFUSES TOUCHES THE
+/// CGROUP TREE AT ALL, and any failure after the first write unwinds the group this call
+/// created, so a refusal leaves the tree exactly as it found it; and afterwards every consumer
+/// still reads its budget through `read_host_budget_resolution` exactly as before. This
+/// function supplies no number to anybody — a successful bind is invisible except as an
+/// observation that now exists, which is what keeps `gunbc.host_budget_source` the single
+/// authority for what the limit IS.
+///
+/// AND IT DOES NOT DISARM ANY REFUSAL. The stall verdict still watches this process's own major
+/// faults and user-CPU share; the whole-corpus admission still compares the resulting budget
+/// against measured demand. A bound that is too small refuses through those arms, loudly, which
+/// is the correct ending — this function's job is to make a bound EXIST, never to make one fit.
+///
+/// Authority: `gunbc.memory_cgroup_binding`.
+pub fn apply_memory_cgroup_bind() -> CgroupBindDecision {
+    // ABSENT AND UNREADABLE ARE DIFFERENT ANSWERS. The first revision read this through
+    // `.ok().and_then(|s| s.trim().parse().ok())`, so an empty, nonnumeric or overflowing value
+    // became `None` and `None` meant "not requested" — an operator who asked to be bounded, with
+    // a malformed value, proceeded unbounded and was told nothing (review 5117628699).
+    let request = match std::env::var(BIND_MEMORY_CGROUP_ENV) {
+        Err(_) => None,
+        Ok(raw) => Some(match raw.trim().parse::<u64>() {
+            Ok(bound) => CgroupBindRequest::Requested { bound },
+            Err(_) => CgroupBindRequest::Unreadable { raw },
+        }),
+    };
+    if request.is_none() {
+        return CgroupBindDecision::NotRequested;
+    }
+    let existing = match read_host_budget_resolution() {
+        HostBudgetResolution::Resolved { observation, .. } => Some(observation),
+        _ => None,
+    };
+    let controller = cgroup_memory_controller_available();
+
+    // ASK THE DECISION WHAT IT WOULD ANSWER IF THE TREE WERE WRITABLE, BEFORE TOUCHING THE TREE.
+    // Writability is the one input that cannot be read without performing a write; every other
+    // input can refuse on its own. If the answer is already not `Applicable` it does not depend
+    // on writability, so no probe happens and the tree is left untouched.
+    let hypothetical = cgroup_bind_decision(
+        request.as_ref(),
+        existing.as_ref(),
+        machine_memory_total_bytes(),
+        self_resident_bytes(),
+        controller,
+        true,
+    );
+    let CgroupBindDecision::Applicable { bound } = hypothetical else {
+        return hypothetical;
+    };
+
+    // ONLY NOW IS THE TREE TOUCHED, and every failure from here unwinds what this call created.
+    // A REFUSAL LEAVES THE TREE EXACTLY AS IT FOUND IT.
+    let leaf = Path::new("/sys/fs/cgroup").join(BIND_MEMORY_CGROUP_LEAF);
+    let Some(created) = cgroup_leaf_create(&leaf) else {
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    };
+
+    // THE `+memory` ERROR IS DISCARDED DELIBERATELY AND THE REASON IS THE WHOLE POINT: this write
+    // fails with EBUSY when the controller is ALREADY enabled on the subtree, which is a success
+    // condition wearing an error's clothes, and it can fail for permissions, which is not. The
+    // two are not distinguishable from the error alone — so nothing is CONCLUDED from this call
+    // in either direction. What decides is the read-back below: the controller is enabled if and
+    // only if `memory.max` accepts the value and reports it back.
+    let _ = std::fs::write("/sys/fs/cgroup/cgroup.subtree_control", "+memory");
+
+    // A FAILED WRITE IS A REFUSAL, NOT A DEGRADED SUCCESS, AND SUCCESS IS PROVEN RATHER THAN
+    // ASSUMED (review 5117628699). Every arm below leaves the process exactly as unbounded as it
+    // was, so reporting anything but a refusal would be the escape hatch this module closes.
+    if std::fs::write(leaf.join("memory.max"), bound.to_string()).is_err() {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    // READ THE LIMIT BACK. A write that returned Ok is not proof the kernel took the value: the
+    // claim being published is that this process now runs under `bound`, and only the file says
+    // so.
+    if read_cgroup_u64(&leaf, "memory.max") != Some(bound) {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    if std::fs::write(leaf.join("cgroup.procs"), std::process::id().to_string()).is_err() {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    // AND PROVE MEMBERSHIP, for the same reason: a limit this process is not IN bounds nothing.
+    // `binding_cap_cgroup_dir` walks `/proc/self/cgroup` leaf-to-root, so it answers about this
+    // process rather than about the file that was written.
+    if binding_cap_cgroup_dir().is_none() {
+        cgroup_leaf_remove_if_created(&leaf, created);
+        return CgroupBindDecision::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+    }
+    CgroupBindDecision::Applicable { bound }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1306,5 +1690,277 @@ mod tests {
         assert!(whole_corpus_compile_refusal_diagnostic(&unreadable)
             .expect("refusal must diagnose")
             .contains("WholeCorpusCompileBudgetUnreadable"));
+    }
+
+    fn req(bound: u64) -> CgroupBindRequest {
+        CgroupBindRequest::Requested { bound }
+    }
+
+    /// A machine large enough that the machine relation is never the thing under test, and a
+    /// current usage small enough that the not-instantly-fatal relation is not either.
+    const SIZED_MACHINE: u64 = 26_448_039_936;
+    const SMALL_RESIDENT: u64 = 1_073_741_824;
+
+    /// The admitting arm: an action holding no observation, on a machine larger than the bound
+    /// it asks for, binds. This is the capability the module exists to restore.
+    #[test]
+    fn an_unbounded_action_on_a_sized_machine_binds() {
+        assert_eq!(
+            cgroup_bind_decision(
+                Some(&req(10_737_418_240)),
+                None,
+                Some(SIZED_MACHINE),
+                Some(SMALL_RESIDENT),
+                true,
+                true
+            ),
+            CgroupBindDecision::Applicable {
+                bound: 10_737_418_240
+            }
+        );
+    }
+
+    /// RED — the default remote runner, unsized: the bound asked for is larger than the whole
+    /// machine, so a written memory.max could never be reached and would bound nothing while
+    /// being cited as a bound.
+    #[test]
+    fn a_bound_not_below_machine_memory_refuses_and_names_both_quantities() {
+        let decision = cgroup_bind_decision(
+            Some(&req(10_737_418_240)),
+            None,
+            Some(7_838_253_056),
+            Some(SMALL_RESIDENT),
+            true,
+            true,
+        );
+        let text = cgroup_bind_refusal_diagnostic(&decision).expect("refusal must diagnose");
+        assert!(text.contains("MemoryCgroupBindRefused"));
+        assert!(text.contains("10737418240"));
+        assert!(text.contains("7838253056"));
+        assert!(text.contains("size the executor larger than the bound"));
+    }
+
+    /// The machine boundary is STRICT, checked one byte apart from both sides.
+    #[test]
+    fn the_machine_boundary_is_strict_on_both_sides() {
+        assert!(matches!(
+            cgroup_bind_decision(
+                Some(&req(7_838_253_056)),
+                None,
+                Some(7_838_253_056),
+                Some(SMALL_RESIDENT),
+                true,
+                true
+            ),
+            CgroupBindDecision::Refused { .. }
+        ));
+        assert!(matches!(
+            cgroup_bind_decision(
+                Some(&req(7_838_253_055)),
+                None,
+                Some(7_838_253_056),
+                Some(SMALL_RESIDENT),
+                true,
+                true
+            ),
+            CgroupBindDecision::Applicable { .. }
+        ));
+    }
+
+    /// RED — a malformed request must NOT read as "no request". An operator who asked to be
+    /// bounded, with a value that cannot be parsed, would otherwise proceed unbounded and be
+    /// told nothing: silence is the right answer to a question nobody asked and never to one
+    /// asked badly. Review 5117628699.
+    #[test]
+    fn an_unreadable_request_refuses_rather_than_becoming_no_request() {
+        let decision = cgroup_bind_decision(
+            Some(&CgroupBindRequest::Unreadable {
+                raw: "  twelve gigs ".to_string(),
+            }),
+            None,
+            Some(SIZED_MACHINE),
+            Some(SMALL_RESIDENT),
+            true,
+            true,
+        );
+        let text = cgroup_bind_refusal_diagnostic(&decision).expect("refusal must diagnose");
+        assert!(text.contains("twelve gigs"));
+        assert!(text.contains("refused rather than treated as no request"));
+        assert!(!matches!(decision, CgroupBindDecision::NotRequested));
+    }
+
+    /// RED — a bound at or below what the process already holds is fatal the instant it is
+    /// written, so the run dies before any later admission arm could report it as too small.
+    /// Zero is the extreme case the first revision admitted. Review 5117628699.
+    #[test]
+    fn a_bound_not_above_current_usage_refuses_including_zero() {
+        for bound in [0_u64, SMALL_RESIDENT, SMALL_RESIDENT - 1] {
+            let decision = cgroup_bind_decision(
+                Some(&req(bound)),
+                None,
+                Some(SIZED_MACHINE),
+                Some(SMALL_RESIDENT),
+                true,
+                true,
+            );
+            assert!(
+                matches!(
+                    decision,
+                    CgroupBindDecision::Refused {
+                        cause: CgroupBindRefusalCause::RequestNotAboveCurrentUsage { .. }
+                    }
+                ),
+                "bound {bound} must refuse"
+            );
+        }
+        // And one byte above the resident set admits, so the boundary is strict rather than a
+        // wide band that would hide a defect on either side.
+        assert!(matches!(
+            cgroup_bind_decision(
+                Some(&req(SMALL_RESIDENT + 1)),
+                None,
+                Some(SIZED_MACHINE),
+                Some(SMALL_RESIDENT),
+                true,
+                true
+            ),
+            CgroupBindDecision::Applicable { .. }
+        ));
+    }
+
+    /// An unreadable machine or an unreadable resident size refuses rather than assuming the
+    /// request fits — the arms that would otherwise be the absorbing ones.
+    #[test]
+    fn an_unreadable_input_refuses_rather_than_assuming_the_request_fits() {
+        assert_eq!(
+            cgroup_bind_decision(
+                Some(&req(1024)),
+                None,
+                None,
+                Some(SMALL_RESIDENT),
+                true,
+                true
+            ),
+            CgroupBindDecision::Refused {
+                cause: CgroupBindRefusalCause::MachineMemoryUnreadable
+            }
+        );
+        assert_eq!(
+            cgroup_bind_decision(
+                Some(&req(1024)),
+                None,
+                Some(SIZED_MACHINE),
+                None,
+                true,
+                true
+            ),
+            CgroupBindDecision::Refused {
+                cause: CgroupBindRefusalCause::CurrentUsageUnreadable
+            }
+        );
+    }
+
+    /// Neither mechanism failure may degrade into proceeding unbounded.
+    #[test]
+    fn an_unwritable_or_uncontrolled_tree_refuses_rather_than_proceeding_unbounded() {
+        assert_eq!(
+            cgroup_bind_decision(
+                Some(&req(10_737_418_240)),
+                None,
+                Some(SIZED_MACHINE),
+                Some(SMALL_RESIDENT),
+                false,
+                true
+            ),
+            CgroupBindDecision::Refused {
+                cause: CgroupBindRefusalCause::MemoryControllerUnavailable
+            }
+        );
+        assert_eq!(
+            cgroup_bind_decision(
+                Some(&req(10_737_418_240)),
+                None,
+                Some(SIZED_MACHINE),
+                Some(SMALL_RESIDENT),
+                true,
+                false
+            ),
+            CgroupBindDecision::Refused {
+                cause: CgroupBindRefusalCause::CgroupTreeNotWritable
+            }
+        );
+    }
+
+    /// THE NO-OP ARM, and it is keyed on the source that actually hard-bounds this process. A
+    /// memory.max observation suppresses the bind: the process already has what was asked for.
+    #[test]
+    fn a_process_already_bound_by_memory_max_is_not_written_to() {
+        let observation = HostBudgetObservation {
+            source: HostBudgetSource::CgroupMemoryMax {
+                cgroup_dir: "/sys/fs/cgroup/actions-runner.slice".to_string(),
+            },
+            bytes: 16_106_127_360,
+        };
+        let decision = cgroup_bind_decision(
+            Some(&req(10_737_418_240)),
+            Some(&observation),
+            Some(SIZED_MACHINE),
+            Some(SMALL_RESIDENT),
+            true,
+            true,
+        );
+        assert!(cgroup_bind_refusal_diagnostic(&decision).is_none());
+        assert!(matches!(
+            decision,
+            CgroupBindDecision::UnnecessaryLimitAlreadyBinds { .. }
+        ));
+        let note = cgroup_bind_note(&decision);
+        assert!(note.contains("unnecessary"));
+        assert!(note.contains("actions-runner.slice"));
+    }
+
+    /// RED — THE NON-BOUNDING-SOURCE CONTROL, which is the discriminating half of the arm above.
+    /// `memory.high` is a reclaim throttle allocations may cross, and Darwin physical memory is a
+    /// fact about the machine; neither hard-bounds this process, so neither may suppress a
+    /// requested kernel bind. The first revision accepted any observation here and reported that
+    /// a limit already bound a process that nothing bounded. Review 5117628699.
+    #[test]
+    fn a_non_bounding_observation_does_not_suppress_the_bind() {
+        for source in [
+            HostBudgetSource::CgroupMemoryHigh {
+                cgroup_dir: "/sys/fs/cgroup/actions-runner.slice".to_string(),
+            },
+            HostBudgetSource::DarwinPhysicalMemory,
+        ] {
+            assert!(!source.bounds_this_process());
+            let observation = HostBudgetObservation {
+                source,
+                bytes: 16_106_127_360,
+            };
+            assert!(
+                matches!(
+                    cgroup_bind_decision(
+                        Some(&req(10_737_418_240)),
+                        Some(&observation),
+                        Some(SIZED_MACHINE),
+                        Some(SMALL_RESIDENT),
+                        true,
+                        true
+                    ),
+                    CgroupBindDecision::Applicable { .. }
+                ),
+                "a source that does not bound this process must not suppress the bind"
+            );
+        }
+    }
+
+    /// Binding is opt-in: with no request nothing is decided against, even on a machine that
+    /// would have refused, so no existing caller changes behaviour.
+    #[test]
+    fn no_request_is_a_no_op_even_where_a_request_would_have_refused() {
+        let decision = cgroup_bind_decision(None, None, Some(7_838_253_056), None, false, false);
+        assert_eq!(decision, CgroupBindDecision::NotRequested);
+        assert!(cgroup_bind_refusal_diagnostic(&decision).is_none());
+        assert!(cgroup_bind_note(&decision).contains("not requested"));
     }
 }

@@ -15982,8 +15982,10 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let binds = fields |> join(separator: ", ")
   let roots = binding.source_roots |> map(root => concat("\"", root, "\".to_string()")) |> join(separator: ", ")
-  let public_args = binding.public_operands
-    |> map(arg => concat("(\"", arg.parameter, "\".to_string(), ", arg.operand_field, ")"))
+  let public_args = concat(
+      binding.public_operands |> map(arg => concat("(\"", arg.parameter, "\".to_string(), ", arg.operand_field, ")")),
+      binding.public_options |> map(opt => concat("(\"", opt.parameter, "\".to_string(), ", opt.option_field, ")")),
+    )
     |> join(separator: ", ")
   match binding.execution_class {
     BootstrapSuccessorOperation {} => if operation.field != WholeDeclaration {

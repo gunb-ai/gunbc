@@ -19,18 +19,25 @@ import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
-import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner_slot_provision {
+  runner_slot_member_observed,
+  runner_slot_name_in_host_grammar,
+  RunnerSlotProvenance,
+  SlotProvenanceObserved,
+  RunnerSlotObservation,
   RunnerSlotMember,
   RunnerSlotsObserved,
   RunnerSlotsUnobserved,
   observe_runner_slot_members_wet,
 }
 import product.placement_supply { HostIdentity }
+import extdeps.github.actions_runner { actions_runner_registration_file_name }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
 import gunbc.fabric_allocation_store_substrate {
@@ -57,7 +64,18 @@ import extdeps.posix.path_ownership {
   PathModeObserved,
   PathModeUnobserved,
 }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation {
+  runner_unit_standings_unobserved_no_transaction,
+  runner_activation_readiness_unobserved_no_transaction,
+  RunnerUnitStandings,
+  RunnerUnitStanding,
+  UnitStandingsObserved,
+  UnitStandingsUnobserved,
+  runner_host_activation_units,
+}
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
+import extdeps.systemd { ActiveState, UnitFileState }
 import gunbc.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,
   PayloadAdmitted,
@@ -105,7 +123,10 @@ import gunbc.fleet_converge_plan {
   FullHost,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  SparkServing,
+  SparkServingConverge,
   fleet_converge_scope_of_wire,
+  fleet_converge_scope_matches,
   LaunchEnvironment,
   fleet_converge_plan_artifact_of_request,
   ScopeDecoded,
@@ -113,6 +134,7 @@ import gunbc.fleet_converge_plan {
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
+  fleet_converge_apply_invoker,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_observation,
   fleet_converge_generation_admission,
@@ -127,9 +149,47 @@ import gunbc.fleet_converge_plan {
 import gunbc.spark.serving_execution_schedule {
   SparkServingAxisNotApplicable,
   SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
   SparkServingAxisDisposition,
   scheduled_rows_list,
 }
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_transport,
+}
+import gunbc.spark.serving_observe {
+  spark_serving_observed_facts_via_locus,
+  SparkServingObservedFactsReady,
+  SparkServingObservedFactsRefused,
+  SparkServingPlanObservation,
+}
+import gunbc.spark.serving_converge_plan { spark_serving_axis_for_observation }
+import gunbc.spark.serving_converge_apply {
+  spark_serving_exec_frozen_typed_rows,
+  SparkServingFrozenRemoteExecApplied,
+  SparkServingFrozenRemoteExecConvergedNoop,
+  SparkServingFrozenRemoteExecRefused,
+  spark_serving_step_sequence_failed,
+  spark_serving_step_sequence_wire,
+  spark_serving_step_failure_causes_wire,
+}
+import gunbc.fleet_multi_principal_probe {
+  spark_converge_target_selection_of,
+  spark_converge_target_env_name,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
+}
+import extdeps.git
+import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_host_identity }
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.repository { gunbc_repository }
+import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
@@ -142,7 +202,7 @@ import gunbc.actions_run_binding {
 }
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
-  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir,
+  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name,
   write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
   ReceiptWritten, ReceiptWriteRefused,
@@ -241,6 +301,19 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // is preserved rather than re-decided: Refused and Absent are both non-observations, and a Present
 // arm whose text trims empty is still Absent, because ProcessOutputPresent means the process wrote
 // bytes -- not that those bytes name a host.
+// The effective principal, read the same way the hostname is: a typed observation that is Absent
+// when the probe did not succeed, never an empty name.
+func observe_effective_user_wet() -> NonEmptyStr?
+  uses net: Network
+{
+  match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
 func observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
@@ -262,12 +335,13 @@ func observe_host_short_wet() -> NonEmptyStr?
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
 // (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
-func observe_generation_store_wet() -> GenerationAdmission
+func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
   uses net: Network
 {
-  let read = Filesystem.Read(path: fleet_converge_generation_store_path)
+  let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
   fleet_converge_generation_admission(
     observation: fleet_converge_generation_observation(
+      subject_host: subject_host,
       store_present: read.success,
       content: read.content,
     ),
@@ -314,11 +388,50 @@ type FleetConvergeRequestObservation
 // (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
+// THE SPARK ARM OBSERVES A REMOTE SUBJECT, AND `host` IS THAT SUBJECT. For every other scope the
+// observer runs on the host it observes, so the caller hands it the executor's own hostname. For
+// scope:spark-serving the caller hands it the TARGET (srv5 or srv6), resolved from
+// SPARK_CONVERGE_TARGET at plan time and from the plan's subject_host.txt at apply time, and the
+// observation is acquired over FleetSsh from the in-run agent -- the same transaction and the same
+// eliminator the spark_linger slice plans from. There is no local fallback: a Spark that cannot be
+// reached yields FleetConvergeRequestUnobserved, never an empty request.
+data fleet_converge_spark_observe_attempt_raw: String = "fleet-converge-spark-observe"
+
 func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
     ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+    ScopeDecoded { scope: SparkServing } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: fleet_converge_spark_observe_attempt_raw) {
+        FleetSshContextRefused { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+        FleetSshContextReady { context: context, receipt: _ } =>
+          match spark_serving_observed_facts_via_locus(
+            context: context,
+            host: host as HostIdentity,
+            phase: SparkServingPlanObservation,
+          ) {
+            SparkServingObservedFactsRefused { cause: why } =>
+              FleetConvergeRequestUnobserved { reason: why as String }
+            SparkServingObservedFactsReady { observation: observation, running_definition: _, invocation: _ } =>
+              match spark_serving_axis_for_observation(observation: observation) {
+                SparkServingAxisPlanned { plan: bound } =>
+                  FleetConvergeRequestObserved { request: SparkServingConverge { host: host, spark_plan: bound } }
+                SparkServingAxisRefused { host: h, cause: why } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join(["spark serving axis refused for ", h as String, ": ", why], ""),
+                  }
+                SparkServingAxisUnobserved { host: h } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join(["spark serving axis unobserved for ", h as String], ""),
+                  }
+                SparkServingAxisNotApplicable { host: h } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join([h as String, " is not an enrolled Spark, so scope:spark-serving has no subject there"], ""),
+                  }
+              }
+          }
+      }
     ScopeDecoded { scope: FabricAllocationStoreOnly } =>
       match observe_allocation_store_substrate_wet() {
         AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
@@ -349,7 +462,7 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
         ApplySparkAxisUnobserved { host: _, cause: why } =>
           FleetConvergeRequestUnobserved { reason: why as String }
         ApplySparkAxisAdmitted =>
-          match observe_runner_slot_members_wet() {
+          match observe_runner_slot_members_with_provenance_wet(host: host) {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
             RunnerSlotsObserved { members: observed_slots } => FleetConvergeRequestObserved {
               request: FullHostConverge {
@@ -360,10 +473,71 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
                 observed_slots: observed_slots,
                 observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
                 observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+                observed_unit_standings: observe_runner_unit_standings_wet(host: host),
               },
             }
           }
       }
+  }
+}
+
+// THE UNIT-STATE HALF OF THE HOST OBSERVATION TRANSACTION. Two property reads per desired unit,
+// through the same reader live_deploy uses; any unreadable property refuses the WHOLE standing
+// rather than reporting the units it did read, because a partial roster would plan the unread units
+// as converged by omission. A host the fleet model does not know has no desired units and no
+// standing.
+type RunnerUnitStandingRead
+  = UnitStandingRead { standing: RunnerUnitStanding }
+  | UnitStandingRefused { reason: NonEmptyStr }
+
+func observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
+  uses net: Network
+{
+  match read_unit_property(unit: unit, property: ActiveState) {
+    UnitPropertyUnreadable { unit: u, property: p } =>
+      UnitStandingRefused { reason: join([u, " ", p, " unreadable"], "") as NonEmptyStr }
+    UnitPropertyValue { value: active_state } =>
+      match read_unit_property(unit: unit, property: UnitFileState) {
+        UnitPropertyUnreadable { unit: u, property: p } =>
+          UnitStandingRefused { reason: join([u, " ", p, " unreadable"], "") as NonEmptyStr }
+        UnitPropertyValue { value: file_state } =>
+          UnitStandingRead {
+            standing: RunnerUnitStanding {
+              unit: unit,
+              active: active_state == "active",
+              enabled: file_state == "enabled",
+            },
+          }
+      }
+  }
+}
+
+func observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
+  uses net: Network
+{
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
+    RunnerHostDeployFound { deploy: d } => {
+      let reads = map(runner_host_activation_units(deploy: d), u => observe_runner_unit_standing_wet(unit: u))
+      let refusals = flat_map(reads, r => match r {
+        UnitStandingRefused { reason: why } => [why as String]
+        UnitStandingRead { standing: _ } => []
+      })
+      if list_length(items: refusals) > 0 {
+        UnitStandingsUnobserved { reason: join(refusals, "; ") as NonEmptyStr }
+      } else {
+        UnitStandingsObserved {
+          units: flat_map(reads, r => match r {
+            UnitStandingRead { standing: st } => [st]
+            UnitStandingRefused { reason: _ } => []
+          }),
+        }
+      }
+    }
   }
 }
 
@@ -423,7 +597,7 @@ func fleet_converge_allocation_store_plan_wet() -> ProcessExit
   match observe_host_short_wet() {
     Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
     Present { value: host } =>
-      match observe_generation_store_wet() {
+      match observe_generation_store_wet(subject_host: host) {
         GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
         GenerationAdmitted { generation: prior_generation } =>
           match observe_allocation_store_substrate_wet() {
@@ -598,6 +772,51 @@ func fleet_converge_launch_environment_plan_wet() -> ProcessExit
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
 }
 
+// THE SPARK PLAN. Same admission spine as every other scope; what differs is that the subject is
+// resolved from SPARK_CONVERGE_TARGET rather than from the executor's hostname, so the executor
+// check still binds the runner and the subject check binds the Spark.
+func fleet_converge_spark_serving_plan_wet() -> ProcessExit
+  uses net: Network
+{
+  fleet_converge_scoped_plan_wet(scope: SparkServing)
+}
+
+type FleetConvergeSubjectHost
+  = SubjectHostResolved { host: NonEmptyStr }
+  | SubjectHostRefused { reason: String }
+
+// WHICH HOST THE PLAN IS ABOUT. Every scope but spark-serving is about the executor itself. The
+// Spark scope reads SPARK_CONVERGE_TARGET through the same selector the spark_* modes use, with
+// execute_apply true because a plan names ONE subject and never fans out.
+fn fleet_converge_plan_subject_host(scope: FleetConvergeScope, executor: NonEmptyStr, target: NonEmptyStr?) -> FleetConvergeSubjectHost {
+  match scope {
+    SparkServing =>
+      match spark_converge_target_selection_of(raw: target, execute_apply: true) {
+        SparkConvergeTargetSingle { host: h } => SubjectHostResolved { host: (h as String) as NonEmptyStr }
+        SparkConvergeTargetAllObserveOnly =>
+          SubjectHostRefused { reason: "fleet_converge_plan: scope:spark-serving plans one subject and SPARK_CONVERGE_TARGET named none" }
+        SparkConvergeTargetRefused { reason: why } => SubjectHostRefused { reason: concat("fleet_converge_plan: ", why) }
+      }
+    FullHost => SubjectHostResolved { host: executor }
+    LaunchEnvironment => SubjectHostResolved { host: executor }
+    FabricExecutionCellsOnly => SubjectHostResolved { host: executor }
+    FabricAllocationStoreOnly => SubjectHostResolved { host: executor }
+  }
+}
+
+// AT APPLY THE SUBJECT COMES OFF THE PLAN, NOT OFF THE ENVIRONMENT: the plan artifact names the
+// Spark it was minted against, and re-observing any other host would compare the plan to a
+// stranger and admit on a coincidence.
+fn fleet_converge_apply_observation_subject(scope: FleetConvergeScope, executor: NonEmptyStr, planned: NonEmptyStr) -> NonEmptyStr {
+  match scope {
+    SparkServing => planned
+    FullHost => executor
+    LaunchEnvironment => executor
+    FabricExecutionCellsOnly => executor
+    FabricAllocationStoreOnly => executor
+  }
+}
+
 func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   uses net: Network
 {
@@ -617,7 +836,12 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
         ActionsVariablePresent { value: expected_host } =>
-          fleet_converge_plan_scoped_bound_wet(run: run, expected_host: expected_host, scope: scope)
+          fleet_converge_plan_scoped_bound_wet(
+            run: run,
+            expected_host: expected_host,
+            scope: scope,
+            target: fleet_converge_target_from_env(),
+          )
       }
           }
       }
@@ -628,10 +852,24 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
 // that a scope could only widen. Routing plan through the same observer means the population the
 // plan hashes and the population apply re-observes come from one authority.
+// THE WORKFLOW READS THE TARGET OFF THE ENVIRONMENT ONCE, HERE, and every decision below takes it
+// as a value, so the subject resolver is pure and its refusals are witnessable.
+fn fleet_converge_target_from_env() -> NonEmptyStr? {
+  match actions_variable_read(name: spark_converge_target_env_name as String) {
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+    ActionsVariablePresent { value: v } => Present { value: v as NonEmptyStr }
+  }
+}
+
+fn fleet_converge_target_of_text(text: String) -> NonEmptyStr? {
+  if trim(s: text) == "" { none } else { Present { value: trim(s: text) as NonEmptyStr } }
+}
+
 func fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
   scope: FleetConvergeScope,
+  target: NonEmptyStr?,
 ) -> ProcessExit
   uses net: Network
 {
@@ -643,10 +881,13 @@ func fleet_converge_plan_scoped_bound_wet(
         exit_failure(reason: join(["fleet_converge_plan: ExpectedHostMismatch — the workflow input names ", expected_host, " but this runner observes ", host as String], ""))
       } else {
   let host_short = host as String
-  match observe_generation_store_wet() {
+  match fleet_converge_plan_subject_host(scope: scope, executor: host, target: target) {
+    SubjectHostRefused { reason: why } => exit_failure(reason: why)
+    SubjectHostResolved { host: subject_host } =>
+  match observe_generation_store_wet(subject_host: subject_host) {
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
-  match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: host) {
+  match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) {
     FleetConvergeRequestUnobserved { reason: why } =>
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
@@ -765,6 +1006,7 @@ func fleet_converge_plan_scoped_bound_wet(
     }
   }
   }
+  }
 }
 
 // APPLY BINDS ITSELF TO THE PLAN RECEIPT IT WAS HANDED (RLM-2 ruling section 2): the plan run id
@@ -875,7 +1117,7 @@ func fleet_converge_apply_bound_wet(
                 PayloadAdmitted { routed_scope: routed_scope } =>
               match observe_fleet_converge_request_wet(
                 scope_wire: fleet_converge_scope_wire(scope: routed_scope),
-                host: observed_host,
+                host: fleet_converge_apply_observation_subject(scope: routed_scope, executor: observed_host, planned: planned_host),
               ) {
                 FleetConvergeRequestUnobserved { reason: why } =>
                   exit_failure(reason: concat("fleet_converge_apply: PlannedScopeOrObservationRefused — ", why))
@@ -938,19 +1180,37 @@ func fleet_converge_apply_bound_wet(
                   PlanBindingRepositoryMismatch { plan: _, apply: _ } =>
                     exit_failure(reason: join(["fleet_converge_apply: ", plan_binding_admission_text(a: binding)], ""))
                   PlanBindingAdmitted => {
-                    let applied = run_shell_commands(
-                      commands: [
-                        bash_program_command(
-                          script: fleet_converge_locked_apply_script(
-                            prior_generation: prior_generation,
-                            planned_generation: planned_generation,
-                            apply_shell_path: fleet_converge_plan_apply_shell_path,
-                          ),
-                        ),
-                      ],
-                      transport: LocalExec,
-                    )
-                    let exit_code = match applied {
+                    let applied = match observe_effective_user_wet() {
+                      Absent =>
+                        exit_failure(reason: "fleet_converge_apply: EffectiveUserUnobserved — whoami did not succeed, so the lease guard cannot decide whether to run as the lease owner")
+                      Present { value: effective_user } =>
+                        run_shell_commands(
+                          commands: [
+                            bash_program_command(
+                              script: fleet_converge_locked_apply_script(
+                                subject_host: planned_host,
+                                prior_generation: prior_generation,
+                                planned_generation: planned_generation,
+                                apply_shell_path: fleet_converge_plan_apply_shell_path,
+                                invoker: fleet_converge_apply_invoker(effective_user: effective_user),
+                              ),
+                            ),
+                          ],
+                          transport: LocalExec,
+                        )
+                    }
+                    let actuated = if fleet_converge_scope_matches(planned: routed_scope, observed: SparkServing) {
+                      fleet_converge_apply_spark_rows_wet(
+                        applied: applied,
+                        observed: observed_request,
+                        prior_generation: prior_generation,
+                        spark_wire_on_disk: trim(s: read_spark_wire.content),
+                        claimed_hex: trim(s: read_hash.content),
+                      )
+                    } else {
+                      applied
+                    }
+                    let exit_code = match actuated {
                       ExitSuccess => 0
                       ExitFailure { code: c, reason: _ } => c
                     }
@@ -973,7 +1233,7 @@ func fleet_converge_apply_bound_wet(
                         match write_fleet_converge_apply_receipt(r: receipt) {
                           ReceiptWriteRefused { path: p, error: e } =>
                             exit_failure(reason: join(["fleet_converge_apply: ApplyReceiptWriteRefused at ", p, ": ", e], ""))
-                          ReceiptWritten { path: _ } => applied
+                          ReceiptWritten { path: _ } => actuated
                         }
                     }
                   }
@@ -990,3 +1250,403 @@ func fleet_converge_apply_bound_wet(
     }
   }
   }
+
+
+// THE SPARK ROWS ARE RE-DERIVED AT APPLY AND MUST REPRODUCE THE FROZEN WIRE BYTE FOR BYTE.
+//
+// Apply holds files, not values, and no decoder turns the wire back into typed rows. What it does
+// hold is the re-observation the baseline CAS just admitted (same members, same digests) and the
+// same revision R the plan ran at, so planning again from that observation is a pure function that
+// must land on the same rows. The wire comparison is the discriminating check: if the desired side
+// moved, or a row's frozen operations differ, the wire differs and apply refuses. The rebuilt
+// artifact then passes through spark_serving_exec_frozen_typed_rows, whose own bundle admission
+// compares the rebuilt plan body against the hash the operator typed -- a second, independent wall.
+// THE LEASE COMMITS BEFORE THE SPARK ROWS RUN, AND THAT IS THE LEASE'S MEANING: a plan is consumed
+// once. A refused remote step leaves the generation advanced and the receipt red, so the operator
+// re-plans rather than replays a bundle whose baseline the partial actuation may already have moved.
+data fleet_converge_spark_apply_attempt_raw: String = "fleet-converge-spark-apply"
+
+func fleet_converge_apply_spark_rows_wet(
+  applied: ProcessExit,
+  observed: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_wire_on_disk: String,
+  claimed_hex: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match applied {
+    ExitFailure { code: _, reason: _ } => applied
+    ExitSuccess =>
+      match observed {
+        SparkServingConverge { host: target, spark_plan: bound } => {
+          let rebuilt = fleet_converge_plan_artifact_of_request(
+            request: observed,
+            prior_generation: prior_generation,
+            spark_rows: bound.rows,
+          )
+          let rebuilt_wire = fleet_converge_spark_serving_typed_actions_wire(
+            rows: scheduled_rows_list(scheduled: bound.rows),
+          )
+          if rebuilt_wire != spark_wire_on_disk {
+            exit_failure(
+              reason: join([
+                "fleet_converge_apply: SparkRowsDiverged — the rows re-derived at apply do not reproduce the frozen spark_serving_typed_actions.wire; rerun plan and review\nplanned=",
+                spark_wire_on_disk, "\napply=", rebuilt_wire,
+              ], ""),
+            )
+          } else {
+            match prepare_fleet_ssh_agent_context(attempt_raw: fleet_converge_spark_apply_attempt_raw) {
+              FleetSshContextRefused { cause: why } =>
+                exit_failure(reason: concat("fleet_converge_apply: SparkContextRefused — ", why))
+              FleetSshContextReady { context: context, receipt: _ } =>
+                match spark_serving_exec_frozen_typed_rows(
+                  artifact: rebuilt,
+                  claimed_bundle_hex: claimed_hex,
+                  transport: fleet_locus_transport(context: context, host: target as HostIdentity),
+                ) {
+                  SparkServingFrozenRemoteExecRefused { reason: why } =>
+                    exit_failure(reason: concat("fleet_converge_apply: SparkExecRefused — ", why))
+                  SparkServingFrozenRemoteExecConvergedNoop => ExitSuccess
+                  SparkServingFrozenRemoteExecApplied { standings: standings } =>
+                    if spark_serving_step_sequence_failed(standings: standings) {
+                      exit_failure(
+                        reason: join([
+                          "fleet_converge_apply: SparkExecStepFailed ",
+                          spark_serving_step_sequence_wire(standings: standings),
+                          " ",
+                          spark_serving_step_failure_causes_wire(standings: standings),
+                        ], ""),
+                      )
+                    } else {
+                      ExitSuccess
+                    }
+                }
+            }
+          }
+        }
+        FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+      }
+  }
+}
+
+
+// ── The operator-local route ─────────────────────────────────────────────────────────────────────
+//
+// WHY `gunbc converge` REFUSED, AND WHAT THIS IS INSTEAD. PR #8286 deleted the cli_run driver's verb
+// handlers; converge's handler was resolve-a-.dag-entry plus an interpreter context, and the ruling
+// was that the frozen v1 engine must not become load-bearing for a capability by being re-homed.
+// The verb was left refusing with `successor: gunbc.fleet_converge_apply`, the knob-grain spine
+// behind the per-host timer -- and that timer was retired 2026-08-13, so the named successor is a
+// route nothing invokes. Meanwhile the spine that IS live -- plan, hashed bundle, lease, apply,
+// receipts -- was reachable only from inside a GitHub Actions run, because its entries admit
+// themselves through observe_actions_run_binding and refuse ActionsRunUnbound.
+//
+// The two entries below are the same spine with a different RUN BINDING, not a second spine. A
+// binding is four facts -- repository, workflow ref, run id, revision -- and an operator at a shell
+// on the host can supply all four honestly: the repository from gunbc.repository, the revision from
+// HEAD of the checkout being executed, a workflow ref that names THIS route rather than a workflow
+// file, and a clock-derived run id. Nothing here spells GITHUB_* into the environment; a local run
+// is distinguishable from an Actions run by its workflow_ref forever, and
+// run_bindings_share_transaction never admits one into an RLM launch transaction, because that
+// predicate requires the ref to name the workflow file.
+//
+// EVERYTHING DOWNSTREAM IS SHARED: fleet_converge_plan_scoped_bound_wet and
+// fleet_converge_apply_bound_wet take the binding as a value, so the hostname gate, the scope
+// observers, the lease, the bundle digest, the subject compare-and-swap, the plan/apply binding
+// admission and the receipts are the same code the workflow runs. What the operator loses is only
+// what the workflow added around the binary: the artifact upload, and the bash EXPECTED_HASH
+// compare -- which fleet_converge_local_apply_wet performs itself before reading the receipt.
+//
+// INVOCATION (the run seam, which is how every other operation is invoked):
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag \
+//     --function fleet_converge_local_plan_wet --arg scope=scope:full-host
+//   gunbc run ... --function fleet_converge_local_apply_wet --arg plan_run_id=<id> --arg plan_hash=<hex>
+// scope:spark-serving additionally reads SPARK_CONVERGE_TARGET and needs the fleet key in an agent.
+data fleet_converge_operator_local_workflow_ref: String = "operator-local:gunbc.fleet_converge_plan_cli"
+
+type OperatorLocalRunBinding
+  = OperatorLocalRunBound { binding: ActionsRunBinding }
+  | OperatorLocalRunUnbound { reason: String }
+
+func observe_operator_local_run_binding() -> OperatorLocalRunBinding
+  uses net: Network
+{
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success {
+    OperatorLocalRunUnbound { reason: "HEAD commit could not be read from the checkout being executed" }
+  } else if !release_revision_text_valid(text: head.sha as String) {
+    OperatorLocalRunUnbound { reason: join(["HEAD is not a 40-digit lower-hex revision: ", head.sha as String], "") }
+  } else {
+    match clock_now_probed_at() {
+      Absent => OperatorLocalRunUnbound { reason: "the clock could not be read, so no run id can be minted" }
+      Present { value: now } =>
+        OperatorLocalRunBound {
+          binding: ActionsRunBinding {
+            repository: gunbc_repository.full_name,
+            workflow_ref: fleet_converge_operator_local_workflow_ref,
+            run_id: join(["local-", now as String], ""),
+            run_revision: head.sha as String,
+          },
+        }
+    }
+  }
+}
+
+func fleet_converge_local_plan_wet(scope: String, target: String) -> ProcessExit
+  uses net: Network
+{
+  match fleet_converge_scope_of_wire(wire: scope) {
+    ScopeUndecodable { cause: why } =>
+      exit_failure(reason: concat("fleet_converge_local_plan: ScopeUndecodable — ", why))
+    ScopeDecoded { scope: decoded } =>
+      match observe_operator_local_run_binding() {
+        OperatorLocalRunUnbound { reason: why } =>
+          exit_failure(reason: concat("fleet_converge_local_plan: RunUnbound — ", why))
+        OperatorLocalRunBound { binding: run } =>
+          match observe_host_short_wet() {
+            Absent =>
+              exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
+            Present { value: host } =>
+              fleet_converge_plan_scoped_bound_wet(
+                run: run,
+                expected_host: host as String,
+                scope: decoded,
+                target: fleet_converge_target_of_text(text: target),
+              )
+          }
+      }
+  }
+}
+
+// ── The converge verb ────────────────────────────────────────────────────────────────────────────
+//
+// `gunbc converge` reaches this declaration through the generated dispatch as a bootstrap .dag
+// operation (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding): every option is
+// handed over by name as a String, and receipt_path is the channel the launcher prints back. The
+// verb is a thin router over the two local entries above; it adds exactly two things -- the
+// operator's declared host, refused on mismatch before any observer runs, and the receipt copy --
+// and nothing else, so the CLI and the workflow keep one spine.
+//
+// THE RECEIPT IS WRITTEN ON EVERY ARM. The launcher reads receipt_path after the operation returns
+// and refuses if it is unreadable, BEFORE it renders the terminal, so an operation that wrote no
+// receipt on its failure arm would have its typed refusal masked by an unreadable-receipt refusal.
+// A failure therefore writes its reason to the channel; a success writes the plan or apply receipt.
+data fleet_converge_operator_mode_plan: String = "plan"
+data fleet_converge_operator_mode_apply: String = "apply"
+data fleet_converge_operator_mode_deploy: String = "deploy"
+
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED, so the branch that checkout is on
+// is workflow policy and it is asked explicitly. The workflow deploys from main; an operator who
+// wants a different branch on the dashboard says so with --candidate-branch, and the value is
+// compared to the observed branch rather than trusted. An empty requirement refuses rather than
+// admitting whatever HEAD happens to be, because "any branch" is the one policy that must never
+// be the default of a command that restarts the served dashboard.
+fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
+  trim(s: required) != "" && trim(s: observed) == trim(s: required)
+}
+
+func fleet_converge_operator_cli_entry(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+  candidate_branch: String,
+  receipt_path: String,
+) -> ProcessExit
+  uses net: Network
+{
+  let outcome = fleet_converge_operator_cli_dispatch(
+    host: host, mode: mode, scope: scope, plan_run_id: plan_run_id, plan_hash: plan_hash, target: target,
+    candidate_branch: candidate_branch,
+  )
+  let receipt_source = if mode == fleet_converge_operator_mode_apply {
+    fleet_converge_apply_receipt_path
+  } else {
+    fleet_converge_plan_receipt_path
+  }
+  let receipt_text = match outcome {
+    ExitSuccess =>
+      if mode == fleet_converge_operator_mode_deploy {
+        match observe_operator_local_run_binding() {
+          OperatorLocalRunBound { binding: b } =>
+            join(["deploy-converged host=", trim(s: host), " candidate=", b.run_revision, " branch=", trim(s: candidate_branch), "\n"], "")
+          OperatorLocalRunUnbound { reason: why } => join(["deploy-converged host=", trim(s: host), " candidate=unread: ", why, "\n"], "")
+        }
+      } else {
+        let r = Filesystem.Read(path: receipt_source)
+        if r.success { r.content } else { join(["receipt unreadable at ", receipt_source, ": ", r.error], "") }
+      }
+    ExitFailure { code: _, reason: why } => join(["converge-refused ", why, "\n"], "")
+  }
+  let w = Filesystem.Write(path: receipt_path, content: receipt_text)
+  if !w.success {
+    exit_failure(reason: join(["fleet_converge_operator_cli_entry: receipt write refused at ", receipt_path, ": ", w.error], ""))
+  } else {
+    outcome
+  }
+}
+
+func fleet_converge_operator_cli_dispatch(
+  host: String,
+  mode: String,
+  scope: String,
+  plan_run_id: String,
+  plan_hash: String,
+  target: String,
+  candidate_branch: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match observe_host_short_wet() {
+    Absent =>
+      exit_failure(reason: "gunbc converge: HostObservationFailed — hostname probe did not succeed or returned empty output")
+    Present { value: observed } =>
+      if (observed as String) != trim(s: host) {
+        exit_failure(reason: join(["gunbc converge: ExpectedHostMismatch — --host names ", trim(s: host), " but this process runs on ", observed as String], ""))
+      } else if mode == fleet_converge_operator_mode_plan {
+        fleet_converge_local_plan_wet(scope: scope, target: target)
+      } else if mode == fleet_converge_operator_mode_deploy {
+        let deploy_host = deployment_plan_host_identity(spec: deployment_spec_srv1())
+        if trim(s: host) != deploy_host {
+          exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
+        } else {
+          let branch = trim(s: git.Core.CurrentBranch().branch)
+          if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
+            exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
+          } else {
+            live_deploy_apply_srv1_operator_local_wet()
+          }
+        }
+      } else if mode == fleet_converge_operator_mode_apply {
+        if trim(s: plan_run_id) == "" || trim(s: plan_hash) == "" {
+          exit_failure(reason: "gunbc converge: --mode apply requires --plan-run-id and --plan-hash from the plan receipt")
+        } else if trim(s: target) != "" {
+          exit_failure(reason: "gunbc converge: --target is a plan-time input; apply reads the subject off the plan artifact")
+        } else {
+          fleet_converge_local_apply_wet(plan_run_id: trim(s: plan_run_id), plan_hash: trim(s: plan_hash))
+        }
+      } else {
+        exit_failure(reason: join(["gunbc converge: --mode must be plan, apply or deploy, got ", mode], ""))
+      }
+  }
+}
+
+func fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
+  uses net: Network
+{
+  match observe_operator_local_run_binding() {
+    OperatorLocalRunUnbound { reason: why } =>
+      exit_failure(reason: concat("fleet_converge_local_apply: RunUnbound — ", why))
+    OperatorLocalRunBound { binding: run } => {
+      let on_disk = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+      if !on_disk.success {
+        exit_failure(reason: "fleet_converge_local_apply: plan artifact missing — run fleet_converge_local_plan_wet first")
+      } else if trim(s: plan_hash) == "" || trim(s: on_disk.content) != trim(s: plan_hash) {
+        exit_failure(
+          reason: join([
+            "fleet_converge_local_apply: PlanArtifactHashMismatch expected=", trim(s: plan_hash),
+            " actual=", trim(s: on_disk.content),
+          ], ""),
+        )
+      } else {
+        match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+          FleetConvergePlanReceiptUnreadable { reason: why } =>
+            exit_failure(reason: concat("fleet_converge_local_apply: PlanReceiptUnreadable — ", why))
+          FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+            fleet_converge_apply_bound_wet(
+              run: run,
+              plan_run_id: plan_run_id,
+              plan_receipt: plan_receipt,
+              expected_revision_admitted: run.run_revision,
+            )
+        }
+      }
+    }
+  }
+}
+
+
+// THE SLOT OBSERVATION WITH PROVENANCE. Names come from the base-dir listing exactly as before;
+// each name in this host's slot grammar then gets three more reads -- the registration file, the
+// unit's ActiveState and its UnitFileState -- and a name outside the grammar gets none, because no
+// unit or registration is defined for it. Any unreadable unit property refuses the WHOLE
+// observation: a roster in which one tree's liveness was guessed could remove a live runner.
+type RunnerSlotProvenanceRead
+  = SlotProvenanceRead { member: RunnerSlotMember }
+  | SlotProvenanceRefused { reason: String }
+
+func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
+  uses net: Network
+{
+  let name = member.instance_name
+  if !runner_slot_name_in_host_grammar(host: host as HostIdentity, instance_name: name) {
+    SlotProvenanceRead {
+      member: runner_slot_member_observed(
+        instance_name: name as String,
+        provenance: SlotProvenanceObserved { in_host_grammar: false, registered: false, unit_active: false, unit_enabled: false },
+      ),
+    }
+  } else {
+    let registered = process_outcome_admitted(outcome: run_shell_command_capture(
+      command: test_regular_file_command(path: join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")),
+      transport: LocalExec,
+    ))
+    let unit = runner_unit_name_of_registration(registration_name: name)
+    match read_unit_property(unit: unit, property: ActiveState) {
+      UnitPropertyUnreadable { unit: u, property: p } =>
+        SlotProvenanceRefused { reason: join([u, " ", p, " unreadable"], "") }
+      UnitPropertyValue { value: active_state } =>
+        match read_unit_property(unit: unit, property: UnitFileState) {
+          UnitPropertyUnreadable { unit: u, property: p } =>
+            SlotProvenanceRefused { reason: join([u, " ", p, " unreadable"], "") }
+          UnitPropertyValue { value: file_state } =>
+            SlotProvenanceRead {
+              member: runner_slot_member_observed(
+                instance_name: name as String,
+                provenance: SlotProvenanceObserved {
+                  in_host_grammar: true,
+                  registered: registered,
+                  unit_active: active_state == "active",
+                  unit_enabled: file_state == "enabled",
+                },
+              ),
+            }
+        }
+    }
+  }
+}
+
+func observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
+  uses net: Network
+{
+  match observe_runner_slot_members_wet() {
+    RunnerSlotsUnobserved { reason: why } => RunnerSlotsUnobserved { reason: why }
+    RunnerSlotsObserved { members: names } => {
+      let reads = map(names, m => observe_runner_slot_provenance_wet(host: host, member: m))
+      let refusals = flat_map(reads, r => match r {
+        SlotProvenanceRefused { reason: why } => [why]
+        SlotProvenanceRead { member: _ } => []
+      })
+      if length(refusals) > 0 {
+        RunnerSlotsUnobserved { reason: join(concat(["slot provenance refused: "], refusals), "; ") as NonEmptyStr }
+      } else {
+        RunnerSlotsObserved {
+          members: flat_map(reads, r => match r {
+            SlotProvenanceRead { member: m } => [m]
+            SlotProvenanceRefused { reason: _ } => []
+          }),
+        }
+      }
+    }
+  }
+}
