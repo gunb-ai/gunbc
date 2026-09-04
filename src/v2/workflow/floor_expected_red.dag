@@ -1095,10 +1095,12 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // A single row could not tell any of those apart.
 //
 // DISSOLVE-ON: the declared-return expected-type comparison rejecting every enrolled mismatch --
-// the plain-record pair by nominal identity, and the same-head same-arity applications at argument
-// positions zero, one and two plus the enrolled nested argument-one case, together with the
-// distinct-head pair. Stated as the positions and shapes actually enrolled rather than as "every
-// argument recursively", because a trigger may not promise a generality no specimen exercises.
+// the same-head same-arity applications at argument positions zero, one and two plus the enrolled
+// nested argument-one case, together with the distinct-head pair. The plain-record pair now
+// refuses through the declaration-bound expected-type path and remains enrolled as a permanent
+// regression control rather than as expected-red. Stated as the positions and shapes actually
+// enrolled rather than as "every argument recursively", because a trigger may not promise a
+// generality no specimen exercises.
 // This roster's
 // self-emptying arm makes that event announce itself: when the wall arrives, this row PASSES,
 // which reds the build and names itself for removal. The witness itself is permanent under
@@ -1109,8 +1111,7 @@ fn floor_expected_red_chunk_24() -> List<String> {
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_plain_record_at_a_declared_return_is_refused", tail: Empty {} } } } } } } }
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } } } } } }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
