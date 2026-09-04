@@ -1107,6 +1107,32 @@ pub struct TransitionAdmission {
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
 /// exact head is the proof, and it is the thing to trust.
 ///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10350). All 30 `gunbc#10355` proposal-vocabulary rows
+/// are deleted, and SCM_PROPOSAL_VOCABULARY_LABEL with them. #10355 is in this branch's base, so
+/// every row reports CONSUMED rather than stale, and the wall refused this change with
+/// `30 CONSUMED ADMISSION(S) DUE FOR DELETION ON THIS ROSTER-TOUCH` -- the roster-touch obligation
+/// the entry below predicted for itself, coming due on the first change to touch this file.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the entry below
+/// says in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
+/// against MAIN's tree by its own (module, in_declaration, spelling, target) tuple: 30 of 30 name a
+/// spelling DECLARED in `gunbc.scm.proposal`, none open. ROWS CHECKED EQUALS ROWS IN LABEL EQUALS
+/// THE COUNT THE WALL REPORTED -- 30 = 30 = 30 -- so the subject was not silently narrowed.
+///
+/// THE JOIN WAS BUILT TO SURVIVE THIS FILE'S OWN TWO RECORDED FAILURE MODES, and one of them fired.
+/// `RequireBinding` and `RequireBindingAbsent` are COPRODUCT VARIANTS, not `data`/`fn`/`type`
+/// declarations, so an index reading only line-start declarations would have answered "not found"
+/// for both -- in a shape indistinguishable from "not declared", which is exactly the defect the
+/// TWENTY-NINTH DISSOLUTION records catching on its second pass. The join resolves variants and
+/// fields as well as declarations. It was also calibrated rather than trusted: `MergeCommit`,
+/// `ObjectStore` and a fabricated name all answer NOT DECLARED against the same module, so a
+/// uniform "found" was not available to it.
+///
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
+/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
+/// exact head is the proof.
+///
 /// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
 /// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
 /// supersession -- what the module does -- and two-commit merging, which it does not do and which
@@ -1135,30 +1161,48 @@ pub struct TransitionAdmission {
 /// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
 /// are recorded there, and confirmable only by the wall itself.
 ///
+/// TWENTY-THIRD TRANSITION (2026-09-04, gunbc#10350): the kernel-identity predicate's relocation.
+///
+/// `resolved_node_is_kernel_identity_for_name` moved from `v1.compiler.infer_env` -- where it was
+/// declared, never called, and sat ABOVE the module whose `kernel_span` mints the span it tests --
+/// down into `v1.std.core` beside that minter. Its two callers therefore bind the same spelling to
+/// a different declaring module, which is a `TargetChanged` binding delta by construction and
+/// exactly the motion this wall exists to make visible rather than silent.
+///
+/// THE MOTION IS THE POINT OF THE CHANGE, NOT A SIDE EFFECT OF IT, which is what makes these rows
+/// admissions rather than an excuse. The old site re-derived kernel identity by inlining
+/// `concat("<kernel:", name, ">")` -- a SECOND authority for the span FORMAT that `kernel_span`
+/// already owns -- so the relocation is a §3 single-authority consolidation whose entire content is
+/// that these two bindings now resolve to the minter's module.
+///
+/// THE ORDINAL IS TWENTY-THIRD, AND IT WAS TWENTY-SEVENTH ON THIS BRANCH'S PREVIOUS HEAD. That
+/// number was chosen against a base carrying the 255 `gunbc#10358` rows and their entries, which
+/// #10355 has since dissolved. Renumbering against the base that actually exists is what the
+/// TWENTY-SECOND TRANSITION prescribes one paragraph above, for the reason it gives there: an entry
+/// must stay citable by a name that means one thing.
+///
+/// THIS ENTRY WAS RE-APPLIED ACROSS THAT MERGE RATHER THAN CARRIED, and the entry above is why the
+/// distinction is written down: it records its own predecessor being LOST when a conflict was
+/// resolved by taking main's file whole. Main's file was taken whole here too -- the conflicting
+/// hunk was a misaligned array head, and hand-editing the markers would have spliced this cohort's
+/// rows onto the SCM cohort's body -- so the delta was re-derived against the merge base at ROW
+/// IDENTITY grain and re-applied: two rows added, none removed, against main's 254 removals and 29
+/// additions. The merged array is main's rows plus these two, and no row of either side is dark.
+///
+/// TRIGGER, AND IT IS THE ROWS' OWN DEATH: these two rows go when gunbc#10350 merges. Once the
+/// relocation is on main, merge commit and base both carry it, no run can produce these deltas, and
+/// both report CONSUMED rather than stale -- the state the TWENTY-SECOND TRANSITION corrects an
+/// earlier draft of itself on, coming due on this roster's own next touch and not on unrelated
+/// pull requests. Deleting them is the fix and not housekeeping. Adjudicate the deletion by the
+/// declaring-module join that entry describes, joining each row against main's tree by its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
+/// trigger sentence is not evidence that the trigger fired -- and because that join's own two
+/// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
+/// in a shape indistinguishable from "not declared".
+const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
+    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
 
-/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE ROSTER.
-/// All 30 `SCM_PROPOSAL_VOCABULARY_LABEL` rows are deleted, and the label constant with them, on
-/// the same rule the TWENTY-NINTH applied to gunbc#10358's cohort. gunbc#10355 merged and is in
-/// this branch's base, so base and head both bind the proposal nouns to `gunbc.scm.proposal` and
-/// the delta those rows admitted is no longer producible by any run.
-///
-/// THE EVIDENCE IS THE PER-ROW REPORT, NOT A COUNT, and it is worth saying which direction it came
-/// from: the TWENTY-THIRD checked each row against the base BEFORE deleting rather than after a run
-/// reported it, and this one is the other way round. Required run 33896895062 emitted exactly 30
-/// `CONSUMED ADMISSION` lines, every one naming gunbc#10355 and its own binding -- for example
-/// `gunbc.scm.authoring::author_requirement `Proposal` -> gunbc.scm.proposal ... already satisfied
-/// at the base`. Thirty reported, thirty carrying that label, thirty deleted, and the two
-/// gunbc#10324 rows below are the whole remainder. An identity join at row grain, not a count
-/// equality, which is the only form that names WHICH rows went dark.
-///
-/// A CENSUS CORRECTION, RECORDED BECAUSE IT WOULD OTHERWISE BE INHERITED. Grepping
-/// `TransitionAdmission {` counts the STRUCT DEFINITION alongside the rows, so the roster reads one
-/// higher than it is: it held 32 rows, not the 33 an earlier commit message on this branch stated,
-/// and main contributed 30 rather than 31. The deletion pass asserted `examined == kept + deleted`
-/// against a brace-depth parse of the array rather than against that grep, and the mismatch is what
-/// surfaced the off-by-one -- a count taken with a different instrument than the one that acts on it.
-///
-/// TWENTY-THIRD TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
+/// TWENTY-FOURTH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
 /// `TargetChanged` and is not auto-admitted. Measured from required run 33830830910 on 91354f99fd,
@@ -1172,24 +1216,64 @@ pub struct TransitionAdmission {
 /// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
 /// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
 ///
-/// THE ORDINAL IS TWENTY-THIRD, AND IT HAS MOVED TWICE. It was authored as TWENTY-FIRST against
-/// a base whose highest was TWENTIETH, minted twice by gunbc#10328 and gunbc#10254. This merge
-/// takes the roster from main, where the gunbc#10254 rows are already deleted as consumed and the
-/// highest is now TWENTY-SECOND (gunbc#10355), so TWENTY-FIRST follows nothing.
+/// THE ORDINAL IS TWENTY-FOURTH, AND IT HAS MOVED THREE TIMES -- TWENTY-FIRST, TWENTY-THIRD, and
+/// now this. Each move is the same rule the entry above states for itself, applied to a base that
+/// kept changing underneath: authored as TWENTY-FIRST when the highest was TWENTIETH; renumbered to
+/// TWENTY-THIRD when a merge took the roster from main and gunbc#10355 had become the TWENTY-SECOND;
+/// and renumbered again here because gunbc#10350 MINTED TWENTY-THIRD FIRST and is already on main.
+/// The vacated numbers are not reclaimed. gunbc#10355 was itself numbered twenty-first and moved to
+/// TWENTY-SECOND rather than reuse a name, so that a citation of `the twenty-first entry` resolves
+/// to one row across time; taking a name a prior entry paid to vacate recreates exactly the
+/// collision it bought, and does it silently, since an unused ordinal and a deliberately abandoned
+/// one are indistinguishable by counting.
 ///
-/// AND TWENTY-FIRST IS NOT MERELY FREE FOR THE TAKING, which is the part worth stating because the
-/// grep says otherwise: gunbc#10355 was ITSELF numbered twenty-first on an earlier head and
-/// renumbered to TWENTY-SECOND rather than reusing the name, precisely so that a citation of `the
-/// twenty-first entry` would not resolve to two different rows across time. Taking the name it
-/// vacated would recreate the exact collision it paid to avoid, and would do so silently, since an
-/// unused ordinal and a deliberately abandoned one are indistinguishable by counting. The ordinal
-/// exists to make an entry citable by its own name, so it tracks the tree it lands in rather than
-/// the one it was written against.
+/// THE DISSOLUTION THIS BRANCH WROTE FOR THE 30 `gunbc#10355` ROWS IS DROPPED, NOT RENUMBERED, and
+/// the distinction is the whole point. This branch and gunbc#10350 each independently deleted the
+/// same 30 proposal-vocabulary rows and each wrote a THIRTIETH DISSOLUTION for it. #10350 landed
+/// first, so the rows are already gone in this file's base and the deletion HAPPENED ONCE. Carrying
+/// both entries would leave two authorities describing one event, and a later reader counting
+/// dissolutions would find a deletion that never occurred. Renumbering would have preserved the
+/// duplicate under a name that hid it.
+///
+/// ONE FACT IS FOLDED FORWARD OUT OF THAT DROPPED ENTRY, BECAUSE IT IS NOT DUPLICATED ANYWHERE:
+/// grepping `TransitionAdmission {` counts the STRUCT DEFINITION alongside the rows, so this roster
+/// reads one higher than it is -- it held 32 rows, not the 33 an earlier commit message on this
+/// branch stated. The deletion pass asserted `examined == kept + deleted` against a brace-depth
+/// parse of the array rather than against that grep, and the mismatch is what surfaced the
+/// off-by-one. A count taken with a different instrument than the one that acts on it.
+///
+/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, by the method the entry
+/// above prescribes and for the same cause: the conflict was a misaligned array head, aligning this
+/// branch's two rows against gunbc#10350's two, so hand-editing the markers would have spliced one
+/// cohort's label onto the other's body. Main's file was taken whole and the delta re-derived at ROW
+/// IDENTITY grain: two rows added, none removed. The merged array is main's two rows plus these two,
+/// four in total, and no row of either side is dark.
 ///
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer",
+            in_declaration: "ancestry_binding_is_kernel_identity",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
                 its type (converge_cli_codex_runtime_knob_registered_for_host)",
