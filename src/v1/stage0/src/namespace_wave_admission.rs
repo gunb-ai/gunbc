@@ -976,23 +976,40 @@ pub struct TransitionAdmission {
 // reads a different constant -- the declarations moved beneath their readers rather than away from
 // them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
 // witness that reads cooler_srv3 through the same namespace.
-/// TWENTY-SIXTH DISSOLUTION (2026-09-04), PAID BECAUSE THIS CHANGE TOUCHES THE ROSTER. The nineteen
-/// `gunbc#10344` asset-identity extraction rows are deleted. #10344 is on main (`61274d0eb08`), and
-/// `gunbc.fleet_physical_inventory` there already imports `chassis_srv1` and its twelve siblings from
-/// `gunbc.fleet_asset_identity` by name -- so the base binds each admitted spelling to the admitted
-/// target and every one of those rows is CONSUMED, not stale.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10358), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. The nineteen `gunbc#10344` asset-identity extraction rows are deleted.
 ///
-/// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER, which is the whole point of the
-/// mechanism. `consumed_due` is `roster_touched && !consumed.is_empty()`: a consumed row does NOT
-/// refuse unrelated pull requests, and it comes due on the roster file's own next touch. This change
-/// is that touch. Carrying consumed rows forward while editing the same file is the one thing the
-/// predicate exists to prevent, and the treadmill is deliberate -- #10344 discharged #10197's rows on
-/// exactly this rule, and the next roster-touching change will discharge the cohort below.
+/// THE PROOF IS THE GROUPED JOIN, NOT ONE SPECIMEN. An earlier draft of this entry cited a single
+/// row -- `gunbc.fleet_physical_inventory` importing `chassis_srv1` -- and concluded that all
+/// nineteen were consumed. That implication established one row and asserted nineteen, which is the
+/// same overbroad shape this ledger exists to refuse. The actual partition at the base is:
+///
+///   15  gunbc.fleet_physical_inventory        -> gunbc.fleet_asset_identity
+///    4  test.claim.cooling_qualification_witness -> gunbc.fleet_asset_identity
+///
+/// The fifteen resolve directly: main's `fleet_physical_inventory` imports `chassis_srv1` and its
+/// twelve siblings from `gunbc.fleet_asset_identity` by name, so every admitted spelling binds to the
+/// admitted target in a singleton set.
+///
+/// The four resolve THROUGH A RE-EXPORT CHAIN and are worth stating separately, because they look
+/// like a different target until the channel is read correctly. The cooling witness imports
+/// `cooler_srv3` from `gunbc.fleet_physical_inventory`, not from the asset authority -- but the
+/// binding channel follows the chain to the module that actually DECLARES the name, which is
+/// `gunbc.fleet_asset_identity`. Same admitted target, one hop further out.
+///
+/// Neither consumer file is in this diff, so base equals head for both and
+/// `admission_consumed_at_base` holds on all nineteen.
+///
+/// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
+/// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
+/// and it comes due on the roster file's own next touch. This change is that touch. The treadmill is
+/// deliberate -- #10344 discharged #10197's rows on exactly this rule, and the next roster-touching
+/// change will discharge the cohort below.
 ///
 /// THE gunbc#10197 ROWS ARE NOT NARRATED HERE. An earlier head of this branch deleted them and wrote
 /// its own entry; main deleted the same sixteen independently in #10344. One event, one record -- my
-/// entry is dropped in favour of main's action, which is the rule the TWENTY-THIRD and TWENTY-FOURTH
-/// entries already state for this exact situation.
+/// entry is dropped in favour of main's action, which is the rule the TWENTY-THIRD entry already
+/// states for the six rows before it.
 ///
 /// OLLAMA-CHOICE RECLASSIFICATION (2026-09-04, gunbc#10358). `gunbc.model.choice` advertised a
 /// runtime-neutral domain it never served: every runtime identity was minted solely from Ollama
