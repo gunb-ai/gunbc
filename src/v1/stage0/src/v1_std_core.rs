@@ -396,15 +396,6 @@ pub enum MatchPattern {
     Wildcard,
 }
 
-pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Wildcard => true,
-        MatchPattern::Bind { declaration: _, .. } => true,
-        MatchPattern::VariantPattern { .. } => false,
-        MatchPattern::LitPattern { value: _, .. } => false,
-    }
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
