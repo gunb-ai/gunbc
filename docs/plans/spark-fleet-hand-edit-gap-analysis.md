@@ -127,18 +127,28 @@ keys were installed by hand on top of it.
 The modeled path exists and was bypassed. That is the §6 out-of-band actuation tell in its
 plainest form, and the credential should be rotated once the fleet is stable.
 
-### 7. Runner configuration lives in the environment, and the identity model reads argv
+### 7. ~~Runner configuration lives in the environment, and the identity model reads argv~~
 
-`gunbc.model.ollama_choice` keys a serving realization on, among other things, a fixed runtime
-mode derived from the runner's **argv**. Every runner on this fleet is launched as bare
-`ollama serve` with its entire configuration in `Environment=` lines. So two runners
-differing in context window and slot count — a material difference the selector exists to
-notice — currently hash to the same mode and the same exact configuration.
+**CLOSED.** `gunbc.model.ollama_choice` no longer keys a realization on argv. The carrier
+is `ObservedOllamaLaunchConfiguration`, a closed projection of the two environment-backed
+causal axes — `server_default_context` and `serving_slots` — and
+`ExactRuntimeConfigurationIdentity` hashes the canonical wire those values render to
+through `ollama_context_length_env_assignment` and `ollama_num_parallel_env_assignment`.
+So the two runners this section said would collide now carry distinct identities.
 
-The argv split is correct as far as it goes and is strictly better than the `{name,
-version}` nickname it replaced. On this fleet it is discriminating almost nothing, and
-widening the carrier to environment is the highest-value follow-up. It needs a ruling
-first on which variables are configuration and which are ambient.
+Three details of the closure are worth carrying forward, because they are not what this
+section asked for:
+
+- It was **replaced, not widened**. Argv was never the right subject; the authority for
+  what configures an Ollama server is `extdeps.ollama.server_env`, which already holds the
+  variables as typed axes.
+- The partition is **owned by the module, not supplied by the caller**. The predecessor
+  took a `varied_flags` list as an argument, which let any caller erase a causal axis from
+  the fixed mode and thereby authorize evidence transport across it.
+- Identity runs **typed values first, wire second** — the module never parses an observed
+  string, because a string-to-integer admission here would be a second numeric authority.
+
+The ruling this section asked for was given and is recorded at item 4 below.
 
 ## What has to happen, in order
 
@@ -149,12 +159,13 @@ first on which variables are configuration and which are ambient.
 3. **Admit the second pair** — cell roles, host identities, and whatever network identity
    can be bound given that static reservations are refused by design. Admission must admit
    ONE serving unit, not two serving cells; see §5.
-4. **Widen the realization carrier to environment.** The side chat has since ruled on
-   the partition: consume a runtime-owned closed projection of causal configuration, not
-   the whole process environment. `OLLAMA_CONTEXT_LENGTH` and `OLLAMA_NUM_PARALLEL` are
+4. ~~**Widen the realization carrier to environment.**~~ CLOSED — see §7. The ruling was:
+   consume a runtime-owned closed projection of causal configuration, not the whole
+   process environment. `OLLAMA_CONTEXT_LENGTH` and `OLLAMA_NUM_PARALLEL` are
    configuration; `OLLAMA_HOST` is deployment identity; `OLLAMA_MODELS` is
    artifact-resolution provenance already subsumed once the artifact digest is joined.
-   This is landing in #9897 rather than waiting.
+   It landed in #9897, and `ObservedOllamaLaunchConfiguration` carries exactly that
+   partition.
 5. **Route credentials through the modeled `SecretRef`** and rotate the current one.
 
 ## The standing risk this document is really about

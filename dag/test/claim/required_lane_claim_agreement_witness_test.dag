@@ -23,7 +23,10 @@ import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_
 //
 // WHY THIS FILE EXISTS: gunbc#10078 promoted `rust-unit-tests` into the required aggregate and left
 // twelve sites asserting that it had not. Three of them were the DESIGN ledgers, which every
-// session loads in full on every turn. The full range of this check, and the three populations it
+// session loads in full on every turn. The 2026-09-04 runner-capacity ruling then DELETED that
+// lane, walking the same twelve sites in the other direction -- which is why the row below now
+// asserts its ABSENCE at the same identity grain rather than being deleted: a roster claim that
+// stops being checked when the lane leaves is exactly the silence this file was built to catch. The full range of this check, and the three populations it
 // deliberately does NOT reach, are stated once in `v2.workflow.required_lane_claim_agreement` and
 // are not restated here.
 
@@ -91,10 +94,10 @@ test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool {
 // them by having nothing to check -- green forever, carrying no information. This row fails in that
 // case. It asserts membership at IDENTITY grain and not by count, because a count equality against
 // a literal measured from this same tree is the change detector DESIGN section 5 refuses.
-test fn w_the_live_roster_is_read_and_carries_the_promoted_lane() -> Bool {
-  count_where(xs: rostered_job_ids, predicate: fn(id) { id == "rust-unit-tests" }) == 1
-    && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-build" }) == 1
+test fn w_the_live_roster_is_read_and_carries_both_lanes() -> Bool {
+  count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-build" }) == 1
     && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-floor" }) == 1
+    && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "rust-unit-tests" }) == 0
 }
 
 // CONTROL C, the other half of non-vacuity: the ledgers must have been PROJECTED, not arrive empty.
