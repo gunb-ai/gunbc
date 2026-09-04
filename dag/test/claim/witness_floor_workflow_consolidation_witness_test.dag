@@ -1,7 +1,7 @@
 module test.claim.witness_floor_workflow_consolidation_witness_test
 
 import std.types { Bool, String }
-import v2.std.algebra { list_map, non_empty_to_list }
+import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_jobs }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
@@ -282,10 +282,15 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   all(xs: witness_floor_lane_jobs(), predicate: fn(job) {
     (job.id != build_lane_job_id && job.id != floor_lane_job_id) || job.needs == []
   })
-    && list_map(
+    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
+    && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
-      f: fn(lane) { lane.job_id },
-    ) == [build_lane_job_id, floor_lane_job_id]
+      predicate: fn(lane) { lane.job_id == build_lane_job_id },
+    ) == 1
+    && count_where(
+      xs: non_empty_to_list(xs: required_lanes_roster()),
+      predicate: fn(lane) { lane.job_id == floor_lane_job_id },
+    ) == 1
 }
 
 // THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
