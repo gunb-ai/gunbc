@@ -103,9 +103,9 @@ pub use crate::v1_compiler_infer_env::{
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
     node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    resolved_node_is_kernel_identity_for_name, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    type_reference_declaration, type_reference_declaration_ref, unit_variant_index_shadow_insert,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, type_reference_declaration,
+    type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -273,10 +273,11 @@ pub use crate::v1_std_core::{
     method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
     node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
-    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    record_lit_named_field_value_optional, record_lit_type_name_at,
+    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
+    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
+    string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -4781,27 +4782,31 @@ pub fn nominal_product_head_name_if_declared_product(
     name: String,
     scope: Rc<InferScope>,
 ) -> String {
-    let representative =
-        transparent_alias_representative(scope.type_env.clone().symbol_index.clone(), name.clone());
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
-        scope.type_env.clone(),
-        representative.clone(),
-    ) {
-        Some(decl) => {
-            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                decl.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
-            if ((peeled.connective.clone() == Connective::Conj)
-                && ((peeled.children.clone().len() as i64) > 0))
-            {
-                name.clone()
-            } else {
-                "".to_string()
+    {
+        let representative = transparent_alias_representative(
+            scope.type_env.clone().symbol_index.clone(),
+            name.clone(),
+        );
+        match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            representative.clone(),
+        ) {
+            Some(decl) => {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    decl.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if ((peeled.connective.clone() == Connective::Conj)
+                    && ((peeled.children.clone().len() as i64) > 0))
+                {
+                    name.clone()
+                } else {
+                    "".to_string()
+                }
             }
+            std::option::Option::None => "".to_string(),
         }
-        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -25042,7 +25047,7 @@ pub fn ancestry_binding_is_kernel_identity(
 ) -> bool {
     match v1_rt::map_get(&bindings, name.clone()) {
         std::option::Option::None => false,
-        Some(binding) => crate::v1_compiler_infer_env::resolved_node_is_kernel_identity_for_name(
+        Some(binding) => crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
             binding.resolved.clone(),
             name.clone(),
         ),
