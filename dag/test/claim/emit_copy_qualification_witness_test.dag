@@ -38,6 +38,25 @@ import gunbc.emit_copy_qualification_fixture_gen {
 // (emission, clippy, build, execution) has its own transport and witnesses; nothing here runs
 // a process.
 // ── Roster and denominator ───────────────────────────────────────────────────────────────────
+// ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
+//
+// Three rows stood here asserting the `emit-copy-qualification-battery` job's capability closure,
+// its inert `if_condition: "false"`, and that its argv named this module's wet entry. All three
+// had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no longer exists:
+// the operator spent the held activation token on DELETION rather than activation, so the job is
+// gone from the emitted workflow instead of having its "false" lifted.
+//
+// WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
+// `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
+// calibration mutants in this module now have no executing consumer at all -- they are specification
+// without execution in the sense DESIGN section 5 names, and no row in this module establishes
+// nothing about a running system until one is restored. That is recorded at
+// `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
+// this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
+// `witness_floor_workflow` now requires operator sign-off for, but by converting these functions
+// to floor-enrolled `*_test.dag` witnesses -- the same conversion the deleted job's dissolution
+// row demanded, now with nothing else holding the module up.
+
 test fn ecq_denominator_is_axis_product_holds() -> Bool {
   let p = all_ownership_patterns |> count
   let c = all_carrier_realizations |> count
@@ -479,22 +498,3 @@ test fn ecq_shard_driver_names_every_shard_case_holds() -> Bool {
 fn string_contains_marker(haystack: String, marker: String) -> Bool {
   (split(s: haystack, delimiter: marker) |> count) > 1
 }
-
-// ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
-//
-// Three rows stood here asserting the `emit-copy-qualification-battery` job's capability closure,
-// its inert `if_condition: "false"`, and that its argv named this module's wet entry. All three
-// had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no longer exists:
-// the operator spent the held activation token on DELETION rather than activation, so the job is
-// gone from the emitted workflow instead of having its "false" lifted.
-//
-// WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
-// `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
-// calibration mutants below now have no executing consumer at all -- they are specification
-// without execution in the sense DESIGN section 5 names, and the rows above this comment establish
-// nothing about a running system until one is restored. That is recorded at
-// `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
-// this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
-// `witness_floor_workflow` now requires operator sign-off for, but by converting these functions
-// to floor-enrolled `*_test.dag` witnesses -- the same conversion the deleted job's dissolution
-// row demanded, now with nothing else holding the module up.
