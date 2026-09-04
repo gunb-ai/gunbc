@@ -2,41 +2,12 @@ module gunbc.fci1_bounded_execution_context
 
 import std.types { FilePath, Int, NonEmptyStr }
 import std.measure {
-  Measure, Memory, One, ByteSize, byte_size_count,
-  PositiveMeasureCount, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
-  positive_measure_count_from_int, positive_measure_count_value,
+  FiniteByteSize, FiniteByteSizeBuilt, FiniteByteSizeNonPositive,
+  finite_byte_size_count, finite_byte_size_from_byte_size,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import v2.std.optional { Present }
-
-// A finite byte quantity is not a second memory model. ByteSize already rules out systemd's
-// `infinity` spelling by carrying a Nat; using the existing positive-count construction also makes
-// zero unrepresentable. The FCI-1 context can therefore be projected to a live cgroup bound
-// without a validator deciding whether its purported limit is actually a limit.
-type FiniteByteSize = Measure<Memory, One, PositiveMeasureCount>
-
-fn finite_byte_size(count: PositiveMeasureCount) -> FiniteByteSize {
-  Measure { count: count }
-}
-
-fn finite_byte_size_count(size: FiniteByteSize) -> Int {
-  positive_measure_count_value(count: size.count)
-}
-
-type FiniteByteSizeBuild
-  = FiniteByteSizeBuilt { size: FiniteByteSize }
-  | FiniteByteSizeNonPositive { observed: Int }
-
-fn finite_byte_size_from_byte_size(size: ByteSize) -> FiniteByteSizeBuild {
-  let observed = byte_size_count(b: size)
-  match positive_measure_count_from_int(count: observed) {
-    PositiveMeasureCountBuilt { count: positive } =>
-      FiniteByteSizeBuilt { size: finite_byte_size(count: positive) }
-    PositiveMeasureCountRefused { cause: _ } =>
-      FiniteByteSizeNonPositive { observed: observed }
-  }
-}
 
 // This is the bound for the instrument process roots, not a claim that the driver is a runner
 // slot. The basis names why the values may be reused: the driver performs sequential gunbc

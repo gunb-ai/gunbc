@@ -2,7 +2,11 @@
 set -euo pipefail
 
 # FCI-1 reservation instrument. It starts no Work command.
-# SCAFFOLD — dissolve-on: modeled lifecycle actuation sufficient to sequence a wet gate from .dag.
+# SCAFFOLD - dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2)
+# realizes this runner through orchestration emit or typed host_effect_apply, without a
+# medium-as-string concat scaffold. That capability -- .dag-to-bash emission for a foreign
+# executor -- is what replaces a hand-shell carrier; modeled lifecycle actuation alone would
+# sequence the gate and still leave this transport hand-authored.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || { echo 'InstrumentRefused: derived repo_root is not a git checkout' >&2; exit 2; }
 cd "$repo_root" || { echo 'InstrumentRefused: cannot enter derived repo_root' >&2; exit 2; }

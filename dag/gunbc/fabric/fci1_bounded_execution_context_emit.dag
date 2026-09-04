@@ -1,13 +1,13 @@
 module gunbc.fci1_bounded_execution_context_emit
 
 import std.types { String }
+import std.measure { finite_byte_size_count }
 import gunbc.fci1_bounded_execution_context {
   Fci1BoundedExecutionContextBuilt,
   Fci1MemoryMaxNonPositive,
   Fci1MemoryHighNonPositive,
   Fci1MemoryHighExceedsMax,
   fci1_bounded_execution_context,
-  finite_byte_size_count,
 }
 import v2.std.optional { Present, Absent }
 import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
