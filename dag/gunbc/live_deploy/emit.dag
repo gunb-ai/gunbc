@@ -785,13 +785,15 @@ fn apply_repository_convergence_unit_write_step(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
 ) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
+  deploy_raw(command: deploy_stage_write_expansion_command(
     stage_name: spec.names.tree_sync_unit_name as String,
-    content: convergence_unit_doc(
+    format: convergence_unit_doc(
       spec: spec,
       candidate: release_revision_execstart_text(binding: revision),
       receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+      working_directory: "%s",
     ),
+    expansion_var: "PWD",
   ))
 }
 

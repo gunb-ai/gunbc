@@ -200,6 +200,7 @@ fn srv1_unit_text() -> String {
     spec: deployment_spec_srv1(),
     candidate: fixture_candidate,
     receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
+    working_directory: fixture_object_source,
   )
 }
 
@@ -215,15 +216,15 @@ test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
     && !string_contains(s: unit, pattern: "User=root")
 }
 
-// THE ONESHOT RUNS INSIDE A GIT CHECKOUT. A systemd unit's cwd is `/` unless told otherwise, and the
-// admitted binary discovers its workspace root by walking cwd's ancestors for `.git`, refusing
-// otherwise. The first `gunbc converge --mode deploy` on srv1 got exactly that refusal from this
-// unit -- `workspace_root: / is not inside a git checkout` -- after the binary had been installed
-// and before the service was restarted. The deployed repository root is the checkout the unit
-// converges, so it is the working directory; the ExecStart's own source roots are absolute and do
-// not depend on it.
-test fn the_unit_runs_inside_the_deployed_repository_checkout() -> Bool {
-  string_contains(s: srv1_unit_text(), pattern: "WorkingDirectory=/opt/gunbc/gunbc")
+// THE ONESHOT RUNS INSIDE THE RUNNER CHECKOUT IT READS. A systemd unit's cwd is `/` unless told
+// otherwise; the admitted binary discovers its workspace root by walking cwd's ancestors for `.git`
+// and then requires every source root under it. The first two deploys through `gunbc converge
+// --mode deploy` on srv1 refused from this unit in exactly those two ways, after the binary had been
+// installed and before the service was restarted. The working directory is therefore the object
+// source the ExecStart's roots live under -- the same path the env file names -- and it is a
+// parameter because only the deploying shell knows it.
+test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool {
+  string_contains(s: srv1_unit_text(), pattern: concat("WorkingDirectory=", fixture_object_source))
 }
 
 // THE CORPUS COMES FROM THE RUNNER CHECKOUT AND THE BINARY FROM THE INSTALL, AND THIS IS THE WITNESS
