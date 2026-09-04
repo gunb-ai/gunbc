@@ -15502,10 +15502,67 @@ fn emit_cli_dispatch_host_method(sub: CliSubcommandRow, method: String) -> Strin
 fn emit_candidate_cli_host_method(sub: CliSubcommandRow, method: String) -> String {
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let params = fields |> map(field => concat(field, ": ", cli_dispatch_field_type(sub: sub, field: field))) |> join(separator: ", ")
+  match sub.realization {
+    CliRetainedHostKernel => emit_candidate_compile_host_method(params: params)
+    _ => concat(
+      "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
+      "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
+      "        std::process::exit(2);\n",
+      "    }\n")
+  }
+}
+
+// The compiler entry point is a host boundary, but its DECISION is not hand-authored here:
+// both the seed executable and the emitted candidate call cli_run::compile_emission.  This
+// renderer supplies only the argv/output transport around that shared transaction.  Keeping the
+// transaction shared is what makes a behavioral comparison meaningful: two independently copied
+// compile pipelines can agree on a fixture while disagreeing everywhere the fixture does not ask.
+fn emit_candidate_compile_host_method(params: String) -> String {
   concat(
-    "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
-    "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
-    "        std::process::exit(2);\n",
+    "    fn retained_host_kernel(&self, ", params, ") -> ! {\n",
+    "        let render_targets = parse_render_targets(&target);\n",
+    "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n",
+    "        let subject = match (&entry, &source_roots.is_empty()) {\n",
+    "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n",
+    "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n",
+    "            (None, true) => None,\n",
+    "        };\n",
+    "        if subject.is_none() {\n",
+    "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n",
+    "            std::process::exit(2);\n",
+    "        }\n",
+    "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n",
+    "            subject: subject.unwrap(),\n",
+    "            source_roots: source_roots.iter().cloned().collect(),\n",
+    "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n",
+    "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n",
+    "        });\n",
+    "        match &run.disposition {\n",
+    "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n",
+    "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Refused { phase, cause } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n",
+    "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Completed { emitted_count } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                let multi_target = run.emissions.len() > 1;\n",
+    "                let mut total_diagnostics = 0usize;\n",
+    "                for emission in &run.emissions {\n",
+    "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n",
+    "                    write_output_files(&target_dir, &emission.result);\n",
+    "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n",
+    "                    render_diagnostics(&emission.result);\n",
+    "                    total_diagnostics += emission.result.diagnostics.len();\n",
+    "                }\n",
+    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n",
+    "                std::process::exit(0);\n",
+    "            }\n",
+    "        }\n",
     "    }\n")
 }
 
