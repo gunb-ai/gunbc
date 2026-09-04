@@ -70,7 +70,7 @@ import gunbc.fabric_required_build_cell {
   observe_required_build_cell_wet, required_build_cell_lifetime_sample,
   required_build_cell_lifetime_sample_wire, decode_required_build_cell_lifetime_sample,
   required_build_cell_lifetime_verdict, required_build_cell_lifetime_verdict_wire,
-  cell_member_shape_complete,
+  FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape,
   DirectoryModeStanding, DirectoryModeUnobserved, fci1_directory_mode_unobserved,
 }
 import gunbc.fabric_cell_acquire {
@@ -1469,12 +1469,13 @@ fn fci1_cell_pre_reservation_standing() -> FabricCellPreReservationStanding {
   match fabric_cell_observation_outcome(decision: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: "srv3"))) {
     FabricCellObservationAdmitted { population: population } => {
       let members = fabric_cell_observed_population_members(population: population)
-      if cell_member_shape_complete(members: members) {
-        FabricCellPreReservationClean {
+      match fabric_cell_shape(members: members) {
+        FabricCellShaped { shape: _ } => FabricCellPreReservationClean {
           cell: cell,
           members_content: fabric_ci_shell_crossing_coordinates_hash(values: map(members, m => fci1_member_wire(member: m))),
         }
-      } else { FabricCellPreReservationRefused { cell: cell } }
+        FabricCellShapeIncomplete => FabricCellPreReservationRefused { cell: cell }
+      }
     }
     FabricCellObservationDenied { host: _, blocked: _ } => FabricCellPreReservationRefused { cell: cell }
     FabricCellObservationNotApplicable { host: _ } => FabricCellPreReservationAbsent { cell: cell }

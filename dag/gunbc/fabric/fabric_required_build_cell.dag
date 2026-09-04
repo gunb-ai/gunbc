@@ -181,11 +181,65 @@ fn members_for_slot(members: List<FabricCellMember>, slot: RunnerSlotIdentity) -
   filter(members, m => runner_slot_identity_equal(a: m.slot, b: slot))
 }
 
-fn cell_member_shape_complete(members: List<FabricCellMember>) -> Bool {
-  list_length(items: members) == 3
-    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellRootAddress))) == 1
-    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellAttemptRootAddress))) == 1
-    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress))) == 1
+// A CONVERGED CELL IS THREE NAMED MEMBERS, NOT A LIST THAT HAPPENS TO HAVE LENGTH THREE. The
+// previous shape was a Bool asserting three cardinalities, and its consumer then indexed
+// `boundary[0]` on the strength of that Bool -- a partial read guarded by a validator, which is the
+// pair DESIGN section 5 names: the check re-states a constraint the model should carry, and it can
+// be satisfied while the realization still lies, because nothing connects the predicate to the
+// index. Constructing FabricCellShape instead makes the malformed population unrepresentable at the
+// point of use: the boundary member is a field, so there is no index to be out of range.
+//
+// NO LENGTH TEST SURVIVES, and that is a consequence rather than an omission.
+// FabricCellResourceAddress has exactly three variants, so exactly-one at each of the three
+// addresses ALREADY entails a population of three -- a fourth member would have to duplicate an
+// address, which FabricCellMemberDuplicated refuses. The old `list_length == 3` conjunct was
+// therefore redundant with the three that followed it.
+type FabricCellShape sole_constructor {
+  root: FabricCellMember
+  attempt_root: FabricCellMember
+  boundary: FabricCellMember
+}
+
+type FabricCellShapeBuild
+  = FabricCellShaped { shape: FabricCellShape }
+  | FabricCellShapeIncomplete
+
+// Zero, one, or more is the real answer to "which member sits at this address", so the fold carries
+// all three rather than collapsing to a Bool that cannot distinguish missing from duplicated.
+type FabricCellMemberAt
+  = FabricCellMemberMissing
+  | FabricCellMemberExactly { member: FabricCellMember }
+  | FabricCellMemberDuplicated
+
+fn fabric_cell_member_at(members: List<FabricCellMember>, address: FabricCellResourceAddress) -> FabricCellMemberAt {
+  fold(members, init: FabricCellMemberMissing, f: (acc, m) =>
+    if fabric_cell_resource_address_equal(a: m.address, b: address) {
+      match acc {
+        FabricCellMemberMissing => FabricCellMemberExactly { member: m }
+        FabricCellMemberExactly { member: _ } => FabricCellMemberDuplicated
+        FabricCellMemberDuplicated => FabricCellMemberDuplicated
+      }
+    } else { acc })
+}
+
+fn fabric_cell_shape(members: List<FabricCellMember>) -> FabricCellShapeBuild {
+  match fabric_cell_member_at(members: members, address: FabricCellRootAddress) {
+    FabricCellMemberExactly { member: root_member } =>
+      match fabric_cell_member_at(members: members, address: FabricCellAttemptRootAddress) {
+        FabricCellMemberExactly { member: attempt_member } =>
+          match fabric_cell_member_at(members: members, address: FabricCellResourceBoundaryAddress) {
+            FabricCellMemberExactly { member: boundary_member } =>
+              FabricCellShaped { shape: FabricCellShape {
+                root: root_member,
+                attempt_root: attempt_member,
+                boundary: boundary_member,
+              } }
+            _ => FabricCellShapeIncomplete
+          }
+        _ => FabricCellShapeIncomplete
+      }
+    _ => FabricCellShapeIncomplete
+  }
 }
 
 fn members_owned(members: List<FabricCellMember>) -> Bool {
@@ -194,13 +248,6 @@ fn members_owned(members: List<FabricCellMember>) -> Bool {
     Present { value: _ } => false
     Absent => false
   })
-}
-
-fn boundary_digests(members: List<FabricCellMember>) -> List<NonEmptyStr> {
-  fold(members, init: [], f: (acc, m) =>
-    if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
-      acc + [m.state_digest]
-    } else { acc })
 }
 
 fn required_build_cell_member_wire(member: FabricCellMember) -> NonEmptyStr {
@@ -245,13 +292,13 @@ func observe_required_build_cell_wet(
                 FabricCellObservationNotApplicable { host: _ } => CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
                 FabricCellObservationAdmitted { population: population } =>
                   let selected = members_for_slot(members: fabric_cell_observed_population_members(population: population), slot: slot)
-                  if !cell_member_shape_complete(members: selected) {
-                    CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
-                  } else {
+                  match fabric_cell_shape(members: selected) {
+                    FabricCellShapeIncomplete =>
+                      CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
+                    FabricCellShaped { shape: shape } =>
                     if !members_owned(members: selected) {
                       UnownedCell { cell: fabric_cell_id_for_slot(slot: slot) }
                     } else {
-                      let boundary = boundary_digests(members: selected)
                       RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot {
                         work: demand.work,
                         demand: demand.id,
@@ -262,7 +309,7 @@ func observe_required_build_cell_wet(
                         reservation_payload: version.value,
                         reservation_content: version.content,
                         cell_members: selected,
-                        resource_boundary_digest: boundary[0],
+                        resource_boundary_digest: shape.boundary.state_digest,
                       } }
                     }
                   }
