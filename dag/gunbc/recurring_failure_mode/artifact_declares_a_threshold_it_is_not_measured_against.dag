@@ -1,0 +1,70 @@
+module gunbc.recurring_failure_mode.artifact_declares_a_threshold_it_is_not_measured_against
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data artifact_declares_a_threshold_it_is_not_measured_against: RecurringFailureMode = RecurringFailureMode {
+  identity: "artifact_declares_a_threshold_it_is_not_measured_against" as NonEmptyStr,
+
+  receipts: [
+    "**an artifact's column names a governing threshold and carries a constant that is not the threshold enforced, so the artifact cannot predict the refusal it exists to explain** (INVALID STATE: a machine-readable receipt carries a field named for the limit its subject is judged against, and the value is a constant unrelated to the limit the judge actually applies. ",
+
+    "MEASURED on gunbc#10200's required run (run 33722461610, artifact `required-floor-claim-cost`, 2026-09-03): all 3534 rows of `required_floor_claim_cost.tsv` declare `cost_line_ms=100`, while the same run's floor refuses rows against a 500ms per-claim CPU budget and says so in its own refusal text. ",
+
+    "**300 of 3534 rows exceed the line the FILE declares; 13 exceed the line actually ENFORCED.** A consumer computing an over-cost population from the artifact gets a set 23 times too large, in a well-formed way, with no error anywhere and no column missing. ",
+
+    "HARM: the artifact is the only durable record of per-claim cost, so it is what anyone reaches for to ask whether a refusal was predictable, whether a row is near the line, or whether a population regressed. ",
+
+    "Every one of those questions is answered wrongly by the same factor, and the wrongness is invisible because 100 is a plausible per-claim budget. ",
+
+    "**THE SHARP POINT, AND IT IS WHY THIS IS ITS OWN ROW: THE PRESCRIBED REMEDY FOR THE NEIGHBOURING HAZARD DOES NOT PROTECT AGAINST THIS ONE, AND LOOKS LIKE IT DOES.** `gunbc.floor_cost_distribution` already records this constant, as a COLUMN-ORDERING hazard: `eval_steps` was inserted into the artifact between vintages, so a parser keyed on index 6 reads `cost_line_ms` -- the constant 100 -- as a step count and produces microsecond figures three orders of magnitude off, measured on three of eleven sampled runs. ",
+
+    "That note's remedy is DESIGN section 3's standing rule: locate columns by NAME, never by position. ",
+
+    "That remedy is correct for its own hazard and is exactly what fails here. ",
+
+    "A consumer who follows it perfectly -- reads the header, finds `cost_line_ms` by name, uses it as the line -- still computes the wrong population, because the defect is not WHERE the column is but WHAT IT SAYS. ",
+
+    "Citing by name protects a reader from a moved column; nothing protects them from a column whose name asserts a role its value does not fill. ",
+
+    "That note is CITED here, not restated, and the addition is that its constant is not merely a parsing trap but a false statement about the enforced line. ",
+
+    "WHY IT IS NOT `meaning_fork`: that class is one name carrying two material referents under hidden state, and its recognition rule is to hold the naming surface constant and vary the hidden state until the referent changes. ",
+
+    "Here there are not two referents. ",
+
+    "There is ONE name making ONE assertion -- this is the line this row is judged against -- which is simply false, at every vintage, for every row, with no state to vary. ",
+
+    "The dual is nicknaming and this is neither: it is a field whose name claims an authority relation its value does not have. ",
+
+    "THE DISTRIBUTION IS THE RECEIPT AND IT IS WHAT MAKES THE 5x GAP CONSEQUENTIAL RATHER THAN COSMETIC. ",
+
+    "Against the enforced 500ms line, that same run's rows sit at p50=2ms, p90=84ms, p99=364ms, p99.9=514ms, max=541ms, with 8 rows in 400-450, 8 in 450-500, 12 in 500-525, 1 in 525-550 and NOTHING above 541. ",
+
+    "So the only rows the line can ever separate are the 29 above 400ms, and 21 of those 29 sit within ten percent of it. ",
+
+    "A reader using the artifact's own column would place the threshold at 100ms, where 300 rows sit above it and the nearest rows are not clustered at all -- a completely different and far healthier-looking picture of the same run. ",
+
+    "The artifact does not merely mis-state the line; it conceals the clustering that makes the real line a change detector rather than an oracle. ",
+
+    "RUNG FOUND AT: outside the ladder, and this is the honest placement rather than rung 1. ",
+
+    "Nothing fails, nothing refuses, and no diagnostic fires: the file is well-formed, the column is present and correctly named by position and by header, and every value parses. ",
+
+    "The wrongness is silent and is discovered only by someone who happens to hold both the artifact and a refusal message from the same run and notices they disagree. ",
+
+    "CEILING: 4, structurally impossible. ",
+
+    "The line a claim is judged against is a fact the judge already holds at the moment it judges, so an artifact that carries the judge's own value rather than a literal cannot state a different one. ",
+
+    "That is construction rather than validation, and it is available today. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **each cost row emits the line ACTUALLY applied to that row, derived from the same authority the enforcement reads, so that the over-cost population computed from the artifact alone is the set the floor refused** -- sufficient for `rows where cpu_ms >= cost_line_ms` over the artifact to equal the run's refusal set, demonstrated by a discriminating red on a fixture where a row's declared line differs from its enforced one. ",
+
+    "Changing the constant from 100 to 500 does NOT discharge this: a second hand-authored literal agreeing with the current line by coincidence reproduces the class the moment either moves, and the defect is that the value is authored at all rather than derived. ",
+
+    "NOT REPAIRED HERE: the emit-family cost work and the mis-grounding of the 500ms line itself are separate subjects with their own dispatch; this row is the modelling defect in the instrument, which is what makes it filable independently of either.)",
+  ],
+
+  evidence: [],
+}

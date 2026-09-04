@@ -12,6 +12,7 @@ import gunbc.generated_artifact_merge_driver {
 }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
+import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,7 +60,10 @@ fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
   ).success
   let script = Filesystem.Write(
     path: witness_repo_file(repo: repo, name: witness_driver_script_name),
-    content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command),
+    content: expected_generated_artifact_merge_driver_sh(
+      regen_command: ci_heal_author_commit_regen_command,
+      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+    ),
   ).success
   let attributes = Filesystem.Write(
     path: witness_repo_file(repo: repo, name: ".gitattributes"),
@@ -121,6 +125,19 @@ fn witness_refusing_driver_value() -> String {
 }
 
 data witness_retired_take_ours_driver_value: String = "true"
+
+// An empty delegated population emits the ordinary author-repair route directly. It must not
+// serialize an empty shell case pattern (`case ... in )`), which would replace the intended typed
+// merge refusal with a shell syntax error before any diagnostic ran.
+test fn empty_heal_delegation_population_emits_valid_default_route() -> Bool {
+  let script = expected_generated_artifact_merge_driver_sh(
+    regen_command: ci_heal_author_commit_regen_command,
+    heal_regenerated_paths: []
+  )
+  string_contains(s: script, pattern: "case \"$merged_path\" in\n  )") == false
+    && string_contains(s: script, pattern: ci_heal_author_commit_regen_command)
+    && string_contains(s: script, pattern: "exit 1")
+}
 
 test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
   let observed = observe_generated_artifact_merge(

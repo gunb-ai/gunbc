@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFailureMode {
+  identity: "exact_duplicate_match_arm_not_refused" as NonEmptyStr,
+
+  receipts: [
+    "**an exact duplicate constructor pattern appears twice in one match, the second arm is unreachable, and the compiler accepts both -- so SOURCE ORDER silently decides which body answers** (INVALID STATE: two arms of one `match` name the SAME closed-variant constructor with DIFFERENT bodies. ",
+
+    "HARM: the second body is dead, and nothing says so. ",
+
+    "The author wrote it believing it would run; the reader cannot tell which of the two the machine picks without knowing the arm-selection rule; and the wrong one being first is a wrong answer that type-checks, projects and passes every gate. ",
+
+    "THE SPECIMEN IS MINE AND IS MEASURED (gunbc#9981, 2026-09-03). ",
+
+    "`probe_owner_is_wet_lib_module` in `v2.test.claim.self_host.stage0_executable_assembly_test` carried `WetActuatorLibModuleOwner` twice -- once as the matching arm binding `module_basename` and `declaration_route`, and again in the trailing list of `=> false` arms, where I had added it while enumerating the coproduct for exhaustiveness. ",
+
+    "The compiler accepted it in every lane it reached. ",
+
+    "It was found by a review reading the arm list, not by any check. ",
+
+    "THIS IS THE DUAL OF EXHAUSTIVENESS, NOT AN INSTANCE OF IT. ",
+
+    "Exhaustiveness asks whether the UNION of the arms covers the domain, and gunbc does refuse when it does not -- the same file's missing `WetActuatorLibModuleOwner` arm refused loudly earlier in the same PR. ",
+
+    "The unasked question is whether each arm CONTRIBUTES an inhabitant no earlier arm already covers. ",
+
+    "A duplicate arm makes the union no larger, so an exhaustiveness check is green by construction on exactly the source that carries this defect: adding the duplicate is the one edit that cannot move that verdict. ",
+
+    "THE MEASURED GRAIN IS NARROW AND IS STATED NARROWLY, because the general form is not the same question. ",
+
+    "Deciding whether an arbitrary later pattern is subsumed by the union of earlier ones is a coverage problem over guards, nested patterns and bindings; the measured specimen is the decidable corner of it -- two SYNTACTICALLY IDENTICAL closed-variant constructor heads at the same match. ",
+
+    "Claiming the general form here would put a ratchet where a wall is available, and would let the narrow wall be cited as coverage for the broad class. ",
+
+    "RUNG FOUND AT: outside the ladder -- the state is writable, accepted, and silent. ",
+
+    "CEILING: 3, structurally guaranteed, and the reason it is not 4 is that a `match` is written arm by arm, so a second identical head is spellable in any source a human or a generator can emit; no constructor arrangement removes it. ",
+
+    "What rung 3 buys is that no `Accepted` program contains one. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **a match-arm usefulness judgment in the compiler frontend that REFUSES a second arm whose constructor head is already covered, locating both the duplicate and the arm that covers it** -- with a discriminating RED (two identical constructor patterns, different bodies, refused at the second arm), an accepted positive control (two distinct constructor patterns, accepted), and a retention control establishing that adding a variant to the coproduct does not weaken the duplicate judgment. ",
+
+    "A diagnostic that names the duplicate without refusing it does not discharge this: a warning on an accepted program is the tier DESIGN section 6 calls an inert lens, and this class is silent precisely because nothing stops the line.)",
+  ],
+
+  evidence: [],
+}

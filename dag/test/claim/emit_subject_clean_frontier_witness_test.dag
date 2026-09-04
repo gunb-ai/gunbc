@@ -1004,9 +1004,11 @@ fn fixture_coordinate(value: String) -> ActionsRunCoordinate {
 fn fixture_binding_of(subjects: List<EmissionMeasurementSubject>) -> ObservationBinding {
   observation_binding(
     subjects: subjects,
-    run_identity: fixture_coordinate(value: "run-1"),
-    run_attempt: fixture_coordinate(value: "1"),
-    runner_binding: fixture_coordinate(value: "runner-a")
+    observations: ActionsRunEnvironmentObservations {
+      run_identity: fixture_coordinate(value: "run-1"),
+      run_attempt: fixture_coordinate(value: "1"),
+      runner: fixture_coordinate(value: "runner-a")
+    }
   )
 }
 
@@ -1061,22 +1063,27 @@ test fn one_run_over_agreeing_subjects_establishes_a_context() -> Bool {
 test fn two_attempts_of_one_run_stay_distinguishable() -> Bool {
   let first = observation_binding(
     subjects: [fixture_clean_subject()],
-    run_identity: fixture_coordinate(value: "run-1"),
-    run_attempt: fixture_coordinate(value: "1"),
-    runner_binding: fixture_coordinate(value: "runner-a")
+    observations: ActionsRunEnvironmentObservations {
+      run_identity: fixture_coordinate(value: "run-1"),
+      run_attempt: fixture_coordinate(value: "1"),
+      runner: fixture_coordinate(value: "runner-a")
+    }
   )
   let second = observation_binding(
     subjects: [fixture_clean_subject()],
-    run_identity: fixture_coordinate(value: "run-1"),
-    run_attempt: fixture_coordinate(value: "2"),
-    runner_binding: fixture_coordinate(value: "runner-a")
+    observations: ActionsRunEnvironmentObservations {
+      run_identity: fixture_coordinate(value: "run-1"),
+      run_attempt: fixture_coordinate(value: "2"),
+      runner: fixture_coordinate(value: "runner-a")
+    }
   )
   (first != second)
     && match first {
       BindingEstablished { context: a } =>
         match second {
           BindingEstablished { context: b } =>
-            (a.run_identity == b.run_identity) && (a.run_attempt != b.run_attempt)
+            (a.observations.run_identity == b.observations.run_identity)
+              && (a.observations.run_attempt != b.observations.run_attempt)
           BindingDivergent { component: _, values: _ } => false
           BindingAbsent => false
         }
@@ -1182,9 +1189,11 @@ test fn an_unbound_run_coordinate_refuses_and_names_the_variable() -> Bool {
     observation: emit_ratchet_observation(
       binding: observation_binding(
         subjects: [fixture_clean_subject()],
-        run_identity: ActionsRunCoordinateMissing { variable: "GITHUB_RUN_ID" },
-        run_attempt: fixture_coordinate(value: "1"),
-        runner_binding: fixture_coordinate(value: "runner-a")
+        observations: ActionsRunEnvironmentObservations {
+          run_identity: ActionsRunCoordinateMissing { variable: "GITHUB_RUN_ID" },
+          run_attempt: fixture_coordinate(value: "1"),
+          runner: fixture_coordinate(value: "runner-a")
+        }
       ),
       selection: SelectionWholeRoster,
       r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())

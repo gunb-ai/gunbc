@@ -9,7 +9,7 @@ import product.printed_chassis.manufacturing_manifest {
   PrinterAssetAdmitted,
   PrinterAssetAbsent,
   PrinterAssetDuplicate,
-  PrinterCatalogMismatch,
+  PrinterCatalogModuleMismatch,
   admit_printer_asset,
   asset_catalog_qualifies,
   admitted_printer_identity,
@@ -64,7 +64,7 @@ test fn w_an_unregistered_identity_is_refused_rather_than_admitted() -> Bool {
     PrinterAssetAbsent { requested: r } => r as String == "printer-a"
     PrinterAssetAdmitted { binding: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
-    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+    PrinterCatalogModuleMismatch { requested: _, expected_module: _, found_module: _ } => false
   }
 }
 
@@ -77,7 +77,7 @@ test fn w_an_identity_missing_from_a_populated_roster_is_refused() -> Bool {
     PrinterAssetAbsent { requested: r } => r as String == "printer-zzz"
     PrinterAssetAdmitted { binding: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
-    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+    PrinterCatalogModuleMismatch { requested: _, expected_module: _, found_module: _ } => false
   }
 }
 
@@ -106,7 +106,7 @@ test fn w_a_registered_a1_mini_is_admitted_under_its_own_identity() -> Bool {
     PrinterAssetAdmitted { binding: b } => admitted_printer_identity(a: b) as String == "printer-a"
     PrinterAssetAbsent { requested: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
-    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+    PrinterCatalogModuleMismatch { requested: _, expected_module: _, found_module: _ } => false
   }
 }
 
@@ -122,7 +122,7 @@ test fn w_the_admitted_asset_is_the_one_requested_not_the_first_row() -> Bool {
     PrinterAssetAdmitted { binding: b } => admitted_printer_identity(a: b) as String == "printer-b"
     PrinterAssetAbsent { requested: _ } => false
     PrinterAssetDuplicate { requested: _, matches: _ } => false
-    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+    PrinterCatalogModuleMismatch { requested: _, expected_module: _, found_module: _ } => false
   }
 }
 
@@ -138,7 +138,7 @@ test fn w_a_duplicated_identity_refuses_and_counts_the_matches() -> Bool {
     PrinterAssetDuplicate { requested: r, matches: n } => r as String == "printer-a" && n == 2
     PrinterAssetAdmitted { binding: _ } => false
     PrinterAssetAbsent { requested: _ } => false
-    PrinterCatalogMismatch { requested: _, expected_module: _, found_module: _ } => false
+    PrinterCatalogModuleMismatch { requested: _, expected_module: _, found_module: _ } => false
   }
 }
 
@@ -149,7 +149,7 @@ test fn w_a_duplicated_identity_refuses_and_counts_the_matches() -> Bool {
 test fn w_a_registered_asset_with_a_foreign_catalog_refuses() -> Bool {
   let inv = [printer_row(id: "printer-a", catalog: foreign_catalog())]
   match admit_printer_asset(inventory: inv, requested: "printer-a" as PhysicalAssetIdentity) {
-    PrinterCatalogMismatch { requested: r, expected_module: e, found_module: f } =>
+    PrinterCatalogModuleMismatch { requested: r, expected_module: e, found_module: f } =>
       r as String == "printer-a"
         && e as String == "extdeps.printing.bambu_lab_a1_mini"
         && f as String == "extdeps.printing.bambu_studio"
