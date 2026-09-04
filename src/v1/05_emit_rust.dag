@@ -20,6 +20,7 @@ import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
+  resolved_node_is_kernel_identity_for_name,
   match_pattern_is_irrefutable,
   declaration_provenance_of, type_reference_provenance,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -160,7 +161,7 @@ import v1.compiler.trait_bound_witness {
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
-  resolved_node_is_kernel_identity_for_name, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -6001,8 +6002,9 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
 // the provider's structural type -- the shadow measured as 139 of the 146 E0308 rows in frontier
 // receipt 1 (host std::string::String vs Rc<im::Vector<i64>>). The question is asked of the
 // resolver's own lookup over the module's typed environment and decided by the BINDING'S IDENTITY
-// -- v1.compiler.infer_env resolved_node_is_kernel_identity_for_name, the ONE authority for the
-// kernel-identity fact, shared with the infer-side rewire guard -- never by a name roster or arm
+// -- v1.std.core resolved_node_is_kernel_identity_for_name, the ONE authority for the
+// kernel-identity fact, homed beside the kernel_span that mints the span it tests and shared with
+// the infer-side rewire guard and with declaration_provenance_of -- never by a name roster or arm
 // order: a name that is both a
 // graph type and a kernel spelling answers by what its binding IS. Absent binding or absent env
 // keeps the line: ignorance must not widen a drop (DESIGN section 5). Structural consumers whose

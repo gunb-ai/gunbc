@@ -1057,23 +1057,20 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
   }
 }
 
-// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850). Whether a resolved node
-// IS the kernel identity for a queried name is one semantic fact with one authority: exact
-// equality of the node's ident_span file against the kernel span file "<kernel:NAME>" that
-// build_type_env installs for that name. Both the infer-side rewire guard
-// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision consume THIS
-// predicate; neither re-derives it. The emitter's additional condition -- that the kernel node is
-// a host-realized structureless scalar (NoConnective, zero children), which excludes structural
-// kernels like Bool = True | False whose use-line IS the path to the realization -- is a SEPARATE
-// fact composed beside this one, never folded into it. A substring or prefix test here would be a
-// second, weaker authority for the same fact: the defect this predicate exists to repair was two
-// readers giving one environment two meanings.
-fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
-  match node.ident_span {
-    Present { value: sp } => sp.file == concat("<kernel:", concat(name, ">"))
-    Absent => false
-  }
-}
+// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850), AND ITS HOME IS NOW
+// v1.std.core, BESIDE kernel_span. It was declared here and never called here, while the module
+// that mints the span it tests -- v1.std.core, which cannot import this one without closing a
+// cycle -- had to re-derive the same question inside declaration_provenance_of. So the ruling's
+// "exists once" was true of the name and false of the fact. The body that stood here inlined
+// `concat("<kernel:", name, ">")`, reproducing kernel_span's output by hand, which made it a second
+// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. Both
+// consumers this module used to supply -- the infer-side rewire guard
+// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision -- now import it from
+// v1.std.core directly, so they cite the authority's real home rather than this waypoint. The
+// emitter's additional condition -- that the kernel node is a host-realized structureless scalar
+// (NoConnective, zero children), which excludes structural kernels like Bool = True | False whose
+// use-line IS the path to the realization -- is unchanged: a SEPARATE fact composed beside this
+// one, never folded into it.
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {

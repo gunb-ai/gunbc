@@ -213,17 +213,6 @@ pub mod std_constructors;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod std_import;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod std_integer;
 #[allow(
     unused_imports,
@@ -609,17 +598,6 @@ pub mod v1_compiler_ownership;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_parse;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_resolve;
 #[allow(
     unused_imports,
@@ -797,17 +775,6 @@ pub mod v1_tests_claim_carrier_realization_census;
     clippy::all
 )]
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_tests_claim_item_kind_dissolves_shape_predicates_control_test;
 #[allow(
     unused_imports,
     unused_variables,

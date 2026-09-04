@@ -362,6 +362,31 @@ fn is_leaf_type_item(item: Node) -> Bool {
     && item.params |> count == 0 && item.children |> count == 0
 }
 
+// THE EXCLUSION THAT STOOD BETWEEN THESE TWO PREDICATES IS GONE, AND THIS NOTE RECORDS WHY IT WAS
+// RIGHT AND STILL NOT THE FIX. gunbc#10350 repaired the same defect the other way: it derived a
+// resource exclusion here from v1.compiler.parse parsed_item_carries_resource_entries, so that
+// "what a resource item is" had ONE definition and these predicates were two consumers of it
+// rather than a second place to keep in sync. That was the correct move available at the time, and
+// codex review 60254 named its limit in the same breath: an exclusion is a VALIDATOR, it grows one
+// conjunct per collision discovered, and it can never become a positive authority -- DESIGN
+// section 5, validation standing where construction was available. The row it filed
+// (gunbc.recurring_failure_mode dispatch_correctness_resting_on_arm_order) named the trigger as a
+// positive item kind carried on the emit side. That is what module_item_kind is, so both the
+// exclusion and the authority it derived from are deleted rather than kept beside it.
+//
+// WHAT THE EXCLUSION WAS COMPENSATING FOR, kept because it is the specimen: `resource Network` and
+// `resource AuthContext` in std.resources declare no capabilities, so they carry no children, no
+// body, no params and no connective, and the SHAPE test claimed them while the parser correctly
+// read them as resources. That disagreement is what made
+// gunbc.type_reference_decl_file_occurrence_census refuse with
+// CensusUnavailable { cause: DeclarationDomainDisagrees }. Both readers previously AGREED they were
+// types, which is why the population looked clean before the parse arm existed.
+//
+// The 2026-09-04 note above also explains why the exclusion was NOT placed inside the leaf-shape
+// predicate: that predicate is a statement about SHAPE, a capability-less resource genuinely IS a
+// bare leaf, and it has consumers outside these two arms whose meaning depends on its params-count
+// reading. The kind conjunct is not subject to that objection, because it does not narrow the
+// shape question -- it asks a different one.
 fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   is_leaf_type_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
 }

@@ -10,17 +10,14 @@ pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
+pub use crate::v1_compiler_parse::parsed_item_carries_resource_entries;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::ModuleFilenameCollision;
 use crate::v1_std_core::Connective::NoConnective;
-use crate::v1_std_core::ParsedModuleItemKind::{
-    ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
-    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
-};
 pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, make_error_node};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, ParsedModuleItemKind, TextFile,
+    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -652,9 +649,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in tm.items.clone().iter().cloned() {
-                            if (item.module_item_kind.clone()
-                                == ParsedModuleItemKind::ModuleItemService)
-                            {
+                            if is_service_item(item.clone()) {
                                 __result.push(item);
                             }
                         }
@@ -750,16 +745,21 @@ pub fn is_type_alias_return_node(
     (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
-pub fn is_type_def_item(item: Rc<Node>) -> bool {
-    ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-        && (item.connective.clone() != Connective::NoConnective))
+pub fn is_service_item(item: Rc<Node>) -> bool {
+    ((item.transport.clone() != std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_leaf_type_item(item: Rc<Node>) -> bool {
-    (((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-        && (item.connective.clone() == Connective::NoConnective))
+pub fn is_type_def_item(item: Rc<Node>) -> bool {
+    ((item.connective.clone() != Connective::NoConnective)
+        && (item.transport.clone() == std::option::Option::None))
+}
+
+pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
+    (((((item.connective.clone() == Connective::NoConnective)
         && (item.body.clone() == std::option::Option::None))
         && ((item.params.clone().len() as i64) == 0))
+        && (item.transport.clone() == std::option::Option::None))
         && ((item.children.clone().len() as i64) == 0))
 }
 
@@ -767,7 +767,8 @@ pub fn is_type_alias_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_leaf_type_item(item.clone())
+    ((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),
@@ -778,13 +779,38 @@ pub fn is_type_decl_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((is_leaf_type_item(item.clone())
+    (((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && !is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),
         ))
-        || ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-            && ((item.params.clone().len() as i64) > 0))
+        || (((((item.params.clone().len() as i64) > 0)
             && (item.body.clone() == std::option::Option::None))
+            && (item.transport.clone() == std::option::Option::None))
             && ((item.children.clone().len() as i64) == 0)))
+}
+
+pub fn is_function_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() == std::option::Option::None))
+}
+
+pub fn is_data_def_item(item: Rc<Node>) -> bool {
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() != std::option::Option::None))
+}
+
+pub fn is_service_def_item(item: Rc<Node>) -> bool {
+    ((item.transport.clone() != std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
+}
+
+pub fn is_resource_def_item(item: Rc<Node>) -> bool {
+    (((item.transport.clone() == std::option::Option::None)
+        && ((item.children.clone().len() as i64) > 0))
+        || ((((item.transport.clone() == std::option::Option::None)
+            && ((item.children.clone().len() as i64) == 0))
+            && ((item.properties.clone().len() as i64) > 0))
+            && (item.body.clone() == std::option::Option::None)))
 }

@@ -33,8 +33,6 @@ use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType}
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
@@ -1523,7 +1521,6 @@ pub fn qualify_borrowed_type_names(
                             is_self_recursive: n.is_self_recursive.clone(),
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
-                            module_item_kind: n.module_item_kind.clone(),
                             expr_data: n.expr_data.clone(),
                             ident: None,
                         })
@@ -1555,7 +1552,6 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1580,7 +1576,6 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1746,19 +1741,6 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     match lookup_binding(env.clone(), ident.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
         std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
-    match node.ident_span.clone() {
-        Some(sp) => {
-            (sp.file.clone()
-                == v1_rt::concat(
-                    "<kernel:".to_string(),
-                    v1_rt::concat(name.clone(), ">".to_string()),
-                ))
-        }
-        std::option::Option::None => false,
     }
 }
 
@@ -2145,7 +2127,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),

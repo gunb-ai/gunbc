@@ -2215,23 +2215,57 @@ fn kernel_span(name: String) -> SourceSpan {
 // THE RECOGNIZER, HOMED BESIDE ITS MINTER. kernel_span above is what synthesizes the pseudo-file a
 // kernel node carries, and every kernel construction in this seed sets
 // ident_span: kernel_span(name: <the node's own name>) beside name: <that same name>. So comparing
-// a span's file against kernel_span(name: item.name).file asks the CONSTRUCTOR whether it built
-// this node -- exact equality against the authority rather than a prefix test over its output.
-// Four separate spelling tests for this state existed across the emitter and are deleted by this
-// function rather than joined by it.
+// a span's file against kernel_span(name: name).file asks the CONSTRUCTOR whether it built this
+// node -- exact equality against the authority rather than a prefix test over its output.
 //
-// CAVEAT THAT BOUNDS WHAT THIS MAY CLAIM. There are two declarations of kernel_span in this seed --
-// this one and v1.compiler.infer's -- with byte-identical bodies, and that module's own call sites
-// bind its local twin by shadowing. The derivation here is exact TODAY BECAUSE the two bodies
-// agree, which is a coincidence nothing enforces: no refusal fires if one is edited. This is a
-// consumption of the authority in this module, not a consolidation of the two.
+// RELOCATED HERE FROM v1.compiler.infer_env, WHERE THE AUTHORITY SAT ABOVE ITS OWN SUBJECT. That
+// module declared this predicate and never called it: its three consumers were v1.compiler.infer,
+// v1.compiler.emit_rust and -- by re-derivation rather than by call -- declaration_provenance_of
+// below, which sits in THIS module and therefore could not import it at all without closing an
+// import cycle (v1.compiler.infer_env imports v1.std.core). So the one fact had two spellings for a
+// purely positional reason, and the second spelling was not the weaker one by accident: the
+// relocated body asked kernel_span, while the infer_env body inlined `concat("<kernel:", name, ">")`
+// as a literal. That made it a second authority for the SPAN FORMAT as well as for the identity
+// question -- the format is minted in exactly one place, and a reader of the old body could not see
+// that it was reproducing kernel_span's output by hand.
+//
+// WHAT THIS CLOSES, STATED AS THE STATE THAT IS NOW UNWRITABLE. Editing kernel_span's spelling used
+// to leave the infer_env literal answering the OLD format with no refusal anywhere -- the minter and
+// its recognizer disagreeing silently, which is the coincidence the previous note here recorded as
+// "no refusal fires if one is edited". There is now one format authority and one identity authority
+// and they are the same declaration, so that divergence has no constructor.
+//
+// CAVEAT THAT BOUNDS WHAT THIS MAY CLAIM, NARROWED BUT NOT DISCHARGED. There are still two
+// declarations of kernel_span in this seed -- this one and v1.compiler.infer's -- with
+// byte-identical bodies, and that module's own call sites bind its local twin by shadowing. Every
+// consumer of the identity question now routes through the one predicate below, so the surviving
+// exposure is exactly the two kernel_span bodies, not the four recognizers it used to be. That
+// consolidation is a separate change: it is a deletion in v1.compiler.infer, not an edit here.
+fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
+  match node.ident_span {
+    Present { value: sp } => sp.file == kernel_span(name: name).file
+    Absent => false
+  }
+}
+
+// THE PROVENANCE MINT, WITH ITS KernelMinted ARM DERIVED RATHER THAN RE-SPELLED.
+// gunbc.type_reference_decl_file_occurrence_census's kernel-minted-provenance row states the
+// constraint this arm now satisfies: the KernelMinted arm must be DERIVED from the predicate that
+// already owns kernel identity by exact equality, because a further spelling test would add an
+// authority while claiming to remove one. The predicate is directly above; this reads it.
+//
+// THE ORDER OF THE ARMS IS LOAD-BEARING AND IS WHAT MAKES THE BAD STATE UNWRITABLE. A kernel mint
+// has no declaration in the corpus, so CorpusDeclared must be unreachable for one. It is reached
+// only in the else of the kernel arm, so there is no input on which this function hands a kernel
+// identity to a consumer that will read it as a declared file path -- the confusion
+// gunbc.recurring_failure_mode state_space_conflation's third form records.
 fn declaration_provenance_of(item: Node) -> TypeDeclarationProvenance {
   match item.ident_span {
     Absent => DeclarationIdentityAbsent
     Present { value: sp } =>
       if sp.file == "" {
         DeclarationIdentityAbsent
-      } else if sp.file == kernel_span(name: item.name).file {
+      } else if resolved_node_is_kernel_identity_for_name(node: item, name: item.name) {
         KernelMinted { minted_name: item.name }
       } else {
         CorpusDeclared { decl_file: sp.file }
