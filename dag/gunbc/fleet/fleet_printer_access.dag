@@ -2,7 +2,7 @@ module gunbc.fleet_printer_access
 
 import std.types { NonEmptyStr }
 import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
-import gunbc.fleet_physical_inventory { printer_01 }
+import gunbc.fleet_asset_identity { printer_01 }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 
 // WHERE THE PRINTER'S ACCESS CODE LIVES, NEVER WHAT IT IS.
@@ -21,10 +21,22 @@ import gunbc.fleet_intent_network { operator_host_srv2 }
 // cannot reach HostLan, and the printer sits on HostLan -- so the credential is held on srv2, which is
 // on the segment, rather than anywhere a session container could read it. The credential lives where
 // the transport that needs it will run.
+// THE PATH IS HOME-RELATIVE STRUCTURALLY, NOT A TILDE INSIDE A STRING.
+//
+// The first revision wrote path: "~/.printer-01-access-code". review 59854 is right that this is a
+// string a consumer must re-parse: `~` is a SHELL convention, and every process-launch API that does
+// not run a shell would open a literal directory named "~". Splitting the arm says which base the
+// remainder is relative to, so a consumer resolves it rather than pattern-matching a leading
+// character -- and an absolute path stays expressible for the case where there is no home to be
+// relative to.
+type CredentialFilePath
+  = UnderHomeOf { account: NonEmptyStr, relative_path: NonEmptyStr }
+  | AbsolutePath { path: NonEmptyStr }
+
 type PrinterAccessCodeLocus {
   subject: PhysicalAssetIdentity
   held_on: HostIdentity
-  path: NonEmptyStr
+  path: CredentialFilePath
 }
 
 // KNOWN TO BE IN THE CONVERSATION THAT SET IT UP, AND THEREFORE DUE FOR ROTATION. The code was read
@@ -37,5 +49,5 @@ type PrinterAccessCodeLocus {
 data printer_01_access_code_locus: PrinterAccessCodeLocus = PrinterAccessCodeLocus {
   subject: printer_01,
   held_on: operator_host_srv2,
-  path: "~/.printer-01-access-code",
+  path: UnderHomeOf { account: "briansrls", relative_path: ".printer-01-access-code" },
 }
