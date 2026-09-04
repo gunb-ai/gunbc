@@ -110,6 +110,8 @@ import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_t
 import gunbc.recurring_failure_mode.unresolvable_subject_renders_as_an_empty_population { unresolvable_subject_renders_as_an_empty_population }
 import gunbc.recurring_failure_mode.gate_discriminates_below_its_measurements_reproducibility { gate_discriminates_below_its_measurements_reproducibility }
 import gunbc.recurring_failure_mode.projection_inputs_read_as_its_output { projection_inputs_read_as_its_output }
+import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison { denominator_moved_between_measurement_and_comparison }
+import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -211,4 +213,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   unresolvable_subject_renders_as_an_empty_population,
   gate_discriminates_below_its_measurements_reproducibility,
   projection_inputs_read_as_its_output,
+  denominator_moved_between_measurement_and_comparison,
+  absent_reads_identically_to_never_looked,
 ]
