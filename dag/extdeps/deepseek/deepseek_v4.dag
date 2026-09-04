@@ -145,6 +145,13 @@ data deepseek_v4_encoder_path: NonEmptyStr = "encoding/encoding_dsv4.py" as NonE
 data deepseek_v4_encoder_revision: NonEmptyStr = "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr
 data deepseek_v4_encoder_revision_modified: NonEmptyStr = "2026-06-22T12:12:13Z" as NonEmptyStr
 
+// The readable reference, DERIVED from the three pinned rows above rather than declared beside them:
+// the Hugging Face blob URL for exactly that file at exactly that commit. The Think Max preamble
+// (deepseek_v4_think_max_preamble) and the effort values are transcribed from this file.
+fn deepseek_v4_encoder_source_url() -> String {
+  join(["https://huggingface.co/", deepseek_v4_encoder_repo, "/blob/", deepseek_v4_encoder_revision, "/", deepseek_v4_encoder_path], "")
+}
+
 // THINKING IS STRUCTURAL, NOT WORDED. encode_messages takes thinking_mode "chat" or "thinking";
 // a thinking turn ends the prompt with the start token so the model reasons and closes it, a chat
 // turn ends the prompt with the END token already present, so there is nothing to reason into.

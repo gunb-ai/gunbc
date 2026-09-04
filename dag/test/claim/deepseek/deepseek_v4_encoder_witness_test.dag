@@ -5,6 +5,7 @@ import extdeps.deepseek.deepseek_v4 {
   DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax,
   deepseek_v4_reasoning_mode_wire, deepseek_v4_effort_has_preamble, deepseek_v4_think_max_preamble,
   deepseek_v4_encoder_effort_values, DeepseekV4EncoderThinkingMode, EncoderChat, EncoderThinking,
+  deepseek_v4_encoder_source_url, deepseek_v4_encoder_revision, deepseek_v4_encoder_path,
   deepseek_v4_encoder_prefill, deepseek_v4_thinking_start_token, deepseek_v4_thinking_end_token,
   deepseek_v4_effort_rendering_iq3s_split_vllm, deepseek_v4_rendering_distinguishes_max,
   deepseek_v4_replay_rendering_chat_tool_loop, deepseek_v4_replay_rendering_messages_endpoint, deepseek_v4_endpoint_renders_replayed_reasoning,
@@ -59,4 +60,11 @@ test fn the_wire_label_for_think_max_is_max() -> Bool {
 test fn the_tool_loop_replay_is_retained_on_chat_and_dropped_on_messages() -> Bool {
   deepseek_v4_endpoint_renders_replayed_reasoning(o: deepseek_v4_replay_rendering_chat_tool_loop)
     && !deepseek_v4_endpoint_renders_replayed_reasoning(o: deepseek_v4_replay_rendering_messages_endpoint)
+}
+
+test fn the_encoder_source_url_names_the_pinned_revision_and_file() -> Bool {
+  let url = deepseek_v4_encoder_source_url()
+  string_contains(s: url, pattern: "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/")
+    && string_contains(s: url, pattern: deepseek_v4_encoder_revision as String)
+    && string_contains(s: url, pattern: deepseek_v4_encoder_path as String)
 }
