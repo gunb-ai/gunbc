@@ -17,7 +17,7 @@ import gunbc.harness.harness_wire { harness_router_context_window, harness_route
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
 import gunbc.harness.harness_turn {
   harness_stop_reason_truncated, harness_reasoning_kwargs, harness_wire_block_json,
-  harness_split_inline_reasoning, harness_thinking_format_cause, HarnessInlineReasoning, InlineReasoningSplit, InlineReasoningMultipleClosers,
+  harness_split_inline_reasoning, harness_thinking_format_cause,
 }
 import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax }
@@ -189,33 +189,30 @@ test fn non_think_emits_no_kwargs() -> Bool {
 // decoded client-side: everything before the closer is reasoning, everything after is what the
 // model said. Probed 2026-09-04 against the live units, which carry no reasoning parser.
 test fn inline_reasoning_splits_into_thinking_and_speech() -> Bool {
-  match harness_split_inline_reasoning(blocks: [
+  let b = harness_split_inline_reasoning(blocks: [
     WireTextBlock { text: "We need 17*23. 17*20=340, 17*3=51, total 391.</think>391" },
-  ]) {
-    InlineReasoningMultipleClosers { count: _ } => false
-    InlineReasoningSplit { blocks: b } =>
-      list_length(items: b) == 2
-        && (match b.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("17*20=340")  _ => false })
-        && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "391"  _ => false })
-  }
+  ])
+  list_length(items: b) == 2
+    && (match b.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("17*20=340")  _ => false })
+    && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "391"  _ => false })
 }
 
 // THE CONTROL: a thinking block from a parser-equipped server, and plain text, pass through
 // untouched -- the split must not fire on well-formed input.
 test fn a_thinking_block_and_plain_text_pass_through_the_split() -> Bool {
-  match harness_split_inline_reasoning(blocks: [
+  list_length(items: harness_split_inline_reasoning(blocks: [
     WireThinkingBlock { thinking: "We need 17*23." }, WireTextBlock { text: "391" },
-  ]) {
-    InlineReasoningSplit { blocks: b } => list_length(items: b) == 2
-    InlineReasoningMultipleClosers { count: _ } => false
-  }
+  ])) == 2
 }
 
-// THE ENCODER'S FIRST INVALID SHAPE: more than one closer.
-test fn multiple_closers_are_an_invalid_format() -> Bool {
-  harness_thinking_format_cause(
-    blocks: [WireTextBlock { text: "a</think>b</think>c" }], mode: DeepseekV4ThinkMax,
-  ).contains("2 end-of-thinking closers")
+// A SECOND CLOSER IS SPEECH. The encoder reads to the first end token and everything after it is
+// content, however many times the string recurs. This was the shape that stopped a live run: the
+// model's speech legitimately contained the token, and an invented rule called it invalid.
+test fn a_second_closer_is_speech_not_an_invalid_format() -> Bool {
+  let b = harness_split_inline_reasoning(blocks: [WireTextBlock { text: "plan</think>the file mentions </think> in a test" }])
+  list_length(items: b) == 2
+    && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "the file mentions </think> in a test"  _ => false })
+    && harness_thinking_format_cause(blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: DeepseekV4ThinkMax) == ""
 }
 
 // THE ENCODER'S SECOND INVALID SHAPE: thinking requested, no closer, no thinking block.

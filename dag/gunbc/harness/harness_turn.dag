@@ -401,45 +401,35 @@ fn harness_reasoning_kwargs(mode: DeepseekV4ReasoningMode) -> List<JsonKeyValue>
 // same parse a runtime reasoning parser would realize server-side, where one exists for the model
 // -- this fleet's build reportedly has none for v4, so the client parse is the only one available. What the encoder calls
 // invalid -- thinking requested and no closer, or more than one closer -- refuses below.
-type HarnessInlineReasoning
-  = InlineReasoningSplit { blocks: List<HarnessWireBlock> }
-  | InlineReasoningMultipleClosers { count: Int }
-
-fn harness_closer_count(text: String) -> Int {
-  list_length(items: split(s: text, delimiter: deepseek_v4_thinking_end_token as String)) - 1
-}
-
+// THE SPLIT IS ON THE FIRST CLOSER, AND ONLY THE FIRST. parse_message_from_completion_text reads
+// until the end token once and treats everything after it as speech; a later occurrence of the same
+// string is content -- the model quoting the token, or writing a file that mentions it -- and the
+// encoder never asserts on it. An earlier revision of this arm refused a second closer as an invalid
+// format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
+// had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
 fn harness_split_text_block(text: String) -> List<HarnessWireBlock> {
   let parts = split(s: text, delimiter: deepseek_v4_thinking_end_token as String)
   match parts.first() {
     Absent => [WireTextBlock { text: text }]
     Present { value: reasoning } =>
-      match parts.skip(n: 1).first() {
-        Absent => [WireTextBlock { text: text }]
-        Present { value: speech } =>
-          concat(
-            if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
-            if speech == "" { [] } else { [WireTextBlock { text: speech }] },
-          )
+      if list_length(items: parts) < 2 {
+        [WireTextBlock { text: text }]
+      } else {
+        let speech = join(parts.skip(n: 1), deepseek_v4_thinking_end_token as String)
+        concat(
+          if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
+          if speech == "" { [] } else { [WireTextBlock { text: speech }] },
+        )
       }
   }
 }
 
-fn harness_split_inline_reasoning(blocks: List<HarnessWireBlock>) -> HarnessInlineReasoning {
-  let worst = fold(blocks, init: 0, f: (m, b) => match b {
-    WireTextBlock { text } => if harness_closer_count(text: text) > m { harness_closer_count(text: text) } else { m }
-    WireThinkingBlock { thinking: _ } => m
-    WireToolUseBlock { id: _, name: _, input: _ } => m
+fn harness_split_inline_reasoning(blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
+  flat_map(blocks, b => match b {
+    WireTextBlock { text } => if text.contains(deepseek_v4_thinking_end_token as String) { harness_split_text_block(text: text) } else { [b] }
+    WireThinkingBlock { thinking: _ } => [b]
+    WireToolUseBlock { id: _, name: _, input: _ } => [b]
   })
-  if worst > 1 {
-    InlineReasoningMultipleClosers { count: worst }
-  } else {
-    InlineReasoningSplit { blocks: flat_map(blocks, b => match b {
-      WireTextBlock { text } => if harness_closer_count(text: text) == 1 { harness_split_text_block(text: text) } else { [b] }
-      WireThinkingBlock { thinking: _ } => [b]
-      WireToolUseBlock { id: _, name: _, input: _ } => [b]
-    }) }
-  }
 }
 
 fn harness_has_thinking_block(blocks: List<HarnessWireBlock>) -> Bool {
@@ -652,6 +642,11 @@ fn harness_execute_tool(
   }
 }
 
+// THE RESPONSE IS KEPT BESIDE THE REQUEST, EVERY ROUND. A refusal raised on a completion used to
+// destroy its own evidence: the request was on disk, the body that triggered the refusal was not,
+// and the first over-strict refusal this harness raised in production was therefore undiagnosable
+// after the fact. The body is written before it is decoded, so whatever the decoder says about it
+// can be checked against the bytes it said it about.
 // ONE ROUND: write the request, post it, decode the answer.
 // A TOOL CALL THAT RAN OUT OF TOKENS IS NOT A TOOL CALL. The provider reports max_tokens when it
 // stopped because the ceiling was reached rather than because the answer ended, and a tool_use block
@@ -683,15 +678,10 @@ fn harness_stop_reason_truncated(reason: AnthropicStopReason) -> Bool {
 // only when thinking was requested: a non-think completion never carries a closer and is not asked
 // to. A thinking block already present (a parser-equipped server) satisfies the requirement.
 fn harness_thinking_format_cause(blocks: List<HarnessWireBlock>, mode: DeepseekV4ReasoningMode) -> String {
-  match harness_split_inline_reasoning(blocks: blocks) {
-    InlineReasoningMultipleClosers { count: n } =>
-      join(["invalid thinking format: ", to_string(value: n), " end-of-thinking closers in one completion; the encoder admits exactly one"], "")
-    InlineReasoningSplit { blocks: b } =>
-      if harness_thinking_requested(mode: mode) && !harness_has_thinking_block(blocks: b) {
-        "invalid thinking format: thinking was requested and the completion carries no end-of-thinking closer and no thinking block; the encoder asserts on this shape, and a truncated chain of thought must not be transcribed as speech"
-      } else {
-        ""
-      }
+  if harness_thinking_requested(mode: mode) && !harness_has_thinking_block(blocks: harness_split_inline_reasoning(blocks: blocks)) {
+    "invalid thinking format: thinking was requested and the completion carries no end-of-thinking closer and no thinking block; the encoder asserts on this shape, and a truncated chain of thought must not be transcribed as speech"
+  } else {
+    ""
   }
 }
 
@@ -714,11 +704,19 @@ fn harness_post_round(
       request_body_file: config.request_scratch_path as String as NonEmptyStr,
       max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
     )
+    let kept = Filesystem.Write(
+      path: join([config.request_scratch_path as String, ".response.json"], ""),
+      content: posted.body,
+    )
     if !posted.success {
       HarnessResponseUnreadable {
         cause: join([
           "the backend refused the request or the transport failed; body was: ", posted.body,
         ], ""),
+      }
+    } else if !kept.success {
+      HarnessResponseUnreadable {
+        cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
       }
     } else {
       harness_decode_for_shape(shape: config.wire_shape, body: posted.body)
@@ -847,10 +845,7 @@ fn harness_turn_loop(
         }
       }
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, input_tokens, output_tokens } => {
-        let blocks = match harness_split_inline_reasoning(blocks: raw_blocks) {
-          InlineReasoningSplit { blocks: b } => b
-          InlineReasoningMultipleClosers { count: _ } => raw_blocks
-        }
+        let blocks = harness_split_inline_reasoning(blocks: raw_blocks)
         let clock = clock_unix_millis_read()
         let usage = harness_event_round_usage(
           step: steps_taken + 1,
