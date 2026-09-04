@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.host_page_thrash_named_by_host_rather_than_by_signature
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data host_page_thrash_named_by_host_rather_than_by_signature: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_page_thrash_named_by_host_rather_than_by_signature" as NonEmptyStr,
+
+  receipts: [
+    "**a host-level refusal is filed under the HOSTNAME it happened on rather than under the causal signature it carries, so the finding dies the moment the host turns out to be irrelevant** (INVALID STATE: a resource refusal names a machine, two occurrences share that machine, and the shared name is read as the partition. The reading is available, cheap, and compatible with the null -- which is what makes it attractive rather than obviously wrong. ",
+    "MEASURED SPECIMEN: two MemoryStallRefusedPageThrash floor refusals, gunbc#10210 on srv4-18 at 240496 major faults per minute and gunbc#10204 run 33822189304 job 100867054355 on srv4-01 at 233872 per minute against a 6000 per minute rate line, the second computing for 4 percent of the wall against a 20 percent CPU-share floor. Both are srv4. THAT IS NOT A PARTITION: a 60-run census finds host does not predict crossings at p=0.116, and two further points do not overturn it -- both are srv4 is a true statement fully compatible with the null. ",
+    "WHAT THE SPECIMEN ACTUALLY CARRIES, and it is three facts that survive the host being irrelevant: typed-cache evictions 0 and readmissions 0 IN WINDOW, which rules out the typed cache as the churn source and leaves kernel eviction of the process own resident pages; both refusals land during TYPECHECKING rather than during evidence rendering, placing the class in the resolve phase and not in the ledger write; and both are against a cgroup memory.high admitted budget rather than an unbounded host. ",
+    "HARM: a hostname stops being evidence the moment the null holds, and a causal signature does not. A row filed under the host is retired by a fleet reshuffle that changes nothing about the mechanism, and the mechanism is then rediscovered from scratch on a different machine. The reverse also bites: a lane that cannot reproduce the hostname concludes the class is closed. ",
+    "RECOGNITION RULE: when a refusal names both a MACHINE and a MECHANISM, ask which one the next occurrence would have to share for the row to still be about the same thing. If the answer is the mechanism, the hostname is context and not identity. ",
+    "RUNG: outside the ladder. This is an external-reality boundary observation -- the compiler cannot prove a property of the machine underneath it -- and the refusal is already correct behaviour: it refuses rather than holding on a treadmill that with swap disabled would never terminate, and its own remedy line names placement rather than code. What is filed here is the READING of such a refusal, which is a review-diligence class rather than a mechanism with a rung to climb.)",
+  ],
+
+  evidence: [],
+}

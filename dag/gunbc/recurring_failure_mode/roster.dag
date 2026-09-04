@@ -97,6 +97,8 @@ import gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused { exac
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
 import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_decides { live_argument_threaded_past_the_arm_that_decides }
 import gunbc.recurring_failure_mode.check_subject_shape_cannot_represent_the_state_the_check_detects { check_subject_shape_cannot_represent_the_state_the_check_detects }
+import gunbc.recurring_failure_mode.cheap_question_through_an_expensive_carrier { cheap_question_through_an_expensive_carrier }
+import gunbc.recurring_failure_mode.host_page_thrash_named_by_host_rather_than_by_signature { host_page_thrash_named_by_host_rather_than_by_signature }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -185,4 +187,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   premise_that_a_shared_subject_means_disagreement,
   live_argument_threaded_past_the_arm_that_decides,
   check_subject_shape_cannot_represent_the_state_the_check_detects,
+  cheap_question_through_an_expensive_carrier,
+  host_page_thrash_named_by_host_rather_than_by_signature,
 ]
