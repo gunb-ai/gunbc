@@ -26,7 +26,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifactRefused,
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
 import gunbc.spark.serving_execution_schedule {
   scheduled_rows_empty,
@@ -213,6 +213,7 @@ fn slice_artifact(linger_enabled: Bool) -> FleetConvergePlanArtifact? {
         observed_slots: [],
         observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv5 as HostIdentity),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       ) {
         FleetConvergePlanArtifactRefused { refusal: _ } => none
         FleetConvergePlanArtifactReady { artifact: a } => Present { value: a }

@@ -35,6 +35,7 @@ import v2.extdeps.languages.rust {
   rust_runtime_row,
   rust_selection_policy_node,
   rust_sg_rc_use_site_ownership_catalog,
+  rust_source_text,
   rust_source_text_authority,
   rust_staging_lex,
   rust_target_model_bundle_core,
@@ -44,7 +45,8 @@ import v2.extdeps.languages.rust {
   rust_value_expression_projection,
   rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
-  rust_whitespace_trivia_rule
+  rust_whitespace_trivia_rule,
+  rust_semantic_decl_emission_bundle_node
 }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
@@ -1063,6 +1065,31 @@ fn rust_loop_target_model_staging() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_loop_source_text,
     runtime_row: rust_loop_runtime_row()
+  }
+}
+
+// Semantic-decl-emission fixture: provides the ^target_model_edge_semantic_decl_emission
+// edge (with full production content because tests compare decoded values against live
+// Rust functions) and dead-minimal values for every other TargetModel field that
+// semantic_decl_emission_from_target / emit_semantic_type_decl never read.
+fn rust_semantic_decl_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_semantic_decl_emission,
+          target: rust_semantic_decl_emission_bundle_node()
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4603,4 +4630,37 @@ fn rust_call_target_model_bundle_core() -> Node {
 
 fn rust_bind_let_target_model_bundle_core() -> Node {
   rust_minimal_target_model_bundle_core()
+}
+
+fn rust_add_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_param_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_param_y, "y")
+  map_insert(m4, ^dag_binding_type_int, "i32")
+}
+
+fn rust_add_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_minimal_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_add_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text,
+    runtime_row: rust_runtime_row()
+  }
+}
+
+fn rust_transport_wire_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_minimal_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_add_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text,
+    runtime_row: rust_runtime_row()
+  }
 }

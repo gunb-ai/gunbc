@@ -5,6 +5,7 @@ use self::CallableIdentity::*;
 use self::DerivedCalleeSig::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
+use self::ResolvedFormals::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
@@ -18,7 +19,7 @@ use crate::v1_std_core::ExprData::ExprCall;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
-    NewlineIndex, Node,
+    NewlineIndex, Node, ResolvedFormal,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -29,11 +30,35 @@ use std::rc::Rc;
 pub struct ResolvedFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
+    pub resolved_formals: Rc<ResolvedFormals>,
     pub inferred: Rc<Node>,
     pub is_async: bool,
     pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub variant_provenance:
         Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ResolvedFormals {
+    DeclarationBoundFormals {
+        formals: Rc<Vec<Rc<ResolvedFormal>>>,
+    },
+    KernelGroundedFormals {
+        formals: Rc<Vec<Rc<ResolvedFormal>>>,
+    },
+    LocalFormalsAwaitingModuleContext,
+}
+impl ResolvedFormals {
+    pub fn formals(&self) -> Rc<Vec<Rc<ResolvedFormal>>> {
+        match self {
+            ResolvedFormals::DeclarationBoundFormals { formals: __val, .. } => __val.clone(),
+            ResolvedFormals::KernelGroundedFormals { formals: __val, .. } => __val.clone(),
+            ResolvedFormals::LocalFormalsAwaitingModuleContext => {
+                panic!("no formals on unit variant")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -538,6 +563,7 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     Rc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
         params: dsig.params.clone(),
+        resolved_formals: Rc::new(ResolvedFormals::LocalFormalsAwaitingModuleContext {}),
         inferred: dsig.inferred.clone().clone().unwrap(),
         is_async: dsig.is_async.clone(),
         output_provenance: dsig.output_provenance.clone(),
