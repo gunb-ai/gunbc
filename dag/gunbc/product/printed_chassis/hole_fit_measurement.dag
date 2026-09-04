@@ -1,0 +1,554 @@
+module product.printed_chassis.hole_fit_measurement
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import extdeps.iso.iso_273 {
+  IsoClearanceSeries, FineSeries, MediumSeries, CoarseSeries,
+  IsoClearanceFound, IsoClearanceThreadNotPublished, iso_273_clearance_hole,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import product.printed_chassis.coupon {
+  CouponSpecimenIdentity, LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero,
+  LadderTooFewRungs, ladder_base, ladder_step, ladder_rung_count,
+  hole_ladder_spec, HoleDiameterLadderR1,
+}
+
+// WHAT A PERSON WITH A SCREW AND A COUPON CAN ACTUALLY REPORT.
+//
+// The coupon exists to measure how much smaller a printed hole comes out than the hole that was
+// modelled, and the reading is taken by trying a real fastener in each rung. That reading is
+// ORDINAL AND QUALITATIVE -- "the second one is tight, the third is fine" -- and this module is
+// careful to keep it that way, because the tempting move is to convert it immediately into a
+// Micrometer compensation and store that.
+//
+// Storing a Micrometer would be laundering. The observer did not measure a distance; they observed a
+// fastener passing or not passing, and the distance is DERIVED from a population of such
+// observations, with a derivation that can fail. A Micrometer field would present a derived and
+// possibly underdetermined quantity in the same shape as a caliper reading, and nothing downstream
+// could tell them apart.
+// FitInterference EXISTS BECAUSE A READING FELL BETWEEN TWO ARMS AND NEITHER WAS HONEST.
+//
+// Asked whether the smallest coupon rung took an M3, the operator answered BOTH "it goes in all the
+// way" and "it did need real force". Under the three-grade vocabulary those two sentences select
+// different arms: seating fully is not FitRefused, and needing force is not FitTight. The grade was
+// anemic -- it had no constructor for the state the part was actually in, so whichever arm I picked
+// would have recorded a fact nobody observed.
+//
+// An interference fit SEATS but transfers load to the wall. For a CLEARANCE hole that is a failure
+// of function rather than of assembly: the screw is carried by the plastic instead of passing
+// through it, and a printed wall under a press fit splits later rather than now. So this arm is
+// entry, and it is deliberately NOT free passage.
+type FastenerFitGrade
+  = FitFree
+  | FitTight
+  | FitInterference
+  | FitRefused
+
+// The rung is named by its ORDINAL, one-based, exactly as a person counts holes along the coupon:
+// "the second smallest". Its DIAMETER is looked up in the ladder that generated the part, so an
+// observation cannot disagree with the geometry it was taken from.
+type HoleFitObservation {
+  specimen: CouponSpecimenIdentity
+  rung_ordinal: Nat
+  fastener: FastenerThread
+  grade: FastenerFitGrade
+  observer: NonEmptyStr
+}
+
+// WHAT IS BRACKETED IS A NOMINAL DIAMETER FROM THE COUPON, NOT A SHRINKAGE.
+//
+// An earlier form of this module subtracted the fastener's nominal from each rung and called the
+// difference a compensation, which quietly reclassified the reading: a screw passing or not passing
+// is a FUNCTIONAL FIT observation, and converting it to "the hole came out 0.2 mm small" asserts a
+// DIMENSIONAL fact nobody measured. Nothing here touched the hole with a caliper.
+//
+// So the bracketed quantity is the threshold NOMINAL RUNG DIAMETER at which the fastener begins to
+// pass -- a value that comes from the coupon authority and is legitimately a Micrometer -- and the
+// word compensation does not appear.
+//
+// TWO THRESHOLDS, NOT ONE, because "it goes in" and "it goes in freely" are different questions with
+// different evidence. FitTight is entry but not free passage. The operator's reading establishes the
+// FREE-PASS threshold at 3.20 mm outright, while leaving the ANY-ENTRY threshold open at the bottom
+// -- and a single arm would have reported the whole reading as unestablished, discarding the half
+// that is usable for design today.
+//
+// A compensation is BRACKETED, never a point: the ladder samples diameters 0.10 mm apart, so the
+// most any population of fit observations can say is that the true value lies between two rungs.
+// Reporting a midpoint would state a precision the instrument does not have.
+//
+// The two unestablished arms are the ones that matter, and they are separate because they name
+// different missing observations. An upper bound needs a rung the fastener PASSES; a lower bound
+// needs a rung it REFUSES. A population of nothing but passes -- which is exactly what "the second
+// and third both fit" is -- has an upper bound and no lower bound, and the honest answer is to say
+// which end is missing rather than to assume the rung below the smallest pass would have refused.
+// ThresholdLadderUnavailable exists because the ordinals in an observation are indexes INTO a
+// ladder. If the ladder that generated the coupon is degenerate, "the second smallest hole" names
+// nothing and the observations cannot be converted to diameters at all. It is carried here rather
+// than unwrapped at each call site so there is ONE refusal set: three callers unwrapping would each
+// decide separately what a zero-step ladder means.
+type HoleFitThresholdStanding
+  = ThresholdBracketed {
+      above_nominal: Micrometer
+      at_or_below_nominal: Micrometer
+      from_observations: Nat
+    }
+  | ThresholdLowerBoundUnestablished {
+      smallest_passing_rung: Nat
+      passing_nominal: Micrometer
+      missing: NonEmptyStr
+    }
+  | ThresholdUpperBoundUnestablished {
+      largest_refusing_rung: Nat
+      missing: NonEmptyStr
+    }
+  | ThresholdUnobserved
+  | ThresholdObservationsNonMonotone {
+      passing_rung: Nat
+      refusing_rung: Nat
+    }
+  | ThresholdLadderUnavailable
+  | ThresholdObservationOutOfLadder {
+      ordinal: Nat
+      rung_count: Nat
+    }
+  | ThresholdObservationsHeterogeneous {
+      differing: NonEmptyStr
+    }
+
+// FIT IS MONOTONE IN DIAMETER, AND A POPULATION THAT SAYS OTHERWISE IS NOT AVERAGED.
+//
+// A larger hole cannot admit a fastener that a smaller hole refused. If the observations say it did,
+// something is wrong with the coupon, the fastener, or the reading -- a rung mismeasured, two
+// specimens confused, a burr on one hole. The tempting arm is to take the majority or the extreme and
+// carry on; that converts a known-bad population into a confident number. It refuses and names both
+// offending rungs so the observer can go back to the part.
+fn entry_threshold_from_observations(
+  construction: LadderConstruction,
+  observations: List<HoleFitObservation>,
+) -> HoleFitThresholdStanding {
+  match construction {
+    LadderStepIsZero => ThresholdLadderUnavailable
+    LadderTooFewRungs { supplied: n } => ThresholdLadderUnavailable
+    LadderReady { ladder: ladder } => entry_threshold_against_ladder(ladder: ladder, observations: observations)
+  }
+}
+
+// TWO GATES BEFORE ANY ARITHMETIC, BOTH REFUSING RATHER THAN SKIPPING.
+//
+// An ordinal is an index INTO a ladder, and Nat does not say which ladder. Nothing stopped an
+// observation naming rung 40 of an 11-rung coupon, and rung_diameter would have computed a diameter
+// for a hole that was never printed -- a fabricated plausible output, arrived at by arithmetic that
+// cannot fail. Zero was worse than merely invalid: the scan uses 0 as its "nothing seen yet"
+// sentinel, so an observation at ordinal 0 would have been silently absorbed into the initial state
+// and vanished without a diagnostic. Both refuse now, naming the offending ordinal and the ladder
+// that bounds it.
+//
+// The second gate is that a threshold over a MIXED population describes nothing. An M3 refusal folded
+// together with an M4 pass yields a confident bracket that is true of neither fastener, and the same
+// applies to two specimens: rung 3 of one coupon and rung 3 of another are different physical holes.
+// The fold had no notion of a shared subject at all, so it would have produced its most authoritative
+// answer from its least meaningful input.
+//
+// Skipping the offending rows was the tempting arm and is the absorbing fallback: it would compute a
+// narrower bracket over a silently chosen subset and report it with the same confidence.
+fn observations_share_a_subject(observations: List<HoleFitObservation>) -> Bool {
+  match observations.first() {
+    Absent => true
+    Present { value: h } => fold(observations, init: true, f: fn(acc, o) {
+      acc && o.fastener == h.fastener && o.specimen == h.specimen
+    })
+  }
+}
+
+// Carried in a record so the accumulator is Nat rather than an Int literal, and biased by one so that
+// "none found" and "found ordinal zero" stay distinguishable -- the very sentinel collision this gate
+// exists to close would otherwise reappear inside the gate itself.
+type RangeScan sole_constructor { first_bad_plus_one: Nat }
+
+fn first_out_of_ladder(ladder: LengthLadder, observations: List<HoleFitObservation>) -> Nat {
+  let r = fold(observations, init: RangeScan { first_bad_plus_one: 0 }, f: fn(acc, o) {
+    if acc.first_bad_plus_one == 0 && (o.rung_ordinal == 0 || o.rung_ordinal > ladder_rung_count(l: ladder)) {
+      RangeScan { first_bad_plus_one: o.rung_ordinal + 1 }
+    } else { acc }
+  })
+  r.first_bad_plus_one
+}
+
+fn entry_threshold_against_ladder(
+  ladder: LengthLadder,
+  observations: List<HoleFitObservation>,
+) -> HoleFitThresholdStanding {
+  let bad = first_out_of_ladder(ladder: ladder, observations: observations)
+  if bad > 0 {
+    ThresholdObservationOutOfLadder {
+      ordinal: bad - 1,
+      rung_count: ladder_rung_count(l: ladder),
+    }
+  } else {
+  if observations_share_a_subject(observations: observations) == false {
+    ThresholdObservationsHeterogeneous {
+      differing: "the population mixes fasteners or specimens; a threshold folded over it would describe neither",
+    }
+  } else {
+  let scan = fold(observations, init: FitScan { count: 0, smallest_pass: 0, largest_refuse: 0 },
+    f: fn(acc, o) {
+      match o.grade {
+        FitRefused => FitScan {
+          count: acc.count + 1,
+          smallest_pass: acc.smallest_pass,
+          largest_refuse: if o.rung_ordinal > acc.largest_refuse { o.rung_ordinal } else { acc.largest_refuse },
+        }
+        FitTight => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+        FitInterference => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+        FitFree => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+      }
+    })
+  if scan.count == 0 {
+    ThresholdUnobserved
+  } else {
+    if scan.smallest_pass == 0 {
+      ThresholdUpperBoundUnestablished {
+        largest_refusing_rung: scan.largest_refuse,
+        missing: "no rung admitted the fastener, so no upper bound on the compensation exists; print or measure larger rungs",
+      }
+    } else {
+      if scan.largest_refuse == 0 {
+        ThresholdLowerBoundUnestablished {
+          smallest_passing_rung: scan.smallest_pass,
+          passing_nominal: rung_diameter(ladder: ladder, ordinal: scan.smallest_pass),
+          missing: "every observed rung admitted the fastener, so nothing bounds the compensation from below; read the rungs below the smallest passing one",
+        }
+      } else {
+        if scan.largest_refuse >= scan.smallest_pass {
+          ThresholdObservationsNonMonotone {
+            passing_rung: scan.smallest_pass,
+            refusing_rung: scan.largest_refuse,
+          }
+        } else {
+          ThresholdBracketed {
+            above_nominal: rung_diameter(ladder: ladder, ordinal: scan.largest_refuse),
+            at_or_below_nominal: rung_diameter(ladder: ladder, ordinal: scan.smallest_pass),
+            from_observations: scan.count,
+          }
+        }
+      }
+    }
+  }
+  }
+  }
+}
+
+type FitScan sole_constructor { count: Nat, smallest_pass: Nat, largest_refuse: Nat }
+
+// A rung's nominal diameter is its position in the ladder: base plus ordinal steps. Ordinals are
+// ONE-BASED, matching how the reading is actually taken and reported -- "the second smallest hole" is
+// rung 2 -- rather than zero-based, so that a transcription from a person's words cannot be off by
+// one in silence.
+fn rung_diameter(ladder: LengthLadder, ordinal: Nat) -> Micrometer {
+  micrometer(count: micrometer_count(m: ladder_base(l: ladder))
+                    + ((ordinal - 1) * micrometer_count(m: ladder_step(l: ladder))))
+}
+
+// THE OPERATOR'S READING, RECORDED AS GIVEN.
+//
+// Reported 2026-09-04: the second and third smallest holes both admit an M3, the second is tight.
+// Asked about the first rung, the operator answered in two parts -- "it does go in all the way" AND
+// "it did need real force" -- and those two sentences are why FitInterference exists. Neither of the
+// arms available at the time was honest about that state: seating fully is not a refusal, and
+// needing force is not hand-tight. The reading was not rounded to whichever arm was closer.
+//
+// The machine was still not named. When it is, this population splits per printer, because whether
+// the constant is shared or per-machine is the question the two coupons were printed to answer.
+data m3_fastener: FastenerThread = MetricCoarseThread { designation: "M3" }
+
+data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 1,
+    fastener: m3_fastener,
+    grade: FitInterference,
+    observer: "operator, coupon in hand: goes in all the way, needed real force",
+  },
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 2,
+    fastener: m3_fastener,
+    grade: FitTight,
+    observer: "operator, coupon in hand",
+  },
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 3,
+    fastener: m3_fastener,
+    grade: FitFree,
+    observer: "operator, coupon in hand",
+  },
+]
+
+// THE FREE-PASS SELECTION: THE HALF OF THE READING THAT IS USABLE TODAY.
+//
+// The entry threshold above is open at the bottom because no rung was observed to refuse. The FREE
+// pass threshold is not: rung 3 was observed free, so the smallest nominal rung giving free M3
+// passage is at or below 3.20 mm, and 3.20 is an OBSERVED value rather than an interpolation.
+//
+// This is a DESIGN POLICY, deliberately a different type from the observation and from the bracket,
+// because it is a choice and the others are facts. It selects the first rung observed FREE -- not
+// the first observed to admit at all, since a tight fastener is a fastener that binds, galls the
+// plastic, and does not seat a chassis panel.
+//
+// ITS SCOPE IS NARROW ON PURPOSE, AND THE SCOPE IS TYPED BECAUSE PROSE CANNOT HOLD IT.
+//
+// What one ladder supports is "for this process and this feature class, 3.20 mm is the first nominal
+// rung achieving free M3 passage". It does not support a universal additive law over printed holes,
+// because reaching that changes several axes at once: other fastener diameters, horizontal rather
+// than vertical bores, other wall depths, other bed positions, and one print rather than a stable
+// process.
+//
+// An earlier revision carried those axes as one NonEmptyStr and its annotation claimed the string
+// was "carried so a consumer cannot spend this value outside the conditions that produced it". That
+// was false, and false in the specific way DESIGN section 2 names: a String leaf hiding named parts
+// is anemic modeling, and a consumer cannot read a condition out of prose, so the restriction was
+// unenforceable and the sentence asserting otherwise was the only thing holding it. Six independent
+// dimensions were flattened into one opaque value.
+//
+// They are now separate typed fields, and -- this is the part that makes the difference rather than
+// the typing alone -- there is a CONSUMPTION GATE. fit_scope_admits answers whether a request lies inside
+// the evidence, so spending the selection outside its conditions is a typed refusal rather than a
+// paragraph nobody executes. Typing the fields without the gate would have replaced anemic prose with
+// anemic structure.
+type BoreOrientation
+  = VerticalThroughHole
+  | HorizontalBore
+  | BoreOrientationUnstated
+
+// Attribution is its own axis because "which machine" is exactly the question two coupons were
+// printed to answer, and an unattributed selection must not be silently reusable as if a machine
+// had been named.
+type PrinterAttribution
+  = AttributedToPrinter { printer: PhysicalAssetIdentity }
+  | PrinterUnattributed
+
+// One diameter appears at one physical position on a single coupon, so nominal diameter and bed
+// position are confounded until a second coupon separates them. The distinction is carried rather
+// than assumed away.
+type BedPositionCoverage
+  = SinglePositionPerDiameter
+  | MultiplePositionsSampled { specimen_count: Nat }
+
+type FitPolicyScope sole_constructor {
+  fastener: FastenerThread
+  orientation: BoreOrientation
+  wall_depth: Micrometer
+  attribution: PrinterAttribution
+  position_coverage: BedPositionCoverage
+}
+
+// What a consumer must present to spend a selection. It is a separate type from the scope so the
+// question "may I use this here" cannot be answered by handing back the scope itself.
+//
+// IT IS DELIBERATELY UNSEALED WHILE FitPolicyScope IS SEALED, and the asymmetry is the point. A
+// request is a QUESTION -- constructing one asserts only "here are the conditions I want to build
+// under", which any consumer must be able to say, and a seal here would mean nobody could ask. A
+// scope is a CLAIM ABOUT EVIDENCE: it says a measurement actually covers these conditions, so
+// minting one is minting authority, and it stays confined to the module that derives it from real
+// observations. Sealing the question and leaving the claim open would be exactly backwards.
+type FitPolicyRequest {
+  fastener: FastenerThread
+  orientation: BoreOrientation
+  wall_depth: Micrometer
+}
+
+type FitScopeAdmission
+  = FitScopeCovers
+  | FitScopeFastenerDiffers
+  | FitScopeOrientationDiffers
+  | FitScopeWallDepthOutsideEvidence { requested: Micrometer, evidenced: Micrometer }
+  | FitScopeOrientationUnstated
+
+fn fit_scope_admits(scope: FitPolicyScope, request: FitPolicyRequest) -> FitScopeAdmission {
+  if scope.fastener == request.fastener {
+    match scope.orientation {
+      BoreOrientationUnstated => FitScopeOrientationUnstated
+      VerticalThroughHole => fit_scope_admits_geometry(scope: scope, request: request)
+      HorizontalBore => fit_scope_admits_geometry(scope: scope, request: request)
+    }
+  } else {
+    FitScopeFastenerDiffers
+  }
+}
+
+// Wall depth is compared for EQUALITY rather than "at least", because a hole's finished diameter is
+// not monotone in depth: a deeper bore can close up from over-extrusion while a shallower one opens
+// from elephant's foot. Nothing measured here says which, so anything but the evidenced depth is
+// outside the evidence.
+fn fit_scope_admits_geometry(scope: FitPolicyScope, request: FitPolicyRequest) -> FitScopeAdmission {
+  if scope.orientation == request.orientation {
+    if micrometer_count(m: scope.wall_depth) == micrometer_count(m: request.wall_depth) {
+      FitScopeCovers
+    } else {
+      FitScopeWallDepthOutsideEvidence { requested: request.wall_depth, evidenced: scope.wall_depth }
+    }
+  } else {
+    FitScopeOrientationDiffers
+  }
+}
+
+type FreePassSelection
+  = FreePassNominalSelected {
+      nominal: Micrometer
+      basis_rung: Nat
+      scope: FitPolicyScope
+    }
+  | FreePassUnobserved { missing: NonEmptyStr }
+  | FreePassLadderUnavailable
+  | FreePassObservationOutOfLadder { ordinal: Nat, rung_count: Nat }
+  | FreePassObservationsHeterogeneous { differing: NonEmptyStr }
+
+type FreeScan sole_constructor { smallest_free: Nat }
+
+fn select_free_pass_nominal(
+  construction: LadderConstruction,
+  observations: List<HoleFitObservation>,
+  scope: FitPolicyScope,
+) -> FreePassSelection {
+  match construction {
+    LadderStepIsZero => FreePassLadderUnavailable
+    LadderTooFewRungs { supplied: n } => FreePassLadderUnavailable
+    LadderReady { ladder: ladder } => {
+      let bad = first_out_of_ladder(ladder: ladder, observations: observations)
+      if bad > 0 {
+        FreePassObservationOutOfLadder { ordinal: bad - 1, rung_count: ladder_rung_count(l: ladder) }
+      } else {
+      if observations_share_a_subject(observations: observations) == false {
+        FreePassObservationsHeterogeneous {
+          differing: "the population mixes fasteners or specimens; a free-pass nominal selected from it would describe neither",
+        }
+      } else {
+      let scan = fold(observations, init: FreeScan { smallest_free: 0 }, f: fn(acc, o) {
+        match o.grade {
+          FitFree => FreeScan {
+            smallest_free: if acc.smallest_free == 0 || o.rung_ordinal < acc.smallest_free {
+              o.rung_ordinal
+            } else { acc.smallest_free },
+          }
+          FitTight => acc
+          FitInterference => acc
+          FitRefused => acc
+        }
+      })
+      if scan.smallest_free == 0 {
+        FreePassUnobserved {
+          missing: "no rung was observed to admit the fastener FREELY; a tight rung does not establish a free-pass nominal",
+        }
+      } else {
+        FreePassNominalSelected {
+          nominal: rung_diameter(ladder: ladder, ordinal: scan.smallest_free),
+          basis_rung: scan.smallest_free,
+          scope: scope,
+        }
+      }
+      }
+      }
+    }
+  }
+}
+
+// The scope this selection is currently good for, each axis stated as narrowly as the evidence is.
+// PrinterUnattributed is not a placeholder to be filled in later and forgotten -- it is the honest
+// value, because the operator did not say which machine the coupon came from, and it keeps the
+// selection from reading as though a machine had been named. SinglePositionPerDiameter records the
+// confound that each rung appears at exactly one place on one coupon, so nominal diameter and bed
+// position cannot yet be told apart.
+data m3_free_pass_scope: FitPolicyScope = FitPolicyScope {
+  fastener: m3_fastener,
+  orientation: VerticalThroughHole,
+  wall_depth: micrometer(count: 4000),
+  attribution: PrinterUnattributed,
+  position_coverage: SinglePositionPerDiameter,
+}
+
+data m3_free_pass_selection: FreePassSelection = select_free_pass_nominal(
+  construction: hole_ladder_spec,
+  observations: operator_ladder_reading_2026_09_04,
+  scope: m3_free_pass_scope,
+)
+
+// ═══ THE PROCESS STATEMENT: THE READING MEASURED AGAINST SOMETHING THAT DID NOT COME OUT OF THIS
+// ═══ MACHINE.
+//
+// Everything above this line compares the coupon to itself. "The third rung passes freely" is a
+// true sentence about a part, and it stays a sentence about that part until it is held against a
+// diameter chosen by somebody else. DESIGN says a merge-blocking number must be grounded in an
+// external or versioned authority and that a measurement copied from the same tree is not an
+// oracle; the coupon ladder IS the same tree.
+//
+// ISO 273 supplies the outside quantity: the diameter through which an M3 is SUPPOSED to pass. So
+// this join answers the question the coupon alone cannot -- not "which rung passed" but "does this
+// process put a hole where the standard says a hole goes".
+//
+// WHAT IT DELIBERATELY DOES NOT DO IS SUBTRACT AND CALL THE RESULT A SHRINKAGE. The observed value
+// is the first LADDER NOMINAL at which free passage was seen, and the ladder samples in steps, so
+// the true threshold lies in a half-open interval below that rung, not at it. Reporting a signed
+// difference between two nominals as a process compensation would restate an interval as a point.
+// The arms therefore name a DIRECTION and the step that bounds it, and no arm carries a
+// compensation.
+type ClearanceTargetAgreement
+  = FreePassMeetsPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | FreePassLooserThanPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | FreePassTighterThanPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | ClearanceTargetUnpublished { series: IsoClearanceSeries }
+  | ClearanceComparisonHasNoObservation { cause: NonEmptyStr }
+
+fn clearance_target_agreement(
+  selection: FreePassSelection,
+  thread: FastenerThread,
+  series: IsoClearanceSeries
+) -> ClearanceTargetAgreement {
+  match selection {
+    FreePassUnobserved { missing: m } => ClearanceComparisonHasNoObservation { cause: m }
+    FreePassLadderUnavailable =>
+      ClearanceComparisonHasNoObservation { cause: "the ladder that generated the coupon is unavailable, so no observed nominal exists to compare" }
+    FreePassObservationOutOfLadder { ordinal: o, rung_count: n } =>
+      ClearanceComparisonHasNoObservation { cause: "an observation names a rung outside the ladder, so the observed nominal is not derivable" }
+    FreePassObservationsHeterogeneous { differing: d } =>
+      ClearanceComparisonHasNoObservation { cause: d }
+    FreePassNominalSelected { nominal: observed, basis_rung: r, scope: sc } =>
+      match iso_273_clearance_hole(thread: thread, series: series) {
+        IsoClearanceThreadNotPublished { requested: t, series: s } => ClearanceTargetUnpublished { series: series }
+        IsoClearanceFound { diameter: published, provenance: p } =>
+          if micrometer_count(m: observed) == micrometer_count(m: published) {
+            FreePassMeetsPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          } else if micrometer_count(m: observed) > micrometer_count(m: published) {
+            FreePassLooserThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          } else {
+            FreePassTighterThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          }
+      }
+  }
+}
