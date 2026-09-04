@@ -115,7 +115,7 @@ fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<S
 fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
   [
     "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base",
-    "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both or the check reads empty on the file it cannot parse and reports a pass it never measured: rows() { git show \"$1:$merged_path\" | sed -n -e 's/^- `\\([a-z0-9_]*\\)`.*/\\1/p' -e 's/^### \\(.*\\) — .*/\\1/p' | sort; }; comm -23 <(rows <base-ref>) <(rows HEAD) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
+    "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both, or the check reads zero rows on the file it cannot parse and reports a pass it never measured: rows() { sed -n -e 's/^- `\\([a-z0-9_]*\\)`.*/\\1/p' -e 's/^### \\(.*\\) — .*/\\1/p' | sort; }; comm -23 <(git show <base-ref>:$merged_path | rows) <(git show HEAD:$merged_path | rows) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
     "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
     "4. finish the authority merge and push the branch; do not regenerate this projection locally",
     "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",
@@ -153,6 +153,13 @@ fn emit_heal_path_case_pattern(paths: List<String>) -> String {
 // the recipe itself. Escaping belongs here, where the quoting decision is made, rather than in each
 // authored line, because a line author cannot see the quoting.
 //
+// THE RECIPE ALSO MAY NOT SPELL A POSITIONAL, AND THAT IS THIS SAME BOUNDARY READ FROM THE OTHER
+// SIDE. $ stays active on purpose, so a $1 written inside a recipe line is the DRIVER's argv, not
+// the reader's -- an extractor drafted as a shell function taking $1 rendered as `git show
+// "O:docs/design-rung-drops.md"`, git's %O placeholder substituted into the instruction. Escaping
+// it would only print a backslash, since the escaper doubles backslashes first. So a recipe line
+// names $merged_path, which is the one variable the driver DEFINES, and pipes into a parameterless
+// function instead of passing arguments to one.
 // IT IS NOT gunbc.shell_bash_runner bash_escape_for_double_quotes AND THE DIFFERENCE IS ONE
 // CHARACTER, NAMED SO IT IS NOT READ AS A FORK: that escaper also escapes $, which is exactly right
 // for a literal line and exactly wrong for a template whose whole job is to name the path git handed

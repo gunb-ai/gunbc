@@ -63,3 +63,15 @@ test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> B
   string_contains(s: script, pattern: "s/^- \\`\\([a-z0-9_]*\\)\\`.*/\\1/p")
     && string_contains(s: script, pattern: "s/^### \\(.*\\) — .*/\\1/p")
 }
+
+// $ STAYS ACTIVE IN THE EMITTED ECHO, SO A RECIPE MAY NAME ONLY THE VARIABLE THE DRIVER DEFINES.
+// A `$1` written into a recipe line is git's %O, not the reader's argument: an extractor drafted as
+// a shell function taking $1 rendered as `git show "O:docs/design-rung-drops.md"`, with the driver's
+// own argv substituted into the instruction it was printing. Escaping does not save it -- the
+// escaper doubles backslashes before the reader sees them -- so the line pipes into a parameterless
+// function instead.
+test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(s: script, pattern: "git show <base-ref>:$merged_path | rows")
+    && string_contains(s: script, pattern: "rows <base-ref>") == false
+}
