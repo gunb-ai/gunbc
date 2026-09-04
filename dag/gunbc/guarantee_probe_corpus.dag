@@ -206,24 +206,13 @@ data method_green_probe: GuaranteeProbeId = "method-established-surface-green-co
 data conformance_scalar_red_probe: GuaranteeProbeId = "declared-conformance-ground-scalar-red" as GuaranteeProbeId
 data conformance_green_probe: GuaranteeProbeId = "declared-conformance-ground-green-control" as GuaranteeProbeId
 
-// THE DIRECT-CALL ARGUMENT-TYPE SEAM, and specifically the seam's behaviour for a caller whose
-// module name begins with "v2." -- which v1.compiler.infer module_skips_direct_call_arg_check
-// exempts from this judgment for the entire active v2 corpus.
-//
-// THE EXEMPTION IS STILL STANDING. These rows are enrolled BEFORE its deletion rather than after,
-// and that is the point of them: the deletion is blocked (gunbc#8886) behind a resolve change that
-// was declined at the layer that would own it, so without an enrolled row the class becomes
-// invisible again -- which is strictly worse than never having measured it, because the corpus
-// would not know what we now know is there. DESIGN 4b(4) keeps a climb's evidence enrolled when
-// the climb completes; the same reasoning holds when the climb is BLOCKED, and the roster is what
-// makes a blocked class countable instead of forgotten.
-//
-// direct_call_arg_type_v2_module_red_probe is THE DISCRIMINATING RED and it CANNOT PASS while the
-// exemption stands, so it is enrolled in v2.workflow.floor_expected_red as a known red with its
-// trigger named. It is not a broken witness: it is the class, counted. The day the exemption is
-// deleted it flips to a permanent regression control and comes OFF that roster -- and a reviewer
-// who sees it green while still rostered is looking at a coherence failure, which is what the
-// expected-red coherence witness exists to catch.
+// THE DIRECT-CALL ARGUMENT-TYPE SEAM. The former module-wide `v2.*` exemption is retired by the
+// declaration-bound formal carrier: v1.compiler.infer direct_call_arg_type_mismatch now runs for
+// every resolved direct call. These rows remain enrolled as controls over that climbed seam. The
+// narrower unbound-carried-generic boundary is declared and counted independently by
+// gunbc.rung_drop direct_call_unbound_carried_generic_compat. DESIGN 4b(4) keeps the former red
+// enrolled after the climb: direct_call_arg_type_v2_module_red_probe is now a permanent regression
+// control and is no longer an expected-red row.
 //
 // Its source differs from the ordinary-module row below in exactly one byte-run -- the module name
 // -- so the pair isolates the exemption and nothing else. That is what makes the red interpretable

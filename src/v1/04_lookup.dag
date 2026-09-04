@@ -1,6 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
   PrimitiveProjection, PrimitiveIdentity, primitive_identity_runtime_name,
@@ -10,7 +11,7 @@ import std.primitive_projection {
 
 import v1.std.core {
   DeclaredCallableIdentity,
-  Node, param_node_type_expr,
+  Node, param_node_name_at, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
@@ -46,18 +47,21 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name,
+  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
   GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
+
+import v1.compiler.infer_resolve { fn_type_param_names, peel_nominal_alias_identity }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
 }
 
 import v1.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
+  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig, ResolvedFormal,
+  DeclarationBoundFormals, KernelGroundedFormals,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   parent_closure_callable_candidates, decide_callable_candidates
@@ -124,6 +128,7 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
         sig: ResolvedFuncSig {
           name: name,
           params: [],
+          resolved_formals: KernelGroundedFormals { formals: [] },
           inferred: builtin_return,
           is_async: false,
           output_provenance: [],
@@ -572,6 +577,8 @@ fn func_decl_binding_for_call(
 // rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before
 // the census fallback.
 
+// A whole-pool census node is not a callee module context. Refuse at application instead of
+// manufacturing formal authority through this caller's TypeEnv.
 fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
   let node = candidate.binding.resolved
   let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
@@ -593,12 +600,71 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
     sig: ResolvedFuncSig {
       name: name,
       params: node.params,
+      resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: candidate.module_path, node: node) },
       inferred: return_type,
       is_async: false,
       output_provenance: [],
       variant_provenance: empty_map()
     }
   }
+}
+
+// A global-bare hit still names one exact declaration and its completed census. Resolve each
+// formal at that declaration's containment position, once while that authority is present, rather
+// than reconstructing it later through the caller TypeEnv.
+// SEED WALKER DISPOSITION (DESIGN section 6): v1's canonical traversal idiom is a purpose-specific
+// self-recursive Node collector; importing v2 fold_node/node_query here would invert the bootstrap
+// because v1 compiles v2. This collector walks only the finite declaration type tree and dissolves
+// with the sibling v1 walkers at the v2 self-host cut. A one-off shared walker for this carrier
+// would add a traversal representation rather than consolidate the seed's existing population.
+fn declaration_unbound_leaf_names(n: Node, env: TypeEnv) -> List<String> {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let here = if n.connective == NoConnective
+    && (n.children |> count) == 0
+    && name != ""
+    && !contains(name, ".")
+    && !is_kernel_type(name: name)
+    && lookup_binding_by_name_local(env: env, name: name) == none {
+    [name]
+  } else { [] }
+  concat(here, n.children |> flat_map(ch => declaration_unbound_leaf_names(n: ch, env: env)))
+}
+
+fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
+  let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
+  let declaration_env = census_declaration_type_env(
+    census: type_env.symbol_index,
+    module_path: owner_module_path,
+    tp_names: tp_names,
+    source_indices: type_env.source_indices
+  )
+  let return_type = match node.inferred {
+    Present { value: Resolved { node: resolved_return } } => resolved_return
+    _ => match node.type_annotation {
+      Present { value: annotated_return } => annotated_return
+      Absent => error_type
+    }
+  }
+  let declaration_generic_names = concat(
+    tp_names,
+    concat(
+      declaration_unbound_leaf_names(n: return_type, env: declaration_env),
+      node.params |> flat_map(p => declaration_unbound_leaf_names(n: param_node_type_expr(n: p), env: declaration_env))
+    )
+  )
+  node.params
+    |> filter(p => !(tp_names |> any(tp => tp == param_node_name_at(n: p, source_indices: type_env.source_indices))))
+    |> map(p => {
+      let declared_type = param_node_type_expr(n: p)
+      ResolvedFormal {
+        parameter_identity: param_node_name_at(n: p, source_indices: type_env.source_indices),
+        declared_type: declared_type,
+        declaration_bound_conformance: preserve_outer_optional_cardinality(
+          outer: declared_type,
+          inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
+        substitution_basis: declaration_substitution_basis(n: declared_type, env: declaration_env, generic_names: declaration_generic_names)
+      }
+    })
 }
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
@@ -630,6 +696,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
+            resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: raw_return,
             is_async: false,
             output_provenance: [],
@@ -640,6 +707,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
+            resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: qualified_return,
             is_async: false,
             output_provenance: [],

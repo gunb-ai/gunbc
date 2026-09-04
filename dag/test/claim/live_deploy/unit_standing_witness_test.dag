@@ -2,7 +2,7 @@ module test.claim.live_deploy.unit_standing_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli"
+data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli"
 
 fn fixture_service_expectation() -> ServiceUnitExpectation {
   ServiceUnitExpectation { exec_start: unit_fixture_exec, user: "briansrls", working_directory: "/opt/gunbc/gunbc" }

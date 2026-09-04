@@ -1107,7 +1107,102 @@ pub struct TransitionAdmission {
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
 /// exact head is the proof, and it is the thing to trust.
 ///
-/// TWENTY-THIRD TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10350). All 30 `gunbc#10355` proposal-vocabulary rows
+/// are deleted, and SCM_PROPOSAL_VOCABULARY_LABEL with them. #10355 is in this branch's base, so
+/// every row reports CONSUMED rather than stale, and the wall refused this change with
+/// `30 CONSUMED ADMISSION(S) DUE FOR DELETION ON THIS ROSTER-TOUCH` -- the roster-touch obligation
+/// the entry below predicted for itself, coming due on the first change to touch this file.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the entry below
+/// says in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
+/// against MAIN's tree by its own (module, in_declaration, spelling, target) tuple: 30 of 30 name a
+/// spelling DECLARED in `gunbc.scm.proposal`, none open. ROWS CHECKED EQUALS ROWS IN LABEL EQUALS
+/// THE COUNT THE WALL REPORTED -- 30 = 30 = 30 -- so the subject was not silently narrowed.
+///
+/// THE JOIN WAS BUILT TO SURVIVE THIS FILE'S OWN TWO RECORDED FAILURE MODES, and one of them fired.
+/// `RequireBinding` and `RequireBindingAbsent` are COPRODUCT VARIANTS, not `data`/`fn`/`type`
+/// declarations, so an index reading only line-start declarations would have answered "not found"
+/// for both -- in a shape indistinguishable from "not declared", which is exactly the defect the
+/// TWENTY-NINTH DISSOLUTION records catching on its second pass. The join resolves variants and
+/// fields as well as declarations. It was also calibrated rather than trusted: `MergeCommit`,
+/// `ObjectStore` and a fabricated name all answer NOT DECLARED against the same module, so a
+/// uniform "found" was not available to it.
+///
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
+/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
+/// exact head is the proof.
+///
+/// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
+/// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
+/// supersession -- what the module does -- and two-commit merging, which it does not do and which
+/// `gunbc.scm.ancestry` is the subject of. The nouns move to their own authority,
+/// `gunbc.scm.proposal`, which depends on neither `ObjectStore` nor `ObjectId`; the operation over
+/// them becomes `gunbc.scm.role_requirement_integration`.
+///
+/// EVERY ROW BELOW IS A PURE RELOCATION OF A NOUN THE NEW AUTHORITY OWNS -- `Proposal`,
+/// `Requirement`, `RequireBinding`, `RequireBindingAbsent`, `requirement_role`. No declaration
+/// changes what it denotes: consumers bind the same spellings through the module that now owns them,
+/// so the wall reports `TargetChanged` at each binding site. Rows are enumerated by exact identity
+/// rather than matched on the module pair -- a pattern would admit a genuine rebind that happened to
+/// land in the same two modules.
+///
+/// ONLY THE `gunbc.scm.proposal` HALF NEEDS ADMISSION. The module rename is a module removal plus a
+/// module addition, which the wall classifies on its own rows; what needs naming here is the 30
+/// binding sites whose TARGET moved while their spelling did not.
+///
+/// THE ORDINAL IS TWENTY-SECOND, NOT TWENTY-FIRST. An earlier head of this branch numbered it
+/// twenty-first; that entry was lost when a conflict was resolved by taking main's file whole, and
+/// main has since landed its own transitions. Renumbering rather than reusing keeps each entry
+/// citable by a name that means one thing.
+///
+/// TRIGGER: these rows go when #10355 merges. The base then binds each spelling to
+/// `gunbc.scm.proposal`, the deltas stop being producible, and they are owed deletion by the next
+/// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
+/// are recorded there, and confirmable only by the wall itself.
+///
+/// TWENTY-THIRD TRANSITION (2026-09-04, gunbc#10350): the kernel-identity predicate's relocation.
+///
+/// `resolved_node_is_kernel_identity_for_name` moved from `v1.compiler.infer_env` -- where it was
+/// declared, never called, and sat ABOVE the module whose `kernel_span` mints the span it tests --
+/// down into `v1.std.core` beside that minter. Its two callers therefore bind the same spelling to
+/// a different declaring module, which is a `TargetChanged` binding delta by construction and
+/// exactly the motion this wall exists to make visible rather than silent.
+///
+/// THE MOTION IS THE POINT OF THE CHANGE, NOT A SIDE EFFECT OF IT, which is what makes these rows
+/// admissions rather than an excuse. The old site re-derived kernel identity by inlining
+/// `concat("<kernel:", name, ">")` -- a SECOND authority for the span FORMAT that `kernel_span`
+/// already owns -- so the relocation is a §3 single-authority consolidation whose entire content is
+/// that these two bindings now resolve to the minter's module.
+///
+/// THE ORDINAL IS TWENTY-THIRD, AND IT WAS TWENTY-SEVENTH ON THIS BRANCH'S PREVIOUS HEAD. That
+/// number was chosen against a base carrying the 255 `gunbc#10358` rows and their entries, which
+/// #10355 has since dissolved. Renumbering against the base that actually exists is what the
+/// TWENTY-SECOND TRANSITION prescribes one paragraph above, for the reason it gives there: an entry
+/// must stay citable by a name that means one thing.
+///
+/// THIS ENTRY WAS RE-APPLIED ACROSS THAT MERGE RATHER THAN CARRIED, and the entry above is why the
+/// distinction is written down: it records its own predecessor being LOST when a conflict was
+/// resolved by taking main's file whole. Main's file was taken whole here too -- the conflicting
+/// hunk was a misaligned array head, and hand-editing the markers would have spliced this cohort's
+/// rows onto the SCM cohort's body -- so the delta was re-derived against the merge base at ROW
+/// IDENTITY grain and re-applied: two rows added, none removed, against main's 254 removals and 29
+/// additions. The merged array is main's rows plus these two, and no row of either side is dark.
+///
+/// TRIGGER, AND IT IS THE ROWS' OWN DEATH: these two rows go when gunbc#10350 merges. Once the
+/// relocation is on main, merge commit and base both carry it, no run can produce these deltas, and
+/// both report CONSUMED rather than stale -- the state the TWENTY-SECOND TRANSITION corrects an
+/// earlier draft of itself on, coming due on this roster's own next touch and not on unrelated
+/// pull requests. Deleting them is the fix and not housekeeping. Adjudicate the deletion by the
+/// declaring-module join that entry describes, joining each row against main's tree by its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
+/// trigger sentence is not evidence that the trigger fired -- and because that join's own two
+/// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
+/// in a shape indistinguishable from "not declared".
+const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
+    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
+
+/// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
 /// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
 /// designated root, and a table that under v4 admits SEMANTIC NODES ONLY. The table it hosted
 /// answers a different question -- how a store's three object kinds go onto the wire -- and the
@@ -1121,6 +1216,17 @@ pub struct TransitionAdmission {
 /// the untyped locator so that an authored-source identity can no longer inhabit a semantic child
 /// position. Those are NEW SPELLINGS, not rebinds -- the base corpus declared none of them.
 ///
+/// THE ORDINAL IS TWENTY-FOURTH, AND IT WAS TWENTY-THIRD ON THIS BRANCH'S PREVIOUS HEAD. That
+/// number was chosen against a base that did not yet carry gunbc#10350's kernel-identity
+/// relocation, which took twenty-third when it landed. Renumbering against the base that actually
+/// exists is what the TWENTY-SECOND TRANSITION prescribes, for the reason it gives: an entry must
+/// stay citable by a name that means one thing.
+///
+/// THE gunbc#10355 ROWS ARE NOT DELETED HERE, THOUGH AN EARLIER HEAD OF THIS BRANCH DID DELETE
+/// THEM. The THIRTIETH DISSOLUTION above discharged that obligation on main first, so by the merge
+/// base there is nothing left to delete and this entry claims no credit for it. What this branch
+/// contributes is the rows below and nothing else.
+///
 /// THE ROWS BELOW ARE THREE CLASSES UNDER THREE LABELS, BECAUSE THEIR REASONS DIFFER. One label
 /// spanning all three would make a single sentence answer for three distinct motions, and a row's
 /// only value is that a reader can check its stated reason against the row itself.
@@ -1131,7 +1237,9 @@ pub struct TransitionAdmission {
 ///
 /// TRIGGER: all three sets go when #10445 merges. The base then binds each spelling to the module
 /// named as its target, the deltas stop being producible, and the rows are owed deletion by the
-/// next roster-touching change -- confirmable only by the wall's own run at the exact head.
+/// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
+/// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
+/// the exact head.
 const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
     "gunbc#10445 SCM object-table codec move: the mixed-table encoder, decoder and their positions \
      move from gunbc.scm.commit_closure_json_v2 to gunbc.scm.object_table_json";
@@ -1153,10 +1261,26 @@ const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
      gunbc.scm.object_store and had no base declaration";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    // THE THIRTY gunbc#10355 ROWS ARE DELETED HERE, NOT CARRIED. The proposal-vocabulary split
-    // merged, so every one of them is CONSUMED -- already satisfied at the base -- and this
-    // roster's own rule is that a consumed row's deletion is owed on the roster's next touch.
-    // This is that touch.
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer",
+            in_declaration: "ancestry_binding_is_kernel_identity",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SCM_MANIFEST_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
