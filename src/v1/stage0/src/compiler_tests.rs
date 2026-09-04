@@ -1991,6 +1991,83 @@ mod compiler_tests {
     }
 
     #[test]
+    fn direct_call_formal_authority_is_declaration_bound() {
+        let sources = im::vector![
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "authority_decl.dag".to_string(), content: "module authority.decl\ntype Left = String\ntype Right = String\nfn accept(left: Left, right: Right) -> Unit { }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_a.dag".to_string(), content: "module authority.caller_a\nimport authority.decl { accept }\ntype Left = Int\ntype Right = Bool\nfn use() -> Unit { accept(right: \"r\", left: \"l\") }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_b.dag".to_string(), content: "module perturbed.namespace.caller_b\nimport authority.decl { accept }\ntype Left = Bool\ntype Right = Int\nfn use() -> Unit { accept(right: \"rr\", left: \"ll\") }\n".to_string() }),
+        ];
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources.into());
+        assert!(
+            result.diagnostics.is_empty(),
+            "authority carrier fixture must compile: {:?}",
+            result.diagnostics
+        );
+        let json = serde_json::to_value(result.graph.as_ref().expect("resolved graph"))
+            .expect("serializable resolved graph");
+        let mut observed = 0usize;
+        let mut seen_calls = std::collections::HashSet::new();
+        fn inspect(
+            value: &serde_json::Value,
+            observed: &mut usize,
+            seen_calls: &mut std::collections::HashSet<String>,
+        ) {
+            let semantics = &value["expr_data"]["call_semantics"];
+            if semantics["_variant"] == "ResolvedDirectCallSemantics" {
+                let call_key = format!("{}:{}", value["span"]["file"], value["span"]["start"]);
+                if seen_calls.insert(call_key) {
+                    for application in semantics["application_plan"]
+                        .as_array()
+                        .expect("resolved application plan")
+                    {
+                        let formal = &application["formal"];
+                        if formal["parameter_identity"] != "left"
+                            && formal["parameter_identity"] != "right"
+                        {
+                            continue;
+                        }
+                        *observed += 1;
+                        assert_eq!(formal["declaration_bound_conformance"]["name"], "String", "formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv");
+                        assert_eq!(
+                            formal["declaration_bound_conformance"]["span"]["file"],
+                            "<kernel:String>",
+                            "formal conformance must retain the declaration-bound kernel authority"
+                        );
+                        assert!(
+                            formal["substitution_basis"].is_object(),
+                            "emission substitution basis must survive in the same plan"
+                        );
+                        let expected_argument = if formal["parameter_identity"] == "left" {
+                            1
+                        } else {
+                            0
+                        };
+                        assert_eq!(application["matched_argument_index"].as_i64(), Some(expected_argument), "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation");
+                    }
+                }
+            }
+            match value {
+                serde_json::Value::Array(xs) => {
+                    for x in xs {
+                        inspect(x, observed, seen_calls);
+                    }
+                }
+                serde_json::Value::Object(fields) => {
+                    for x in fields.values() {
+                        inspect(x, observed, seen_calls);
+                    }
+                }
+                _ => {}
+            }
+        }
+        inspect(&json, &mut observed, &mut seen_calls);
+        assert_eq!(
+            observed, 4,
+            "both caller perturbation controls must expose both declaration-bound formals"
+        );
+    }
+
+    #[test]
     fn sole_constructor_violation_outside_module() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
