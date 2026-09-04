@@ -2,6 +2,7 @@ module extdeps.network.mikrotik_crs812
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure {
+  Measure, Count, One,
   HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
   CpuCoreCount, cpu_core_count, cpu_core_count_value,
   UsdWholeDollars, usd_whole_dollars, usd_whole_dollars_count,
@@ -297,15 +298,28 @@ data crs812_qsfp_breakout_rates: List<Bandwidth> = [
 // ($1,409.93) is procurement, not a vendor fact, and is deliberately not modelled here.
 data crs812_suggested_price: UsdWholeDollars = usd_whole_dollars(1295)
 
+// A count of IEC power cords included with the chassis. On the same Count axis (Measure<Count, One, Nat>)
+// as CpuCoreCount and HardwareThreadCount elsewhere in this file, typed as a sibling so it shares the
+// Count axis rather than re-minting a bare Int for a countable concept.
+type PowerCordCount = Measure<Count, One, Nat>
+
+fn power_cord_count(count: Nat) -> PowerCordCount {
+  Measure { count: count }
+}
+
+fn power_cord_count_value(c: PowerCordCount) -> Nat {
+  measure_count(c)
+}
+
 type Crs812IncludedParts {
-  power_cords: Int
+  power_cords: PowerCordCount
   rackmount_ears: Bool
   rackmount_rear_support_ears: Bool
   fastening_set: Bool
 }
 
 data crs812_included_parts: Crs812IncludedParts = Crs812IncludedParts {
-  power_cords: 2,
+  power_cords: power_cord_count(2),
   rackmount_ears: true,
   rackmount_rear_support_ears: true,
   fastening_set: true,

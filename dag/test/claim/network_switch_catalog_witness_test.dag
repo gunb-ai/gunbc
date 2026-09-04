@@ -25,6 +25,7 @@ import extdeps.network.mikrotik_crs812 {
   crs812_included_parts,
   crs812_gap_count,
   crs812_tracked_gap_count,
+  power_cord_count_value,
 }
 import extdeps.network.arista_7050s_52 {
   arista_7050s_52_catalog,
@@ -163,7 +164,7 @@ test fn crs812_console_and_breakout_facts_are_carried() -> Bool {
 
 test fn crs812_suggested_price_and_included_parts_are_carried() -> Bool {
   usd_whole_dollars_count(crs812_suggested_price) == 1295
-    && crs812_included_parts.power_cords == 2
+    && power_cord_count_value(crs812_included_parts.power_cords) == 2
     && crs812_included_parts.rackmount_ears
     && crs812_included_parts.rackmount_rear_support_ears
     && crs812_included_parts.fastening_set
