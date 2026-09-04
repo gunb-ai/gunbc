@@ -1,0 +1,144 @@
+module test.claim.ray_threshold_memory_monitor_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Percent, percent, Millisecond, millisecond, ByteSize, gibibyte, gibibyte_to_byte_size }
+import extdeps.ray.threshold_memory_monitor {
+  RaySourceRevision, ray_source_revision_read,
+  RayThresholdMonitorConfig, MemoryUsageThreshold, MemoryMonitorRefreshMs, MinMemoryFreeBytes,
+  MaxKillMemoryBufferBytes, WorkerKillingPolicyByGroup, TaskOomRetries,
+  ray_config_field_name, ray_config_env_spelling,
+  RayConfigAbsentAtRevision, ray_config_absences,
+  ray_threshold_monitor_defaults,
+  ray_memory_monitor_disable_env,
+  RayMonitorLogLine, ThresholdExceeded, NodeMemoryAboveThreshold, UserSliceMemoryAboveThreshold,
+  NodeMemoryUncapturable, ray_monitor_log_format, ray_monitor_line_reports_measurement,
+  RayMonitorPlatform, LinuxPlatform, NonLinuxPlatform,
+  RaySelectedMonitors, ThresholdOnly, ThresholdAndEvent, NoopMonitor,
+  ray_selected_monitors, ray_pressure_monitor_is_factory_selectable
+}
+
+// THE ENV SPELLING IS DERIVED, SO THIS ROW GOES RED IF THE PREFIX RULE IS EDITED. Ray's pattern is
+// `RAY_` plus the config field name verbatim, which is why the variables are lowercase rather than
+// the SCREAMING_CASE an author would guess -- and guessing is exactly what this removes.
+test fn w_the_env_spelling_is_the_config_name_with_a_ray_prefix() -> Bool {
+  (ray_config_env_spelling(c: MemoryUsageThreshold) == ("RAY_memory_usage_threshold" as NonEmptyStr))
+    && (ray_config_env_spelling(c: MemoryMonitorRefreshMs) == ("RAY_memory_monitor_refresh_ms" as NonEmptyStr))
+    && (ray_config_env_spelling(c: WorkerKillingPolicyByGroup) == ("RAY_worker_killing_policy_by_group" as NonEmptyStr))
+}
+
+// THE SIX CONFIG NAMES ARE DISTINCT. A collision would make two knobs share one environment
+// variable, and the derivation above would propagate it silently into the disable argv.
+test fn w_the_config_field_names_are_distinct() -> Bool {
+  let names = [
+    ray_config_field_name(c: MemoryUsageThreshold),
+    ray_config_field_name(c: MemoryMonitorRefreshMs),
+    ray_config_field_name(c: MinMemoryFreeBytes),
+    ray_config_field_name(c: MaxKillMemoryBufferBytes),
+    ray_config_field_name(c: WorkerKillingPolicyByGroup),
+    ray_config_field_name(c: TaskOomRetries),
+  ]
+  !any(names, a => length(filter(names, b => b == a)) > 1)
+}
+
+// THE DISABLE ARGV IS COMPUTED FROM THE SAME ROW THE DEFAULT COMES FROM. Authored beside it, the two
+// could drift; derived, a rename of the config field moves both at once.
+test fn w_disabling_the_monitor_is_a_zero_refresh_on_the_derived_spelling() -> Bool {
+  ray_memory_monitor_disable_env() == ("RAY_memory_monitor_refresh_ms=0" as NonEmptyStr)
+}
+
+// THE PINNED DEFAULTS ARE THE ONES READ AT ray-2.58.0, CARRIED IN std.measure UNITS. The threshold is
+// a Percent and the refresh a Millisecond, so neither can be compared against a bare number that
+// happens to share a magnitude.
+test fn w_the_defaults_are_the_ones_read_at_the_pinned_revision() -> Bool {
+  (ray_threshold_monitor_defaults.memory_usage_threshold == percent(count: 95))
+    && (ray_threshold_monitor_defaults.memory_monitor_refresh == millisecond(count: 250))
+    && (ray_threshold_monitor_defaults.max_kill_memory_buffer == gibibyte_to_byte_size(g: gibibyte(count: 3)))
+    && (ray_threshold_monitor_defaults.worker_killing_policy_by_group == false)
+    && (ray_threshold_monitor_defaults.read_at.tag == ("ray-2.58.0" as NonEmptyStr))
+}
+
+// THE VERIFIED ABSENCE IS POPULATED, NOT MERELY DECLARED. This is the row that would have caught the
+// near-miss: `count_swap_in_memory_monitor` exists on master and not at this revision, so a list
+// that simply omitted it would be indistinguishable from one nobody checked.
+test fn w_the_swap_counting_knob_is_recorded_as_absent_at_this_revision() -> Bool {
+  length(ray_config_absences) > 0
+    && any(ray_config_absences, a =>
+      (a.field_name == ("count_swap_in_memory_monitor" as NonEmptyStr))
+        && (a.absent_at.tag == ("ray-2.58.0" as NonEmptyStr)))
+}
+
+// THE ABSENT FIELD IS NOT ALSO A LIVE CONFIG ROW. Recording it as absent while enumerating it as a
+// knob would be the same fork from two directions, and this holds them apart.
+test fn w_the_absent_field_is_not_enumerated_as_a_config() -> Bool {
+  let live = [
+    ray_config_field_name(c: MemoryUsageThreshold),
+    ray_config_field_name(c: MemoryMonitorRefreshMs),
+    ray_config_field_name(c: MinMemoryFreeBytes),
+    ray_config_field_name(c: MaxKillMemoryBufferBytes),
+    ray_config_field_name(c: WorkerKillingPolicyByGroup),
+    ray_config_field_name(c: TaskOomRetries),
+  ]
+  !any(live, n => n == ("count_swap_in_memory_monitor" as NonEmptyStr))
+}
+
+// ── THE UNCAPTURABLE LINE IS NOT A MEASUREMENT ─────────────────────────────────────────────────
+//
+// RED. A reader scanning for the exceeded-threshold line and finding none has NOT established that
+// memory was below threshold -- the monitor may have been announcing it could not see. Absence of an
+// alarm and evidence of safety are different facts, and this is the arm that keeps them apart.
+test fn w_the_uncapturable_line_does_not_report_a_measurement() -> Bool {
+  !ray_monitor_line_reports_measurement(line: NodeMemoryUncapturable)
+    && ray_monitor_line_reports_measurement(line: ThresholdExceeded)
+    && ray_monitor_line_reports_measurement(line: NodeMemoryAboveThreshold)
+    && ray_monitor_line_reports_measurement(line: UserSliceMemoryAboveThreshold)
+}
+
+// THE NODE AND USER-SLICE LINES ARE DISTINCT TEXT. They differ by one word and report different
+// subjects, so a matcher keyed on the shared tail would attribute a slice breach to the node.
+test fn w_the_node_and_user_slice_lines_are_distinguishable() -> Bool {
+  ray_monitor_log_format(line: NodeMemoryAboveThreshold)
+    != ray_monitor_log_format(line: UserSliceMemoryAboveThreshold)
+}
+
+// ── THE FACTORY SELECTS AT MOST TWO, AND NEVER THE PRESSURE MONITOR ────────────────────────────
+//
+// RED on the non-Linux arm and on the isolation arm. Selection is driven by a boolean argument to
+// `Create`, not by an environment variable, so there is no spelling to cite and the rule is modelled
+// as the function it is.
+test fn w_the_factory_selection_follows_platform_and_isolation() -> Bool {
+  let a = ray_selected_monitors(platform: LinuxPlatform, resource_isolation_enabled: false)
+  let b = ray_selected_monitors(platform: LinuxPlatform, resource_isolation_enabled: true)
+  let c = ray_selected_monitors(platform: NonLinuxPlatform, resource_isolation_enabled: true)
+  selection_is(s: a, wanted: "threshold" as NonEmptyStr)
+    && selection_is(s: b, wanted: "threshold+event" as NonEmptyStr)
+    && selection_is(s: c, wanted: "noop" as NonEmptyStr)
+}
+
+fn selection_is(s: RaySelectedMonitors, wanted: NonEmptyStr) -> Bool {
+  match s {
+    ThresholdOnly => wanted == ("threshold" as NonEmptyStr)
+    ThresholdAndEvent => wanted == ("threshold+event" as NonEmptyStr)
+    NoopMonitor => wanted == ("noop" as NonEmptyStr)
+  }
+}
+
+// THE PRESSURE MONITOR IS UNREACHABLE THROUGH THIS FACTORY, which is why this module is named for the
+// THRESHOLD monitor and not for the upstream directory. A module named for the directory would have
+// implied coverage of an implementation `Create` never returns.
+test fn w_the_pressure_monitor_is_not_factory_selectable() -> Bool {
+  !ray_pressure_monitor_is_factory_selectable()
+}
+
+test fn w_all_ray_threshold_monitor_claims_hold() -> Bool {
+  w_the_env_spelling_is_the_config_name_with_a_ray_prefix()
+    && w_the_config_field_names_are_distinct()
+    && w_disabling_the_monitor_is_a_zero_refresh_on_the_derived_spelling()
+    && w_the_defaults_are_the_ones_read_at_the_pinned_revision()
+    && w_the_swap_counting_knob_is_recorded_as_absent_at_this_revision()
+    && w_the_absent_field_is_not_enumerated_as_a_config()
+    && w_the_uncapturable_line_does_not_report_a_measurement()
+    && w_the_node_and_user_slice_lines_are_distinguishable()
+    && w_the_factory_selection_follows_platform_and_isolation()
+    && w_the_pressure_monitor_is_not_factory_selectable()
+}
