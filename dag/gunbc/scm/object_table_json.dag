@@ -70,21 +70,10 @@ module gunbc.scm.object_table_json
 // delegating classifier be the only reachable route from a closure refusal to a standing. Until then
 // the residue is mechanically preventable and this comment is the thing saying so.
 
-import std.types { String }
-import gunbc.scm.object_store { ObjectId }
-import gunbc.scm.target_reference { TargetReferenceRefusal }
-import gunbc.scm.json_member {
-  MemberReadRefusal,
-  MemberReadSubjectNotObject,
-  MemberReadMissing,
-  MemberReadDuplicated,
-  MemberReadWrongShape,
-}
-import gunbc.scm.load_standing {
-  LoadStanding,
-  LoadDocumentMalformed,
-  LoadIdentityCollision,
-}
+
+
+
+
 
 // FOURTEEN CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
 //
@@ -114,6 +103,145 @@ import gunbc.scm.load_standing {
 // They come because {kind, children}, the kind variants and the edge variants are literally the same
 // schema in both tables. Duplicating them per consumer would give one schema two authorities, which
 // is the fork this move exists to close rather than a symmetry worth having.
+
+import std.types {
+  String,
+  Bool,
+  Int,
+  List,
+  list_length,
+}
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  ObjectStore,
+  ScmObject,
+  SemanticNodeObject,
+  AuthoredSourceObject,
+  CorpusManifestObject,
+  CorpusManifestEntry,
+  authored_source_target_locator,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
+  StoredEdge,
+  SemanticNodeTarget,
+  node_target_locator,
+  ScmObjectRef,
+  SemanticNodeRef,
+  AuthoredSourceRef,
+  CorpusManifestRef,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  empty_store,
+  insert_from_structure,
+  store_authored_source,
+  object_id_eq,
+  scm_object_identity,
+  store_records_in_dependency_order,
+}
+import gunbc.scm.target_reference {
+  TargetReferenceRefusal,
+  TargetReference,
+  TargetContainedAt,
+  TargetUncontained,
+  TargetReferenceRefused,
+  TargetReferenceMemberReadRefused,
+  TargetReferenceUnexpectedMember,
+  TargetReferenceNotOneArm,
+  TargetReferenceUncontainedDigestInvalid,
+  decode_target_reference,
+}
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadMissing,
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberString,
+  MemberArray,
+  MemberObject,
+  MemberFailed,
+  read_member,
+  read_string_member,
+  unexpected_member_key,
+}
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadDocumentMalformed,
+  LoadIdentityCollision,
+  LoadComplete,
+  LoadPartial,
+  LoadRequiresNodeAtAuthoredSource,
+  LoadUnsupportedProtocol,
+}
+import std.content_hash {
+  fnv1a64_structural_hex_digest,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject,
+  JsonKeyValue,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+}
+import extdeps.languages.json.grammar {
+  JsonNumberLexeme,
+  json_int_lexeme,
+}
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import v2.std.node {
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  ComputationNode,
+  Connective,
+  Atom,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  Symbol,
+}
+import v2.std.compilers.lexing {
+  symbol_lexeme,
+  symbol_intern_lexeme,
+}
+import v2.std.collection {
+  Map,
+  empty_map,
+  map_insert,
+  map_lookup,
+}
+
 type ObjectTableMemberContext
   = ObjectTableSemanticNodeMembers
   | ObjectTableAuthoredSourceMembers
@@ -176,124 +304,17 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
   }
 }
 
-import std.types { Bool, Int, List, String, list_length }
-import std.content_hash { fnv1a64_structural_hex_digest }
-import gunbc.scm.load_standing {
-  LoadStanding,
-  LoadComplete,
-  LoadPartial,
-  LoadRequiresNodeAtAuthoredSource,
-  LoadUnsupportedProtocol,
-  LoadDocumentMalformed,
-  LoadIdentityCollision,
-}
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonNull,
-  JsonBool,
-  JsonNumber,
-  JsonString,
-  JsonArray,
-  JsonObject,
-  JsonKeyValue,
-  json_kv,
-  json_array,
-  json_object,
-  json_string,
-}
-import gunbc.scm.json_member {
-  MemberReadRefusal,
-  MemberReadSubjectNotObject,
-  MemberReadMissing,
-  MemberReadDuplicated,
-  MemberReadWrongShape,
-  MemberString,
-  MemberArray,
-  MemberObject,
-  MemberFailed,
-  read_member,
-  read_string_member,
-  unexpected_member_key,
-}
-import gunbc.scm.target_reference {
-  TargetReferenceRefusal,
-  TargetReference,
-  TargetContainedAt,
-  TargetUncontained,
-  TargetReferenceRefused,
-  TargetReferenceMemberReadRefused,
-  TargetReferenceUnexpectedMember,
-  TargetReferenceNotOneArm,
-  TargetReferenceUncontainedDigestInvalid,
-  decode_target_reference,
-}
-import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
-import extdeps.languages.json.parse {
-  JsonMemberLookup,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-  json_object_unique_member,
-}
-import v2.std.node {
-  EdgeLabel,
-  Named,
-  Positional,
-  NodeKind,
-  TypeNode,
-  ComputationNode,
-  Connective,
-  Atom,
-  Conj,
-  Disj,
-  Arrow,
-  Cardinality,
-  Instantiation,
-  Behavior,
-  Value,
-  Transform,
-  Branch,
-  Loop,
-  Bind,
-  Match,
-  Symbol,
-}
-import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import gunbc.scm.object_store {
-  ObjectId,
-  ObjectRecord,
-  ObjectStore,
-  ScmObject,
-  SemanticNodeObject,
-  AuthoredSourceObject,
-  CorpusManifestObject,
-  CorpusManifestEntry,
-  authored_source_target_locator,
-  AuthoredSourceContent,
-  AuthoredSourceEmpty,
-  AuthoredSourceText,
-  StoredEdge,
-  SemanticNodeTarget,
-  node_target_locator,
-  ScmObjectRef,
-  SemanticNodeRef,
-  AuthoredSourceRef,
-  CorpusManifestRef,
-  StoreOutcome,
-  Stored,
-  LocatorCollision,
-  SourceStoreOutcome,
-  SourceStored,
-  SourceLocatorCollision,
-  empty_store,
-  insert_from_structure,
-  store_authored_source,
-  object_id_eq,
-  scm_object_identity,
-  store_records_in_dependency_order,
-}
+
+
+
+
+
+
+
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // The object-table codec
@@ -557,20 +578,19 @@ fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue 
   )
 }
 
-// THE TWO ENTRY SHAPES ARE DISJOINT MEMBER SETS, AND THAT IS THE DISCRIMINATOR.
+// THE THREE ENTRY SHAPES ARE DISJOINT MEMBER SETS, AND THAT IS THE DISCRIMINATOR.
 //
-// A node entry keeps `{kind, children}` unchanged, byte for byte. An authored source entry is
-// `{source}`.
+// A node entry is `{kind, children}`, an authored source entry is `{source}`, a corpus manifest
+// entry is `{manifest}`. Nothing matches two, and an entry matching NONE refuses by member set
+// rather than being read as the closest fit: shape-sniffing is admissible only where the shapes
+// partition, and the refusal is what keeps it a partition rather than a guess.
 //
-// AN EARLIER REVISION CALLED THAT "a strict extension, not a format version". IT IS NOT, and the
-// module's own policy is what refutes it: a schema that grows a member grows a NEW FORMAT TAG. This
-// codec emits gunbc-scm-commit-closure-v3 and REFUSES the frozen predecessor tag outright rather than
-// accepting it, so the claim that every document the predecessor accepted still decodes here is false
-// at the first member the decoder reads. The unchanged node-entry shape is a fact about one entry
-// kind, not about compatibility of the format. Nothing matches both, and an entry
-// matching NEITHER refuses by member set rather than being read as the closest fit: shape-sniffing
-// is admissible only when the shapes partition, and the refusal is what keeps it a partition rather
-// than a guess.
+// AN EARLIER REVISION CALLED A NEW SHAPE "a strict extension, not a format version". IT IS NOT, and
+// the rule that refutes it is the one every embedding document here obeys: a schema that grows a
+// member grows a NEW FORMAT TAG, and each document that embeds this table versions on its own axis.
+// The unchanged node-entry shape is a fact about ONE entry kind, never about compatibility of a
+// format -- which is exactly why the node entry could stay byte-identical across three separate tag
+// moves without any of them being optional.
 //
 // THE CONTENT IS ONE JSON STRING AND THE EMPTY FILE IS THE EMPTY ONE. AuthoredSourceContent's arms
 // partition exactly on emptiness, so the encoding is total and the decode reconstructs the same arm

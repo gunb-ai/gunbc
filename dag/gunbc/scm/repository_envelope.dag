@@ -100,6 +100,8 @@ import gunbc.scm.commit_closure { table_unresolved_identities, table_source_occu
 // the closure is what the closure genuinely owns -- its refusal type and that type's classifier,
 // because a repository document embeds a closure document and must be able to say so.
 import gunbc.scm.object_table_json {
+  ObjectTableDecodeRefusal,
+  object_table_load_standing,
   DecodeAcc,
   DecodePositions,
   EncodeAcc,
@@ -288,8 +290,19 @@ type RepositoryEncodeRefusal
   | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
 
+// THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
+// member-read arm below exists because dropping the envelope's own identity_rule member used to
+// refuse as a CLOSURE DOCUMENT refusal, for a document whose closure was never reached -- the shared
+// reader was homed in the closure module and carried its vocabulary. The object table was the same
+// arrangement with the same consequence: a malformed OBJECT ENTRY in a repository's own table
+// reported as the embedded closure document being malformed. Now that the table owns its causes, the
+// repository names them as what they are.
+//
+// The closure arm stays, and stays first, because a repository document really does embed a closure
+// document and must be able to say when THAT is what refused.
 type RepositoryDecodeRefusal
   = RepositoryDecodeClosureDocRefusal { cause: ClosureDocRefusal }
+  | RepositoryDecodeObjectTableRefused { cause: ObjectTableDecodeRefusal }
   | RepositoryMemberReadRefused { cause: MemberReadRefusal }
   | RepositoryFormatUnrecognized { found: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
@@ -1233,7 +1246,7 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: table_refusal } =>
           match table_refusal {
-            Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
+            Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeObjectTableRefused { cause: c } }
             Absent =>
               match read_member(v: v, key: "commits") {
                 MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -1370,6 +1383,7 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryIdentityRuleUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryDecodeClosureDocRefusal { cause: c } => closure_document_load_standing(cause: c)
+    RepositoryDecodeObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     RepositoryMemberReadRefused { cause: c } =>
       match c {
         MemberReadSubjectNotObject => LoadDocumentMalformed

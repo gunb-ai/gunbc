@@ -285,6 +285,7 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
             ObjectTableUnknownConnectiveTag { found: _ } => "connective"
             ObjectTableUnknownBehaviorTag { found: _ } => "behavior"
             ObjectTableUnknownLabelTag { found: _ } => "label"
+            ObjectTableTargetReferenceRefused { cause: _ } => "table_target_reference"
             ObjectTableEdgeTargetUnresolved { reference: _ } => "edge_target"
             ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
             ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
@@ -566,7 +567,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses_as_the_edges_own_cause
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v3")),
+          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
           json_kv(
             key: "objects",
             value: json_array(
@@ -613,7 +614,7 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v3")),
+          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
           json_kv(
             key: "objects",
             value: json_array(
@@ -651,7 +652,7 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
     loaded: decode_closure_document(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v3")),
+          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
           json_kv(
             key: "objects",
             value: json_array(
@@ -868,7 +869,7 @@ fn scm_image_one_object_image(object_members: List<JsonKeyValue>, extra: List<Js
   json_object(
     members: concat(
       [
-        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v3")),
+        json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
         json_kv(key: "objects", value: json_array(elements: [json_object(members: object_members)])),
         json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
       ],
@@ -978,7 +979,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
               ]
             )
           ),
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v3")),
+          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
         ]
       )
     ),

@@ -56,7 +56,8 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
   RepositoryCommitParentNotPreviouslyAdmitted,
-  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryDecodeObjectTableRefused,
+  RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
@@ -736,6 +737,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
         RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryDecodeObjectTableRefused { cause: _ } => "object_table"
         RepositoryMemberReadRefused { cause: _ } => "member_read"
         RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
