@@ -96,6 +96,7 @@ import gunbc.recurring_failure_mode.one_dissolution_event_recorded_twice_or_not_
 import gunbc.recurring_failure_mode.exact_duplicate_match_arm_not_refused { exact_duplicate_match_arm_not_refused }
 import gunbc.recurring_failure_mode.premise_that_a_shared_subject_means_disagreement { premise_that_a_shared_subject_means_disagreement }
 import gunbc.recurring_failure_mode.live_argument_threaded_past_the_arm_that_decides { live_argument_threaded_past_the_arm_that_decides }
+import gunbc.recurring_failure_mode.check_subject_shape_cannot_represent_the_state_the_check_detects { check_subject_shape_cannot_represent_the_state_the_check_detects }
 import gunbc.recurring_failure_mode.interrupt_point_read_as_the_subjects_cost { interrupt_point_read_as_the_subjects_cost }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -184,5 +185,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   exact_duplicate_match_arm_not_refused,
   premise_that_a_shared_subject_means_disagreement,
   live_argument_threaded_past_the_arm_that_decides,
+  check_subject_shape_cannot_represent_the_state_the_check_detects,
   interrupt_point_read_as_the_subjects_cost,
 ]
