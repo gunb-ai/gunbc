@@ -32,7 +32,7 @@ fn obs(rung: Nat, g: FastenerFitGrade) -> HoleFitObservation {
 // pass, so nothing bounds the loss from below, and the rung-1 reading was never taken. A derivation
 // that answered anyway would be stating a constant that goes into every fastener hole on the chassis
 // on the strength of an assumption nobody made.
-fn w_the_operators_reading_refuses_to_state_an_entry_threshold() -> Bool {
+test fn w_the_operators_reading_refuses_to_state_an_entry_threshold() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec,
                                        observations: operator_ladder_reading_2026_09_04) {
     ThresholdLowerBoundUnestablished { smallest_passing_rung: r, passing_nominal: pn, missing: m } => r == 2
@@ -50,7 +50,7 @@ fn w_the_operators_reading_refuses_to_state_an_entry_threshold() -> Bool {
 // reading -- rung 1 refuses -- brackets the entry threshold between the rung-1 and rung-2 NOMINALS:
 // above 3000 um and at or below 3100. Both endpoints are rung diameters from the coupon authority,
 // which is what makes them legitimately Micrometer; neither is a measured hole.
-fn w_one_more_reading_brackets_the_entry_threshold() -> Bool {
+test fn w_one_more_reading_brackets_the_entry_threshold() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 2, g: FitTight),
@@ -71,7 +71,7 @@ fn w_one_more_reading_brackets_the_entry_threshold() -> Bool {
 // A DIFFERENT WORLD GIVES A DIFFERENT BRACKET, which proves the bracket is derived from the ladder
 // and the ordinals rather than being a constant. Rungs 1-3 refuse and rung 4 passes: above the
 // rung-3 nominal (3200) and at or below the rung-4 nominal (3300).
-fn w_the_bracket_follows_the_observations() -> Bool {
+test fn w_the_bracket_follows_the_observations() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 2, g: FitRefused),
@@ -94,7 +94,7 @@ fn w_the_bracket_follows_the_observations() -> Bool {
 // an upper one. Treating tight as refused would move the bracket a whole rung and silently oversize
 // every hole. This population differs from the previous one ONLY in that rung 3 is tight rather than
 // free, and must give the identical bracket.
-fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
+test fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
   let free = entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused), obs(rung: 3, g: FitFree),
   ])
@@ -127,7 +127,7 @@ fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
 // NOTHING PASSING GIVES NO UPPER BOUND, and this is a DIFFERENT missing reading from the operator's
 // case -- there the ladder was too small at the bottom, here too small at the top. Two arms because
 // they send the observer to opposite ends of the coupon.
-fn w_all_refusing_leaves_the_upper_bound_open() -> Bool {
+test fn w_all_refusing_leaves_the_upper_bound_open() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused),
   ]) {
@@ -144,7 +144,7 @@ fn w_all_refusing_leaves_the_upper_bound_open() -> Bool {
 
 // AN EMPTY POPULATION IS UNOBSERVED, not a zero compensation. A zero would be the absorbing value
 // that clears every downstream check by asserting the printer is perfect.
-fn w_no_observations_is_unobserved_not_zero() -> Bool {
+test fn w_no_observations_is_unobserved_not_zero() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: []) {
     ThresholdUnobserved => true
     ThresholdLadderUnavailable => false
@@ -160,7 +160,7 @@ fn w_no_observations_is_unobserved_not_zero() -> Bool {
 // FIT IS MONOTONE IN DIAMETER. A larger hole refusing what a smaller one admitted is a bad reading,
 // and the tempting arm is to take the extreme and carry on -- which converts a known-bad population
 // into a confident number. It refuses and names both rungs.
-fn w_a_non_monotone_population_refuses_rather_than_averaging() -> Bool {
+test fn w_a_non_monotone_population_refuses_rather_than_averaging() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 2, g: FitFree),
     obs(rung: 5, g: FitRefused),
@@ -179,7 +179,7 @@ fn w_a_non_monotone_population_refuses_rather_than_averaging() -> Bool {
 // THE OTHER HALF OF THE SAME READING IS ESTABLISHED, and reporting the whole thing as unestablished
 // would have discarded it. Rung 3 was observed FREE, so the free-pass nominal is 3200 -- an observed
 // rung, not an interpolation between 3100 and 3200.
-fn w_the_operators_reading_does_establish_the_free_pass_nominal() -> Bool {
+test fn w_the_operators_reading_does_establish_the_free_pass_nominal() -> Bool {
   match m3_free_pass_selection {
     FreePassNominalSelected { nominal: n, basis_rung: r, scope: s } =>
       micrometer_count(m: n) == 3200 && r == 3
@@ -193,7 +193,7 @@ fn w_the_operators_reading_does_establish_the_free_pass_nominal() -> Bool {
 // A TIGHT RUNG DOES NOT ESTABLISH A FREE PASS. This is the discriminating red for the distinction the
 // two thresholds exist to keep apart: a population whose only pass is tight must refuse to select,
 // because a fastener that binds does not seat a panel.
-fn w_a_tight_rung_alone_selects_no_free_pass_nominal() -> Bool {
+test fn w_a_tight_rung_alone_selects_no_free_pass_nominal() -> Bool {
   match select_free_pass_nominal(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 2, g: FitTight),
@@ -208,7 +208,7 @@ fn w_a_tight_rung_alone_selects_no_free_pass_nominal() -> Bool {
 
 // THE SELECTION IS THE FIRST FREE RUNG, NOT THE LAST. A population with several free rungs must
 // select the smallest, since anything larger is loose and wastes material and stiffness.
-fn w_the_selection_takes_the_smallest_free_rung() -> Bool {
+test fn w_the_selection_takes_the_smallest_free_rung() -> Bool {
   match select_free_pass_nominal(construction: hole_ladder_spec, observations: [
     obs(rung: 5, g: FitFree),
     obs(rung: 3, g: FitFree),
@@ -225,7 +225,7 @@ fn w_the_selection_takes_the_smallest_free_rung() -> Bool {
 // REVIEW 60080, FINDING 1. An ordinal past the end of the ladder must refuse. rung_diameter is pure
 // arithmetic that cannot fail, so rung 40 of an 11-rung coupon would have yielded a diameter for a
 // hole that was never printed -- fabricated output reached by a computation with no error path.
-fn w_an_ordinal_past_the_ladder_refuses_rather_than_computing_a_diameter() -> Bool {
+test fn w_an_ordinal_past_the_ladder_refuses_rather_than_computing_a_diameter() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 40, g: FitFree),
@@ -245,7 +245,7 @@ fn w_an_ordinal_past_the_ladder_refuses_rather_than_computing_a_diameter() -> Bo
 // "nothing seen yet" marker, so a zero-ordinal observation was absorbed into the initial state and
 // disappeared with no diagnostic at all. It must refuse, and it must refuse NAMING zero rather than
 // being reported as absent.
-fn w_a_zero_ordinal_refuses_instead_of_vanishing_into_the_sentinel() -> Bool {
+test fn w_a_zero_ordinal_refuses_instead_of_vanishing_into_the_sentinel() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 0, g: FitRefused),
     obs(rung: 3, g: FitFree),
@@ -264,7 +264,7 @@ fn w_a_zero_ordinal_refuses_instead_of_vanishing_into_the_sentinel() -> Bool {
 // THE LAST RUNG IS IN RANGE. A bound written as >= instead of > would refuse rung 11 of an 11-rung
 // ladder, which is a real hole on the real coupon. This is the paired accept that keeps the gate from
 // being one-off-conservative.
-fn w_the_last_rung_of_the_ladder_is_admitted() -> Bool {
+test fn w_the_last_rung_of_the_ladder_is_admitted() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 11, g: FitFree),
@@ -284,7 +284,7 @@ fn w_the_last_rung_of_the_ladder_is_admitted() -> Bool {
 // REVIEW 60080, FINDING 2. An M3 refusal folded with an M4 pass yields a bracket true of neither
 // fastener. It must refuse, not compute. Skipping the odd rows would be the absorbing arm: a narrower
 // bracket over a silently chosen subset, reported with undiminished confidence.
-fn w_a_population_mixing_fasteners_refuses_rather_than_bracketing() -> Bool {
+test fn w_a_population_mixing_fasteners_refuses_rather_than_bracketing() -> Bool {
   let m4 = HoleFitObservation {
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 3,
@@ -309,7 +309,7 @@ fn w_a_population_mixing_fasteners_refuses_rather_than_bracketing() -> Bool {
 
 // THE SAME FASTENER THROUGHOUT STILL BRACKETS, which is what makes the gate above discriminating
 // rather than a refusal of every population with more than one row.
-fn w_a_homogeneous_population_still_brackets() -> Bool {
+test fn w_a_homogeneous_population_still_brackets() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
     obs(rung: 1, g: FitRefused),
     obs(rung: 3, g: FitFree),
@@ -328,7 +328,7 @@ fn w_a_homogeneous_population_still_brackets() -> Bool {
 // BOTH GATES GUARD THE FREE-PASS SELECTION TOO. The review noted the same defect repeated there, and
 // a fix applied to one path only would leave the policy value derivable from exactly the input the
 // other path rejects.
-fn w_the_free_pass_selection_carries_the_same_two_gates() -> Bool {
+test fn w_the_free_pass_selection_carries_the_same_two_gates() -> Bool {
   let out_of_range = match select_free_pass_nominal(construction: hole_ladder_spec,
       observations: [obs(rung: 40, g: FitFree)], scope: "fixture") {
     FreePassObservationOutOfLadder { ordinal: o, rung_count: rc } => o == 40
