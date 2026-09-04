@@ -935,24 +935,48 @@ pub struct TransitionAdmission {
 /// the highest DISSOLUTION, so this entry is NINETEENTH and TWENTY-FIRST respectively.
 const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
 
-/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
-/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
-/// because the type module cannot import the rows back without a cycle. Two bindings in
-/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
-/// one of the auto-admitted dispositions.
+/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
 ///
-/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
-/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
-/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
-/// second route around the adjudicator, and there is none: the whole point of the row is to make
-/// the transition adjudicated rather than silent.
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
 ///
-/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
-/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
-/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
-/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
-/// forget; the required run reports them as consumed admissions due for deletion on that change.
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
 ///
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
+///
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
