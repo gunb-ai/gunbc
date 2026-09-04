@@ -1161,53 +1161,62 @@ pub struct TransitionAdmission {
 /// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
 /// are recorded there, and confirmable only by the wall itself.
 ///
-/// TWENTY-THIRD TRANSITION (2026-09-04, gunbc#10350): the kernel-identity predicate's relocation.
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10439). Both `gunbc#10350` kernel-identity rows are
+/// deleted, and KERNEL_IDENTITY_RELOCATION_LABEL with them. #10350 is in this branch's base, so both
+/// report CONSUMED rather than stale, and the wall refused this change naming
+/// `2 consumed admission(s)` -- the roster-touch obligation the deleted entry predicted for itself.
 ///
-/// `resolved_node_is_kernel_identity_for_name` moved from `v1.compiler.infer_env` -- where it was
-/// declared, never called, and sat ABOVE the module whose `kernel_span` mints the span it tests --
-/// down into `v1.std.core` beside that minter. Its two callers therefore bind the same spelling to
-/// a different declaring module, which is a `TargetChanged` binding delta by construction and
-/// exactly the motion this wall exists to make visible rather than silent.
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the deleted entry
+/// said in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
+/// against main's tree by its own (module, in_declaration, spelling, target) tuple:
 ///
-/// THE MOTION IS THE POINT OF THE CHANGE, NOT A SIDE EFFECT OF IT, which is what makes these rows
-/// admissions rather than an excuse. The old site re-derived kernel identity by inlining
-/// `concat("<kernel:", name, ">")` -- a SECOND authority for the span FORMAT that `kernel_span`
-/// already owns -- so the relocation is a §3 single-authority consolidation whose entire content is
-/// that these two bindings now resolve to the minter's module.
+///   v1.compiler.infer     `04_infer.dag` imports `resolved_node_is_kernel_identity_for_name` from
+///                         `v1.std.core`, and `ancestry_binding_is_kernel_identity` still calls it.
+///   v1.compiler.emit_rust `05_emit_rust.dag` imports the same spelling from `v1.std.core`, and
+///                         `import_name_resolves_to_host_realized_kernel_scalar` still calls it.
 ///
-/// THE ORDINAL IS TWENTY-THIRD, AND IT WAS TWENTY-SEVENTH ON THIS BRANCH'S PREVIOUS HEAD. That
-/// number was chosen against a base carrying the 255 `gunbc#10358` rows and their entries, which
-/// #10355 has since dissolved. Renumbering against the base that actually exists is what the
-/// TWENTY-SECOND TRANSITION prescribes one paragraph above, for the reason it gives there: an entry
-/// must stay citable by a name that means one thing.
+/// ROWS CHECKED EQUALS ROWS IN LABEL EQUALS THE COUNT THE WALL REPORTED -- 2 = 2 = 2 -- so the
+/// subject was not silently narrowed. The spelling has exactly ONE declaration in the tree,
+/// `00_core.dag`, so neither row's target set is ambiguous and no competing local declaration
+/// shadows either call site.
 ///
-/// THIS ENTRY WAS RE-APPLIED ACROSS THAT MERGE RATHER THAN CARRIED, and the entry above is why the
-/// distinction is written down: it records its own predecessor being LOST when a conflict was
-/// resolved by taking main's file whole. Main's file was taken whole here too -- the conflicting
-/// hunk was a misaligned array head, and hand-editing the markers would have spliced this cohort's
-/// rows onto the SCM cohort's body -- so the delta was re-derived against the merge base at ROW
-/// IDENTITY grain and re-applied: two rows added, none removed, against main's 254 removals and 29
-/// additions. The merged array is main's rows plus these two, and no row of either side is dark.
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_consumed_at_base`
+/// resolves the full subject through the re-export chain and requires an exact singleton, which no
+/// hand join reproduces. The wall's own run at the exact head is the proof.
 ///
-/// TRIGGER, AND IT IS THE ROWS' OWN DEATH: these two rows go when gunbc#10350 merges. Once the
-/// relocation is on main, merge commit and base both carry it, no run can produce these deltas, and
-/// both report CONSUMED rather than stale -- the state the TWENTY-SECOND TRANSITION corrects an
-/// earlier draft of itself on, coming due on this roster's own next touch and not on unrelated
-/// pull requests. Deleting them is the fix and not housekeeping. Adjudicate the deletion by the
-/// declaring-module join that entry describes, joining each row against main's tree by its own
+/// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10439): the Ollama launch vocabulary moves beside
+/// the engine axis that dispatches it.
+///
+/// `SparkServingOccurrence` carried `launch_profile: OllamaServingLaunchProfile` while exactly one
+/// runtime existed, which made "what is served" and "how it is launched" one fact. #10439 adds
+/// `ServingEngine = OllamaServing | VllmServing` and cuts the occurrence over to it in the same
+/// tree, because leaving the fused carrier alive would make the new axis a parallel representation
+/// -- DESIGN §3's attractor -- rather than a replacement.
+///
+/// THE MOVE IS WHAT KEEPS THE IMPORT GRAPH ACYCLIC, WHICH IS ITS ONE STRUCTURAL LAW. `serving_engine`
+/// cannot import `OllamaServingLaunchProfile` from `serving_release` while `serving_release` imports
+/// `ServingEngine` from `serving_engine`. So `SparkServingBindListen`, `OllamaServingLaunchProfile`
+/// and `spark_serving_bind_listen_wire` MOVE into `gunbc.spark.serving_engine` -- a move, not a
+/// copy, so no second authority survives the change. Six binding sites therefore bind the same
+/// spelling to a different declaring module, which is a `TargetChanged` delta by construction and
+/// exactly the motion this wall exists to make visible.
+///
+/// THE THREE MEMBERSHIP DELTAS ARE NOT ADMITTED HERE BECAUSE THEY DO NOT NEED TO BE: the wall
+/// reports them `ExplicitlyEvaluatedZeroDelta` -- `serving_engine` is a new module reached by a name
+/// each importer authors -- and admitting a row the wall already adjudicates would be a second
+/// authority for the same decision.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10439 merges. The base then binds
+/// each spelling to `gunbc.spark.serving_engine`, no run can produce these deltas, and all six
+/// report CONSUMED rather than stale -- coming due on this roster's own next touch. Adjudicate that
+/// deletion by the declaring-module join, joining each row against main's tree by its own
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
-/// trigger sentence is not evidence that the trigger fired -- and because that join's own two
-/// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
-/// in a shape indistinguishable from "not declared".
-/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10445). Both rows of the entry above are deleted,
-/// and KERNEL_IDENTITY_RELOCATION_LABEL with them. #10350 merged, so this branch's merge commit and
-/// its base both carry the relocation, no run can produce those deltas, and the wall reports them
-/// CONSUMED rather than stale -- the exact death the entry predicts for itself, coming due on the
-/// first change to touch this roster. That is this change. Adjudicated by the wall's own run at the
-/// exact head, not by the trigger sentence: `resolved_node_is_kernel_identity_for_name` is declared
-/// in `v1.std.core` at the merge base, and both rows named it there.
+/// trigger sentence is not evidence that the trigger fired.
+///
+const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
+    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
 
-/// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
+/// TWENTY-FIFTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
 /// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
 /// designated root, and a table that under v4 admits SEMANTIC NODES ONLY. The table it hosted
 /// answers a different question -- how a store's three object kinds go onto the wire -- and the
@@ -1221,16 +1230,17 @@ pub struct TransitionAdmission {
 /// the untyped locator so that an authored-source identity can no longer inhabit a semantic child
 /// position. Those are NEW SPELLINGS, not rebinds -- the base corpus declared none of them.
 ///
-/// THE ORDINAL IS TWENTY-FOURTH, AND IT WAS TWENTY-THIRD ON THIS BRANCH'S PREVIOUS HEAD. That
-/// number was chosen against a base that did not yet carry gunbc#10350's kernel-identity
-/// relocation, which took twenty-third when it landed. Renumbering against the base that actually
-/// exists is what the TWENTY-SECOND TRANSITION prescribes, for the reason it gives: an entry must
-/// stay citable by a name that means one thing.
+/// THE ORDINAL IS TWENTY-FIFTH, AND IT HAS BEEN TWENTY-THIRD AND TWENTY-FOURTH ON EARLIER HEADS OF
+/// THIS BRANCH. Each number was chosen against a base a later merge changed: gunbc#10350's
+/// kernel-identity relocation took twenty-third, and gunbc#10439's Ollama launch vocabulary took
+/// twenty-fourth. Renumbering against the base that actually exists is what the TWENTY-SECOND
+/// TRANSITION prescribes, for the reason it gives: an entry must stay citable by a name that means
+/// one thing.
 ///
-/// THE gunbc#10355 ROWS ARE NOT DELETED HERE, THOUGH AN EARLIER HEAD OF THIS BRANCH DID DELETE
-/// THEM. The THIRTIETH DISSOLUTION above discharged that obligation on main first, so by the merge
-/// base there is nothing left to delete and this entry claims no credit for it. What this branch
-/// contributes is the rows below and nothing else.
+/// THIS ENTRY DELETES NOTHING, THOUGH EARLIER HEADS OF THIS BRANCH DELETED TWO COHORTS. The
+/// THIRTIETH and THIRTY-FIRST DISSOLUTIONS above discharged the gunbc#10355 and gunbc#10350 rows on
+/// main first, so by this merge base there is nothing left for this entry to claim credit for. What
+/// this branch contributes is the rows below and nothing else.
 ///
 /// THE ROWS BELOW ARE TWO CLASSES UNDER TWO LABELS, BECAUSE THEIR REASONS DIFFER. One label
 /// spanning both would make a single sentence answer for two distinct motions, and a row's only
@@ -1270,6 +1280,66 @@ const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
      gunbc.scm.object_store and had no base declaration";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_desired",
+            in_declaration: "spark_serving_desired_bind_host_port",
+            spelling: "spark_serving_bind_listen_wire",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_desired",
+            in_declaration: "spark_serving_desired_bind_listen",
+            spelling: "SparkServingBindListen",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_desired",
+            in_declaration: "spark_serving_desired_launch_profile",
+            spelling: "OllamaServingLaunchProfile",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_serving_release_witness_test",
+            in_declaration: "profile_base",
+            spelling: "OllamaServingLaunchProfile",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_serving_release_witness_test",
+            in_declaration: "profile_other_window",
+            spelling: "OllamaServingLaunchProfile",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark_serving_release_witness_test",
+            in_declaration: "witness_bind",
+            spelling: "SparkServingBindListen",
+            target: "gunbc.spark.serving_engine",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
         subject: AdmissionSubject::Binding {
