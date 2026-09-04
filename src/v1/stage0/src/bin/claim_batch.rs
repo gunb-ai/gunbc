@@ -1185,6 +1185,8 @@ mod witness_report_line_tests {
 
     fn receipt(wall_ms: u128, cpu_ms: u128) -> PerformanceReceipt {
         PerformanceReceipt {
+            opaque_host_call_reach:
+                v1_compiler::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
             subject_key: "subj".to_string(),
             work_shape: "w".to_string(),
             wall_nanos: wall_ms * 1_000_000,
