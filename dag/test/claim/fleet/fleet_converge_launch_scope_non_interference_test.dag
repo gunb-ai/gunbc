@@ -166,33 +166,55 @@ data observed_caps_field_not_found: String = "FieldNotFound|observed_caps|true"
 data observed_fabric_cells_field_not_found: String = "FieldNotFound|observed_fabric_cells|true"
 data launch_sentinel_field_not_found: String = "FieldNotFound|__launch_excess_field_probe|true"
 
-// THE POSITIVE AND RED ARE ONE ENROLLED CLAIM. Refusing both sources would make the discriminating
-// RED meaningless, while separating them would pay the same two live-tree compilations twice under
-// the per-claim floor budget. The clean half admits eight canonical constructors; the mutated half
-// rejects the seven former foreign-axis sites at their twenty field occurrences and the eighth
-// arbitrary sentinel site that establishes the constructor's general closedness.
-test fn the_eight_excess_field_constructors_are_refused_at_all_twenty_one_fields() -> Bool {
+// BOTH EXPENSIVE COMPILATIONS ARE HOISTED ABOVE; the claims below only read their shared census
+// values. Keeping each observation separate makes a refusal locate the mismatched fact rather than
+// returning one opaque false from a long conjunction.
+test fn the_eight_clean_launch_constructors_are_accepted() -> Bool {
   census_ran(census: clean_census)
     && blocking_count(census: clean_census) == 0
     && identity_count(census: clean_census, wanted: observed_slots_field_not_found) == 0
-    && census_ran(census: foreign_axis_census)
+}
+
+test fn the_eight_excess_field_constructors_add_twenty_one_blocking_refusals() -> Bool {
+  census_ran(census: foreign_axis_census)
     && blocking_count(census: foreign_axis_census) == blocking_count(census: clean_census) + 21
-    && identity_count(census: foreign_axis_census, wanted: observed_slots_field_not_found) == 4
-    && identity_count(census: foreign_axis_census, wanted: observed_activation_readiness_field_not_found) == 4
-    && identity_count(census: foreign_axis_census, wanted: observed_unit_standings_field_not_found) == 4
-    && identity_count(census: foreign_axis_census, wanted: observed_caps_field_not_found) == 4
-    && identity_count(census: foreign_axis_census, wanted: observed_fabric_cells_field_not_found) == 4
-    && identity_count(census: foreign_axis_census, wanted: launch_sentinel_field_not_found) == 1
-    && only_expected_identity_differs(
-         clean: clean_census,
-         refused: foreign_axis_census,
-         expected_a: observed_slots_field_not_found,
-         expected_b: observed_activation_readiness_field_not_found,
-         expected_c: observed_unit_standings_field_not_found,
-         expected_d: observed_caps_field_not_found,
-         expected_e: observed_fabric_cells_field_not_found,
-         expected_f: launch_sentinel_field_not_found,
-       )
+}
+
+test fn the_four_slot_fields_are_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: observed_slots_field_not_found) == 4
+}
+
+test fn the_four_activation_readiness_fields_are_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: observed_activation_readiness_field_not_found) == 4
+}
+
+test fn the_four_unit_standings_fields_are_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: observed_unit_standings_field_not_found) == 4
+}
+
+test fn the_four_cap_fields_are_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: observed_caps_field_not_found) == 4
+}
+
+test fn the_four_fabric_cell_fields_are_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: observed_fabric_cells_field_not_found) == 4
+}
+
+test fn the_arbitrary_sentinel_field_is_refused() -> Bool {
+  identity_count(census: foreign_axis_census, wanted: launch_sentinel_field_not_found) == 1
+}
+
+test fn no_diagnostic_identity_besides_the_twenty_one_fields_changes() -> Bool {
+  only_expected_identity_differs(
+    clean: clean_census,
+    refused: foreign_axis_census,
+    expected_a: observed_slots_field_not_found,
+    expected_b: observed_activation_readiness_field_not_found,
+    expected_c: observed_unit_standings_field_not_found,
+    expected_d: observed_caps_field_not_found,
+    expected_e: observed_fabric_cells_field_not_found,
+    expected_f: launch_sentinel_field_not_found,
+  )
 }
 
 // THE OWNING-SCOPE CONTROLS REMAIN RUNTIME CLAIMS. The construction wall proves that foreign axes
