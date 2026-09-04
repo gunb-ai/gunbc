@@ -1190,6 +1190,43 @@ type OptionalNarrowing = NarrowsToRequired | ConformsOrWidens | NarrowingUndeter
 // Either operand may fail to carry the dimension, so the predicate is named for the QUESTION it
 // answers rather than for one side of it. Reusing it on both sides is the whole content of the
 // produced-side repair below.
+// TWO CARRIERS OF "THIS IS A TYPE PARAMETER", AND READING ONLY THE FIRST ACCUSED CORRECT CODE.
+// A type parameter occurrence is stamped `inferred: TypeVariable` where the stamping pass reaches
+// it, and arrives as a BARE NAMED LEAF where it does not -- a declared field whose type is the
+// parameter itself, supplied from a raw declaration rather than an instantiated template. The leaf
+// renders `Primitive(T)`, carries no optionality, and therefore read as REQUIRED, so an optional
+// value flowing into it took the accusing arm. Measured: 7 sites in v2.compiler.resolve and
+// v2.compiler.translate, all `Outcome<T> { value: T }` positions where T substitutes to `Symbol?`
+// and the honest verdict is ConformsOrWidens.
+//
+// THE SECOND CARRIER IS TESTED POSITIVELY, AGAINST THE ENCLOSING DECLARATION'S OWN FORMALS.
+// The tempting test is absence -- "this leaf resolves to no declared type, so it must be a
+// parameter" -- and it is a fail-open wearing a repair's clothes: a leaf also resolves to nothing
+// when it is a typo, an undeclared type, or a missing import, so the rule would silently stop
+// declining genuinely undeclared names. The justification for it is circular besides ("within an
+// Accepted program names resolve" is a property of the accepted corpus, asserted inside the
+// mechanism that decides membership).
+//
+// A hardcoded spelling list is the other wrong answer and already exists here as
+// is_type_variable_name (`name == "T" || "K" || "V" || ...`). It is wrong for `Elem` or `Acc` and
+// spreads the spelling-keyed fork that several defects on this branch share a root with.
+//
+// So the discriminator is declaration structure: a name is an unsubstituted parameter IFF IT IS A
+// DECLARED FORMAL of the declaration supplying this position. Three arms, and the third is what
+// keeps the repair from being a fail-open: resolves to a declared type -> ordinary judgment; is a
+// formal -> undetermined, defer; NEITHER -> an unresolved name, which keeps refusing.
+fn node_names_enclosing_formal(n: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  if nm == "" { false } else { (formals |> filter(f => f == nm) |> count) > 0 }
+}
+
+fn optionality_undetermined_with_formals(n: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: i } => is_type_variable(inferred: i)
+    Absent => node_names_enclosing_formal(n: n, formals: formals, source_indices: source_indices)
+  }
+}
+
 fn optionality_undetermined(n: Node) -> Bool {
   match n.inferred {
     Present { value: i } => is_type_variable(inferred: i)
@@ -1219,6 +1256,18 @@ fn optionality_undetermined(n: Node) -> Bool {
 // the cardinality marker -- reached a required position unjudged. node_carries_optional is the
 // existing single authority that recognizes BOTH spellings, and reading the produced side through
 // it closes the false negative without inventing an unknown.
+fn optional_into_required_mismatch_with_formals(declared: Node, produced: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> OptionalNarrowing {
+  if node_carries_optional(n: produced) {
+    if optionality_undetermined_with_formals(n: declared, formals: formals, source_indices: source_indices) {
+      NarrowingUndetermined { cause: DeclaredFormalUnsubstituted }
+    }
+    else if node_carries_optional(n: declared) { ConformsOrWidens }
+    else { NarrowsToRequired }
+  } else {
+    ConformsOrWidens
+  }
+}
+
 fn optional_into_required_mismatch(declared: Node, produced: Node) -> OptionalNarrowing {
   if node_carries_optional(n: produced) {
     if optionality_undetermined(n: declared) {
@@ -1384,6 +1433,26 @@ fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
     Absent => with_required_cardinality(n: ft)
   }
   ft.return_cardinality == CardOptional && inner.connective == Disj
+}
+
+// THE FORMALS COME FROM THE DECLARATION THAT SUPPLIED THE FIELDS, which is the type itself when the
+// literal names a type and the VARIANT OWNER when it names a variant -- `Accepted { value: .. }`
+// is a variant of `Outcome<T>`, and T is declared on the owner, not on the arm.
+fn record_lit_enclosing_formals(type_name: String?, scope: InferScope) -> List<String> {
+  match type_name {
+    Present { value: tn } =>
+      match lookup_type_by_name(env: scope.type_env, name: tn) {
+        Present { value: decl } =>
+          decl.params |> map(pn => authored_name_at(source_indices: scope.type_env.source_indices, node: pn))
+        Absent =>
+          match variant_owner_node(scope: scope, name: tn) {
+            Present { value: parent } =>
+              parent.params |> map(pn => authored_name_at(source_indices: scope.type_env.source_indices, node: pn))
+            Absent => []
+          }
+      }
+    Absent => []
+  }
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
@@ -7885,7 +7954,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
           let narrowing_diags = optional_narrowing_diags(
-            v: optional_into_required_mismatch(declared: expected_node, produced: got_node),
+            v: optional_into_required_mismatch_with_formals(declared: expected_node, produced: got_node,
+                 formals: record_lit_enclosing_formals(type_name: type_name, scope: scope),
+                 source_indices: scope.type_env.source_indices),
             declared: expected_node, span: ar_typed.span,
             module_name: scope.module_name, source_indices: scope.type_env.source_indices)
           if expr_is_bare_none_reference(texpr: ar_typed, source_indices: scope.type_env.source_indices) == false

@@ -1538,10 +1538,75 @@ impl OptionalNarrowing {
     }
 }
 
+pub fn node_names_enclosing_formal(
+    n: Rc<Node>,
+    formals: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (nm.clone() == "".to_string()) {
+            false
+        } else {
+            ((Rc::new({
+                let mut __result = Vec::new();
+                for f in formals.iter().cloned() {
+                    if (f.clone() == nm.clone()) {
+                        __result.push(f);
+                    }
+                }
+                __result
+            })
+            .len() as i64)
+                > 0)
+        }
+    }
+}
+
+pub fn optionality_undetermined_with_formals(
+    n: Rc<Node>,
+    formals: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match n.inferred.clone() {
+        Some(i) => is_type_variable(i.clone()),
+        std::option::Option::None => {
+            node_names_enclosing_formal(n.clone(), formals.clone(), source_indices.clone())
+        }
+    }
+}
+
 pub fn optionality_undetermined(n: Rc<Node>) -> bool {
     match n.inferred.clone() {
         Some(i) => is_type_variable(i.clone()),
         std::option::Option::None => false,
+    }
+}
+
+pub fn optional_into_required_mismatch_with_formals(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    formals: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<OptionalNarrowing> {
+    if node_carries_optional(produced.clone()) {
+        if optionality_undetermined_with_formals(
+            declared.clone(),
+            formals.clone(),
+            source_indices.clone(),
+        ) {
+            Rc::new(OptionalNarrowing::NarrowingUndetermined {
+                cause: OptionalNarrowingCause::DeclaredFormalUnsubstituted,
+            })
+        } else {
+            if node_carries_optional(declared.clone()) {
+                Rc::new(OptionalNarrowing::ConformsOrWidens)
+            } else {
+                Rc::new(OptionalNarrowing::NarrowsToRequired)
+            }
+        }
+    } else {
+        Rc::new(OptionalNarrowing::ConformsOrWidens)
     }
 }
 
@@ -1791,6 +1856,43 @@ pub fn field_type_is_optional_coproduct(ft: Rc<Node>, env: Rc<TypeEnv>) -> bool 
         };
         ((ft.return_cardinality.clone() == Cardinality::CardOptional)
             && (inner.connective.clone() == Connective::Disj))
+    }
+}
+
+pub fn record_lit_enclosing_formals(
+    type_name: Option<String>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<String>> {
+    match type_name.clone() {
+        Some(tn) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            tn.clone(),
+        ) {
+            Some(decl) => Rc::new({
+                let mut __result = Vec::new();
+                for pn in decl.params.clone().iter().cloned() {
+                    __result.push(crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        pn.clone(),
+                    ));
+                }
+                __result
+            }),
+            std::option::Option::None => match variant_owner_node(scope.clone(), tn.clone()) {
+                Some(parent) => Rc::new({
+                    let mut __result = Vec::new();
+                    for pn in parent.params.clone().iter().cloned() {
+                        __result.push(crate::v1_std_core::authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            pn.clone(),
+                        ));
+                    }
+                    __result
+                }),
+                std::option::Option::None => Rc::new(vec![]),
+            },
+        },
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -12992,7 +13094,7 @@ Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape
 };
 let formal_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(expected_required.clone(), scope.type_env.clone(), scope.module_name.clone());
 let actual_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(got_node.clone(), scope.type_env.clone(), scope.module_name.clone());
-let narrowing_diags = optional_narrowing_diags(optional_into_required_mismatch(expected_node.clone(), got_node.clone()), expected_node.clone(), ar_typed.span.clone(), scope.module_name.clone(), scope.type_env.clone().source_indices.clone());
+let narrowing_diags = optional_narrowing_diags(optional_into_required_mismatch_with_formals(expected_node.clone(), got_node.clone(), record_lit_enclosing_formals(type_name.clone(), scope.clone()), scope.type_env.clone().source_indices.clone()), expected_node.clone(), ar_typed.span.clone(), scope.module_name.clone(), scope.type_env.clone().source_indices.clone());
 if ((expr_is_bare_none_reference(ar_typed.clone(), scope.type_env.clone().source_indices.clone()) == false) && ((narrowing_diags.clone().len() as i64) > 0)) {
                             narrowing_diags.clone()
                         } else {
