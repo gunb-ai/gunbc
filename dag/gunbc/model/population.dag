@@ -38,7 +38,7 @@ import gunbc.model.publication {
 // on the node showed IQ3_S resident at a 400,000 window, so the memory claim reversed. What the
 // measurements DO establish is the finer split: at the same 400k floor, DeepSeek V4 Flash 0731 at
 // IQ2_XXS carries a retrieval receipt and is admissible, while the SAME release at UD-IQ3_S carries
-// none and is UNANSWERABLE. The witness is gunbc.model.choice, exercised by
+// none and is UNANSWERABLE. The witness is gunbc.model.ollama_choice, exercised by
 // test.claim.model.serving_choice_witness_test; the verdicts are re-derived by running it, never
 // read from this sentence.
 //

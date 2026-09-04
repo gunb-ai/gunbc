@@ -24,6 +24,7 @@ data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder
 data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
 data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
 data printer_01: PhysicalAssetIdentity = "printer-01" as PhysicalAssetIdentity
+data printer_02: PhysicalAssetIdentity = "printer-02" as PhysicalAssetIdentity
 data ams_01: PhysicalAssetIdentity = "ams-01" as PhysicalAssetIdentity
 data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
 data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
