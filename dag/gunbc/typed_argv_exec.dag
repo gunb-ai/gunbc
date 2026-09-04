@@ -14,6 +14,7 @@ import gunbc.fleet_known_hosts_anchor {
   SshTarget,
   portable_remote_words,
   shape_fleet_ssh_exec,
+  shape_ssh_shell_exec,
 }
 
 // Realization edge for remote command dispatch over SSH: one argv shape per op, taken from the
@@ -109,7 +110,7 @@ fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvE
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => TypedArgvExecConverged {
       result: ssh_session_exec_portable_words(
-        client_args: concat([host as String, "--"], argv),
+        client_args: shape_ssh_shell_exec(host: host, argv: argv),
       ),
     }
   }
@@ -120,7 +121,7 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => {
       let result = ssh.Session.ExecPortableWords(
-        client_args: concat([host as String, "--"], argv),
+        client_args: shape_ssh_shell_exec(host: host, argv: argv),
         expect: OutcomeIsData,
       )
       TypedArgvExecConverged {

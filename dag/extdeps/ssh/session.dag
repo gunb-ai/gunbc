@@ -26,11 +26,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // own prepending of `ssh` was no defense -- the OPERATION could not know that, and a second caller
 // could have passed anything. The wall found this within one CI run of the operations landing.
 
-// ExecPortableWords is the successor — the take-client_args shape (this file lines 67‑85) instead
-// of the earlier take-host+argv shape, because a literal in a service block cannot be called by a
-// witness and RFC 4254 §6.5 gives the exec request a single string-typed command field. What holds
-// locally is the portable-word allowlist at gunbc.typed_argv_exec; ExecPortableWords names exactly
-// that.
+// ExecPortableWords is the successor to the deleted ExecArgv — the take-client_args shape (the
+// `ExecPortableWords` operation below) instead of the earlier take-host+argv shape, because a
+// literal in a service block cannot be called by a witness and RFC 4254 §6.5 gives the exec request
+// a single string-typed command field. What holds locally is the portable-word allowlist at
+// gunbc.typed_argv_exec; ExecPortableWords names exactly that.
 
 fn shape_scp_copy_to_argv(
   host: NonEmptyStr,
