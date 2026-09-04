@@ -27,7 +27,13 @@ fn authoring_witness_role_a() -> Symbol { ^a }
 fn authoring_witness_role_b() -> Symbol { ^b }
 
 // Built exactly as gunbc.scm.role_requirement_integration's own witnesses build theirs
-// (scm_role_requirement_integration_witness_test `atom_node`), so the two test corpora cannot disagree about what a distinguishable node is.
+// (test.claim.scm_role_requirement_integration_witness `integration_witness_leaf`), so the two test
+// corpora cannot disagree about what a distinguishable node is. The symbol here was `atom_node`
+// until this rename, and that citation was ALREADY WRONG on main -- no `atom_node` has ever existed
+// in that module; it lives in test.claim.scm_object_store_witness. Rewriting the module half of a
+// citation while carrying its stale symbol half forward would have made an unverified name look
+// freshly checked, so both halves are re-derived here: the two bodies are byte-identical
+// `node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])`.
 fn authoring_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }

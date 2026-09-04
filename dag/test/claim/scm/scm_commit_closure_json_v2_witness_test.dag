@@ -1299,7 +1299,7 @@ fn scm_image_empty_node_entry() -> JsonValue {
 //
 // What remains here is the ROLE PATH ITSELF: a document whose root has a named child merges, which
 // is the control the moved claim needs and the reason this reader stays.
-fn scm_image_merge_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
+fn scm_image_integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
   match o {
     RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => "merged"
     RoleRequirementsContested { role: _, alternatives: _ } => "contested"
@@ -1372,11 +1372,11 @@ fn scm_image_role_over_a_file_document() -> JsonValue {
   )
 }
 
-fn scm_image_merge_tag_for(document: JsonValue) -> String {
+fn scm_image_integration_tag_for(document: JsonValue) -> String {
   match decode_closure_document(v: document) {
     ClosureDocRefused { cause: _ } => "document_refused"
     ClosureDocLoaded { store: store, root: root } =>
-      scm_image_merge_refusal_tag(
+      scm_image_integration_refusal_tag(
         o: integrate_role_requirements(
           store: store,
           target: commit_of_root(root: root),
@@ -1388,7 +1388,7 @@ fn scm_image_merge_tag_for(document: JsonValue) -> String {
 }
 
 test fn scm_image_a_role_whose_value_is_a_file_refuses_the_document() -> Bool {
-  scm_image_merge_tag_for(document: scm_image_role_over_a_file_document()) == "document_refused"
+  scm_image_integration_tag_for(document: scm_image_role_over_a_file_document()) == "document_refused"
 }
 
 // CONTROL: the identical document with a NODE at position 0 merges, so the refusal above is about
@@ -1428,7 +1428,7 @@ fn scm_image_role_over_a_node_document() -> JsonValue {
 }
 
 test fn scm_image_a_role_whose_value_is_a_node_integrates() -> Bool {
-  scm_image_merge_tag_for(document: scm_image_role_over_a_node_document()) == "merged"
+  scm_image_integration_tag_for(document: scm_image_role_over_a_node_document()) == "merged"
 }
 
 // ------------------------------------------------------------------------------------------------

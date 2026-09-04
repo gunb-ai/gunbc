@@ -159,7 +159,7 @@ fn remove_f_proposal() -> Proposal {
   }
 }
 
-fn outcome_is_merged(o: RoleRequirementIntegrationOutcome) -> Bool {
+fn outcome_is_integrated(o: RoleRequirementIntegrationOutcome) -> Bool {
   match o {
     RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => true
     RoleRequirementsContested { role: _, alternatives: _ } => false
@@ -167,7 +167,7 @@ fn outcome_is_merged(o: RoleRequirementIntegrationOutcome) -> Bool {
   }
 }
 
-fn merged_roles(o: RoleRequirementIntegrationOutcome) -> List<ResolvedRole> {
+fn integrated_roles(o: RoleRequirementIntegrationOutcome) -> List<ResolvedRole> {
   match o {
     RoleRequirementsIntegrated { store: _, commit: _, roles: roles } => roles
     RoleRequirementsContested { role: _, alternatives: _ } => []
@@ -276,7 +276,7 @@ test fn independent_add_and_delete_both_land() -> Bool {
     target_dependencies: [],
     proposals: paired_proposals(required: ^h),
   )
-  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+  outcome_is_integrated(o: out) && role_absent_from_result(roles: integrated_roles(o: out), role: ^f)
 }
 
 // ARM B -- DEPENDENT. Same target, same two authored operations, same dependency kind, same
@@ -362,8 +362,8 @@ test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
     }],
     proposals: [remove_f_proposal()],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^g, expected: g_id)
 }
 
 // A SUPPORTED KIND IN THE SAME POSITION DOES REFUSE. Identical to the claim above in every respect --
@@ -410,8 +410,8 @@ test fn an_independent_sibling_is_preserved_exactly() -> Bool {
       dependencies: [],
     }],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^g, expected: g_id)
 }
 
 // A DEPENDENCY REPAIRED IN THE SAME PROPOSAL IS NOT A VIOLATION. The target's `k -> f` edge describes
@@ -446,7 +446,7 @@ test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
       }],
     }],
   )
-  outcome_is_merged(o: out)
+  outcome_is_integrated(o: out)
 }
 
 // ORDER IS NOT AUTHORITY. Both arms answer identically with the proposals swapped -- and both use
@@ -471,7 +471,7 @@ test fn arm_a_is_order_independent() -> Bool {
       usage_site: ^u,
     }])],
   )
-  outcome_is_merged(o: forward) && outcome_is_merged(o: backward)
+  outcome_is_integrated(o: forward) && outcome_is_integrated(o: backward)
 }
 
 test fn arm_b_is_order_independent() -> Bool {
@@ -586,7 +586,7 @@ test fn the_same_request_authored_twice_is_not_a_contest() -> Bool {
       },
     ],
   )
-  outcome_is_merged(o: out)
+  outcome_is_integrated(o: out)
 }
 
 test fn absence_authored_twice_is_not_a_contest() -> Bool {
@@ -597,7 +597,7 @@ test fn absence_authored_twice_is_not_a_contest() -> Bool {
     target_dependencies: [],
     proposals: [remove_f_proposal(), remove_f_proposal()],
   )
-  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+  outcome_is_integrated(o: out) && role_absent_from_result(roles: integrated_roles(o: out), role: ^f)
 }
 
 // THE CONTESTED SET IS COMPLETE UNDER ANY ORDER. Three proposals requesting three different
@@ -641,8 +641,8 @@ test fn an_empty_proposal_set_preserves_the_target() -> Bool {
     target_dependencies: [],
     proposals: [],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^f, expected: f_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^f, expected: f_id)
 }
 
 // ------------------------------------------------------------------------------------------------
