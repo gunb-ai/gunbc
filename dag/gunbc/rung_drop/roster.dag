@@ -41,6 +41,7 @@ import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
 import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
+import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
 import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
 import gunbc.rung_drop.builtin_signature_arity_pairing_fabricates { builtin_signature_arity_pairing_fabricates }
 import gunbc.rung_drop.concat_binary_signature_exempt_from_arg_binding { concat_binary_signature_exempt_from_arg_binding }
@@ -75,6 +76,7 @@ data rung_drop_roster: List<RungDrop> = [
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
   emit_copy_qualification_without_a_consumer,
+  floor_cost_high_cpu_withheld,
   spark_role_scoped_retirement_production_root,
   builtin_signature_arity_pairing_fabricates,
   concat_binary_signature_exempt_from_arg_binding,
