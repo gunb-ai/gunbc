@@ -733,20 +733,20 @@ fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
 fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerIntervalSpec {
   match carrier.kind {
     Signed => match carrier.width {
-      Bits8 => int8_interval_spec()
-      Bits16 => int16_interval_spec()
-      Bits32 => int32_interval_spec()
-      Bits64 => int64_interval_spec()
-      Bits128 => int128_interval_spec()
-      Pointer => int_platform_interval_spec()
+      Bits8 => int8_interval_spec
+      Bits16 => int16_interval_spec
+      Bits32 => int32_interval_spec
+      Bits64 => int64_interval_spec
+      Bits128 => int128_interval_spec
+      Pointer => int_platform_interval_spec
     }
     Unsigned => match carrier.width {
-      Bits8 => uint8_interval_spec()
-      Bits16 => uint16_interval_spec()
-      Bits32 => uint32_interval_spec()
-      Bits64 => uint64_interval_spec()
-      Bits128 => uint128_interval_spec()
-      Pointer => uint_platform_interval_spec()
+      Bits8 => uint8_interval_spec
+      Bits16 => uint16_interval_spec
+      Bits32 => uint32_interval_spec
+      Bits64 => uint64_interval_spec
+      Bits128 => uint128_interval_spec
+      Pointer => uint_platform_interval_spec
     }
   }
 }
