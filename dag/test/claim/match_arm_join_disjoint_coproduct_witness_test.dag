@@ -59,6 +59,14 @@ fn maj_optional_carrier_arms_fixture_source() -> String {
   "module maj.control_optional\n\ntype MajRes\n  = MajResA\n  | MajResB\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_optional_arms(fl: MajFlag) -> MajRes? {\n  match fl {\n    MajYes => Present { value: MajResA }\n    MajNo => Absent\n  }\n}\n"
 }
 
+fn maj_kernel_arm_mismatch_fixture_source() -> String {
+  "module maj.control_kernel_red\n\ntype MajShape\n  = MajA { n: Int }\n  | MajB { s: String }\n\nfn maj_kernel_arm_mismatch(x: MajShape) -> Int {\n  match x {\n    MajA { n } => n\n    MajB { s } => s\n  }\n}\n"
+}
+
+fn maj_matching_kernel_arms_fixture_source() -> String {
+  "module maj.control_kernel_green\n\ntype MajFlag\n  = MajYes\n  | MajNo\n\nfn maj_matching_kernel_arms(fl: MajFlag) -> Int {\n  match fl {\n    MajYes => 1\n    MajNo => 2\n  }\n}\n"
+}
+
 // THE DISCRIMINATING RED. The join answers MajRes because MajRes is the FIRST arm, and the MajOth
 // second arm reaches a formal declared MajRes unjudged. This is the arm order that COMPILED CLEAN
 // before the wall; it is the whole subject.
@@ -116,6 +124,27 @@ test fn maj_optional_carrier_arms_still_compiles() -> Bool {
   compile_dag_rust_emit_check(
     maj_optional_carrier_arms_fixture_source(),
     "src/maj_control_optional.rs",
+    [],
+    []
+  )
+}
+
+// The join selects the first, conforming Int arm, so the enclosing declared-return check sees
+// Int-vs-Int. The losing String arm must be refused here, where every arm is still present.
+test fn maj_kernel_arm_mismatch_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    maj_kernel_arm_mismatch_fixture_source(),
+    "src/maj_control_kernel_red.rs",
+    [],
+    []
+  )
+}
+
+// A scalar widening is discriminating only if two inhabitants of the same kernel type remain valid.
+test fn maj_matching_kernel_arms_still_compile() -> Bool {
+  compile_dag_rust_emit_check(
+    maj_matching_kernel_arms_fixture_source(),
+    "src/maj_control_kernel_green.rs",
     [],
     []
   )
