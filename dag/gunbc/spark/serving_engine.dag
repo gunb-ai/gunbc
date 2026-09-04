@@ -2,10 +2,51 @@ module gunbc.spark.serving_engine
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent }
+import std.measure { TokenCount, Percent, PositiveSlotCount }
+import std.types { Port }
 import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
 import extdeps.vllm.engine_args { VllmEngineArgs, VllmDistributedExecutorBackend, ExecutorRay, ExecutorMp, ExecutorExternalLauncher }
-import gunbc.spark.serving_release { OllamaServingLaunchProfile }
+
+type SparkServingBindListen {
+  host: NonEmptyStr
+  port: Port
+}
+
+
+// THE VALUES THE OLLAMA PROCESS WILL ACTUALLY CONSUME.
+//
+// This replaces `InferenceCapacityPolicy` + `SparkServingServingPolicy`, which bundled two facts of
+// different kinds: a runtime LAUNCH PARAMETER the server reads at startup, and a
+// `shared_memory_budget_bytes` ADMISSION CONSTRAINT that no reconciliation path ever consumed. The
+// bundle is why "capacity is declared" read as true when only one half could ever be causal -- the
+// dead field sat behind the live one. The admission constraint is deleted rather than carried
+// forward unread, on the same ruling that removed this module's endpoint credential: a required
+// field with no consumer is not a placeholder for a future check, it is a fact the model asserts
+// and never verifies.
+//
+// The old context field was named `max_model_len`, which is vLLM's flag. The only runtime modeled
+// here is Ollama, whose grounded name is OLLAMA_CONTEXT_LENGTH -- so the field was named for a
+// runtime this deployment does not serve, and would have read as authority the moment a second
+// runtime landed.
+//
+// `TokenCount` rather than a bare `Nat`: std.measure already owns the token-count family beside
+// HardwareThreadCount and CharacterCount, so a bare Nat here would be a fourth spelling of a
+// quantity the measure authority names.
+//
+// The profile is a VALUE, not a second serialized identity. Its canonical identity is the content
+// identity of the rendered unit bytes (gunbc.spark.serving_unit_render
+// spark_serving_user_unit_content_identity), which the desired and observed sides already share --
+// enumerating these fields into another hand-maintained hash tree would put one fact in two
+// identity domains.
+fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
+  join([bind.host as String, ":", to_string(bind.port)], "")
+}
+
+type OllamaServingLaunchProfile {
+  bind: SparkServingBindListen
+  default_context: TokenCount
+  serving_slots: PositiveSlotCount
+}
 
 // THE ENGINE AXIS. `what is served` and `how it is served` were one row, and this separates them.
 //

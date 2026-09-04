@@ -11,6 +11,7 @@ import extdeps.vllm.engine_args {
   vllm_verified_negatives, vllm_discouraged_args
 }
 import gunbc.spark.serving_engine {
+  OllamaServingLaunchProfile, SparkServingBindListen,
   ServingEngine, OllamaServing, VllmServing, serving_engine_label,
   SparkEngineSlotVerdict, EngineSlotAvailable, EngineSlotRefused,
   SparkEngineSlotRefusal, UnifiedPoolAlreadyOccupied,
@@ -20,7 +21,6 @@ import gunbc.spark.serving_engine {
   EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer, RayMonitorLiveOnUnifiedPool,
   spark_memory_enforcer_admits
 }
-import gunbc.spark.serving_release { OllamaServingLaunchProfile, SparkServingBindListen }
 import extdeps.ollama.api { ollama_default_port }
 
 // THE FIXTURES CARRY NO FLEET FACTS. Every value below is authored here, so a row reds because the
