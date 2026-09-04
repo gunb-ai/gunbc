@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.policy_mechanism_adjudicates_the_merge_that_supersedes_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data policy_mechanism_adjudicates_the_merge_that_supersedes_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "policy_mechanism_adjudicates_the_merge_that_supersedes_it" as NonEmptyStr,
+
+  receipts: [
+    "**a policy mechanism that ships in the tree it adjudicates, so the one change that supersedes it is adjudicated by the superseded version** (a merge driver, a hook, a lint config, a formatter, a codegen template, a CI entry point -- anything the toolchain reads from the WORKING TREE at the moment it acts. The version that acts is the version already installed, so on every change that leaves the mechanism alone its instruction is current, and on the single change that REPLACES the mechanism its instruction is guaranteed to be the retired one. ",
+
+    "**THIS IS AN ANTI-CORRELATION OF ONE, NOT A TIMING HAZARD, AND THAT IS THE WHOLE DISCRIMINATOR.** The mechanism is wrong exactly when it matters and only when it matters. There is no bad draw to be unlucky with and no window to shorten: the more significant the policy change, the more certainly the author is handed the old policy. A rate cannot be improved because the rate is one. ",
+
+    "IT IS DISTINCT FROM `verification_bound_to_the_revision_it_started_on` AND MERGING THEM LOSES BOTH. There the SUBJECT moves under a STABLE OBSERVER -- a run spans a tree change and the result binds to the wrong revision -- so it bites by timing and most runs escape it. HERE THE SUBJECT IS FINE AND THE OBSERVER IS STALE, BY CONSTRUCTION. Both halves are inverted, which is why a variant section on a row whose entire content is `results are bound to a revision` would leave this class findable only by someone who already knew it. ",
+
+    "IT IS NOT `stable_citation_mutable_referent`, THE NEAREST STRUCTURAL NEIGHBOUR. That row is about an IDENTIFIER addressing a CONTAINER that serves whatever currently occupies it; here nothing is cited at all, and the stale thing is an EXECUTABLE shipped in the tree it judges. It is not `authority_merges_unprotected_while_its_projection_is_guarded`, which is about which SIDE of a derivation a policy protects, nor `admission_predicate_evidenced_from_inside_its_own_subject`, which is about a surface that cannot represent its predicate being false -- here the surface is perfectly capable of saying the right thing and is simply one version behind. ",
+
+    "**WHAT MAKES IT LOAD-BEARING IS THAT NOTHING IN THE OUTPUT DISTINGUISHES THE RETIRED RECIPE FROM THE LIVE ONE.** Real mechanism, real refusal, real located instructions, every intermediate signal correct, one version stale. An author who follows it does substantial work down a route the merge is retiring and ends with a coherent, well-evidenced account of why -- which is the same reason it survives review, since the reviewer reads the same output. ",
+
+    "SPECIMEN, gunbc#10311 against gunbc#10302 at `d6fb9d61c8`. Integrating main produced a `GeneratedArtifactConcurrentDivergence` refusal on `docs/design-failure-modes.md` whose printed repair route was a four-step LOCAL whole-tree regeneration -- roughly twenty-five minutes. The merge being performed was precisely the one that DELEGATES regeneration of the two design-ledger projections to `heal-generated-artifacts`, and git had executed the branch's own pre-merge copy of `.githooks/generated-artifact-merge`. The live route is three steps and regenerates nothing locally. ",
+
+    "**MITIGATION, STATED AS AN EXECUTABLE PROCEDURE RATHER THAN AS VIGILANCE: when a merge changes a policy mechanism the toolchain itself executes, ABORT, INSTALL THE INCOMING VERSION FIRST AS ITS OWN COMMIT, THEN RE-RUN THE MERGE AND READ THE NEW DIAGNOSTIC.** In the specimen that is `bc402f4d`, and the re-run printed the delegated route. A row that says only `beware` leaves the next lane to rediscover the fix at a conflict, under time pressure, holding instructions that look authoritative. ",
+
+    "CROSS-REFERENCE WITHOUT MERGER: this shares a SIGNATURE with the upload-side defect where the worse the workflow breakage the less repair material escaped. Both degrade in the wrong direction -- reliability falling as stakes rise -- and the mechanisms are unrelated. The shared signature is the thing to pattern-match on; a common row over it would name a shape, not a class. ",
+
+    "RUNG FOUND AT: MITIGATABLE, and only by an author who happens to notice that the diff touches the mechanism. Nothing refuses, nothing warns, and the instruction is delivered with full authority. ",
+
+    "ATTAINABLE CEILING: STRUCTURALLY GUARANTEED. Membership is decidable at the moment of the merge -- the merge itself knows whether the incoming side changes the mechanism's own path -- so a mechanism can refuse rather than instruct when it is about to be replaced. It does not reach impossibility while the mechanism is a tree-resident file that the toolchain resolves by path, because the invalid state remains perfectly writable; making it impossible would require the toolchain to resolve the mechanism from the MERGED authority rather than from the worktree, which is not ours to change. ",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: A TREE-RESIDENT POLICY MECHANISM THAT DETECTS ITS OWN PATH AMONG THE INCOMING CHANGES AND REFUSES WITH A LOCATED DIAGNOSTIC NAMING THE SUPERSEDING VERSION, INSTEAD OF EMITTING ITS OWN INSTRUCTIONS -- sufficient for an author integrating a policy change to be STOPPED rather than misdirected, and sufficient for the retired recipe never to be printed as if it were live. `Document the install-first procedure` is the artifact-grained version and discharges nothing: it is satisfied by prose that the misdirected author has no reason to consult, because from inside the failure nothing looks wrong.)",
+  ],
+
+  evidence: [],
+}

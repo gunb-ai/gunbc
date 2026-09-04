@@ -108,6 +108,7 @@ import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_ce
 import gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protection_established { reachability_answered_is_consumed_as_protection_established }
 import gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding { by_name_evaluation_is_a_string_not_a_binding }
 import gunbc.recurring_failure_mode.verification_bound_to_the_revision_it_started_on { verification_bound_to_the_revision_it_started_on }
+import gunbc.recurring_failure_mode.policy_mechanism_adjudicates_the_merge_that_supersedes_it { policy_mechanism_adjudicates_the_merge_that_supersedes_it }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -207,4 +208,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   reachability_answered_is_consumed_as_protection_established,
   by_name_evaluation_is_a_string_not_a_binding,
   verification_bound_to_the_revision_it_started_on,
+  policy_mechanism_adjudicates_the_merge_that_supersedes_it,
 ]
