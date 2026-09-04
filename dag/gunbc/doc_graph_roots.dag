@@ -631,6 +631,15 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "import-authority-layer-decomposition",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "selective_func_env_view", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.infer_lookup", decl_name: "author_named_visibility", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the import-declaration cut lands: selective_func_env_view no longer sources the searched population from resolved_imports, and author_named_visibility and the two TypeEnv import-name maps are deleted. At that point this record describes history rather than a live scoping question and the row deletes with the document. Registered at subject grain on the two folds that CARRY the layers it decomposes -- L-A's population selection and L-B's visibility gate -- because movement in either is what would make this document's decomposition false; the ordering precondition it states is a property of parent_index construction and is covered by the same repoint.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-cut-replacement-plan",
     primary_work: DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: WholeDeclaration },
     additional_works: [

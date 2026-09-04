@@ -70,6 +70,10 @@ fn v1_interpreter_nested_compile_reaches() -> List<NestedCompileReach> {
       nested_compile_entry: "cli_run.emit_host.compile_dag_multi_module_fixture",
     },
     NestedCompileReach {
+      arm_identity: "free_call.compile_dag_reference_occurrence_binding_census",
+      nested_compile_entry: "cli_run.emit_host.compile_dag_reference_occurrence_binding_census",
+    },
+    NestedCompileReach {
       arm_identity: "free_call.observe_declared_import_closure_symbol_binding",
       nested_compile_entry: "cli_run.observe_declared_import_closure_symbol_binding",
     },
