@@ -244,7 +244,7 @@ import gunbc.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   VerificationSubject,
   VerificationSubjectObservation,
   VerificationSubjectObserved,
@@ -353,6 +353,7 @@ import gunbc.fleet_desired_observe {
 }
 import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
@@ -6321,6 +6322,57 @@ fn belt_publish_write_outcome(
   }
 }
 
+// PUBLICATION IS ADMITTED ONLY ON A PASSED VERIFICATION VERDICT (gunbc.roadmap.roadmap_publish_admission).
+// The evidence is read exactly as the verify pass writes it: the current selection for this head,
+// the receipt file it addresses, and the subject the node and attempt pin; anything short of a
+// decoded receipt whose verdict is ValidationPassed withholds, and the belt records the withholding
+// as a typed deferral rather than publishing an unverified head.
+fn belt_publish_admission_for(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  subject: RoadmapPublicationSubject,
+) -> PublishAdmission {
+  let selection = belt_verification_selection_observe(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+    head_sha: subject.expected_head as String,
+  )
+  let source = belt_verification_receipt_source(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+    selection: selection,
+  )
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } =>
+      PublishWithheld { reason: join(["the roadmap authority could not be projected: ", detail], "") as NonEmptyStr }
+    NodeMissing =>
+      PublishWithheld { reason: "the attempt's node is not declared in the roadmap" as NonEmptyStr }
+    NodeFound { node } =>
+      match belt_verification_subject_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        branch: subject.branch as String,
+        head: subject.expected_head,
+        selection: selection,
+      ) {
+        VerificationSubjectUnobserved { reason } =>
+          PublishWithheld { reason: join(["the verification subject is unobserved: ", reason], "") as NonEmptyStr }
+        VerificationSubjectObserved { subject: expected } =>
+          match verification_file_evidence_for(expected: expected, source: source) {
+            VerificationFileAbsent =>
+              PublishWithheld { reason: "no verification receipt exists for this head yet" as NonEmptyStr }
+            VerificationFileUnreadable { reason } =>
+              PublishWithheld { reason: join(["the verification receipt for this head is unreadable: ", reason], "") as NonEmptyStr }
+            VerificationFileDecoded { evidence } =>
+              publish_admission(evidence: evidence)
+          }
+      }
+  }
+}
+
 fn belt_publish_attempt_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
@@ -6373,50 +6425,61 @@ fn belt_publish_attempt_for_instance(
             attempt_key: attempt_key,
             head_sha: subject.expected_head as String,
           )
-          match belt_publish_gate(
+          match belt_publish_admission_for(
+            instance: instance,
             node_id: node_id,
+            attempt_key: attempt_key,
             subject: subject,
-            existing: belt_publication_receipt_source(
-              instance: instance,
-              node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-              attempt_key: attempt_key,
-              subject: PublicationSubjectObserved { subject: subject },
-            ),
           ) {
-            PublishHalted { outcome } => outcome
-            PublishProceed =>
-              match publication_answer_standing(
-                instance_root: instance.instance_root as String,
-                subject: subject,
-              ) {
-                AnswerSpoolRefused { reason } =>
-                  PublishEvidenceUnreadable {
-                    node_id: node_id,
-                    detail: join([
-                      "the publication helper's spool refused, so it is unknown whether this head has been published: ",
-                      reason,
-                    ], ""),
+            PublishWithheld { reason } =>
+              PublishDeferred { node_id: node_id, reason: join(["publication withheld: ", reason as String], "") }
+            PublishAdmitted =>
+            match belt_publish_gate(
+              node_id: node_id,
+              subject: subject,
+              existing: belt_publication_receipt_source(
+                instance: instance,
+                node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                attempt_key: attempt_key,
+                subject: PublicationSubjectObserved { subject: subject },
+              ),
+            ) {
+              PublishHalted { outcome } => outcome
+              PublishProceed =>
+                match publication_answer_standing(
+                  instance_root: instance.instance_root as String,
+                  subject: subject,
+                  worktree: attempt_worktree,
+                ) {
+                  AnswerSpoolRefused { reason } =>
+                    PublishEvidenceUnreadable {
+                      node_id: node_id,
+                      detail: join([
+                        "the publication helper's spool refused, so it is unknown whether this head has been published: ",
+                        reason,
+                      ], ""),
+                    }
+                  AnswerAwaited { request_path } =>
+                    PublishRequested {
+                      node_id: node_id,
+                      head_sha: subject.expected_head as String,
+                      request_path: request_path,
+                    }
+                  AnswerReady { receipt } => {
+                    let write = Filesystem.Write(
+                      path: path,
+                      content: publication_receipt_json(receipt: receipt),
+                    )
+                    belt_publish_write_outcome(
+                      node_id: node_id,
+                      subject: subject,
+                      receipt: receipt,
+                      write_success: write.success,
+                      write_error: write.error,
+                    )
                   }
-                AnswerAwaited { request_path } =>
-                  PublishRequested {
-                    node_id: node_id,
-                    head_sha: subject.expected_head as String,
-                    request_path: request_path,
-                  }
-                AnswerReady { receipt } => {
-                  let write = Filesystem.Write(
-                    path: path,
-                    content: publication_receipt_json(receipt: receipt),
-                  )
-                  belt_publish_write_outcome(
-                    node_id: node_id,
-                    subject: subject,
-                    receipt: receipt,
-                    write_success: write.success,
-                    write_error: write.error,
-                  )
                 }
-              }
+            }
           }
         }
       }
