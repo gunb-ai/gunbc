@@ -1,0 +1,68 @@
+module test.claim.iso_273_clearance_hole_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import extdeps.iso.iso_273 {
+  IsoClearanceSeries, FineSeries, MediumSeries, CoarseSeries,
+  IsoClearanceHoleRow, IsoClearanceLookup, IsoClearanceFound, IsoClearanceThreadNotPublished,
+  StandardTextProvenance, RelayedFromStandardText, VerifiedAgainstArchivedCopy,
+  iso_273_clearance_rows, iso_273_clearance_hole, m3_thread,
+}
+
+// The value the coupon reading is compared against. If this row is ever wrong, every statement this
+// repository makes about printed-hole accuracy is wrong in the same direction and by the same
+// amount, so it is asserted exactly rather than through a range.
+test fn w_the_fine_series_m3_clearance_hole_is_three_point_two_millimetres() -> Bool {
+  match iso_273_clearance_hole(thread: m3_thread, series: FineSeries) {
+    IsoClearanceFound { diameter: d, provenance: p } => micrometer_count(m: d) == 3200
+    IsoClearanceThreadNotPublished { requested: t, series: s } => false
+  }
+}
+
+// THE DISCRIMINATING RED. A lookup asked only for rows it holds cannot distinguish a real table from
+// one that returns its first row to every query. M8 is a real ISO 273 thread that this module
+// deliberately does not carry, so the refusal is authorable and the arm is reachable.
+data iso_thread_m8_unpublished: FastenerThread = MetricCoarseThread { designation: "M8" }
+
+test fn w_a_thread_the_standard_does_not_publish_refuses_by_name() -> Bool {
+  match iso_273_clearance_hole(thread: iso_thread_m8_unpublished, series: FineSeries) {
+    IsoClearanceThreadNotPublished { requested: t, series: s } => t == iso_thread_m8_unpublished
+    IsoClearanceFound { diameter: d, provenance: p } => false
+  }
+}
+
+// Fine < medium < coarse is the standard's own ordering, and a transcription that swapped two series
+// would still answer every single-row query correctly. This is the check that a swap cannot pass.
+test fn w_the_three_m3_series_are_strictly_increasing() -> Bool {
+  match iso_273_clearance_hole(thread: m3_thread, series: FineSeries) {
+    IsoClearanceThreadNotPublished { requested: t1, series: s1 } => false
+    IsoClearanceFound { diameter: fine, provenance: p1 } =>
+      match iso_273_clearance_hole(thread: m3_thread, series: MediumSeries) {
+        IsoClearanceThreadNotPublished { requested: t2, series: s2 } => false
+        IsoClearanceFound { diameter: medium, provenance: p2 } =>
+          match iso_273_clearance_hole(thread: m3_thread, series: CoarseSeries) {
+            IsoClearanceThreadNotPublished { requested: t3, series: s3 } => false
+            IsoClearanceFound { diameter: coarse, provenance: p3 } =>
+              micrometer_count(m: fine) < micrometer_count(m: medium)
+                && micrometer_count(m: medium) < micrometer_count(m: coarse)
+          }
+      }
+  }
+}
+
+fn row_is_relayed(row: IsoClearanceHoleRow) -> Bool {
+  match row.provenance {
+    RelayedFromStandardText { relay: r } => true
+    VerifiedAgainstArchivedCopy { artifact: a } => false
+  }
+}
+
+// No copy of ISO 273 is archived here, so EVERY row must still say so. This witness is expected to
+// FLIP when the document is obtained and the rows are transcribed -- that is its dissolution
+// condition, and the flip is the signal to re-mark them, not a regression.
+test fn w_no_row_claims_to_be_verified_against_an_archived_copy() -> Bool {
+  let relayed = iso_273_clearance_rows |> filter(r => row_is_relayed(row: r)) |> count
+  let total = iso_273_clearance_rows |> count
+  total > 0 && relayed == total
+}

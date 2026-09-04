@@ -4,6 +4,10 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import extdeps.iso.iso_273 {
+  IsoClearanceSeries, FineSeries, MediumSeries, CoarseSeries,
+  IsoClearanceFound, IsoClearanceThreadNotPublished, iso_273_clearance_hole,
+}
 import product.placement_supply { PhysicalAssetIdentity }
 import product.printed_chassis.coupon {
   CouponSpecimenIdentity, LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero,
@@ -24,9 +28,22 @@ import product.printed_chassis.coupon {
 // observations, with a derivation that can fail. A Micrometer field would present a derived and
 // possibly underdetermined quantity in the same shape as a caliper reading, and nothing downstream
 // could tell them apart.
+// FitInterference EXISTS BECAUSE A READING FELL BETWEEN TWO ARMS AND NEITHER WAS HONEST.
+//
+// Asked whether the smallest coupon rung took an M3, the operator answered BOTH "it goes in all the
+// way" and "it did need real force". Under the three-grade vocabulary those two sentences select
+// different arms: seating fully is not FitRefused, and needing force is not FitTight. The grade was
+// anemic -- it had no constructor for the state the part was actually in, so whichever arm I picked
+// would have recorded a fact nobody observed.
+//
+// An interference fit SEATS but transfers load to the wall. For a CLEARANCE hole that is a failure
+// of function rather than of assembly: the screw is carried by the plastic instead of passing
+// through it, and a printed wall under a press fit splits later rather than now. So this arm is
+// entry, and it is deliberately NOT free passage.
 type FastenerFitGrade
   = FitFree
   | FitTight
+  | FitInterference
   | FitRefused
 
 // The rung is named by its ORDINAL, one-based, exactly as a person counts holes along the coupon:
@@ -188,6 +205,11 @@ fn entry_threshold_against_ladder(
           smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
           largest_refuse: acc.largest_refuse,
         }
+        FitInterference => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
         FitFree => FitScan {
           count: acc.count + 1,
           smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
@@ -244,14 +266,23 @@ fn rung_diameter(ladder: LengthLadder, ordinal: Nat) -> Micrometer {
 // THE OPERATOR'S READING, RECORDED AS GIVEN.
 //
 // Reported 2026-09-04: the second and third smallest holes both admit an M3, the second is tight.
-// The first rung was NOT reported either way, and this population deliberately does not invent it --
-// which is why the derivation below returns CompensationLowerBoundUnestablished rather than a
-// number. The machine was also not named; when it is, this population splits per printer, because
-// whether the constant is shared or per-machine is the question the two coupons were printed to
-// answer.
+// Asked about the first rung, the operator answered in two parts -- "it does go in all the way" AND
+// "it did need real force" -- and those two sentences are why FitInterference exists. Neither of the
+// arms available at the time was honest about that state: seating fully is not a refusal, and
+// needing force is not hand-tight. The reading was not rounded to whichever arm was closer.
+//
+// The machine was still not named. When it is, this population splits per printer, because whether
+// the constant is shared or per-machine is the question the two coupons were printed to answer.
 data m3_fastener: FastenerThread = MetricCoarseThread { designation: "M3" }
 
 data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 1,
+    fastener: m3_fastener,
+    grade: FitInterference,
+    observer: "operator, coupon in hand: goes in all the way, needed real force",
+  },
   HoleFitObservation {
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 2,
@@ -415,6 +446,7 @@ fn select_free_pass_nominal(
             } else { acc.smallest_free },
           }
           FitTight => acc
+          FitInterference => acc
           FitRefused => acc
         }
       })
@@ -454,3 +486,69 @@ data m3_free_pass_selection: FreePassSelection = select_free_pass_nominal(
   observations: operator_ladder_reading_2026_09_04,
   scope: m3_free_pass_scope,
 )
+
+// ═══ THE PROCESS STATEMENT: THE READING MEASURED AGAINST SOMETHING THAT DID NOT COME OUT OF THIS
+// ═══ MACHINE.
+//
+// Everything above this line compares the coupon to itself. "The third rung passes freely" is a
+// true sentence about a part, and it stays a sentence about that part until it is held against a
+// diameter chosen by somebody else. DESIGN says a merge-blocking number must be grounded in an
+// external or versioned authority and that a measurement copied from the same tree is not an
+// oracle; the coupon ladder IS the same tree.
+//
+// ISO 273 supplies the outside quantity: the diameter through which an M3 is SUPPOSED to pass. So
+// this join answers the question the coupon alone cannot -- not "which rung passed" but "does this
+// process put a hole where the standard says a hole goes".
+//
+// WHAT IT DELIBERATELY DOES NOT DO IS SUBTRACT AND CALL THE RESULT A SHRINKAGE. The observed value
+// is the first LADDER NOMINAL at which free passage was seen, and the ladder samples in steps, so
+// the true threshold lies in a half-open interval below that rung, not at it. Reporting a signed
+// difference between two nominals as a process compensation would restate an interval as a point.
+// The arms therefore name a DIRECTION and the step that bounds it, and no arm carries a
+// compensation.
+type ClearanceTargetAgreement
+  = FreePassMeetsPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | FreePassLooserThanPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | FreePassTighterThanPublishedClearance {
+      observed_nominal: Micrometer
+      published_nominal: Micrometer
+      series: IsoClearanceSeries
+    }
+  | ClearanceTargetUnpublished { series: IsoClearanceSeries }
+  | ClearanceComparisonHasNoObservation { cause: NonEmptyStr }
+
+fn clearance_target_agreement(
+  selection: FreePassSelection,
+  thread: FastenerThread,
+  series: IsoClearanceSeries
+) -> ClearanceTargetAgreement {
+  match selection {
+    FreePassUnobserved { missing: m } => ClearanceComparisonHasNoObservation { cause: m }
+    FreePassLadderUnavailable =>
+      ClearanceComparisonHasNoObservation { cause: "the ladder that generated the coupon is unavailable, so no observed nominal exists to compare" }
+    FreePassObservationOutOfLadder { ordinal: o, rung_count: n } =>
+      ClearanceComparisonHasNoObservation { cause: "an observation names a rung outside the ladder, so the observed nominal is not derivable" }
+    FreePassObservationsHeterogeneous { differing: d } =>
+      ClearanceComparisonHasNoObservation { cause: d }
+    FreePassNominalSelected { nominal: observed, basis_rung: r, scope: sc } =>
+      match iso_273_clearance_hole(thread: thread, series: series) {
+        IsoClearanceThreadNotPublished { requested: t, series: s } => ClearanceTargetUnpublished { series: series }
+        IsoClearanceFound { diameter: published, provenance: p } =>
+          if micrometer_count(m: observed) == micrometer_count(m: published) {
+            FreePassMeetsPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          } else if micrometer_count(m: observed) > micrometer_count(m: published) {
+            FreePassLooserThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          } else {
+            FreePassTighterThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+          }
+      }
+  }
+}
