@@ -22,7 +22,7 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-data redfish_http_hardwired_transport_note: String = "§3(b) declared debt, SHRINKING: GetSystem (2026-09-03) is a declarative transport rest row — auth_netrc + InsecureAcceptAnyCert + modeled success — realized by the shared HTTP-client machinery; the remaining operations below still re-spell the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). The note dissolves when every operation is a declarative transport row — the remaining rows need the same three axes GetSystem now carries (netrc/basic auth, insecure-TLS, request-body-from-file) plus, for the mutating ops, the inline body record or a body-from-file axis. Until then the argv rows stay — live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt, SHRINKING: GetServiceRoot, GetSystem, GetChassisSensors, GetPower and GetThermal (2026-09-03) are declarative transport rest rows — auth_basic + InsecureAcceptAnyCert + modeled success — realized by the shared HTTP-client machinery; the remaining operations below (SetAccountPassword, SetBootSourceOverride, ResetSystem) still re-spell the shell/curl transport handler per row. The note dissolves when every operation is a declarative transport row — the remaining rows need a body-from-file or inline body record axis. Until then the argv rows stay — live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
 // Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
@@ -62,17 +62,10 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt, SHRI
 // until it lands the class sits at mitigatable and this note is diligence.
 service redfish.Http {
 
-  // Empty base + absolute-form path templates: the bmc_host is a per-call input, so each op's
-  // path carries the full https://{bmc_host}/... target (extdeps.transports.rest RestTargetForm
-  // AbsoluteFormTarget; the interp/emit concat base_url + path is the current realization).
   config {
     endpoint: ""
   }
 
-  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetServiceRoot is a declarative
-  // transport rest row, same shape as GetSystem — modeled success, insecure-TLS for the
-  // fleet's self-signed BMC certs, outcome-based graceful failure. No auth (the service root
-  // is unauthenticated), so it also demonstrates the posture without auth_netrc.
   operation GetServiceRoot {
     input { bmc_host: NonEmptyStr }
     output { body: String, outcome: RestOutcome }
@@ -92,23 +85,15 @@ service redfish.Http {
     }
   }
 
-  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetSystem is a declarative
-  // transport rest row. The curl argv is derived by the realization — the success flag is a
-  // modeled response block (grounded 2xx), never a hand-typed `--fail-with-body`; auth is
-  // netrc-file via `auth_netrc` (the credential never touches argv); TLS is the modeled
-  // InsecureAcceptAnyCert posture for the fleet's self-signed BMC certs. The interpreter
-  // realizes the posture through the accept-any agent (see v1_interpreter
-  // RestAcceptAnyVerifier); consumers read `outcome` for graceful failure (RestStatusRefused
-  // carries the OpenBMC error body), which is what bmc_onboard's credential probe requires.
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: String, password: Secret }
     output { body: String, outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,
       path: "https://{bmc_host}/redfish/v1/Systems/system",
       tls: InsecureAcceptAnyCert,
-      auth_netrc: { file: netrc_file },
+      auth_basic: { username: username, password: password },
       response_format: Text
     }
     response {
@@ -120,17 +105,15 @@ service redfish.Http {
     }
   }
 
-  // LANE A MIGRATION (transport_argv_anemia_dissolution): GetChassisSensors is a declarative
-  // transport rest row, same shape as GetSystem — auth_netrc + insecure-TLS + modeled success.
   operation GetChassisSensors {
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, username: String, password: Secret }
     output { body: String, outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,
       path: "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors",
       tls: InsecureAcceptAnyCert,
-      auth_netrc: { file: netrc_file },
+      auth_basic: { username: username, password: password },
       response_format: Text
     }
     response {
@@ -142,16 +125,15 @@ service redfish.Http {
     }
   }
 
-  // LANE A MIGRATION (transport_argv_anemia_dissolution): plain GET Redfish operations.
   operation GetPower {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: String, password: Secret }
     output { body: String, outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,
       path: "https://{bmc_host}/redfish/v1/Chassis/Self/Power",
       tls: InsecureAcceptAnyCert,
-      auth_netrc: { file: netrc_file },
+      auth_basic: { username: username, password: password },
       response_format: Text
     }
     response {
@@ -164,14 +146,14 @@ service redfish.Http {
   }
 
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: String, password: Secret }
     output { body: String, outcome: RestOutcome }
     readonly
     transport rest {
       method: GET,
       path: "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal",
       tls: InsecureAcceptAnyCert,
-      auth_netrc: { file: netrc_file },
+      auth_basic: { username: username, password: password },
       response_format: Text
     }
     response {

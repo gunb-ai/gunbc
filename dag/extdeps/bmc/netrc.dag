@@ -1,0 +1,212 @@
+module extdeps.bmc.netrc
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr, String, Int, Bool, Secret, FilePath, List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html"
+  }
+}
+
+type NetrcResolution
+  = NetrcResolved { login: NonEmptyStr, password: Secret }
+  | NetrcRefused { cause: NetrcRefusalCause }
+
+type NetrcRefusalCause
+  = NetrcNoMatchingEntry { host: NonEmptyStr }
+  | NetrcDuplicateMachine { host: NonEmptyStr }
+  | NetrcMalformedFile { detail: String }
+  | NetrcFileUnreadable { detail: String }
+
+fn netrc_resolve(file: FilePath, host: NonEmptyStr) -> NetrcResolution {
+  let content = Filesystem.Read(path: file)
+  if content.success == false {
+    return NetrcRefused { cause: NetrcFileUnreadable { detail: content.error } }
+  }
+  netrc_resolve_from_text(text: content.content, host: host)
+}
+
+fn netrc_resolve_from_text(text: String, host: NonEmptyStr) -> NetrcResolution {
+  let tokens = netrc_tokenize(text: text)
+  netrc_parse_entries(tokens: tokens, host: host)
+}
+
+fn netrc_tokenize(text: String) -> List<String> {
+  netrc_tokenize_loop(source: text, pos: 0, acc: [], current: "")
+}
+
+fn netrc_tokenize_loop(source: String, pos: Int, acc: List<String>, current: String) -> List<String> {
+  if pos >= string_length(s: source) {
+    if current == "" { acc }
+    else { list_push(xs: acc, x: current) }
+  } else {
+    let ch = char_at(s: source, i: pos)
+    if ch == " " || ch == "\t" || ch == "\n" || ch == "\r" {
+      if current == "" {
+        netrc_tokenize_loop(source: source, pos: pos + 1, acc: acc, current: current)
+      } else {
+        netrc_tokenize_loop(source: source, pos: pos + 1, acc: list_push(xs: acc, x: current), current: "")
+      }
+    } else if ch == "\"" {
+      netrc_tokenize_quoted(source: source, pos: pos + 1, acc: acc, current: current, quote: "\"")
+    } else if ch == "'" {
+      netrc_tokenize_quoted(source: source, pos: pos + 1, acc: acc, current: current, quote: "'")
+    } else if ch == "#" {
+      netrc_tokenize_skip_line(source: source, pos: pos + 1, acc: acc, current: current)
+    } else {
+      netrc_tokenize_loop(source: source, pos: pos + 1, acc: acc, current: concat(current, ch))
+    }
+  }
+}
+
+fn netrc_tokenize_quoted(source: String, pos: Int, acc: List<String>, current: String, quote: String) -> List<String> {
+  if pos >= string_length(s: source) {
+    list_push(xs: acc, x: current)
+  } else {
+    let ch = char_at(s: source, i: pos)
+    if ch == quote {
+      netrc_tokenize_loop(source: source, pos: pos + 1, acc: acc, current: "")
+    } else {
+      netrc_tokenize_quoted(source: source, pos: pos + 1, acc: acc, current: concat(current, ch), quote: quote)
+    }
+  }
+}
+
+fn netrc_tokenize_skip_line(source: String, pos: Int, acc: List<String>, current: String) -> List<String> {
+  if pos >= string_length(s: source) {
+    if current == "" { acc }
+    else { list_push(xs: acc, x: current) }
+  } else {
+    let ch = char_at(s: source, i: pos)
+    if ch == "\n" || ch == "\r" {
+      netrc_tokenize_loop(source: source, pos: pos + 1, acc: acc, current: current)
+    } else {
+      netrc_tokenize_skip_line(source: source, pos: pos + 1, acc: acc, current: current)
+    }
+  }
+}
+
+fn netrc_parse_entries(tokens: List<String>, host: NonEmptyStr) -> NetrcResolution {
+  let rest = netrc_drop_until_machine_or_default(tokens: tokens)
+  if rest == [] {
+    NetrcRefused { cause: NetrcNoMatchingEntry { host: host } }
+  } else {
+    let keyword = head(rest)
+    if keyword == "machine" {
+      let tail = tail(rest)
+      if tail == [] {
+        NetrcRefused { cause: NetrcMalformedFile { detail: "machine keyword without hostname" } }
+      } else {
+        let entry_host = head(tail)
+        let remaining = tail(tail)
+        if entry_host == (host as String) {
+          netrc_parse_machine_entry(tokens: remaining, host: host)
+        } else {
+          let after_entry = netrc_skip_machine_entry(tokens: remaining)
+          netrc_parse_entries(tokens: after_entry, host: host)
+        }
+      }
+    } else if keyword == "default" {
+      netrc_parse_default_entry(tokens: tail(rest))
+    } else {
+      netrc_parse_entries(tokens: tail(rest), host: host)
+    }
+  }
+}
+
+fn netrc_drop_until_machine_or_default(tokens: List<String>) -> List<String> {
+  if tokens == [] { [] }
+  else {
+    let kw = head(tokens)
+    if kw == "machine" || kw == "default" { tokens }
+    else { netrc_drop_until_machine_or_default(tokens: tail(tokens)) }
+  }
+}
+
+fn netrc_skip_machine_entry(tokens: List<String>) -> List<String> {
+  if tokens == [] { [] }
+  else {
+    let kw = head(tokens)
+    if kw == "machine" || kw == "default" { tokens }
+    else { netrc_skip_machine_entry(tokens: tail(tokens)) }
+  }
+}
+
+fn netrc_parse_machine_entry(tokens: List<String>, host: NonEmptyStr) -> NetrcResolution {
+  netrc_parse_login_password(
+    tokens: tokens, host: host,
+    login: none, password: none,
+    is_default: false
+  )
+}
+
+fn netrc_parse_default_entry(tokens: List<String>) -> NetrcResolution {
+  netrc_parse_login_password(
+    tokens: tokens, host: "DEFAULT" as NonEmptyStr,
+    login: none, password: none,
+    is_default: true
+  )
+}
+
+fn netrc_parse_login_password(
+  tokens: List<String>, host: NonEmptyStr,
+  login: String?, password: Secret?,
+  is_default: Bool
+) -> NetrcResolution {
+  if tokens == [] {
+    netrc_finish_credential(login: login, password: password, host: host, is_default: is_default)
+  } else {
+    let kw = head(tokens)
+    let rest = tail(tokens)
+    if kw == "login" {
+      if rest == [] {
+        NetrcRefused { cause: NetrcMalformedFile { detail: "login without value" } }
+      } else {
+        let val = head(rest)
+        netrc_parse_login_password(tokens: tail(rest), host: host, login: Present { value: val }, password: password, is_default: is_default)
+      }
+    } else if kw == "password" {
+      if rest == [] {
+        NetrcRefused { cause: NetrcMalformedFile { detail: "password without value" } }
+      } else {
+        let val = head(rest)
+        netrc_parse_login_password(tokens: tail(rest), host: host, login: login, password: Present { value: val as Secret }, is_default: is_default)
+      }
+    } else if kw == "machine" || kw == "default" {
+      match cres {
+        NetrcResolved { login: _, password: _ } => result
+        NetrcRefused { cause: _ } => netrc_parse_entries(tokens: tokens, host: host)
+      }
+    } else {
+    }
+  }
+}
+
+fn netrc_finish_credential(login: String?, password: Secret?, host: NonEmptyStr, is_default: Bool) -> NetrcResolution {
+  if is_default {
+    match login {
+      Present { value: l } => match password {
+        Present { value: p } => NetrcResolved { login: l as NonEmptyStr, password: p }
+        Absent => NetrcRefused { cause: NetrcMalformedFile { detail: "default has login but no password" } }
+      }
+      Absent => match password {
+        Present { value: _ } => NetrcRefused { cause: NetrcMalformedFile { detail: "default has password but no login" } }
+        Absent => NetrcRefused { cause: NetrcNoMatchingEntry { host: host } }
+      }
+    }
+  } else {
+    match login {
+      Present { value: l } => match password {
+        Present { value: p } => NetrcResolved { login: l as NonEmptyStr, password: p }
+        Absent => NetrcRefused { cause: NetrcMalformedFile { detail: concat("machine entry for ", host, " has login but no password") } }
+      }
+      Absent => match password {
+        Present { value: _ } => NetrcRefused { cause: NetrcMalformedFile { detail: concat("machine entry for ", host, " has password but no login") } }
+        Absent => NetrcRefused { cause: NetrcNoMatchingEntry { host: host } }
+      }
+    }
+  }
+}

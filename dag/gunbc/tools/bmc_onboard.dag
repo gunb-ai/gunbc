@@ -1,6 +1,11 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
+import extdeps.bmc.netrc {
+  NetrcResolution, NetrcResolved, NetrcRefused,
+  NetrcNoMatchingEntry, NetrcDuplicateMachine, NetrcMalformedFile, NetrcFileUnreadable,
+  netrc_resolve,
+}
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
@@ -171,7 +176,7 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
   if write_netrc(host: host, account: account, password: new_credential as String) == false {
     return exit_failure(reason: "rotate: netrc write for post-rotation reauth failed")
   }
-  verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
   return match verify.outcome {
     RestOk => ExitSuccess
     RestStatusRefused { status: _, body: b } =>
@@ -255,7 +260,8 @@ func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessToke
   }
   acq = redfish.Http.GetSystem(
     bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
+    username: account,
+    password: plan.factory_login.published_password as Secret
   )
   match acq.outcome {
     RestOk => Unit
@@ -286,7 +292,8 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
   }
   factory_check = redfish.Http.GetSystem(
     bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
+    username: account,
+    password: plan.factory_login.published_password as Secret
   )
   if match factory_check.outcome {
     RestOk => true
@@ -316,7 +323,8 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
           }
           rotated_verify = redfish.Http.GetSystem(
             bmc_host: host,
-            netrc_file: bmc_onboard_netrc_path as NonEmptyStr
+            username: account,
+            password: password
           )
           return match rotated_verify.outcome {
             RestOk => RotatedCredentialActive

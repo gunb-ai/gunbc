@@ -193,7 +193,7 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
 }
 
 // LANE A MIGRATION (transport_argv_anemia_dissolution): GetSystem left the shell-argv
-// population — it is now a declarative transport rest row (auth_netrc + modeled success).
+// population — it is now a declarative transport rest row (auth_basic + modeled success).
 // The two GetSystem arms that used to stand here (the exact shell argv materialization and the
 // RED credential-injection refusal) no longer have a subject: `shell_materialize_operation_argv`
 // applies to shell transports only, and a rest row has no argv. The classes they pinned are

@@ -4,13 +4,15 @@ import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTra
 
 data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"
 data closed_loopback_chassis_id: NonEmptyStr = "Self"
-data closed_loopback_netrc_file: NonEmptyStr = "/dev/null"
+data closed_loopback_username: String = "admin"
+data closed_loopback_password: Secret = "admin" as Secret
 
 func witness_redfish_get_chassis_sensors_closed_host() -> Bool {
   let r = redfish.Http.GetChassisSensors(
     bmc_host: closed_loopback_bmc_host,
     chassis_id: closed_loopback_chassis_id,
-    netrc_file: closed_loopback_netrc_file
+    username: closed_loopback_username,
+    password: closed_loopback_password
   )
   // The closed loopback cannot serve Redfish, so the op must NOT report RestOk — a
   // transport refusal or status refusal is the honest answer for an unreachable host.
