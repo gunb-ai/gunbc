@@ -903,64 +903,47 @@ pub struct TransitionAdmission {
 /// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
 /// forget; the required run reports them as consumed admissions due for deletion on that change.
 ///
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10300, AND IT IS THE EIGHTEENTH'S REMAINDER.
+/// `param_names_of` existed byte-identically in `v2.lens.effect_reach` and
+/// `v2.lens.live_read_classification` -- the same duplication #10156 grounded for the rest of the
+/// call-reachability walk, on the same two modules, missed because that PR enumerated the
+/// declarations the walk itself reads and this helper is read beside it. It moves to
+/// `v2.std.fn_index`, where `callees_from_node` now needs it: the reader excludes a declaration's
+/// own parameter names from the callee channel, so the lexemes and the reader belong in one place.
+/// Two `TargetChanged` bindings, one per lens, enumerated by identity rather than by a wildcard
+/// over "anything that moved to v2.std.fn_index".
+///
+/// TRIGGER: #10300 MERGING. After that, main carries the move, so a later run's base and head both
+/// have it and no run can produce these deltas. They will report CONSUMED, not stale, on the
+/// reasoning the fourth transition established: rows authored in the same PR that performs their
+/// own move are satisfied at the BASE of every later run. Their deletion is owed by whoever next
+/// touches this roster.
+///
+/// AND THAT DEBT IS PAID HERE, NOT DELEGATED. This change touches the roster, so by the rule above
+/// it deletes the six rows the required run reported consumed: gunbc#10206's two
+/// (`recurring_failure_mode_roster` to its own module) and gunbc#10028's four
+/// (`match_pattern_is_irrefutable` to `v1.std.core`). Both transitions have merged; a consumed row
+/// left standing is a stale row, and a stale row refuses unrelated changes.
+///
+/// THE ORDINAL IS THE NEXT UNUSED ONE. NINETEENTH is the highest in use, so this is TWENTIETH.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
+            module: "v2.lens.effect_reach",
+            in_declaration: "flows_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_preamble_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "collect_pattern_rc_variant_guards",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_typed_match_arm_strs",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_arm_has_refutable_plain_field",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_pattern_preludes",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carriers_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

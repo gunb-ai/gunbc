@@ -966,7 +966,16 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
     changed_witness_identities_from_edited_test_fns(
         &process_workspace_root(),
         &edits.edited_test_fns,
+        &quarantine_probe_admitted_pairs(),
     )
+}
+
+/// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
+/// changed-witness selection decides at. Read once from the one function-grain authority.
+fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, String)> {
+    crate::cli_run::quarantine_probe_admission_pairs()
+        .into_iter()
+        .collect()
 }
 
 /// The identity spelling, separated from the observation so it is testable against fixture
@@ -974,12 +983,35 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
 /// header — the same two facts the disposition loop joins into `RequiredFloorDispositionRow`'s
 /// identity. A touched file that declares a test fn but no module header refuses: an identity
 /// cannot be spelled for it, and dropping it would silently exempt exactly the malformed case.
+///
+/// A WITNESS CARRYING A `QuarantineProbeExpectRed` ADMISSION IS NOT SELECTED, and this is the one
+/// place that decision belongs. Editing a quarantined witness's file does not un-quarantine it --
+/// its dissolution trigger does -- so the override must not outrank an admission that already
+/// answered whether this row is scheduled per-PR.
+///
+/// THE DEFECT THIS CLOSES, found by gunbc#10245 giving four such witnesses a declared subject. The
+/// four `production_qualification_origin_probe_witness` frontier rows are admitted RED with
+/// declared dissolutions and are declined by the ordinary floor. Touching their entry file planned
+/// them anyway; they then failed exactly as admitted and were counted as UNEXPECTED failures,
+/// refusing the floor (run 33793591024, `claims_failed=5`). The hold could not save them and must
+/// not be taught to: `floor_expected_red_roster` means RUN-AND-EXPECT-RED while this admission
+/// means DO-NOT-RUN-PER-PR, and making one consumer read the other's carrier is a §3 meaning fork.
+/// The row was never supposed to execute here, so the repair is on the SELECTION side.
+///
+/// IT IS KEYED ON THE ADMISSION, NEVER ON THE LANE. Excluding by long-home prefix would wave a
+/// touched witness through by virtue of the lane it happens to sit in, which is precisely what the
+/// changed-witness override exists to prevent. A long-home witness with no quarantine admission is
+/// selected, executes, and reds the floor exactly as before.
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
+    quarantine_probe_admitted: &std::collections::HashSet<(String, String)>,
 ) -> Result<Vec<String>, String> {
     let mut identities: Vec<String> = Vec::new();
     for (file, function) in edited_test_fns {
+        if quarantine_probe_admitted.contains(&(file.clone(), function.clone())) {
+            continue;
+        }
         let content = std::fs::read_to_string(base.join(file))
             .map_err(|e| format!("changed-witness identity derivation: read {file}: {e}"))?;
         let module = extract_module_path(&content).ok_or_else(|| {
@@ -8258,12 +8290,148 @@ mod changed_witness_projection_tests {
         let mut edited = std::collections::HashSet::new();
         edited.insert(("added_test.dag".to_string(), "added_holds".to_string()));
         let identities =
-            changed_witness_identities_from_edited_test_fns(&dir, &edited).expect("identities");
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect("identities");
         assert_eq!(
             identities,
             vec!["fixture.changed_witness_spelling.added_holds".to_string()]
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE FOUR CONTROLS ON QUARANTINE-KEYED SELECTION, and (a) is deliberately written first
+    // because it is the arm that stops this degrading into holding everything.
+    //
+    // The subject is `changed_witness_identities_from_edited_test_fns`, whose output IS the
+    // selection: an identity it returns is planned, one it omits is not. So these assert
+    // NOT-SCHEDULED rather than not-failing, which are different claims and only the first is
+    // what the admission promises.
+
+    /// Build a two-witness fixture in one file: both are long-home, only one is admitted.
+    fn quarantine_selection_fixture(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-quarantine-selection-{tag}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("probe_test.dag"),
+            "module v2.test.long.quarantine_selection_fixture
+
+             test fn admitted_reds() -> Bool { false }
+             test fn unadmitted_reds() -> Bool { false }
+",
+        )
+        .expect("fixture write");
+        dir
+    }
+
+    fn edited(pairs: &[(&str, &str)]) -> std::collections::HashSet<(String, String)> {
+        pairs
+            .iter()
+            .map(|(f, n)| (f.to_string(), n.to_string()))
+            .collect()
+    }
+
+    /// (a) A LONG-HOME WITNESS WITH NO ADMISSION IS STILL SELECTED. This is the discriminating
+    /// RED for the whole change: an exclusion keyed on the lane rather than on the admission
+    /// would drop this row too, and the floor would stop noticing a failing witness the PR
+    /// touched. Sitting in `v2.test.long.` earns nothing by itself.
+    #[test]
+    fn an_unadmitted_long_home_witness_is_still_selected_as_a_changed_witness() {
+        let dir = quarantine_selection_fixture("unadmitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "unadmitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert_eq!(
+            identities,
+            vec!["v2.test.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
+            "a long-home witness with no quarantine admission must still be planned"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (b) AN ADMITTED WITNESS THE DIFF EDITED IS NOT SELECTED. Not merely "does not fail" —
+    /// it is absent from the identities, so nothing plans it.
+    #[test]
+    fn a_quarantine_admitted_witness_is_not_selected_even_when_edited() {
+        let dir = quarantine_selection_fixture("admitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "admitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert!(
+            identities.is_empty(),
+            "an edited quarantine-admitted witness must not be scheduled: {identities:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (c) THE KEY IS THE EXACT CADENCE, NOT "HAS AN ADMISSION". A row admitted under a
+    /// different cadence is a different obligation, so it is absent from the quarantine set and
+    /// stays selected. Asserted through the real authority rather than the fixture set, since
+    /// the cadence read is where a widened head would leak.
+    #[test]
+    fn only_quarantine_probe_cadence_rows_reach_the_selection_exclusion() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let all: std::collections::HashSet<(String, String)> =
+            crate::cli_run::explicit_witness_admission_pairs()
+                .into_iter()
+                .collect();
+        assert!(
+            !quarantine.is_empty(),
+            "fixture drift: the authority declares quarantine probes"
+        );
+        assert!(
+            quarantine.is_subset(&all),
+            "every quarantine row is an admission row"
+        );
+        // The positive control: some admitted row is NOT a quarantine probe. Without this a
+        // reader that returned every admission would satisfy the subset check above.
+        assert!(
+            all.len() > quarantine.len(),
+            "the authority carries admissions under other cadences; if this ever became an \
+             equality the exclusion would have widened to every admitted witness"
+        );
+        std::fs::remove_dir_all(std::env::temp_dir().join("gunbc-quarantine-noop")).ok();
+    }
+
+    /// The four rows that produced the incident are actually in the set this reads — an exclusion
+    /// keyed on a head that parsed nothing would pass every test above while changing nothing.
+    #[test]
+    fn the_origin_probe_frontier_rows_are_read_as_quarantine_admissions() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag";
+        for f in [
+            "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+            "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+            "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+            "witness_live_structural_fixture_mint_site_discovered_reds",
+        ] {
+            assert!(
+                quarantine.contains(&(entry.to_string(), f.to_string())),
+                "{f} must be read as a quarantine admission"
+            );
+        }
     }
 
     /// A touched file declaring a test fn without a module header REFUSES — the identity
@@ -8282,8 +8450,9 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut edited = std::collections::HashSet::new();
         edited.insert(("bare_test.dag".to_string(), "nameless".to_string()));
-        let err = changed_witness_identities_from_edited_test_fns(&dir, &edited)
-            .expect_err("headerless file must refuse");
+        let err =
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect_err("headerless file must refuse");
         assert!(err.contains("no module header"), "cause named: {err}");
         std::fs::remove_dir_all(&dir).ok();
     }
