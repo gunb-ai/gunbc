@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.repair_route_convergence_defeated_by_correct_participation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data repair_route_convergence_defeated_by_correct_participation: RecurringFailureMode = RecurringFailureMode {
+  identity: "repair_route_convergence_defeated_by_correct_participation" as NonEmptyStr,
+
+  receipts: [
+    "**a deferred-repair route that converges only while its subject is QUIESCENT, in a system whose participants are rewarded for not being quiescent** (an authority is edited, a derived artifact is left provisional, and a downstream actuator is expected to derive and land it. The derivation is triggered by a push and consumes minutes. ANY FURTHER PUSH RESTARTS IT. So convergence requires an interval of silence that nothing in the protocol reserves, and no single participant is doing anything wrong when it never arrives. ",
+
+    "**IT IS A LOOP AND NOT A RACE, WHICH IS THE WHOLE FINDING.** A race would be bad luck about timing. Here the provisional artifact DISAGREES WITH ITS AUTHORITY BY CONSTRUCTION for as long as it stays provisional, so every reviewer who reads it correctly files that disagreement -- and a correct review finding is precisely what motivates the next push. THE ROUTE GENERATES THE REVIEW PRESSURE THAT GENERATES THE PUSHES THAT PREVENT ITS OWN CONVERGENCE. ",
+
+    "**SO THE MOST RESPONSIVE LANE UNDER THE MOST DILIGENT REVIEW CONVERGES LEAST, AND EVERY PARTICIPANT IS BEHAVING CORRECTLY AT EVERY STEP.** The author who improves a row on feedback is doing the thing we ask for; the reviewer who reports that a projection contradicts its authority is doing the thing we ask for; the actuator restarts because its input changed, which is the only sound thing it can do. NOBODY IN THE LOOP CAN SEE IT FROM INSIDE THEIR OWN ROLE, because from each seat the correct action is locally obvious and its cost is paid by a different participant. ",
+
+    "SPECIMEN, gunbc#10345, 2026-09-04. Three ledger rows on the delegated design-ledger route, whose declared repair is to stage the driver-left bytes, push the authorities, and let `heal-generated-artifacts` derive the projection. Three successive corrections were pushed under review -- a rung correction to below-the-ladder, a right-censoring rule, and a quantile correction replacing a p90 figure with p99 -- each one sound, each one resetting the healer. Hours later the projection was still provisional, and a reviewer filed REQUEST_CHANGES for the projection omitting two identities its roster carried. THE REVIEW WAS CORRECT IN EVERY OBSERVATION and the PR had made no error; the branch had simply never been silent. ",
+
+    "**THE TWO PARTICIPANTS WHO CAUSED IT BOTH BELIEVED THEY WERE UNBLOCKING IT.** One pushed corrections because review had found real defects. The other sent an urgent quantile correction to a row they knew was mid-derivation, on the reasoning that a wrong figure in a landing row is worse than a delay -- and that correction was one of the three resets. Each intervention shortened the distance to a CORRECT row and lengthened the distance to a MERGED one, and neither participant was tracking the second quantity. ",
+
+    "RECOGNITION RULE: WHENEVER A REPAIR IS DELEGATED TO AN ACTUATOR TRIGGERED BY THE SAME EVENT THAT INVALIDATES ITS WORK, ASK WHAT RESERVES THE QUIET INTERVAL. If the answer is `nothing, but in practice branches go quiet`, the route works only for lanes nobody is reviewing. The tell is a long-lived provisional state that every observer reports and no observer causes. ",
+
+    "**THE PROTOCOL THAT DISCHARGES IT IS ONE SENTENCE AND IT IS CHEAP: ONCE A BRANCH IS AWAITING A DELEGATED DERIVATION, A NEW CORRECTION IS A NEW PULL REQUEST, NOT A PUSH.** It costs one extra review cycle and it converts an unbounded wait into a bounded one. Its awkward corollary is that a reviewer must be able to say `this finding is real and does not require a push here`, which the reviewing party has to accept, or the loop reforms through the review channel. ",
+
+    "BOUNDED AGAINST `guard_precondition_discharged_by_the_route_that_uses_it`, WHICH IS ITS NEAR NEIGHBOUR AND IS A DIFFERENT MECHANISM. There a guard's PRECONDITION is removed by the route that uses it, so a correct mechanism silently stops applying, and the remedy is a precondition check. Here nothing is disarmed and no mechanism is wrong: the route's CONVERGENCE is defeated by the correct behaviour of its participants, and the remedy is a quiescence protocol. The two arise from the same delegated route on the same night and must be cross-referenced rather than merged. ",
+
+    "RUNG FOUND AT: MITIGATABLE, and here that is honest rather than generous. The harm is a delay, not a wrong answer: the authority is correct throughout, the provisional artifact cannot merge, and the gate on the derived head still refuses. Nothing silently admits anything -- what is lost is time, which DESIGN section 1 counts as the value being spent. ",
+
+    "ATTAINABLE CEILING: MECHANICALLY PREVENTABLE. The actuator cannot be made immune to its input changing, and no construction forbids an author from pushing, so this does not reach a wall -- but the state is decidable: a branch awaiting a delegated derivation is a fact the system knows, and a push into that window can be refused or queued rather than silently restarting the work. ",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: A DELEGATED-DERIVATION STATE THAT IS VISIBLE ON THE PULL REQUEST AND THAT REFUSES OR QUEUES A PUSH ARRIVING WHILE IT IS PENDING, RATHER THAN RESTARTING SILENTLY -- sufficient for an author to be TOLD they are resetting the derivation at the moment they do it, and for a reviewer to see that the projection's disagreement is expected rather than a defect. Documenting the quiescence rule is the artifact-grained version and discharges nothing: both participants in the specimen knew the route and neither noticed the loop from inside it.)",
+  ],
+
+  evidence: [],
+}
