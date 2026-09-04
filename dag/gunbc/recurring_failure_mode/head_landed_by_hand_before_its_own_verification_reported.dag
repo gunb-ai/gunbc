@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.head_landed_by_hand_before_its_own_verification_reported
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data head_landed_by_hand_before_its_own_verification_reported: RecurringFailureMode = RecurringFailureMode {
+  identity: "head_landed_by_hand_before_its_own_verification_reported" as NonEmptyStr,
+
+  receipts: [
+    "**a person with merge authority lands a head while that head's only verification run is still in flight, and nothing in the system distinguishes -- at the instant of the decision -- CHECKS REPORTED GREEN from CHECKS HAVE NOT REPORTED AT ALL.** INVALID STATE: a head is merged at a moment when its own run carries no terminal verdict, so what lands is certified by nothing. ",
+
+    "THIS ROW IS RANKED FIRST AND IT SUBSUMES THE DETECTION-TIMING CLASSES. If a head can reach main before its checks conclude, then no improvement to WHAT a check detects, HOW FAST it detects it, or WHICH lane it is routed to changes the outcome: the detector was correct and it was consulted after the fact. Any repair argued from detection quality is arguing below this row. ",
+
+    "HARM: the break lands on main, where every other lane inherits it. The 2026-09-03 outage ran roughly eighty minutes -- main red from 19:49 UTC until #10278 (1af8892e143) deleted four lines -- and during it any lane resolving `gunbc.recurring_failure_mode` could not regenerate its projection, so the blast radius was every concurrent lane touching a generated artifact, not the author's own branch. ",
+
+    "**SPECIMEN, MEASURED (gunbc#10236, cfe19ea7f48, 2026-09-03).** The pull request's only CI run on its merged head was created at 19:49:40Z; the pull request merged at 19:49:43Z, THREE SECONDS later; that run concluded FAILURE at 20:30:34Z. The interval between the run beginning and the merge is shorter than any job in it takes to check out a tree, so no reading of the record can make the merge a decision taken on evidence. ",
+
+    "**THE MERGE WAS PERFORMED BY A PERSON AND THE ROW IS WRITTEN THAT WAY ON PURPOSE.** `gh api` reports `merged_by: briansrls` on the merged pull request: a human merge, not an automated gate firing. THE DISTINCTION IS THE WHOLE FINDING, because the two repairs do not overlap -- a broken automation is a defect in an arm that already decided, and is fixed by fixing the arm; a person acting inside their own authority with no constraint that could have stopped them is a MISSING CONSTRAINT, and is fixed only by putting the run before the landing. Writing this as `the gate admits in-flight heads` would name a mechanism the evidence does not place at the scene. ",
+
+    "DISTINCT FROM `required_evidence_absent_reads_as_evidence_of_pass`, and the two are easily fused because they share a specimen. That row's subject is an ADMISSION ARM whose quantifier folds over the receipts that have arrived, so the empty enumeration admits -- a defect readable in the arm. This row's subject is that NO ARM WAS BETWEEN THE ACTOR AND THE LANDING at all. One is a wrong answer; the other is an absent question. ",
+
+    "**WHAT IS UNMEASURED, NAMED RATHER THAN GUESSED.** Whether required status checks were configured on `main` at that instant is UNKNOWN to this filing: branch protection is unreadable from a session token, `gh api` returning 403. So this row does not claim protection was absent, misconfigured, or bypassed -- it claims only what the timestamps and the merge actor show. A later reader with a token that can read protection can close that gap; until then, treating this row as evidence about the ruleset would be the fabrication DESIGN section 5 forbids. ",
+
+    "RECOGNITION RULE: for a landed head, read two timestamps and one actor -- the terminal conclusion time of the run on THAT head, and the merge time. If the merge precedes the conclusion, the landing was uncertified regardless of what the run later said, and the actor tells you which of the two repairs applies. The record afterwards looks ordinary in both cases, because the run does eventually conclude and the conclusion is attached to a head that is already in history. ",
+
+    "RUNG FOUND AT: mitigatable, and only by human habit -- the failure is contained after the fact by a repair pull request, and nothing structural stood between the decision and main. ",
+
+    "CEILING: structurally guaranteed. A merge queue makes the run on the QUEUED REF a precondition of landing rather than a fact observed beside it, at which point no accepted landing exists without a terminal verdict on the exact tree that lands, and the invalid state has no path rather than merely a discouraged one. It is not rung 4 because the merge action lives in a hosting platform this repository does not construct. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: `gunbc.guarantee_stall` `merge_admission_terminal_verdict_stall` -- a landing path in which the verdict on the ref that lands is a PRECONDITION of the landing, sufficient to refuse a merge whose head carries no terminal conclusion, human actor included. A dashboard, a reminder, or a review convention does not discharge it: each leaves the same person the same three seconds.",
+  ],
+
+  evidence: [],
+}
