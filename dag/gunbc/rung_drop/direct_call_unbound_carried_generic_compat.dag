@@ -1,0 +1,16 @@
+module gunbc.rung_drop.direct_call_unbound_carried_generic_compat
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, DirectCallUnboundCarriedGenericCompat }
+
+data direct_call_unbound_carried_generic_compat: RungDrop = RungDrop {
+  identity: "direct_call_unbound_carried_generic_compat" as NonEmptyStr,
+
+  subject: "Direct-call argument TYPE-COMPAT when a declaration-bound formal or produced value still carries an unbound generic",
+
+  declared: "2026-09-03",
+
+  standing: Standing,
+
+  declaration: AuthoredProse { legacy: DirectCallUnboundCarriedGenericCompat, authored: "**THE MODULE-WIDE `v2.*` EXEMPTION IS RETIRED, AND THIS NARROWER UNBOUND-GENERIC BOUNDARY IS DECLARED IN ITS PLACE (2026-09-03).** PREVIOUS RUNG: the compat arm was absent for every direct call in every `v2.*` module and silent when skipped. TEMPORARY RUNG: mitigatable. `v1.compiler.infer` `direct_call_arg_type_mismatch` judges every resolved direct call, but accepts when the declaration substitution basis or the produced value still carries an unbound `TypeVariable`; the sibling inhabitance judgment emits the typed, located `DeclaredTypeInhabitanceUndecided` diagnostic with reason `UndecidableGenericFormal`. Unlike the old switch, this boundary announces each occurrence and the compile-clean partition counts it as advisory rather than allowing a rendered diagnostic to belong to neither its blocking nor advisory total. REASON: synthesized constructor signatures and higher-order generic callbacks can retain a parent generic after the call substitution pass, so compatibility cannot prove nominal mismatch at that position. POPULATION, RE-DERIVABLE RATHER THAN TRANSCRIBED: run `compile_clean_diagnostic_histogram` over the required-lane closure and select diagnostic class `DeclaredTypeInhabitanceUndecided`, direct-call argument position/name, reason `UndecidableGenericFormal`; that identity set is the population and no copied count is authoritative. RESTORATION TRIGGER, NAMED AT CAPABILITY GRAIN: synthesized constructor signatures and higher-order callback formals expose and bind their parent generic so direct-call generic inference substitutes it before compatibility, making both the carried formal and produced value decidable without an accepting undecidable arm. A manually maintained census, a module exemption, or suppressing the advisory does not satisfy this trigger." }
+}

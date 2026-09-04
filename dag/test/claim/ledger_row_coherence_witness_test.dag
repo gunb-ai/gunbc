@@ -1,0 +1,352 @@
+module test.claim.ledger_row_coherence
+
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  DesignFailureModesArtifact,
+  DesignRungDropsArtifact,
+  GitignoreArtifact
+}
+import gunbc.ledger_row_coherence {
+  LedgerRow,
+  LedgerRowCoherence,
+  NotALedgerArtifact,
+  LedgerRowsAllRendered,
+  LedgerRowsMissingFromCommitted,
+  ledger_rows,
+  ledger_row_coherence,
+  ledger_row_coherence_rendered,
+  LedgerRepairDeclaration,
+  LedgerRepairCrossCheck,
+  DeclarationAgreesWithInference,
+  DeclarationDisagrees,
+  render_ledger_repair_trailers,
+  parse_ledger_repair_trailers,
+  parse_ledger_repair_judged,
+  cross_check_ledger_repair
+}
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObserved,
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactContentDiffers,
+  observation_findings,
+  observation_finding_rendered
+}
+import tools.generated_artifact_gate { unjudged_ledger_refusals }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURES ARE BUILT FROM THE LIVE ROSTER, NOT FROM COPIED PROSE. A hand-written fixture body
+// would stop resembling a real row the first time the renderer changed, and this classifier's whole
+// job is a containment test against bytes the renderer produced -- so a fixture that does not come
+// from the renderer tests a different function than the one production calls.
+fn all_rows_rendered(a: GeneratedArtifact) -> String {
+  fold(ledger_rows(a: a), init: "", f: fn(acc, r) { concat(concat(acc, "\n- "), r.body) })
+}
+
+// The same rendering with ONE row withheld -- the discriminating input. `skip` names the identity
+// that must come back as missing, so the RED is authored rather than incidental.
+fn all_rows_except(a: GeneratedArtifact, skip: String) -> String {
+  fold(ledger_rows(a: a), init: "", f: fn(acc, r) {
+    if r.identity == skip { acc } else { concat(concat(acc, "\n- "), r.body) }
+  })
+}
+
+fn first_identity(a: GeneratedArtifact) -> String {
+  fold(ledger_rows(a: a), init: "", f: fn(acc, r) { if acc == "" { r.identity } else { acc } })
+}
+
+// POSITIVE CONTROL. A committed projection carrying every row its authority declares must classify
+// as coherent. Without this arm the discriminating test below could pass on a classifier that
+// reported every row missing always.
+test fn a_fully_rendered_ledger_is_coherent() -> Bool {
+  let a = DesignFailureModesArtifact
+  let full = all_rows_rendered(a: a)
+  match ledger_row_coherence(a: a, generated_content: full, committed_content: full) {
+    LedgerRowsAllRendered => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. Withhold exactly one row from the committed side and the classifier must
+// name THAT identity and no other. Asserting the identity rather than a count is what makes this
+// fail when the classifier reports the wrong row, which a count cannot see.
+test fn a_withheld_row_is_named_as_missing() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  match ledger_row_coherence(
+    a: a,
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id)
+  ) {
+    LedgerRowsMissingFromCommitted { missing } => count(missing) == 1 && fold(missing, init: false, f: fn(acc, m) { acc || m == id })
+    _ => false
+  }
+}
+
+// THE SECOND LEDGER IS COVERED BY THE SAME CONSTRUCTION, and this arm is the whole reason the rows
+// are derived from the ROSTER rather than from an index in the projection: docs/design-rung-drops.md
+// carries no identity index, so an index-driven classifier could not answer for it at all.
+test fn the_rung_drop_ledger_is_covered_without_a_projection_index() -> Bool {
+  let a = DesignRungDropsArtifact
+  let id = first_identity(a: a)
+  let named = match ledger_row_coherence(
+    a: a,
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id)
+  ) {
+    LedgerRowsMissingFromCommitted { missing } => fold(missing, init: false, f: fn(acc, m) { acc || m == id })
+    _ => false
+  }
+  named && count(ledger_rows(a: a)) > 0
+}
+
+// NOT-A-LEDGER MUST NOT INHABIT THE COHERENT ARM. If these collapsed, every provisioning file and
+// plan document would report "no rows missing" and a future ledger with no arm in ledger_rows would
+// read as coherent forever -- the degradation-as-fail-open shape DESIGN section 5 forbids.
+test fn a_non_ledger_artifact_cannot_report_coherent() -> Bool {
+  match ledger_row_coherence(a: GitignoreArtifact, generated_content: "x", committed_content: "y") {
+    NotALedgerArtifact => true
+    _ => false
+  }
+}
+
+// THE CLASSIFICATION REACHES THE FINDING THE GATE ACTUALLY RENDERS. Testing the classifier alone
+// would leave the wiring unproven -- the exact specification-without-execution gap DESIGN section 5
+// names -- so this drives observation_findings, the function production calls, and asserts the
+// identity appears in the rendered diagnostic a human reads.
+test fn the_gate_diagnostic_names_the_missing_identity() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  let findings = observation_findings(o: GeneratedArtifactObserved {
+    artifact: a,
+    path: "docs/design-failure-modes.md",
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id),
+    extra_validation: true
+  })
+  fold(findings, init: false, f: fn(acc, f) {
+    acc || (string_contains(s: observation_finding_rendered(f: f), pattern: id)
+      && string_contains(s: observation_finding_rendered(f: f), pattern: "INCOHERENT"))
+  })
+}
+
+// A BYTE DIFFERENCE THAT DROPS NO ROW MUST NOT BE CALLED INCOHERENT. Under-rendering and ordinary
+// drift have different owners and different repairs; a diagnostic that says INCOHERENT for both has
+// stopped discriminating, which is the failure this whole change exists to remove.
+test fn a_difference_that_drops_no_row_is_not_reported_incoherent() -> Bool {
+  let a = DesignFailureModesArtifact
+  let full = all_rows_rendered(a: a)
+  match ledger_row_coherence(
+    a: a,
+    generated_content: full,
+    committed_content: concat(full, "\ntrailing drift that removes nothing\n")
+  ) {
+    LedgerRowsAllRendered => ledger_row_coherence_rendered(c: LedgerRowsAllRendered) == ""
+    _ => false
+  }
+}
+
+// THE DECLARATION MUST SURVIVE THE ROUND TRIP, and this is the arm that makes the trailer a
+// structured carrier rather than a sentence: what heal writes is exactly what the classifier reads
+// back, identity for identity. A renderer and a parser that were written to different shapes would
+// both typecheck and would silently agree on nothing.
+test fn a_rendered_declaration_parses_back_to_the_same_identities() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  let c = ledger_row_coherence(
+    a: a,
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id)
+  )
+  let parsed = parse_ledger_repair_trailers(
+    message: concat(
+      "chore: regenerate drifted generated artifacts (ci auto-heal)",
+      render_ledger_repair_trailers(path: "docs/design-failure-modes.md", c: c)
+    )
+  )
+  count(parsed) == 1
+    && fold(parsed, init: false, f: fn(acc, d) {
+         acc || (d.identity == id && d.path == "docs/design-failure-modes.md")
+       })
+}
+
+// A COHERENT REPAIR DECLARES NOTHING, so an ordinary heal that dropped no row does not acquire a
+// trailer it would have to explain. Without this arm the renderer could emit an empty-identity line
+// and the parser would have to guess what it meant.
+test fn a_coherent_artifact_declares_no_repair() -> Bool {
+  let a = DesignFailureModesArtifact
+  let full = all_rows_rendered(a: a)
+  let c = ledger_row_coherence(a: a, generated_content: full, committed_content: full)
+  count(parse_ledger_repair_trailers(message: render_ledger_repair_trailers(path: "docs/design-failure-modes.md", c: c))) == 0
+    && count(parse_ledger_repair_trailers(message: "chore: regenerate drifted generated artifacts (ci auto-heal)")) == 0
+}
+
+// THE CROSS-CHECK AGREES WITH ITSELF on a declaration derived from the same coherence result. This
+// is the positive control for the disagreement arm below -- without it, a cross-check that reported
+// disagreement unconditionally would pass the discriminating test.
+test fn a_declaration_matching_the_inference_agrees() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  let c = ledger_row_coherence(
+    a: a,
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id)
+  )
+  let declared = parse_ledger_repair_trailers(
+    message: render_ledger_repair_trailers(path: "docs/design-failure-modes.md", c: c)
+  )
+  match cross_check_ledger_repair(declared: declared, inferred: c) {
+    DeclarationAgreesWithInference => true
+    _ => false
+  }
+}
+
+// AN UNDER-DECLARING REPAIR IS CAUGHT, AND THE DIRECTION IS NAMED. This is the case the declaration
+// alone cannot falsify: heal repaired a row and did not say so. The cross-check must place that
+// identity in inferred_only and NOT in declared_only, because the two directions send a reader to
+// different mechanisms.
+test fn a_repair_that_under_declares_is_caught_in_the_inferred_direction() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  let c = ledger_row_coherence(
+    a: a,
+    generated_content: all_rows_rendered(a: a),
+    committed_content: all_rows_except(a: a, skip: id)
+  )
+  match cross_check_ledger_repair(declared: [], inferred: c) {
+    DeclarationDisagrees { declared_only, inferred_only } =>
+      count(declared_only) == 0
+        && fold(inferred_only, init: false, f: fn(acc, x) { acc || x == id })
+    _ => false
+  }
+}
+
+// AN OVER-CLAIMING DECLARATION IS CAUGHT IN THE OTHER DIRECTION, so the two arms cannot be satisfied
+// by a cross-check that simply reports every difference on one side.
+test fn a_declaration_that_over_claims_is_caught_in_the_declared_direction() -> Bool {
+  match cross_check_ledger_repair(
+    declared: [LedgerRepairDeclaration { path: "docs/design-failure-modes.md", identity: "a_row_that_was_never_repaired" }],
+    inferred: LedgerRowsAllRendered
+  ) {
+    DeclarationDisagrees { declared_only, inferred_only } =>
+      count(inferred_only) == 0
+        && fold(declared_only, init: false, f: fn(acc, x) { acc || x == "a_row_that_was_never_repaired" })
+    _ => false
+  }
+}
+
+// A MALFORMED TRAILER IS DROPPED RATHER THAN HALF-PARSED. A line with a path and no identity must
+// yield no declaration at all -- guessing an empty identity would put a blank row into the very
+// series this carrier exists to make countable.
+test fn a_trailer_missing_its_identity_yields_no_declaration() -> Bool {
+  count(parse_ledger_repair_trailers(message: "Ledger-Rows-Repaired: docs/design-failure-modes.md\n")) == 0
+    && count(parse_ledger_repair_trailers(message: "Ledger-Rows-Repaired:\n")) == 0
+}
+
+// THE DENOMINATOR IS DECLARED EVEN WHEN THE NUMERATOR IS ZERO, which is the arm that stops a
+// coverage collapse from reading as a fixed defect. A heal that judged the ledgers and repaired
+// nothing must be distinguishable from a heal whose declaration step never ran, and with only the
+// repair token those two produce identical bytes.
+test fn a_coherent_artifact_still_declares_that_it_was_judged() -> Bool {
+  let a = DesignFailureModesArtifact
+  let full = all_rows_rendered(a: a)
+  let msg = render_ledger_repair_trailers(
+    path: "docs/design-failure-modes.md",
+    c: ledger_row_coherence(a: a, generated_content: full, committed_content: full)
+  )
+  count(parse_ledger_repair_judged(message: msg)) == 1
+    && count(parse_ledger_repair_trailers(message: msg)) == 0
+}
+
+// A DECLARATION THAT NEVER RAN JUDGES NOTHING, so zero repairs over zero judged cannot be read as
+// zero repairs over a real population.
+test fn an_absent_declaration_judges_nothing() -> Bool {
+  count(parse_ledger_repair_judged(message: "chore: regenerate drifted generated artifacts (ci auto-heal)")) == 0
+}
+
+// REPAIRS AND JUDGED ARE BOTH RECOVERABLE FROM ONE MESSAGE, and the two tokens do not contaminate
+// each other's parse even though they share a field scanner: a judged line carries a path and no
+// identity, which is exactly the shape the repair parse rejects.
+test fn a_repairing_declaration_reports_both_numerator_and_denominator() -> Bool {
+  let a = DesignFailureModesArtifact
+  let id = first_identity(a: a)
+  let msg = concat(
+    "chore: regenerate drifted generated artifacts (ci auto-heal)",
+    render_ledger_repair_trailers(
+      path: "docs/design-failure-modes.md",
+      c: ledger_row_coherence(
+        a: a,
+        generated_content: all_rows_rendered(a: a),
+        committed_content: all_rows_except(a: a, skip: id)
+      )
+    )
+  )
+  count(parse_ledger_repair_judged(message: msg)) == 1
+    && count(parse_ledger_repair_trailers(message: msg)) == 1
+    && fold(parse_ledger_repair_trailers(message: msg), init: false, f: fn(acc, d) { acc || d.identity == id })
+}
+
+// THE REFUSAL IS DIRECTED, AND BOTH DIRECTIONS ARE WITNESSED. A ledger that reached no verdict must
+// stop the line; a non-ledger artifact that reached no verdict must not, because it has no rows to
+// lose and refusing on it would make the declaration step fail on ordinary unrelated drift. Only the
+// pair discriminates: a check that refuses on everything and a check that refuses on nothing each
+// pass one of these two and fail the other.
+test fn an_unjudgeable_ledger_refuses_rather_than_skipping() -> Bool {
+  let refusals = unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObserved {
+      artifact: DesignRungDropsArtifact,
+      path: "docs/design-rung-drops.md",
+      generated_content: all_rows_rendered(a: DesignRungDropsArtifact),
+      committed_content: all_rows_rendered(a: DesignRungDropsArtifact),
+      extra_validation: true
+    },
+    GeneratedArtifactObservationRefused {
+      artifact: DesignFailureModesArtifact,
+      path: "docs/design-failure-modes.md",
+      cause: "read failed"
+    }
+  ])
+  count(refusals) == 1
+    && fold(refusals, init: false, f: fn(acc, r) { acc || string_contains(r, "docs/design-failure-modes.md") })
+}
+
+// THE MASKING SHAPE ITSELF: one ledger judged whole beside one ledger never judged. Before the
+// refusal arm this population produced a NONEMPTY declaration -- the judged line for the first
+// ledger -- so the commit step's own emptiness check passed and heal committed over half a
+// population. This is the discriminating input for that composition, not for the arm alone.
+test fn one_judged_ledger_does_not_license_a_commit_over_an_unjudged_one() -> Bool {
+  count(unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObserved {
+      artifact: DesignFailureModesArtifact,
+      path: "docs/design-failure-modes.md",
+      generated_content: all_rows_rendered(a: DesignFailureModesArtifact),
+      committed_content: all_rows_rendered(a: DesignFailureModesArtifact),
+      extra_validation: true
+    },
+    GeneratedArtifactCommittedAbsent {
+      artifact: DesignRungDropsArtifact,
+      path: "docs/design-rung-drops.md",
+      detail: "file not present"
+    }
+  ])) == 1
+}
+
+// A NON-LEDGER ARTIFACT THAT COULD NOT BE JUDGED IS NOT A REFUSAL. Without this arm the check would
+// be true by construction over every observation, which is a wall that cannot fail rather than a
+// wall that holds.
+test fn an_unjudgeable_non_ledger_artifact_does_not_stop_the_line() -> Bool {
+  count(unjudged_ledger_refusals(observations: [
+    GeneratedArtifactObservationRefused {
+      artifact: GitignoreArtifact,
+      path: ".gitignore",
+      cause: "read failed"
+    },
+    GeneratedArtifactCommittedAbsent {
+      artifact: GitignoreArtifact,
+      path: ".gitignore",
+      detail: "file not present"
+    }
+  ])) == 0
+}

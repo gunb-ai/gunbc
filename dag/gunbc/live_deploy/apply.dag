@@ -26,6 +26,7 @@ import gunbc.live_deploy.candidate {
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
+  ci_deploy_srv1_operator_local_access,
   DeployAccess,
   DeployAccessActor,
   deploy_access_preflight_pass_message,
@@ -559,6 +560,13 @@ func live_deploy_apply_srv1_wet() -> ProcessExit {
 
 func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
   live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access)
+}
+
+// The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
+// principal on the host itself. Candidate observation, target decision, preflight, mutation and
+// the readiness gate are all shared; nothing here is a second deploy.
+func live_deploy_apply_srv1_operator_local_wet() -> ProcessExit {
+  live_deploy_wet_with_access(access: ci_deploy_srv1_operator_local_access)
 }
 
 func live_deploy_retract_srv1_wet() -> ProcessExit {
