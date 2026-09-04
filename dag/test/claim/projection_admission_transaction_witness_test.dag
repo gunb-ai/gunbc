@@ -25,7 +25,7 @@ import gunbc.generated_artifact {
   DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact,
   Stage0CrateLayoutGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact,
   Stage0CrateLayoutGeneratedDagArtifact,
-  committed_generated_artifacts,
+  committed_generated_artifacts, artifact_directory,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -346,9 +346,22 @@ test fn a_stage0_dag_projection_is_derivable_though_it_neighbours_the_mirrors() 
 // a member that fell out of both would be a silent eligibility, which is the class the re-key
 // closed.
 test fn the_committed_registry_partitions_into_the_two_arms() -> Bool {
+  let seed_crate = "src/v1/stage0/src"
+  let deferred_all_in_seed_crate = fold(
+    deferred_bootstrap_members(),
+    init: true,
+    f: fn(acc, a) { acc && artifact_directory(a: a) == seed_crate }
+  )
+  let derivable_none_in_seed_crate = fold(
+    first_implementation_members(),
+    init: true,
+    f: fn(acc, a) { acc && artifact_directory(a: a) != seed_crate }
+  )
   length(first_implementation_members()) + length(deferred_bootstrap_members())
     == length(committed_generated_artifacts())
-    && length(deferred_bootstrap_members()) == 2
+    && deferred_all_in_seed_crate
+    && derivable_none_in_seed_crate
+    && length(deferred_bootstrap_members()) > 0
     && length(first_implementation_members()) > 0
 }
 

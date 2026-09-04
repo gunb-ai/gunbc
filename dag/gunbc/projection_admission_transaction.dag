@@ -11,6 +11,7 @@ import gunbc.generated_artifact {
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   committed_generated_artifacts, artifact_path,
 }
@@ -132,6 +133,33 @@ import gunbc.generated_artifact {
 // claim; it is NOT coverage for any admission behaviour, because nothing admits anything through
 // it.
 
+// TWO SPECIMENS WHERE EACH SIDE IS INDIVIDUALLY VALID AND ONLY THE COMPOSITION IS WRONG, one in
+// each structural layout of the same carrier. They are recorded here because they are stronger
+// than the cost argument above: cost is an efficiency claim and these are correctness claims.
+//
+// 2026-09-03, SHARED-CARRIER LAYOUT. main went red on a required lane because a merge took both
+// sides of an append collision on the failure-mode carrier and produced duplicate declarations.
+// The resolver refuses duplicates, so every tree carrying main lost the ability to regenerate ANY
+// projection -- main_wet could not resolve the carrier at all. Every pre-merge instrument passed,
+// because each hunk was individually legitimate; the defect existed only in the COMPOSITION and
+// was visible only to the resolver, which runs after the merge. The heal job could not have caught
+// it: it is a remediator that runs on a branch after composition exists, and on main it was
+// SKIPPED entirely.
+//
+// 2026-09-04, SPLIT LAYOUT, and this one survives the repair. The carrier was split one row per
+// file precisely to dissolve that collision. It dissolves the AUTHORING half and leaves this
+// module's half untouched: registration is still hand-asserted in a roster, so two branches can
+// each produce individually-valid trees whose composition is invalid -- the same identity sited in
+// differently-named files, or a roster entry naming a row the other side deleted. A structural
+// split also merges with RENAME-LIKE semantics, so a branch that edited the pre-split carrier can
+// have its change applied cleanly to a path that is no longer the authority: present in the tree,
+// absent from the corpus, with every registration check green because the missing row is exactly
+// what defines the population those checks range over. THIS BRANCH WAS THAT CASE, and its row was
+// re-sited rather than unioned.
+//
+// Neither specimen is an argument for a better remediator, and that is the point: in both, the
+// composed candidate was the only subject on which the defect was decidable.
+
 // ---------------------------------------------------------------------------
 // Authority and its projection
 // ---------------------------------------------------------------------------
@@ -209,6 +237,8 @@ fn projection_member_eligibility(artifact: GeneratedArtifact) -> ProjectionMembe
   match artifact {
     Stage0CrateLayoutGeneratedRsArtifact => RequiresBootstrapFixedPointArm
     V1InterpreterDispatchGeneratedRsArtifact => RequiresBootstrapFixedPointArm
+    EvaluationBudgetConsequenceGeneratedRsArtifact => RequiresBootstrapFixedPointArm
+    FileTransportRealizationGeneratedRsArtifact => RequiresBootstrapFixedPointArm
     WitnessFloorYamlArtifact => DerivableFromComposedAuthority
     FleetConvergeYamlArtifact => DerivableFromComposedAuthority
     FleetDesiredAdmissionYamlArtifact => DerivableFromComposedAuthority
