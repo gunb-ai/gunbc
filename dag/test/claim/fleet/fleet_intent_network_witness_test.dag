@@ -1,5 +1,7 @@
 module test.claim.fleet_intent_network
 
+import extdeps.dhcp.v4 { Active }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
