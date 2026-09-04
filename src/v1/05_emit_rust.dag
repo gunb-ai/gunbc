@@ -3210,7 +3210,12 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
-  let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
+  let cargo = emit_cargo_toml(
+    crate_name: crate_name,
+    demand: EmittedCrateDependencyDemand {
+      renders_clap_cli: has_pipeline || (workflow_funcs |> count > 0),
+      renders_async_services: has_services
+    })
   let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
@@ -14959,9 +14964,29 @@ fn emit_cargo_dep_no_default_features(name: String, version: String, features: L
   concat(name, " = { version = \"", version, "\", default-features = false, features = [", feat_strs |> join(separator: ", "), "] }\n")
 }
 
-fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
-  let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
-  let workspace = "\n[workspace]\n"
+// WHAT THE EMITTED CRATE DEPENDS ON IS DERIVED FROM WHAT WAS EMITTED, NOT DECLARED BESIDE IT.
+//
+// A fixed dependency list is a SECOND AUTHORITY for the crate's dependencies, free to disagree
+// with the sources the same run just wrote. It did disagree: `clap` was declared unconditionally
+// while the only two things that render `use clap` -- the derived CLI over workflow functions and
+// the generated pipeline dispatch -- are both selected by the emission itself, so every crate
+// emitted from a corpus with neither declared a dependency no emitted line referenced. DESIGN
+// section 5 prefers construction over validation, and the construction here is to make the demand
+// a FIELD THE EMISSION FILLS rather than a literal a reader must check against the output.
+//
+// THE RESIDUE IS NAMED RATHER THAN CLAIMED CLOSED. `ureq` sits in the base list on the same
+// footing `clap` used to: it is referenced only when a corpus reaches the HTTP extdep, and nothing
+// in this function's inputs says whether it did. It is not conditioned here because inventing a
+// predicate from the emitted TEXT would be a scan standing where a structural fact belongs.
+// NEXT-RUNG TRIGGER: an emission-level demand fact per external crate -- the renderer that emits a
+// `ureq` call recording that it did -- at which point this carrier gains one field per dependency
+// and the base list holds only what every emitted crate genuinely links.
+type EmittedCrateDependencyDemand {
+  renders_clap_cli: Bool
+  renders_async_services: Bool
+}
+
+fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<String> {
   let base_deps = [
     emit_cargo_dep(name: "im", version: "15.1", features: ["serde"]),
     emit_cargo_dep(name: "unicode-ident", version: "1", features: []),
@@ -14969,18 +14994,26 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
     emit_cargo_dep(name: "serde_json", version: "1", features: []),
     emit_cargo_dep(name: "stacker", version: "0.1", features: []),
-    emit_cargo_dep(name: "clap", version: "4", features: ["derive"]),
     emit_cargo_dep(name: "lazy_static", version: "1", features: []),
     emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
   ]
-  let async_deps = if has_services {
+  let cli_deps = if demand.renders_clap_cli {
+    [emit_cargo_dep(name: "clap", version: "4", features: ["derive"])]
+  } else { [] }
+  let async_deps = if demand.renders_async_services {
     [
       emit_cargo_dep(name: "tokio", version: "1", features: ["full"]),
       emit_cargo_dep_no_default_features(name: "reqwest", version: "0.12", features: ["json", "rustls-tls", "http2", "charset"]),
       emit_cargo_dep(name: "async-trait", version: "0.1", features: [])
     ]
   } else { [] }
-  let all_deps = concat(base_deps, async_deps)
+  concat(base_deps, concat(cli_deps, async_deps))
+}
+
+fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> TextFile {
+  let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
+  let workspace = "\n[workspace]\n"
+  let all_deps = emitted_crate_dependency_lines(demand: demand)
   TextFile { path: "Cargo.toml", content: concat(header, workspace, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
 
@@ -15609,13 +15642,7 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
   if workflow_funcs |> count == 0 && has_pipeline == false {
-    return TextFile {
-      path: concat(rust_source_root(), "main", rust_source_ext()),
-      content: concat(
-        "// Generated by v1 compiler -- do not edit.\n\n",
-        "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
-        "fn main() {}\n")
-    }
+    return emit_entry_point_absent_main_rs(crate_name: crate_name)
   }
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
   let binary_name = if has_pipeline { "gunbc" } else { crate_name }
@@ -15644,6 +15671,56 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     diagnostic_fns
   )
   TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
+}
+
+// THE ENTRY POINT A PIPELINE-FREE CORPUS GETS, AND WHY IT REFUSES RATHER THAN RETURNING.
+//
+// This arm used to emit `fn main() {}`. That crate builds, runs, exits zero and does nothing --
+// a fabricated plausible output at exactly the place DESIGN section 7 says self-hosting is proven
+// BY EXECUTION. A reader who runs the emitted binary and sees a clean exit has been told the
+// emitted program worked; what actually happened is that no entry point existed to run. The
+// failure arm must refuse, never widen (DESIGN section 5), and the refusal must be countable:
+// silence cannot be joined to anything, so the gap never ranks for closing.
+//
+// THE REFUSAL SAYS WHICH OF TWO ABSENCES HELD, because a corpus reaches this arm two ways -- it
+// declares no `workflow` function, and it carries no compiler pipeline module -- and a repair acts
+// on one of them. The sibling arm twenty lines below already refuses this way per verb
+// (emit_candidate_cli_host renders every CliDispatchHost method as a located refusal and exit 2),
+// so this is the emitter's own convention applied to the arm that was exempt from it, not a new
+// one. Exit 2 is that same convention's status.
+//
+// WHAT THIS IS NOT. It does not make the emitted crate executable, and it must not be read as
+// progress toward section 7's equivalence receipt. The verb that would carry that receipt is
+// Compile, whose realization in gunbc.cli_dispatch_surface is CliRetainedHostKernel, and that
+// kernel is a DECLARED BOUNDARY owned by gunbc.cli_wire_host_admission -- the subject is a host
+// process's stdout bytes and exit status reached from a returned interpreter Value, and neither
+// end has a .dag denotation today. This arm converts a silent zero into a refusal a census can
+// count; the boundary is what has to move for the crate to run compile at all.
+fn emit_entry_point_absent_main_rs(crate_name: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+      "fn main() {\n",
+      "    eprintln!(\"", entry_point_absent_refusal_text(crate_name: crate_name), "\");\n",
+      "    std::process::exit(2);\n",
+      "}\n")
+  }
+}
+
+// The refusal marker is ONE authority with two readers -- the emitted binary prints it and the
+// receipt that runs that binary matches on it -- so a receipt cannot go green against a message
+// the emitter stopped producing.
+fn entry_point_absent_refusal_marker() -> String {
+  "REFUSED: emitted crate declares no entry point"
+}
+
+fn entry_point_absent_refusal_text(crate_name: String) -> String {
+  concat(
+    entry_point_absent_refusal_marker(),
+    " -- crate ", crate_name,
+    " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run")
 }
 
 fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String) -> String {
