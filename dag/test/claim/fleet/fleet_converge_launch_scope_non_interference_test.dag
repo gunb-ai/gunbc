@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { serialize_content_hash }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_converge_plan {
@@ -158,6 +158,7 @@ fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
     observed_slots: slots,
     observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   }
 }
 
@@ -191,6 +192,7 @@ test fn a_smuggled_activation_readiness_changes_nothing_in_the_launch_projection
       host: host_srv1,
       observed_timers: [],
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     },
   )
 }
@@ -229,6 +231,7 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
       observed_slots: [],
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     },
   )
 }
@@ -259,6 +262,7 @@ test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
         observed_slots: [],
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       },
       prior_generation: 0,
       spark_rows: scheduled_rows_empty(),
@@ -281,6 +285,7 @@ test fn all_four_foreign_axes_smuggled_together_change_nothing_in_the_launch_pro
       observed_caps: [],
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     },
   )
 }
@@ -297,6 +302,7 @@ test fn the_launch_terminal_stays_fully_applied_under_the_full_smuggled_populati
       observed_caps: [],
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     },
   ) {
     FullyApplied => true
@@ -324,6 +330,7 @@ test fn the_smuggled_launch_projection_emits_no_foreign_axis_section_or_counter(
       observed_caps: [],
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
     },
   )
   string_contains(s: s, pattern: "# apply-terminal:")

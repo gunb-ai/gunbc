@@ -83,7 +83,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifactOutcome,
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.spark.serving_converge_plan {
   spark_serving_scheduled_rows_for,
   spark_serving_axis_for_observation,
@@ -1377,6 +1377,7 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   ) {
     FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: a } =>
@@ -1588,6 +1589,7 @@ fn artifact_outcome_for(
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   )
 }
 

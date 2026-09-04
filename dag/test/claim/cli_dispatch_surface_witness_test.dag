@@ -129,12 +129,55 @@ test fn interpreter_first_returns_the_modeled_optional() -> Bool {
 }
 
 // The bootstrap execution class is not an author-selectable tag over an arbitrary
-// DeclarationRef. Its sole admitted identity projects to the whole product-build declaration;
-// ordinary target producers have no constructor in this closed population.
-test fn bootstrap_successor_admission_is_closed_over_the_product_build_operation() -> Bool {
-  let operation = admitted_bootstrap_operation_declaration(identity: GunbcProductBuildBootstrapOperation {})
-  operation == gunbc_build_operation_ref()
-    && operation.field == WholeDeclaration
+// DeclarationRef. Its admitted identities project to whole declarations -- the product build and
+// the fleet converge operation -- and ordinary target producers have no constructor in this
+// closed population.
+test fn bootstrap_successor_admission_is_closed_over_the_admitted_operations() -> Bool {
+  let build = admitted_bootstrap_operation_declaration(identity: GunbcProductBuildBootstrapOperation {})
+  let converge = admitted_bootstrap_operation_declaration(identity: GunbcFleetConvergeOperation {})
+  build == gunbc_build_operation_ref()
+    && build.field == WholeDeclaration
+    && converge == gunbc_fleet_converge_operation_ref()
+    && converge.field == WholeDeclaration
+    && converge.module_path == "gunbc.fleet_converge_plan_cli"
+}
+
+// EVERY BOUND FIELD IS A FIELD THE ROW DECLARES, on both bindings. The emitter spells each
+// binding's field into the generated match arm; a binding naming a field the row does not carry
+// is a Rust compile error one regen round later, which is late and reads as an emitter defect. It
+// is caught here, at the row, where it is a modeling defect.
+fn bootstrap_binding_fields_are_row_fields(verb: String, binding: CliBootstrapDagOperationBinding) -> Bool {
+  let rows = gunbc_cli_subcommands() |> filter(sub => sub.verb == verb)
+  (rows |> count) == 1
+    && (rows |> all(sub => {
+      let fields = modeled_subcommand_bound_fields(sub: sub)
+      (binding.public_operands |> all(b => fields |> any(f => f == b.operand_field)))
+        && (binding.public_options |> all(b => fields |> any(f => f == b.option_field)))
+    }))
+}
+
+test fn the_build_binding_names_only_fields_the_build_row_declares() -> Bool {
+  bootstrap_binding_fields_are_row_fields(verb: "build", binding: gunbc_build_operation_binding())
+}
+
+test fn the_converge_binding_names_only_fields_the_converge_row_declares() -> Bool {
+  bootstrap_binding_fields_are_row_fields(verb: "converge", binding: gunbc_fleet_converge_operation_binding())
+    && (gunbc_fleet_converge_operation_binding().public_options |> count) == 7
+}
+
+// THE CONVERGE VERB LEFT THE UNWIRED ARM. This is the discriminating half of the wiring: the row
+// now selects the bootstrap realization, and the unwired successor it used to name is gone.
+test fn the_converge_verb_invokes_a_bootstrap_dag_operation() -> Bool {
+  gunbc_cli_subcommands()
+    |> filter(sub => sub.verb == "converge")
+    |> all(sub => match sub.realization {
+      CliInvokesBootstrapDagOperation { binding: b } => b.operation == GunbcFleetConvergeOperation {}
+      CliInvokesBoundTargetProducer => false
+      CliDelegatesToHostFn { symbol: _ } => false
+      CliRetainedHostKernel => false
+      CliRefusesUnwired { successor: _ } => false
+      CliKnownOperationNoRealization { operation: _ } => false
+    })
 }
 
 fn occurrences(names: List<String>, needle: String) -> Int {
