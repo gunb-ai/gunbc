@@ -3656,50 +3656,6 @@ mod compiler_tests {
         );
     }
 
-    #[test]
-    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {
-        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;
-        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {
-            cause: crate::v1_compiler_infer::RecordLitUnavailableCause::GenericArityDisagreement,
-        });
-        assert!(
-            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),
-            "SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced"
-        );
-        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(
-            unavailable.clone(),
-            false,
-            named_type_node("Thing"),
-            crate::v1_std_core::no_span(),
-            "probe.module".to_string(),
-            std::rc::Rc::new(HashMap::new()),
-        );
-        assert_eq!(
-            diags.len(),
-            1,
-            "SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place"
-        );
-        match &*diags[0].diagnostic {
-            crate::v1_std_core::CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}
-            other => panic!(
-                "the unavailable arm emitted an unexpected diagnostic: {:?}",
-                other
-            ),
-        }
-        assert!(
-            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
-                RLI::InstantiationNotApplicable
-            )),
-            "POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives"
-        );
-        assert!(
-            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
-                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }
-            )),
-            "POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer"
-        );
-    }
-
     fn narrowing_refusals_for(src: &str) -> usize {
         let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
             path: "probe.dag".to_string(),

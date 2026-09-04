@@ -913,7 +913,6 @@ fn ct_coercion_tests() -> String {
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
     ct_optional_narrowing_undetermined_test(),
-    ct_instantiation_unavailable_refuses_fallback_test(),
     ct_production_seam_narrowing_tests(),
     ct_witness_carrier_declines_non_witness_expected_type_test())
 }
@@ -941,28 +940,24 @@ fn ct_coercion_tests() -> String {
 // It is the only artifact that will tell a future reader the decline must stay OBSERVABLE:
 // optional_narrowing_refuses and optional_into_required_error were both deleted by the climb, so no
 // production code carries that history any more.
-// PRODUCTION-SEAM EVIDENCE, NOT HELPER EVIDENCE, and the distinction is the whole point of these
-// two cells. The earlier narrowing cells construct RecordLitInstantiation and Node values directly
-// and call the judging helpers, so deleting the production CONSUMER of those helpers would leave
-// them green: they establish that the helpers can answer, not that either seam supplies the right
-// input or keeps consuming the answer.
+// PRODUCTION-SEAM EVIDENCE, NOT HELPER EVIDENCE, and the distinction is the whole point of this
+// cell. The earlier narrowing cells construct Node values directly and call the judging helper, so
+// deleting the production CONSUMER of that helper would leave them green: they establish that the
+// helper can answer, not that the seam supplies it the right input or keeps consuming the answer.
 //
-// These compile AUTHORED SOURCE through compile_sources, so the judgment is reached the way a real
+// These compile AUTHORED SOURCE through compile_sources, so the judgment is reached the way a
 // program reaches it -- through direct-call application inference and through record-literal
 // structural inference respectively. Each carries its own GREEN control on the same path, because a
 // refusing fixture with no accepting twin cannot distinguish "the wall fired" from "this path
 // refuses everything".
 //
-// WHAT THESE DELIBERATELY DO NOT COVER: a genuine InstantiationUnavailable. That state was probed
-// from fifteen authored shapes -- wrong generic arity, unresolved type names, type aliases, nested
-// generics, generic coproducts, a record literal naming a type incompatible with its expected type,
-// and a literal naming a non-variant where a coproduct is expected -- and not one of them reaches
-// it. Every route is either refused by an earlier wall or lands in a position the floor does not
-// check at all: `fn f() -> Box<Int> { Crate { stored: 1 } }` compiles with zero diagnostics, while
-// the primitive control `fn f() -> Int { "s" }` is refused. So the third constructor's RED is not
-// authorable at this seam, and the reason is the separately-routed return-position inhabitance
-// defect rather than anything these fixtures could express. Enrolled as
-// gunbc.guarantee_stall.instantiation_unavailable_unreachable_stall.
+// SCOPE, AND THE DISTINCTION IS NARROWER THAN THE FUNCTION THEY RUN IN. Both cells judge an
+// optional value flowing into a position whose required type is ALREADY KNOWN -- a declared field
+// of a declared record, concrete or generically instantiated. Neither says anything about the case
+// where the expected field template could not be selected at all: that is record-literal
+// INSTANTIATION UNAVAILABILITY, a different question with its own classification, gate, cause
+// carrier and fixtures, none of which are in this change. A reader must not take the green here as
+// evidence that the unavailable arm is judged, because it is not judged here at all.
 fn ct_production_seam_narrowing_tests() -> String {
   concat(
     "    fn narrowing_refusals_for(src: &str) -> usize {\n",
@@ -1038,51 +1033,6 @@ fn ct_production_seam_narrowing_tests() -> String {
     "        result.expect(\"optional_into_required_refuses_through_record_literal_inference panicked\");\n",
     "    }\n",
     "\n")
-}
-
-fn ct_instantiation_unavailable_refuses_fallback_test() -> String {
-  concat(
-    "    #[test]\n",
-    "    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {\n",
-    "        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;\n",
-    "        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {\n",
-    "            cause: crate::v1_compiler_infer::RecordLitUnavailableCause::GenericArityDisagreement,\n",
-    "        });\n",
-    "        assert!(\n",
-    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),\n",
-    "            \"SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced\"\n",
-    "        );\n",
-    "        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(\n",
-    "            unavailable.clone(),\n",
-    "            false,\n",
-    "            named_type_node(\"Thing\"),\n",
-    "            crate::v1_std_core::no_span(),\n",
-    "            \"probe.module\".to_string(),\n",
-    "            std::rc::Rc::new(HashMap::new()),\n",
-    "        );\n",
-    "        assert_eq!(\n",
-    "            diags.len(),\n",
-    "            1,\n",
-    "            \"SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place\"\n",
-    "        );\n",
-    "        match &*diags[0].diagnostic {\n",
-    "            crate::v1_std_core::CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}\n",
-    "            other => panic!(\"the unavailable arm emitted an unexpected diagnostic: {:?}\", other),\n",
-    "        }\n",
-    "        assert!(\n",
-    "            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
-    "                RLI::InstantiationNotApplicable\n",
-    "            )),\n",
-    "            \"POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives\"\n",
-    "        );\n",
-    "        assert!(\n",
-    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
-    "                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }\n",
-    "            )),\n",
-    "            \"POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer\"\n",
-    "        );\n",
-    "    }\n\n",
-  )
 }
 
 fn ct_optional_narrowing_undetermined_test() -> String {
