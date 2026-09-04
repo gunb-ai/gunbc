@@ -3157,6 +3157,8 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
     json_kv(key: "verified", value: json_int(n: belt_tick_verify_recorded_count(t: t))),
     json_kv(key: "verify_outcomes", value: json_array(elements: t.verify_outcomes |> map(o => belt_verify_outcome_json(o: o)))),
+    json_kv(key: "commit_outcomes", value: json_array(elements: t.commit_outcomes |> map(o => belt_commit_outcome_json_value(o: o)))),
+    json_kv(key: "publish_outcomes", value: json_array(elements: t.publish_outcomes |> map(o => belt_publish_outcome_json_value(o: o)))),
   ])
 }
 
@@ -4146,6 +4148,19 @@ fn belt_commit_attempt_for_instance(
               CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecRefused { program: program, reason: reason }) }
           }
       }
+  }
+}
+
+fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
+  match o {
+    CommitRecorded { node_id, message } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "message", value: json_string(s: message))])
+    CommitSkipped { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+    CommitFailed { node_id, detail } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
+    CommitDeferred { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
 
