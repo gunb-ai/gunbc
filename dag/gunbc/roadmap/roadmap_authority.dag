@@ -3489,9 +3489,21 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // worth enforcing would be enforced at MINT time by construction, not by editing identities already
 // in the graph.
 
+fn node_sizing_is_declared(n: RoadmapNode) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+  }
+}
+
+// AN UNSIZED NODE IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the task to write its
+// closing check. Before this filter a ticket_row (Unsized) still minted a Sized closing-contract task
+// that sat in Ready, so parking a node by unsizing it moved the node out of Ready and put a task
+// for it straight back in (operator observation, 2026-09-04).
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_sizing_is_declared(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }
