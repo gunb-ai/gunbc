@@ -8,8 +8,9 @@ import gunbc.rung_drop {
   RungDrop, TypedDeclaration, DeletedWithoutReplacement, Standing,
   rung_drop_declaration_message, rung_drop_off_ladder_judgment,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
-  source_root_ingest_gate_rung_drop, floor_cut_heal,
 }
+import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
+import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
 
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
