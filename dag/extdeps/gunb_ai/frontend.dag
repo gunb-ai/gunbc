@@ -141,15 +141,31 @@ data gunb_stoic_giant_mark: StoicGiantMark = StoicGiantMark {
 //
 // At 60 mm wide each frame tenth is exactly 50 um, which is why that width is the one declared below
 // rather than a rounder-sounding number that would not divide.
+// THE RATIO IS SEALED, WHICH IS WHAT MAKES THE REFUSAL STRUCTURAL RATHER THAN ADVISORY.
+//
+// A previous form of this carried the ratio as a bare Nat and relied on an annotation saying that
+// only the exact arm could supply one. Review found the hole: any caller could pass 0, or any
+// invented number, straight to the scaling function. The producer was disciplined and the CONSUMER
+// ACCEPTED A FORGEABLE PROJECTION OF THE CAPABILITY -- the same class as a bare-geometry emitter
+// entry point, one module over.
+//
+// MarkScaleRatio is sole_constructor, so it can be built only here, and the only construction site
+// is inside mark_scale_for_width's exact arm. A caller can destructure MarkScaleExact to obtain one
+// and hand it on -- that is the intended route -- but cannot manufacture one, so a fabricated ratio
+// has no constructor rather than being merely discouraged.
+type MarkScaleRatio sole_constructor { micrometres_per_tenth: Nat }
+
+fn mark_scale_ratio_value(r: MarkScaleRatio) -> Nat { r.micrometres_per_tenth }
+
 type MarkScale
-  = MarkScaleExact { micrometres_per_tenth: Nat }
+  = MarkScaleExact { ratio: MarkScaleRatio }
   | MarkScaleNotDivisible { requested_width: Micrometer, frame_span: Nat, remainder: Nat }
 
 fn mark_scale_for_width(width: Micrometer) -> MarkScale {
   let w = micrometer_count(m: width)
   let r = w - ((w / mark_frame_span) * mark_frame_span)
   if r == 0 {
-    MarkScaleExact { micrometres_per_tenth: w / mark_frame_span }
+    MarkScaleExact { ratio: MarkScaleRatio { micrometres_per_tenth: w / mark_frame_span } }
   } else {
     MarkScaleNotDivisible { requested_width: width, frame_span: mark_frame_span, remainder: r }
   }
@@ -166,6 +182,6 @@ fn mark_scale_for_width(width: Micrometer) -> MarkScale {
 // The repair is not a better refusal in that arm. It is to make the arm unwritable: the ratio can
 // only be obtained by destructuring MarkScale, and only MarkScaleExact carries one. An inexact scale
 // has nothing to hand this function, so there is no bad call to guard against.
-fn scale_frame_length(micrometres_per_tenth: Nat, l: MarkFrameLength) -> Micrometer {
-  micrometer(count: frame_length_tenths(l: l) * micrometres_per_tenth)
+fn scale_frame_length(ratio: MarkScaleRatio, l: MarkFrameLength) -> Micrometer {
+  micrometer(count: frame_length_tenths(l: l) * mark_scale_ratio_value(r: ratio))
 }

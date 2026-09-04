@@ -8,7 +8,8 @@ import extdeps.gunb_ai.frontend {
   MarkFeature, MarkRoundedRect, MarkCircle,
   mark_body, mark_eye_left, mark_eye_right, mark_mouth,
   StoicGiantMark, gunb_stoic_giant_mark,
-  MarkScale, MarkScaleExact, MarkScaleNotDivisible, mark_scale_for_width, scale_frame_length,
+  MarkScale, MarkScaleExact, MarkScaleNotDivisible, MarkScaleRatio, mark_scale_ratio_value,
+  mark_scale_for_width, scale_frame_length,
 }
 
 // THE TRANSFORM IS THE THING MOST LIKELY TO BE WRONG, so it is asserted at both ends. The SVG
@@ -46,9 +47,9 @@ test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
 test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> Bool {
   match mark_scale_for_width(width: micrometer(count: 60000)) {
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
-    MarkScaleExact { micrometres_per_tenth: per } =>
-      per == 50
-        && micrometer_count(m: scale_frame_length(micrometres_per_tenth: per, l: frame_length(tenths: mark_frame_span))) == 60000
+    MarkScaleExact { ratio: per } =>
+      mark_scale_ratio_value(r: per) == 50
+        && micrometer_count(m: scale_frame_length(ratio: per, l: frame_length(tenths: mark_frame_span))) == 60000
   }
 }
 
@@ -57,7 +58,7 @@ test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> B
 // independently and a circle would stop being concentric with the opening it sits in.
 test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
   match mark_scale_for_width(width: micrometer(count: 50000)) {
-    MarkScaleExact { micrometres_per_tenth: per } => false
+    MarkScaleExact { ratio: per } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } =>
       r == 800 && s == mark_frame_span && micrometer_count(m: w) == 50000
   }
