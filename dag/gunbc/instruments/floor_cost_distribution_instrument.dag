@@ -851,11 +851,34 @@ fn floor_cost_crossing_check() -> ProcessExit {
 // THE CONSTRUCTION IS AVAILABLE AND THE TRIGGER NAMES IT, so this does not stall silently. The
 // artifacts endpoint that already serves `artifact_id` also serves `workflow_run.head_sha` in the
 // SAME response, and that field is byte-identical across two attempts of one run -- which is exactly
-// and only the fact this guard needs. Grounding it requires an artifacts operation on the modeled
-// upstream: `extdeps.github.actions_runs` models `WorkflowRunRecord` and the run-conclusion
-// vocabulary but carries NO artifacts listing and no `head_sha` field, so the trigger is that
-// operation existing and `FloorAttemptRef.head` resolving THROUGH it instead of from this literal.
-// Until then the field is an authored claim and must not be cited as proof the pair is one tree.
+// and only the fact this guard needs. It is a RUN-grain fact and that is not a shortfall: "are these
+// two artifacts from one tree" is a run-grain question, so the run-grain answer is exact for it.
+//
+// THE TRIGGER: an ARTIFACTS LISTING operation on `extdeps.github.workflow_runs`, and
+// `FloorAttemptRef.head` resolving THROUGH it instead of from this literal. Only the listing is
+// missing -- that module already models `WorkflowRun.head_sha` as a `CommitSha` and already carries
+// an operation keyed on `head_sha` that puts it on the wire, so the head half of this capability
+// exists and is typed.
+//
+// AND THE TRIGGER NAMES THAT MODULE RATHER THAN `extdeps.github.actions_runs` DELIBERATELY. Both
+// modules declare the SAME upstream authority -- locator
+// `docs.github.com/en/rest/actions/workflow-runs`, character for character -- so by the tree's own
+// declarations they are one upstream concept with two authorities, and they have grown two type
+// families for it: `RunConclusion` (10 variants) beside `WorkflowRunConclusion` (8), and
+// `WorkflowRunRecord` (stringly `status`/`conclusion`, epoch `Int` timestamps, no head) beside
+// `WorkflowRun` (`CommitSha`, `WorkflowRunStatus`, `Timestamp`). The fork is UNDECLARED: that
+// module's `conclusion_authority_consolidation_frontier_rows` is about a genuinely different pair
+// -- `WorkflowRunConclusion` against `CheckConclusion` from the CHECKS api -- and says nothing about
+// these two, which are not different APIs at all.
+//
+// THIS COMMENT DOES NOT FIX THAT AND MUST NOT BE READ AS DECLARING IT. It records only what the
+// trigger has to avoid: building the artifacts operation onto the stringly module would satisfy this
+// trigger while deepening a fork over one cited spec, and DESIGN section 3 says a fork always gets
+// consolidated later -- so that arm is deferred cost rather than a shortcut. Consolidating the two
+// is its own change against that upstream's authority, with its own review.
+//
+// Until the listing lands, this field is an authored claim and must not be cited as proof the pair
+// is one tree.
 //
 // THE ARTIFACT ID IS CARRIED BECAUSE IT IS THE ONLY THING THAT ADDRESSES AN ATTEMPT. GitHub serves
 // no per-attempt artifacts endpoint: a re-run's upload lands as a SECOND artifact under the SAME
