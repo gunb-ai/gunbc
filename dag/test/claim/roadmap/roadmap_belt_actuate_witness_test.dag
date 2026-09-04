@@ -58,6 +58,7 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema }
 import gunbc.roadmap_belt_actuate {
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
@@ -1256,6 +1257,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyRecorded {
         node_id: "v2-emitter-producer-provenance",
@@ -1287,6 +1289,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyDeferred {
         node_id: "node-a",
@@ -1337,6 +1340,8 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [
         VerifyRecorded {
           node_id: "v2-emitter-producer-provenance",
@@ -1364,6 +1369,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1381,6 +1387,7 @@ test fn verification_presentation_verify_failed_is_failed() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassFailed { reason: "validation verdict failed" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1401,10 +1408,11 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   let raw = join([
-    "{\"schema\":\"roadmap-belt-tick-receipt/v3\",",
+    "{\"schema\":\"", belt_tick_receipt_schema, "\",",
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"commit_pass\":{\"outcome\":\"recorded\"},",
     "\"verify_pass\":{\"outcome\":\"refused\"},",
     "\"publish_pass\":{\"outcome\":\"recorded\"}}",
   ], "")
@@ -2219,6 +2227,8 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [],
       publish_outcomes: [],
     },
@@ -2236,6 +2246,8 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
       publish_outcomes: [],
     },

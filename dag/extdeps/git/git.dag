@@ -805,6 +805,18 @@ fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
 }
 
+fn shape_git_status_porcelain_nul_args() -> List<String> {
+  ["status", "--porcelain", "-z"]
+}
+
+fn shape_git_add_all_args() -> List<String> {
+  ["add", "-A"]
+}
+
+fn shape_git_commit_message_args(message: String) -> List<String> {
+  ["commit", "-q", "-m", message]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),

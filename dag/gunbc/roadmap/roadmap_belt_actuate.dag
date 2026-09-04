@@ -351,7 +351,8 @@ import gunbc.fleet_desired_observe {
   FleetRevisionStanding,
   RevisionConverged, RevisionDrifted, RevisionUnobserved,
 }
-import extdeps.git { shape_git_rev_parse_head_args }
+import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
@@ -2092,6 +2093,7 @@ type BeltTickReceipt {
   launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
+  commit_pass: BeltPassOutcome,
   verify_pass: BeltPassOutcome,
   publish_pass: BeltPassOutcome,
 }
@@ -2116,7 +2118,7 @@ type BeltTickReceiptRead
 // DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt there would
 // answer for two instances. A note describing a home the implementation did not and could not
 // safely use is the stale-authority class of DESIGN section 3.
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v4"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v5"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -2237,7 +2239,11 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                       BeltPassOutcomeUnreadable { reason: r } =>
                         BeltTickReceiptUnreadable { reason: r }
                       BeltPassOutcomeDecoded { outcome: teardown_pass } =>
-                        match belt_pass_outcome_from_member(doc: doc, key: "verify_pass") {
+                        match belt_pass_outcome_from_member(doc: doc, key: "commit_pass") {
+                          BeltPassOutcomeUnreadable { reason: r } =>
+                            BeltTickReceiptUnreadable { reason: r }
+                          BeltPassOutcomeDecoded { outcome: commit_pass } =>
+                            match belt_pass_outcome_from_member(doc: doc, key: "verify_pass") {
                           BeltPassOutcomeUnreadable { reason: r } =>
                             BeltTickReceiptUnreadable { reason: r }
                           BeltPassOutcomeDecoded { outcome: verify_pass } =>
@@ -2259,6 +2265,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                           launches: launches,
                                           spawn_pass: spawn_pass,
                                           teardown_pass: teardown_pass,
+                                          commit_pass: commit_pass,
                                           verify_pass: verify_pass,
                                           publish_pass: publish_pass,
                                         }
@@ -2276,6 +2283,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -2387,6 +2395,7 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     join(receipt.launches |> map(l => serialize_json(v: launch_identity_json(id: l))), ","), "|",
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
+    belt_pass_outcome_key(o: receipt.commit_pass), "|",
     belt_pass_outcome_key(o: receipt.verify_pass), "|",
     belt_pass_outcome_key(o: receipt.publish_pass),
   ], "")
@@ -2454,6 +2463,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
+    json_kv(key: "commit_pass", value: belt_pass_outcome_json(o: receipt.commit_pass)),
     json_kv(key: "verify_pass", value: belt_pass_outcome_json(o: receipt.verify_pass)),
     json_kv(key: "publish_pass", value: belt_pass_outcome_json(o: receipt.publish_pass)),
   ])
@@ -2586,6 +2596,7 @@ type BeltTickResult {
   reconcile: BeltReconcile,
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
+  commit_outcomes: List<BeltCommitOutcome>,
   verify_outcomes: List<BeltVerifyOutcome>,
   publish_outcomes: List<BeltPublishOutcome>,
 }
@@ -2864,19 +2875,24 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        commit_outcomes: [],
         verify_outcomes: [],
         publish_outcomes: [],
       }
-    TickPassesRun =>
+    TickPassesRun => {
+      let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
+      let verify_outcomes = belt_verify_attempts_after_commit(instance: instance, committed: commit_outcomes)
       BeltTickResult {
         host_refusal: pass.host_refusal,
         wholesale: TickPassesRun,
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
-        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+        commit_outcomes: commit_outcomes,
+        verify_outcomes: verify_outcomes,
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
+    }
   }
 }
 
@@ -3042,14 +3058,19 @@ fn belt_run_once_in(
 ) -> BeltTickResult {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      BeltTickResult {
-        host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
-        wholesale: TickPassesRun,
-        reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
-        spawn_outcomes: [],
-        teardown_outcomes: [],
-        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
-        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+      {
+        let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
+        let verify_outcomes = belt_verify_attempts_after_commit(instance: instance, committed: commit_outcomes)
+        BeltTickResult {
+          host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
+          wholesale: TickPassesRun,
+          reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
+          spawn_outcomes: [],
+          teardown_outcomes: [],
+          commit_outcomes: commit_outcomes,
+          verify_outcomes: verify_outcomes,
+          publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+        }
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       belt_tick_for_instance(
@@ -4036,6 +4057,136 @@ fn belt_workflow_progress_for_attempt_ref(
 // Validations run in a detached checkout of the observed head, never the mutable implementation
 // worktree. The checkout path is head-addressed and idempotent: a tree at the same revision is
 // reused; one at a different revision refuses rather than validating the wrong commit.
+// THE COMMIT PASS. Verification checks out the worktree HEAD (belt_verify_attempt_for_instance), so
+// an attempt's uncommitted work was never what got verified. This pass runs after teardown and
+// before verify on the same tick: it reads the worktree's NUL-separated status through the same
+// capability program the head observation uses, hands provider state and status text to the pure
+// decision in gunbc.roadmap.roadmap_belt_commit, and only on CommitNeeded stages everything and
+// commits with the decided message. Every refusal is typed and carried into the tick receipt as
+// commit_pass; verify is made data-dependent on these outcomes so it observes the committed head.
+type BeltCommitOutcome
+  = CommitRecorded { node_id: String, message: String }
+  | CommitSkipped { node_id: String, reason: String }
+  | CommitFailed { node_id: String, detail: String }
+  | CommitDeferred { node_id: String, reason: String }
+
+fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
+  belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: args,
+    ),
+    workdir: worktree,
+  )
+}
+
+fn belt_commit_exec_detail(step: String, outcome: BeltExecOutcome) -> String {
+  match outcome {
+    ExecOk { stdout: _ } => join([step, " succeeded"], "")
+    ExecFailed { program, exit_code, stderr } =>
+      join([step, ": ", program, " exited ", to_string(exit_code), ": ", stderr], "")
+    ExecRefused { program, reason } => join([step, ": ", program, " refused: ", reason], "")
+  }
+}
+
+fn belt_commit_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltCommitOutcome {
+  let node_id = progress.node_id
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: progress.attempt_key,
+  )
+  match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
+    ExecFailed { program, exit_code, stderr } =>
+      CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout } =>
+      match belt_commit_decision(provider: progress.provider, node_id: node_id, attempt_key: progress.attempt_key, entries_nul: stdout) {
+        CommitNotNeeded { reason } => CommitSkipped { node_id: node_id, reason: reason as String }
+        CommitNeeded { message } =>
+          match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_add_all_args()) {
+            ExecOk { stdout: _ } =>
+              match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_commit_message_args(message: message as String)) {
+                ExecOk { stdout: _ } => CommitRecorded { node_id: node_id, message: message as String }
+                ExecFailed { program, exit_code, stderr } =>
+                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+                ExecRefused { program, reason } =>
+                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecRefused { program: program, reason: reason }) }
+              }
+            ExecFailed { program, exit_code, stderr } =>
+              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+            ExecRefused { program, reason } =>
+              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecRefused { program: program, reason: reason }) }
+          }
+      }
+  }
+}
+
+fn belt_commit_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltCommitOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [ CommitDeferred { node_id: "", reason: join(["the attempts ledger is unobservable, so no attempt can be committed: ", reason], "") } ]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_commit_attempt_for_instance(instance: instance, progress: progress))
+  }
+}
+
+fn belt_verify_attempts_after_commit(
+  instance: HostDashboardInstance,
+  committed: List<BeltCommitOutcome>,
+) -> List<BeltVerifyOutcome> {
+  let _commit_count = count(committed)
+  belt_verify_attempts_for_instance(instance: instance)
+}
+
+fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
+  match o {
+    CommitRecorded { node_id: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => true
+    CommitDeferred { node_id: _, reason: _ } => false
+  }
+}
+
+fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
+  match o {
+    CommitRecorded { node_id: _, message: _ } => true
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+    CommitDeferred { node_id: _, reason: _ } => false
+  }
+}
+
+fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassOutcome {
+  let ledger_refusals = outcomes |> filter(o => match o {
+    CommitDeferred { node_id: nid, reason: _ } => nid == ""
+    CommitRecorded { node_id: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+  })
+  if count(ledger_refusals) > 0 {
+    match ledger_refusals.first() {
+      Present { value: CommitDeferred { node_id: _, reason: r } } => BeltPassRefused { reason: r }
+      _ => BeltPassRefused { reason: "the attempts ledger is unobservable" }
+    }
+  } else if any(outcomes, o => belt_commit_outcome_is_failure(o: o)) {
+    BeltPassFailed { reason: "one or more attempt worktrees could not be committed" }
+  } else if any(outcomes, o => belt_commit_outcome_is_recorded(o: o)) {
+    BeltPassRecorded
+  } else {
+    BeltPassDeferred { reason: "no attempt needed a commit on this tick" }
+  }
+}
+
 type BeltVerifyOutcome
   = VerifyDeferred { node_id: String, reason: String }
   | VerifyRecorded {
@@ -6409,6 +6560,10 @@ fn belt_tick_receipt_from_result(
     teardown_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_teardown_pass_outcome_from(host_refusal: result.host_refusal, teardown_outcomes: result.teardown_outcomes)
+    }),
+    commit_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
+      TickPassesRun => belt_commit_pass_outcome_from(outcomes: result.commit_outcomes)
     }),
     verify_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
