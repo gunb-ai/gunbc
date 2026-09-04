@@ -2187,6 +2187,11 @@ fn heal_commit_push_step() -> Step {
 // make the author redo work the runner already did; uploading them means the remedy is a download
 // and a commit. The step that produced them exits nonzero either way, so this is not an escape
 // hatch: the line is stopped, and the repair is handed over rather than withheld.
+// Workflow projections live under .github, so the uploaded bundle is empty without
+// `include-hidden-files`. The live H0 heal for gunbc#10302 proved the failure: it classified
+// witnesses.yml as AuthorCommitRequired, copied it below the bundle root, then upload-artifact's
+// default hidden-file exclusion reported "No files were found". A refused repair must leave with
+// its bytes; include the directory rather than merely printing the path.
 fn heal_author_commit_bundle_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the author-commit-required regeneration" },
@@ -2198,6 +2203,7 @@ fn heal_author_commit_bundle_step() -> Step {
         kv(key: "path", value: yaml_string(s: ci_heal_author_commit_artifact_dir)),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: 14)),
+        kv(key: "include-hidden-files", value: yaml_bool(b: true)),
       ]
     },
     env: none,
