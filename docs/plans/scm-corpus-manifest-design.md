@@ -227,3 +227,20 @@ shipped is not evidence of anything.
 - **The witness bar in §9 is met, with its second item widened.** A manifest at a semantic
   requirement is a named wrong-kind refusal in the closure, the checked writer and the reader — the
   draft only anticipated the closure.
+- **That last sentence overclaimed the reader for one revision, and this is where it did.** When it
+  was first written the reader adjudicated one subject: a MANIFEST ENTRY's authored source. A
+  SEMANTIC CHILD naming a manifest or a file by digest still reached `RepositoryDecoded`, so the
+  sentence was true of the writer and only half true of the reader. Both subjects are adjudicated
+  now, against the finished decoded table, and the discriminators for each occupying kind execute in
+  `test.claim.scm_repository_envelope_witness` — but the claim preceded its second half, which is
+  the failure this document is a ledger of.
+- **A wrong-kind requirement reached two different standings depending on how its reference was
+  spelled.** `uncontained` classified as `LoadRequirementAtWrongKind`; the same predicament reached
+  through a contained position classified as `LoadDocumentMalformed`, which is the one standing that
+  permits the supersession step. The predicament decides the standing now, and the paired claims run
+  the decoder, the classifier and the permission table rather than constructing standings by hand.
+- **A "the occupant arrives after the referrer" witness never presented that order.** It changed
+  store insertion order, but `emit_in_dependency_order` follows each reference through the
+  kind-agnostic `find_object` and emits the occupant first regardless, so both fixtures produced the
+  same bytes. The controlled version rewrites the encoded `objects` array and asserts the order took
+  effect before asserting the refusal.

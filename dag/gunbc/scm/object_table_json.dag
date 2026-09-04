@@ -342,6 +342,21 @@ fn node_table_load_standing(cause: NodeTableDecodeRefusal) -> LoadStanding {
   }
 }
 
+// THE STANDING FOLLOWS THE PREDICAMENT, NOT THE SPELLING OF THE REFERENCE. A requirement whose
+// locator is OCCUPIED BY THE WRONG KIND is the same predicament whether the wire spelled the
+// reference `at` a table position or `uncontained` by digest, and the repository reader classifies
+// the uncontained spelling as LoadRequirementAtWrongKind. These four arms classified the contained
+// spelling as LoadDocumentMalformed, so one fact arrived at the policy layer under two standings
+// depending on which spelling the writer chose.
+//
+// That is not a wording difference. standing_permission_refusal permits the standing-level
+// supersession step for LoadDocumentMalformed and refuses it for LoadRequirementAtWrongKind, so the
+// contained spelling was buying a destructive permission the uncontained spelling could not.
+//
+// The four arms that MOVE are the ones that positively resolved an occupant. The ones that stay are
+// the ones with no occupant to be wrong about: an unresolved reference names no table position at
+// all, and an empty or duplicated manifest path is a defect in the document's shape rather than in
+// what a locator holds.
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
   match cause {
     ObjectTableObjectCollision { identity: _ } => LoadIdentityCollision
@@ -356,13 +371,13 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
     ObjectTableUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
     ObjectTableTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
     ObjectTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
-    ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadDocumentMalformed
-    ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => LoadDocumentMalformed
+    ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadRequirementAtWrongKind
+    ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => LoadRequirementAtWrongKind
     ObjectTableManifestPathEmpty => LoadDocumentMalformed
     ObjectTableManifestDuplicatePath { path: _ } => LoadDocumentMalformed
     ObjectTableManifestSourceUnresolved { reference: _ } => LoadDocumentMalformed
-    ObjectTableManifestSourceIsSemanticNode { reference: _ } => LoadDocumentMalformed
-    ObjectTableManifestSourceIsCorpusManifest { reference: _ } => LoadDocumentMalformed
+    ObjectTableManifestSourceIsSemanticNode { reference: _ } => LoadRequirementAtWrongKind
+    ObjectTableManifestSourceIsCorpusManifest { reference: _ } => LoadRequirementAtWrongKind
   }
 }
 

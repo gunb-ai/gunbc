@@ -87,7 +87,12 @@ import gunbc.scm.object_table_json {
   EncodeAcc,
   encode_object_table,
   decode_object_table,
+  object_table_load_standing,
 }
+import gunbc.scm.load_standing {
+  LoadStanding, LoadRequirementAtWrongKind,
+}
+import gunbc.scm.supersession { standing_permission_refusal }
 
 // THE CAUSE IS NAMED, NEVER MERELY COUNTED. A claim that asserted "something refused" would be
 // satisfied by a decoder that refused for an unrelated reason, which is how a wrong-owner diagnostic
@@ -548,4 +553,68 @@ test fn ot_a_manifest_survives_the_table() -> Bool {
           }
       }
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// The standing a wrong-kind requirement produces, and what it permits
+// ---------------------------------------------------------------------------
+
+// THE PREDICAMENT DECIDES THE STANDING, NOT THE SPELLING OF THE REFERENCE.
+//
+// The four wrong-kind arms of this table classified as LoadDocumentMalformed, while the repository
+// reader classifies the SAME predicament reached by an `uncontained` digest as
+// LoadRequirementAtWrongKind. One fact, two standings, chosen by which spelling the writer happened
+// to emit.
+//
+// That is a policy difference, not a wording one: standing_permission_refusal permits the
+// standing-level supersession step for LoadDocumentMalformed alone, so the contained spelling was
+// buying a destructive permission its uncontained twin could not. These claims run the real path --
+// decoder, then classifier, then the permission table -- because constructing the standing by hand
+// would exercise the policy while skipping the classifier that selects the wrong one.
+//
+// Its pair lives in test.claim.scm_repository_envelope_witness, over the uncontained spelling of the
+// same two predicaments; both assert this standing and this refusal.
+fn ot_wrong_kind_barred(entries: List<JsonValue>) -> Bool {
+  match ot_decoded(entries: entries).refusal {
+    Absent => false
+    Present { value: c } =>
+      match object_table_load_standing(cause: c) {
+        LoadRequirementAtWrongKind =>
+          match standing_permission_refusal(standing: LoadRequirementAtWrongKind) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn ot_a_contained_edge_at_a_source_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [ot_source_entry(text: "a carried file\n"), ot_node_over_position(at: "0")]
+  )
+}
+
+test fn ot_a_contained_edge_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [
+      ot_source_entry(text: "a carried file\n"),
+      ot_manifest_entry(path: "witness/only.dag", at: "0"),
+      ot_node_over_position(at: "1"),
+    ]
+  )
+}
+
+test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [ot_empty_node_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  )
+}
+
+// THE DISCRIMINATOR THAT KEEPS THE THREE ABOVE FROM BEING "EVERY REFUSAL IS WRONG-KIND". An
+// unresolved reference names no occupant at all, so it stays malformed -- and malformed is exactly
+// the standing that DOES permit supersession, which is why the two must not be merged.
+test fn ot_an_unresolved_manifest_source_is_not_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]) == false
 }

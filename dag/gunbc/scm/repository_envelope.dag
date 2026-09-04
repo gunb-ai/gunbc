@@ -327,6 +327,8 @@ type RepositoryDecodeRefusal
   | RepositoryCommitRootIsCorpusManifest { root: ObjectId }
   | RepositoryDecodedManifestSourceIsSemanticNode { source: ObjectId }
   | RepositoryDecodedManifestSourceIsCorpusManifest { source: ObjectId }
+  | RepositoryDecodedTargetIsAuthoredSource { target: ObjectId }
+  | RepositoryDecodedTargetIsCorpusManifest { target: ObjectId }
   | RepositoryCheckoutReferenceUnresolved { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicatedOnWire { reference: RepositoryCommitRef }
   | RepositoryCommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
@@ -567,7 +569,16 @@ fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
 }
 
 fn encode_repository_v3(repo: RepositoryEnvelope) -> JsonValue {
-  let acc = encode_object_table(store: repo.store)
+  encode_repository_v3_over_table(repo: repo, acc: encode_object_table(store: repo.store))
+}
+
+// THE ADMITTED ENVELOPE IS ASSEMBLED OVER THE TABLE ITS ADMISSION WAS DECIDED ON. The checked writer
+// builds the object table to resolve commit roots against it, and then reached encode_repository,
+// whose first act was to build the same table again from the same store -- two full walks of every
+// object to produce, by construction, the identical accumulator. Taking the table as a parameter is
+// what lets one derivation serve both the decision and the document; encode_repository_v3 keeps its
+// store-only shape for the unchecked callers, which have no accumulator to hand it.
+fn encode_repository_v3_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
@@ -746,7 +757,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
                       next_ordinal: repo.commit_allocator.next_ordinal,
                     }
                   }
-                Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+                Absent => RepositoryEncoded { value: encode_repository_v3_over_table(repo: repo, acc: acc) }
               }
           }
       }
@@ -1343,40 +1354,34 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   }
 }
 
-// THE READER ADJUDICATES MANIFEST SOURCES TOO, AND AGAINST THE FINISHED TABLE RATHER THAN PER ENTRY.
+// THE READER ADJUDICATES ITS FINISHED TABLE, RATHER THAN EACH ENTRY AS IT ARRIVES.
 //
-// decode_manifest_source resolves a CONTAINED position and refuses a node or manifest there. Its
-// UNCONTAINED sibling could not: an uncontained reference is a digest, and whether that digest is
-// occupied is a question about the whole decoded store, which does not exist yet while the entry is
-// being read. So changing the reference SPELLING changed wrong-kind admission -- contained refused,
-// uncontained admitted -- and the checked writer refused stores this reader accepted.
+// The contained spelling of a reference resolves a POSITION, so the entry decoder can refuse a node
+// or manifest standing where a source or program belongs. Its UNCONTAINED sibling cannot: an
+// uncontained reference is a digest, and whether that digest is occupied is a question about the
+// whole decoded store, which does not exist yet while the entry is being read. So changing the
+// reference SPELLING changed wrong-kind admission -- contained refused, uncontained admitted -- and
+// the checked writer refused stores this reader accepted.
 //
 // PER-ENTRY WOULD STILL BE WRONG even if the store were available, because the occupying object may
-// appear AFTER the manifest that refers to it. The judgment belongs to the finished population, and
-// the population is the one the census authority already computes.
+// appear AFTER the entry that refers to it. The judgment belongs to the finished population, and the
+// population is the one the census authority already computes.
 //
-// GENUINE ABSENCE STAYS ADMISSIBLE, matching the writer: a manifest naming a source this document
-// does not carry is a legitimate partial corpus. The refusal carries the ObjectId it actually knows
-// rather than a wire position, because at this point there is no position -- the reference was a
-// digest.
-fn a_decoded_manifest_source_at_a_node(store: ObjectStore) -> ObjectId? {
-  fold(manifest_source_census(store: store).node_occupied, init: none, f: fn(acc, id) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => Present { value: id }
-    }
-  })
-}
-
-fn a_decoded_manifest_source_at_a_manifest(store: ObjectStore) -> ObjectId? {
-  fold(manifest_source_census(store: store).manifest_occupied, init: none, f: fn(acc, id) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => Present { value: id }
-    }
-  })
-}
-
+// BOTH SUBJECTS ARE ADJUDICATED, AND THE FIRST REPAIR HERE CARRIED ONLY ONE. A manifest's authored
+// source and a node's semantic child are two different requirements over the same locators; closing
+// the manifest-source route left the semantic-child route open, so a program whose only child named
+// a manifest by digest still reached RepositoryDecoded while the checked writer refused the same
+// store. Reading one of two subjects is the same defect as reading one of two populations, which is
+// what the census was split for.
+//
+// THE PROJECTIONS ARE THE WRITER'S, NOT A SECOND SET. a_source_occupied_target and its three
+// siblings take a CENSUS rather than a store precisely so both directions can ask one authority the
+// same question; a reader-local copy taking a store would be a second authority for one rule, and
+// re-derived the census once per question besides.
+//
+// GENUINE ABSENCE STAYS ADMISSIBLE, matching the writer: a document naming an object it does not
+// carry is a legitimate partial corpus. The refusals carry the ObjectId they actually know rather
+// than a wire position, because at this point there is no position -- the reference was a digest.
 fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -1386,16 +1391,30 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
           match table_refusal {
             Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeObjectTableRefused { cause: c } }
             Absent =>
-              match a_decoded_manifest_source_at_a_node(store: store) {
+              let semantic = store_census(store: store)
+              let sources = manifest_source_census(store: store)
+              match a_manifest_source_at_a_node(census: sources) {
                 Present { value: source } =>
                   RepositoryDecodeRefused {
                     cause: RepositoryDecodedManifestSourceIsSemanticNode { source: source }
                   }
                 Absent =>
-              match a_decoded_manifest_source_at_a_manifest(store: store) {
+              match a_manifest_source_at_a_manifest(census: sources) {
                 Present { value: source } =>
                   RepositoryDecodeRefused {
                     cause: RepositoryDecodedManifestSourceIsCorpusManifest { source: source }
+                  }
+                Absent =>
+              match a_source_occupied_target(census: semantic) {
+                Present { value: target } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedTargetIsAuthoredSource { target: target }
+                  }
+                Absent =>
+              match a_manifest_occupied_target(census: semantic) {
+                Present { value: target } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedTargetIsCorpusManifest { target: target }
                   }
                 Absent =>
               match read_member(v: v, key: "commits") {
@@ -1430,6 +1449,8 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
                       }
                   }
                 _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+              }
+              }
               }
               }
               }
@@ -1561,6 +1582,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryCommitRootIsCorpusManifest { root: _ } => LoadDocumentMalformed
     RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => LoadRequirementAtWrongKind
     RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => LoadRequirementAtWrongKind
+    RepositoryDecodedTargetIsAuthoredSource { target: _ } => LoadRequirementAtWrongKind
+    RepositoryDecodedTargetIsCorpusManifest { target: _ } => LoadRequirementAtWrongKind
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => LoadDocumentMalformed
     RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => LoadDocumentMalformed

@@ -715,25 +715,18 @@ fn manifest_source_census(store: ObjectStore) -> ManifestSourceCensus {
   }
 }
 
-fn table_manifest_source_node_occupied_identities(store: ObjectStore) -> List<ObjectId> {
-  manifest_source_census(store: store).node_occupied
-}
 
-fn table_manifest_source_manifest_occupied_identities(store: ObjectStore) -> List<ObjectId> {
-  manifest_source_census(store: store).manifest_occupied
-}
 
+// THE ONE PROJECTION THAT HAS A CONSUMER. Four siblings stood beside this -- one per census
+// population, per subject -- and every guard that once called them now takes a CENSUS instead, so
+// the writer and the reader derive once and read the fields they need. That left the four with no
+// caller at all: not cheaper than the census, simply unreached, which is the dead authority a climb
+// is obliged to delete rather than leave standing as a second way to ask.
 fn table_unresolved_identities(store: ObjectStore) -> List<ObjectId> {
   store_census(store: store).absent
 }
 
-fn table_source_occupied_identities(store: ObjectStore) -> List<ObjectId> {
-  store_census(store: store).source_occupied
-}
 
-fn table_manifest_occupied_identities(store: ObjectStore) -> List<ObjectId> {
-  store_census(store: store).manifest_occupied
-}
 
 // THE FETCHABLE POPULATION IS THE ABSENT ONE, AND ONLY THE ABSENT ONE. Every consumer of this list
 // treats membership as "get this object and the closure completes"; a wrong-kind locator would make
