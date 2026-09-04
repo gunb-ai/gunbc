@@ -1,0 +1,205 @@
+module gunbc.memory_cgroup_binding
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size_count }
+import std.disposition { Disposition, Terminal }
+import gunbc.host_budget_source {
+  HostBudgetSource,
+  HostBudgetObservation,
+  HostBudgetObserved,
+  host_budget_source_label,
+}
+
+data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for the decision to CREATE the memory bound this process runs under, which is the question gunbc.host_budget_source cannot ask. That module answers what limit is OBSERVED and refuses when none is; this one answers whether an executor holding no limit may bind itself one before it begins. The two are strictly ordered and must not be conflated: binding happens first and supplies no number to anybody, and every consumer afterwards still reads its budget through host_budget_source's ordinary cgroup read. A bind that succeeded is therefore invisible except as an observation that now exists."
+}
+
+// WHY THIS EXISTS, MEASURED RATHER THAN ARGUED. The remote-execution route this repository
+// dispatches developer builds through (ctrl-build --remote, BuildBuddy, ctrl-session image)
+// places the action in the cgroup2 ROOT: /proc/self/cgroup reads 0::/ and the root cgroup has
+// no memory.max and no memory.high, because cgroup-v2 does not give its root those files at
+// all. So gunbc.host_budget_source correctly answers HostBudgetUnreadable there, and the
+// generated-artifact adjudication cannot execute on that route -- the refusal is right and the
+// route is unusable, which is a capability gap and not a defect in the refusal.
+//
+// THE HYPOTHESIS THIS MODULE REPLACES WAS THAT THE RUNNER CLASS FORBIDS A LIMIT. It does not.
+// Measured 2026-09-04 on that runner, one dispatch, every step reported: the guest is uid 0;
+// /sys/fs/cgroup is cgroup2 mounted rw with cgroup.controllers listing memory; mkdir of a child
+// group succeeded; +memory into cgroup.subtree_control succeeded; memory.max accepted
+// 10737418240 and read the value back; writing the pid to that group's cgroup.procs succeeded
+// and /proc/self/cgroup then read 0::/gunbc.probe. Nothing forbade a bound. Nothing was
+// creating one.
+//
+// AND THE SECOND MEASUREMENT IS WHY NO BUDGET NUMBER WAS EVER GOING TO HELP. The default runner
+// of that class holds about 7.3 GiB, while gunbc.generated_artifact_gate records the measured
+// one-artifact peak at 8.37 GiB. The requirement is a full gigabyte OUTSIDE the whole machine,
+// so the honest range for GUNBC_MEMORY_BUDGET_BYTES on the default runner is not tight, it is
+// EMPTY: a truthful declaration thrashes and an admitting one is killed, which is exactly the
+// pair gunbc.memory_stall_refusal already rosters from both sides. The deficit is a SIZING one.
+// This module is therefore only half of the remedy -- it makes a limit exist and be observed --
+// and the other half is that the machine must be sized larger than the bound by whoever
+// dispatches the action.
+
+// A BIND REQUEST IS NOT A PLANNING REQUEST, and keeping them separate is the whole reason this
+// is its own coproduct rather than another arm of the budget resolution. GUNBC_MEMORY_BUDGET_BYTES
+// asks a consumer to PLAN against a smaller number and constrains nothing the kernel enforces
+// (measured inert: halving it moved resident memory by five hundredths of one percent). A bind
+// request asks the KERNEL for a limit, and once granted the limit is enforced against every
+// allocation whether or not any consumer consults it. So the two may never be spelled the same
+// way and may never be read from the same variable: one of them is a wish and the other is a wall.
+type CgroupBindRequest = CgroupBindRequested { bound: ByteSize }
+
+// WHY A REQUEST AT OR ABOVE MACHINE MEMORY IS REFUSED RATHER THAN CLAMPED. A memory.max no
+// smaller than the machine is a decoration in the DESIGN section 4b sense pointed at a resource
+// limit: it is permanently unreachable, so it can never fire, and its existence would be cited
+// as the reason the run is bounded while the run thrashes exactly as it did before. Clamping it
+// down to something that fits would be worse still -- that is the absorbing arm, substituting a
+// number the operator did not ask for and reporting success. The line stops instead.
+//
+// MACHINE MEMORY APPEARS HERE AND IS STILL NOT A BUDGET SOURCE. gunbc.host_budget_source deleted
+// its /proc/meminfo arms deliberately, because a host-shared reading standing in for a
+// process-scoped bound is the substitution that got main_wet SIGKILLed. Nothing here reverses
+// that: MemTotal is read ONLY to decide whether a requested bound could bind at all, it never
+// becomes anybody's budget, and when it is unreadable this module refuses rather than assuming
+// the request fits.
+type CgroupBindRefusalCause
+  = MemoryControllerUnavailable
+  | CgroupTreeNotWritable
+  | RequestNotBelowMachineMemory { requested: ByteSize, machine: ByteSize }
+  | MachineMemoryUnreadable
+
+// FOUR OUTCOMES, AND ONLY ONE OF THEM ACTS. Not-requested and already-bound are both ordinary
+// no-ops that must stay distinguishable: the CI runners bind memory.high on their own slice, so
+// the already-bound arm is the arm they take, and an executor that treated it as a failure would
+// red every lane that is already doing the right thing. Applicable is the only arm that writes,
+// and Refused is the only arm that stops the line.
+type CgroupBindDecision
+  = BindNotRequested
+  | BindUnnecessaryLimitAlreadyBinds { source: HostBudgetSource }
+  | BindApplicable { bound: ByteSize }
+  | BindRefused { cause: CgroupBindRefusalCause }
+
+// THE ARM ORDER IS THE POLICY AND IS DELIBERATE. An unrequested bind is a no-op whatever the
+// machine looks like, so it is decided first and no refusal can be reached without a request.
+// An existing observation wins over a request second: a process the kernel already bounds does
+// not get a second authority for the same fact, and narrowing an observed bound is a different
+// operation that nothing has asked for. Only then are the mechanism and the sizing checked, and
+// each check that cannot be answered refuses rather than assuming its own precondition.
+fn cgroup_bind_decision(
+  request: CgroupBindRequest?,
+  existing: HostBudgetObservation?,
+  machine_memory: ByteSize?,
+  memory_controller_available: Bool,
+  cgroup_tree_writable: Bool
+) -> CgroupBindDecision {
+  match request {
+    Absent => BindNotRequested
+    Present { value: requested } =>
+      match existing {
+        Present { value: observed } =>
+          match observed {
+            HostBudgetObserved { source: source, bytes: _ } =>
+              BindUnnecessaryLimitAlreadyBinds { source: source }
+          }
+        Absent =>
+          match requested {
+            CgroupBindRequested { bound: bound } =>
+              if !memory_controller_available {
+                BindRefused { cause: MemoryControllerUnavailable }
+              } else {
+                if !cgroup_tree_writable {
+                  BindRefused { cause: CgroupTreeNotWritable }
+                } else {
+                  match machine_memory {
+                    Absent => BindRefused { cause: MachineMemoryUnreadable }
+                    Present { value: machine } =>
+                      if byte_size_count(b: bound) < byte_size_count(b: machine) {
+                        BindApplicable { bound: bound }
+                      } else {
+                        BindRefused {
+                          cause: RequestNotBelowMachineMemory { requested: bound, machine: machine }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn cgroup_bind_decision_refuses(d: CgroupBindDecision) -> Bool {
+  match d {
+    BindNotRequested => false
+    BindUnnecessaryLimitAlreadyBinds { source: _ } => false
+    BindApplicable { bound: _ } => false
+    BindRefused { cause: _ } => true
+  }
+}
+
+fn cgroup_bind_decision_writes(d: CgroupBindDecision) -> Bool {
+  match d {
+    BindNotRequested => false
+    BindUnnecessaryLimitAlreadyBinds { source: _ } => false
+    BindApplicable { bound: _ } => true
+    BindRefused { cause: _ } => false
+  }
+}
+
+fn cgroup_bind_refusal_cause_text(c: CgroupBindRefusalCause) -> NonEmptyStr {
+  match c {
+    MemoryControllerUnavailable =>
+      "the memory controller is not available in this cgroup2 tree, so no memory.max can be written here; the executor cannot give itself an enforceable limit and must not proceed as though it had one"
+    CgroupTreeNotWritable =>
+      "the cgroup2 tree is not writable by this process, so the requested bound cannot be created; a bound that cannot be written is not a bound and this run has none"
+    RequestNotBelowMachineMemory { requested: requested, machine: machine } =>
+      concat(
+        "the requested memory bound is not strictly below this machine's memory (requested ",
+        concat(
+          to_string(byte_size_count(b: requested)),
+          concat(
+            " bytes, machine ",
+            concat(
+              to_string(byte_size_count(b: machine)),
+              " bytes), so the limit could never be reached and would bound nothing while being cited as a bound; size the executor larger than the bound rather than raising the bound to the executor"
+            )
+          )
+        )
+      ) as NonEmptyStr
+    MachineMemoryUnreadable =>
+      "this machine's memory is unreadable, so whether the requested bound could bind at all is UNKNOWN; refuse rather than write a limit that may be a decoration"
+  }
+}
+
+// THE NON-REFUSING ARMS RENDER NOTHING, for the reason gunbc.memory_stall_refusal gives at its
+// own text projection: a consumer that logs a cause unconditionally must not be handed
+// fabricated prose for a decision that did not refuse.
+fn cgroup_bind_decision_refusal_text(d: CgroupBindDecision) -> String {
+  match d {
+    BindNotRequested => ""
+    BindUnnecessaryLimitAlreadyBinds { source: _ } => ""
+    BindApplicable { bound: _ } => ""
+    BindRefused { cause: cause } =>
+      concat("MemoryCgroupBindRefused: ", cgroup_bind_refusal_cause_text(c: cause) as String)
+  }
+}
+
+// The announcement for the two silent arms, so a reader of a log can tell a run that bound
+// itself from a run that was already bounded from a run that asked for neither -- three states
+// that are otherwise indistinguishable downstream, because all three continue.
+fn cgroup_bind_decision_note(d: CgroupBindDecision) -> String {
+  match d {
+    BindNotRequested => "memory-cgroup-bind: not requested"
+    BindUnnecessaryLimitAlreadyBinds { source: source } =>
+      concat(
+        "memory-cgroup-bind: unnecessary, a limit already binds this process: ",
+        host_budget_source_label(s: source) as String
+      )
+    BindApplicable { bound: bound } =>
+      concat(
+        "memory-cgroup-bind: applying memory.max=",
+        to_string(byte_size_count(b: bound))
+      )
+    BindRefused { cause: cause } => cgroup_bind_decision_refusal_text(d: d)
+  }
+}
