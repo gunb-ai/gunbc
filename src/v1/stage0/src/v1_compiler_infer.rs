@@ -3026,11 +3026,24 @@ pub fn where_refinement_mismatch_diags(
                     actual_resolved.clone(),
                     type_env.clone(),
                 );
+                let actual_unpeeled_raw =
+                    crate::v1_compiler_infer_types::resolved_type(value_expr.clone());
+                let actual_unpeeled = match crate::v1_compiler_infer_env::lookup_type_for(
+                    type_env.clone(),
+                    actual_unpeeled_raw.clone(),
+                ) {
+                    Some(resolved) => resolved.clone(),
+                    std::option::Option::None => actual_unpeeled_raw.clone(),
+                };
+                let actual_unpeeled_preds = type_where_refinement_predicates_transitive(
+                    actual_unpeeled.clone(),
+                    type_env.clone(),
+                );
                 if where_refinement_brand_nominal_mismatch(
                     formal_resolved.clone(),
-                    actual_resolved.clone(),
+                    actual_unpeeled.clone(),
                     preds.clone(),
-                    actual_preds.clone(),
+                    actual_unpeeled_preds.clone(),
                     source_indices.clone(),
                 ) {
                     Rc::new(vec![type_mismatch_error(
@@ -3039,7 +3052,7 @@ pub fn where_refinement_mismatch_diags(
                             source_indices.clone(),
                         ),
                         crate::v1_compiler_infer_types::node_type_shape(
-                            actual_resolved.clone(),
+                            actual_unpeeled.clone(),
                             source_indices.clone(),
                         ),
                         span.clone(),

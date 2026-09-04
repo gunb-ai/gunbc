@@ -43,6 +43,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //                 construction site in the corpus. Measured on the pre-change compiler, CONSTRUCT
 //                 and MISMATCH emitted the IDENTICAL deferred advisory, so the diagnostic carried
 //                 no information separating a violation from a correct construction.
+//   STRIP      -- brand to BASE to brand, `a as String as BniB`. Must be ACCEPTED. The author casts
+//                 down to the base type precisely to SHED the brand, then re-brands; that is the
+//                 same assertion CONSTRUCT protects, reached from a branded value instead of a bare
+//                 one. THIS ARM EXISTS BECAUSE ITS ABSENCE WAS A REGRESSION: the first version of
+//                 this wall had CONSTRUCT and DUAL and neither covered this third legitimate shape,
+//                 so the check peeled through the intervening cast and refused four
+//                 spice_passive_projection sites the corpus relies on. An incomplete partition of
+//                 the ACCEPTING cases does not fail loudly -- it routes the unclassified case to
+//                 whichever arm is nearest, and here that was "refuse".
 //   DUAL       -- ONE declaration reached from two use sites. Must be ACCEPTED. This is the trap in
 //                 the repair rather than in the defect: a key that is occurrence-derived or
 //                 position-derived makes the collision refuse AND makes a type stop being itself
@@ -86,6 +95,11 @@ data brand_arms: List<BrandArm> = [
     name: "dual",
     source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\nfn bni_g(a: BniA) -> BniA { a }\nfn bni_f(a: BniA) -> BniA { bni_g(a: a) }\n",
     expect_blocking: false
+  },
+  BrandArm {
+    name: "strip",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as String as BniB }\n",
+    expect_blocking: false
   }
 ]
 
@@ -116,14 +130,14 @@ fn count_occurrences(xs: List<String>, wanted: String) -> Int {
 
 // ASSERT CHECKED EQUALS TOTAL. The next assertion ranges over brand_arms, so a fixture silently
 // dropped from the list would shrink the population without shrinking the green. This states the
-// arity the wall's evidence requires -- two refusing arms and two accepting arms -- so removing any
-// one of them reds here rather than passing quietly with a narrowed subject.
+// arity the wall's evidence requires -- two refusing arms and three accepting arms -- so removing
+// any one of them reds here rather than passing quietly with a narrowed subject.
 
-test fn b_all_four_arms_are_enrolled() -> Bool {
+test fn b_all_five_arms_are_enrolled() -> Bool {
   let total = brand_arms |> count
   let refusing = brand_arms |> filter(a => a.expect_blocking) |> count
   let accepting = brand_arms |> filter(a => !a.expect_blocking) |> count
-  total == 4 && refusing == 2 && accepting == 2 && refusing + accepting == total
+  total == 5 && refusing == 2 && accepting == 3 && refusing + accepting == total
 }
 
 test fn b_arm_names_are_pairwise_distinct() -> Bool {
@@ -133,7 +147,7 @@ test fn b_arm_names_are_pairwise_distinct() -> Bool {
 // THE WALL ITSELF, BOTH DIRECTIONS IN ONE ASSERTION. Splitting refusal and acceptance into separate
 // tests would let a compiler that refuses everything green the refusing half while the accepting
 // half reds somewhere else in the report; joined, the only way to pass is to draw the line exactly
-// where the four fixtures put it.
+// where the five fixtures put it.
 
 test fn b_every_arm_behaves_as_declared() -> Bool {
   brand_arms |> all(a => arm_agrees(a: a))
@@ -161,4 +175,12 @@ test fn b_collision_and_dual_are_distinguished() -> Bool {
 
 test fn b_mismatch_and_construct_are_distinguished() -> Bool {
   arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_blocking_by_name(wanted: "construct") == 0
+}
+
+// THE REGRESSION CONTROL. mismatch and strip differ ONLY by the intervening `as String`, so this
+// asserts the check reads the immediate operand rather than peeling to the original value. It is
+// the assertion the first version of this wall would have failed, and it does not retire.
+
+test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
+  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_blocking_by_name(wanted: "strip") == 0
 }

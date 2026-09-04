@@ -2164,6 +2164,16 @@ fn where_refinement_brand_declaration_key(
   }
 }
 
+// THE ACTUAL SIDE IS READ UNPEELED, AND THAT IS THE WHOLE CORRECTNESS OF THIS CHECK.
+// where_refinement_value_under_cast recurses through EVERY cast, which is right for a literal
+// predicate -- `"abc" as NonEmptyStr` needs the literal under the cast -- and WRONG for a nominal
+// brand. `x as String as ChB` is a DELIBERATE BRAND STRIP: the author casts down to the base type
+// precisely to shed the brand, then re-brands. Peeling walks straight past that intent to `x` and
+// sees a branded-to-branded mismatch that the source does not contain. The first version of this
+// check did exactly that and refused four spice_passive_projection sites the corpus relies on --
+// a wall that refuses an idiom the corpus depends on has its subject drawn wrong, and those four
+// lines are its discriminating RED, authored by the corpus rather than by a fixture.
+
 // REFUSE ONLY WHEN BOTH SIDES CARRY A BRAND AND THE DECLARATIONS ARE PROVABLY DIFFERENT. When the
 // actual side carries NO brand the value is being constructed from its base -- `s as UserId` -- which
 // is what `as` exists to express and what no brand check can verify; blocking that would refuse
@@ -2215,16 +2225,24 @@ fn where_refinement_mismatch_diags(
       Absent => actual_raw
     }
     let actual_preds = type_where_refinement_predicates_transitive(ty: actual_resolved, type_env: type_env)
+    let actual_unpeeled_raw = resolved_type(n: value_expr)
+    let actual_unpeeled = match lookup_type_for(env: type_env, node: actual_unpeeled_raw) {
+      Present { value: resolved } => resolved
+      Absent => actual_unpeeled_raw
+    }
+    let actual_unpeeled_preds = type_where_refinement_predicates_transitive(
+      ty: actual_unpeeled, type_env: type_env
+    )
     if where_refinement_brand_nominal_mismatch(
       formal_resolved: formal_resolved,
-      actual_resolved: actual_resolved,
+      actual_resolved: actual_unpeeled,
       formal_preds: preds,
-      actual_preds: actual_preds,
+      actual_preds: actual_unpeeled_preds,
       source_indices: source_indices
     ) {
       [type_mismatch_error(
         expected: node_type_shape(n: formal_resolved, source_indices: source_indices),
-        got: node_type_shape(n: actual_resolved, source_indices: source_indices),
+        got: node_type_shape(n: actual_unpeeled, source_indices: source_indices),
         span: span,
         module_name: module_name
       )]
