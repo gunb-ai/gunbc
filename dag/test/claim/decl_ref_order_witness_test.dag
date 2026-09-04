@@ -1,0 +1,92 @@
+module test.claim.decl_ref_order_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref {
+  DeclarationRef, DeclField, WholeDeclaration, NamedField,
+  declaration_ref_display_key, declaration_ref_precedes, decl_field_precedes,
+}
+
+// THE PAIR THE DISPLAY KEY CANNOT TELL APART. Both render "a::b::c": the first is declaration `c`
+// in module `a::b`, the second is field `c` of declaration `b` in module `a`. They are different
+// declarations, and any comparator reading the rendered string reports neither before the other.
+data decl_in_nested_module: DeclarationRef = DeclarationRef {
+  module_path: "a::b" as NonEmptyStr,
+  decl_name: "c" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+data field_of_decl_in_parent: DeclarationRef = DeclarationRef {
+  module_path: "a" as NonEmptyStr,
+  decl_name: "b" as NonEmptyStr,
+  field: NamedField { field_name: "c" as NonEmptyStr },
+}
+
+// The premise of the whole control, asserted rather than assumed: if these ever stop rendering
+// identically the collision is gone and this control is measuring nothing, so it must say so.
+fn the_display_key_really_does_collide() -> Bool {
+  declaration_ref_display_key(ref: decl_in_nested_module)
+    == declaration_ref_display_key(ref: field_of_decl_in_parent)
+}
+
+// A TOTAL ORDER SEPARATES THEM, IN ONE DIRECTION ONLY. Asserting both directions is what makes this
+// discriminating: a comparator that answered `true` for every pair would satisfy the first
+// assertion alone, and one that answered `false` for every pair would satisfy its negation.
+fn the_colliding_pair_is_still_ordered() -> Bool {
+  // "a" precedes "a::b" on module_path, so the parent's field sorts first — decided on components,
+  // never on the rendering the two share.
+  declaration_ref_precedes(a: field_of_decl_in_parent, b: decl_in_nested_module)
+    && !declaration_ref_precedes(a: decl_in_nested_module, b: field_of_decl_in_parent)
+}
+
+fn a_ref_does_not_precede_itself() -> Bool {
+  !declaration_ref_precedes(a: decl_in_nested_module, b: decl_in_nested_module)
+    && !declaration_ref_precedes(a: field_of_decl_in_parent, b: field_of_decl_in_parent)
+}
+
+data same_decl_whole: DeclarationRef = DeclarationRef {
+  module_path: "m" as NonEmptyStr, decl_name: "d" as NonEmptyStr, field: WholeDeclaration,
+}
+
+data same_decl_field_a: DeclarationRef = DeclarationRef {
+  module_path: "m" as NonEmptyStr, decl_name: "d" as NonEmptyStr,
+  field: NamedField { field_name: "a" as NonEmptyStr },
+}
+
+data same_decl_field_b: DeclarationRef = DeclarationRef {
+  module_path: "m" as NonEmptyStr, decl_name: "d" as NonEmptyStr,
+  field: NamedField { field_name: "b" as NonEmptyStr },
+}
+
+// THE DECLARED FIELD ORDER, WHICH IS A CHOICE AND SO IS ASSERTED. A declaration precedes its own
+// fields, and fields order among themselves by name.
+fn a_declaration_precedes_its_own_fields() -> Bool {
+  declaration_ref_precedes(a: same_decl_whole, b: same_decl_field_a)
+    && !declaration_ref_precedes(a: same_decl_field_a, b: same_decl_whole)
+    && declaration_ref_precedes(a: same_decl_field_a, b: same_decl_field_b)
+    && !declaration_ref_precedes(a: same_decl_field_b, b: same_decl_field_a)
+}
+
+// Each component is REACHED. Without this a comparator reading only module_path would pass every
+// assertion above except the field ones, and one reading only decl_name would pass the field ones.
+fn every_component_decides() -> Bool {
+  declaration_ref_precedes(
+    a: DeclarationRef { module_path: "m" as NonEmptyStr, decl_name: "a" as NonEmptyStr, field: WholeDeclaration },
+    b: DeclarationRef { module_path: "m" as NonEmptyStr, decl_name: "b" as NonEmptyStr, field: WholeDeclaration })
+  && declaration_ref_precedes(
+    a: DeclarationRef { module_path: "l" as NonEmptyStr, decl_name: "z" as NonEmptyStr, field: WholeDeclaration },
+    b: DeclarationRef { module_path: "m" as NonEmptyStr, decl_name: "a" as NonEmptyStr, field: WholeDeclaration })
+  && decl_field_precedes(a: WholeDeclaration, b: NamedField { field_name: "x" as NonEmptyStr })
+}
+
+fn decl_ref_order_witness_main() -> ProcessExit {
+  if the_display_key_really_does_collide()
+    && the_colliding_pair_is_still_ordered()
+    && a_ref_does_not_precede_itself()
+    && a_declaration_precedes_its_own_fields()
+    && every_component_decides() {
+    ExitSuccess
+  } else {
+    ExitFailure
+  }
+}

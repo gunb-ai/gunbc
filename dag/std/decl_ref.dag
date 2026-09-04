@@ -1,6 +1,7 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool }
+import std.string_type { string_is_lexicographically_before }
 
 type DeclField
   = WholeDeclaration
@@ -85,6 +86,49 @@ fn declaration_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
 
 fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -> Bool {
   fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
+}
+
+// ORDERING IS A FACT ABOUT THE COMPONENTS, NEVER ABOUT THEIR RENDERING.
+//
+// declaration_ref_display_key joins module_path, decl_name and an optional field with an UNESCAPED
+// "::", and module_path may itself contain "::". So the encoding is NOT INJECTIVE: the ref
+// { module_path: "a::b", decl_name: "c" } and the ref { module_path: "a", decl_name: "b",
+// field: NamedField { "c" } } both render "a::b::c" while denoting different declarations.
+//
+// A comparator built on that string reports neither-before-the-other for such a pair, so their
+// relative position falls back to the order they were inserted in -- which is the verdict-is-a-
+// function-of-input-order shape recorded as gunbc.recurring_failure_mode
+// join_answers_with_one_arm_others_unjudged, rebuilt one layer up in a function whose whole purpose
+// is to REMOVE arrival order. A canonicalization that is itself order-derived canonicalizes nothing.
+//
+// The repair is not to escape the separator. Escaping would make the presentation string injective
+// and leave a PRESENTATION as the ordering authority, so the next renderer change silently reorders
+// every consumer. The components are the fact; they are what is compared.
+//
+// The field order is declared rather than incidental: WholeDeclaration precedes every NamedField,
+// because a declaration is the container of its fields and sorting the container beside its members
+// under one name is what the display key's ambiguity was hiding.
+fn decl_field_precedes(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration => match b {
+      WholeDeclaration => false
+      NamedField { field_name: bf } => true
+    }
+    NamedField { field_name: af } => match b {
+      WholeDeclaration => false
+      NamedField { field_name: bf } => string_is_lexicographically_before(left: af as String, right: bf as String)
+    }
+  }
+}
+
+fn declaration_ref_precedes(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  if (a.module_path as String) != (b.module_path as String) {
+    string_is_lexicographically_before(left: a.module_path as String, right: b.module_path as String)
+  } else if (a.decl_name as String) != (b.decl_name as String) {
+    string_is_lexicographically_before(left: a.decl_name as String, right: b.decl_name as String)
+  } else {
+    decl_field_precedes(a: a.field, b: b.field)
+  }
 }
 
 fn declaration_ref_display_key(ref: DeclarationRef) -> String {
