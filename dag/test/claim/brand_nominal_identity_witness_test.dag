@@ -7,7 +7,6 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
-  compile_dag_diagnostic_census,
   census_blocking_rows,
   census_total_count
 }
