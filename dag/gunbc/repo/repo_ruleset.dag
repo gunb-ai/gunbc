@@ -1212,6 +1212,9 @@ fn world_repo_ruleset_differences(
   }
 }
 
+// An admitted subject still refuses here: the admitted write realization is deliberately unbound on
+// this tree. #10204 owns the read-back transaction after operator sign-off; admission cannot
+// silently become a write.
 fn world_repo_ruleset_apply(
   subject: RepositoryRulesetConvergenceSubject,
   _: Bool,
@@ -1221,8 +1224,6 @@ fn world_repo_ruleset_apply(
   match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
     RepositoryRulesetActuationRefused { cause: cause } => WorldActuationRefused { cause: cause }
     RepositoryRulesetActuationAdmitted =>
-      // The admitted realization remains deliberately unbound on this tree. #10204 owns the
-      // read-back transaction after operator sign-off; admission cannot silently become a write.
       WorldActuationRefused {
         cause: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: subject.ruleset_id },
       }
