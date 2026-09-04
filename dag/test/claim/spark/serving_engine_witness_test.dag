@@ -13,7 +13,7 @@ import extdeps.vllm.engine_args {
 import gunbc.spark.serving_engine {
   ServingEngine, OllamaServing, VllmServing, serving_engine_label,
   SparkEngineSlotVerdict, EngineSlotAvailable, EngineSlotRefused,
-  SparkEngineSlotRefusal, UnifiedPoolAlreadyOccupied, WeightsExceedUsablePool,
+  SparkEngineSlotRefusal, UnifiedPoolAlreadyOccupied,
   spark_engine_slot_admits,
   MemoryEnforcer, MemoryEnforcerKind, RayThresholdMonitor, HostMemGuard, KernelOomKiller,
   EnforcerVerdict, EnforcerAdmitted, EnforcerRefused,
@@ -58,7 +58,6 @@ fn slot_is_refused_as_occupied(v: SparkEngineSlotVerdict, incumbent: NonEmptyStr
     EngineSlotRefused { cause: c } =>
       match c {
         UnifiedPoolAlreadyOccupied { incumbent: i, applicant: a } => i == incumbent && a == applicant
-        WeightsExceedUsablePool { engine: _ } => false
       }
   }
 }

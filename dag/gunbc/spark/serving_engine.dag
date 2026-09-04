@@ -52,9 +52,20 @@ type SparkEngineSlotVerdict
   = EngineSlotAvailable
   | EngineSlotRefused { cause: SparkEngineSlotRefusal }
 
+// ONE ARM, BECAUSE ONE ARM HAS A PRODUCER. A `WeightsExceedUsablePool` arm stood here and was never
+// emitted by any function in this module. The fact it named is real and measured -- a checkpoint
+// whose weights exceed a Spark's usable pool starves the host in tens of seconds -- but DECIDING it
+// needs two facts this module does not have yet: the host's usable pool (a GB10 hardware row) and
+// the artifact's weight bytes (a checkpoint row). Until both exist the arm could only ever be
+// constructed by hand, which makes it a fact the model asserts and never verifies.
+//
+// `gunbc.spark.serving_release` already made this ruling against itself, deleting a
+// `shared_memory_budget_bytes` admission constraint that no reconciliation path consumed, on the
+// ground that "a required field with no consumer is not a placeholder for a future check". Carrying
+// a never-produced arm here would have reproduced that defect inside the change that cites it.
+// It returns with its producer, not before.
 type SparkEngineSlotRefusal
   = UnifiedPoolAlreadyOccupied { incumbent: NonEmptyStr, applicant: NonEmptyStr }
-  | WeightsExceedUsablePool { engine: NonEmptyStr }
 
 // The host memory kind DECIDES this, so the rule is derived from the observed hardware row rather
 // than asserted per host. A discrete-memory host is genuinely out of this rule's scope; saying so
