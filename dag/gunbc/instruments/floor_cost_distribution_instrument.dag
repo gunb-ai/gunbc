@@ -40,7 +40,17 @@ import gunbc.floor_cost_distribution {
   envelope_permille,
   envelope_permilles,
   worst_envelope_permille,
-  run_extreme_census
+  run_extreme_census,
+  CrossingPopulationCensus,
+  CrossingPopulationRow,
+  CrossingPopulationSplit,
+  crossing_population_census,
+  crossing_census_partition_closes,
+  completed_crossing_rows,
+  split_crossing_rows,
+  crossing_population_identities,
+  IdentityDisposition,
+  split_disposition_identities
 }
 
 // THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
@@ -606,5 +616,167 @@ fn floor_cost_envelope_check() -> ProcessExit {
     RunSampleRefused { failures: f } =>
       exit_failure(reason: join(concat(["floor cost envelope: refusing an incomplete sample"], f), "\n"))
     RunSampleAdmitted { runs: _ } => ExitSuccess
+  }
+}
+
+
+// =============================================================================================
+// THE CROSSING-POPULATION CENSUS: THE COUNTS THE SEED PARKED WITH THE OPERATOR.
+//
+// `required_floor_runner`'s `ClaimOutcome::CompletedOverBudget` arm records that whether the
+// pollable population should keep blocking "is the open question this column exists to make
+// answerable with counts instead of argument -- it stays with the operator". This entry point is
+// the consumer of that column. It reports; it decides nothing.
+//
+// WHY THIS SAMPLE IS REFUSED RUNS AND NOT THE ENVELOPE'S TWELVE GREEN ONES. A crossing that
+// BLOCKED is by construction absent from a green run, so `floor_cost_envelope_sampled_runs` is
+// structurally blind to this population -- pointing this census at it would measure zero over a
+// sample that cannot contain a member, and a zero from a blind sample is the strongest possible
+// misreading. These are runs of `witnesses.yml` whose required floor recorded
+// `completed_over_cost_requirement` at or above one, taken from the same 131-run scan that
+// commissioned this family.
+data floor_cost_crossing_sampled_runs: List<NonEmptyStr> = [
+  "33832675896" as NonEmptyStr,
+  "33832137832" as NonEmptyStr,
+  "33826628566" as NonEmptyStr,
+  "33825929937" as NonEmptyStr,
+  "33824144660" as NonEmptyStr,
+  "33823603404" as NonEmptyStr,
+  "33817080219" as NonEmptyStr
+]
+
+// THIS ENTRY POINT DOES NOT REFUSE AN INCOMPLETE SAMPLE, AND THAT IS A DIFFERENT RULING FROM ITS
+// TWO SIBLINGS RATHER THAN A WEAKER ONE. `floor_cost_distribution_figures` and
+// `floor_cost_envelope_figures` compute quantities whose validity depends on every run being
+// present -- a missing run silently NARROWS an identity's envelope, in the direction that makes a
+// budget look safer than it is -- so they have no partial answer to give and refuse.
+//
+// This census has no such quantity. Each run's census is a COMPLETE statement about THAT run, and
+// the report is their union; a run that cannot be read removes its crossings from the numerator
+// and from the denominator together. What would be dishonest here is a RATE, so no line divides.
+// The coverage line states sampled, loaded and refused as three separate numbers, and every
+// unreadable run is named with its cause, because "we could not look" and "we looked and found
+// none" are the two values this report exists to keep apart.
+//
+// THE ACTUATOR STILL FAILS CLOSED on the case that is genuinely a non-measurement: a sample in
+// which NO run could be read has measured nothing at all and must not exit green.
+fn crossing_run_line(run: NonEmptyStr, census: CrossingPopulationCensus) -> String {
+  concat(
+    concat(run as String, "\t"),
+    join(
+      [
+        concat("completed_crossings=", to_string(census.completed_crossings)),
+        concat("overshoot_charge=", to_string(census.overshoot_charge)),
+        concat("missed_interrupt=", to_string(census.missed_interrupt)),
+        concat("surface_unarmed=", to_string(census.surface_unarmed)),
+        concat("reachability_unrecorded=", to_string(census.reachability_unrecorded)),
+        concat("censored_crossings=", to_string(census.censored_crossings)),
+        concat("undecidable_crossings=", to_string(census.undecidable_crossings))
+      ],
+      " "
+    )
+  )
+}
+
+fn crossing_identity_lines(label: String, identities: List<String>) -> List<String> {
+  concat(
+    [concat(concat(label, "\tdistinct identities "), to_string(count(identities)))],
+    identities |> map(i => concat("\t", i))
+  )
+}
+
+// IDENTITIES THAT LANDED ON BOTH SIDES OF THE DEADLINE, rendered beside the crossing populations
+// because they answer the question the crossing counts alone cannot: whether the INTERRUPT arm is
+// also reporting the host. An identity that completed on one run and was preempted on another had
+// its disposition decided by something other than the row.
+fn disposition_split_line(d: IdentityDisposition) -> String {
+  concat(
+    concat("\t", d.identity),
+    concat(
+      concat("\tcompleted_runs=", to_string(d.completed_runs)),
+      concat("\tpreempted_runs=", to_string(d.preempted_runs))
+    )
+  )
+}
+
+fn disposition_split_lines(runs: List<RunCost>) -> List<String> {
+  let split = split_disposition_identities(runs: runs)
+  concat(
+    [concat("identities observed on BOTH sides of the deadline\t", to_string(count(split)))],
+    split |> map(d => disposition_split_line(d: d))
+  )
+}
+
+fn floor_cost_crossing_figures(loads: List<RunLoad>, ceiling_ms: Millisecond) -> List<String> {
+  let runs = loaded_runs(loads: loads)
+  let rows = completed_crossing_rows(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: [])
+  let split = split_crossing_rows(rows: rows)
+  let total = crossing_population_census(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: [])
+  concat(
+    concat(
+      [
+        concat("ceiling\t", concat(to_string(millisecond_count(m: ceiling_ms)), "ms cpu")),
+        concat("runs sampled\t", to_string(count(loads))),
+        concat("runs loaded\t", to_string(count(runs))),
+        concat("runs unreadable -- these measured NOTHING and are not a zero\t",
+               to_string(count(refused_load_lines(loads: loads)))),
+        concat("partition closes\t", if crossing_census_partition_closes(census: total) { "yes" } else { "NO -- an arm was dropped" })
+      ],
+      concat(
+        ["run\tcrossing populations"],
+        loads |> flat_map(l => match l {
+          RunLoaded { run: r } => [crossing_run_line(run: r.run, census: crossing_population_census(runs: [r], ceiling_ms: ceiling_ms, excluded_modules: []))]
+          RunUnreadable { run: _, path: _ } => []
+          RunEmpty { run: _, path: _ } => []
+          RunRefused { run: _, path: _, cause: _ } => []
+        })
+      )
+    ),
+    concat(
+      concat(
+        [crossing_run_line(run: "TOTAL over loaded runs" as NonEmptyStr, census: total)],
+        crossing_identity_lines(label: "overshoot charge", identities: crossing_population_identities(rows: split.overshoot_charge))
+      ),
+      concat(
+        concat(
+          crossing_identity_lines(label: "missed interrupt", identities: crossing_population_identities(rows: split.missed_interrupt)),
+          disposition_split_lines(runs: runs)
+        ),
+        refused_load_lines(loads: loads)
+      )
+    )
+  )
+}
+
+fn floor_cost_crossing_lines(loads: List<RunLoad>, ceiling_ms: Millisecond) -> List<String> {
+  if count(loaded_runs(loads: loads)) == 0 {
+    concat(
+      ["floor cost crossing census: REFUSING a sample in which no run could be read -- nothing was measured"],
+      refused_load_lines(loads: loads)
+    )
+  } else {
+    floor_cost_crossing_figures(loads: loads, ceiling_ms: ceiling_ms)
+  }
+}
+
+fn floor_cost_crossing_report() -> String {
+  join(
+    floor_cost_crossing_lines(
+      loads: floor_cost_crossing_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r)),
+      ceiling_ms: floor_cost_ceiling
+    ),
+    "\n"
+  )
+}
+
+fn floor_cost_crossing_check() -> ProcessExit {
+  let loads = floor_cost_crossing_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r))
+  if count(loaded_runs(loads: loads)) == 0 {
+    exit_failure(reason: join(
+      concat(["floor cost crossing census: no run in the sample could be read"], refused_load_lines(loads: loads)),
+      "\n"
+    ))
+  } else {
+    ExitSuccess
   }
 }
