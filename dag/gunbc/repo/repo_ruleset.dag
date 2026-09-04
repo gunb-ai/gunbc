@@ -1089,34 +1089,50 @@ type RepositoryRulesetConvergenceSubject {
   ruleset_id: Int
 }
 
+// FIVE HELD STANDINGS, NOT ONE HELD FLAG, AND THE SPLIT IS A CORRECTNESS FIX RATHER THAN DETAIL.
+// An earlier shape folded the bypass halves into one cause and mapped the signed-projection half
+// onto an unsigned-desire cause, which INVERTED both: it reported that a live bypass actor EXISTS
+// where the truth is that this reader CANNOT SEE whether any do -- top-as-answer standing in for
+// top-as-ignorance, the conflation DESIGN section 5 names -- and it told an operator to sign a
+// desire that is already signed and merely unprojectable. A refusal that misnames its own cause
+// sends the reader to fix the wrong thing, which is worse than a refusal that says less.
 type RepositoryRulesetConvergenceRefusal
   = RepositoryRulesetObservationRefused { cause: RulesetReadRefusal }
-  | RepositoryRulesetActuationUnbound { ruleset_id: Int }
-  | RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: Int }
-  | RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: Int }
-  | RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: Int }
+  | RepositoryRulesetActuationRealizationUnbound { ruleset_id: Int }
+  | RepositoryRulesetUnexpectedLiveRule { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetBypassRosterUnobservable { ruleset_id: Int, reader: NonEmptyStr, detail: NonEmptyStr }
+  | RepositoryRulesetObservedLiveBypassActors { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: Int, detail: NonEmptyStr }
 
 type RepositoryRulesetActuationAdmission
   = RepositoryRulesetActuationAdmitted
   | RepositoryRulesetActuationRefused { cause: RepositoryRulesetConvergenceRefusal }
 
 // This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
-// later change swaps out. It is ordered most-specific-first so the cause names WHY actuation is
-// held rather than only THAT it is: an unobservable or unprojected bypass roster and an unexpected
-// live rule are each destructive-write refusals #10204 already decides, and they are consumed here
-// rather than re-derived. The terminal arm is ActuationUnbound because even with nothing held, this
-// tree carries no admitted write realization -- admission cannot silently become a write.
+// later change swaps out. It decides ONE question -- may this tree actuate -- and it answers with
+// the fact that holds it, because for a refusal the cause IS the answer: an operator reads it to
+// learn what to go and change, and every one of these five states has a different remedy.
 //
-// THE UNEXPECTED-RULE AND UNSIGNED-DESIRE HALVES ARE READ SEPARATELY RATHER THAN THROUGH
-// merge_queue_projection_refusal, WHICH FOLDS BOTH INTO ONE Present. That helper answers a
-// different question -- may converge actuate at all -- and for that question one refusal is
-// enough. Here the ANSWER IS THE CAUSE, and the two halves are different facts with different
-// remedies: a live rule this projection cannot express is repaired by modeling the rule, while an
-// unsigned desire is repaired by signing it. Folded together, a projection deficit would be
-// reported as a live-rule cause, and RepositoryRulesetUnsignedDesireActuationHeld would be a
-// declared variant nothing constructs. Today desire is unsigned so only one path is reachable;
-// the collapse would become a wrong diagnostic on the first sign-off, which is precisely when
-// nobody is re-reading this arm. (Found in review by witty-otter-195 on gunbc#10324.)
+// IT READS THE OBSERVED VALUES DIRECTLY RATHER THAN THROUGH THE COMBINED HELPERS, and that is the
+// correctness point rather than a stylistic one. bypass_roster_projection_refusal answers Present
+// for BOTH an unreadable roster and an observed non-empty one, and merge_queue_projection_refusal
+// answers Present for BOTH an unexpected live rule and a signed policy the projection cannot carry.
+// Each helper is right for the question IT asks -- may converge actuate at all -- where one refusal
+// suffices. Routing a CAUSE through them inverts two facts. It reports that a live bypass actor
+// EXISTS when the truth is that this reader CANNOT SEE whether any do, which is top-as-answer
+// standing in for top-as-ignorance and is asserted rather than merely widened; and it tells an
+// operator that a desire is UNSIGNED when the refusal exists precisely BECAUSE it is signed and
+// unprojectable, sending them to sign something already signed.
+//
+// THE UNOBSERVABLE ARM IS THE ONE THAT MATTERS TODAY, not a latent case: under the credential this
+// repository has, a live ruleset GET omits bypass_actors on every read, and GitHub omits that field
+// both when the roster is empty and when the reader may not see it. So the live path is exactly the
+// one the inverted cause was lying about. It carries the reader identity, because the refusal is a
+// property of the credential rather than of the moment, and a retry cannot discharge it.
+//
+// The terminal arm is ActuationRealizationUnbound: with nothing held, this tree still carries no
+// admitted write realization, and admission may never silently become a write. #10204 owns the
+// read-back transaction after operator sign-off.
 fn repo_ruleset_actuation_admission(
   subject: RepositoryRulesetConvergenceSubject,
   observed: RulesetObservation,
@@ -1137,22 +1153,45 @@ fn repo_ruleset_actuation_admission(
       merge_queue: _,
       bypass_roster: br,
     } =>
-      match bypass_roster_projection_refusal(roster: br) {
-        Present { value: _ } => RepositoryRulesetActuationRefused {
-          cause: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: subject.ruleset_id },
+      match br {
+        BypassRosterUnavailable { reader: r, cause: rc } => RepositoryRulesetActuationRefused {
+          cause: RepositoryRulesetBypassRosterUnobservable {
+            ruleset_id: subject.ruleset_id,
+            reader: r,
+            detail: rc,
+          },
         }
-        Absent =>
-          if length(rule_unexpected_divergences(observed: rt)) > 0 {
+        BypassRosterObserved { actors: actors } =>
+          if length(actors) > 0 {
             RepositoryRulesetActuationRefused {
-              cause: RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: subject.ruleset_id },
+              cause: RepositoryRulesetObservedLiveBypassActors {
+                ruleset_id: subject.ruleset_id,
+                detail: join(map(actors, a => concat(
+                  concat(concat(a.actor_type, "/"), to_string(a.actor_id)),
+                  concat(" mode=", a.bypass_mode),
+                )), "; ") as NonEmptyStr,
+              },
             }
           } else {
-            match signed_desire_projection_refusal() {
-              Present { value: _ } => RepositoryRulesetActuationRefused {
-                cause: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: subject.ruleset_id },
+            let unexpected = rule_unexpected_divergences(observed: rt)
+            if length(unexpected) > 0 {
+              RepositoryRulesetActuationRefused {
+                cause: RepositoryRulesetUnexpectedLiveRule {
+                  ruleset_id: subject.ruleset_id,
+                  detail: render_divergences(ds: unexpected) as NonEmptyStr,
+                },
               }
-              Absent => RepositoryRulesetActuationRefused {
-                cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
+            } else {
+              match signed_desire_projection_refusal() {
+                Present { value: detail } => RepositoryRulesetActuationRefused {
+                  cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable {
+                    ruleset_id: subject.ruleset_id,
+                    detail: detail,
+                  },
+                }
+                Absent => RepositoryRulesetActuationRefused {
+                  cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: subject.ruleset_id },
+                }
               }
             }
           }
@@ -1226,7 +1265,7 @@ fn world_repo_ruleset_apply(
     RepositoryRulesetActuationRefused { cause: cause } => WorldActuationRefused { cause: cause }
     RepositoryRulesetActuationAdmitted =>
       WorldActuationRefused {
-        cause: RepositoryRulesetActuationUnbound { ruleset_id: subject.ruleset_id },
+        cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: subject.ruleset_id },
       }
   }
 }
@@ -1266,13 +1305,15 @@ func verify() -> ProcessExit {
     WorldConverged { subject: _, observed: _, receipt: _ } => ExitSuccess
     WorldNotConverged { subject: _, refusal: RepositoryRulesetObservationRefused { cause: cause } } =>
       exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationUnbound { ruleset_id: id } } =>
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id } } =>
       exit_failure(reason: concat("repo ruleset verify refused: no admitted actuation realization for ruleset ", to_string(id)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledLiveRuleActuationHeld { ruleset_id: id } } =>
-      exit_failure(reason: concat("repo ruleset verify refused: live rule cannot be projected for ruleset ", to_string(id)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnmodeledBypassActorActuationHeld { ruleset_id: id } } =>
-      exit_failure(reason: concat("repo ruleset verify refused: live bypass actor cannot be projected for ruleset ", to_string(id)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnsignedDesireActuationHeld { ruleset_id: id } } =>
-      exit_failure(reason: concat("repo ruleset verify refused: desired ruleset is not signed for actuation ", to_string(id)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnexpectedLiveRule { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset carries a rule this projection cannot express, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetBypassRosterUnobservable { ruleset_id: id, reader: reader, detail: detail } } =>
+      exit_failure(reason: concat(concat(concat("repo ruleset verify refused: this reader (", reader as String), concat(") CANNOT SEE whether the ruleset grants any bypass actor, for ruleset ", to_string(id))), concat(" -- not an observation that one exists -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservedLiveBypassActors { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset grants bypass actors the desired projection does not declare, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the merge queue IS signed off and the desired projection cannot carry the signed policy, for ruleset ", to_string(id)), concat(" -- signing again fixes nothing -- ", detail as String)))
   }
 }

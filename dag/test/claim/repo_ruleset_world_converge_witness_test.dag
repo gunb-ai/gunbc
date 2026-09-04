@@ -1,12 +1,55 @@
 module test.claim.repo_ruleset_world_converge_witness
 
-import std.types { NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr }
 import gunbc.world_converge { WorldUnobservable }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.rulesets {
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
+  RulesetActive,
+  BranchTarget,
+  ThisReaderCannotBypass,
+  NoRequiredStatusChecksRule,
+  NoMergeQueueRule,
+  BypassActorRosterObservation,
+}
 import gunbc.repo_ruleset {
+  RulesetObservation,
+  RulesetObserved,
   RulesetUnreadable,
   RulesetReadTransportRefused,
+  RepositoryRulesetConvergenceSubject,
+  RepositoryRulesetActuationRefused,
   RepositoryRulesetObservationRefused,
+  RepositoryRulesetBypassRosterUnobservable,
+  RepositoryRulesetObservedLiveBypassActors,
+  RepositoryRulesetActuationRealizationUnbound,
+  repo_ruleset_actuation_admission,
+  desired_ruleset_rule_types,
   world_repo_ruleset_observation,
+}
+
+fn fixture_subject() -> RepositoryRulesetConvergenceSubject {
+  RepositoryRulesetConvergenceSubject { repository: gunbc_repository, ruleset_id: 4242 }
+}
+
+// The observation is fixed on every field the admission does NOT decide, so the bypass roster is
+// the only varied input across the three claims below and no verdict can be borrowed from another
+// arm. rule_types are the declared ones, so the unexpected-rule arm cannot fire either.
+fn fixture_observed(roster: BypassActorRosterObservation) -> RulesetObservation {
+  RulesetObserved {
+    name: "fixture",
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [],
+    exclude: [],
+    rule_types: desired_ruleset_rule_types(),
+    standing: NoRequiredStatusChecksRule,
+    merge_queue: NoMergeQueueRule,
+    bypass_roster: roster,
+  }
 }
 
 test fn unreadable_ruleset_maps_to_world_unobservable() -> Bool {
@@ -14,6 +57,60 @@ test fn unreadable_ruleset_maps_to_world_unobservable() -> Bool {
     cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
   }) {
     WorldUnobservable { cause: RepositoryRulesetObservationRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+
+// THE CLAIMS BELOW CROSS THE REPLACEMENT JOIN. The refusal prose lives in helpers this branch no
+// longer routes production through, so a claim calling those helpers proves THEIR text and says
+// nothing about what repo_ruleset_actuation_admission emits. These call the admission itself.
+
+// DISCRIMINATING RED FOR THE INVERSION, and it is the LIVE path: under the credential this
+// repository has, a ruleset GET omits bypass_actors on every read. An earlier shape reported that a
+// live bypass actor EXISTS for exactly this input. Ignorance is not an observation.
+test fn an_unobservable_bypass_roster_is_not_reported_as_an_observed_actor() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterUnavailable {
+      reader: "fixture-credential" as NonEmptyStr,
+      cause: "bypass_actors omitted by the live read" as NonEmptyStr,
+    }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetBypassRosterUnobservable { ruleset_id: _, reader: reader, detail: _ },
+    } => reader as String == "fixture-credential"
+    _ => false
+  }
+}
+
+// THE OTHER SIDE OF THAT DISCRIMINATION: an actually observed grant is a different fact and must
+// reach a different cause, carrying the actor so the operator knows which grant to look at.
+test fn an_observed_live_bypass_actor_reaches_its_own_cause_and_names_the_actor() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
+    }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "Team/7")
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. With an empty roster, the declared rule list and no signed policy, nothing is
+// HELD and the refusal is the honest terminal one: this tree binds no write realization. Without
+// this, every claim above is satisfied by an admission that refuses everything identically.
+test fn an_empty_roster_reaches_the_unbound_realization_cause() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved { actors: [] }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id },
+    } => id == 4242
     _ => false
   }
 }
