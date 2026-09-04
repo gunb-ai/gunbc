@@ -13,7 +13,7 @@ import gunbc.harness.harness_guidance {
 }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
-import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
+import gunbc.harness.harness_wire { harness_engine_context_window, harness_engine_admission_cap }
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
 import gunbc.harness.harness_turn {
   harness_stop_reason_truncated, harness_reasoning_kwargs, harness_wire_block_json,
@@ -130,8 +130,8 @@ test fn a_rounds_premise_projects_its_measured_count() -> Bool {
 // -- which is exactly the case where a check earns its place rather than decorating a guarantee the
 // carrier already gives.
 test fn the_working_window_stays_under_the_engine_admission_cap() -> Bool {
-  token_count_value(t: harness_router_context_window)
-    <= token_count_value(t: harness_router_admission_cap)
+  token_count_value(t: harness_engine_context_window)
+    <= token_count_value(t: harness_engine_admission_cap)
 }
 
 // A RESPONSE CANNOT BE LARGER THAN THE WINDOW IT IS GENERATED INTO. Also authorable red, and it is
@@ -139,7 +139,7 @@ test fn the_working_window_stays_under_the_engine_admission_cap() -> Bool {
 // wrong against a 1M window, but it became wrong the moment the window dropped to 200k without
 // anything relating the two.
 test fn one_response_fits_inside_the_working_window() -> Bool {
-  harness_default_max_tokens < token_count_value(t: harness_router_context_window)
+  harness_default_max_tokens < token_count_value(t: harness_engine_context_window)
 }
 
 // THE DERIVED DEADLINE IS READ BACK, not assumed. Integer division is the whole reason this witness

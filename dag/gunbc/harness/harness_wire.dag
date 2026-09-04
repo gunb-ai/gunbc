@@ -1,7 +1,7 @@
 module gunbc.harness.harness_wire
 
 import std.measure { TokenCount, token_count }
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
   json_kv, json_string, json_int, json_array, json_object, serialize_json,
@@ -289,13 +289,7 @@ fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
   harness_backend_url_on_port(address: address, port: ollama_default_port, shape: shape)
 }
 
-fn harness_srv6_backend_url(shape: HarnessWireShape) -> String {
-  harness_backend_url(address: srv6_host_lan_endpoint.address, shape: shape)
-}
 
-fn harness_srv5_backend_url(shape: HarnessWireShape) -> String {
-  harness_backend_url(address: srv5_host_lan_endpoint.address, shape: shape)
-}
 
 // THE SECOND PAIR, AS ADDRESSES RATHER THAN HOST IDENTITIES, and the distinction is the whole
 // reason these rows are here instead of in fleet_intent_network.
@@ -339,16 +333,45 @@ fn harness_srv5_backend_url(shape: HarnessWireShape) -> String {
 // membership -- and the earlier srv5/srv6 helpers above borrow a fleet row for it only because one
 // happened to exist. Selecting a backend from OBSERVED serving standing is DCH-0's subject and
 // dissolves all four of these functions when it lands.
-data harness_operator_directed_backend_primary: String = "192.168.1.226"
 
-data harness_operator_directed_backend_secondary: String = "192.168.1.233"
 
-fn harness_primary_backend_url(shape: HarnessWireShape) -> String {
-  harness_backend_url(address: harness_operator_directed_backend_primary, shape: shape)
+
+
+// THE HARNESS TALKS TO THE ENGINE DIRECTLY. OPERATOR RULING 2026-09-04: gunbc must not depend on
+// ctrl's session-dashboard router (192.168.1.188:3738), which is co-tenanted with that dashboard's
+// process and closed every in-flight request on each rollout restart (curl exit 52; five runs lost
+// in one morning, the long Think Max steps preferentially). There is nothing to route: one model,
+// served by two vLLM replicas that each answer the OpenAI surface on port 30000, measured
+// 2026-09-04 (/v1/models 200 on both, advertising harness_engine_model). A replica is chosen per
+// worker from a seed (the worktree path) so concurrent attempts spread across both machines
+// without a process in the middle; a transport refusal stays a typed turn failure, never a widen.
+// .225 is srv6's LAN address (gunbc.fleet_intent_network); .232 is the second serving NIC on the
+// other Spark, which the fleet model does not yet carry as a row -- it is declared here beside the
+// port for the same reason the model is, and moves to the fleet when that row exists.
+data harness_engine_port: Int = 30000
+
+data harness_engine_replica_addresses: List<String> = [srv6_host_lan_endpoint.address, "192.168.1.232"]
+
+fn harness_engine_replica_index(seed: String) -> Int {
+  let n = list_length(items: harness_engine_replica_addresses)
+  let sum = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp)
+  sum % n
 }
 
-fn harness_secondary_backend_url(shape: HarnessWireShape) -> String {
-  harness_backend_url(address: harness_operator_directed_backend_secondary, shape: shape)
+fn harness_engine_replica_address(seed: String) -> String {
+  let want = harness_engine_replica_index(seed: seed)
+  let picked = fold(harness_engine_replica_addresses, init: ReplicaPick { at: 0, chosen: "" }, f: (acc, a) =>
+    ReplicaPick { at: acc.at + 1, chosen: if acc.at == want { a } else { acc.chosen } })
+  picked.chosen
+}
+
+type ReplicaPick {
+  at: Int
+  chosen: String
+}
+
+fn harness_engine_backend_url(shape: HarnessWireShape, seed: String) -> String {
+  harness_backend_url_on_port(address: harness_engine_replica_address(seed: seed), port: harness_engine_port, shape: shape)
 }
 
 // THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
@@ -379,11 +402,8 @@ fn harness_secondary_backend_url(shape: HarnessWireShape) -> String {
 // and a usage object -- so this codec speaks to it unchanged. That last fact is what DCH-1's
 // shared-standard modelling bought: a second implementation of the same wire reused the decoder
 // with no second decoder written.
-data harness_router_address: String = "192.168.1.188"
 
-data harness_router_port: Int = 3738
-
-data harness_router_model: String = "deepseek-v4-flash:iq3s-split"
+data harness_engine_model: String = "deepseek-v4-flash:iq3s-split"
 
 // THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
 // gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
@@ -427,13 +447,9 @@ data harness_router_model: String = "deepseek-v4-flash:iq3s-split"
 // harness decides how much of a shared pool it is entitled to. A single row would have made the
 // client's choice indistinguishable from the server's limit, which is precisely the confusion that
 // put 1,048,576 in the window field in the first place.
-data harness_router_admission_cap: TokenCount = token_count(count: 1048576)
+data harness_engine_admission_cap: TokenCount = token_count(count: 1048576)
 
-data harness_router_context_window: TokenCount = token_count(count: 200000)
-
-fn harness_router_backend_url(shape: HarnessWireShape) -> String {
-  harness_backend_url_on_port(address: harness_router_address, port: harness_router_port, shape: shape)
-}
+data harness_engine_context_window: TokenCount = token_count(count: 200000)
 
 // THE CHAT COMPLETIONS DECODER, to the same carrier the messages decoder fills. finish_reason maps
 // onto the stop vocabulary the harness already consumes: stop is an end of turn, tool_calls is a

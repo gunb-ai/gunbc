@@ -24,7 +24,6 @@ import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   harness_decode_response, harness_stop_reason_wire, harness_tool_result_block,
-  harness_srv6_backend_url,
 }
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,

@@ -8,7 +8,7 @@ import extdeps.languages.json.parse {
   JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
 }
 import gunbc.harness.harness_wire {
-  harness_router_address, harness_router_port, harness_router_model,
+  harness_engine_replica_addresses, harness_engine_port, harness_engine_model,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -26,9 +26,9 @@ import gunbc.harness.harness_wire {
 
 data harness_models_path: String = "/v1/models"
 
-fn harness_models_url() -> String {
+fn harness_models_url(address: String) -> String {
   join([
-    "http://", harness_router_address, ":", to_string(value: harness_router_port),
+    "http://", address, ":", to_string(value: harness_engine_port),
     harness_models_path,
   ], "")
 }
@@ -88,8 +88,8 @@ fn harness_model_ids(doc: JsonValue) -> List<String> {
   }
 }
 
-fn harness_observe_backend() -> HarnessBackendStanding {
-  let url = harness_models_url()
+fn harness_observe_replica(address: String) -> HarnessBackendStanding {
+  let url = harness_models_url(address: address)
   let read = http.Client.Get(url: url as NonEmptyStr)
   if !read.success {
     HarnessBackendUnreachable { url: url }
@@ -99,11 +99,11 @@ fn harness_observe_backend() -> HarnessBackendStanding {
         HarnessBackendUnreadable { cause: json_document_gap_text(gap: g) }
       JsonDocumentParsed { value: doc } => {
         let ids = harness_model_ids(doc: doc)
-        if any(ids, id => id == harness_router_model) {
-          HarnessBackendServing { model: harness_router_model }
+        if any(ids, id => id == harness_engine_model) {
+          HarnessBackendServing { model: harness_engine_model }
         } else {
           HarnessBackendModelAbsent {
-            model: harness_router_model,
+            model: harness_engine_model,
             advertised: join(ids, ", "),
           }
         }
@@ -112,10 +112,26 @@ fn harness_observe_backend() -> HarnessBackendStanding {
   }
 }
 
+fn harness_standing_is_serving(standing: HarnessBackendStanding) -> Bool {
+  match standing {
+    HarnessBackendServing { model: _ } => true
+    HarnessBackendModelAbsent { model: _, advertised: _ } => false
+    HarnessBackendUnreachable { url: _ } => false
+    HarnessBackendUnreadable { cause: _ } => false
+  }
+}
+
+fn harness_observe_backend() -> HarnessBackendStanding {
+  fold(harness_engine_replica_addresses, init: HarnessBackendServing { model: harness_engine_model }, f: (acc, a) =>
+    if harness_standing_is_serving(standing: acc) { harness_observe_replica(address: a) } else { acc })
+}
+
 fn harness_backend_report() -> String {
-  let standing = harness_observe_backend()
-  join([
-    "harness backend: ", harness_standing_label(standing: standing), " -- ",
-    harness_standing_detail(standing: standing), "\n",
-  ], "")
+  join(map(harness_engine_replica_addresses, a => {
+    let standing = harness_observe_replica(address: a)
+    join([
+      "harness engine ", a, ": ", harness_standing_label(standing: standing), " -- ",
+      harness_standing_detail(standing: standing), "\n",
+    ], "")
+  }), "")
 }

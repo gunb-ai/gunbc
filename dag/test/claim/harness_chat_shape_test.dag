@@ -1,14 +1,13 @@
 module test.claim.harness_chat_shape
 
-import std.types { Bool, String, Int, List }
+import std.types { list_length, Bool, String, Int, List }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
-  harness_decode_chat_completion, harness_backend_path,
-}
+  harness_decode_chat_completion, harness_backend_path, harness_engine_replica_index, harness_engine_replica_address, harness_engine_replica_addresses, harness_engine_backend_url }
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
@@ -104,4 +103,14 @@ test fn the_brief_is_a_plain_string_on_the_chat_shape() -> Bool {
 test fn each_shape_posts_to_its_own_path() -> Bool {
   harness_backend_path(shape: OpenAiChatCompletionsShape) == "/v1/chat/completions"
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
+}
+
+test fn the_replica_pick_is_deterministic_and_covers_the_roster() -> Bool {
+  let n = list_length(items: harness_engine_replica_addresses)
+  let a = harness_engine_replica_index(seed: "a")
+  let b = harness_engine_replica_index(seed: "b")
+  n == 2 && a == 1 && b == 0
+    && harness_engine_replica_index(seed: "a") == a
+    && harness_engine_replica_address(seed: "a") != harness_engine_replica_address(seed: "b")
+    && string_contains(s: harness_engine_backend_url(shape: OpenAiChatCompletionsShape, seed: "b"), pattern: ":30000/v1/chat/completions")
 }

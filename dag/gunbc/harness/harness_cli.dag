@@ -14,7 +14,7 @@ import gunbc.harness.harness_turn {
 }
 import gunbc.harness.harness_guidance { harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
 import gunbc.harness.harness_wire {
-  harness_router_backend_url, harness_router_model, harness_router_context_window,
+  harness_engine_backend_url, harness_engine_model, harness_engine_context_window,
 }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
@@ -33,7 +33,7 @@ import gunbc.harness.harness_wire {
 // spelling drifts the moment upstream changes it. The refusal was cheap precisely because the
 // backend carried a structured cause; that is the argument for keeping the body on a failed post.
 fn harness_default_model() -> String {
-  harness_router_model
+  harness_engine_model
 }
 
 // THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
@@ -152,11 +152,11 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // field the way it takes the worktree, the timeout program and its two paths -- so the same loop
 // runs against a different serving surface by being handed a different number, not by importing a
 // different authority.
-data harness_context_budget: TokenCount = harness_router_context_window
+data harness_context_budget: TokenCount = harness_engine_context_window
 
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_router_backend_url(shape: harness_default_wire_shape),
+    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: ""),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
@@ -235,7 +235,7 @@ fn harness_worker_config(
   events_path: FilePath,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_router_backend_url(shape: harness_default_wire_shape),
+    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: worktree as String),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
