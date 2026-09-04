@@ -623,3 +623,67 @@ test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool {
     _ => false
   }
 }
+
+
+// THE CLONE'S OWN origin/HEAD FOLLOWS THE BASE REF AND IS NOT A REBIND. Its object moves from old
+// to new because the base ref it targets did; its target is unchanged. This is the live srv1 shape
+// that refused a completed transition on 2026-09-04.
+test fn a_symref_targeting_the_base_ref_follows_the_transition() -> Bool {
+  let origin_head = "refs/remotes/origin/HEAD"
+  let before = transition_state_with_refs(
+    refs: refs_wire(records: [
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: old_sha),
+      symref_record(name: origin_head, oid: old_sha, target: base_ref),
+      base_ref_record(oid: old_sha),
+    ]),
+    head: old_sha,
+    reflog: "old-reflog",
+  )
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      symref_record(name: origin_head, oid: new_sha, target: base_ref),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  is_completed(o: repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref))
+}
+
+// THE CONTROL: a symref whose target is NOT the base ref, whose object nevertheless moved, is still
+// a rebind -- nothing in this transition moved its target, so something else did.
+test fn a_symref_targeting_another_ref_that_moved_still_refuses() -> Bool {
+  let alias = "refs/alias/release"
+  let before = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: dispatch_sha, target: "refs/heads/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: old_sha),
+      base_ref_record(oid: old_sha),
+    ]),
+    head: old_sha,
+    reflog: "old-reflog",
+  )
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: new_sha, target: "refs/heads/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceRefRebound { refname: r, before_object: _, after_object: _, before_target: _, after_target: _ } => r == alias
+    _ => false
+  }
+}
+

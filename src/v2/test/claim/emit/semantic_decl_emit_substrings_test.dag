@@ -2,7 +2,7 @@ module v2.test.emit.semantic_decl_emit_substrings_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
 import v2.std.logic { Bool }
@@ -33,7 +33,7 @@ test fn emit_eq_golden() -> Bool {
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),
-    target: rust_target_model()
+    target: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried == golden
     Rejected { diagnostics: _ } => false
