@@ -17,6 +17,10 @@ data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = Recurring
 
     "One of those is wrong and it is the ACCEPTED one -- values inhabit their declared types is the ordinary compiler floor, which DESIGN section 4b puts BELOW the ladder rather than on a rung of it. ",
 
+    "DISTINGUISHING FACT FOR THE KERNEL-SCALAR SPECIMEN: the identical Int-versus-String mismatch in a plain function body IS refused with a located `type mismatch: expected 'Primitive(Int)', got 'Primitive(String)'` diagnostic. The checker therefore exists and holds outside the join; the match fold walks around it by selecting the conforming Int arm, after which the declared-return seam compares Int with Int. ",
+
+    "WHY THE KERNEL-SCALAR SPECIMEN SURVIVED REVIEW AND CI: the malformed arm was unreachable from its only caller, so every executing control passed. Only the typechecker could have seen it, and a join wall that existed, ran on every arm, but recognized only coproduct disjointness was cited as though it covered the whole join. That is rung inflation rather than a missing check. ",
+
     "**RECOGNITION RULE: wherever a reduction answers with one of its inputs rather than with a judgment ABOUT them, ask what judges the inputs it discarded -- and if the answer is 'the consumer, which sees only the winner', the discarded inputs are unjudged by construction.** The shape hides because the seam that WOULD refuse demonstrably works: it refuses the other order, so every probe that happens to order the arms unluckily reports the compiler healthy. ",
 
     "BOUNDED AGAINST TWO NEIGHBOURS. ",
@@ -27,7 +31,7 @@ data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = Recurring
 
     "RUNG FOUND AT: below the ladder (silent wrongness). ",
 
-    "RUNG AFTER THE REPAIR: mechanically preventable -- v1.compiler.infer match_arm_join_diagnostics asks match_arm_types_are_disjoint_coproducts once per arm, with the RED and its three controls enrolled at test.claim.match_arm_join_disjoint_coproduct_witness_test; the invalid state stays writable and safety depends on that check executing. ",
+    "RUNG AFTER THE REPAIR: mechanically preventable -- v1.compiler.infer match_arm_join_diagnostics asks match_arm_types_are_proven_disjoint once per arm; that relation preserves the concrete-coproduct judgment and consumes the declared-conformance path's existing ground-type discipline for Int beside String and List<Int> beside List<String>. The order-sensitive coproduct RED, the conforming-first scalar and collection REDs, and their controls are enrolled at test.claim.match_arm_join_disjoint_coproduct_witness_test; the invalid state stays writable and safety depends on that check executing. ",
 
     "CEILING: structurally guaranteed -- a join that produces a JUDGED type carrying every arm's verdict, rather than a representative selected from the arms, makes an unjudged arm unconstructible. ",
 
