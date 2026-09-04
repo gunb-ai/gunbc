@@ -111,6 +111,8 @@ import gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protect
 import gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding { by_name_evaluation_is_a_string_not_a_binding }
 import gunbc.recurring_failure_mode.verification_bound_to_the_revision_it_started_on { verification_bound_to_the_revision_it_started_on }
 import gunbc.recurring_failure_mode.policy_mechanism_adjudicates_the_merge_that_supersedes_it { policy_mechanism_adjudicates_the_merge_that_supersedes_it }
+import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison { denominator_moved_between_measurement_and_comparison }
+import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -213,4 +215,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   by_name_evaluation_is_a_string_not_a_binding,
   verification_bound_to_the_revision_it_started_on,
   policy_mechanism_adjudicates_the_merge_that_supersedes_it,
+  denominator_moved_between_measurement_and_comparison,
+  absent_reads_identically_to_never_looked,
 ]
