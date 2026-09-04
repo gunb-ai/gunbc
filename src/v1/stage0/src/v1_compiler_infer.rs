@@ -5818,10 +5818,7 @@ pub fn direct_call_argument_inhabitance_diags(
                                                 ) {
                                                     app.formal.clone().substitution_basis.clone()
                                                 } else {
-                                                    app.formal
-                                                        .clone()
-                                                        .declaration_bound_conformance
-                                                        .clone()
+                                                    app.formal.clone().declared_type.clone()
                                                 },
                                             produced: crate::v1_compiler_infer_types::resolved_type(
                                                 actual_expr.clone(),
