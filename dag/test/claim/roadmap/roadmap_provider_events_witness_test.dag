@@ -23,6 +23,20 @@ import gunbc.roadmap_provider_events {
 
 data successful_codex_jsonl: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"completed\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}\n"
 
+test fn a_harness_round_usage_event_is_accounted_not_refused() -> Bool {
+  let parsed = parse_codex_jsonl(
+    text: "{\"type\":\"turn.started\"}\n{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":900,\"output_tokens\":120,\"epoch_ms\":1000000,\"files_changed\":0}\n{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+  )
+  match parsed {
+    CodexEventsRefused { events_before_refusal: _, line_number: _, raw: _, reason: _ } => false
+    _ =>
+      match provider_execution_state(parsed: parsed) {
+        ProviderRunning { activity } => activity == "Agent working · running command"
+        _ => false
+      }
+  }
+}
+
 test fn codex_stream_classifies_running_activity() -> Bool {
   let parsed = parse_codex_jsonl(
     text: "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",

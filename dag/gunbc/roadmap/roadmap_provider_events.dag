@@ -27,6 +27,11 @@ type CodexItemActivity
   | CodexReporting
   | CodexUnclassifiedItem
 
+// THE GUNBC HARNESS INTERLEAVES ONE EVENT OF ITS OWN in the Codex-shaped stream: round.usage, the
+// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput).
+// The phase fold leaves the provider state unchanged on it; before this arm the whole stream was
+// refused at that line as an unknown event type, so a live harness attempt rendered as
+// "Agent evidence refused" with no strip (first belt-dispatched attempt, 2026-09-04).
 type CodexProviderEventKind
   = CodexThreadStarted
   | CodexTurnStarted
@@ -35,6 +40,7 @@ type CodexProviderEventKind
   | CodexTurnCompleted
   | CodexTurnFailed
   | CodexError
+  | HarnessRoundUsage
 
 type CodexProviderEvent {
   line_number: Int
@@ -343,6 +349,12 @@ fn codex_event_from_complete_line(
       raw: raw,
       kind: CodexTurnFailed,
     } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "round.usage") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessRoundUsage,
+    } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
     Present { value: CodexProviderEvent {
       line_number: line_number,
@@ -511,6 +523,7 @@ fn provider_execution_fold_event(
       match event.kind {
         CodexThreadStarted => ProviderStarting { activity: "thread started" }
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
+        HarnessRoundUsage => state
         CodexItemStarted { activity } =>
           ProviderRunning {
             activity: join(
