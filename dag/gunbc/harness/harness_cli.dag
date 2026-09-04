@@ -13,7 +13,7 @@ import gunbc.harness.harness_turn {
   TurnResponseUnreadable, TurnRequestUnwritable,
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
-import gunbc.harness.harness_guidance { harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
 import gunbc.harness.harness_wire {
   harness_engine_backend_url, harness_engine_model, harness_engine_context_window,
 }
@@ -248,7 +248,7 @@ fn harness_worker_config(
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_worker_system_prompt,
+    system_prompt: harness_worker_system_prompt_at(worktree: worktree as String),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -261,7 +261,9 @@ fn harness_worker_config(
   }
 }
 
-data harness_worker_system_prompt: String = harness_guidance_prose(rows: harness_worker_guidance())
+fn harness_worker_system_prompt_at(worktree: String) -> String {
+  harness_guidance_prose(rows: harness_worker_guidance_at(worktree: worktree))
+}
 
 // RAISED FROM 24 ON A MEASUREMENT. A mechanical four-file deletion, run under Think Max, spent its
 // rounds at roughly one sed edit per declaration plus a verification read per file, and exhausted 24

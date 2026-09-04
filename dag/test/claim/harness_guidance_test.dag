@@ -1,7 +1,7 @@
 module test.claim.harness_guidance
 
 import std.types { Bool, String, Int, List }
-import gunbc.harness.harness_guidance {
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt,
   HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
   ActingAs, CodingWorkerInWorktree,
   ToolCanWriteBy, HeredocWrite,
@@ -249,4 +249,10 @@ test fn a_thinking_block_replays_as_a_thinking_block() -> Bool {
   let tx = serialize_json(v: harness_wire_block_json(block: WireTextBlock { text: "391" }))
   th.contains("\"type\": \"thinking\"") && th.contains("\"thinking\": \"We need 17*23.\"")
     && tx.contains("\"type\": \"text\"") && !tx.contains("thinking")
+}
+
+test fn the_worker_is_told_its_own_worktree_path() -> Bool {
+  let prose = harness_guidance_prose(rows: harness_worker_guidance_at(worktree: "/x/attempts/n-a1"))
+  prose.contains("The attempt worktree is /x/attempts/n-a1.")
+    && prose.contains("paths outside it, including the tree that holds the gunbc binary, are not part of this task")
 }

@@ -1798,7 +1798,24 @@ fn dispatch_worker_unit_properties(
     systemd_run_property(name: "WorkingDirectory", value: working_directory),
     systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
     systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
+    systemd_run_property(name: "ProtectSystem", value: "strict"),
+    systemd_run_property(name: "ProtectHome", value: "read-only"),
+    systemd_run_property(name: "PrivateTmp", value: "yes"),
+    systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
   ]
+}
+
+// THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
+// second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
+// inferred the tree from the one absolute path it was shown; ProtectHome=read-only with these paths
+// carved out makes that a refused write rather than a dirty release tree. The repository's own
+// .git/worktrees directory is writable because the attempt worktree's git metadata lives there.
+fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
+  join([
+    instance.instance_root as String,
+    " ",
+    instance.repo_root as String, "/.git/worktrees",
+  ], "")
 }
 
 fn dispatch_worker_unit_argv(

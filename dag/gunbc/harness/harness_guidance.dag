@@ -46,6 +46,7 @@ type HarnessPremise
   | CompletionRequires { term: HarnessCompletionTerm }
   | RoundsRemaining { rounds: Int }
   | EarlierRoundsDropped { rounds: Int }
+  | WorktreeAt { path: String }
 
 // A premise the harness cannot point at is not a premise. The ref names the declaration the fact is
 // read from, so the roster below is auditable the same way any other citation in this corpus is.
@@ -125,7 +126,20 @@ fn harness_premise_text(p: HarnessPremise) -> String {
       join(["[harness] ", to_string(value: n), " tool rounds remain."], "")
     EarlierRoundsDropped { rounds: n } =>
       join(["[harness] ", to_string(value: n), " earlier tool rounds were dropped."], "")
+    WorktreeAt { path } =>
+      join(["The attempt worktree is ", path, ". Every file you read or change is under it; paths outside it, including the tree that holds the gunbc binary, are not part of this task."], "")
   }
+}
+
+// THE WORKTREE IS NAMED, NOT ONLY DESCRIBED. The second belt-dispatched attempt (2026-09-04) was told
+// its tool runs in the attempt worktree and still edited the deploy tree, having inferred a repository
+// from the one absolute path it had seen (the gunbc binary's). A worker that knows its own path has
+// nothing to infer.
+fn harness_worker_guidance_at(worktree: String) -> List<HarnessGroundedPremise> {
+  concat(harness_worker_guidance(), [
+    grounded(premise: WorktreeAt { path: worktree },
+             module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "dispatch_worktree_path_for_instance"),
+  ])
 }
 
 fn harness_conclusion_text(c: HarnessConclusion) -> String {

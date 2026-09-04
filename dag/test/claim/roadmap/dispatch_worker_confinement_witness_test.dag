@@ -1,0 +1,19 @@
+module test.claim.roadmap.dispatch_worker_confinement_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+
+fn has_property(props: List<String>, needle: String) -> Bool {
+  any(props, p => string_contains(s: p, pattern: needle))
+}
+
+test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log")
+  has_property(props: props, needle: "ProtectSystem=strict")
+    && has_property(props: props, needle: "ProtectHome=read-only")
+    && has_property(props: props, needle: "PrivateTmp=yes")
+    && has_property(props: props, needle: join(["ReadWritePaths=", inst.instance_root as String], ""))
+    && has_property(props: props, needle: "/.git/worktrees")
+}
