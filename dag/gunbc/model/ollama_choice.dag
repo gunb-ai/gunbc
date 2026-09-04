@@ -1710,27 +1710,29 @@ fn choose_ollama_serving_candidate(
   let verdicts = map(candidates, c =>
     qualify_ollama_candidate(candidate: c, node: node, constraints: constraints))
   let unresolved = filter(verdicts, v => verdict_is_unanswerable(verdict: v))
-  let ranked = fold(verdicts, [], (acc, v) =>
-    match ollama_ranked_admissible(verdict: v) {
-      Absent => acc
-      Present { value: r } => append(acc, [r])
-    })
   match length(unresolved) > 0 {
     true => SelectionUnanswerable {
       cause: UnresolvedCandidateCouldWin { unresolved_count: length(unresolved) },
       evaluations: verdicts,
     }
-    false => match unique_release_relative_maximum(alternatives: ranked) {
-      NoRankedAlternative => NoCandidateAdmissible { rejections: verdicts }
-      NoCommonReleaseScale { distinct_release_count: n } => SelectionUnanswerable {
-        cause: CrossReleaseQualityOrderAbsent { distinct_release_count: n },
-        evaluations: verdicts,
+    false => {
+      let ranked = fold(verdicts, [], (acc, v) =>
+        match ollama_ranked_admissible(verdict: v) {
+          Absent => acc
+          Present { value: r } => append(acc, [r])
+        })
+      match unique_release_relative_maximum(alternatives: ranked) {
+        NoRankedAlternative => NoCandidateAdmissible { rejections: verdicts }
+        NoCommonReleaseScale { distinct_release_count: n } => SelectionUnanswerable {
+          cause: CrossReleaseQualityOrderAbsent { distinct_release_count: n },
+          evaluations: verdicts,
+        }
+        MaximumNotUnique { quality: top, tied_count: n } => SelectionUnanswerable {
+          cause: QualityRankTie { tied_count: n, rank: top.rank },
+          evaluations: verdicts,
+        }
+        UniqueMaximumFound { payload: best } => ChoseCandidate { verdict: best }
       }
-      MaximumNotUnique { quality: top, tied_count: n } => SelectionUnanswerable {
-        cause: QualityRankTie { tied_count: n, rank: top.rank },
-        evaluations: verdicts,
-      }
-      UniqueMaximumFound { payload: best } => ChoseCandidate { verdict: best }
     }
   }
 }
