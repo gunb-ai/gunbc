@@ -383,10 +383,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_entry_presence,
   filesystem_read_outcome,
@@ -3497,6 +3499,9 @@ fn provider_event_projection_error(
 // mint consumes a successful directory listing; this module carries neither a prose copy of that
 // law nor a second spelling of List's membership encoding. Listing refusal, listed-but-unreadable,
 // and disagreeing observations all project to ReceiptSourceUnreadable.
+// A REFUSED SUBJECT IS UNREADABLE, NEVER ABSENT. A subject that was never admitted established no
+// absence, so answering `ReceiptSourceAbsent` for it would be exactly the fail-open the filesystem
+// fold exists to prevent -- a receipt reported as not-there on outcomes that establish nothing.
 fn belt_publication_receipt_source(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -3523,6 +3528,13 @@ fn belt_publication_receipt_source(
       ) {
         FilesystemEntryPresenceIndeterminate { cause: c } =>
           ReceiptSourceUnreadable { detail: c }
+        FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+          ReceiptSourceUnreadable {
+            detail: join([
+              "the attempt directory ", d, " is not a directory subject, so ", n,
+              " is established by nothing the fold received -- ", c,
+            ], ""),
+          }
         FilesystemEntryAbsent(_) => ReceiptSourceAbsent
         FilesystemEntryListed { directory: _, name: _ } => {
           let publication_dir = dispatch_attempt_publication_dir_for_instance(
@@ -3558,6 +3570,13 @@ fn belt_publication_receipt_source(
               ReceiptSourceUnreadable { detail: c }
             FilesystemFileObservationsDisagree { path: _, cause: c } =>
               ReceiptSourceUnreadable { detail: c }
+            FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+              ReceiptSourceUnreadable {
+                detail: join([
+                  "the publication directory ", d, " is not a directory subject, so ", n,
+                  " is established by nothing the fold received -- ", c,
+                ], ""),
+              }
             FilesystemFileAbsent(_) => ReceiptSourceAbsent
             FilesystemFileRead { path: _, content: text } =>
               ReceiptSourcePresent { text: text }

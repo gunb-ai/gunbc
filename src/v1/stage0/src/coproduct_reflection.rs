@@ -2429,10 +2429,70 @@ mod parse_only_uppercase_variant_regression_tests {
         }
     }
 
-    fn kind_is(ctx: &InterpContext, skel: &Value, expected: &str) -> bool {
+    fn variant_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+        match value {
+            Value::Variant { fields, .. } => {
+                let key = ctx.sym(name);
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_is(ctx: &InterpContext, value: Option<&Value>, expected: &str) -> bool {
+        matches!(
+            value,
+            Some(Value::Variant { variant_name, .. }) if *variant_name == ctx.sym(expected)
+        )
+    }
+
+    // THE WHOLE ACCEPTED SHAPE, NOT ITS OUTER TAG. `node_is_call` reads two nested variants -- the
+    // kind's `behavior` and the callee child's `connective` -- so a probe asserting only
+    // `ComputationNode` and `TypeNode` is satisfied by a marshal emitting `behavior: Loop` over a
+    // `connective: Conj` child, which `node_is_call` refuses. That is the §5 tell in this module's
+    // own test: an assertion that passes while the realization lies. These two read the full path.
+    fn is_transform_computation_node(ctx: &InterpContext, skel: &Value) -> bool {
         match field(ctx, skel, "kind") {
-            Some(Value::Variant { variant_name, .. }) => variant_name == ctx.sym(expected),
-            _ => false,
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "ComputationNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "behavior").as_ref(),
+                        "Transform",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_atom_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Atom",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_conj_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Conj",
+                    )
+            }
+            None => false,
         }
     }
 
@@ -2459,13 +2519,15 @@ mod parse_only_uppercase_variant_regression_tests {
         let (skel, _) =
             marshal_generic(&ctx, &call_expr("map_keys", vec![var_expr("m")]), &[], &si);
         assert!(
-            kind_is(&ctx, &skel, "ComputationNode"),
-            "a marshaled call must carry the ComputationNode call carrier node_is_call matches"
+            is_transform_computation_node(&ctx, &skel),
+            "a marshaled call must carry ComputationNode {{ behavior: Transform }} -- the exact \
+             kind node_is_call matches, behavior included"
         );
         let callee = first_child_target(&ctx, &skel).expect("call skeleton has a first child");
         assert!(
-            kind_is(&ctx, &callee, "TypeNode"),
-            "the first positional child of a marshaled call must be the callee identity leaf"
+            is_atom_type_node(&ctx, &callee),
+            "the first positional child must be TypeNode {{ connective: Atom }} -- node_is_call's \
+             second predicate, node_is_callee_reference, accepts only Atom or Arrow"
         );
     }
 
@@ -2475,8 +2537,8 @@ mod parse_only_uppercase_variant_regression_tests {
         let si = ctx.source_indices();
         let (skel, _) = marshal_generic(&ctx, &var_expr("m"), &[], &si);
         assert!(
-            kind_is(&ctx, &skel, "TypeNode"),
-            "only a call node may carry the call carrier"
+            is_conj_type_node(&ctx, &skel),
+            "only a call node may carry the call carrier; everything else stays TypeNode {{ connective: Conj }}"
         );
     }
 

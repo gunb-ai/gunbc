@@ -3802,6 +3802,103 @@ fn ct_function_value_adapter_bound_alignment_control_test() -> String {
     "\n")
 }
 
+// THE WALL UNDER emit_entry_point_absent_main_rs AND emitted_crate_dependency_lines, ENROLLED WHERE
+// IT ACTUALLY EXECUTES.
+//
+// Both halves ride the required `cargo test --release -p v1-compiler --lib` step
+// (gunbc.repo_self_build repo_self_test_command), because compiler_tests is emitted INTO the seed
+// lib and that step runs it on every push and pull request. A wet transport was the obvious home
+// and is the wrong one: every comparable emit-build-run receipt in this repository is classified
+// onto a cadence std.witness_admission answers has-no-scheduled-route, so it would have been an
+// inert lens asserting a safety property nothing runs.
+//
+// THE FIRST HALF IS BIDIRECTIONAL BY CONSTRUCTION. It refuses the marker's ABSENCE and the
+// fabrication's PRESENCE separately, so restoring `fn main() {}` fails on the second assertion even
+// if some other refusal text were introduced, and deleting the refusal fails on the first. A probe
+// asserting only "main.rs is not empty" would green on either regression, which is why it is not
+// written that way.
+//
+// THE SECOND HALF IS A CONTROLLED FIXTURE, NOT A READING OF THE LIVE TREE. It supplies both values
+// of renders_clap_cli directly and asserts the dependency line appears under one and not the other,
+// so the assertion measures the DERIVATION rather than whatever the current corpus happens to
+// demand -- DESIGN section 5's oracle rule, which refuses a literal copied from the same tree.
+//
+// WHAT IT DOES NOT ESTABLISH. It reads emitted bytes; it does not run the emitted binary. The
+// executed half -- build the pipeline-free crate as emitted, run it, observe a nonzero exit
+// carrying the marker on stderr -- was measured by hand on this change and is NOT enrolled here,
+// because no per-PR route executes an emitted crate. NEXT-RUNG TRIGGER: a scheduled wet route that
+// executes emit -> cargo -> run, at which point that observation becomes a row beside this one.
+fn ct_entry_point_absent_refusal_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"entry_point_absent.dag\".to_string(),\n",
+    "                    content: \"module entry.point.absent\\nfn add(a: Int, b: Int) -> Int { a + b }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "                let main_rs = result.files.iter()\n",
+    "                    .find(|f| f.path == \"src/main.rs\")\n",
+    "                    .expect(\"emission must produce src/main.rs\");\n",
+    "                let marker = crate::v1_compiler_emit_rust::entry_point_absent_refusal_marker();\n",
+    "                assert!(\n",
+    "                    main_rs.content.contains(&marker),\n",
+    "                    \"a corpus with no workflow function and no pipeline module must emit a main that REFUSES, carrying {:?}; got: {:?}\",\n",
+    "                    marker, main_rs.content\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !main_rs.content.contains(\"fn main() {}\"),\n",
+    "                    \"the fabricating empty-body entry point must not be emitted -- it builds, runs, exits zero and does nothing; got: {:?}\",\n",
+    "                    main_rs.content\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    main_rs.content.contains(\"std::process::exit(2)\"),\n",
+    "                    \"the refusal must leave a nonzero exit status; got: {:?}\",\n",
+    "                    main_rs.content\n",
+    "                );\n",
+    "                let cargo_toml = result.files.iter()\n",
+    "                    .find(|f| f.path == \"Cargo.toml\")\n",
+    "                    .expect(\"emission must produce Cargo.toml\");\n",
+    "                assert!(\n",
+    "                    !cargo_toml.content.contains(\"clap\"),\n",
+    "                    \"a crate whose emitted sources reference clap nowhere must not declare it; got: {:?}\",\n",
+    "                    cargo_toml.content\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap panicked\");\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn the_clap_dependency_follows_the_emitted_cli_demand_in_both_directions() {\n",
+    "        let with_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(\n",
+    "            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {\n",
+    "                renders_clap_cli: true,\n",
+    "                renders_async_services: false,\n",
+    "            },\n",
+    "        );\n",
+    "        let without_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(\n",
+    "            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {\n",
+    "                renders_clap_cli: false,\n",
+    "                renders_async_services: false,\n",
+    "            },\n",
+    "        );\n",
+    "        assert!(\n",
+    "            with_cli.iter().any(|line| line.starts_with(\"clap = \")),\n",
+    "            \"a crate that renders a clap CLI must declare clap; got: {:?}\",\n",
+    "            with_cli\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !without_cli.iter().any(|line| line.starts_with(\"clap = \")),\n",
+    "            \"a crate that renders no clap CLI must not declare clap; got: {:?}\",\n",
+    "            without_cli\n",
+    "        );\n",
+    "    }\n\n")
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -3811,6 +3908,7 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_pipeline_test(),
+    ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
     ct_fixture_closure_rustc_discrimination_test(),
     ct_evaluation_budget_consequence_falsifier_test(),
