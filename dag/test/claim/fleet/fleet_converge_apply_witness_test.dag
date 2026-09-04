@@ -29,23 +29,30 @@ fn fixture_srv3_host_converge() -> HostConverge {
 }
 
 test fn witness_unsound_policy_refused() -> Bool {
-  match converge_apply(
-    policy: ConvergePolicyUnsound { reason: "fixture" },
-    transport: LocalShell
+  match world_converge(
+    subject: HostConvergenceSubject { identity: operator_host_srv3 },
+    context: HostConvergenceContext {
+      policy: ConvergePolicyUnsound { reason: "fixture" },
+      transport: LocalShell,
+    },
+    handler: host_world_convergence_handler,
   ) {
-    FleetConvergeApplyRefused { reason: why } => string_contains(s: why, pattern: "policy unsound")
-    FleetConvergeApplied { host_count: _, all_converged: _ } => false
+    WorldNotConverged { subject: _, refusal: HostConvergencePolicyUnsound { reason: why } } => why == "fixture"
+    _ => false
   }
 }
 
 test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
-  match converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
-    transport: LocalShell
+  match world_converge(
+    subject: HostConvergenceSubject { identity: operator_host_srv3 },
+    context: HostConvergenceContext {
+      policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+      transport: LocalShell,
+    },
+    handler: host_world_convergence_handler,
   ) {
-    FleetConvergeApplied { host_count: n, all_converged: ok } =>
-      n == 1 && !ok
-    FleetConvergeApplyRefused { reason: _ } => false
+    WorldNotConverged { subject: _, refusal: HostConvergenceApplyRefused { reason: _ } } => true
+    _ => false
   }
 }
 
@@ -69,13 +76,17 @@ test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
     }
 }
 
-test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
-  !fleet_converge_apply_result_converged(r: converge_apply(
-    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
-    transport: EmitArtifactThenThinRun {
-      bootstrap: BootstrapFragment { script: "true" },
-      invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
-    }
-  ))
+test fn witness_unknown_subject_identity_refuses_before_realization() -> Bool {
+  match world_converge(
+    subject: HostConvergenceSubject { identity: "not-enrolled" as HostIdentity },
+    context: HostConvergenceContext {
+      policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+      transport: LocalShell,
+    },
+    handler: host_world_convergence_handler,
+  ) {
+    WorldNotConverged { subject: _, refusal: HostConvergenceUnknownIdentity { identity: identity } } =>
+      identity as String == "not-enrolled"
+    _ => false
+  }
 }
-

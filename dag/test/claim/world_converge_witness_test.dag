@@ -1,0 +1,59 @@
+module test.claim.world_converge_witness
+
+import std.types { String, Bool, List }
+import gunbc.world_converge {
+  WorldObservation, WorldObserved, WorldUnobservable,
+  WorldDifference, WorldDiverged,
+  WorldActuation, WorldActuationRefused,
+  WorldConvergenceHandler,
+  WorldNotConverged,
+  world_converge,
+}
+
+type FixtureSubject { key: String }
+type FixtureObserved { value: String }
+type FixtureDifference = FixtureDrift
+type FixtureReceipt = FixtureApplied
+type FixtureRefusal = FixtureUnreadable | FixtureApplyShouldNotRun
+
+fn fixture_observe(_: FixtureSubject, readable: Bool) -> WorldObservation<FixtureObserved, FixtureRefusal> {
+  if readable {
+    WorldObserved { value: FixtureObserved { value: "observed" } }
+  } else {
+    WorldUnobservable { cause: FixtureUnreadable }
+  }
+}
+
+fn fixture_differences(_: FixtureSubject, _: Bool, _: FixtureObserved) -> WorldDifference<FixtureDifference> {
+  WorldDiverged { differences: [FixtureDrift] }
+}
+
+fn fixture_apply(_: FixtureSubject, _: Bool, _: FixtureObserved, _: List<FixtureDifference>) -> WorldActuation<FixtureReceipt, FixtureRefusal> {
+  WorldActuationRefused { cause: FixtureApplyShouldNotRun }
+}
+
+fn fixture_unchanged(_: FixtureSubject, _: Bool, _: FixtureObserved) -> FixtureReceipt {
+  FixtureApplied
+}
+
+type FixtureWorldHandler = WorldConvergenceHandler<FixtureSubject, Bool, FixtureObserved, FixtureDifference, FixtureReceipt, FixtureRefusal>
+
+data fixture_world_handler: FixtureWorldHandler = WorldConvergenceHandler {
+  observe: fixture_observe,
+  differences: fixture_differences,
+  apply: fixture_apply,
+  unchanged_receipt: fixture_unchanged,
+}
+
+// Discriminating RED: the apply handler deliberately carries a different refusal. If the generic
+// root computes differences or actuation before guarding observation, this answers the wrong arm.
+test fn unreadable_subject_refuses_the_run_before_apply() -> Bool {
+  match world_converge(
+    subject: FixtureSubject { key: "fixture" },
+    context: false,
+    handler: fixture_world_handler,
+  ) {
+    WorldNotConverged { subject: _, refusal: FixtureUnreadable } => true
+    _ => false
+  }
+}
