@@ -4,10 +4,16 @@
 use self::CallArgumentFormalSelection::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
+use self::ExpectedConstructorDomainCause::*;
+use self::ExpectedConstructorDomainResult::*;
+use self::ExpectedTypeRoute::*;
 use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::RecordLitInstantiation::*;
+use self::RecordLitUnavailableCause::*;
+use self::RecordLitVariantSelection::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -1509,6 +1515,42 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
         ))
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RecordLitUnavailableCause {
+    DeclarationLookupUnavailable,
+    GenericArityDisagreement,
+    FieldTemplateSelectionFailed,
+    AmbiguousVariantOwners { owners: Rc<Vec<String>> },
+}
+impl RecordLitUnavailableCause {
+    pub fn owners(&self) -> Rc<Vec<String>> {
+        match self {
+            RecordLitUnavailableCause::DeclarationLookupUnavailable => {
+                panic!("no owners on unit variant")
+            }
+            RecordLitUnavailableCause::GenericArityDisagreement => {
+                panic!("no owners on unit variant")
+            }
+            RecordLitUnavailableCause::FieldTemplateSelectionFailed => {
+                panic!("no owners on unit variant")
+            }
+            RecordLitUnavailableCause::AmbiguousVariantOwners { owners: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+pub fn record_lit_unavailable_cause_text(c: Rc<RecordLitUnavailableCause>) -> String {
+    match (*c.clone()).clone() {
+    RecordLitUnavailableCause::DeclarationLookupUnavailable => "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here".to_string(),
+    RecordLitUnavailableCause::GenericArityDisagreement => "the declared generic arity does not match the number of supplied type arguments".to_string(),
+    RecordLitUnavailableCause::FieldTemplateSelectionFailed => "the record-literal field template could not be selected for this type name".to_string(),
+    RecordLitUnavailableCause::AmbiguousVariantOwners { owners: os, .. } => v1_rt::concat(v1_rt::concat("this literal name is a constructor of more than one type reachable from this position -- ".to_string(), os.clone().join(&"; and ".to_string())), " -- so which coproduct it constructs is not determined by the position. Name the intended one explicitly rather than letting route order decide".to_string()),
+}
+}
+
 pub fn declared_type_conformance_diags(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -1800,51 +1842,416 @@ pub fn record_lit_expanded_from_expected(
     }
 }
 
-pub fn record_lit_expected_coproduct(
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ExpectedTypeRoute {
+    WholeExpectedType,
+    CardinalityOptionalWrapper,
+    NominalOptionalWrapper,
+    CollectionElement,
+    AliasTarget,
+}
+
+pub fn expected_type_route_text(r: ExpectedTypeRoute) -> String {
+    match r.clone() {
+        ExpectedTypeRoute::WholeExpectedType => "the expected type itself".to_string(),
+        ExpectedTypeRoute::CardinalityOptionalWrapper => {
+            "the Optional wrapper carried by this position's cardinality marker".to_string()
+        }
+        ExpectedTypeRoute::NominalOptionalWrapper => {
+            "the explicitly spelled Optional wrapper".to_string()
+        }
+        ExpectedTypeRoute::CollectionElement => {
+            "the element type of the expected collection".to_string()
+        }
+        ExpectedTypeRoute::AliasTarget => "the target of the expected type's alias".to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ExpectedConstructorDomain {
+    pub owner: Rc<Node>,
+    pub owner_name: String,
+    pub route: ExpectedTypeRoute,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ExpectedConstructorDomainCause {
+    NoExpectedTypeAtPosition,
+    ExpectedTypeCarriesNoConstructorDomain,
+}
+
+pub fn expected_constructor_domain_cause_text(c: ExpectedConstructorDomainCause) -> String {
+    match c.clone() {
+    ExpectedConstructorDomainCause::NoExpectedTypeAtPosition => "this position supplies no expected type, so there is no coproduct in which to look this constructor up".to_string(),
+    ExpectedConstructorDomainCause::ExpectedTypeCarriesNoConstructorDomain => "the expected type reaches no coproduct by any modeled route, so it offers no constructor domain at all".to_string(),
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ExpectedConstructorDomainResult {
+    ExpectedConstructorDomains {
+        candidates: Rc<Vec<Rc<ExpectedConstructorDomain>>>,
+    },
+    ExpectedConstructorDomainUnavailable {
+        cause: ExpectedConstructorDomainCause,
+    },
+}
+
+pub fn record_lit_expected_resolved(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
     match expected.clone() {
         Some(exp) => {
-            let resolved = match crate::v1_compiler_infer_env::lookup_type_for(
-                scope.type_env.clone(),
-                exp.clone(),
-            ) {
-                Some(r) => r.clone(),
-                std::option::Option::None => exp.clone(),
-            };
-            let nominal = if crate::v1_compiler_infer_types::node_is_element_collection(
-                resolved.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            ) {
-                match resolved.children.clone().first().cloned() {
-                    Some(elem) => {
-                        let elem_ty = crate::v1_compiler_infer_types::child_type_node(elem.clone());
-                        match crate::v1_compiler_infer_env::lookup_type_for(
-                            scope.type_env.clone(),
-                            elem_ty.clone(),
-                        ) {
-                            Some(r) => Some(r.clone()),
-                            std::option::Option::None => Some(elem_ty.clone()),
-                        }
-                    }
-                    std::option::Option::None => std::option::Option::None,
-                }
-            } else {
-                Some(resolved.clone())
-            };
-            match nominal.clone() {
-                Some(n) => {
-                    if (n.connective.clone() == Connective::Disj) {
-                        Some(n.clone())
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-                std::option::Option::None => std::option::Option::None,
+            match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), exp.clone())
+            {
+                Some(r) => Some(r.clone()),
+                std::option::Option::None => Some(exp.clone()),
             }
         }
         std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_node_is_optional_wrapper(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+        scope.type_env.clone().source_indices.clone(),
+        n.clone(),
+    )) == "Optional".to_string())
+}
+
+pub fn expected_node_resolved_or_self(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node> {
+    match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), n.clone()) {
+        Some(r) => r.clone(),
+        std::option::Option::None => n.clone(),
+    }
+}
+
+pub fn expected_domain_push(
+    acc: Rc<Vec<Rc<ExpectedConstructorDomain>>>,
+    n: Option<Rc<Node>>,
+    route: ExpectedTypeRoute,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ExpectedConstructorDomain>>> {
+    match n.clone() {
+        Some(cand) => {
+            if (cand.connective.clone() == Connective::Disj) {
+                {
+                    let nm = crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        cand.clone(),
+                    );
+                    if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for d in acc.iter().cloned() {
+                            if (d.owner_name.clone() == nm.clone()) {
+                                __result.push(d);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        > 0)
+                    {
+                        acc.clone()
+                    } else {
+                        v1_rt::concat(
+                            acc.clone(),
+                            Rc::new(vec![Rc::new(ExpectedConstructorDomain {
+                                owner: cand.clone(),
+                                owner_name: nm.clone(),
+                                route: route.clone(),
+                            })]),
+                        )
+                    }
+                }
+            } else {
+                acc.clone()
+            }
+        }
+        std::option::Option::None => acc.clone(),
+    }
+}
+
+pub fn expected_route_whole(expected: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match record_lit_expected_resolved(expected.clone(), scope.clone()) {
+        Some(r) => {
+            if expected_node_is_optional_wrapper(r.clone(), scope.clone()) {
+                std::option::Option::None
+            } else {
+                Some(r.clone())
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_route_nominal_optional(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match record_lit_expected_resolved(expected.clone(), scope.clone()) {
+        Some(r) => {
+            if expected_node_is_optional_wrapper(r.clone(), scope.clone()) {
+                Some(r.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_route_cardinality_optional(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        Some(exp) => {
+            if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
+                crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    "Optional".to_string(),
+                )
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_route_collection_element(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match record_lit_expected_resolved(expected.clone(), scope.clone()) {
+        Some(r) => {
+            if crate::v1_compiler_infer_types::node_is_element_collection(
+                r.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                match r.children.clone().first().cloned() {
+                    Some(elem) => Some(expected_node_resolved_or_self(
+                        crate::v1_compiler_infer_types::child_type_node(elem.clone()),
+                        scope.clone(),
+                    )),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_route_alias_target(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match record_lit_expected_resolved(expected.clone(), scope.clone()) {
+        Some(r) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            crate::v1_std_core::authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                r.clone(),
+            ),
+        ) {
+            Some(decl) => match decl.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => Some(
+                    expected_node_resolved_or_self(target.clone(), scope.clone()),
+                ),
+                _ => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn expected_constructor_domains(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<ExpectedConstructorDomainResult> {
+    match expected.clone() {
+        std::option::Option::None => Rc::new(
+            ExpectedConstructorDomainResult::ExpectedConstructorDomainUnavailable {
+                cause: ExpectedConstructorDomainCause::NoExpectedTypeAtPosition,
+            },
+        ),
+        Some(_) => {
+            let acc0 = expected_domain_push(
+                Rc::new(vec![]),
+                expected_route_whole(expected.clone(), scope.clone()),
+                ExpectedTypeRoute::WholeExpectedType,
+                scope.clone(),
+            );
+            let acc1 = expected_domain_push(
+                acc0.clone(),
+                expected_route_nominal_optional(expected.clone(), scope.clone()),
+                ExpectedTypeRoute::NominalOptionalWrapper,
+                scope.clone(),
+            );
+            let acc2 = expected_domain_push(
+                acc1.clone(),
+                expected_route_cardinality_optional(expected.clone(), scope.clone()),
+                ExpectedTypeRoute::CardinalityOptionalWrapper,
+                scope.clone(),
+            );
+            let acc3 = expected_domain_push(
+                acc2.clone(),
+                expected_route_collection_element(expected.clone(), scope.clone()),
+                ExpectedTypeRoute::CollectionElement,
+                scope.clone(),
+            );
+            let acc4 = expected_domain_push(
+                acc3.clone(),
+                expected_route_alias_target(expected.clone(), scope.clone()),
+                ExpectedTypeRoute::AliasTarget,
+                scope.clone(),
+            );
+            if ((acc4.clone().len() as i64) == 0) {
+                Rc::new(
+                    ExpectedConstructorDomainResult::ExpectedConstructorDomainUnavailable {
+                        cause:
+                            ExpectedConstructorDomainCause::ExpectedTypeCarriesNoConstructorDomain,
+                    },
+                )
+            } else {
+                Rc::new(
+                    ExpectedConstructorDomainResult::ExpectedConstructorDomains {
+                        candidates: acc4.clone(),
+                    },
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RecordLitVariantSelection {
+    VariantSelected {
+        variant: Rc<Node>,
+        owner: Rc<Node>,
+        owner_name: String,
+        route: ExpectedTypeRoute,
+    },
+    VariantNotFound,
+    VariantAmbiguous {
+        owners: Rc<Vec<String>>,
+    },
+}
+
+pub fn expected_domain_variant_named(
+    d: Rc<ExpectedConstructorDomain>,
+    tn: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for v in d.owner.clone().children.clone().iter().cloned() {
+            if (crate::v1_std_core::authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                v.clone(),
+            ) == crate::v1_std_core::qualified_last_segment(tn.clone()))
+            {
+                __result.push(v);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
+pub fn expected_domain_owner_label(
+    d: Rc<ExpectedConstructorDomain>,
+    scope: Rc<InferScope>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat("'".to_string(), d.owner_name.clone()),
+            "' reached as ".to_string(),
+        ),
+        expected_type_route_text(d.route.clone()),
+    )
+}
+
+pub fn record_lit_variant_selection(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<RecordLitVariantSelection> {
+    match type_name.clone() {
+        std::option::Option::None => Rc::new(RecordLitVariantSelection::VariantNotFound),
+        Some(tn) => {
+            match (*expected_constructor_domains(expected.clone(), scope.clone())).clone() {
+                ExpectedConstructorDomainResult::ExpectedConstructorDomainUnavailable {
+                    cause: _,
+                    ..
+                } => Rc::new(RecordLitVariantSelection::VariantNotFound),
+                ExpectedConstructorDomainResult::ExpectedConstructorDomains {
+                    candidates: cands,
+                    ..
+                } => {
+                    let matching = Rc::new({
+                        let mut __result = Vec::new();
+                        for d in cands.iter().cloned() {
+                            if (expected_domain_variant_named(d.clone(), tn.clone(), scope.clone())
+                                != std::option::Option::None)
+                            {
+                                __result.push(d);
+                            }
+                        }
+                        __result
+                    });
+                    if ((matching.clone().len() as i64) > 1) {
+                        Rc::new(RecordLitVariantSelection::VariantAmbiguous {
+                            owners: Rc::new({
+                                let mut __result = Vec::new();
+                                for d in matching.iter().cloned() {
+                                    __result.push(expected_domain_owner_label(
+                                        d.clone(),
+                                        scope.clone(),
+                                    ));
+                                }
+                                __result
+                            }),
+                        })
+                    } else {
+                        match matching.clone().first().cloned() {
+                            Some(d) => match expected_domain_variant_named(
+                                d.clone(),
+                                tn.clone(),
+                                scope.clone(),
+                            ) {
+                                Some(v) => Rc::new(RecordLitVariantSelection::VariantSelected {
+                                    variant: v.clone(),
+                                    owner: d.owner.clone(),
+                                    owner_name: d.owner_name.clone(),
+                                    route: d.route.clone(),
+                                }),
+                                std::option::Option::None => {
+                                    Rc::new(RecordLitVariantSelection::VariantNotFound)
+                                }
+                            },
+                            std::option::Option::None => {
+                                Rc::new(RecordLitVariantSelection::VariantNotFound)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1853,16 +2260,12 @@ pub fn record_lit_parent_enum_from_expected(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<String> {
-    match record_lit_variant_from_expected(Some(type_name.clone()), expected.clone(), scope.clone())
+    match (*record_lit_variant_selection(Some(type_name.clone()), expected.clone(), scope.clone()))
+        .clone()
     {
-        Some(_) => match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
-            Some(coproduct) => Some(crate::v1_std_core::authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
-                coproduct.clone(),
-            )),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
+        RecordLitVariantSelection::VariantSelected { owner_name: on, .. } => Some(on.clone()),
+        RecordLitVariantSelection::VariantNotFound => std::option::Option::None,
+        RecordLitVariantSelection::VariantAmbiguous { owners: _, .. } => std::option::Option::None,
     }
 }
 
@@ -1871,26 +2274,12 @@ pub fn record_lit_variant_from_expected(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
-    match type_name.clone() {
-        Some(tn) => match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
-            Some(coproduct) => Rc::new({
-                let mut __result = Vec::new();
-                for v in coproduct.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(
-                        scope.type_env.clone().source_indices.clone(),
-                        v.clone(),
-                    ) == crate::v1_std_core::qualified_last_segment(tn.clone()))
-                    {
-                        __result.push(v);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned(),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
+    match (*record_lit_variant_selection(type_name.clone(), expected.clone(), scope.clone()))
+        .clone()
+    {
+        RecordLitVariantSelection::VariantSelected { variant: v, .. } => Some(v.clone()),
+        RecordLitVariantSelection::VariantNotFound => std::option::Option::None,
+        RecordLitVariantSelection::VariantAmbiguous { owners: _, .. } => std::option::Option::None,
     }
 }
 
@@ -1941,51 +2330,60 @@ pub fn field_substitution_carrier(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RecordLitInstantiation {
+    InstantiationNotApplicable,
+    Instantiated {
+        fields: Rc<Vec<Rc<Node>>>,
+    },
+    InstantiationUnavailable {
+        cause: Rc<RecordLitUnavailableCause>,
+    },
+}
+
 pub fn record_lit_instantiated_fields(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
-) -> Option<Rc<Vec<Rc<Node>>>> {
+) -> Rc<RecordLitInstantiation> {
     match type_name.clone() {
-        Some(tn) => {
-            match expected.clone() {
-                Some(exp) => {
-                    if (crate::v1_std_core::type_name_compatible(
-                        crate::v1_std_core::authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            exp.clone(),
-                        ),
-                        tn.clone(),
-                    ) == false)
-                    {
-                        std::option::Option::None
-                    } else {
-                        if ((exp.children.clone().len() as i64) == 0) {
-                            std::option::Option::None
-                        } else {
-                            match crate::v1_compiler_infer_env::lookup_type_for(
-                                scope.type_env.clone(),
-                                exp.clone(),
-                            ) {
-                                Some(decl) => {
-                                    if ((decl.params.clone().len() as i64)
-                                        != (exp.children.clone().len() as i64))
+        Some(tn) => match expected.clone() {
+            Some(exp) => {
+                if ((exp.children.clone().len() as i64) == 0) {
+                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                } else {
+                    match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        exp.clone(),
+                    ) {
+                        Some(decl) => {
+                            if ((decl.params.clone().len() as i64) == 0) {
+                                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                            } else {
+                                if ((decl.params.clone().len() as i64)
+                                    != (exp.children.clone().len() as i64))
+                                {
+                                    Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                        cause: Rc::new(
+                                            RecordLitUnavailableCause::GenericArityDisagreement,
+                                        ),
+                                    })
+                                } else {
                                     {
-                                        std::option::Option::None
-                                    } else {
-                                        {
-                                            let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                                        let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                         let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
-                                            let template_fields = decl.children.clone();
-                                            Some(Rc::new({
-                                                let mut __result = Vec::new();
-                                                for sf in template_fields.iter().cloned() {
-                                                    __result.push(Rc::new(Node {
+                                        match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
+    std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: Rc::new(RecordLitUnavailableCause::FieldTemplateSelectionFailed),
+}),
+    Some(template_fields) => Rc::new(RecordLitInstantiation::Instantiated {
+    fields: Rc::new({ let mut __result = Vec::new(); for sf in template_fields.iter().cloned() { __result.push(Rc::new(Node {
     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     name: sf.name.clone(),
     span: sf.span.clone(),
@@ -2007,22 +2405,126 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     match_pattern: sf.match_pattern.clone(),
     expr_data: sf.expr_data.clone(),
     ident: None,
-}));
-                                                }
-                                                __result
-                                            }))
-                                        }
+})); } __result }),
+}),
+}
                                     }
                                 }
-                                std::option::Option::None => std::option::Option::None,
                             }
                         }
+                        std::option::Option::None => match (*record_lit_variant_selection(
+                            type_name.clone(),
+                            expected.clone(),
+                            scope.clone(),
+                        ))
+                        .clone()
+                        {
+                            RecordLitVariantSelection::VariantSelected { .. } => {
+                                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                            }
+                            RecordLitVariantSelection::VariantAmbiguous { owners: os, .. } => {
+                                Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                    cause: Rc::new(
+                                        RecordLitUnavailableCause::AmbiguousVariantOwners {
+                                            owners: os.clone(),
+                                        },
+                                    ),
+                                })
+                            }
+                            RecordLitVariantSelection::VariantNotFound => {
+                                Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                    cause: Rc::new(
+                                        RecordLitUnavailableCause::DeclarationLookupUnavailable,
+                                    ),
+                                })
+                            }
+                        },
                     }
                 }
-                std::option::Option::None => std::option::Option::None,
+            }
+            std::option::Option::None => {
+                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+            }
+        },
+        std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
+    }
+}
+
+pub fn record_lit_instantiation_fields(v: Rc<RecordLitInstantiation>) -> Option<Rc<Vec<Rc<Node>>>> {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::Instantiated { fields: f, .. } => Some(f.clone()),
+        RecordLitInstantiation::InstantiationNotApplicable => std::option::Option::None,
+        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn record_lit_instantiation_undetermined_diags(
+    v: Rc<RecordLitInstantiation>,
+    judged: bool,
+    declared: Rc<Node>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::InstantiationNotApplicable => Rc::new(vec![]),
+        RecordLitInstantiation::Instantiated { fields: _, .. } => Rc::new(vec![]),
+        RecordLitInstantiation::InstantiationUnavailable { cause: c, .. } => {
+            if judged.clone() {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::RecordLitInstantiationUndetermined {
+                        declared: crate::v1_compiler_infer_types::node_type_shape(
+                            declared.clone(),
+                            source_indices.clone(),
+                        ),
+                        cause: record_lit_unavailable_cause_text(c.clone()),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                )])
             }
         }
-        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn record_lit_instantiation_may_fall_back(v: Rc<RecordLitInstantiation>) -> bool {
+    match (*v.clone()).clone() {
+        RecordLitInstantiation::InstantiationNotApplicable => true,
+        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => false,
+        RecordLitInstantiation::Instantiated { fields: _, .. } => false,
+    }
+}
+
+pub fn record_lit_instantiation_template_fields(
+    tn: String,
+    exp: Rc<Node>,
+    decl: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Vec<Rc<Node>>>> {
+    if crate::v1_std_core::type_name_compatible(
+        crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            exp.clone(),
+        ),
+        tn.clone(),
+    ) {
+        Some(decl.children.clone())
+    } else {
+        match (*record_lit_variant_selection(Some(tn.clone()), Some(exp.clone()), scope.clone()))
+            .clone()
+        {
+            RecordLitVariantSelection::VariantSelected { variant, .. } => {
+                Some(variant.children.clone())
+            }
+            RecordLitVariantSelection::VariantNotFound => std::option::Option::None,
+            RecordLitVariantSelection::VariantAmbiguous { owners: _, .. } => {
+                std::option::Option::None
+            }
+        }
     }
 }
 
@@ -13054,16 +13556,16 @@ pub fn infer_record_lit_structural(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
-        let instantiated_struct_fields =
+        let instantiation =
             record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
-        let expected_struct_fields =
-            if (instantiated_struct_fields.clone() == std::option::Option::None) {
-                record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
-            } else {
-                std::option::Option::None
-            };
-        let expected_variant_node = if ((instantiated_struct_fields.clone()
-            == std::option::Option::None)
+        let instantiated_struct_fields = record_lit_instantiation_fields(instantiation.clone());
+        let may_fall_back = record_lit_instantiation_may_fall_back(instantiation.clone());
+        let expected_struct_fields = if may_fall_back.clone() {
+            record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
+        } else {
+            std::option::Option::None
+        };
+        let expected_variant_node = if (may_fall_back.clone()
             && (expected_struct_fields.clone() == std::option::Option::None))
         {
             match type_name.clone() {
@@ -13079,7 +13581,7 @@ pub fn infer_record_lit_structural(
         };
         let alias_struct_expansion = match type_name.clone() {
             Some(tn) => {
-                if ((((instantiated_struct_fields.clone() == std::option::Option::None)
+                if (((may_fall_back.clone()
                     && (expected_struct_fields.clone() == std::option::Option::None))
                     && (expected_variant_node.clone() == std::option::Option::None))
                     && (expected.clone() == std::option::Option::None))
@@ -13099,7 +13601,13 @@ pub fn infer_record_lit_structural(
                     std::option::Option::None => match expected_variant_node.clone() {
                         Some(variant_node) => variant_node.children.clone(),
                         std::option::Option::None => match expected.clone() {
-                            Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            Some(_) => {
+                                if may_fall_back.clone() {
+                                    record_lit_expected_fields(type_name.clone(), scope.clone())
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
                             std::option::Option::None => match alias_struct_expansion.clone() {
                                 Some(expansion) => {
                                     if ((expansion.resolved.clone().connective.clone()
@@ -13110,11 +13618,22 @@ pub fn infer_record_lit_structural(
                                     {
                                         expansion.resolved.clone().children.clone()
                                     } else {
-                                        record_lit_expected_fields(type_name.clone(), scope.clone())
+                                        if may_fall_back.clone() {
+                                            record_lit_expected_fields(
+                                                type_name.clone(),
+                                                scope.clone(),
+                                            )
+                                        } else {
+                                            Rc::new(vec![])
+                                        }
                                     }
                                 }
                                 std::option::Option::None => {
-                                    record_lit_expected_fields(type_name.clone(), scope.clone())
+                                    if may_fall_back.clone() {
+                                        record_lit_expected_fields(type_name.clone(), scope.clone())
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
                                 }
                             },
                         },
@@ -13499,7 +14018,17 @@ Rc::new(FieldInferResult {
                 );
                 Rc::new(InferResult {
                     typed: texpr.clone(),
-                    diagnostics: v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                    diagnostics: v1_rt::concat(
+                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                        record_lit_instantiation_undetermined_diags(
+                            instantiation.clone(),
+                            ((struct_fields.clone().len() as i64) > 0),
+                            anon_node.clone(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
+                    ),
                 })
             }
         } else {
@@ -13537,15 +14066,22 @@ Rc::new(FieldInferResult {
                                 scope.type_env.clone(),
                                 local_node.clone(),
                             ),
-                            std::option::Option::None => match record_lit_variant_from_expected(
+                            std::option::Option::None => match (*record_lit_variant_selection(
                                 type_name.clone(),
                                 expected.clone(),
                                 scope.clone(),
-                            ) {
-                                Some(_) => {
-                                    record_lit_expected_coproduct(expected.clone(), scope.clone())
+                            ))
+                            .clone()
+                            {
+                                RecordLitVariantSelection::VariantSelected { owner: o, .. } => {
+                                    Some(o.clone())
                                 }
-                                std::option::Option::None => std::option::Option::None,
+                                RecordLitVariantSelection::VariantNotFound => {
+                                    std::option::Option::None
+                                }
+                                RecordLitVariantSelection::VariantAmbiguous {
+                                    owners: _, ..
+                                } => std::option::Option::None,
                             },
                         }
                     }
@@ -13664,14 +14200,24 @@ Rc::new(FieldInferResult {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
-                                    type_diags.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                        type_diags.clone(),
+                                    ),
+                                    sole_ctor_diags.clone(),
                                 ),
-                                sole_ctor_diags.clone(),
+                                missing_field_diags.clone(),
                             ),
-                            missing_field_diags.clone(),
+                            presence_ambiguity_diags.clone(),
                         ),
-                        presence_ambiguity_diags.clone(),
+                        record_lit_instantiation_undetermined_diags(
+                            instantiation.clone(),
+                            ((struct_fields.clone().len() as i64) > 0),
+                            resolved_node.clone(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
                     ),
                 })
             }
@@ -26144,6 +26690,20 @@ pub fn reconcile_with_census_extra(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WholeExpectedType;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CardinalityOptionalWrapper;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NominalOptionalWrapper;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CollectionElement;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AliasTarget;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoExpectedTypeAtPosition;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExpectedTypeCarriesNoConstructorDomain;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionRecordLiteralField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
