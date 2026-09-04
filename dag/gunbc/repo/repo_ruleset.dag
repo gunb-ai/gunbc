@@ -103,8 +103,17 @@ import gunbc.world_converge {
 // This module binds the repository subject to gunbc.world_converge: DESIRED state is declared, the
 // live state is OBSERVED, and the two are RECONCILED through the one global convergence shape. Live
 // drift currently reaches a typed actuation hold because the API read cannot carry the bypass-actor
-// roster that a whole-ruleset PUT would overwrite. The separately signed #10204 change owns closing
-// that boundary and the post-apply read-back; until then this binding is read-only by construction.
+// roster that a whole-ruleset PUT would overwrite. Until then this binding is read-only by
+// construction.
+//
+// DISSOLVE-ON, NAMED AS A CAPABILITY AND NOT AS THE CHANGE EXPECTED TO CARRY IT: an admitted
+// actuation realization that writes the desired ruleset WITHOUT destroying the live bypass-actor
+// roster, and a post-apply read-back that observes the roster survived. #10204 is where that work
+// is signed, and #10204 MERGING IS NOT THE TRIGGER -- it retires this standing only if it delivers
+// that capability. A write that preserves the roster but cannot read back afterwards leaves the
+// hazard unobserved and does not retire it either. This grain is stated because the note above
+// `merge_queue_projection_refusal` in this same module records what the other grain cost: a trigger
+// naming less than the capability it governs, satisfied while the capability stayed dead.
 //
 // THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
 // gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
@@ -1421,8 +1430,10 @@ data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler 
   unchanged_receipt: world_repo_ruleset_unchanged_receipt,
 }
 
-// The repository binding is read-only until the separately signed ruleset proposal can preserve
-// every live bypass actor. Drift reaches one of the located causes of
+// The repository binding is read-only until an actuation realization can write the desired ruleset
+// while preserving every live bypass actor AND read back that it survived -- the capability stated
+// at the module note above, not the merge of the change expected to carry it. Drift reaches one of
+// the located causes of
 // RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetDriftUnrepaired -- which
 // RENDERS THE DIVERGENCES -- when no earlier hold fires; there is no mutating entry point beside
 // the world-convergence root.

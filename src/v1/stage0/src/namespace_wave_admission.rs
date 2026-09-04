@@ -1199,9 +1199,6 @@ pub struct TransitionAdmission {
 /// trigger sentence is not evidence that the trigger fired -- and because that join's own two
 /// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
 /// in a shape indistinguishable from "not declared".
-const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
-    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
-
 /// TWENTY-FOURTH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
@@ -1246,34 +1243,47 @@ const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
 /// above prescribes and for the same cause: the conflict was a misaligned array head, aligning this
 /// branch's two rows against gunbc#10350's two, so hand-editing the markers would have spliced one
 /// cohort's label onto the other's body. Main's file was taken whole and the delta re-derived at ROW
-/// IDENTITY grain: two rows added, none removed. The merged array is main's two rows plus these two,
-/// four in total, and no row of either side is dark.
+/// IDENTITY grain: two rows added, none removed. The merged array was main's two rows plus these
+/// two, four in total, and no row of either side was dark. Main's two are since deleted as CONSUMED
+/// by the dissolution below -- which is the merge's own obligation coming due, not a reversal of it.
 ///
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
 
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE ROSTER.
+/// Both `kernel-identity predicate relocation gunbc#10350` rows are deleted, and
+/// KERNEL_IDENTITY_RELOCATION_LABEL with them. gunbc#10350 merged into this branch's base, so its
+/// rows were consumed by their own merge exactly as their entry predicted for itself, and it named
+/// this roster's next touch as the moment the deletion comes due. This change is that touch.
+///
+/// THE WALL REPORTED IT RATHER THAN A SENTENCE PREDICTING IT, which is the direction that counts:
+/// required run 33908433503 refused with `2 consumed admission(s) due for deletion on this
+/// roster-touching change`, naming each row and its binding -- for example `TargetChanged binding
+/// v1.compiler.infer::ancestry_binding_is_kernel_identity `resolved_node_is_kernel_identity_for_name`
+/// -> v1.std.core ... already satisfied at the base`. Two reported, two carrying that label, two
+/// deleted, and the two gunbc#10324 rows are the whole remainder.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, on the rule the deleted
+/// entry states in its own last paragraph: a trigger sentence is not evidence that the trigger
+/// fired. `resolved_node_is_kernel_identity_for_name` is declared EXACTLY ONCE in main's tree, at
+/// `module v1.std.core` (src/v1/00_core.dag), so the relocation really landed and no fork survives
+/// it; both callers named by the rows still reference the spelling, so base and head bind it to the
+/// same declaring module and the TargetChanged delta is no longer producible by any run.
+///
+/// THE JOIN WAS CALIBRATED RATHER THAN TRUSTED, because a lookup that answers "found" uniformly
+/// cannot distinguish a real hit from a broken query -- the failure mode the TWENTY-NINTH and
+/// THIRTIETH both record. Against the same module, a fabricated name answers NOT DECLARED while
+/// `kernel_span` -- the minter the deleted entry says this predicate moved to sit beside -- answers
+/// DECLARED, so both verdicts were reachable.
+///
+/// THE DELETION PASS ASSERTED `examined == kept + deleted` against a brace-depth parse of the array,
+/// not against a grep, and reported 4 = 2 + 2. That assertion is carried because this branch has
+/// already been saved by it once: an earlier pass anchored on `&[`, matched the TYPE ANNOTATION
+/// `&[TransitionAdmission]` instead of the array, examined a 19-character body, found zero rows, and
+/// would have reported success with an empty diff.
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer",
-            in_declaration: "ancestry_binding_is_kernel_identity",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
                 its type (converge_cli_codex_runtime_knob_registered_for_host)",
