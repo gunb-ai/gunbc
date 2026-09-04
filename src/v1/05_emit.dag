@@ -6,6 +6,8 @@ import std.coercion { TypeRealizationDecision }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
@@ -75,10 +77,8 @@ import v1.compiler.emit_core_support {
   apply_named_template, apply_named_template_nested,
   language_spec,
   has_mock_prefix, extract_test_projections,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item
+  is_type_alias_return_node,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item
 }
 
 import v1.compiler.languages {
@@ -903,7 +903,7 @@ fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
 
 fn has_service_items(typed: ResolvedGraph) -> Bool {
   typed.modules |> any(tm =>
-    tm.items |> any(item => is_service_item(item: item))
+    tm.items |> any(item => item.module_item_kind == ModuleItemService)
   )
 }
 
@@ -2684,7 +2684,7 @@ fn unmodeled_shell_transport_diagnostics(typed: ResolvedGraph, target: RenderTar
     RealizesTransports =>
       typed.modules |> flat_map(tm =>
         tm.items
-          |> filter(item => is_service_item(item: item))
+          |> filter(item => item.module_item_kind == ModuleItemService)
           |> flat_map(item => unmodeled_shell_transport_operation_diagnostics(tm: tm, item: item, target: target))
       )
   }
@@ -2696,7 +2696,7 @@ fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarg
     RealizesTransports =>
       typed.modules |> flat_map(tm =>
         tm.items
-          |> filter(item => is_service_item(item: item))
+          |> filter(item => item.module_item_kind == ModuleItemService)
           |> flat_map(item => unmodeled_file_transport_operation_diagnostics(tm: tm, item: item, target: target))
       )
   }

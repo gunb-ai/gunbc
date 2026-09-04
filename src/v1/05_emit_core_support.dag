@@ -4,7 +4,9 @@ import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
   make_error_node, ModuleFilenameCollision,
-  Connective, NoConnective
+  Connective, NoConnective,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
 }
 
 import v1.compiler.artifact { RenderTarget }
@@ -305,7 +307,7 @@ fn has_mock_prefix(name: String) -> Bool {
 fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
   typed.modules |> flat_map(tm =>
     tm.items
-      |> filter(item => is_service_item(item: item))
+      |> filter(item => item.module_item_kind == ModuleItemService)
       |> flat_map(item =>
         item.children
           |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
@@ -327,40 +329,45 @@ fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>)
   authored_name_at(source_indices: source_indices, node: n) != "Unit"
 }
 
-fn is_service_item(item: Node) -> Bool {
-  item.transport != none && item.children |> count > 0
-}
-
+// THE ITEM-KIND PREDICATES THAT STOOD HERE ARE GONE, NOT REWRITTEN. Five of them --
+// is_service_item, is_service_def_item (byte-identical to it, a section 3 nickname with two
+// exports and two consumer sets), is_function_item, is_data_def_item and is_resource_def_item --
+// decided WHICH KIND OF ITEM a node was by which of its optional fields happened to be absent.
+// That question now has a single authority: v1.std.core Node carries module_item_kind, stamped by
+// the parse constructor that already knew the answer, so a consumer asking the question compares
+// against the coproduct and no longer re-derives it. is_resource_def_item's second disjunct --
+// children == 0 && properties > 0 && body == none -- was the resource-exclusion validator family
+// that made this a section 5 finding: exclusion by name repairs each KNOWN collision and can never
+// become a positive authority. Its live defect is the evidence for the climb and stays enrolled:
+// `resource Network` and `resource AuthContext` in std.resources declare no capabilities and no
+// properties, satisfied NEITHER disjunct, and reached is_type_alias_item first in every emitter's
+// if-chain -- so all three targets emitted them AS TYPES.
+//
+// WHAT SURVIVES IS THE TYPE-STRUCTURE AXIS, WHICH IS NOT THE KIND AXIS. The four predicates below
+// all range over ONE kind -- ModuleItemTypeDeclaration -- and split it by the type's own structure:
+// Conj/Disj children versus a leaf, then a leaf by whether its resolved right-hand side is Unit.
+// Folding that into the kind coproduct would put two orthogonal axes in one enum. What the kind
+// removes from them is their FALSE POSITIVES ON NON-TYPE ITEMS, not their content, so each gains a
+// kind conjunct and loses the `transport == none` conjunct the kind now makes dead.
+//
+// is_bare_leaf_item was RENAMED to is_leaf_type_item in the same motion, because "bare leaf item"
+// is precisely the shape-not-kind name that let two capability-less resources through it.
 fn is_type_def_item(item: Node) -> Bool {
-  item.connective != NoConnective && item.transport == none
+  item.module_item_kind == ModuleItemTypeDeclaration && item.connective != NoConnective
 }
 
-fn is_bare_leaf_item(item: Node) -> Bool {
-  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+fn is_leaf_type_item(item: Node) -> Bool {
+  item.module_item_kind == ModuleItemTypeDeclaration
+    && item.connective == NoConnective && item.body == none
+    && item.params |> count == 0 && item.children |> count == 0
 }
 
 fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+  is_leaf_type_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
 }
 
 fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
-  || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
-}
-
-fn is_function_item(item: Node) -> Bool {
-  item.body != none && item.type_annotation == none
-}
-
-fn is_data_def_item(item: Node) -> Bool {
-  item.body != none && item.type_annotation != none
-}
-
-fn is_service_def_item(item: Node) -> Bool {
-  item.transport != none && item.children |> count > 0
-}
-
-fn is_resource_def_item(item: Node) -> Bool {
-  (item.transport == none && item.children |> count > 0)
-  || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
+  (is_leaf_type_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  || (item.module_item_kind == ModuleItemTypeDeclaration
+      && item.params |> count > 0 && item.body == none && item.children |> count == 0)
 }

@@ -46,8 +46,7 @@ pub use crate::v1_compiler_coercion::{
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
     apply_type_template3, capitalize_first, escape_json_string, escape_string_literal_body,
-    extract_test_projections, has_mock_prefix, is_data_def_item, is_function_item,
-    is_resource_def_item, is_service_def_item, is_service_item, is_type_alias_item,
+    extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
     to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
@@ -118,6 +117,10 @@ use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+use crate::v1_std_core::ParsedModuleItemKind::{
+    ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
+    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
+};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TransportKind::{
     FileTransport, LocalTransport, RestTransport, ShellTransport,
@@ -145,7 +148,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
     FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
+    Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2169,7 +2172,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
             if {
                 let mut __found = false;
                 for item in tm.items.clone().iter().cloned() {
-                    if crate::v1_compiler_emit_core_support::is_service_item(item.clone()) {
+                    if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService) {
                         __found = true;
                         break;
                     }
@@ -5409,9 +5412,9 @@ pub fn unmodeled_shell_transport_diagnostics(
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in tm.items.clone().iter().cloned() {
-                                if crate::v1_compiler_emit_core_support::is_service_item(
-                                    item.clone(),
-                                ) {
+                                if (item.module_item_kind.clone()
+                                    == ParsedModuleItemKind::ModuleItemService)
+                                {
                                     __result.push(item);
                                 }
                             }
@@ -5456,9 +5459,9 @@ pub fn unmodeled_file_transport_diagnostics(
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in tm.items.clone().iter().cloned() {
-                                if crate::v1_compiler_emit_core_support::is_service_item(
-                                    item.clone(),
-                                ) {
+                                if (item.module_item_kind.clone()
+                                    == ParsedModuleItemKind::ModuleItemService)
+                                {
                                     __result.push(item);
                                 }
                             }

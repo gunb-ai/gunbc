@@ -116,6 +116,8 @@ import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_co
 import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 import gunbc.recurring_failure_mode.append_only_carrier_whose_serialization_shares_a_merge_region { append_only_carrier_whose_serialization_shares_a_merge_region }
 import gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled { discriminating_arm_built_but_never_enrolled }
+import gunbc.recurring_failure_mode.emitter_residual_renders_inert_text { emitter_residual_renders_inert_text }
+import gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional { kind_carried_but_its_fields_stay_optional }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -223,4 +225,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   absent_reads_identically_to_never_looked,
   append_only_carrier_whose_serialization_shares_a_merge_region,
   discriminating_arm_built_but_never_enrolled,
+  emitter_residual_renders_inert_text,
+  kind_carried_but_its_fields_stay_optional,
 ]
