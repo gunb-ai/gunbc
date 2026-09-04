@@ -77,11 +77,95 @@ type MultiModuleCompileFixture {
   entry: NonEmptyStr
 }
 
+// WHAT CALLABLE LOOKUP DECIDED, REPORTED RATHER THAN RECOMPUTED, AND WHY IT IS HERE RATHER THAN IN
+// A SECOND BUILTIN. The question "which declaration did this call actually bind" has no observer
+// over supplied sources: the diagnostic census answers accept/refuse, and the reference-occurrence
+// census answers with a provider drawn from the STRUCTURAL CANDIDATE walk, which is a different
+// traversal from the callable lookup that constructs CallTargetIdentity. Answering with the wrong
+// walk is the substitution this repository keeps finding, so neither existing surface can serve.
+//
+// A second supplied-source builtin would have been a SECOND NAME for one concept -- compile these
+// authored modules and report something about the result -- which is the nicknaming DESIGN section 3
+// forbids, and it would double the surface the seed has to delete as it shrinks. One builtin, a
+// richer observation.
+//
+// THE ROWS RESOLVE NOTHING. ExprCall carries call_semantics, which v1.compiler.infer lookup WRITES
+// when it resolves a call; the host projection reads that field over the already-resolved graph. No
+// lookup is invoked and no environment is constructed, so this observes the path the corpus takes
+// rather than a path only the instrument takes.
+//
+// KEYED BY THE AUTHORED CALL OCCURRENCE, never summarised per module: a module-grain list cannot say
+// WHICH call node got WHICH target, and the subject this exists for is one bare call against its
+// qualified twin inside one module.
+//
+// CallSemanticsAbsent IS NOT CallTargetUndetermined. The second is lookup's own verdict that no
+// target was determinable; the first says lookup never wrote here at all. Collapsing them would let
+// a control read a silent pass as a decided refusal, which is the could-not-measure conflation
+// DESIGN section 5 forbids.
+// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, AND NOT BY RESEMBLANCE TO ANOTHER ADMITTED ROW.
+// gunbc.v1_maintenance_standing v1_seed_standing admits a change when it serves the v2 self-host
+// program and keeps v1 closed to growth for its own sake -- and it names the standing danger that an
+// active-maintenance arm becomes an ABSORBING one if every proposal classifies as admissible. So
+// "the reference-occurrence census builtin was allowed" is deliberately NOT the argument here: that
+// is a precedent, and precedent is exactly how the absorbing arm forms.
+//
+// WHAT IT SERVES. The import-deletion program's Step 1 gate is that an import declaration has ZERO
+// BINDING AUTHORITY: paired subjects differing only in which provider is imported, or in whether one
+// is imported at all, must produce the SAME resolver outcome for a bare call. That gate is not
+// assertable without observing WHICH DECLARATION a call bound, at owner-and-name grain.
+//
+// WHY EVERY ALTERNATIVE FAILS, checked rather than asserted. Accept/refuse cannot express it: two
+// providers declaring one spelling with IDENTICAL SIGNATURES both typecheck, so a wrong selection is
+// compile-green and no diagnostic exists to match on. The reference-occurrence census reports a
+// provider drawn from the STRUCTURAL CANDIDATE walk, which is a different traversal from the callable
+// lookup that constructs CallTargetIdentity -- answering with it would look like an answer and be one
+// to a different question, which is the substitution this repository keeps finding. The
+// declared-import-closure observer carries a definer module but observes the CLOSURE path, and the
+// survivor the Step 1 root correction exists to catch is authored_import_names consumed INSIDE
+// callable lookup, which that observer never consults; it would produce a green that means nothing.
+// Reading the emitted Rust infers the target from behaviour, which is the fabricated-plausible-output
+// direction DESIGN section 5 forbids and which no gate should rest on.
+//
+// CLASSIFIED AGAINST THE FIVE REFUSED CLASSES. NewLanguageBehavior: NO -- the compile pipeline is
+// byte-untouched; nothing is added, moved or removed in resolve, infer or emit, and this reads a
+// field lookup already wrote. NewCompatibilityObligation: NO -- no caller is kept working; the
+// outcome coproduct gains a field and every existing consumer matches the coproduct rather than
+// destructuring positionally. NewEscapeHatchOrAdmissionRow: NO, and the direction is opposite --
+// this adds an observation that makes a wall assertable and removes nothing; there is no flag, mode
+// or env var, and no write path. SeedFeatureCompletion: NO -- the seed COMPILER gains no capability
+// and compiles exactly what it compiled before. PublicSurfaceGrowth: this is the nearest and it is
+// the honest cost -- one coproduct, one record and one field on an existing result, on an instrument
+// that already existed. No new builtin, no new entry point, no second supplied-source surface.
+//
+// DISSOLUTION, NAMED AS A CAPABILITY AND NOT AS AN ARTIFACT. This projection retires when v2's own
+// callable lookup is the authority that answers "which declaration did this call bind" for an
+// authored manifest -- that is, when the resolution that decides a corpus call and the resolution a
+// fixture observes are ONE implementation rather than a seed one and a substrate one. Retiring it on
+// anything less -- a v2 module that merely exists, a fixture harness that merely runs -- would leave
+// the question answered by the seed while the row claimed the substrate answered it.
+
+type ResolvedCallTarget
+  = CallBoundToSourceDeclaration { owner_module_path: String, decl_name: String }
+  | CallBoundToRuntimePrimitive { primitive_name: String }
+  | CallTargetUndetermined
+  | CallSemanticsAbsent
+
+type ResolvedCallTargetRow {
+  occurrence: Int
+  has_occurrence: Bool
+  call_file: String
+  call_module: String
+  authored_name: String
+  span_start: Int
+  target: ResolvedCallTarget
+}
+
 type MultiModuleCompileFixtureOutcome
   = FixtureInstrumentRefused { cause: NonEmptyStr }
   | FixtureCompileRefused {
       module_count: Int
       diagnostics: List<CompileDiagnosticCensusRow>
+      call_targets: List<ResolvedCallTargetRow>
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
     }
@@ -89,6 +173,7 @@ type MultiModuleCompileFixtureOutcome
       module_count: Int
       emitted_files: List<String>
       diagnostics: List<CompileDiagnosticCensusRow>
+      call_targets: List<ResolvedCallTargetRow>
       source_digest: NonEmptyStr
       compiler_digest: NonEmptyStr
     }

@@ -314,13 +314,19 @@ pub fn compile_dag_multi_module_fixture(
             Some(g) => g.modules.len() as i64,
             None => 0,
         };
+        // READ BEFORE EMIT, because emit consumes the resolved graph. The rows are a projection of
+        // `call_semantics` as callable lookup left it; nothing here resolves anything.
+        let call_targets = match resolved.graph.clone() {
+            Some(g) => resolved_call_target_rows(&g),
+            None => Vec::new(),
+        };
         let result = v1_compiler_compile::emit_resolved_for_target(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
         );
-        (module_count, result)
+        (module_count, call_targets, result)
     }));
-    let (module_count, result) = match compiled {
+    let (module_count, call_targets, result) = match compiled {
         Ok(r) => r,
         Err(_) => {
             return MultiModuleCompileFixtureOutcome::InstrumentRefused {
@@ -335,6 +341,7 @@ pub fn compile_dag_multi_module_fixture(
         return MultiModuleCompileFixtureOutcome::CompileRefused {
             module_count,
             diagnostics: rows,
+            call_targets,
             source_digest,
             compiler_digest,
         };
@@ -343,8 +350,96 @@ pub fn compile_dag_multi_module_fixture(
         module_count,
         emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
         diagnostics: rows,
+        call_targets,
         source_digest,
         compiler_digest,
+    }
+}
+
+/// Project every authored call in the resolved graph into a [`ResolvedCallTargetRow`].
+///
+/// THIS FUNCTION RESOLVES NOTHING. It matches `ExprData::ExprCall` and reads the `call_semantics`
+/// that `v1_compiler_infer_lookup` already wrote. If it ever needs to CALL lookup, construct an
+/// environment, or reach for a candidate set, it has stopped observing the corpus's path and
+/// started defining a second one — which is the failure this instrument exists to rule out, not to
+/// commit.
+fn resolved_call_target_rows(
+    graph: &Rc<crate::v1_compiler_compile::ResolvedGraph>,
+) -> Vec<ResolvedCallTargetRow> {
+    let mut out: Vec<ResolvedCallTargetRow> = Vec::new();
+    for module in graph.modules.iter() {
+        let module_path = module.type_env.module_path.clone();
+        for item in module.items.iter() {
+            collect_resolved_call_targets(item, &module_path, &mut out);
+        }
+    }
+    out
+}
+
+fn collect_resolved_call_targets(
+    node: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
+    out: &mut Vec<ResolvedCallTargetRow>,
+) {
+    use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+    use crate::v1_std_core::{CallSemantics, CallTargetIdentity, ExprData};
+    if let ExprData::ExprCall { call_semantics, .. } = &*node.expr_data {
+        let target = match call_semantics {
+            // `CallSemanticsAbsent` is kept DISTINCT from `CallTargetUndetermined`: one says lookup
+            // never wrote here, the other is lookup's own verdict that no target was determinable.
+            // Collapsing them would let a fixture read a silent pass as a decided refusal.
+            std::option::Option::None => ResolvedCallTarget::CallSemanticsAbsent,
+            Some(semantics) => {
+                let identity = match &**semantics {
+                    CallSemantics::PlainCallSemantics { target } => Some(target.clone()),
+                    CallSemantics::LookupCallSemantics { target } => Some(target.clone()),
+                    CallSemantics::FunctionValueCallSemantics => std::option::Option::None,
+                };
+                match identity {
+                    std::option::Option::None => ResolvedCallTarget::CallSemanticsAbsent,
+                    Some(identity) => match &*identity {
+                        CallTargetIdentity::SourceDeclarationCall {
+                            owner_module_path,
+                            decl_name,
+                        } => ResolvedCallTarget::CallBoundToSourceDeclaration {
+                            owner_module_path: owner_module_path.clone(),
+                            decl_name: decl_name.clone(),
+                        },
+                        CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
+                            ResolvedCallTarget::CallBoundToRuntimePrimitive {
+                                primitive_name: primitive_name.clone(),
+                            }
+                        }
+                        CallTargetIdentity::CallableTargetUndetermined => {
+                            ResolvedCallTarget::CallTargetUndetermined
+                        }
+                    },
+                }
+            }
+        };
+        let (occurrence, has_occurrence) = match &*node.occurrence_identity {
+            NodeOccurrenceIdentity::OccurrenceSynthetic => (0, false),
+            NodeOccurrenceIdentity::OccurrenceMinted { id } => (id.value, true),
+            NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => (id.value, true),
+        };
+        out.push(ResolvedCallTargetRow {
+            occurrence,
+            has_occurrence,
+            call_file: node.span.file.clone(),
+            call_module: module_path.to_string(),
+            authored_name: node.name.clone(),
+            span_start: node.span.start,
+            target,
+        });
+    }
+    for child in node.children.iter() {
+        collect_resolved_call_targets(child, module_path, out);
+    }
+    for param in node.params.iter() {
+        collect_resolved_call_targets(param, module_path, out);
+    }
+    if let Some(body) = node.body.as_ref() {
+        collect_resolved_call_targets(body, module_path, out);
     }
 }
 

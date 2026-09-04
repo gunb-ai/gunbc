@@ -4,6 +4,12 @@ import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import tools.multi_module_compile_fixture {
+  ResolvedCallTarget,
+  ResolvedCallTargetRow,
+  CallBoundToSourceDeclaration,
+  CallBoundToRuntimePrimitive,
+  CallTargetUndetermined,
+  CallSemanticsAbsent,
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
   FixtureInstrumentRefused,
@@ -235,4 +241,68 @@ test fn the_fixtures_source_and_compiler_digests_travel_with_the_result() -> Boo
     && source_digest_of(a) != source_digest_of(c)
     && count(compiler_digest_of(a)) > 0
     && compiler_digest_of(a) == compiler_digest_of(c)
+}
+
+// ---------------------------------------------------------------------------
+// THE RESOLVED CALL TARGET, AND WHY ACCEPT/REFUSE COULD NOT ANSWER IT. Every control above reads
+// whether the compile ACCEPTED. That is blind to a WRONG SELECTION: two providers declaring one
+// spelling with identical signatures both typecheck, so a call that binds the wrong one is
+// compile-green and no diagnostic exists to match on. The only honest observation is the identity
+// of the declaration lookup actually chose.
+//
+// `mmfx.entry` calls `peer_answer`, declared in `mmfx.peer` and nowhere else, so the target is known
+// independently of the instrument -- which is what makes this a control rather than a reading.
+
+fn mmfx_call_targets(outcome: MultiModuleCompileFixtureOutcome) -> List<ResolvedCallTargetRow> {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, call_targets: targets, source_digest: _, compiler_digest: _ } => targets
+    FixtureCompileRefused { module_count: _, diagnostics: _, call_targets: targets, source_digest: _, compiler_digest: _ } => targets
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+fn mmfx_bound_to(row: ResolvedCallTargetRow, owner: String, decl: String) -> Bool {
+  match row.target {
+    CallBoundToSourceDeclaration { owner_module_path: o, decl_name: d } => o == owner && d == decl
+    CallBoundToRuntimePrimitive { primitive_name: _ } => false
+    CallTargetUndetermined => false
+    CallSemanticsAbsent => false
+  }
+}
+
+// THE POSITIVE CONTROL: the call reports the OWNER MODULE that declares it, not merely a spelling.
+test fn a_resolved_call_reports_the_declaration_it_bound() -> Bool {
+  let targets = mmfx_call_targets(outcome: compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mmfx/peer.dag", peer_source), fixture_source("mmfx/entry.dag", entry_source)],
+    entry: "mmfx/entry.dag"
+  }))
+  count(targets) > 0
+    && count(targets |> filter(row =>
+         row.authored_name == "peer_answer"
+           && mmfx_bound_to(row: row, owner: "mmfx.peer", decl: "peer_answer"))) == 1
+}
+
+// THE DISCRIMINATING RED: the owner is read from the resolution and not from the spelling, so
+// asserting the WRONG owner for the same call must fail. Without this the control above would pass
+// for an implementation that returned the authored name in both fields.
+test fn the_reported_owner_is_the_resolved_one_and_not_the_consumer() -> Bool {
+  let targets = mmfx_call_targets(outcome: compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mmfx/peer.dag", peer_source), fixture_source("mmfx/entry.dag", entry_source)],
+    entry: "mmfx/entry.dag"
+  }))
+  count(targets |> filter(row =>
+    row.authored_name == "peer_answer"
+      && mmfx_bound_to(row: row, owner: "mmfx.entry", decl: "peer_answer"))) == 0
+}
+
+// EVERY ROW IS KEYED BY ITS OWN CALL OCCURRENCE, which is what lets a fixture name ONE call site
+// rather than a module's summary. A row without an occurrence is reported as such rather than
+// carrying a fabricated zero that would collide with a real id.
+test fn every_reported_call_row_carries_its_own_occurrence() -> Bool {
+  let targets = mmfx_call_targets(outcome: compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mmfx/peer.dag", peer_source), fixture_source("mmfx/entry.dag", entry_source)],
+    entry: "mmfx/entry.dag"
+  }))
+  count(targets) > 0
+    && count(targets |> filter(row => row.has_occurrence == false && row.occurrence != 0)) == 0
 }

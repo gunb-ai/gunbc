@@ -11689,6 +11689,60 @@ fn multi_module_compile_fixture_value(
                 .collect::<Vec<_>>(),
         )
     };
+    // The target arm is a COPRODUCT and not a string, so a fixture matches on the constructor
+    // rather than parsing a rendering -- the label-versus-identity distinction this instrument
+    // exists to hold.
+    let target_value = |t: crate::cli_run::ResolvedCallTarget| match t {
+        crate::cli_run::ResolvedCallTarget::CallBoundToSourceDeclaration {
+            owner_module_path,
+            decl_name,
+        } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallTarget"),
+            variant_name: ctx.sym("CallBoundToSourceDeclaration"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("owner_module_path"), str_value(owner_module_path)),
+                (ctx.sym("decl_name"), str_value(decl_name)),
+            ])),
+        },
+        crate::cli_run::ResolvedCallTarget::CallBoundToRuntimePrimitive { primitive_name } => {
+            Value::Variant {
+                type_name: ctx.sym("ResolvedCallTarget"),
+                variant_name: ctx.sym("CallBoundToRuntimePrimitive"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("primitive_name"),
+                    str_value(primitive_name),
+                )])),
+            }
+        }
+        crate::cli_run::ResolvedCallTarget::CallTargetUndetermined => Value::Variant {
+            type_name: ctx.sym("ResolvedCallTarget"),
+            variant_name: ctx.sym("CallTargetUndetermined"),
+            fields: Rc::new(sorted_fields(vec![])),
+        },
+        crate::cli_run::ResolvedCallTarget::CallSemanticsAbsent => Value::Variant {
+            type_name: ctx.sym("ResolvedCallTarget"),
+            variant_name: ctx.sym("CallSemanticsAbsent"),
+            fields: Rc::new(sorted_fields(vec![])),
+        },
+    };
+    let call_target_rows = |rows: Vec<crate::cli_run::ResolvedCallTargetRow>| {
+        list_value(
+            rows.into_iter()
+                .map(|r| Value::Record {
+                    type_name: ctx.sym("ResolvedCallTargetRow"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("occurrence"), Value::Int(r.occurrence)),
+                        (ctx.sym("has_occurrence"), Value::Bool(r.has_occurrence)),
+                        (ctx.sym("call_file"), str_value(r.call_file)),
+                        (ctx.sym("call_module"), str_value(r.call_module)),
+                        (ctx.sym("authored_name"), str_value(r.authored_name)),
+                        (ctx.sym("span_start"), Value::Int(r.span_start)),
+                        (ctx.sym("target"), target_value(r.target)),
+                    ])),
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
     let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
         type_name: ctx.sym("MultiModuleCompileFixtureOutcome"),
         variant_name: ctx.sym(name),
@@ -11702,6 +11756,7 @@ fn multi_module_compile_fixture_value(
         crate::cli_run::MultiModuleCompileFixtureOutcome::CompileRefused {
             module_count,
             diagnostics,
+            call_targets,
             source_digest,
             compiler_digest,
         } => variant(
@@ -11709,6 +11764,7 @@ fn multi_module_compile_fixture_value(
             vec![
                 (ctx.sym("module_count"), Value::Int(module_count)),
                 (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("call_targets"), call_target_rows(call_targets)),
                 (ctx.sym("source_digest"), str_value(source_digest)),
                 (ctx.sym("compiler_digest"), str_value(compiler_digest)),
             ],
@@ -11717,6 +11773,7 @@ fn multi_module_compile_fixture_value(
             module_count,
             emitted_files,
             diagnostics,
+            call_targets,
             source_digest,
             compiler_digest,
         } => variant(
@@ -11728,6 +11785,7 @@ fn multi_module_compile_fixture_value(
                     list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
                 ),
                 (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("call_targets"), call_target_rows(call_targets)),
                 (ctx.sym("source_digest"), str_value(source_digest)),
                 (ctx.sym("compiler_digest"), str_value(compiler_digest)),
             ],

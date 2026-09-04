@@ -3074,6 +3074,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileRefused {
         module_count: i64,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
+        call_targets: Vec<ResolvedCallTargetRow>,
         source_digest: String,
         compiler_digest: String,
     },
@@ -3081,9 +3082,51 @@ pub enum MultiModuleCompileFixtureOutcome {
         module_count: i64,
         emitted_files: Vec<String>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
+        call_targets: Vec<ResolvedCallTargetRow>,
         source_digest: String,
         compiler_digest: String,
     },
+}
+
+/// WHAT CALLABLE LOOKUP DECIDED, REPORTED RATHER THAN RECOMPUTED. `ExprData::ExprCall` carries
+/// `call_semantics`, which `v1_compiler_infer_lookup` WRITES when it resolves a call. These rows are
+/// a read of that field over the already-resolved graph: no lookup is invoked, no environment is
+/// constructed, and no call is resolved from here. That is the difference between observing the path
+/// the corpus takes and observing a path only the instrument takes, and it is why the extension is
+/// a projection rather than a second resolver (DESIGN §3 — one authority, read in another
+/// direction).
+///
+/// KEYED BY THE AUTHORED CALL OCCURRENCE, never summarised per module. A per-module list of targets
+/// cannot say WHICH call node got WHICH target, and the subject this exists for is exactly one bare
+/// call against its qualified twin in one module. `occurrence` is the call node's own minted id;
+/// a synthetic node carries none and is reported as such rather than given a fabricated one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedCallTarget {
+    /// Callable lookup bound this call to a declaration, and these are its two identity halves.
+    CallBoundToSourceDeclaration {
+        owner_module_path: String,
+        decl_name: String,
+    },
+    /// Builtin resolution answered, or a declaration projects a primitive.
+    CallBoundToRuntimePrimitive { primitive_name: String },
+    /// Lookup reached no target. This is a refusal-bearing residue and NOT permission to fall back
+    /// to a name lookup — it is reported so a fixture can assert the refusal constructor itself.
+    CallTargetUndetermined,
+    /// The call node carries no `call_semantics` at all: lookup never wrote one. Distinct from
+    /// `CallTargetUndetermined`, which is lookup's own answer — conflating "lookup decided nothing
+    /// was determinable" with "lookup never ran here" would let a fixture read one as the other.
+    CallSemanticsAbsent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCallTargetRow {
+    pub occurrence: i64,
+    pub has_occurrence: bool,
+    pub call_file: String,
+    pub call_module: String,
+    pub authored_name: String,
+    pub span_start: i64,
+    pub target: ResolvedCallTarget,
 }
 
 /// Structural digest of the supplied manifest — path and content of every module, in the order
