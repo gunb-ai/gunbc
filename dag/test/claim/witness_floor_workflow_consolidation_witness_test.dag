@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_jobs, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -306,8 +306,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // skipped required check produces. The row goes green again only together with the drop's
 // retirement, which is a measured wall and not a pull request.
 test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
-  length(xs: witness_floor_lane_job_ids()) == length(xs: witness_floor_lane_jobs())
-    && !any(xs: witness_floor_lane_job_ids(), predicate: fn(job_id) {
+  !any(xs: witness_floor_lane_job_ids(), predicate: fn(job_id) {
       job_id == "fabric-evidence"
         || job_id == "rust-unit-tests"
         || job_id == "emit-copy-qualification-battery"

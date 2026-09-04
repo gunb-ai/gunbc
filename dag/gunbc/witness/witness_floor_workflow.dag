@@ -2499,20 +2499,45 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
 // THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
 // the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
 // and the aggregate joined that population only as something to filter back out.
+type WitnessFloorLane = WitnessFloorBuildLane | WitnessFloorFloorLane | WitnessFloorHealLane
+
+fn witness_floor_lane_roster() -> FreeSemigroup<WitnessFloorLane> {
+  FreeSemigroup {
+    head: WitnessFloorBuildLane,
+    tail: [WitnessFloorFloorLane, WitnessFloorHealLane]
+  }
+}
+
+fn witness_floor_lane_job(lane: WitnessFloorLane) -> Job {
+  match lane {
+    WitnessFloorBuildLane => build_lane_job()
+    WitnessFloorFloorLane => witness_floor_job()
+    WitnessFloorHealLane => heal_generated_artifacts_job()
+  }
+}
+
 fn witness_floor_lane_jobs() -> List<Job> {
-  [
-    build_lane_job(),
-    witness_floor_job(),
-    heal_generated_artifacts_job()
-  ]
+  list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
+    witness_floor_lane_job(lane: lane)
+  })
 }
 
 // THE IDENTITY PROJECTION IS NARROW ON PURPOSE. A witness deciding which jobs exist must not
 // materialize every job's steps (and therefore the compiler-floor command) merely to read ids.
-// These are the same declarations each constructor installs in its Job record; the length check
-// beside this projection keeps an added lane from entering `witness_floor_lane_jobs` silently.
+// Both this projection and the materialized jobs derive from `witness_floor_lane_roster`, so an
+// added lane cannot enter one without entering the other.
+fn witness_floor_lane_job_id(lane: WitnessFloorLane) -> String {
+  match lane {
+    WitnessFloorBuildLane => build_lane_job_id
+    WitnessFloorFloorLane => floor_lane_job_id
+    WitnessFloorHealLane => heal_generated_artifacts_job_id
+  }
+}
+
 fn witness_floor_lane_job_ids() -> List<String> {
-  [build_lane_job_id, floor_lane_job_id, heal_generated_artifacts_job_id]
+  list_map(xs: non_empty_to_list(xs: witness_floor_lane_roster()), f: fn(lane) {
+    witness_floor_lane_job_id(lane: lane)
+  })
 }
 
 data witness_floor_workflow: Workflow = {
