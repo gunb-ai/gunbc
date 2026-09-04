@@ -67,6 +67,27 @@ data asrock_altrad8ud_bmc_manual_authority: ExternalAuthority = ExternalAuthorit
   }
 }
 
+// THE MOUNTING-HOLE FIGURE THE CORRESPONDENCE ROSTER BELOW IS READ FROM, NOW CARRYING A LOCATOR.
+//
+// The roster's annotation already described this figure -- seven marked holes on micro-ATX grid
+// values, J marked as a standoff to remove, S not drawn -- but named no document, so a reader had no
+// way to reach the thing the rows were read from and no way to check them. That is the same defect
+// DESIGN section 3 names for positional citations: a claim whose referent cannot be reached decays
+// without anyone touching either end.
+//
+// WHAT THIS LOCATOR IS AND IS NOT. It is an operator-held diagram at a link-shared Drive locator, not
+// a vendor publication: it is not fetchable without the link, it is not versioned, and it may move.
+// So it does NOT upgrade the rows above HoleCorrespondenceInferred, and the coordinates remain the
+// STANDARD's rather than this document's. What it changes is that the relay becomes traceable
+// instead of anonymous. If ASRock publishes a mechanical drawing, that becomes the authority and
+// this row becomes the corroboration rather than the pointer.
+data asrock_altrad8ud_mounting_hole_figure_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/file/d/1z36tmUWAwOwXWy6ASmaPWJNzKoZggBs8/view"
+  }
+}
+
 data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -753,7 +774,18 @@ fn board_location_correspondence(
 // overlay cited above. The figure is to scale: its measured outline aspect ratio agrees with
 // 10.5/9.6 to within a thousandth, which is the check that makes reading positions off it legitimate
 // at all. Seven marked holes then land on micro-ATX grid values, J is marked on the figure as a
-// standoff to remove, and S is not drawn.
+// standoff to remove, and S is not drawn. That figure is cited by
+// asrock_altrad8ud_mounting_hole_figure_authority above; before it was carried, this paragraph
+// described a document no reader could reach.
+//
+// THE THREE STANDINGS BELOW ARE THREE FACTS AND THE FIGURE DISTINGUISHES ALL THREE. A populated
+// location, a location the figure explicitly directs be left EMPTY, and a location the figure simply
+// does not draw are not interchangeable. Collapsing directed-absence into not-observed would permit
+// a chassis to place a standoff under J, which the figure exists to forbid; collapsing not-observed
+// into directed-absence would assert a vendor instruction about S that nobody gave. For a PRINTED
+// chassis the J case is better than it is for sheet metal -- the standoff is simply not generated,
+// so the removable-standoff problem the ATX specification handles procedurally disappears by
+// construction.
 //
 // What that establishes is WHICH standard locations this board populates. It does NOT establish the
 // coordinates — those are the standard's — and it is not a vendor statement of conformance. The
