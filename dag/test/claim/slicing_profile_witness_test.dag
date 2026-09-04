@@ -1,0 +1,52 @@
+module test.claim.slicing_profile_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { millimeter_count, micrometer_count, celsius_count }
+import product.printed_chassis.slicing_profile {
+  a1_mini_machine_profile,
+  a1_mini_prusa_dialect_standing,
+  DialectAcceptanceUnobserved, DialectAcceptedByExecutedPrint, DialectRefusedByExecutedPrint,
+  profile_bed_shape_config, profile_gcode_flavor_config,
+}
+
+// THE DEFECT THIS EXISTS TO CATCH. PrusaSlicer's own default sliced the coupon for a 200x200 bed;
+// the A1 mini is 180. A profile that silently kept the slicer's default would place parts outside
+// the real envelope, and the file would still look valid. This reads the derived value, so it goes
+// red if the profile stops deriving from a1_mini_build_envelope.
+test fn w_the_bed_shape_is_the_machines_envelope_not_the_slicer_default() -> Bool {
+  millimeter_count(m: a1_mini_machine_profile.bed_x) == 180
+    && millimeter_count(m: a1_mini_machine_profile.bed_y) == 180
+    && millimeter_count(m: a1_mini_machine_profile.max_print_height) == 180
+    && profile_bed_shape_config(p: a1_mini_machine_profile) == "0x0,180x0,180x180,0x180"
+}
+
+// A CEILING STAYS A CEILING. The machine's rows say it survives 300 C at the hotend; PLA prints near
+// 200. If a later edit ever routes a ceiling into a setpoint field, that value would show up here as
+// a print temperature -- so this witness pins the ceilings AS ceilings and the profile carries no
+// setpoint field at all for one to leak into.
+test fn w_the_machine_ceilings_are_carried_as_limits() -> Bool {
+  celsius_count(c: a1_mini_machine_profile.hot_end_ceiling) == 300
+    && celsius_count(c: a1_mini_machine_profile.build_plate_ceiling) == 80
+}
+
+test fn w_the_nozzle_and_filament_come_from_the_machine_rows() -> Bool {
+  micrometer_count(m: a1_mini_machine_profile.nozzle) == 400
+    && micrometer_count(m: a1_mini_machine_profile.filament) == 1750
+}
+
+// THE FLAVOUR IS THE MEASURED ONE. The file this printer actually accepted carries marlin;
+// PrusaSlicer defaults to reprap. This goes red if the profile drifts back to the default.
+test fn w_the_gcode_flavor_is_the_one_the_printer_accepted() -> Bool {
+  profile_gcode_flavor_config(p: a1_mini_machine_profile) as String == "marlin"
+}
+
+// UNOBSERVED IS NOT YES. Until one PrusaSlicer-produced file has actually printed, the dialect
+// standing must remain the unobserved arm and must name the codes whose necessity is unknown. If a
+// later edit flips this to accepted without an executed print behind it, this row goes red.
+test fn w_the_vendor_dialect_standing_is_unobserved_and_names_its_unknowns() -> Bool {
+  match a1_mini_prusa_dialect_standing {
+    DialectAcceptanceUnobserved { unpublished_codes: c } => c.length() == 2
+    DialectAcceptedByExecutedPrint { evidence: _ } => false
+    DialectRefusedByExecutedPrint { evidence: _ } => false
+  }
+}

@@ -1,0 +1,98 @@
+module product.printed_chassis.slicing_profile
+
+import std.types { NonEmptyStr, List, String }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer_count, Millimeter, millimeter_count, Celsius, celsius_count }
+import extdeps.printing.fdm {
+  BuildEnvelope, build_envelope_x, build_envelope_y, build_envelope_z,
+  NozzleDiameter, nozzle_diameter_value,
+  FilamentDiameter, filament_diameter_value,
+}
+import extdeps.printing.bambu_lab_a1_mini {
+  a1_mini_build_envelope,
+  a1_mini_nozzle_included,
+  a1_mini_filament_diameter,
+  a1_mini_max_hot_end_temperature,
+  a1_mini_max_build_plate_temperature,
+}
+import extdeps.printing.prusa_slicer {
+  PrusaSlicerGcodeFlavor, FlavorMarlin, gcode_flavor_config_value,
+}
+
+// A CEILING IS NOT A SETPOINT, AND CONFLATING THEM WOULD BE THE MOST DANGEROUS THING IN THIS FILE.
+//
+// bambu_lab_a1_mini declares a1_mini_max_hot_end_temperature as 300 C and
+// a1_mini_max_build_plate_temperature as 80 C. Those are what the MACHINE can survive. They are not
+// what any print should run at: emitting 300 C as a nozzle setpoint would carbonise PLA in the
+// hotend, and the row would look perfectly derived while doing it. The failure would be invisible in
+// review precisely because the number came from a cited authority -- it is the right number to the
+// wrong question.
+//
+// So this module derives from the machine ONLY the facts the machine actually owns: the build
+// envelope, the installed nozzle, the filament diameter it accepts, and the ceilings AS CEILINGS. A
+// print temperature is a property of the FILAMENT, and this module has no filament rows and mints
+// none. MachineProfile therefore carries limits; a setpoint has no field here to live in.
+type MachineProfile sole_constructor {
+  bed_x: Millimeter
+  bed_y: Millimeter
+  max_print_height: Millimeter
+  nozzle: Micrometer
+  filament: Micrometer
+  hot_end_ceiling: Celsius
+  build_plate_ceiling: Celsius
+  flavor: PrusaSlicerGcodeFlavor
+}
+
+// THE ONE PROFILE, DERIVED RATHER THAN AUTHORED. Every field reads a declaration in
+// extdeps.printing.bambu_lab_a1_mini. Nothing here is a number a human chose, which is the whole
+// point: PrusaSlicer's own default sliced the coupon for a 200x200 bed, and the A1 mini is 180.
+//
+// THE FLAVOUR IS MEASURED, NOT ASSUMED. The Bambu-produced file this printer actually accepted
+// carries `gcode_flavor = marlin`; PrusaSlicer defaults to `reprap`. FlavorMarlin is chosen because
+// of that observation, not because marlin is a common default.
+data a1_mini_machine_profile: MachineProfile = MachineProfile {
+  bed_x: build_envelope_x(e: a1_mini_build_envelope),
+  bed_y: build_envelope_y(e: a1_mini_build_envelope),
+  max_print_height: build_envelope_z(e: a1_mini_build_envelope),
+  nozzle: nozzle_diameter_value(n: a1_mini_nozzle_included),
+  filament: filament_diameter_value(f: a1_mini_filament_diameter),
+  hot_end_ceiling: a1_mini_max_hot_end_temperature,
+  build_plate_ceiling: a1_mini_max_build_plate_temperature,
+  flavor: FlavorMarlin,
+}
+
+// WHETHER A PRUSASLICER-PRODUCED FILE IS ACCEPTABLE TO THIS MACHINE IS NOT ESTABLISHED, and this
+// carrier says so rather than letting silence read as yes.
+//
+// Comparing the two dialects over the same coupon, the Bambu file emits G17 G3 M73 M83 M190
+// M201 M203 M204 M205 that PrusaSlicer's default did not, and M1003 and M981 besides. All but the
+// last two are ordinary Marlin that a profile can request. M1003 and M981 are vendor codes with no
+// published meaning available here, so whether the printer REQUIRES them to accept a job is
+// unobserved -- and unobserved is a third state, not a lenient yes.
+//
+// DESIGN section 4b keeps this off the guarantee ladder deliberately: it is an external fact about a
+// closed firmware, so it is observed or refused at a boundary and never assumed. The trigger that
+// retires it is one executed print from a PrusaSlicer-produced file, which is a thing that can be
+// run and not a thing that can be reasoned to.
+type VendorDialectStanding
+  = DialectAcceptanceUnobserved { unpublished_codes: List<NonEmptyStr> }
+  | DialectAcceptedByExecutedPrint { evidence: NonEmptyStr }
+  | DialectRefusedByExecutedPrint { evidence: NonEmptyStr }
+
+data a1_mini_prusa_dialect_standing: VendorDialectStanding = DialectAcceptanceUnobserved {
+  unpublished_codes: ["M1003", "M981"],
+}
+
+fn profile_bed_shape_config(p: MachineProfile) -> String {
+  concat(
+    concat("0x0,", concat(millimeter_count(m: p.bed_x) as String, "x0,")),
+    concat(
+      concat(millimeter_count(m: p.bed_x) as String, concat("x", millimeter_count(m: p.bed_y) as String)),
+      concat(",0x", millimeter_count(m: p.bed_y) as String)
+    )
+  )
+}
+
+fn profile_gcode_flavor_config(p: MachineProfile) -> NonEmptyStr {
+  gcode_flavor_config_value(f: p.flavor)
+}

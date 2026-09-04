@@ -1,0 +1,64 @@
+module extdeps.printing.prusa_slicer
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "help.prusa3d.com/article/command-line-processing_1937"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.prusa_slicer",
+      decl_name: "prusa_slicer_gcode_flavors",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PRUSASLICER AS ITS OWN SUBJECT, SEPARATE FROM BAMBU STUDIO AND FROM THE MACHINE.
+//
+// DESIGN section 3 external decomposition: Bambu Studio is a FORK of PrusaSlicer and OrcaSlicer is a
+// fork of Bambu Studio, so they are three independently versioned subjects that happen to share
+// ancestry. extdeps.printing.bambu_studio already models one of them. This models another, and
+// neither may enumerate the other.
+//
+// WHY THIS SUBJECT EXISTS AT ALL, recorded because it is a constraint and not a preference: every
+// machine this repository owns is aarch64 -- the Ampere Altra hosts, the DGX Sparks, and the session
+// containers. Bambu Studio and OrcaSlicer publish x86_64 Linux builds. PrusaSlicer is packaged for
+// arm64 and was verified to slice headlessly on srv2 with no display server. It is the only slicer
+// that runs on the hardware, which is why the profile has to be authored rather than downloaded.
+
+// THE FLAVOUR VOCABULARY IS CLOSED, and the reason is measured rather than stylistic. Slicing the
+// coupon with PrusaSlicer's default emitted `gcode_flavor = reprap`, while the Bambu-produced file
+// the A1 mini actually printed carries `gcode_flavor = marlin`. A stringly flavour field would have
+// let that difference be spelled two ways and compared as equal.
+type PrusaSlicerGcodeFlavor
+  = FlavorMarlin
+  | FlavorMarlinFirmware
+  | FlavorRepRap
+  | FlavorKlipper
+
+fn gcode_flavor_config_value(f: PrusaSlicerGcodeFlavor) -> NonEmptyStr {
+  match f {
+    FlavorMarlin => "marlin"
+    FlavorMarlinFirmware => "marlin2"
+    FlavorRepRap => "reprap"
+    FlavorKlipper => "klipper"
+  }
+}
+
+data prusa_slicer_gcode_flavors: List<PrusaSlicerGcodeFlavor> = [
+  FlavorMarlin,
+  FlavorMarlinFirmware,
+  FlavorRepRap,
+  FlavorKlipper,
+]
