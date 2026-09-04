@@ -105,7 +105,10 @@ import gunbc.fleet_converge_plan {
   FullHost,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  SparkServing,
+  SparkServingConverge,
   fleet_converge_scope_of_wire,
+  fleet_converge_scope_matches,
   LaunchEnvironment,
   fleet_converge_plan_artifact_of_request,
   ScopeDecoded,
@@ -127,8 +130,38 @@ import gunbc.fleet_converge_plan {
 import gunbc.spark.serving_execution_schedule {
   SparkServingAxisNotApplicable,
   SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
   SparkServingAxisDisposition,
   scheduled_rows_list,
+}
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_transport,
+}
+import gunbc.spark.serving_observe {
+  spark_serving_observed_facts_via_locus,
+  SparkServingObservedFactsReady,
+  SparkServingObservedFactsRefused,
+  SparkServingPlanObservation,
+}
+import gunbc.spark.serving_converge_plan { spark_serving_axis_for_observation }
+import gunbc.spark.serving_converge_apply {
+  spark_serving_exec_frozen_typed_rows,
+  SparkServingFrozenRemoteExecApplied,
+  SparkServingFrozenRemoteExecConvergedNoop,
+  SparkServingFrozenRemoteExecRefused,
+  spark_serving_step_sequence_failed,
+  spark_serving_step_sequence_wire,
+  spark_serving_step_failure_causes_wire,
+}
+import gunbc.fleet_multi_principal_probe {
+  spark_converge_target_selection,
+  SparkConvergeTargetSingle,
+  SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused,
 }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
@@ -262,12 +295,13 @@ func observe_host_short_wet() -> NonEmptyStr?
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
 // (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
-func observe_generation_store_wet() -> GenerationAdmission
+func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
   uses net: Network
 {
-  let read = Filesystem.Read(path: fleet_converge_generation_store_path)
+  let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
   fleet_converge_generation_admission(
     observation: fleet_converge_generation_observation(
+      subject_host: subject_host,
       store_present: read.success,
       content: read.content,
     ),
@@ -314,11 +348,50 @@ type FleetConvergeRequestObservation
 // (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
+// THE SPARK ARM OBSERVES A REMOTE SUBJECT, AND `host` IS THAT SUBJECT. For every other scope the
+// observer runs on the host it observes, so the caller hands it the executor's own hostname. For
+// scope:spark-serving the caller hands it the TARGET (srv5 or srv6), resolved from
+// SPARK_CONVERGE_TARGET at plan time and from the plan's subject_host.txt at apply time, and the
+// observation is acquired over FleetSsh from the in-run agent -- the same transaction and the same
+// eliminator the spark_linger slice plans from. There is no local fallback: a Spark that cannot be
+// reached yields FleetConvergeRequestUnobserved, never an empty request.
+data fleet_converge_spark_observe_attempt_raw: String = "fleet-converge-spark-observe"
+
 func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
     ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+    ScopeDecoded { scope: SparkServing } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: fleet_converge_spark_observe_attempt_raw) {
+        FleetSshContextRefused { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+        FleetSshContextReady { context: context, receipt: _ } =>
+          match spark_serving_observed_facts_via_locus(
+            context: context,
+            host: host as HostIdentity,
+            phase: SparkServingPlanObservation,
+          ) {
+            SparkServingObservedFactsRefused { cause: why } =>
+              FleetConvergeRequestUnobserved { reason: why as String }
+            SparkServingObservedFactsReady { observation: observation, running_definition: _, invocation: _ } =>
+              match spark_serving_axis_for_observation(observation: observation) {
+                SparkServingAxisPlanned { plan: bound } =>
+                  FleetConvergeRequestObserved { request: SparkServingConverge { host: host, spark_plan: bound } }
+                SparkServingAxisRefused { host: h, cause: why } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join(["spark serving axis refused for ", h as String, ": ", why], ""),
+                  }
+                SparkServingAxisUnobserved { host: h } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join(["spark serving axis unobserved for ", h as String], ""),
+                  }
+                SparkServingAxisNotApplicable { host: h } =>
+                  FleetConvergeRequestUnobserved {
+                    reason: join([h as String, " is not an enrolled Spark, so scope:spark-serving has no subject there"], ""),
+                  }
+              }
+          }
+      }
     ScopeDecoded { scope: FabricAllocationStoreOnly } =>
       match observe_allocation_store_substrate_wet() {
         AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
@@ -423,7 +496,7 @@ func fleet_converge_allocation_store_plan_wet() -> ProcessExit
   match observe_host_short_wet() {
     Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
     Present { value: host } =>
-      match observe_generation_store_wet() {
+      match observe_generation_store_wet(subject_host: host) {
         GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
         GenerationAdmitted { generation: prior_generation } =>
           match observe_allocation_store_substrate_wet() {
@@ -598,6 +671,51 @@ func fleet_converge_launch_environment_plan_wet() -> ProcessExit
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
 }
 
+// THE SPARK PLAN. Same admission spine as every other scope; what differs is that the subject is
+// resolved from SPARK_CONVERGE_TARGET rather than from the executor's hostname, so the executor
+// check still binds the runner and the subject check binds the Spark.
+func fleet_converge_spark_serving_plan_wet() -> ProcessExit
+  uses net: Network
+{
+  fleet_converge_scoped_plan_wet(scope: SparkServing)
+}
+
+type FleetConvergeSubjectHost
+  = SubjectHostResolved { host: NonEmptyStr }
+  | SubjectHostRefused { reason: String }
+
+// WHICH HOST THE PLAN IS ABOUT. Every scope but spark-serving is about the executor itself. The
+// Spark scope reads SPARK_CONVERGE_TARGET through the same selector the spark_* modes use, with
+// execute_apply true because a plan names ONE subject and never fans out.
+fn fleet_converge_plan_subject_host(scope: FleetConvergeScope, executor: NonEmptyStr) -> FleetConvergeSubjectHost {
+  match scope {
+    SparkServing =>
+      match spark_converge_target_selection(execute_apply: true) {
+        SparkConvergeTargetSingle { host: h } => SubjectHostResolved { host: (h as String) as NonEmptyStr }
+        SparkConvergeTargetAllObserveOnly =>
+          SubjectHostRefused { reason: "fleet_converge_plan: scope:spark-serving plans one subject and SPARK_CONVERGE_TARGET named none" }
+        SparkConvergeTargetRefused { reason: why } => SubjectHostRefused { reason: concat("fleet_converge_plan: ", why) }
+      }
+    FullHost => SubjectHostResolved { host: executor }
+    LaunchEnvironment => SubjectHostResolved { host: executor }
+    FabricExecutionCellsOnly => SubjectHostResolved { host: executor }
+    FabricAllocationStoreOnly => SubjectHostResolved { host: executor }
+  }
+}
+
+// AT APPLY THE SUBJECT COMES OFF THE PLAN, NOT OFF THE ENVIRONMENT: the plan artifact names the
+// Spark it was minted against, and re-observing any other host would compare the plan to a
+// stranger and admit on a coincidence.
+fn fleet_converge_apply_observation_subject(scope: FleetConvergeScope, executor: NonEmptyStr, planned: NonEmptyStr) -> NonEmptyStr {
+  match scope {
+    SparkServing => planned
+    FullHost => executor
+    LaunchEnvironment => executor
+    FabricExecutionCellsOnly => executor
+    FabricAllocationStoreOnly => executor
+  }
+}
+
 func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   uses net: Network
 {
@@ -643,10 +761,13 @@ func fleet_converge_plan_scoped_bound_wet(
         exit_failure(reason: join(["fleet_converge_plan: ExpectedHostMismatch — the workflow input names ", expected_host, " but this runner observes ", host as String], ""))
       } else {
   let host_short = host as String
-  match observe_generation_store_wet() {
+  match fleet_converge_plan_subject_host(scope: scope, executor: host) {
+    SubjectHostRefused { reason: why } => exit_failure(reason: why)
+    SubjectHostResolved { host: subject_host } =>
+  match observe_generation_store_wet(subject_host: subject_host) {
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
-  match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: host) {
+  match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) {
     FleetConvergeRequestUnobserved { reason: why } =>
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
@@ -765,6 +886,7 @@ func fleet_converge_plan_scoped_bound_wet(
     }
   }
   }
+  }
 }
 
 // APPLY BINDS ITSELF TO THE PLAN RECEIPT IT WAS HANDED (RLM-2 ruling section 2): the plan run id
@@ -875,7 +997,7 @@ func fleet_converge_apply_bound_wet(
                 PayloadAdmitted { routed_scope: routed_scope } =>
               match observe_fleet_converge_request_wet(
                 scope_wire: fleet_converge_scope_wire(scope: routed_scope),
-                host: observed_host,
+                host: fleet_converge_apply_observation_subject(scope: routed_scope, executor: observed_host, planned: planned_host),
               ) {
                 FleetConvergeRequestUnobserved { reason: why } =>
                   exit_failure(reason: concat("fleet_converge_apply: PlannedScopeOrObservationRefused — ", why))
@@ -942,6 +1064,7 @@ func fleet_converge_apply_bound_wet(
                       commands: [
                         bash_program_command(
                           script: fleet_converge_locked_apply_script(
+                            subject_host: planned_host,
                             prior_generation: prior_generation,
                             planned_generation: planned_generation,
                             apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -950,7 +1073,18 @@ func fleet_converge_apply_bound_wet(
                       ],
                       transport: LocalExec,
                     )
-                    let exit_code = match applied {
+                    let actuated = if fleet_converge_scope_matches(planned: routed_scope, observed: SparkServing) {
+                      fleet_converge_apply_spark_rows_wet(
+                        applied: applied,
+                        observed: observed_request,
+                        prior_generation: prior_generation,
+                        spark_wire_on_disk: trim(s: read_spark_wire.content),
+                        claimed_hex: trim(s: read_hash.content),
+                      )
+                    } else {
+                      applied
+                    }
+                    let exit_code = match actuated {
                       ExitSuccess => 0
                       ExitFailure { code: c, reason: _ } => c
                     }
@@ -973,7 +1107,7 @@ func fleet_converge_apply_bound_wet(
                         match write_fleet_converge_apply_receipt(r: receipt) {
                           ReceiptWriteRefused { path: p, error: e } =>
                             exit_failure(reason: join(["fleet_converge_apply: ApplyReceiptWriteRefused at ", p, ": ", e], ""))
-                          ReceiptWritten { path: _ } => applied
+                          ReceiptWritten { path: _ } => actuated
                         }
                     }
                   }
@@ -990,3 +1124,89 @@ func fleet_converge_apply_bound_wet(
     }
   }
   }
+
+
+// THE SPARK ROWS ARE RE-DERIVED AT APPLY AND MUST REPRODUCE THE FROZEN WIRE BYTE FOR BYTE.
+//
+// Apply holds files, not values, and no decoder turns the wire back into typed rows. What it does
+// hold is the re-observation the baseline CAS just admitted (same members, same digests) and the
+// same revision R the plan ran at, so planning again from that observation is a pure function that
+// must land on the same rows. The wire comparison is the discriminating check: if the desired side
+// moved, or a row's frozen operations differ, the wire differs and apply refuses. The rebuilt
+// artifact then passes through spark_serving_exec_frozen_typed_rows, whose own bundle admission
+// compares the rebuilt plan body against the hash the operator typed -- a second, independent wall.
+// THE LEASE COMMITS BEFORE THE SPARK ROWS RUN, AND THAT IS THE LEASE'S MEANING: a plan is consumed
+// once. A refused remote step leaves the generation advanced and the receipt red, so the operator
+// re-plans rather than replays a bundle whose baseline the partial actuation may already have moved.
+data fleet_converge_spark_apply_attempt_raw: String = "fleet-converge-spark-apply"
+
+func fleet_converge_apply_spark_rows_wet(
+  applied: ProcessExit,
+  observed: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_wire_on_disk: String,
+  claimed_hex: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match applied {
+    ExitFailure { code: _, reason: _ } => applied
+    ExitSuccess =>
+      match observed {
+        SparkServingConverge { host: target, spark_plan: bound } => {
+          let rebuilt = fleet_converge_plan_artifact_of_request(
+            request: observed,
+            prior_generation: prior_generation,
+            spark_rows: bound.rows,
+          )
+          let rebuilt_wire = fleet_converge_spark_serving_typed_actions_wire(
+            rows: scheduled_rows_list(scheduled: bound.rows),
+          )
+          if rebuilt_wire != spark_wire_on_disk {
+            exit_failure(
+              reason: join([
+                "fleet_converge_apply: SparkRowsDiverged — the rows re-derived at apply do not reproduce the frozen spark_serving_typed_actions.wire; rerun plan and review\nplanned=",
+                spark_wire_on_disk, "\napply=", rebuilt_wire,
+              ], ""),
+            )
+          } else {
+            match prepare_fleet_ssh_agent_context(attempt_raw: fleet_converge_spark_apply_attempt_raw) {
+              FleetSshContextRefused { cause: why } =>
+                exit_failure(reason: concat("fleet_converge_apply: SparkContextRefused — ", why))
+              FleetSshContextReady { context: context, receipt: _ } =>
+                match spark_serving_exec_frozen_typed_rows(
+                  artifact: rebuilt,
+                  claimed_bundle_hex: claimed_hex,
+                  transport: fleet_locus_transport(context: context, host: target as HostIdentity),
+                ) {
+                  SparkServingFrozenRemoteExecRefused { reason: why } =>
+                    exit_failure(reason: concat("fleet_converge_apply: SparkExecRefused — ", why))
+                  SparkServingFrozenRemoteExecConvergedNoop => ExitSuccess
+                  SparkServingFrozenRemoteExecApplied { standings: standings } =>
+                    if spark_serving_step_sequence_failed(standings: standings) {
+                      exit_failure(
+                        reason: join([
+                          "fleet_converge_apply: SparkExecStepFailed ",
+                          spark_serving_step_sequence_wire(standings: standings),
+                          " ",
+                          spark_serving_step_failure_causes_wire(standings: standings),
+                        ], ""),
+                      )
+                    } else {
+                      ExitSuccess
+                    }
+                }
+            }
+          }
+        }
+        FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+        FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+          exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
+      }
+  }
+}

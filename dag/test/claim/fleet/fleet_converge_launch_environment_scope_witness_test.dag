@@ -14,6 +14,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  SparkServing,
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
@@ -115,6 +116,7 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
     FullHost => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    SparkServing => false
   }
 }
 
@@ -450,8 +452,18 @@ test fn every_scope_wire_is_distinct() -> Bool {
     fleet_converge_scope_wire(scope: LaunchEnvironment),
     fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    fleet_converge_scope_wire(scope: SparkServing),
   ]
   all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
+}
+
+// The Spark scope round-trips through the same decoder every other scope does, so an apply handed
+// a spark-serving artifact routes to the Spark observer rather than refusing as an unknown wire.
+test fn the_spark_serving_scope_wire_round_trips() -> Bool {
+  match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: SparkServing)) {
+    ScopeDecoded { scope: s } => fleet_converge_scope_wire(scope: s) == "scope:spark-serving"
+    ScopeUndecodable { cause: _ } => false
+  }
 }
 
 test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {

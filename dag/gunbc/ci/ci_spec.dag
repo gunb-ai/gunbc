@@ -708,6 +708,11 @@ data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget 
   function: "fleet_converge_launch_environment_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_spark_serving_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_spark_serving_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_allocation_store_plan_wet",
@@ -837,13 +842,14 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 22 declarations, 22 entries. That equality is the thing nothing checks.
+// Counted at authoring: 23 declarations, 23 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_launch_environment_plan_target,
+    gunbc_ci_fleet_converge_spark_serving_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
@@ -1258,6 +1264,16 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_fleet_converge_plan_target.entry,
     function: gunbc_ci_fleet_converge_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_spark_serving_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_spark_serving_plan_target.entry,
+    function: gunbc_ci_fleet_converge_spark_serving_plan_target.function,
     claim_run: false,
     receipt_rel: none
   )

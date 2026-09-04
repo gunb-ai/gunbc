@@ -88,6 +88,8 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_admission_refusal_text,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
+  fleet_converge_generation_store_path,
+  SparkServing,
   FleetConvergeApplyAdmission,
   ApplyAdmitted,
   ApplySubjectHostMismatch,
@@ -106,6 +108,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergeRequest,
   FleetConvergeScope,
   FullHost,
+  LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
   FullHostConverge,
@@ -146,6 +149,7 @@ import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli {
   fleet_converge_plan_cli_note,
+  fleet_converge_apply_observation_subject,
   spark_axis_for_unobserved_cli,
   fleet_converge_apply_spark_admission,
   ApplySparkAxisAdmitted,
@@ -477,15 +481,15 @@ test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
 // answer was a number. Here they are different variants, and neither of the not-observed ones
 // carries a generation at all.
 test fn generation_observation_separates_absent_from_unreadable() -> Bool {
-  match fleet_converge_generation_observation(store_present: false, content: "") {
+  match fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: false, content: "") {
     GenerationStoreAbsent => true
     _ => false
   }
-    && match fleet_converge_generation_observation(store_present: true, content: "garbage") {
+    && match fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: true, content: "garbage") {
       GenerationUnobserved { reason: _ } => true
       _ => false
     }
-    && match fleet_converge_generation_observation(store_present: true, content: "7") {
+    && match fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: true, content: "7") {
       GenerationObserved { generation: n } => n == 7
       _ => false
     }
@@ -495,19 +499,19 @@ test fn generation_observation_separates_absent_from_unreadable() -> Bool {
 // never becomes one.
 test fn generation_admission_admits_absent_as_first_and_refuses_unreadable() -> Bool {
   match fleet_converge_generation_admission(
-    observation: fleet_converge_generation_observation(store_present: false, content: ""),
+    observation: fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: false, content: ""),
   ) {
     GenerationAdmitted { generation: n } => n == fleet_converge_first_generation
     GenerationAdmissionRefused { reason: _ } => false
   }
     && match fleet_converge_generation_admission(
-      observation: fleet_converge_generation_observation(store_present: true, content: "garbage"),
+      observation: fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: true, content: "garbage"),
     ) {
       GenerationAdmissionRefused { reason: _ } => true
       GenerationAdmitted { generation: _ } => false
     }
     && match fleet_converge_generation_admission(
-      observation: fleet_converge_generation_observation(store_present: true, content: "9"),
+      observation: fleet_converge_generation_observation(subject_host: "srv1" as NonEmptyStr, store_present: true, content: "9"),
     ) {
       GenerationAdmitted { generation: n } => n == 9
       GenerationAdmissionRefused { reason: _ } => false
@@ -516,11 +520,13 @@ test fn generation_admission_admits_absent_as_first_and_refuses_unreadable() -> 
 
 test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
   let script = fleet_converge_locked_apply_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
   )
   let inner = fleet_converge_locked_apply_inner_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -539,11 +545,13 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
 // fails the moment anyone reintroduces the splice.
 test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
   let inner = fleet_converge_locked_apply_inner_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
   )
   let script = fleet_converge_locked_apply_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -558,6 +566,7 @@ test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
 // read only where it exists.
 test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool {
   let inner = fleet_converge_locked_apply_inner_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -573,6 +582,7 @@ test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool
 // spellings from drifting apart silently.
 test fn locked_apply_guard_compares_the_modelled_prior_generation() -> Bool {
   let inner = fleet_converge_locked_apply_inner_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -618,6 +628,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
 // number — precisely the confusion this PR removes from the guard itself (review 54519).
 test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool {
   let inner = fleet_converge_locked_apply_inner_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -755,6 +766,7 @@ fn sudo_n_word(spelling: String) -> String {
 // vocabulary can only constrain the ones routed through its accessor.
 test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
   let script = fleet_converge_locked_apply_script(
+    subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
     apply_shell_path: fleet_converge_plan_apply_shell_path,
@@ -1837,6 +1849,7 @@ fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
     LaunchEnvironment => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    SparkServing => false
   }
 }
 
@@ -1846,6 +1859,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
     FullHost => false
     LaunchEnvironment => false
     FabricAllocationStoreOnly => false
+    SparkServing => false
   }
 }
 
@@ -2139,4 +2153,32 @@ test fn plan_and_apply_read_one_enrollment_classification() -> Bool {
     && plain_plan_refuses == plain_apply_refuses
     && spark_plan_refuses
     && !plain_plan_refuses
+}
+
+
+// THE GENERATION STORE IS KEYED BY SUBJECT. Two subjects planned from one executor must not share a
+// lease epoch: srv1's own plan and a Spark plan minted on srv1 about srv5 read different files, and
+// the emitted guard reads the same keyed path the modelled reader does.
+test fn generation_store_is_keyed_by_subject_host() -> Bool {
+  let a = fleet_converge_generation_store_path(subject_host: "srv1" as NonEmptyStr)
+  let b = fleet_converge_generation_store_path(subject_host: "srv5" as NonEmptyStr)
+  a != b
+    && string_contains(s: a, pattern: "/var/lib/gunbc/fleet-converge/plan_generation.srv1")
+    && string_contains(s: fleet_converge_locked_apply_inner_script(
+         subject_host: "srv5" as NonEmptyStr,
+         prior_generation: 1,
+         planned_generation: 2,
+         apply_shell_path: fleet_converge_plan_apply_shell_path,
+       ), pattern: b)
+}
+
+// AT APPLY THE SPARK SUBJECT COMES OFF THE PLAN, every other subject is the executor. A Spark apply
+// that re-observed the executor would compare srv1's emptiness to a plan about srv5 and refuse on
+// a host mismatch at best, or admit on a coincidence at worst.
+test fn apply_observation_subject_is_the_planned_host_only_for_spark_serving() -> Bool {
+  let executor = "srv1" as NonEmptyStr
+  let planned = "srv5" as NonEmptyStr
+  (fleet_converge_apply_observation_subject(scope: SparkServing, executor: executor, planned: planned) as String) == "srv5"
+    && (fleet_converge_apply_observation_subject(scope: FullHost, executor: executor, planned: planned) as String) == "srv1"
+    && (fleet_converge_apply_observation_subject(scope: LaunchEnvironment, executor: executor, planned: planned) as String) == "srv1"
 }

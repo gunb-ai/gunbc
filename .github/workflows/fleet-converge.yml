@@ -11,12 +11,12 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark
+        description: plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
+        options: [plan, launch_environment_plan, spark_serving_plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
-        description: Spark target host for spark_linger mode (srv5 or srv6)
+        description: Spark target host for spark_serving_plan and the spark_* modes (srv5 or srv6); apply reads the subject off the plan artifact
         required: false
         options: [srv5, srv6]
         type: choice
@@ -224,6 +224,17 @@ jobs:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 5
+      - name: Fleet converge plan — scope:spark-serving (executor→target FleetSsh observation, typed rows frozen in the bundle)
+        id: spark_serving_plan
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_spark_serving_plan_wet
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
+        if: github.event.inputs.mode == 'spark_serving_plan'
+        timeout-minutes: 60
       - name: Fleet allocation-store substrate plan
         id: allocation_store_plan
         run: |
@@ -240,7 +251,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'spark_serving_plan' || github.event.inputs.mode == 'allocation_store_plan'
         timeout-minutes: 10
       - name: Download fleet converge plan artifact
         id: plan_download
@@ -265,7 +276,7 @@ jobs:
           FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'apply'
-        timeout-minutes: 5
+        timeout-minutes: 60
       - name: Upload fleet converge apply receipt
         id: apply_receipt_upload
         uses: actions/upload-artifact@v4
