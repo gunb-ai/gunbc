@@ -1,5 +1,4 @@
 module test.claim.emit_copy_qualification_witness_test
-
 // ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
 //
 // Three rows stood at the END OF THIS MODULE asserting the `emit-copy-qualification-battery` job's
