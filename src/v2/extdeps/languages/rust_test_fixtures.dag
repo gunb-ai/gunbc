@@ -1040,24 +1040,6 @@ fn rust_minimal_target_model_staging() -> TargetModel {
   }
 }
 
-// Minimum-viable TargetModel with a runtime row present, for tests that
-// only assert runtime_row_from_target succeeds without inspecting the row.
-fn rust_minimal_smoked_target_model_staging() -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: OccurrenceSynthetic
-    },
-    lex: VoidLexRules,
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: "",
-    runtime_row: rust_loop_runtime_row()
-  }
-}
-
 data rust_classical_not_ingested_emit_host_main_suffix: String = "\n\nfn main() { let value = classical_not(1); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescriptor {
