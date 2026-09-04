@@ -1,0 +1,171 @@
+module extdeps.gunb_ai.frontend
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE STOIC GIANT SEAL, MODELLED FROM THE AUTHORED SVG RATHER THAN REDRAWN.
+//
+// The mark is authored in gunb-ai/frontend at assets/mark.svg and that file is its authority. This
+// module does not copy the file and does not re-draw the shape by eye: it records the geometry the
+// SVG actually specifies, so a change to the mark is a change to ONE artifact that this module can
+// be re-derived from, rather than a drawing that drifts from a logo nobody re-checked.
+//
+// WHY THE MARK IS EXPRESSIBLE AT ALL. The SVG carries no bezier path data. Its body is a single
+// rounded rectangle written as four line segments and four 30-unit arcs, and its features are two
+// circles and one rounded rectangle. That is why this module can be exact: there is no curve to
+// approximate and therefore no place for a tolerance to hide.
+data gunb_mark_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/frontend/blob/3152d4c4b0/assets/mark.svg"
+  }
+}
+
+data gunb_mark_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gunb_ai.frontend",
+      decl_name: "StoicGiantMark",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: gunb_mark_authority,
+  further_citations: []
+}
+
+// The exact blob this module was derived from. A content hash rather than a branch name, because a
+// branch moves and would make the citation quietly false; re-deriving after the mark changes means
+// changing this row, which is the point.
+data gunb_mark_blob_sha: NonEmptyStr = "936025bd0618720b3fc3d4a221675f44fcd7c6cb"
+
+// ═══ THE FRAME ═══
+//
+// The SVG declares viewBox "0 0 120 120" and wraps its shapes in transform="translate(-12 -12)
+// scale(1.2)", which sends a point to (1.2x - 12, 1.2y - 12). Every authored coordinate is a whole
+// number, and 1.2 times a whole number is exact to one tenth, so THE TRANSFORMED MARK IS EXACT IN
+// TENTHS OF A FRAME UNIT and this module carries it in tenths as Nat.
+//
+// That is not a convenience. Carrying the resolved mark in a decimal-free integer means the SVG's
+// transform is applied ONCE, here, with its arithmetic checkable by hand -- rather than at every
+// consumer, in a floating-point type, where two consumers could disagree in the last place.
+data mark_frame_span: Nat = 1200
+
+type MarkFrameLength sole_constructor { tenths: Nat }
+
+fn frame_length(tenths: Nat) -> MarkFrameLength { MarkFrameLength { tenths: tenths } }
+
+fn frame_length_tenths(l: MarkFrameLength) -> Nat { l.tenths }
+
+// ═══ THE FEATURES ═══
+//
+// Two shape kinds, which is all the SVG uses. A rounded rectangle with corner_radius zero is an
+// ordinary rectangle, so no third kind is needed and none is offered.
+type MarkFeature
+  = MarkRoundedRect {
+      x: MarkFrameLength
+      y: MarkFrameLength
+      width: MarkFrameLength
+      height: MarkFrameLength
+      corner_radius: MarkFrameLength
+    }
+  | MarkCircle {
+      center_x: MarkFrameLength
+      center_y: MarkFrameLength
+      radius: MarkFrameLength
+    }
+
+// The body: SVG x 10..110, y 20..100, arc radius 30, transformed. It spans the FULL frame width and
+// is inset top and bottom, which is why the mark reads as wide rather than square.
+data mark_body: MarkFeature = MarkRoundedRect {
+  x: frame_length(tenths: 0),
+  y: frame_length(tenths: 120),
+  width: frame_length(tenths: 1200),
+  height: frame_length(tenths: 960),
+  corner_radius: frame_length(tenths: 360),
+}
+
+data mark_eye_left: MarkFeature = MarkCircle {
+  center_x: frame_length(tenths: 300),
+  center_y: frame_length(tenths: 456),
+  radius: frame_length(tenths: 96),
+}
+
+data mark_eye_right: MarkFeature = MarkCircle {
+  center_x: frame_length(tenths: 900),
+  center_y: frame_length(tenths: 456),
+  radius: frame_length(tenths: 96),
+}
+
+data mark_mouth: MarkFeature = MarkRoundedRect {
+  x: frame_length(tenths: 504),
+  y: frame_length(tenths: 528),
+  width: frame_length(tenths: 192),
+  height: frame_length(tenths: 72),
+  corner_radius: frame_length(tenths: 24),
+}
+
+// ═══ THE MARK, AND WHY ITS TWO POPULATIONS ARE SEPARATE ═══
+//
+// The SVG's own comment states "Solid fills, no evenodd cutouts": the black features are painted ON
+// TOP of the white body, not subtracted from it. On screen that is a stacking order. In plastic it
+// cannot be, because a single-material part has one colour.
+//
+// The realization that recovers the mark WITHOUT a multi-material printer is to make the features
+// SUBTRACTIVE: the insert is printed in white as the body alone, the features are cut through it,
+// and the black board behind shows through the openings. The rendered result is black-on-white and
+// each part stays one colour.
+//
+// So `body` and `features` are separate fields rather than one ordered list. An ordered list would
+// have preserved the SVG's paint order, which is exactly the fact that does not survive the move
+// into plastic, and a consumer reading it would have to know which entries were meant to be holes.
+type StoicGiantMark sole_constructor {
+  body: MarkFeature
+  features: List<MarkFeature>
+}
+
+data gunb_stoic_giant_mark: StoicGiantMark = StoicGiantMark {
+  body: mark_body,
+  features: [mark_eye_left, mark_eye_right, mark_mouth],
+}
+
+// ═══ SCALING TO PLASTIC ═══
+//
+// A frame length becomes a physical length only against a declared physical width for the whole
+// mark. The conversion is exact or it REFUSES: a mark whose width does not divide the frame evenly
+// would put every feature a fraction of a micrometre off, and rounding each one independently is how
+// a circle stops being concentric with the hole it sits in.
+//
+// At 60 mm wide each frame tenth is exactly 50 um, which is why that width is the one declared below
+// rather than a rounder-sounding number that would not divide.
+type MarkScale
+  = MarkScaleExact { micrometres_per_tenth: Nat }
+  | MarkScaleNotDivisible { requested_width: Micrometer, frame_span: Nat, remainder: Nat }
+
+fn mark_scale_for_width(width: Micrometer) -> MarkScale {
+  let w = micrometer_count(m: width)
+  let r = w - ((w / mark_frame_span) * mark_frame_span)
+  if r == 0 {
+    MarkScaleExact { micrometres_per_tenth: w / mark_frame_span }
+  } else {
+    MarkScaleNotDivisible { requested_width: width, frame_span: mark_frame_span, remainder: r }
+  }
+}
+
+// THIS TAKES THE RATIO, NOT THE MarkScale, AND THE DIFFERENCE IS THE WHOLE POINT.
+//
+// The first draft of this function took a MarkScale and matched it, which forced an arm for
+// MarkScaleNotDivisible -- and what that arm returned was micrometer(count: 0). A zero extent fits
+// inside every build envelope, so an inexact scale would have produced a mark that passed every
+// downstream check by being infinitesimally small. That is the same defect the coupon module records
+// against its own first draft, reached independently, one module over.
+//
+// The repair is not a better refusal in that arm. It is to make the arm unwritable: the ratio can
+// only be obtained by destructuring MarkScale, and only MarkScaleExact carries one. An inexact scale
+// has nothing to hand this function, so there is no bad call to guard against.
+fn scale_frame_length(micrometres_per_tenth: Nat, l: MarkFrameLength) -> Micrometer {
+  micrometer(count: frame_length_tenths(l: l) * micrometres_per_tenth)
+}

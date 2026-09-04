@@ -1,0 +1,91 @@
+module test.claim.gunb_ai_frontend_mark_witness_test
+
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.gunb_ai.frontend {
+  MarkFrameLength, frame_length, frame_length_tenths, mark_frame_span,
+  MarkFeature, MarkRoundedRect, MarkCircle,
+  mark_body, mark_eye_left, mark_eye_right, mark_mouth,
+  StoicGiantMark, gunb_stoic_giant_mark,
+  MarkScale, MarkScaleExact, MarkScaleNotDivisible, mark_scale_for_width, scale_frame_length,
+}
+
+// THE TRANSFORM IS THE THING MOST LIKELY TO BE WRONG, so it is asserted at both ends. The SVG
+// authors the body at x 10..110 inside a 0..120 viewBox -- INSET on both sides. Only after
+// translate(-12 -12) scale(1.2) does it span the frame exactly. A witness that merely checked the
+// body was "about right" would pass on the untransformed coordinates too.
+test fn w_the_body_spans_the_full_declared_frame() -> Bool {
+  match mark_body {
+    MarkCircle { center_x: cx, center_y: cy, radius: r } => false
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
+      frame_length_tenths(l: x) == 0
+        && frame_length_tenths(l: w) == mark_frame_span
+        && frame_length_tenths(l: y) == 120
+        && frame_length_tenths(l: h) == 960
+  }
+}
+
+// A face whose eyes are not symmetric is wrong in a way no dimension check would catch: both eyes
+// could be individually plausible and the mark still lopsided. This asserts the PAIR.
+test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
+  match mark_eye_left {
+    MarkRoundedRect { x: a, y: b, width: c, height: d, corner_radius: e } => false
+    MarkCircle { center_x: lx, center_y: ly, radius: lr } =>
+      match mark_eye_right {
+        MarkRoundedRect { x: a, y: b, width: c, height: d, corner_radius: e } => false
+        MarkCircle { center_x: rx, center_y: ry, radius: rr } =>
+          frame_length_tenths(l: lx) + frame_length_tenths(l: rx) == mark_frame_span
+            && frame_length_tenths(l: ly) == frame_length_tenths(l: ry)
+            && frame_length_tenths(l: lr) == frame_length_tenths(l: rr)
+      }
+  }
+}
+
+// 60 mm is the declared insert width BECAUSE it divides: 60000 um over 1200 tenths is exactly 50.
+test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> Bool {
+  match mark_scale_for_width(width: micrometer(count: 60000)) {
+    MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
+    MarkScaleExact { micrometres_per_tenth: per } =>
+      per == 50
+        && micrometer_count(m: scale_frame_length(micrometres_per_tenth: per, l: frame_length(tenths: mark_frame_span))) == 60000
+  }
+}
+
+// THE DISCRIMINATING RED. 50 mm is a perfectly reasonable-sounding insert width and it does NOT
+// divide 1200: 50000/1200 leaves 800. Without this arm the scale would round every feature
+// independently and a circle would stop being concentric with the opening it sits in.
+test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
+  match mark_scale_for_width(width: micrometer(count: 50000)) {
+    MarkScaleExact { micrometres_per_tenth: per } => false
+    MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } =>
+      r == 800 && s == mark_frame_span && micrometer_count(m: w) == 50000
+  }
+}
+
+fn feature_min_x(f: MarkFeature) -> Nat {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => frame_length_tenths(l: x)
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      frame_length_tenths(l: cx) - frame_length_tenths(l: r)
+  }
+}
+
+fn feature_max_x(f: MarkFeature) -> Nat {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
+      frame_length_tenths(l: x) + frame_length_tenths(l: w)
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      frame_length_tenths(l: cx) + frame_length_tenths(l: r)
+  }
+}
+
+// Every cut must land in material. A feature outside the body would be an opening cut through air --
+// on screen a stray dot, in plastic a hole in the board the insert is supposed to cover.
+test fn w_every_feature_lies_inside_the_body() -> Bool {
+  let inside = gunb_stoic_giant_mark.features
+    |> filter(f => feature_min_x(f: f) >= 0 && feature_max_x(f: f) <= mark_frame_span)
+    |> count
+  let total = gunb_stoic_giant_mark.features |> count
+  total == 3 && inside == total
+}
