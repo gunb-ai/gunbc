@@ -1,0 +1,38 @@
+module gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+
+// FLOOR-ROUTE-GAP RESTART (dashboard node adhoc-9d3b5efe-296). This is a stall rather than a
+// retired drop: the required floor still observes the self-host behavioral witnesses at the
+// hermetic boundary, while no executing wet family publishes evidence the required acceptance
+// path can consume. A route declaration, roster, or green typecheck would establish none of that.
+//
+// OBSTACLE #1 IS RECEIPT EXPIRY. The predecessor route produced real wet observations, but its
+// publication transaction could not complete inside the receipt's spendable window. Its final
+// lane also measured a whole-population duration longer than that window before runner queueing,
+// review, publication, and exact-head revalidation were added. Extending freshness until the old
+// serial route happens to fit is not a repair: the age axis bounds unmodeled executor and toolchain
+// drift, so weakening it would turn an expired external observation into current evidence.
+//
+// THE CENSUSES ARE ENTRY POINTS, NOT LITERALS. The complete derivability population is produced by
+// `gunbc test //gunbc/instruments:behavioral-receipt-census`. The required population is produced
+// by `claim_executor --required-floor --source-root dag --source-root src/v2`, whose terminal
+// ledger enumerates route_gap_held identities. They answer different questions and are not
+// interchangeable denominators. In particular, the former title's figures are not copied here:
+// both populations move with the activation revision and must be re-derived there.
+data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the self-host behavioral route_gap_held population has no executing route family whose evidence remains spendable through production, publication, and exact-head consumption",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "a receipt lifecycle that binds one complete wet observation to the exact candidate and keeps production, publication, and consumption inside the declared freshness boundary without weakening that boundary",
+  },
+  population: BoundedPopulation {
+    members: [
+      "the activation-revision route_gap_held identity population emitted by claim_executor --required-floor",
+      "the activation-revision derivable behavioral population emitted by //gunbc/instruments:behavioral-receipt-census",
+    ],
+  },
+  next_rung_trigger: "an executing route family that derives its identity roster from the activation revision, executes every routed identity with the real effects its assertion requires, publishes a subject-bound terminal receipt automatically, and has that receipt consumed on the same exact candidate before its modeled expiry. Completeness is an identity join in both directions; a missing, expired, foreign-subject, failed, or no-verdict row refuses. The enrolled evidence includes a positive execution and a planted behavioral divergence that makes the real consumer red. A longer expiry, a hand-carried receipt, a roster-only lane, or a receipt produced on a pull-request merge ref pinned before a later main repair does not satisfy this trigger"
+}
