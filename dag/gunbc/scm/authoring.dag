@@ -31,20 +31,21 @@ import gunbc.scm.proposal {
 // second add of a role -- or record it as a contested alternative.
 //
 // It does not settle it, because the two operations are asked DIFFERENT QUESTIONS about different
-// populations, and the merge rule's own justification is what shows this:
+// populations, and the integration rule's own justification is what shows this:
 //
-//   MERGE combines proposals from SEVERAL AUTHORS. Two requirements for one role are two PARTIES
+//   ROLE-REQUIREMENT INTEGRATION combines proposals from SEVERAL AUTHORS. Two requirements for one role are two PARTIES
 //   who each believe theirs is right, and neither authored in knowledge of the other. There is no
 //   fact of the matter about which is later in any sense that means anything -- "last" is an
-//   artifact of the order the merge happened to fold them. Picking one is fabricating a winner.
+//   artifact of the order the integration happened to fold them. Picking one is fabricating a winner.
 //
 //   AUTHORING revises ONE author's OWN pending proposal, in the order THEY performed it. The second
 //   add is not a competing party; it is the same party saying "no, this". Here "later" is not a fold
 //   artifact -- it is the author's own sequence of intent, which is the only thing the operation has
 //   to go on.
 //
-// So the merge rule is not overridden, it does not reach: its premise is a contest between authors,
-// and an author has no contest with themselves. The mechanical tell is that merge's rule is stated
+// So the integration rule is not overridden, it does not reach: its premise is a contest between
+// authors, and an author has no contest with themselves. The mechanical tell is that the
+// integration's rule is stated
 // over a LIST OF PROPOSALS whose order it explicitly refuses to privilege, while this is stated over
 // ONE proposal being revised in place.
 //
@@ -54,8 +55,9 @@ import gunbc.scm.proposal {
 // to correct a staged mistake would be to discard the proposal. A verb whose sole response to
 // correction is "start over" has not modelled authoring; it has modelled a ledger.
 //
-// WHAT IS PRESERVED FROM merge's RULE: nothing is silently discarded ACROSS AUTHORS. This function
-// produces one proposal per author, and when two authors' proposals meet, merge still sees exactly
+// WHAT IS PRESERVED FROM THE INTEGRATION'S RULE: nothing is silently discarded ACROSS AUTHORS. This
+// function produces one proposal per author, and when two authors' proposals meet, the integration
+// still sees exactly
 // two competing requirements and still refuses to pick between them. Replacing within a draft does
 // not weaken that; it is upstream of it.
 //

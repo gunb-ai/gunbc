@@ -33,19 +33,20 @@ import std.minted_identity { MintedId, minted_id_eq }
 // row list, and it is refused here for the same reason and one layer deeper.
 //
 // EXACTLY ONE PARENT, AND THIS IS THE DECISION THAT WOULD BE UNWRITABLE LATER, so it is derived from
-// what the model's own merge does rather than from what git does.
+// what this model's own commit-producing operation does rather than from what git does.
 //
 // gunbc.scm.role_requirement_integration `integrate_role_requirements` takes ONE target Commit and
-// a LIST OF PROPOSALS, and answers `RoleRequirementsIntegrated` carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
-// root, no message and no identity in history. So a merge in THIS model combines one commit with N
-// things that were never commits, and the result has exactly one commit antecedent. Git's second
-// parent exists because git merges two BRANCHES, which are two commits; that shape has no referent
-// here, because nothing in this model can merge two commits at all.
+// a LIST OF PROPOSALS, and answers `RoleRequirementsIntegrated` carrying ONE commit. A Proposal is a
+// set of authored requirements -- it is not a commit, it has no root, no message and no identity in
+// history. So that operation combines one commit with N things that were never commits, and the
+// result has exactly one commit antecedent. Git's second parent exists because git merges two
+// BRANCHES, which are two commits; that shape has no referent here, because nothing in this model
+// performs a two-commit merge at all.
 //
 // So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
 // can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
 // the model does not have. WIDENING TRIGGER, stated so the reason is checkable rather than trusted:
-// if `merge` ever takes two Commits rather than one commit and N proposals, this coproduct gains a
+// if an operation ever takes TWO Commits rather than one commit and N proposals, this coproduct gains a
 // several-parents arm, and the change is a compile error at every consumer rather than a silent
 // reinterpretation -- which is what makes single-parent a safe decision now rather than an
 // irreversible one.

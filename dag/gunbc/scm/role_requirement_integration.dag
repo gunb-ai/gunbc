@@ -59,21 +59,21 @@ import gunbc.scm.checkout {
 
 // FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its OWN total
 // classifier over the shared vocabulary -- it does not mint a second one. An earlier revision
-// defined a local RoleDependencyKind whose arms were byte-identical to DataDependsOn, BindsTo and
+// defined a local MergeDependencyKind whose arms were byte-identical to DataDependsOn, BindsTo and
 // Contains, which is the section 3 nicknaming violation in its purest form: a second name for one
 // concept, duplicated again in everything derived from it. Consuming v2.std.dependency's
-// DependencyKind means merge's policy is a CLASSIFIER over the real kinds, which is the only part
-// that is genuinely merge-specific.
+// DependencyKind means this operation's policy is a CLASSIFIER over the real kinds, which is the
+// only part that is genuinely specific to role-requirement integration.
 //
 // THE POLICY IS A CLASSIFIER VALUE, AND THE DISPATCH IS BORROWED, NOT REWRITTEN. An earlier
 // revision answered these three questions with three hand-written 15-arm matches, which is
 // classify_dependency_kind re-implemented three times -- the same section 3 fork this module was
 // already corrected for once, at the dispatch layer instead of the vocabulary layer. What is
-// genuinely merge-specific is the three POLICY VALUES below; the walk from a kind to its entry
+// genuinely specific to this operation is the three POLICY VALUES below; the walk from a kind to its entry
 // belongs to v2.std.dependency and is used from there.
 //
 // THE ENFORCEMENT SURVIVES THE CHANGE. A sixteenth kind adds a sixteenth field to
-// DependencyKindClassifier, so these record literals fail to compile until merge states its
+// DependencyKindClassifier, so these record literals fail to compile until this operation states its
 // policy for it -- the same compile-time obligation the matches carried, now owed to one
 // authority rather than restated in three places. The local enum this replaced had an
 // UnsupportedKind { name: Symbol } escape hatch that would have absorbed any new kind under a
@@ -187,26 +187,26 @@ type RoleRequirementIntegrationRefusal
   | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
   | RequiredDependencyRemoved { dependency: RoleDependency, removed_role: Symbol }
-  | DependencyKindUnsupportedForIntegration { dependent: Symbol, required: Symbol, kind: Symbol }
+  | DependencyKindUnsupportedForRoleRequirementIntegration { dependent: Symbol, required: Symbol, kind: Symbol }
 
 // THE REFUSAL ARM IS RoleRequirementIntegrationRefused, NOT CouldNotLand, and that is a claim about what this layer
 // can establish rather than a naming preference. "Could not land" asserts TERMINALITY, and the
-// engine cannot establish it: DependencyKindUnsupportedForIntegration may mean this implementation has
+// engine cannot establish it: DependencyKindUnsupportedForRoleRequirementIntegration may mean this implementation has
 // not modeled the relation yet, and TargetRootMissing may mean an incomplete fetch rather than a
 // permanently invalid target. Whether an engine refusal is terminal, machine-owned, or awaiting
 // more work is a decision above this module, so naming the arm for the terminal conclusion would
 // be the same overclaim as a status ledger reporting DONE for work that merely compiled.
 //
-// THE ARM NAMES ARE MERGE-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
+// THE ARM NAMES ARE OPERATION-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
 // DEFINITIONS. gunbc.native_scm_interaction_contract already declares ChoiceRequired and
 // CouldNotLand, as arms of its user-facing NativeScmPrimaryOutcome, with different payloads.
 // The resolver ADMITS duplicate top-level definitions and silently selects one with no
 // diagnostic (measured in #8707), so re-declaring those names does not shadow locally -- it
-// makes the corpus-wide binding for that name arbitrary, which is how a merge-engine change
+// makes the corpus-wide binding for that name arbitrary, which is how an integration-engine change
 // reached unrelated witnesses that never import this module.
 //
 // WHAT IS NOT CLAIMED HERE: that the engine outcome and the presentation outcome are
-// different CONCEPTS. "The merge needs a choice" and "the merge could not land" are the same
+// different CONCEPTS. "The integration needs a choice" and "the integration could not land" are the same
 // two facts at two layers, and the contract carrier says it holds no engine. Whether these
 // should be ONE authority with a projection, rather than two shapes with qualified names, is
 // a real section 3 question this change does not settle -- it removes the corpus-wide
@@ -460,7 +460,7 @@ fn role_value_of_desired(desired: DesiredRoleValue) -> RoleValue {
 // THE FOLD NO LONGER SHORT-CIRCUITS ON A CONTEST. It records every authored alternative and keeps
 // going, so the contested set is complete and order-independent; the contest is reported after the
 // whole population has been seen. It still short-circuits on a REFUSAL, because a refusal is a
-// statement about this merge attempt rather than an accumulating property of the population.
+// statement about this integration attempt rather than an accumulating property of the population.
 fn apply_requirement(acc: RoleRequirementApplyAcc, req: Requirement) -> RoleRequirementApplyAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -554,7 +554,7 @@ fn validate_dependency(roles: List<ResolvedRole>, dep: RoleDependency) -> RoleRe
     }
   } else {
     Present {
-      value: DependencyKindUnsupportedForIntegration {
+      value: DependencyKindUnsupportedForRoleRequirementIntegration {
         dependent: dep.dependent,
         required: dep.required,
         kind: kind_name(kind: dep.kind),

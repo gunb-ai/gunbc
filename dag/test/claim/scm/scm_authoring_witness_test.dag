@@ -73,10 +73,11 @@ test fn authoring_one_requirement_states_its_role() -> Bool {
 }
 
 // THE DERIVED RULE, ASSERTED. Re-authoring a role REPLACES rather than accumulating, and this is the
-// claim the module's annotation argues for from merge.dag's own reasoning: merge refuses to pick
+// claim the module's annotation argues for from the integration's own reasoning: the integration
+// refuses to pick
 // between two AUTHORS because "last" there is a fold artifact, while here "last" is one author's own
 // sequence of intent. If this accumulated instead, the ordinary loop -- edit, add, notice a mistake,
-// edit, add -- would leave two requirements for one role and hand merge a self-contest that it would
+// edit, add -- would leave two requirements for one role and hand the integration a self-contest that it would
 // correctly refuse, making a staged mistake uncorrectable except by discarding the proposal.
 test fn re_authoring_a_role_replaces_rather_than_accumulating() -> Bool {
   let p1 = author_requirement(
@@ -111,7 +112,7 @@ test fn re_authoring_a_role_leaves_other_roles_untouched() -> Bool {
 }
 
 // DELETE IS A STATED REQUIREMENT AND IT SUPERSEDES A PRESENT BINDING ON THE SAME ROLE. This is the
-// half merge.dag's own reasoning makes load-bearing: silence means PRESERVE, so an author who adds a
+// half the integration's own reasoning makes load-bearing: silence means PRESERVE, so an author who adds a
 // module and then removes it must end with a STATED ABSENCE, not with an empty proposal. An empty
 // proposal would be read downstream as "leave the target alone" -- the exact inversion of the
 // request, and the reason delete-by-omission is not modelled anywhere in this layer.

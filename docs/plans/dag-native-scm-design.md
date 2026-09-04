@@ -27,7 +27,7 @@ DESIGN §3's interface/realization split applied to naming.
 | **object** | immutable language content, content-addressed |
 | **proposal** | requested obligations — what an author asks the program to contain |
 | **branch** | a line of proposals and commits; a grouping label, contributing nothing to identity |
-| **merge** | combine proposals |
+| **role-requirement integration** | combine proposals into one target commit. Named `merge` until 2026-09-04; renamed because two-commit merge is a materially different contract and one spelling cannot carry both |
 | **commit** | the exact frozen program |
 | **acceptance** | agreement to use a commit — the one new term |
 | **deploy** | make an accepted commit active |
@@ -279,7 +279,8 @@ the author intended; claiming otherwise reconstructs patch inference under new v
 first slice merges **explicitly authored proposals**, and says so.
 
 Three operations. No base, ancestor, parent, branch pointer, working copy, or patch. **This is the
-shipped signature, corrected 2026-08-21 against `dag/gunbc/scm/merge.dag` as merged in #8719** — the
+shipped signature, corrected 2026-08-21 against the operation then at `dag/gunbc/scm/merge.dag` as
+merged in #8719, now `gunbc.scm.role_requirement_integration`** — the
 draft below it specified a two-proposal call and a `ChoiceRequired` arm, neither of which exists,
 and a stale authority describing an operation nobody can invoke is the premise contamination DESIGN
 documents against its own CI paragraph:
@@ -360,9 +361,9 @@ the first consumer would fuse a model proof with unrelated frontend and performa
 **Direction after `NATIVE-COMMIT-0`, operator ruling 2026-08-21: a CLI vertical before the depth
 recursion**, reversing the "headline win is the next slice" ordering above. The reason is DESIGN
 §5's specification-without-execution trap, not a changed view of which slice is more valuable.
-Nothing has ever *consumed* this kernel: the 15 claims in `test.claim.scm_role_requirement_integration_witness` are
+Nothing has ever *consumed* this kernel: the claims declared in `test.claim.scm_role_requirement_integration_witness` are
 assertions **about** it, authored alongside it, and a witness suite is not a consumer. A CLI is the
-first artifact that uses the store, checkout, identity and merge together under conditions nobody
+first artifact that uses the store, checkout, identity and role-requirement integration together under conditions nobody
 authored to make them pass.
 
 The ordering is safe because **depth changes how `merge` combines, not how `add` authors**. A user
@@ -408,7 +409,7 @@ structural scenario waiting on neither depth nor new vocabulary, hence the cheap
 available.
 
 **Coverage claims about this table must be measured, not recalled.** The number above came from
-joining the 15 claims in `test.claim.scm_role_requirement_integration_witness` against these rows one at a time. An earlier
+joining every claim declared in `test.claim.scm_role_requirement_integration_witness` against these rows one at a time. An earlier
 estimate from reading was "roughly five" — close enough to feel safe, wrong enough to mis-scope the
 next slice.
 
