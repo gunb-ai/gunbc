@@ -38,7 +38,7 @@ import v1.std.core {
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
-  transport_response_format, transport_auth_basic, transport_auth_netrc, transport_tls_posture, service_config_auth,
+  transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth,
   service_config_auth_input, service_config_auth_source, service_config_endpoint,
   expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at,
   expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value,
@@ -13744,16 +13744,14 @@ fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<Str
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   let has_config_auth = match service_config_auth(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
   let has_basic_auth = match transport_auth_basic(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
-  let has_netrc_auth = match transport_auth_netrc(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
-  if (has_config_auth && (has_basic_auth || has_netrc_auth)) || (has_basic_auth && has_netrc_auth) {
-    "compile_error!(\"rest transport declares more than one auth authority per operation (§3): config-level auth, auth_basic and auth_netrc are mutually exclusive\");"
+  if has_config_auth && has_basic_auth {
+    "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");"
   } else {
   let client_init = emit_rest_client_init(transport: transport, source_indices: source_indices)
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_indices: source_indices)
   let basic_auth_line = emit_rest_basic_auth_line(transport: transport, source_indices: source_indices)
-  let netrc_auth_line = emit_rest_netrc_auth_line(transport: transport, source_indices: source_indices)
   let query_line = emit_rest_query_line(transport: transport, source_indices: source_indices)
   let body_line = emit_rest_body_line(transport: transport, source_indices: source_indices)
   let headers = transport_headers(t: transport, source_indices: source_indices)
@@ -13764,7 +13762,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   )
   let send_line = "let response = request.send().await?;"
   let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
-  let all_lines = concat([client_init, url_line, auth_line, basic_auth_line, netrc_auth_line],
+  let all_lines = concat([client_init, url_line, auth_line, basic_auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
@@ -13800,46 +13798,6 @@ fn emit_rest_basic_auth_line(transport: Node, source_indices: Map<String, Newlin
           Absent => "compile_error!(\"auth_basic requires both username and password fields\");"
         }
         Absent => "compile_error!(\"auth_basic requires both username and password fields\");"
-      }
-    }
-    Absent => ""
-  }
-}
-
-fn emit_rest_netrc_auth_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match transport_auth_netrc(t: transport, source_indices: source_indices) {
-    Present { value: b } => {
-      let file_field = b.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "file") |> first
-      match file_field {
-        Present { value: ff } => {
-          let path_expr = emit_simple_expr(expr: field_init_node_value(n: ff), target: Rust, source_indices: source_indices)
-          concat([
-            concat("let __netrc = std::fs::read_to_string(", path_expr, ").map_err(|e| format!(\"netrc file read failed: {}\", e))?;"),
-            "let __netrc_host = url.split(\"://\").nth(1).unwrap_or_default().split(['/', '?']).next().unwrap_or_default().to_string();",
-            "let mut __netrc_login: Option<String> = None;",
-            "let mut __netrc_password: Option<String> = None;",
-            "let mut __netrc_default_login: Option<String> = None;",
-            "let mut __netrc_default_password: Option<String> = None;",
-            "for __line in __netrc.lines() {",
-            "    let __w: Vec<&str> = __line.split_whitespace().collect();",
-            "    if __w.len() >= 6 && __w[0] == \"machine\" && __w[1] == __netrc_host && __w[2] == \"login\" && __w[4] == \"password\" {",
-            "        __netrc_login = Some(__w[3].to_string());",
-            "        __netrc_password = Some(__w[5].to_string());",
-            "    } else if __w.len() >= 5 && __w[0] == \"default\" && __w[1] == \"login\" && __w[3] == \"password\" {",
-            "        __netrc_default_login = Some(__w[2].to_string());",
-            "        __netrc_default_password = Some(__w[4].to_string());",
-            "    }",
-            "}",
-            "let request = match (__netrc_login, __netrc_password) {",
-            "    (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),",
-            "    _ => match (__netrc_default_login, __netrc_default_password) {",
-            "        (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),",
-            "        _ => return Err(format!(\"netrc: no machine entry matching host {} and no default entry\", __netrc_host).into()),",
-            "    }",
-            "};",
-          ]) |> join(separator: "\n")
-        }
-        Absent => "compile_error!(\"auth_netrc requires a file field\");"
       }
     }
     Absent => ""
@@ -14604,7 +14562,20 @@ data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;
 // them in step today. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: an emitted
 // file-transport realization derived from ONE authority that both the seed and the emitted program
 // consume, at which point the divergence has no spelling and this note has no subject.
-data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let staging_path = format!(\"{}.gunbc-create-{}\", file_path, std::process::id());\n        let mut staged = std::fs::OpenOptions::new().write(true).create_new(true).open(&staging_path)?;\n        if let Err(staging_err) = staged.write_all(content.as_bytes()) {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(staging_err);\n        }\n        if let Err(sync_err) = staged.sync_all() {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(sync_err);\n        }\n        drop(staged);\n        let published = std::fs::hard_link(&staging_path, &file_path);\n        let _ = std::fs::remove_file(&staging_path);\n        published\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};"
+// THE VERB ARM IS NOW A CALL, AND THE IMPLEMENTATION HAS ONE HOME.
+//
+// This row used to inline the whole staging-and-publish sequence as Rust source, which made it a
+// SECOND authority for a fact the seed interpreter also implemented. #10069 fixed a real defect in
+// one of those authorities and had to fix it twice; its annotation said outright that nothing but
+// review kept the two in step. The implementation now lives in extdeps.filesystem.rust_realization
+// and BOTH consumers copy those exact bytes, so this row states only what is genuinely local: how
+// the File transport projects an io::Result into its own four-channel result tuple.
+//
+// THAT PROJECTION IS NOT A SECOND IMPLEMENTATION. The tuple is this transport's result-channel
+// policy -- a stringified error and a byte count -- and the realization deliberately does not
+// return it, because doing so would stringify std::io::Error inside the realization and discard
+// the host's structured failure before any consumer asked for that loss.
+data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};"
 

@@ -289,17 +289,18 @@ pub use crate::v1_std_core::{
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
-    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
-    transport_auth_basic, transport_auth_header_name, transport_auth_netrc, transport_auth_token,
-    transport_base_path, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, transport_tls_posture, tuple_type_name,
-    type_reference_provenance, with_required_cardinality,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
+    match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
+    param_node_type_expr, qualified_last_segment, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
+    service_config_auth, service_config_auth_input, service_config_auth_source,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
+    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -20648,14 +20649,6 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
     }
 }
 
-pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind { declaration: _, .. } => true,
-        MatchPattern::Wildcard => true,
-        _ => false,
-    }
-}
-
 pub fn variant_pattern_shape_for(
     name: String,
     parent_enum: Option<String>,
@@ -20764,7 +20757,7 @@ if (inner.clone() == "".to_string()) {
                             if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
                                 {
                                     let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
-if match_pattern_is_irrefutable(fb_pat.clone()) {
+if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat.clone()) {
                                         Rc::new(vec![])
                                     } else {
                                         match (*fb_pat.clone()).clone() {
@@ -20890,7 +20883,7 @@ if (inner_preludes.clone() == "".to_string()) {
                                     } else {
                                         {
                                             let bound_str = emit_pattern(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
@@ -27551,9 +27544,9 @@ pub fn rc_arm_has_refutable_plain_field(
             for fb in fbs.iter().cloned() {
                 if ((crate::v1_std_core::field_binding_name_at(fb.clone(), source_indices.clone())
                     != ref_field.clone())
-                    && !match_pattern_is_irrefutable(crate::v1_std_core::field_binding_pattern(
-                        fb.clone(),
-                    )))
+                    && !crate::v1_std_core::match_pattern_is_irrefutable(
+                        crate::v1_std_core::field_binding_pattern(fb.clone()),
+                    ))
                 {
                     __found = true;
                     break;
@@ -27897,7 +27890,9 @@ pub fn emit_typed_match_arm_strs(
         let has_irrefutable = {
             let mut __found = false;
             for a in arms.iter().cloned() {
-                if match_pattern_is_irrefutable(crate::v1_std_core::arm_pattern(a.clone())) {
+                if crate::v1_std_core::match_pattern_is_irrefutable(
+                    crate::v1_std_core::arm_pattern(a.clone()),
+                ) {
                     __found = true;
                     break;
                 }
@@ -33184,17 +33179,8 @@ pub fn emit_rest_call(
             Some(_) => true,
             std::option::Option::None => false,
         };
-        let has_netrc_auth = match crate::v1_std_core::transport_auth_netrc(
-            transport.clone(),
-            source_indices.clone(),
-        ) {
-            Some(_) => true,
-            std::option::Option::None => false,
-        };
-        if ((has_config_auth.clone() && (has_basic_auth.clone() || has_netrc_auth.clone()))
-            || (has_basic_auth.clone() && has_netrc_auth.clone()))
-        {
-            "compile_error!(\"rest transport declares more than one auth authority per operation (§3): config-level auth, auth_basic and auth_netrc are mutually exclusive\");".to_string()
+        if (has_config_auth.clone() && has_basic_auth.clone()) {
+            "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");".to_string()
         } else {
             {
                 let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
@@ -33209,8 +33195,6 @@ pub fn emit_rest_call(
                 );
                 let basic_auth_line =
                     emit_rest_basic_auth_line(transport.clone(), source_indices.clone());
-                let netrc_auth_line =
-                    emit_rest_netrc_auth_line(transport.clone(), source_indices.clone());
                 let query_line = emit_rest_query_line(transport.clone(), source_indices.clone());
                 let body_line = emit_rest_body_line(transport.clone(), source_indices.clone());
                 let headers = crate::v1_std_core::transport_headers(
@@ -33264,7 +33248,6 @@ pub fn emit_rest_call(
                                 url_line.clone(),
                                 auth_line.clone(),
                                 basic_auth_line.clone(),
-                                netrc_auth_line.clone(),
                             ]),
                             header_lines.clone(),
                         ),
@@ -33392,45 +33375,6 @@ pub fn emit_rest_basic_auth_line(
                 std::option::Option::None => {
                     "compile_error!(\"auth_basic requires both username and password fields\");"
                         .to_string()
-                }
-            }
-        }
-        std::option::Option::None => "".to_string(),
-    }
-}
-
-pub fn emit_rest_netrc_auth_line(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match crate::v1_std_core::transport_auth_netrc(transport.clone(), source_indices.clone()) {
-        Some(b) => {
-            let file_field = Rc::new({
-                let mut __result = Vec::new();
-                for fi in b.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::field_init_node_name_at(
-                        fi.clone(),
-                        source_indices.clone(),
-                    ) == "file".to_string())
-                    {
-                        __result.push(fi);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned();
-            match file_field.clone() {
-                Some(ff) => {
-                    let path_expr = crate::v1_compiler_emit::emit_simple_expr(
-                        crate::v1_std_core::field_init_node_value(ff.clone()),
-                        RenderTarget::Rust,
-                        source_indices.clone(),
-                    );
-                    Rc::new(vec![v1_rt::concat(v1_rt::concat("let __netrc = std::fs::read_to_string(".to_string(), path_expr.clone()), ").map_err(|e| format!(\"netrc file read failed: {}\", e))?;".to_string()), "let __netrc_host = url.split(\"://\").nth(1).unwrap_or_default().split(['/', '?']).next().unwrap_or_default().to_string();".to_string(), "let mut __netrc_login: Option<String> = None;".to_string(), "let mut __netrc_password: Option<String> = None;".to_string(), "let mut __netrc_default_login: Option<String> = None;".to_string(), "let mut __netrc_default_password: Option<String> = None;".to_string(), "for __line in __netrc.lines() {".to_string(), "    let __w: Vec<&str> = __line.split_whitespace().collect();".to_string(), "    if __w.len() >= 6 && __w[0] == \"machine\" && __w[1] == __netrc_host && __w[2] == \"login\" && __w[4] == \"password\" {".to_string(), "        __netrc_login = Some(__w[3].to_string());".to_string(), "        __netrc_password = Some(__w[5].to_string());".to_string(), "    } else if __w.len() >= 5 && __w[0] == \"default\" && __w[1] == \"login\" && __w[3] == \"password\" {".to_string(), "        __netrc_default_login = Some(__w[2].to_string());".to_string(), "        __netrc_default_password = Some(__w[4].to_string());".to_string(), "    }".to_string(), "}".to_string(), "let request = match (__netrc_login, __netrc_password) {".to_string(), "    (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),".to_string(), "    _ => match (__netrc_default_login, __netrc_default_password) {".to_string(), "        (Some(__l), Some(__p)) => request.basic_auth(__l, Some(__p)),".to_string(), "        _ => return Err(format!(\"netrc: no machine entry matching host {} and no default entry\", __netrc_host).into()),".to_string(), "    }".to_string(), "};".to_string()]).join(&"\n".to_string())
-                }
-                std::option::Option::None => {
-                    "compile_error!(\"auth_netrc requires a file field\");".to_string()
                 }
             }
         }
@@ -35371,7 +35315,7 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let staging_path = format!(\"{}.gunbc-create-{}\", file_path, std::process::id());\n        let mut staged = std::fs::OpenOptions::new().write(true).create_new(true).open(&staging_path)?;\n        if let Err(staging_err) = staged.write_all(content.as_bytes()) {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(staging_err);\n        }\n        if let Err(sync_err) = staged.sync_all() {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(sync_err);\n        }\n        drop(staged);\n        let published = std::fs::hard_link(&staging_path, &file_path);\n        let _ = std::fs::remove_file(&staging_path);\n        published\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

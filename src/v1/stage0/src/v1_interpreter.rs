@@ -13455,46 +13455,6 @@ fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
     )
 }
 
-/// The (login, password) a netrc file carries for `host`, from an `auth_netrc: { file: <path> }`
-/// transport-block property — the modeled dissolution of curl's `--netrc-file F`. The fleet
-/// netrcs are single-entry `machine <host> login <user> password <pass>` lines; the grammar
-/// below also honors `default login <user> password <pass>`, and a machine entry for the request
-/// host wins over the default. Pure so the parsing is execution-witnessable without a live
-/// server. Fail-closed: no matching entry yields None (a typed refusal at the call site), never
-/// an unauthenticated send.
-fn rest_netrc_credentials(content: &str, host: &str) -> Option<(String, String)> {
-    let mut machine_login: Option<String> = None;
-    let mut machine_password: Option<String> = None;
-    let mut default_login: Option<String> = None;
-    let mut default_password: Option<String> = None;
-    for line in content.lines() {
-        let w: Vec<&str> = line.split_whitespace().collect();
-        if w.len() >= 6
-            && w[0] == "machine"
-            && w[1] == host
-            && w[2] == "login"
-            && w[4] == "password"
-        {
-            machine_login = Some(w[3].to_string());
-            machine_password = Some(w[5].to_string());
-        } else if w.len() >= 5 && w[0] == "default" && w[1] == "login" && w[3] == "password" {
-            default_login = Some(w[2].to_string());
-            default_password = Some(w[4].to_string());
-        }
-    }
-    match (machine_login, machine_password) {
-        (Some(l), Some(p)) => Some((l, p)),
-        _ => match (default_login, default_password) {
-            (Some(l), Some(p)) => Some((l, p)),
-            _ => None,
-        },
-    }
-}
-
-/// The accept-any TLS verifier that realizes a rest transport `tls: InsecureAcceptAnyCert`
-/// row in the interpreter — the modeled dissolution of curl's `-k` for self-signed BMC
-/// endpoints. Every verification question is answered true; the verifier is selected ONLY
-/// for operations that declare InsecureAcceptAnyCert (absent = VerifyPeer, fail-closed).
 ///
 /// REVISIT OF THE 2026-07-16 EMIT-ONLY RULING, DELIBERATE AND BOUNDED. The ruling refused to
 /// carry an accept-any rustls verifier into the retiring seed. The redfish ops (the only
@@ -13588,16 +13548,10 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<Option<ureq::Age
     }
 }
 
-/// The single-authority rule (§3): a rest operation must declare at most ONE auth authority —
-/// config-level auth, transport `auth_basic`, or transport `auth_netrc`. Pure so the conflict
-/// rule is execution-witnessable.
-fn rest_auth_authority_conflict(
-    config_auth_resolved: bool,
-    has_auth_basic: bool,
-    has_auth_netrc: bool,
-) -> bool {
-    (config_auth_resolved && (has_auth_basic || has_auth_netrc))
-        || (has_auth_basic && has_auth_netrc)
+/// The single-authority rule (§3): a rest operation must not declare both config-level auth and a
+/// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
+fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
+    config_auth_resolved && has_auth_basic
 }
 
 /// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
@@ -14240,7 +14194,6 @@ fn dispatch_rest(
         "auth_token",
         "auth_header",
         "auth_basic",
-        "auth_netrc",
         "tls",
         "stdin",
     ];
@@ -14356,11 +14309,7 @@ fn dispatch_rest(
         "auth_basic".to_string(),
         si.clone(),
     ) {
-        if rest_auth_authority_conflict(
-            matches!(auth, AuthResolution::Resolved { .. }),
-            true,
-            false,
-        ) {
+        if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
             return Err(InterpError::TypeError {
                 msg: "rest transport declares both config-level auth and auth_basic — one auth \
                       authority per operation (§3)"
@@ -14395,86 +14344,6 @@ fn dispatch_rest(
             _ => {
                 return Err(InterpError::TypeError {
                     msg: "auth_basic requires both username and password fields".to_string(),
-                });
-            }
-        }
-    }
-
-    // Netrc-file auth, from an `auth_netrc: { file: <input> }` transport-block property — the
-    // modeled dissolution of curl's `--netrc-file F`: the credential is read from the
-    // caller-owned netrc file, and the Basic header value (RFC 7617) is derived in ONE place,
-    // the same single-authority rule as auth_basic. Fail-closed: a non-record `auth_netrc`, a
-    // missing `file` field, a non-Str path, an unreadable file, or no machine entry matching the
-    // request host (and no default entry) is a typed refusal, never an unauthenticated send or a
-    // fabricated header. The three auth authorities (config-level auth, auth_basic, auth_netrc)
-    // are mutually exclusive per operation (§3).
-    if let Some(netrc_node) = find_property(
-        transport.properties.clone(),
-        "auth_netrc".to_string(),
-        si.clone(),
-    ) {
-        if rest_auth_authority_conflict(
-            matches!(auth, AuthResolution::Resolved { .. }),
-            false,
-            true,
-        ) || basic_auth_header.is_some()
-        {
-            return Err(InterpError::TypeError {
-                msg: "rest transport declares more than one auth authority per operation (§3): \
-                      config-level auth, auth_basic and auth_netrc are mutually exclusive"
-                    .to_string(),
-            });
-        }
-        let mut netrc_path: Option<String> = None;
-        for child in netrc_node.children.iter() {
-            let fname = field_init_node_name_at(child.clone(), si.clone());
-            let fval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
-            match (fname.as_str(), &fval) {
-                ("file", Value::Str(s)) => netrc_path = Some(s.to_string()),
-                ("file", _) => {
-                    return Err(InterpError::TypeError {
-                        msg: format!(
-                            "auth_netrc.file must resolve to a String path, got {}",
-                            fval
-                        ),
-                    });
-                }
-                _ => {}
-            }
-        }
-        let netrc_path = match netrc_path {
-            Some(p) => p,
-            None => {
-                return Err(InterpError::TypeError {
-                    msg: "auth_netrc requires a file field".to_string(),
-                })
-            }
-        };
-        let netrc_content =
-            std::fs::read_to_string(&netrc_path).map_err(|e| InterpError::TypeError {
-                msg: format!("auth_netrc: netrc file read failed: {e}"),
-            })?;
-        let netrc_host = url
-            .split("://")
-            .nth(1)
-            .unwrap_or_default()
-            .split(['/', '?'])
-            .next()
-            .unwrap_or_default()
-            .to_string();
-        let creds = rest_netrc_credentials(&netrc_content, &netrc_host);
-        match creds {
-            Some((login, password)) => {
-                let header_val = rest_basic_auth_header_value(&login, &password);
-                basic_auth_header = Some(header_val.clone());
-                request = request.set("Authorization", &header_val);
-            }
-            None => {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "auth_netrc: no machine entry matching host {} and no default entry",
-                        netrc_host
-                    ),
                 });
             }
         }
@@ -19175,7 +19044,6 @@ mod base64_std_tests {
 mod dispatch_rest_decision_tests {
     use super::rest_auth_authority_conflict;
     use super::rest_basic_auth_header_value;
-    use super::rest_netrc_credentials;
     use super::rest_tls_posture_interp_disposition;
 
     #[test]
@@ -19213,56 +19081,11 @@ mod dispatch_rest_decision_tests {
         // alone (or none) is fine.
         assert!(rest_auth_authority_conflict(true, true, false));
         assert!(rest_auth_authority_conflict(true, false, true));
-        assert!(rest_auth_authority_conflict(false, true, true));
-        assert!(rest_auth_authority_conflict(true, true, true));
-        assert!(!rest_auth_authority_conflict(true, false, false));
-        assert!(!rest_auth_authority_conflict(false, true, false));
-        assert!(!rest_auth_authority_conflict(false, false, true));
-        assert!(!rest_auth_authority_conflict(false, false, false));
-    }
-
-    #[test]
-    fn netrc_credentials_match_the_request_host() {
-        // The exact netrc_content shape the fleet's BMC tooling writes (bmc_onboard
-        // netrc_content): one `machine <host> login <user> password <pass>` line.
-        assert_eq!(
-            rest_netrc_credentials(
-                "machine bmc1.example.com login bmcadmin password s3cret\n",
-                "bmc1.example.com"
-            ),
-            Some(("bmcadmin".to_string(), "s3cret".to_string()))
-        );
-        // A different host must not pick up the entry — no match, no default, fail-closed.
-        assert_eq!(
-            rest_netrc_credentials(
-                "machine bmc1.example.com login bmcadmin password s3cret\n",
-                "bmc2.example.com"
-            ),
-            None
-        );
-        // The default entry applies when no machine entry matches.
-        assert_eq!(
-            rest_netrc_credentials(
-                "default login bmcadmin password s3cret\n",
-                "bmc2.example.com"
-            ),
-            Some(("bmcadmin".to_string(), "s3cret".to_string()))
-        );
-        // A machine entry for the request host wins over the default.
-        assert_eq!(
-            rest_netrc_credentials(
-                "machine bmc1.example.com login admin1 password p1\n\
-                 default login admin2 password p2\n",
-                "bmc1.example.com"
-            ),
-            Some(("admin1".to_string(), "p1".to_string()))
-        );
-        // Empty / non-netrc content yields None.
-        assert_eq!(rest_netrc_credentials("", "bmc1.example.com"), None);
-        assert_eq!(
-            rest_netrc_credentials("# just a comment\n", "bmc1.example.com"),
-            None
-        );
+        // Both authorities present is the only conflict; either alone (or neither) is fine.
+        assert!(rest_auth_authority_conflict(true, true));
+        assert!(!rest_auth_authority_conflict(true, false));
+        assert!(!rest_auth_authority_conflict(false, true));
+        assert!(!rest_auth_authority_conflict(false, false));
     }
 }
 

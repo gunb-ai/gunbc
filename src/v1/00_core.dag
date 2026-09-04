@@ -1615,7 +1615,6 @@ data transport_verb_key: String = "verb"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
-data transport_auth_netrc_key: String = "auth_netrc"
 data transport_tls_key: String = "tls"
 
 fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
@@ -1921,16 +1920,11 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
-    || name == transport_auth_basic_key || name == transport_auth_netrc_key
-    || name == transport_tls_key
+    || name == transport_auth_basic_key || name == transport_tls_key
 }
 
 fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
-}
-
-fn transport_auth_netrc(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_auth_netrc_key, source_indices: source_indices)
 }
 
 fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
@@ -2495,10 +2489,13 @@ fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
 // source index -- and the service path is exactly that: check_service_field_access_node
 // builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
 // segment is a container name and which is not a container. Excluding it by
-// authorship rather than by an exception list is what keeps the six known
+// authorship rather than by an exception list is what keeps the five known
 // false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
-// tmux.Session.List, os.Hostname.Set, req.Header.Set) out by construction: a
-// seventh service operation named after a container needs no edit here.
+// tmux.Session.List, req.Header.Set) out by construction: a
+// sixth service operation named after a container needs no edit here.
+// (os.Hostname.Set left this list with the CLI-invocation migration: the op's
+// hand-authored transport row was deleted and the hostnamectl set-hostname
+// vertical realizes through hostnamectl.Process.Run.)
 fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match node.ident_span {
     Present { value: span } =>

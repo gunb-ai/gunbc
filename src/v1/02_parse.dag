@@ -28,7 +28,7 @@ import v1.std.core {
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
-  transport_auth_basic_key, transport_auth_netrc_key, transport_tls_key,
+  transport_auth_basic_key, transport_tls_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -86,6 +86,11 @@ import std.import {
   ParsedImportStatements,
   ImportStatementsParsed,
   ImportStatementParseRefused,
+  ImportStatementParseCause,
+  SourceHasNoModuleDeclaration,
+  ModuleDeclarationPathMalformed,
+  ImportStatementMalformed,
+  ImportParseInstrumentAnomaly,
 }
 
 import std.syntax {
@@ -1594,6 +1599,212 @@ fn stamp_parsed_node_list_with_head_role(
   }
 }
 
+// THE DECLARATION SIDE OF THE TYPE RELATION, which production did not emit at all until this
+// function existed. Measured before it was written, over dag/std (142 files) with the census
+// instrument's --denominator mode: 9672 TypeOccurrence REFERENCES against
+// type_occurrence_declarations=0. std.occurrence_binding_candidates buckets candidates by authored
+// spelling and std.occurrence_binding_resolve admits a TypeOccurrence reference against a
+// TypeOccurrence declaration only, so an empty declaration side made EVERY type reference in the
+// corpus Unbound -- not mis-bound, unbindable. The containment authority the namespace cut resolves
+// through was therefore correct, executing, and never once fed a production population.
+//
+// WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness_test
+// hand-builds its declarations with `category: TypeOccurrence` -- exactly the shape production
+// never emitted -- so the suite supplied the missing side itself and stayed green. That is DESIGN
+// section 5's specification-without-execution boundary sitting on the destination authority of a
+// migration. Those fixtures are not wrong and are not weakened here: they test the authority's
+// logic correctly, they were never SUFFICIENT, and nothing in the tree said so.
+//
+// WHAT COUNTS AS A TYPE DECLARATION HERE. A module item declares a type when it carries no
+// transport, no body and no type annotation. That admits the three authored forms -- `type X { .. }`
+// (Conj), `type X = A | B` (Disj), and the bare alias/opaque `type X` (NoConnective, carrying its
+// own inferred leaf) -- and excludes the items that are values or effects rather than types: a
+// function has a body, a `data x: T = v` has a body AND an annotation, and a service carries a
+// transport. That is a discriminator over ABSENT fields, which is why parsed_module_item_kind
+// below is an exhaustive match with a refusing residual rather than a bare predicate; see its
+// note for what the shape can and cannot decide, and for the terminal fix.
+//
+// SCOPE, DECLARED SO THE NEXT INCREMENT IS DRIVEN BY MEASUREMENT AND NOT BY MEMORY. This stamps
+// MODULE-LEVEL type declarations. Two further populations are measured-and-unaddressed: coproduct
+// VARIANTS used in type position, and TYPE PARAMETERS. Both are reachable from this walk and
+// neither is stamped yet, so references to them stay Unbound and the census will say so by name
+// rather than by silence. The same denominator run also shows MethodOccurrence at 382 references
+// against 0 declarations -- an independent gap in the same collector, not addressed here.
+// THE PARSE TREE CARRIES NO POSITIVE TYPE-DECLARATION MARKER, AND THAT ABSENCE IS THE FINDING
+// RATHER THAN AN EXCUSE. This function dispatches on the `type` / `fn` / `data` / `service`
+// keyword at parse time and then DISCARDS which one it saw: `Node` has no item-kind field, so by
+// the time the occurrence walk runs, the kind survives only as a combination of which optional
+// fields happen to be present. Every downstream reader -- v1.compiler.emit_core_support
+// is_type_def_item, is_function_item, is_data_def_item, is_service_def_item -- re-derives it from
+// shape for the same reason.
+//
+// SO THE RULE BELOW IS PROVISIONAL, and it is written as an EXHAUSTIVE match with a refusing
+// residual rather than as a bare predicate, because a bare predicate over three absent fields
+// FAILS OPEN BY CONSTRUCTION: any future item kind carrying none of those fields would be
+// silently stamped a type declaration, at the parser, where the wrong answer propagates into
+// every consumer of the occurrence transport and nothing fails when it starts being wrong.
+// ModuleItemUnrecognized refuses instead of defaulting into the type bucket, so the residual that
+// is representable TODAY -- an item with no body and no transport but carrying a type annotation --
+// stops the line rather than becoming a type (DESIGN section 5: a failure arm refuses, never
+// widens).
+//
+// THE ROSTER IS TEN KEYWORDS, NOT FOUR, and an exact-set join is what established that rather
+// than a reading of this file. The parser's own item error names alias, type, fn, func, service,
+// resource, data, extern, pattern and interface. `resource Filesystem` carries no body, no
+// transport and no type annotation, so the absence rule stamped all three resources in
+// std.resources as TYPE DECLARATIONS -- silently, at the parser, exactly the fail-open shape this
+// note warns about. ModuleItemResource is keyed on the properties the resource grammar attaches
+// (kind, mode, acquire, release), and the instrument that found it is
+// `type_occurrence_binding_census --establish`, which joins these stamps against an INDEPENDENT
+// reader -- the v1.compiler.emit_core_support item predicates, deciding from CONNECTIVE, PARAMS
+// and CHILDREN -- at occurrence-id grain over the whole corpus. Agreement between two readers of
+// different facts is a join; agreement with itself would have asserted nothing.
+//
+// THE GENERAL LESSON, WHICH IS WHY THE REFUSAL ARM WAS NOT THE SAFETY PROPERTY IT LOOKED LIKE.
+// A discriminator built from the ABSENCE of properties is only as complete as the enumeration of
+// kinds it was derived from, and it fails SILENTLY TOWARD THE DEFAULT BUCKET rather than toward
+// the refusal arm: the residual can only catch kinds whose absence PATTERN differs from the
+// accepted one, which is a strictly smaller population than the kinds that exist. A resource is
+// not merely unrecognised, it is INDISTINGUISHABLE from a type under this rule, so no arm of the
+// match could have fired on it. The rule, in the words it was ruled in and standing beyond this
+// module: A RESIDUAL REFUSAL DOES NOT PROTECT A CLASSIFIER WHOSE ACCEPTED BUCKET IS DEFINED BY
+// ABSENCE; A NEW KIND CAN SILENTLY RESEMBLE THE DEFAULT. So ModuleItemResource repairs the KNOWN
+// collision and does not turn absence into a positive authority -- which is why the terminal
+// construction below is REQUIRED before anything may be cut over on this classifier, and not an
+// improvement to be scheduled later. The refusal reads as coverage and is not. What closed the gap was
+// not a better predicate but an independent reader joined at identity grain -- and the denominator
+// that would have falsified the four-kind premise, the parser's own ten-keyword item error, was
+// sitting in this file the whole time.
+//
+// WHAT THIS DOES NOT FIX, stated so it is not read as closed: refusal covers the residual that can
+// be EXPRESSED today. It cannot cover an item kind nobody has invented yet, because the
+// discriminator is absence and a new kind's absence looks identical to a type's. TERMINAL FIX, and
+// it is a construction rather than a check: the parse constructors carry the kind they already
+// know onto the item, at which point this match reads that field, the emit-side shape predicates
+// dissolve into it, and the type bucket stops being a default anyone can fall into.
+type ParsedModuleItemKind
+  = ModuleItemTypeDeclaration
+  | ModuleItemFunction
+  | ModuleItemDataValue
+  | ModuleItemService
+  | ModuleItemResource
+  | ModuleItemUnrecognized
+
+// PROPERTIES ALONE DO NOT MEAN RESOURCE, and reading them that way is the second fail-open this
+// classifier produced -- caught by the same join, in the opposite direction from the first.
+// `type X sole_constructor { .. }` carries a property too: v1.compiler.parse
+// parsed_sole_constructor_properties is the single authority that mints it, and it mints exactly
+// one field-init named "sole_constructor" as a TYPE MODIFIER. Resource entries are the kind, mode,
+// acquire and release rows the resource grammar attaches. So the test names the modifier the
+// modifier authority owns and asks whether anything ELSE is present, rather than counting
+// properties -- which swallowed 202 sole-constructor types across 100 modules into the resource
+// bucket and hid them from the declaration population entirely.
+//
+// THE EXCLUSION IS COMPLETE AGAINST THE PARSER'S MINTING VOCABULARY AS OF THIS COMMIT, and that
+// claim is an enumeration rather than a hope, because excluding by name is only as good as the set
+// of names. Module-item properties have exactly TWO minting sites in this file:
+// parsed_sole_constructor_properties, which mints one field-init named "sole_constructor" and is
+// the only source every type-item constructor passes along; and parse_resource_entries, whose kind
+// / mode / acquire / release rows reach resource items. `nominal_opaque` is the other authored type
+// modifier and it is DROPPED LEXICALLY by drop_leading_type_modifier, minting no property at all.
+// mint_parsed_optional_int_property mints "min" and "max" inside WHERE-PREDICATE nodes, which are
+// nested and never a module item's own properties. So the modifier set mintable as a property on a
+// type declaration is a CLOSED SET OF ONE.
+//
+// WHAT MAKES THIS INCOMPLETE LATER, stated because the failure would be silent and in the same
+// direction as the bug it fixes: a second modifier that MINTS a property on a type item -- a new
+// caller of the sole-constructor minting path, or nominal_opaque gaining a minted property --
+// reintroduces exactly this defect with nothing watching. That is a property of exclusion-by-name
+// and cannot be fixed by a longer list; it is the third receipt for carrying a positive item kind.
+//
+// WHAT REMAINS AFTER THIS REPAIR IS NOT THIS CLASSIFIER'S DEFECT, and the join says which side owns
+// it. Corpus-wide the divergence falls from 202 items across 100 modules to TWO in one:
+// `resource Network` and `resource AuthContext` in std.resources, the two resources declaring NO
+// capabilities. With no children, no body, no params and no connective they satisfy
+// v1.compiler.emit_core_support is_bare_leaf_item, so the INDEPENDENT reader calls them type
+// declarations while this classifier correctly calls them resources. Both readers previously
+// AGREED they were types, which is why the population looked clean before the resource arm
+// existed -- the agreed-wrong pair is invisible to a disagreement census by construction
+// (gunbc.recurring_failure_mode disagreement_census_blind_to_agreed_wrong), and it took the two
+// readers being separated for either to be checkable at all. Repairing the emit-side shape
+// predicates is a change to a different authority and is deliberately not smuggled in here.
+fn parsed_item_carries_resource_entries(node: Node) -> Bool {
+  fold(
+    node.properties,
+    init: false,
+    f: (found, property) =>
+      if found { true } else { property.name != "sole_constructor" }
+  )
+}
+
+fn parsed_module_item_kind(node: Node) -> ParsedModuleItemKind {
+  if node.transport != none {
+    ModuleItemService
+  } else if node.body != none && node.type_annotation != none {
+    ModuleItemDataValue
+  } else if node.body != none {
+    ModuleItemFunction
+  } else if parsed_item_carries_resource_entries(node: node) {
+    ModuleItemResource
+  } else if node.type_annotation == none {
+    ModuleItemTypeDeclaration
+  } else {
+    ModuleItemUnrecognized
+  }
+}
+
+fn parsed_module_item_role(node: Node) -> ParsedOccurrenceRole {
+  match parsed_module_item_kind(node: node) {
+    ModuleItemTypeDeclaration => ParsedOccurrenceDeclaration { category: TypeOccurrence }
+    ModuleItemFunction => ParsedOccurrenceUnclassified
+    ModuleItemDataValue => ParsedOccurrenceUnclassified
+    ModuleItemService => ParsedOccurrenceUnclassified
+    ModuleItemResource => ParsedOccurrenceUnclassified
+    ModuleItemUnrecognized => ParsedOccurrenceUnclassified
+  }
+}
+
+// Per-item roles, because one role for the whole list cannot distinguish a type declaration from
+// the function beside it. Items that are not type declarations are handed Unclassified and reach
+// parsed_occurrence_role_for_node's existing refinement unchanged, so nothing that already
+// classified stops classifying.
+fn stamp_parsed_module_items(
+  nodes: List<Node>,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedNodeListStampResult {
+  fold(
+    nodes,
+    init: ParsedNodeListStampResult { nodes: [], ctx: ctx, err: none },
+    f: (acc, node) =>
+      if has_err(err: acc.err) { acc } else {
+        match parsed_module_item_kind(node: node) {
+          ModuleItemUnrecognized =>
+            ParsedNodeListStampResult {
+              nodes: acc.nodes,
+              ctx: acc.ctx,
+              err: Present { value: parse_error(
+                msg: "module item shape is not a recognised declaration kind, so its occurrence category cannot be decided; the type bucket is not a default",
+                span: node.span
+              ) },
+            }
+          _ =>
+            let stamped = stamp_parsed_node(
+              node: node,
+              ancestors: ancestors,
+              ctx: acc.ctx,
+              role: parsed_module_item_role(node: node)
+            )
+            ParsedNodeListStampResult {
+              nodes: list_push(acc.nodes, stamped.node),
+              ctx: stamped.ctx,
+              err: stamped.err,
+            }
+        }
+      }
+  )
+}
+
 fn stamp_parsed_node_children(
   node: Node,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1633,6 +1844,12 @@ fn stamp_parsed_node_children(
             ctx: ctx,
             head_role: ParsedOccurrenceReference { category: TypeOccurrence },
             tail_role: ParsedOccurrenceUnclassified
+          )
+        ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence } =>
+          stamp_parsed_module_items(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx
           )
         _ =>
           stamp_parsed_node_list(
@@ -2029,13 +2246,13 @@ fn parse_import_statement_extents_acc(
     let before = tokens.pos
     let r = parse_import(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) {
-      return ImportStatementParseRefused { cause: "an import statement did not parse" as NonEmptyStr }
+      return ImportStatementParseRefused { cause: ImportStatementMalformed }
     }
     match token_stream_first(stream: tokens) {
-      Absent => ImportStatementParseRefused { cause: "an import statement parsed from no token" as NonEmptyStr }
+      Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed from no token" as NonEmptyStr } }
       Present { value: first } =>
         match last_consumed_token_end(all: tokens.all, from: before, until: r.tokens.pos, end: none) {
-          Absent => ImportStatementParseRefused { cause: "an import statement parsed without consuming a token" as NonEmptyStr }
+          Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed without consuming a token" as NonEmptyStr } }
           Present { value: end } =>
             parse_import_statement_extents_acc(
               tokens: r.tokens,
@@ -2071,11 +2288,11 @@ fn parse_import_statement_extents(
   let stream = skip_newlines(tokens: token_stream_new(all: tokens))
   let r = expect(tokens: stream, expected: ExpectKeyword { text: "module" })
   if has_err(err: r.err) {
-    return ImportStatementParseRefused { cause: "source does not open with a module declaration" as NonEmptyStr }
+    return ImportStatementParseRefused { cause: SourceHasNoModuleDeclaration }
   }
   let r = parse_dotted_ident(tokens: r.tokens)
   if has_err(err: r.err) {
-    return ImportStatementParseRefused { cause: "module declaration does not name a dotted module path" as NonEmptyStr }
+    return ImportStatementParseRefused { cause: ModuleDeclarationPathMalformed }
   }
   parse_import_statement_extents_acc(tokens: skip_newlines(tokens: r.tokens), ctx: ctx, acc: [])
 }
@@ -3572,12 +3789,12 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
-    } else if fname == transport_auth_basic_key || fname == transport_auth_netrc_key || fname == transport_tls_key {
+    } else if fname == transport_auth_basic_key || fname == transport_tls_key {
       let minted = mint_parsed_node_identity(ctx: ctx)
       let field = make_field_init_node(occurrence_identity: minted.identity, name: fname, value: r3.expr, span: no_span(), name_span: no_span())
       parse_rest_fields(tokens: tokens, ctx: minted.ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
-      TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport rest has no field `", fname, "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic`, `auth_netrc` and `tls`"), span: r.span) } }
+      TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport rest has no field `", fname, "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`"), span: r.span) } }
     }
   }
 }

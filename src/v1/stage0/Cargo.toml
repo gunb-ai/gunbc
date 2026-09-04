@@ -55,7 +55,7 @@ ureq = { version = "2", features = ["json"] }
 # interpreter (the modeled dissolution of curl's `-k` for self-signed BMC certs). Already
 # present transitively via ureq's rustls backend; declared direct so the verifier can be
 # built. Selected ONLY for ops that declare InsecureAcceptAnyCert — absent = VerifyPeer.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls = "0.23"
 # Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
 # budget bounds COMPUTE, not wall, so a witness inflated by cold-I/O reads or governor
 # time-slicing is not misclassified as an eval-wedge (a true non-terminating eval still
@@ -89,6 +89,16 @@ path = "src/bin/claim_executor.rs"
 [[bin]]
 name = "carrier_realization_census"
 path = "src/bin/carrier_realization_census.rs"
+
+# XL-0T-CUTOVER census: over the complete production TypeOccurrence population, what the
+# module-wide bare-name TypeEnv path (X, as repaired by #9813) binds versus what the exact
+# per-occurrence containment authority (Y,
+# std.occurrence_binding_candidates.resolve_type_reference_containment_binding) binds. The
+# denominator is the corpus, so it is an instrument rather than a test, and it is named here
+# so no number it reports is ever transcribed as an authority (DESIGN section 6).
+[[bin]]
+name = "type_occurrence_binding_census"
+path = "src/bin/type_occurrence_binding_census.rs"
 
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
