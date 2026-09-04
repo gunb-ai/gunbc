@@ -1274,10 +1274,6 @@ fn repo_ruleset_verify_at(
   }
 }
 
-data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
-data repo_ruleset_converge_function: String = "converge"
-data repo_ruleset_verify_function: String = "verify"
-
 // VERIFY IS READ-ONLY AND CONVERGE WRITES, AND THEY ARE TWO ENTRY POINTS RATHER THAN ONE WITH A
 // FLAG. A flag whose effect is "do not actuate" is a mode on one operation; two entry points make
 // the read-only path unable to write by construction, which is what a verifier enrolled in an
