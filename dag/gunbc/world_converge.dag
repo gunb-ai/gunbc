@@ -8,7 +8,6 @@ import std.types { List }
 // not widen this authority.
 type WorldObservation<Observed, Refusal>
   = WorldObserved { value: Observed }
-  | WorldAbsent { value: Observed }
   | WorldUnobservable { cause: Refusal }
 
 type WorldDifference<Difference>
@@ -59,8 +58,12 @@ fn world_converge_observed<Subject, Context, Observed, Difference, Receipt, Refu
 }
 
 // This fold is the root answer. Unobservable is deliberately first: an unreadable subject has no
-// differences to invent and can never become the empty, apparently-converged population. Absent is
-// distinct but established, so it proceeds through the same subject-owned difference operation.
+// differences to invent and can never become the empty, apparently-converged population. There is
+// deliberately no established-absence arm beside it: a variant carrying the same Observed payload as
+// WorldObserved hands the subject's difference operation nothing to tell them apart, so the shape
+// would DESTROY the distinction here rather than delegate it, while reading as though it preserved
+// it. A subject that needs established absence adds it with a payload the difference operation can
+// discriminate on, at the moment a producer exists to mint it.
 fn world_converge<Subject, Context, Observed, Difference, Receipt, Refusal>(
   subject: Subject,
   context: Context,
@@ -70,9 +73,6 @@ fn world_converge<Subject, Context, Observed, Difference, Receipt, Refusal>(
   match observe(subject, context) {
     WorldUnobservable { cause: cause } =>
       WorldNotConverged { subject: subject, refusal: cause }
-    WorldAbsent { value: observed } => world_converge_observed(
-      subject: subject, context: context, handler: handler, observed: observed,
-    )
     WorldObserved { value: observed } => world_converge_observed(
       subject: subject, context: context, handler: handler, observed: observed,
     )
