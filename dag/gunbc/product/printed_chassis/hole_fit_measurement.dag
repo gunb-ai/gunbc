@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import product.placement_supply { PhysicalAssetIdentity }
 import product.printed_chassis.coupon {
   CouponSpecimenIdentity, LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero,
   LadderTooFewRungs, ladder_base, ladder_step, ladder_rung_count,
@@ -278,17 +279,108 @@ data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
 // the first observed to admit at all, since a tight fastener is a fastener that binds, galls the
 // plastic, and does not seat a chassis panel.
 //
-// ITS SCOPE IS NARROW ON PURPOSE. What one ladder supports is "for this process and this feature
-// class, 3.20 mm is the first nominal rung achieving free M3 passage". It does not support a
-// universal additive law over all printed holes, because reaching that would change several axes at
-// once: other fastener diameters, horizontal rather than vertical bores, other wall depths, other
-// perimeter strategies, other bed positions, and one print rather than a stable process. The scope
-// string is carried so a consumer cannot spend this value outside the conditions that produced it.
+// ITS SCOPE IS NARROW ON PURPOSE, AND THE SCOPE IS TYPED BECAUSE PROSE CANNOT HOLD IT.
+//
+// What one ladder supports is "for this process and this feature class, 3.20 mm is the first nominal
+// rung achieving free M3 passage". It does not support a universal additive law over printed holes,
+// because reaching that changes several axes at once: other fastener diameters, horizontal rather
+// than vertical bores, other wall depths, other bed positions, and one print rather than a stable
+// process.
+//
+// An earlier revision carried those axes as one NonEmptyStr and its annotation claimed the string
+// was "carried so a consumer cannot spend this value outside the conditions that produced it". That
+// was false, and false in the specific way DESIGN section 2 names: a String leaf hiding named parts
+// is anemic modeling, and a consumer cannot read a condition out of prose, so the restriction was
+// unenforceable and the sentence asserting otherwise was the only thing holding it. Six independent
+// dimensions were flattened into one opaque value.
+//
+// They are now separate typed fields, and -- this is the part that makes the difference rather than
+// the typing alone -- there is a CONSUMPTION GATE. scope_admits answers whether a request lies inside
+// the evidence, so spending the selection outside its conditions is a typed refusal rather than a
+// paragraph nobody executes. Typing the fields without the gate would have replaced anemic prose with
+// anemic structure.
+type BoreOrientation
+  = VerticalThroughHole
+  | HorizontalBore
+  | BoreOrientationUnstated
+
+// Attribution is its own axis because "which machine" is exactly the question two coupons were
+// printed to answer, and an unattributed selection must not be silently reusable as if a machine
+// had been named.
+type PrinterAttribution
+  = AttributedToPrinter { printer: PhysicalAssetIdentity }
+  | PrinterUnattributed
+
+// One diameter appears at one physical position on a single coupon, so nominal diameter and bed
+// position are confounded until a second coupon separates them. The distinction is carried rather
+// than assumed away.
+type BedPositionCoverage
+  = SinglePositionPerDiameter
+  | MultiplePositionsSampled { specimen_count: Nat }
+
+type FitPolicyScope sole_constructor {
+  fastener: FastenerThread
+  orientation: BoreOrientation
+  wall_depth: Micrometer
+  attribution: PrinterAttribution
+  position_coverage: BedPositionCoverage
+}
+
+// What a consumer must present to spend a selection. It is a separate type from the scope so the
+// question "may I use this here" cannot be answered by handing back the scope itself.
+//
+// IT IS DELIBERATELY UNSEALED WHILE FitPolicyScope IS SEALED, and the asymmetry is the point. A
+// request is a QUESTION -- constructing one asserts only "here are the conditions I want to build
+// under", which any consumer must be able to say, and a seal here would mean nobody could ask. A
+// scope is a CLAIM ABOUT EVIDENCE: it says a measurement actually covers these conditions, so
+// minting one is minting authority, and it stays confined to the module that derives it from real
+// observations. Sealing the question and leaving the claim open would be exactly backwards.
+type FitPolicyRequest {
+  fastener: FastenerThread
+  orientation: BoreOrientation
+  wall_depth: Micrometer
+}
+
+type ScopeAdmission
+  = ScopeCovers
+  | ScopeFastenerDiffers
+  | ScopeOrientationDiffers
+  | ScopeWallDepthOutsideEvidence { requested: Micrometer, evidenced: Micrometer }
+  | ScopeOrientationUnstated
+
+fn scope_admits(scope: FitPolicyScope, request: FitPolicyRequest) -> ScopeAdmission {
+  if scope.fastener == request.fastener {
+    match scope.orientation {
+      BoreOrientationUnstated => ScopeOrientationUnstated
+      VerticalThroughHole => scope_admits_geometry(scope: scope, request: request)
+      HorizontalBore => scope_admits_geometry(scope: scope, request: request)
+    }
+  } else {
+    ScopeFastenerDiffers
+  }
+}
+
+// Wall depth is compared for EQUALITY rather than "at least", because a hole's finished diameter is
+// not monotone in depth: a deeper bore can close up from over-extrusion while a shallower one opens
+// from elephant's foot. Nothing measured here says which, so anything but the evidenced depth is
+// outside the evidence.
+fn scope_admits_geometry(scope: FitPolicyScope, request: FitPolicyRequest) -> ScopeAdmission {
+  if scope.orientation == request.orientation {
+    if micrometer_count(m: scope.wall_depth) == micrometer_count(m: request.wall_depth) {
+      ScopeCovers
+    } else {
+      ScopeWallDepthOutsideEvidence { requested: request.wall_depth, evidenced: scope.wall_depth }
+    }
+  } else {
+    ScopeOrientationDiffers
+  }
+}
+
 type FreePassSelection
   = FreePassNominalSelected {
       nominal: Micrometer
       basis_rung: Nat
-      scope: NonEmptyStr
+      scope: FitPolicyScope
     }
   | FreePassUnobserved { missing: NonEmptyStr }
   | FreePassLadderUnavailable
@@ -300,7 +392,7 @@ type FreeScan sole_constructor { smallest_free: Nat }
 fn select_free_pass_nominal(
   construction: LadderConstruction,
   observations: List<HoleFitObservation>,
-  scope: NonEmptyStr,
+  scope: FitPolicyScope,
 ) -> FreePassSelection {
   match construction {
     LadderStepIsZero => FreePassLadderUnavailable
@@ -343,11 +435,19 @@ fn select_free_pass_nominal(
   }
 }
 
-// The scope this selection is currently good for, stated as narrowly as the evidence is. The print
-// occurrence is NOT yet named here because no attempt authority exists to name it; that is the next
-// thing this row owes, and until it lands two coupons notionally from one machine are not
-// distinguished by anything in this model.
-data m3_free_pass_scope: NonEmptyStr = "vertical through-hole in a 4 mm flat plate, one coupon, machine not yet attributed; not a process qualification and not transferable to other fastener sizes, bore orientations, wall depths or bed positions"
+// The scope this selection is currently good for, each axis stated as narrowly as the evidence is.
+// PrinterUnattributed is not a placeholder to be filled in later and forgotten -- it is the honest
+// value, because the operator did not say which machine the coupon came from, and it keeps the
+// selection from reading as though a machine had been named. SinglePositionPerDiameter records the
+// confound that each rung appears at exactly one place on one coupon, so nominal diameter and bed
+// position cannot yet be told apart.
+data m3_free_pass_scope: FitPolicyScope = FitPolicyScope {
+  fastener: m3_fastener,
+  orientation: VerticalThroughHole,
+  wall_depth: micrometer(count: 4000),
+  attribution: PrinterUnattributed,
+  position_coverage: SinglePositionPerDiameter,
+}
 
 data m3_free_pass_selection: FreePassSelection = select_free_pass_nominal(
   construction: hole_ladder_spec,
