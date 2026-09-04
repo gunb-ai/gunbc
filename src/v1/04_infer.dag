@@ -62,7 +62,7 @@ import v1.std.core {
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics,
+  CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedFormal, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
@@ -124,7 +124,7 @@ import v1.compiler.infer_env {
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
+  env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
@@ -166,6 +166,7 @@ import v1.compiler.infer_resolve {
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
+  DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
   resolve_func_sigs, flatten_parent_envs,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
@@ -1550,10 +1551,6 @@ fn type_node_is_callable(n: Node) -> Bool {
 // mechanism DESIGN 6 names.
 //
 // The v2. arm is untouched and DOES fire.
-fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v2."
-}
-
 fn brand_grounds_transparently_to(name: String, other: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match lookup_type_by_name(env: type_env, name: name) {
     Present { value: resolved } =>
@@ -2860,8 +2857,7 @@ fn type_name_transparently_aliases_to(
 // `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
 //
 // THE SCOPE IS THE RECORD-LITERAL FIELD SEAM, AND ONLY IT. This wall does not judge `let`
-// bindings, method arguments, or the direct-call argument seam (whose TYPE judgment is separately
-// switched off for `v2.*` by module_skips_direct_call_arg_check). Per gunbc#8868, the seam
+// bindings, method arguments, or the direct-call argument seam. Per gunbc#8868, the seam
 // enumeration for this class is UNFINISHED -- assume a further seam until someone enumerates
 // them -- so this closes one seam and says so rather than closing the class.
 //
@@ -3160,7 +3156,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
-  let declared_is_generic = (declared.params |> count) > 0
+  let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
   if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if declared_is_generic {
@@ -3679,6 +3678,8 @@ fn structured_application_site_type_mismatch(
       structured_application_site_type_mismatch_with_peeled(
         formal: formal,
         formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        formal_structural_name: structured_application_structural_type_name(
+          type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: formal), scope: scope),
         actual_expr: actual_expr,
         scope: scope
       )
@@ -3686,16 +3687,15 @@ fn structured_application_site_type_mismatch(
   }
 }
 
-// Takes the peeled formal the caller ALREADY HAS instead of recomputing it. At the
-// direct-call seam build_call_application_plan stores peel(formal_subst) as
-// CallFormalApplication.formal, and this predicate was handed formal_subst and then
-// recomputed exactly that peel -- the same function on the same node, once per
-// structured record-literal argument. #8431 built the value and left this consumer
-// recomputing it. Both formals are carried because the body still needs the unpeeled
-// one for structured_application_lit_is_declared_optional_variant.
+// Takes the declaration-bound conformance the application plan already carries. The caller must
+// not peel or look this formal up again: doing so binds a callee occurrence through the caller's
+// namespace and can make both compatibility operands equal by construction. `formal` retains the
+// authored declaration spelling for optional-variant structure; `formal_peeled` is the conformance
+// established while the callee TypeEnv was available.
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
+  formal_structural_name: String,
   actual_expr: Node,
   scope: InferScope
 ) -> Bool {
@@ -3709,7 +3709,7 @@ fn structured_application_site_type_mismatch_with_peeled(
         if formal_name == "" {
           false
         } else {
-          let formal_structural = structured_application_structural_type_name(type_name: formal_name, scope: scope)
+          let formal_structural = formal_structural_name
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
               if application_type_names_compatible(
@@ -3744,10 +3744,9 @@ fn structured_application_site_type_mismatch_with_peeled(
                   type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
                 false
               } else {
-                let formal_decl = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: formal_peeled)) {
-                  Present { value: resolved } => Present { value: resolved }
-                  Absent => lookup_type_by_name(env: scope.type_env, name: formal_name)
-                }
+                let formal_decl = if formal_peeled.connective == Disj || formal_peeled.connective == Conj {
+                  Present { value: formal_peeled }
+                } else { none }
                 match formal_decl {
                   Present { value: decl } =>
                     match decl.connective {
@@ -3802,8 +3801,50 @@ fn structured_application_site_type_mismatch_with_peeled(
   }
 }
 
+// SEED WALKER DISPOSITION (DESIGN section 6): this is one instance of the v1 seed's existing
+// self-recursive Node collector idiom, not a new substrate traversal authority. v1 cannot import
+// v2's fold_node/node_query without inverting the bootstrap (v1 compiles v2). Its bounded depth is
+// explicit here and returns no identity at the ceiling, so the caller declines alias admission
+// and leaves the mismatch loud rather than accepting a shallower nickname. It dissolves with the
+// sibling seed walkers when v2 self-host replaces v1.
+// Generalizing only these carrier reads would add a second traversal shape rather than remove one.
+fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+  let here = authored_name_at(source_indices: source_indices, node: n)
+  if depth >= 16 { "" }
+  else {
+    match n.inferred {
+      Present { value: Resolved { node: target } } =>
+        let deeper = carried_structural_type_name(n: target, source_indices: source_indices, depth: depth + 1)
+        deeper
+      _ => here
+    }
+  }
+}
+
+// A qualified identity may never be reduced to its last segment here: a.Item and b.Item are
+// distinct declarations even though their nicknames coincide. Full carried names are the
+// strongest identity available for this legacy field-initializer seam; if either side cannot
+// retain that identity, decline the alias admission and let the mismatch stay loud.
+fn declared_alias_target_matches_produced(expected: Node, produced: Node, env: TypeEnv) -> Bool {
+  let expected_name = authored_name_at(source_indices: env.source_indices, node: expected)
+  let produced_name = authored_name_at(source_indices: env.source_indices, node: produced)
+  match lookup_type_by_name(env: env, name: expected_name) {
+    Present { value: decl } =>
+      let target_name = if decl.name != "" {
+        decl.name
+      } else {
+        carried_structural_type_name(n: decl, source_indices: env.source_indices, depth: 0)
+      }
+      target_name != ""
+        && target_name != expected_name
+        && target_name == produced_name
+    Absent => false
+  }
+}
+
 fn direct_call_structured_record_literal_resolved_type_mismatch(
   formal: Node,
+  substitution_basis: Node,
   actual_expr: Node,
   type_env: TypeEnv,
   module_name: String,
@@ -3823,13 +3864,13 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
             direct_call_arg_type_mismatch(
-              formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+              formal: formal, substitution_basis: substitution_basis, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
           }
         Absent =>
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           direct_call_arg_type_mismatch(
-            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+            formal: formal, substitution_basis: substitution_basis, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
     _ => false
   }
@@ -3936,15 +3977,6 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
   }
 }
 
-type CallFormalApplication {
-  index: Int
-  param_name: String
-  formal_raw: Node
-  formal_subst: Node
-  formal: Node
-  matched_arg: Optional<Node>
-}
-
 // Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3).
 // direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were
 // line-for-line duplicates of the same per-formal prologue: param_node_type_expr,
@@ -3964,34 +3996,38 @@ type CallFormalApplication {
 
 fn build_call_application_plan(
   value_params: List<Node>,
+  formals: List<ResolvedFormal>,
   typed_args: List<Node>,
   call_subst: Map<String, Node>,
   type_env: TypeEnv,
   module_name: String
-) -> List<CallFormalApplication> {
+) -> List<ResolvedCallFormal> {
   let source_indices = type_env.source_indices
-  map(
+  flat_map(
     value_params |> enumerate,
     pair =>
-      let formal_raw = param_node_type_expr(n: pair.second)
-      let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
-      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
-      CallFormalApplication {
-        index: pair.first,
-        param_name: param_name,
-        formal_raw: formal_raw,
-        formal_subst: formal_subst,
-        formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
-        matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
-          Present { value: bound } => Present { value: bound.second }
+      match formals |> skip(pair.first) |> first {
+      Present { value: carried } => [ResolvedCallFormal {
+        formal_index: pair.first,
+        formal: ResolvedFormal {
+          parameter_identity: carried.parameter_identity,
+          declared_type: substitute_generics(n: carried.declared_type, subst: call_subst, source_indices: source_indices),
+          declaration_bound_conformance: substitute_generics(n: carried.declaration_bound_conformance, subst: call_subst, source_indices: source_indices),
+          substitution_basis: carried.substitution_basis
+        },
+        matched_argument_index: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
+          Present { value: bound } => Present { value: bound.first }
           Absent => none
         }
+      }]
+      Absent => []
       }
   )
 }
 
 fn direct_call_structured_application_mismatch_diags(
-  plan: List<CallFormalApplication>,
+  plan: List<ResolvedCallFormal>,
+  typed_args: List<Node>,
   scope: InferScope
 ) -> List<ErrorNode> {
   let type_env = scope.type_env
@@ -4000,15 +4036,22 @@ fn direct_call_structured_application_mismatch_diags(
   flat_map(
     plan,
     app =>
-      let formal_subst = app.formal_subst
-      let formal = app.formal
-      match app.matched_arg {
+      let formal_subst = app.formal.declared_type
+      let formal = app.formal.declaration_bound_conformance
+      match app.matched_argument_index {
+        Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
-            || structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
+          if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
+            && (literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
+            || structured_application_site_type_mismatch_with_peeled(
+              formal: formal_subst,
+              formal_peeled: formal,
+              formal_structural_name: carried_structural_type_name(n: formal, source_indices: source_indices, depth: 0),
+              actual_expr: actual_expr,
+              scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
-              formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+              formal: formal, substitution_basis: app.formal.substitution_basis, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)) {
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
             [type_mismatch_error(
@@ -4021,10 +4064,21 @@ fn direct_call_structured_application_mismatch_diags(
             []
           }
         Absent => []
+        }
+        Absent => []
       }
   )
 }
 
+// The outer nominal obligation consumes the substituted DECLARED spelling, not the
+// declaration-bound conformance. For an applied product Beta<String>, conformance
+// resolves to the generic declaration body Beta<P>; treating that body as the outer
+// obligation makes the already-applied call site look generic and therefore
+// undecidable. Conformance remains the authority for compatibility checks above,
+// while declared_type preserves the constructor and its applied arguments for this
+// position. A genuinely unbound function-generic spelling still uses the raw
+// substitution basis so the undecidable verdict remains explicit.
+//
 // A callable formal carries its parameter types in `params`, which is exactly what
 // `declared_type_inhabitance` reads as generic type parameters, so passing one here
 // produced a counted advisory with a false reason on every higher-order call.
@@ -4032,27 +4086,35 @@ fn direct_call_structured_application_mismatch_diags(
 // same reason; callable-formal inhabitance is therefore ABSENT from the census
 // (no obligation producer), not judged undecidable.
 fn direct_call_argument_inhabitance_diags(
-  plan: List<CallFormalApplication>,
+  plan: List<ResolvedCallFormal>,
+  typed_args: List<Node>,
   scope: InferScope
 ) -> List<ErrorNode> {
   flat_map(
     plan,
     app =>
-      match app.matched_arg {
+      match app.matched_argument_index {
+        Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
-          if type_node_is_callable(n: app.formal_subst) { [] } else {
+          if type_node_is_callable(n: app.formal.declared_type) { [] } else {
             let actual_expr = arg_value(n: ta)
             declared_type_obligation_diags(
               obligation: DeclaredTypeObligation {
                 position: PositionDirectCallArgument,
-                subject: app.param_name,
-                declared: app.formal_subst,
+                subject: app.formal.parameter_identity,
+                declared: if direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis) {
+                  app.formal.substitution_basis
+                } else {
+                  app.formal.declared_type
+                },
                 produced: resolved_type(n: actual_expr),
                 span: actual_expr.span
               },
               scope: scope
             )
           }
+        Absent => []
+        }
         Absent => []
       }
   )
@@ -4071,27 +4133,29 @@ fn direct_call_argument_inhabitance_diags(
 // this nominal obligation can judge; keep those with the existing outer obligation instead of
 // manufacturing false mismatches from an unresolved substitution.
 fn direct_call_generic_type_argument_inhabitance_diags(
-  plan: List<CallFormalApplication>,
+  plan: List<ResolvedCallFormal>,
+  typed_args: List<Node>,
   scope: InferScope
 ) -> List<ErrorNode> {
   let source_indices = scope.type_env.source_indices
   flat_map(
     plan,
     app =>
-      match app.matched_arg {
+      match app.matched_argument_index {
+        Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
           let actual = resolved_type(n: actual_expr)
-          if exposure_is_application(exposure: exposure_view_for_node(n: app.formal_subst, source_indices: source_indices))
+          if exposure_is_application(exposure: exposure_view_for_node(n: app.formal.declared_type, source_indices: source_indices))
             && exposure_is_application(exposure: exposure_view_for_node(n: actual, source_indices: source_indices))
-            && (app.formal_subst.children |> count) > 0
-            && (app.formal_subst.children |> count) == (actual.children |> count)
-            && authored_name_at(source_indices: source_indices, node: app.formal_subst)
+            && (app.formal.declared_type.children |> count) > 0
+            && (app.formal.declared_type.children |> count) == (actual.children |> count)
+            && authored_name_at(source_indices: source_indices, node: app.formal.declared_type)
               == authored_name_at(source_indices: source_indices, node: actual) {
             flat_map(
-              app.formal_subst.children |> enumerate,
+              app.formal.declared_type.children |> enumerate,
               declared_pair =>
-                match app.formal_raw.children |> skip(declared_pair.first) |> first {
+                match app.formal.substitution_basis.children |> skip(declared_pair.first) |> first {
                   Present { value: raw_declared_child } =>
                     match actual.children |> skip(declared_pair.first) |> first {
                       Present { value: produced_child } =>
@@ -4102,7 +4166,7 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                           declared_type_obligation_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,
-                              subject: app.param_name,
+                              subject: app.formal.parameter_identity,
                               declared: peel_nominal_alias_identity(
                                 n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
                               produced: peel_nominal_alias_identity(
@@ -4118,6 +4182,8 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                 }
             )
           } else { [] }
+        Absent => []
+        }
         Absent => []
       }
   )
@@ -4149,14 +4215,36 @@ fn container_element_nominal_brand_mismatch(
   } else { false }
 }
 
+// Same seed-walker disposition as carried_structural_type_name above: bounded to the finite Node
+// value, retained only in the bootstrap seed, and dissolved by the v2 self-host fold cut.
+fn direct_call_formal_has_unbound_type_variable(n: Node) -> Bool {
+  direct_call_formal_has_unbound_type_variable_at(n: n, depth: 0)
+}
+
+fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool {
+  if depth >= 16 { false } else {
+  let here = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    Present { value: Resolved { node: resolved } } => direct_call_formal_has_unbound_type_variable_at(n: resolved, depth: depth + 1)
+    _ => false
+  }
+  here
+    || (n.children |> any(ch => direct_call_formal_has_unbound_type_variable_at(n: child_type_node(ch: ch), depth: depth + 1)))
+    || (n.params |> any(p => direct_call_formal_has_unbound_type_variable_at(n: param_node_type_expr(n: p), depth: depth + 1)))
+  }
+}
+
 fn direct_call_arg_type_mismatch(
   formal: Node,
+  substitution_basis: Node,
   actual: Node,
   type_env: TypeEnv,
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
+  if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -4461,7 +4549,8 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 // Record-literal actuals skip this path; handoff lives in
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
 fn direct_call_arg_mismatch_diags(
-  plan: List<CallFormalApplication>,
+  plan: List<ResolvedCallFormal>,
+  typed_args: List<Node>,
   type_env: TypeEnv,
   module_name: String
 ) -> List<ErrorNode> {
@@ -4469,8 +4558,9 @@ fn direct_call_arg_mismatch_diags(
   flat_map(
     plan,
     app =>
-      let formal = app.formal
-      match app.matched_arg {
+      let formal = app.formal.declaration_bound_conformance
+      match app.matched_argument_index {
+        Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
           if match actual_expr.expr_data {
@@ -4482,7 +4572,7 @@ fn direct_call_arg_mismatch_diags(
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           if direct_call_arg_type_mismatch(
-            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+            formal: formal, substitution_basis: app.formal.substitution_basis, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
               got: node_type_shape(n: actual, source_indices: source_indices),
@@ -4493,6 +4583,8 @@ fn direct_call_arg_mismatch_diags(
             []
           }
           }
+        Absent => []
+        }
         Absent => []
       }
   )
@@ -5328,17 +5420,45 @@ fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let name = expr_var_name_at(texpr: n, source_indices: source_indices)
+  if string_length(s: name) == 0 { false }
+  else {
+    let first = substring(s: name, start: 0, end: 1)
+    ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"] |> any(letter => letter == first)
+  }
+}
+
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
     let formal_raw = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => carried.substitution_basis
+        Absent => error_type
+      }
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+    }
+    let formal_declared_context = match formal_selection {
       CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
-    let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
-    let expected = if has_formal { Present { value: formal_param_type } } else { none }
+    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
+    let formal_conformance_type = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
+        Absent => error_type
+      }
+      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+    }
+    let contextual_expected = match arg_value(n: a).expr_data {
+      ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
+      ExprRecordLit { parent_enum: _ } => formal_param_type
+      _ => formal_param_type
+    }
+    let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
@@ -5749,15 +5869,31 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
                       }
                     Absent =>
-                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
+                      match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
+                        Present { value: exp_enum } =>
+                          InferResult {
+                            typed: make_named_expr_node(
+                              occurrence_identity: texpr.occurrence_identity,
+                              name: name,
+                              expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
+                              children: [],
+                              inferred: Present { value: Resolved { node: exp_enum } },
+                              span: span,
+                              name_span: span
+                            ),
+                            diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                          }
+                        Absent =>
+                          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+                          ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                            name: name,
+                            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                            children: [],
+                            inferred: Present { value: Resolved { node: gbinding.resolved } },
+                            span: span,
+                            name_span: span
+                          ))
+                      }
                   }
                 Absent =>
                   let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
@@ -5919,6 +6055,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => []
       }
       let call_sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
+      let resolved_formals = match sig {
+        Present { value: s } => match s.resolved_formals {
+          DeclarationBoundFormals { formals: formals } => formals
+          KernelGroundedFormals { formals: formals } => formals
+          LocalFormalsAwaitingModuleContext {} => []
+        }
+        Absent => []
+      }
+      let formal_authority_available = match sig {
+        Present { value: s } => match s.resolved_formals {
+          DeclarationBoundFormals { formals: formals } => (formals |> count) == (call_sig_split.value_params |> count)
+          KernelGroundedFormals { formals: formals } => (formals |> count) == (call_sig_split.value_params |> count)
+          LocalFormalsAwaitingModuleContext {} => false
+        }
+        Absent => true
+      }
+      let formal_authority_refusal_reason = match sig {
+        Present { value: s } => match s.resolved_formals {
+          DeclarationBoundFormals { formals: formals } => if (formals |> count) == (call_sig_split.value_params |> count) { "" } else { "declaration-bound formal count does not match the declaration" }
+          KernelGroundedFormals { formals: formals } => if (formals |> count) == (call_sig_split.value_params |> count) { "" } else { "kernel-grounded formal count does not match the primitive declaration" }
+          LocalFormalsAwaitingModuleContext {} => "local declaration has not passed through build_module_context"
+        }
+        Absent => ""
+      }
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
@@ -5927,7 +6087,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         Absent => error_type
       }
-      let arg_call = if has_lambda && call_args |> count >= 2 && sig == none {
+      let arg_call = if sig != none && !formal_authority_available {
+        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [] }, f: (st, a) =>
+          let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
+          ArgGenericFoldState {
+            subst: st.subst,
+            results: concat(st.results, [ArgInferResult {
+              typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
+              diagnostics: ar.diagnostics
+            }])
+          }
+        )
+      } else if has_lambda && call_args |> count >= 2 && sig == none {
         ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
@@ -5946,9 +6117,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
         } else {
           first_pass
         }
@@ -5968,8 +6139,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           locals: scope.locals
         )
       )
+      let formal_authority_diags = if sig != none && !formal_authority_available {
+        [make_error_node(diagnostic: InternalError { message: concat("resolved direct-call formal authority unavailable for ", func_name, ": ", formal_authority_refusal_reason), span: span }, module_name: scope.module_name)]
+      } else { [] }
       let typed_arg_nodes = typed_args
       if sig != none {
+        if !formal_authority_available {
+          InferResult {
+            typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+              name: func_name, expr_data: ExprCall { call_semantics: none, descent_evidence: none },
+              children: typed_arg_nodes,
+              inferred: Present { value: Resolved { node: error_type } },
+              span: span,
+              name_span: node_name_span(n: texpr)
+            ),
+            diagnostics: concat(formal_authority_diags, arg_diags)
+          }
+        } else {
         let resolved_type = match sig {
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
@@ -5985,39 +6171,43 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         )
         let call_application_plan = build_call_application_plan(
           value_params: value_params_for_check,
+          formals: resolved_formals,
           typed_args: typed_args,
           call_subst: call_subst,
           type_env: scope.type_env,
           module_name: scope.module_name
         )
-        let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
-          direct_call_arg_mismatch_diags(
+        let arg_compat_diags = direct_call_arg_mismatch_diags(
             plan: call_application_plan,
+            typed_args: typed_args,
             type_env: scope.type_env,
             module_name: scope.module_name
           )
-        }
         let structured_arg_diags = direct_call_structured_application_mismatch_diags(
           plan: call_application_plan,
+          typed_args: typed_args,
           scope: scope
         )
         let inhabitance_arg_diags = direct_call_argument_inhabitance_diags(
           plan: call_application_plan,
+          typed_args: typed_args,
           scope: scope
         )
         let generic_type_argument_inhabitance_diags = direct_call_generic_type_argument_inhabitance_diags(
           plan: call_application_plan,
+          typed_args: typed_args,
           scope: scope
         )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup), application_plan: call_application_plan } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags)))))
+          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
+        }
         }
       } else {
         let first_arg_type = match typed_args |> first {
@@ -7762,6 +7952,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         Present { value: ft }
       Absent => none
     }
+    let field_conformance_type = match field_declared_type {
+      Present { value: ft } => match presence_variant_owner {
+        Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
+        Absent => match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+          Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
+          Absent => ft
+        }
+      }
+      Absent => error_type
+    }
     let field_expected = match field_declared_type {
       Present { value: ft } =>
         if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
@@ -7775,7 +7975,15 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        if rejects_string_for_optional_coproduct_field(
+        if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
+          []
+        } else if node_type_compatible(
+          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices) {
+          []
+        } else if declared_alias_target_matches_produced(
+          expected: expected_node, produced: got_node, env: scope.type_env) {
+          []
+        } else if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
           source_indices: scope.type_env.source_indices,
@@ -10072,7 +10280,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                   match map_get(acc, fn_name) {
                     Present { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
-                        name: sig.name, params: sig.params, inferred: sig.inferred,
+                        name: sig.name, params: sig.params, resolved_formals: sig.resolved_formals, inferred: sig.inferred,
                         is_async: sig.is_async, output_provenance: provenance,
                         variant_provenance: sig.variant_provenance
                       })
@@ -10100,7 +10308,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                 match map_get(acc, fn_name) {
                   Present { value: sig } =>
                     map_insert(acc, fn_name, ResolvedFuncSig {
-                      name: sig.name, params: sig.params, inferred: sig.inferred,
+                      name: sig.name, params: sig.params, resolved_formals: sig.resolved_formals, inferred: sig.inferred,
                       is_async: sig.is_async,
                       output_provenance: if has_scalar { provenance } else { sig.output_provenance },
                       variant_provenance: if has_variant { variant_prov } else { sig.variant_provenance }
@@ -10629,7 +10837,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
-        Present { value: c } => c
+        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { c }
         Absent => n
       }
     _ =>
@@ -11571,26 +11779,6 @@ fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: 
 // owner-position expansion for variant-payload substitution); 0-arg fns and aliases share a census
 // shape (body stripped) and stay raw pending a discriminator.
 
-fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
-  let base = TypeEnv {
-    module_path: module_path,
-    bindings: empty_map(),
-    str_bindings: empty_map(),
-    ancestry_str_bindings: empty_map(),
-    parents: [],
-    recursive_types: [],
-    recursive_type_set: empty_map(),
-    inductive_fields: empty_map(),
-    source_indices: source_indices,
-    intern_table: empty_intern_table(),
-    source_visible_names: empty_map(), authored_import_names: empty_map(),
-    symbol_index: census,
-    unit_variant_index: empty_map(),
-    unit_variant_index_observed: false
-  }
-  env_with_type_variable_bindings(env: base, tp_names: tp_names)
-}
-
 fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
   let node = binding.resolved
   node.connective == NoConnective
@@ -11603,7 +11791,7 @@ fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map
 
 fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
@@ -11616,7 +11804,7 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
     let node = binding.resolved
     match node.inferred {
       Present { value: Resolved { node: raw_ret } } =>
-        let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
+        let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
         let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
         if (ret_result.diagnostics |> count) == 0 {
           let preserved = preserve_nominal_brand_on_resolve(identity: raw_ret, structural: ret_result.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw_ret), source_indices: source_indices)
@@ -11671,7 +11859,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
     init: map_insert(empty_map(), binding.name, true),
     f: (acc, nm) => map_insert(acc, nm, true)
   )
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
@@ -11686,7 +11874,7 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
     init: map_insert(empty_map(), binding.name, true),
     f: (acc, nm) => map_insert(acc, nm, true)
   )
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
@@ -11728,7 +11916,7 @@ fn census_upgrade_type_expr(raw: Node, env: TypeEnv, module_path: String, source
 }
 
 fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   let ops2 = item.children |> map(c =>
     match c.inferred {
       Present { value: Resolved { node: raw_out } } =>
@@ -12652,6 +12840,36 @@ fn merge_func_env_views_by_owner(views: List<ResolvedFuncEnv>) -> List<ResolvedF
   )
 }
 
+fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_name: String) -> ResolvedFuncEnv {
+  let bound_local = fold(map_keys(func_env.local), init: empty_map(), f: (acc, name) =>
+    match map_get(func_env.local, name) {
+      Present { value: sig } =>
+        let generic_names = sig.params |> filter(p => param_is_generic_decl(p: p, source_indices: env.source_indices)) |> map(p => param_node_name_at(n: p, source_indices: env.source_indices))
+        map_insert(acc, name, ResolvedFuncSig {
+        name: sig.name,
+        params: sig.params,
+        resolved_formals: DeclarationBoundFormals { formals: sig.params |> filter(p => !param_is_generic_decl(p: p, source_indices: env.source_indices)) |> map(p => {
+          let declared_type = param_node_type_expr(n: p)
+          ResolvedFormal {
+            parameter_identity: param_node_name_at(n: p, source_indices: env.source_indices),
+            declared_type: declared_type,
+            declaration_bound_conformance: preserve_outer_optional_cardinality(
+              outer: declared_type,
+              inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
+            substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
+          }
+        }) },
+        inferred: sig.inferred,
+        is_async: sig.is_async,
+        output_provenance: sig.output_provenance,
+        variant_provenance: sig.variant_provenance
+      })
+      Absent => acc
+    }
+  )
+  ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -12737,7 +12955,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   ModuleContext {
     resolved_items: local.resolved_items,
-    func_env: resolve_result.func_env,
+    func_env: bind_local_func_conformance(func_env: resolve_result.func_env, env: env, module_name: module_name),
     svc_registry: merged_scope.svc_registry,
     locals: all_locals,
     variant_locals: env_variant_locals,
