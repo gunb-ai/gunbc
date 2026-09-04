@@ -167,7 +167,7 @@ import gunbc.merge_admission {
 // AND IT IS NOT BEING BUILT, BY RULING RATHER THAN BY OMISSION (2026-09-03). Escalated with three
 // options -- enable the queue, make unreported required contexts blocking, or hold the hole open --
 // and the operator ruled the third: "Leave the hole open for now - i know merging is not sound."
-// The class is therefore carried as `gunbc.guarantee_stall` `merge_admission_terminal_verdict_stall`
+// The class is therefore carried as `gunbc.guarantee_stall.merge_admission_terminal_verdict_stall`
 // with the capability as its trigger, an informed acceptance rather than an unowned gap. A STALL
 // AND NOT A `gunbc.rung_drop` ROW: 4b(3) asserts a regression, and nothing regressed here.
 
