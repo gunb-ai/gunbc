@@ -324,32 +324,32 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
     kind: CorpusWitnessKind,
     budget: SubstrateLongLaneEvalBudget,
-    reason: "Admitted RED (review 48255): retired 0==0 policy-oracle equality — live FixtureDerived mint sites not discoverable until G2 marshal exposes callee atoms. Owner: witness-evidence-lifecycle / marshal frontier.",
-    dissolution: unbound_dissolution(description: "G2 fn-arrow marshal exposes live fixture mint callees in the fn_arrow_decl_facts_live population over the roots the witness names (gunbc#10156 clause 2 replaced the entry closure this once read with a caller-named pool_roots subject; the marshal frontier this row waits on is unchanged), known_fixture_origin_mint_surface_count_in_scope over the witness declared subject roots > 0, witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds greens, and this row deletes — re-enroll with closed-subject expected population or monotone debt contract, never a tree-copied literal")
+    reason: "Admitted RED, cause RE-DECIDED BY EXECUTION at gunbc#10282 (ce937d0c4d): the marshal is NOT the cause and this row must not retire on it. Over the subject this witness declares, derived_production_qualification_mint_sites_live returns a NON-EMPTY population — the mint callee is read at depth — yet count_derived_mint_sites_with_origin(FixtureDerived) is 0 because every discovered row classifies UnknownOrigin. The residual cause is the MARKER read, not the callee read: decl_has_fixture_marker reaches atom_identities_in_node, which sees a declaration root and its immediate children only, while the direct_rust_door_inferred_tree marker sits deeper in the body. Owner: witness-evidence-lifecycle / marker-depth frontier.",
+    dissolution: unbound_dissolution(description: "the fixture-marker read reaches declaration subtrees rather than a declaration root and its immediate children, so decl_has_fixture_marker can observe direct_rust_door_inferred_tree inside a block body; known_fixture_origin_mint_surface_count_in_scope over the subject this witness declares is then > 0, this witness greens, and this row deletes — re-enroll with a closed-subject expected population or a monotone debt contract, never a tree-copied literal. The superseded trigger named the G2 callee marshal and would have retired this row against a repair that cannot green it")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_live_structural_fixture_mint_site_discovered_reds",
     kind: CorpusWitnessKind,
     budget: SubstrateLongLaneEvalBudget,
-    reason: "Admitted RED: G2 fn-arrow marshal yields empty skeleton for live structural_red_control_mint_site_probe mint body today — classifier cannot discover the exact FixtureDerived SourceProduced row. Owner: witness-evidence-lifecycle / call-occurrence derivation frontier.",
-    dissolution: unbound_dissolution(description: "live structural_red_control_mint_site_probe body exposes mint callee atoms in fn_arrow_decl_facts_live output, structural_red_control_live_fixture_mint_site_discovered returns true for the test fixture qualified name without a taught qualified-name pin, this witness greens, and this row deletes")
+    reason: "Admitted RED, cause FALSIFIED BY EXECUTION at gunbc#10282 (ce937d0c4d). The skeleton for structural_red_control_mint_site_probe is not empty: the probe discovers a row carrying that declaration's qualified name on the SourceProduced axis. This witness stays red on ORIGIN alone — the discovered row is UnknownOrigin, because the fixture marker is read at declaration-root-plus-immediate-children depth while direct_rust_door_inferred_tree sits inside the body. Owner: witness-evidence-lifecycle / marker-depth frontier.",
+    dissolution: unbound_dissolution(description: "the fixture-marker read reaches declaration subtrees, so the already-discovered structural_red_control_mint_site_probe row classifies FixtureDerived instead of UnknownOrigin; structural_red_control_live_fixture_mint_site_discovered then returns true without a taught qualified-name pin, this witness greens, and this row deletes. The superseded trigger asked the marshal to expose a mint callee it already exposes")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     budget: SubstrateLongLaneEvalBudget,
-    reason: "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal prunes that ExprCall today. Owner: witness-evidence-lifecycle lane.",
-    dissolution: unbound_dissolution(description: "G2 fn-arrow marshal exposes mint_provenanced_rust_artifact on generate_provenanced_rust_candidate_from_ingest, ingest_mint_surface_discovered_in_live_scope() is true, witness_ingest_mint_surface_requires_call_occurrence_frontier_reds greens, and this row deletes")
+    reason: "Admitted RED whose stated premise is FALSE IN THE SOURCE: generate_provenanced_rust_candidate_from_ingest does not call mint_provenanced_rust_artifact at all. Its body calls provenanced_rust_emission_observation_outcome over observe_provenanced_rust_emission_from_ingest, and the mint is at least two declarations further in; measured at gunbc#10282 (ce937d0c4d), the declaration is present in the population and neither it nor observe_provenanced_rust_emission_from_ingest contributes a row. No widening of the WITHIN-declaration horizon can green this witness. Owner: witness-evidence-lifecycle / call-occurrence reachability frontier.",
+    dissolution: unbound_dissolution(description: "the probe classifies through INTER-declaration call reachability rather than one declaration's own skeleton, so a mint reached transitively from generate_provenanced_rust_candidate_from_ingest is attributed to it; ingest_mint_surface_discovered_in_live_scope() is then true, this witness greens, and this row deletes. The superseded trigger named the marshal and could never have been satisfied, because the callee it asked to be exposed is not in that declaration")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
     kind: CorpusWitnessKind,
     budget: SubstrateLongLaneEvalBudget,
-    reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
-    dissolution: unbound_dissolution(description: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes")
+    reason: "Admitted RED whose cited boundary NO LONGER EXISTS: gunbc#10245 replaced the witness entry import closure with a caller-declared pool, so the population is exactly origin_probe_subject_files, and run_direct_rust_door_emit_write_compile_smoke lives in dag/test/claim/direct_rust_door_write_compile_witness_test.dag, which that subject does not name. The cause is the declared subject and is decidable by reading it; it is neither the marshal nor the reachability horizon. Owner: witness-evidence-lifecycle lane.",
+    dissolution: unbound_dissolution(description: "a population authority enumerates fn-arrow declarations repository-wide within this lane's budget, so the direct-door smoke declaration is in the probe's subject without the witness naming its file one by one; this witness greens and this row deletes. Naming that one file in origin_probe_subject_files would also green it and is NOT the trigger: it would green the row without the capability the row stands for")
   ),
   source_root_ingest_gate_admitted_witness(
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",

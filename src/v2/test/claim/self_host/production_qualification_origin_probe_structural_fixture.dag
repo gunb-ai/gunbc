@@ -11,10 +11,14 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Test-only structural RED-control specimen (wise-ram-22): executable mint path lives under
-// test/claim/self_host/, not v2.lens.*. G2 fn-arrow marshal currently yields an empty skeleton for
-// this body; live discovery is frontiered by
-// witness_live_structural_fixture_mint_site_discovered_reds until marshal exposes the mint callee
-// and fixture marker.
+// test/claim/self_host/, not v2.lens.*.
+//
+// THE SKELETON FOR THIS BODY IS NOT EMPTY and this annotation said it was. Executed at gunbc#10282,
+// the origin probe discovers a row for this declaration on the SourceProduced axis, so the mint
+// callee inside the match/let IS read. What is still missing is the ORIGIN: the row classifies
+// UnknownOrigin because direct_rust_door_inferred_tree is read at declaration-root-plus-immediate-
+// children depth and sits deeper than that. witness_live_structural_fixture_mint_site_discovered_reds
+// waits on the marker read alone.
 
 data structural_red_control_mint_site_qualified_name: String = "v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_probe"
 

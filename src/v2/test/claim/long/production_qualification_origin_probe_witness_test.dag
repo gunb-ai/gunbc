@@ -24,7 +24,17 @@ import v2.std.text { String }
 // THIS NARROWS NOTHING THAT WAS BEING CHECKED. Until gunbc#10245 these rows answered from this
 // witness's own resolved import closure, which is why their admitted-RED reasons speak of what is
 // "discoverable in the entry closure"; the roots below make that scope declared instead of
-// incidental. The blocker those rows wait on is unchanged and is the G2 marshal, not the subject.
+// incidental.
+//
+// THE FOUR ADMITTED-RED ROWS DO NOT SHARE A BLOCKER, and this file used to say they did -- "the
+// blocker those rows wait on is unchanged and is the G2 marshal". That sentence was decided false by
+// execution over this declared subject at gunbc#10282: the mint-callee read reaches into block
+// bodies, the population is non-empty, and a marshal repair greens none of these rows. Each note
+// below now carries the cause its own row actually waits on, and they are three different ones --
+// marker-read depth, inter-declaration call reachability, and the declared subject itself. The
+// distinction is load-bearing rather than tidy: an admitted RED retires by ITS trigger, so a row
+// carrying an overtaken cause retires against an innocent repair and its still-standing red is then
+// read as a regression that repair introduced.
 data origin_probe_subject_roots: List<String> = []
 
 // FILE GRAIN, BECAUSE THE SUBJECT IS TWO MODULES AND THE SMALLEST DIRECTORIES HOLDING THEM ARE 63
@@ -45,7 +55,7 @@ test fn witness_production_qualification_origin_probe_admission_holds() -> Bool 
   )
 }
 
-data witness_live_scope_fixture_origin_discoverable_in_entry_closure_red_note: String = "Admitted RED (review 48255): live FixtureDerived mint sites are not discoverable in the fn_arrow_decl_facts_live population this witness names (G2 marshal prunes callee atoms; the subject is origin_probe_subject_roots and declared since gunbc#10245, so the gap is the marshal and no longer the scope). Replaces the retired 0==0 policy-oracle equality witness — greens when marshal exposes live fixture mint surfaces and known_fixture_origin_mint_surface_count_in_scope(pool_roots: origin_probe_subject_roots) > 0."
+data witness_live_scope_fixture_origin_discoverable_in_entry_closure_red_note: String = "Admitted RED. THE MARSHAL IS NOT THE CAUSE, decided by execution over this witness declared subject at gunbc#10282 (ce937d0c4d): derived_production_qualification_mint_sites_live returns a NON-EMPTY population, so the mint callee is read at depth, and the count this row asserts is nonetheless zero because every discovered row classifies UnknownOrigin. The residual cause is the MARKER read rather than the callee read — decl_has_fixture_marker reaches atom_identities_in_node, which sees a declaration root and its immediate children only, while direct_rust_door_inferred_tree sits deeper in the body. Greens when the marker read reaches declaration subtrees and known_fixture_origin_mint_surface_count_in_scope over this subject > 0. Retiring this row on a callee-marshal repair would leave the red standing and misattribute it to whoever landed that repair."
 
 test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -> Bool {
   known_fixture_origin_mint_surface_count_in_scope(
@@ -54,7 +64,7 @@ test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -
   ) > 0
 }
 
-data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the exact FixtureDerived SourceProduced row until call-occurrence derivation or marshal exposes callee atoms."
+data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED whose declared cause is FALSIFIED. The skeleton for structural_red_control_mint_site_probe is not empty: executed over this subject at gunbc#10282 (ce937d0c4d), the probe discovers a row carrying that declaration qualified name on the SourceProduced axis, so the mint callee inside the match/let body IS read. This row is red on ORIGIN alone — the discovered row is UnknownOrigin because the fixture marker is read at declaration-root-plus-immediate-children depth. Greens when the marker read reaches declaration subtrees, without any change to the callee path and without a taught qualified-name pin."
 
 test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
   structural_red_control_live_fixture_mint_site_discovered(
@@ -64,7 +74,7 @@ test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
   )
 }
 
-data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural probe discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact."
+data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED whose premise is FALSE IN THE SOURCE: generate_provenanced_rust_candidate_from_ingest does not call mint_provenanced_rust_artifact. It calls provenanced_rust_emission_observation_outcome over observe_provenanced_rust_emission_from_ingest, and the mint is at least two declarations further in. Measured over this subject at gunbc#10282 (ce937d0c4d): the ingest declaration IS in the population, and neither it nor observe_provenanced_rust_emission_from_ingest contributes a row. NO WIDENING OF THE WITHIN-DECLARATION HORIZON CAN GREEN THIS. Greens only when the probe classifies through inter-declaration call reachability, so a transitively reached mint is attributed to the declaration that reaches it."
 
 test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
   ingest_mint_surface_discovered_in_live_scope(
@@ -73,7 +83,7 @@ test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> 
   )
 }
 
-data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED: direct-door smoke is not in the witness entry import closure without a roster import — repository-wide discovery requires call-occurrence substrate or whole-tree fn_arrow facts."
+data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED whose cited boundary no longer exists: gunbc#10245 replaced the entry import closure with a caller-declared pool, so the population is exactly origin_probe_subject_files, and run_direct_rust_door_emit_write_compile_smoke lives in dag/test/claim/direct_rust_door_write_compile_witness_test.dag, which that list does not name. The cause is the declared subject and is decidable by reading it — not the marshal and not the reachability horizon. Greens when a population authority enumerates fn-arrow declarations repository-wide within this lane budget. Adding that one file to origin_probe_subject_files would also green it and is NOT the trigger: it would green the row without the capability the row stands for."
 
 test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds() -> Bool {
   any(
