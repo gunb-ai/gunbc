@@ -108,7 +108,14 @@ data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 1
 // contention to 16.59 on the fastest rounds, and the router reports ~40 tok/s serving four to five
 // concurrent sessions. The floor is set at 24 because a deadline derived from an optimistic rate
 // kills healthy generations, and one derived from the worst contended reading would never fire.
-data harness_decode_floor_tokens_per_second: Int = 24
+// THE FLOOR IS READ FROM THE ENGINE'S OWN INSTRUMENT, not from a wire assumption. vLLM exports
+// vllm:generation_tokens_total and vllm:request_decode_time_seconds_sum on /metrics; their ratio is
+// the engine's realized decode rate over every request it has served. Measured 2026-09-04 on the
+// two harness engines: about 10 tok/s on .232 and 7.5 tok/s on .225 under ctrl's concurrent load.
+// The previous value, 24, was a single unloaded observation and made the derived deadline unable
+// to cover the max_tokens it is derived from: a full Think Max answer took 16 minutes to time out
+// (curl exit 28) while the engine was still generating. 8 is the lower engine's floor rounded down.
+data harness_decode_floor_tokens_per_second: Int = 8
 
 // TIME TO FIRST TOKEN IS NOT DECODE TIME, so it is a separate term. A 200k working window prefills
 // at the rates this deployment measured (up to ~1800 tok/s once fixed overhead amortizes), which is
