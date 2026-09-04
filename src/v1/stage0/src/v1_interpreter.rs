@@ -7165,13 +7165,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
-                arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
-                    crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
-            }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
-                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-                arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
-                    crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
@@ -7269,10 +7262,6 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
-}
-
-pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
-    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
