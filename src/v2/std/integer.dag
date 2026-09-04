@@ -673,59 +673,43 @@ fn integer_pointer_width_bound(
   IntegerPointerWidthBound { signedness: signedness, endpoint: endpoint }
 }
 
-fn int8_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 8)
-}
+// The machine and pointer-width intervals are CONSTANTS, not computations: each is a
+// closed application of the derivation above to one declared width, and nothing about the answer
+// varies. Authored as `fn`s they were re-derived once per witness, and a signed 128-bit derivation
+// is 127 decimal doublings over a growing digit list -- the quadratic ladder that made every
+// witness reaching a language target model pay for 2^127 again. A `data` row is not a cache: the
+// value has ONE demand identity whose least common ancestor is the module, so it is carried there
+// rather than materialized per consumer. `integer_machine_interval_spec` remains the single
+// derivation authority; these rows are its applications, never a second way to compute a bound.
+data int8_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 8)
 
-fn int16_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 16)
-}
+data int16_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 16)
 
-fn int32_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 32)
-}
+data int32_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 32)
 
-fn int64_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 64)
-}
+data int64_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 64)
 
-fn int128_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 128)
-}
+data int128_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Signed, width_bits: 128)
 
-fn uint8_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 8)
-}
+data uint8_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 8)
 
-fn uint16_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 16)
-}
+data uint16_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 16)
 
-fn uint32_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 32)
-}
+data uint32_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 32)
 
-fn uint64_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 64)
-}
+data uint64_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 64)
 
-fn uint128_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 128)
-}
+data uint128_interval_spec: IntegerIntervalSpec = integer_machine_interval_spec(signedness: Unsigned, width_bits: 128)
 
-fn int_platform_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
-    inclusive_max: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMax)
-  )
-}
+data int_platform_interval_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
+  inclusive_max: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMax)
+)
 
-fn uint_platform_interval_spec() -> IntegerIntervalSpec {
-  integer_interval(
-    inclusive_min: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
-    inclusive_max: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMax)
-  )
-}
+data uint_platform_interval_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
+  inclusive_max: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMax)
+)
 
 fn integer_inhabitant_atom(id: Symbol) -> Node {
   Node {
