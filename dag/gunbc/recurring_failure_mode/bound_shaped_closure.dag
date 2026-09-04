@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.bound_shaped_closure
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bound_shaped_closure: RecurringFailureMode = RecurringFailureMode {
+  identity: "bound_shaped_closure" as NonEmptyStr,
+
+  receipts: [
+    "**bound-shaped closure** (a requirement is satisfied by a number that is real, and the row it satisfies stops ranking for work. ",
+
+    "Distinct from prefix-of-the-truth, which is about what a PRODUCER reports: this is about what a CONSUMER concludes from a satisfied clause. ",
+
+    "Receipt (gunbc#9418): §4b(3) asks a declared drop for a bounded population; a whole-root emit census answers three; the emitter's first gate had returned ahead of every later check, and clearing it showed eight more that had been standing the whole time. ",
+
+    "Publishing three as THE population would have discharged 4b(3) with an honest measurement and left the class reading as closed — worse than the UNCOUNTED it replaced, because an unmet clause still ranks and a met one does not. ",
+
+    "The tell is that the satisfying figure comes from a mechanism that STOPS: a first match, an early return, a capped scan, a truncated list. ",
+
+    "**Recognition rule: before a number discharges a requirement, ask what the producer does AFTER it has enough to answer — if it returns, the number bounds the producer's patience and not the population.**)",
+  ],
+
+  evidence: [],
+}
