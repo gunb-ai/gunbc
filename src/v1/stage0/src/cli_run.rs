@@ -9549,7 +9549,14 @@ pub enum BudgetCompletion {
 // consumer should act on, and unifying that is what closed an earlier absorption. The split
 // here is on PASSED-VERSUS-INTERRUPTED, which that same note calls a real distinction because
 // IT DETERMINES THE REMEDY: an interrupted row produced no verdict and its elapsed figure is a
-// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is EXACT.
+// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is an UPPER
+// BOUND WITHIN ONE MILLISECOND -- the cost is known, and the rendered integer is its CEILING.
+// The two are still opposite readings and the distinction still determines the remedy: an
+// interrupted row's true cost is somewhere ABOVE its figure and unbounded, a completed row's is
+// somewhere BELOW its figure and within a millisecond of it. What a completed figure is NOT is
+// exact, and it must not say so: `crossing_figure_ms` rounds up so that a reported cost can
+// never tie the budget it is refused against, and an adjective asserting a precision the
+// arithmetic does not have is the same defect the rounding was landed to repair.
 // Rendering one as the other is what produced a ledger describing a single row three
 // inconsistent ways (`BUDGET-REFUSED`, `outcome=timed_out`, and "cost exactly 57193ms").
 //
@@ -9631,8 +9638,9 @@ impl ClaimOutcome {
                 budget_ms,
                 kind,
             } => Some(format!(
-                "{} budget {}ms EXCEEDED; cost={}ms EXACT — the witness ran to completion and \
-                 was then reclassified on cost, so this figure is a measurement of the row",
+                "{} budget {}ms EXCEEDED; cost={}ms CEILING — the witness ran to completion \
+                 and was then reclassified on cost, so its cost is known to within a millisecond \
+                 and this figure is that cost rounded UP, never a point measurement",
                 kind.label(),
                 budget_ms,
                 elapsed_ms
@@ -9647,8 +9655,15 @@ impl ClaimOutcome {
 
 #[cfg(test)]
 mod budget_figure_rendering_tests {
-    use super::{BudgetKind, ClaimOutcome};
+    use super::{
+        budget_completion_outcome, wall_budget_completion_outcome, BudgetKind, ClaimOutcome,
+    };
 
+    // THE FIELD SPELLING IS LOAD-BEARING AND STAYS `cost=` ON BOTH ARMS. Rendering the completed
+    // arm as `cost<=` to carry the ceiling reading would have been more literal and would have
+    // silently broken this very control, which splits on `cost=` — the honesty belongs in the
+    // adjective, where a reader looks, not in the field name, where a parser does.
+    //
     // THE FIELD, NOT THE CAVEAT. The defect this guards is not that the sentence lacked a
     // qualification — it carried "UNMEASURED" in capitals and three readers still read the
     // number as a cost, one of them while quoting that word. So the assertion is positional:
@@ -9704,7 +9719,16 @@ mod budget_figure_rendering_tests {
         .budget_figure_phrase()
         .expect("completed-over-budget rows render a budget figure");
         assert_eq!(cost_field(&phrase), "5002ms", "{phrase}");
-        assert!(phrase.contains("EXACT"), "{phrase}");
+        // THE ADJECTIVE IS ASSERTED, NOT INCIDENTAL. `crossing_figure_ms` rounds the figure UP,
+        // so a completed crossing reports a CEILING and the word EXACT would overclaim by up to a
+        // millisecond -- which is the same kind of defect as the truncation it replaced, a figure
+        // wrong HIGH still calling itself a measurement instead of one wrong LOW. This asserts
+        // both directions so neither word can drift back in.
+        assert!(phrase.contains("CEILING"), "{phrase}");
+        assert!(
+            !phrase.contains("EXACT"),
+            "a rounded-up figure must not call itself exact: {phrase}"
+        );
     }
 
     // THE FIGURE IS KEPT, IN ITS OWN FIELD. Dropping it would trade one wrong reading for a
@@ -9733,6 +9757,68 @@ mod budget_figure_rendering_tests {
 
     // NON-BUDGET OUTCOMES CARRY NO FIGURE, so no caller can render one for a row that never
     // met a ceiling.
+    // THE DISCRIMINATING RED FOR THE TRUNCATION, AND IT IS THE INVARIANT RATHER THAN A SAMPLE.
+    // In a completed-over-budget row the reported cost must be STRICTLY GREATER than the reported
+    // budget, because the arm is only constructed when the nanosecond cost strictly exceeds the
+    // nanosecond budget. Under the old truncating divide this failed at every cost in the first
+    // millisecond above the line, and the row printed `budget 500ms EXCEEDED; cost=500ms EXACT`.
+    #[test]
+    fn a_crossing_can_never_report_a_cost_equal_to_the_budget_it_crossed() {
+        // One nanosecond over is the tightest input the comparison admits, so it is the input
+        // that decides the rendering: anything that rounds it down lands it back on the line.
+        for over_nanos in [1u128, 999_999, 1_000_000, 8_000_000] {
+            let cpu_nanos = 500u128 * 1_000_000 + over_nanos;
+            let outcome = budget_completion_outcome(Some(500), ClaimOutcome::Pass, cpu_nanos);
+            let ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                ..
+            } = outcome
+            else {
+                panic!(
+                    "a cost strictly over the budget must produce the crossing arm: {outcome:?}"
+                );
+            };
+            assert!(
+                elapsed_ms > budget_ms,
+                "a crossing reported cost={elapsed_ms}ms against budget={budget_ms}ms from                  {cpu_nanos}ns — a figure equal to the line it is refused against reads as a                  boundary defect in the gate, and the gate is innocent"
+            );
+        }
+    }
+
+    // THE SAME INVARIANT ON THE WALL ARM. The two arms are separate functions and the truncation
+    // was authored into both, so a control over only the CPU side would leave the class alive at
+    // the other and green on the axis it names.
+    #[test]
+    fn the_wall_crossing_carries_the_same_invariant() {
+        let wall_nanos = 500u128 * 1_000_000 + 1;
+        let outcome = wall_budget_completion_outcome(Some(500), ClaimOutcome::Pass, wall_nanos);
+        let ClaimOutcome::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            ..
+        } = outcome
+        else {
+            panic!("a wall cost strictly over the budget must produce the crossing arm");
+        };
+        assert!(
+            elapsed_ms > budget_ms,
+            "wall crossing reported cost={elapsed_ms}ms against budget={budget_ms}ms"
+        );
+    }
+
+    // THE POSITIVE CONTROL FOR THE GATE ITSELF, kept beside the rendering controls so that a
+    // future repair cannot satisfy them by widening the comparison. A cost of EXACTLY the budget
+    // does not cross, and must stay a Pass.
+    #[test]
+    fn a_cost_of_exactly_the_budget_does_not_cross() {
+        let outcome = budget_completion_outcome(Some(500), ClaimOutcome::Pass, 500u128 * 1_000_000);
+        assert!(
+            matches!(outcome, ClaimOutcome::Pass),
+            "the comparison is strict: exactly the budget is within it, got {outcome:?}"
+        );
+    }
+
     #[test]
     fn outcomes_without_a_budget_render_no_figure() {
         assert!(ClaimOutcome::Pass.budget_figure_phrase().is_none());
@@ -18395,6 +18481,35 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     }
 }
 
+/// Milliseconds for a figure that is being REPORTED BESIDE THE BUDGET IT CROSSED, rounded UP.
+///
+/// THE COMPARISON IS IN NANOSECONDS AND IS STRICT, SO THE REPORT MUST NOT BE ABLE TO TIE IT.
+/// Truncating dividing put every cost in (500.000, 500.999]ms on the literal `500`, which the
+/// crossing message then printed as `cpu budget 500ms EXCEEDED; cost=500ms EXACT` — a sentence
+/// that is self-contradictory on its face and reads as an off-by-one in the GATE. It is not: the
+/// gate is innocent and the renderer destroyed the precision the word EXACT asserts.
+///
+/// THE HARM IS DEMONSTRATED, NOT HYPOTHESISED. Two independent readers competent on this subject
+/// read that row as a boundary defect within an hour of each other on gunbc#10327, and the second
+/// was one message from escalating it to an operator as a `>=` bug. A truncated figure printed
+/// beside the budget it is refused against MANUFACTURES FALSE REPORTS AGAINST THE GATE.
+///
+/// ROUNDING UP RATHER THAN CARRYING A DECIMAL keeps the column an integer millisecond count, which
+/// every existing consumer parses, while making the reported figure unable to equal the budget:
+/// the true cost is strictly greater than `budget_ms * 1_000_000` nanoseconds, so its ceiling in
+/// milliseconds is strictly greater than `budget_ms`. The invariant is derived from the
+/// comparison rather than asserted beside it.
+///
+/// IT IS DELIBERATELY NOT USED FOR ORDINARY COSTS. A figure that did not cross anything is not
+/// being compared to a line, so rounding it up would overstate the corpus; this is a REPORTING
+/// rule for the crossing arms, not a change to how cost is measured. Note the direction of the
+/// old bias while it stood: truncation understated EVERY reported cost by up to a millisecond, so
+/// the budget looked roomier and the corpus cheaper than either is, and any historical reasoning
+/// about where the line should sit was done against systematically low numbers.
+fn crossing_figure_ms(nanos: u128) -> u64 {
+    nanos.div_ceil(1_000_000) as u64
+}
+
 fn budget_completion_outcome(
     budget: Option<u64>,
     outcome: ClaimOutcome,
@@ -18403,7 +18518,7 @@ fn budget_completion_outcome(
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
             ClaimOutcome::CompletedOverBudget {
-                elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                elapsed_ms: crossing_figure_ms(cpu_nanos),
                 budget_ms,
                 kind: BudgetKind::Cpu,
             }
@@ -18436,7 +18551,7 @@ fn wall_budget_completion_outcome(
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
             ClaimOutcome::CompletedOverBudget {
-                elapsed_ms: (wall_nanos / 1_000_000) as u64,
+                elapsed_ms: crossing_figure_ms(wall_nanos),
                 budget_ms,
                 kind: BudgetKind::Wall,
             }

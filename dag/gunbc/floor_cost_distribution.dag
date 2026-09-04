@@ -124,12 +124,54 @@ fn reading_is_censored(reading: ClaimCostReading) -> Bool {
 // or a right-censored LOWER BOUND. They come apart in both directions: a host panic reaches no
 // verdict while its clocks are exact, because the unwind ended the evaluation. Collapsing them
 // would mint a bound for a row that has a measurement, or a verdict for one that never answered.
+// WHY THE DEADLINE COULD OR COULD NOT HAVE FIRED FOR THIS ROW, PARSED AT THE BOUNDARY RATHER THAN
+// CARRIED AS THE ARTIFACT'S STRING. The `preemption_reachability` column is the producer's own
+// statement of whether every stride poll was available to this claim's evaluation. It is the axis
+// that separates two crossings that are IDENTICAL in the cost column and opposite in meaning:
+// a claim the deadline could have stopped and did not is an OVERSHOOT between two polls -- a
+// charge -- while a claim whose cost accrued inside one opaque host call is a MISSED INTERRUPT,
+// where completing under the ceiling was never something the limit could enforce.
+//
+// AN UNRECOGNISED LABEL REFUSES THE ROW rather than becoming a fourth population, and a row that
+// refuses refuses its whole artifact (`claim_cost_line_refuses`). The producer's vocabulary is
+// closed -- `preemption_reachability_label` in the seed's `required_floor_runner` has exactly
+// three spellings -- so a fourth one reaching this reader means the producer changed and this
+// analysis is reading a schema it does not understand. Absorbing it into "unobserved" would make a
+// producer change indistinguishable from an unarmed surface, which is this module's own
+// incidental-denominator failure applied to a new column.
+type PreemptionReachability
+  = ReachabilitySurfaceUnarmed
+  | ReachabilityCooperativelyPollable
+  | ReachabilityOpaqueHostCallUnbounded { operations: String }
+
+fn parse_preemption_reachability(value: String) -> PreemptionReachability? {
+  if value == "surface_unarmed" {
+    Present { value: ReachabilitySurfaceUnarmed }
+  } else if value == "cooperatively_pollable" {
+    Present { value: ReachabilityCooperativelyPollable }
+  } else if starts_with(s: value, prefix: "opaque_host_call_unbounded:") {
+    Present {
+      value: ReachabilityOpaqueHostCallUnbounded {
+        operations: join(split(s: value, delimiter: ":") |> skip(n: 1), ":")
+      }
+    }
+  } else {
+    none
+  }
+}
+
+// `reachability` IS OPTIONAL AND ITS `Absent` IS A FACT ABOUT THE ARTIFACT, NEVER A POPULATION.
+// The column was added to the producer after the vintages this module already samples, so an older
+// artifact carries none. That absence is propagated as `Absent` and reaches the census as its own
+// disposition -- it is not an unarmed surface, and it is not a zero. A census whose absence and
+// whose zero are the same value is quoted as coverage.
 type FloorCostRow {
   identity: String
   module: String
   verdict_reached: Bool
   cost: ClaimCostReading
   eval_steps: Int
+  reachability: PreemptionReachability?
 }
 
 // One run's population, named by its run id so a finding can cite which runs it rests on.
@@ -165,6 +207,13 @@ type RunCost {
 // the honest reason is that this reader DECLINES the legacy encoding, not that the bytes are
 // silent. They carry `outcome` and `verdict_reached`, so a separating signal exists; reconstructing
 // it is simply not work this version does.
+// `preemption_reachability` IS THE ONE OPTIONAL INDEX HERE, and it is optional for a reason the
+// required columns are not: every column above is load-bearing for the COST reading, so an
+// artifact lacking one cannot be read as a cost population at all. Reachability answers a
+// different question -- WHICH population a crossing is in -- so an artifact without it is still a
+// perfectly sound cost artifact and only the crossing-population census is unavailable over it.
+// Making it required would retire the twelve sampled vintages the envelope derivation rests on,
+// which is a strictly larger loss than the one it would prevent.
 type ClaimCostColumns {
   identity: Int
   module: Int
@@ -174,6 +223,7 @@ type ClaimCostColumns {
   cpu_at_least_ms: Int
   censoring_cpu_limit_ms: Int
   eval_steps: Int
+  preemption_reachability: Int?
 }
 
 fn claim_cost_column_index(header_fields: List<String>, name: String) -> Int? {
@@ -220,7 +270,8 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
                       observed_cpu_ms: obs,
                       cpu_at_least_ms: bound,
                       censoring_cpu_limit_ms: ceil,
-                      eval_steps: steps
+                      eval_steps: steps,
+                      preemption_reachability: claim_cost_column_index(header_fields: fields, name: "preemption_reachability")
                     }
                   }
                 }
@@ -290,6 +341,33 @@ fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> 
   }
 }
 
+// THREE OUTCOMES, NOT TWO, AND THE THIRD IS WHY THIS IS NOT A `PreemptionReachability?`.
+// A missing COLUMN and an unreadable VALUE are opposite facts: the first says this artifact
+// predates the producer's reachability column and the census simply cannot ask; the second says
+// the column is there and carries a spelling this reader does not know, which is a schema
+// disagreement that must refuse the row and therefore the artifact. An option type has one empty
+// arm and would have to spend it on one of them, and whichever it spent it on the other would be
+// silently promoted into it.
+type RowReachabilityReading
+  = ReachabilityColumnUnrecorded
+  | ReachabilityColumnUnreadable
+  | ReachabilityColumnRead { value: PreemptionReachability }
+
+fn parse_row_reachability(fields: List<String>, columns: ClaimCostColumns) -> RowReachabilityReading {
+  match columns.preemption_reachability {
+    Absent => ReachabilityColumnUnrecorded
+    Present { value: idx } => match parse_preemption_reachability(value: fields[idx]) {
+      Absent => ReachabilityColumnUnreadable
+      Present { value: reach } => ReachabilityColumnRead { value: reach }
+    }
+  }
+}
+
+// THE OPTIONAL REACHABILITY INDEX WIDENS THE ROW REQUIREMENT WHEN THE HEADER DECLARED IT. A header
+// that names `preemption_reachability` and a data row too short to carry it is a TORN row, not a
+// vintage without the column, and the two must not render the same: the vintage question is decided
+// by the HEADER and the tear by the ROW. Leaving the index out of the width guard below would let a
+// short row parse with `Absent` reachability and be counted as a pre-column artifact.
 fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRow? {
   if starts_with(s: line, prefix: "#") {
     none
@@ -297,10 +375,13 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     let fields = split(s: line, delimiter: "\t")
     let widest = max_int(
       a: max_int(
-        a: max_int(a: max_int(a: columns.identity, b: columns.module), b: columns.verdict_reached),
-        b: max_int(a: columns.cost_reading, b: columns.eval_steps)
+        a: max_int(
+          a: max_int(a: max_int(a: columns.identity, b: columns.module), b: columns.verdict_reached),
+          b: max_int(a: columns.cost_reading, b: columns.eval_steps)
+        ),
+        b: max_int(a: max_int(a: columns.observed_cpu_ms, b: columns.cpu_at_least_ms), b: columns.censoring_cpu_limit_ms)
       ),
-      b: max_int(a: max_int(a: columns.observed_cpu_ms, b: columns.cpu_at_least_ms), b: columns.censoring_cpu_limit_ms)
+      b: match columns.preemption_reachability { Absent => 0 Present { value: r } => r }
     )
     if count(fields) <= widest {
       none
@@ -313,13 +394,27 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
           Absent => none
           Present { value: steps } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
             Absent => none
-            Present { value: reached } => Present {
-              value: FloorCostRow {
-                identity: fields[columns.identity],
-                module: fields[columns.module],
-                verdict_reached: reached,
-                cost: reading,
-                eval_steps: steps
+            Present { value: reached } => match parse_row_reachability(fields: fields, columns: columns) {
+              ReachabilityColumnUnreadable => none
+              ReachabilityColumnUnrecorded => Present {
+                value: FloorCostRow {
+                  identity: fields[columns.identity],
+                  module: fields[columns.module],
+                  verdict_reached: reached,
+                  cost: reading,
+                  eval_steps: steps,
+                  reachability: none
+                }
+              }
+              ReachabilityColumnRead { value: reach } => Present {
+                value: FloorCostRow {
+                  identity: fields[columns.identity],
+                  module: fields[columns.module],
+                  verdict_reached: reached,
+                  cost: reading,
+                  eval_steps: steps,
+                  reachability: Present { value: reach }
+                }
               }
             }
           }
@@ -1343,4 +1438,339 @@ fn run_extreme_census(runs: List<RunCost>, envelopes: List<IdentityEnvelope>) ->
 // bound on what the fleet can do.
 fn worst_envelope_permille(envelopes: List<IdentityEnvelope>) -> Int {
   fold(envelope_permilles(envelopes: envelopes), init: 0, f: (worst, v) => if v > worst { v } else { worst })
+}
+
+// THE CROSSING-POPULATION CENSUS: WHICH POPULATION A COMPLETED CROSSING IS IN, COUNTED.
+//
+// WHY THIS EXISTS AND WHOSE QUESTION IT ANSWERS. The seed's `required_floor_runner`, in the
+// `ClaimOutcome::CompletedOverBudget` arm, records that whether the pollable population should keep
+// blocking "is the open question this column exists to make answerable with counts instead of
+// argument -- it stays with the operator". The `preemption_reachability` column was added for that
+// purpose and no consumer has ever counted it. This family is that consumer. It decides NOTHING:
+// it names no threshold, gates no lane, and returns no verdict, because the ruling is the
+// operator's and a producer that pre-empted it would be answering a question the tree reserved.
+//
+// WHY THE EXISTING ENVELOPE SAMPLE CANNOT SERVE. `floor_cost_envelope_sampled_runs` is twelve GREEN
+// `main` runs, chosen so the population is one the floor admitted. A run that a crossing REFUSED is
+// by construction not green, so that sample cannot contain a single blocking crossing -- it is
+// structurally blind to the exact population this census is about. The sample this census is driven
+// over must therefore include refused runs, and a caller that points it at green runs alone will
+// measure zero and have measured nothing.
+//
+// TWO CROSSINGS THAT ARE IDENTICAL IN THE COST COLUMN AND OPPOSITE IN MEANING, which is the whole
+// content of the split:
+//   OVERSHOOT   -- every stride poll was reachable and the claim completed anyway. The deadline
+//                  missed nothing; what the crossing reports is a CHARGE.
+//   MISSED      -- the cost accrued inside an opaque host call where no stride poll lands, so
+//                  completing under the ceiling was never something the limit could enforce. The
+//                  deadline OBSERVED NOTHING. `std.evaluation_budget` records that this is the
+//                  mechanism rather than a corner case.
+// A single count over both would be a count of two different facts with two different remedies.
+type CrossingPopulation
+  = OvershootCharge
+  | MissedInterrupt { operations: String }
+  | CrossingSurfaceUnarmed
+  | CrossingReachabilityUnrecorded
+
+// ABSENCE AND ZERO ARE DIFFERENT VALUES HERE, DELIBERATELY AND IN BOTH DIRECTIONS.
+// `CrossingSurfaceUnarmed` means the run did not arm the opaque-host-call surface, so which
+// population this crossing belongs to is UNKNOWN and is not assumed to be the benign one -- the
+// same ruling the seed's renderer already states for that label. `CrossingReachabilityUnrecorded`
+// means the ARTIFACT predates the column, which is a fact about the vintage and not about the run.
+// Folding either into `overshoot_charge` would let a census that measured nothing render exactly
+// like one that measured a benign population, and it would be quoted as coverage.
+type CrossingPopulationRow {
+  run: NonEmptyStr
+  identity: String
+  module: String
+  cpu_ms: Millisecond
+  population: CrossingPopulation
+}
+
+fn completed_crossing_population(row: FloorCostRow) -> CrossingPopulation {
+  match row.reachability {
+    Absent => CrossingReachabilityUnrecorded
+    Present { value: reach } => match reach {
+      ReachabilitySurfaceUnarmed => CrossingSurfaceUnarmed
+      ReachabilityCooperativelyPollable => OvershootCharge
+      ReachabilityOpaqueHostCallUnbounded { operations: ops } => MissedInterrupt { operations: ops }
+    }
+  }
+}
+
+// ONLY A COMPLETED CROSSING ENTERS THIS FAMILY, AND THAT IS THE OPPOSITE ADMISSION FROM
+// `run_crossing_census` DIRECTLY ABOVE, OVER THE SAME ROWS, ON PURPOSE. That census asks a
+// LOWER-BOUND question -- did any row reach the line -- which a right-censored bound can answer
+// soundly. This one asks which population a row that REACHED ITS VERDICT AND WAS THEN RECLASSIFIED
+// ON COST belongs to, and a censored row never reached a verdict at all: it is the OTHER terminal
+// arm (`SafetyInterrupted`), whose remedy and whose standing are different. Admitting it here would
+// merge the two arms this split exists to separate.
+//
+// `verdict_reached` IS ASSERTED BESIDE THE EXACT READING RATHER THAN INFERRED FROM IT, for the
+// reason `FloorCostRow` states where it carries both: a host panic reaches no verdict while its
+// clocks are exact, so the reading arm does not imply the verdict arm.
+fn completed_crossing_rows(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> List<CrossingPopulationRow> {
+  runs |> flat_map(run => run.rows
+    |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+    |> filter(r => r.verdict_reached)
+    |> flat_map(r => match observed_cpu_ms(reading: r.cost) {
+         Absent => []
+         Present { value: c } =>
+           if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) {
+             [CrossingPopulationRow {
+               run: run.run,
+               identity: r.identity,
+               module: r.module,
+               cpu_ms: c,
+               population: completed_crossing_population(row: r)
+             }]
+           } else { [] }
+       }))
+}
+
+// THE DENOMINATOR IS CARRIED WITH THE NUMERATORS AND CLOSES BY CONSTRUCTION. `completed_crossings`
+// is the size of the population the four arms partition, so a reader can check the addition rather
+// than trust it; `censored_crossings` and `undecidable_crossings` sit BESIDE that sum and never
+// inside it, because they are the interrupt arm and the arm no bound can decide. A census that
+// reported only its numerators would be a selection view read as a population.
+type CrossingPopulationCensus {
+  runs_scanned: Int
+  completed_crossings: Int
+  overshoot_charge: Int
+  missed_interrupt: Int
+  surface_unarmed: Int
+  reachability_unrecorded: Int
+  censored_crossings: Int
+  undecidable_crossings: Int
+}
+
+// THE SPLIT IS ONE TOTAL MATCH IN ONE PASS, AND THERE IS NO POPULATION-EQUALITY PREDICATE.
+// The obvious shape -- `filter(r => r.population == want)` -- has no honest spelling here, because
+// `MissedInterrupt` carries its operations and a caller asking "how many missed interrupts" would
+// have to construct one with a sentinel payload to ask. A sentinel is a value standing where no
+// value exists, and every arm of this coproduct is reachable, so the question is answered by
+// DESCENDING the arms once rather than by manufacturing a comparand.
+//
+// PREPEND-AND-REVERSE RATHER THAN `concat` IN THE FOLD, for the reason `identity_envelopes` states:
+// appending inside a fold copies the accumulator on every element.
+type CrossingPopulationSplit {
+  overshoot_charge: List<CrossingPopulationRow>
+  missed_interrupt: List<CrossingPopulationRow>
+  surface_unarmed: List<CrossingPopulationRow>
+  reachability_unrecorded: List<CrossingPopulationRow>
+}
+
+data empty_crossing_split: CrossingPopulationSplit = CrossingPopulationSplit {
+  overshoot_charge: [],
+  missed_interrupt: [],
+  surface_unarmed: [],
+  reachability_unrecorded: []
+}
+
+fn split_crossing_rows(rows: List<CrossingPopulationRow>) -> CrossingPopulationSplit {
+  let scanned = fold(
+    rows,
+    init: empty_crossing_split,
+    f: (acc, r) => match r.population {
+      OvershootCharge => CrossingPopulationSplit {
+        overshoot_charge: concat([r], acc.overshoot_charge),
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      MissedInterrupt { operations: _ } => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: concat([r], acc.missed_interrupt),
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      CrossingSurfaceUnarmed => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: concat([r], acc.surface_unarmed),
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      CrossingReachabilityUnrecorded => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: concat([r], acc.reachability_unrecorded)
+      }
+    }
+  )
+  CrossingPopulationSplit {
+    overshoot_charge: reverse(scanned.overshoot_charge),
+    missed_interrupt: reverse(scanned.missed_interrupt),
+    surface_unarmed: reverse(scanned.surface_unarmed),
+    reachability_unrecorded: reverse(scanned.reachability_unrecorded)
+  }
+}
+
+// A CENSORED ROW WHOSE BOUND ALREADY CLEARS THE LINE IS A CROSSING ON THE INTERRUPT ARM, and one
+// whose bound sits below it is undecidable -- exactly the three-way split `row_crossing` declares.
+// Counting them here rather than re-deriving the predicate keeps one authority for what a crossing
+// is; this family only differs in which arms it ADMITS.
+fn censored_crossing_count(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> Int {
+  count(runs |> flat_map(run => run.rows
+    |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+    |> filter(r => reading_is_censored(reading: r.cost))
+    |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+         RowCrossed => [r]
+         RowBelowLine => []
+         RowCrossingUndecidable => []
+       })))
+}
+
+// THE POPULATION IS COUNTED BEFORE IT IS SPLIT, WHICH IS WHAT MAKES
+// `crossing_census_partition_closes` A CHECK RATHER THAN A TAUTOLOGY. Deriving
+// `completed_crossings` from the four arms would collapse that assertion to `measure() ==
+// measure()` -- the change detector DESIGN section 5 names -- and it would then stay green through
+// exactly the defect it exists to catch: an arm the split drops on the floor.
+fn crossing_population_census(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> CrossingPopulationCensus {
+  let rows = completed_crossing_rows(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules)
+  let split = split_crossing_rows(rows: rows)
+  CrossingPopulationCensus {
+    runs_scanned: count(runs),
+    completed_crossings: count(rows),
+    overshoot_charge: count(split.overshoot_charge),
+    missed_interrupt: count(split.missed_interrupt),
+    surface_unarmed: count(split.surface_unarmed),
+    reachability_unrecorded: count(split.reachability_unrecorded),
+    censored_crossings: censored_crossing_count(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules),
+    undecidable_crossings: count(runs_crossing_undecidable(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
+  }
+}
+
+// THE CENSUS'S OWN CLOSURE, ASSERTED RATHER THAN DESCRIBED. The four population arms partition the
+// completed-crossing population, so their sum is the population's size. This is not a tautology
+// over the implementation: a fifth arm added to `CrossingPopulation` without a counter would break
+// it, which is the state the arithmetic exists to refuse.
+fn crossing_census_partition_closes(census: CrossingPopulationCensus) -> Bool {
+  census.overshoot_charge
+    + census.missed_interrupt
+    + census.surface_unarmed
+    + census.reachability_unrecorded
+    == census.completed_crossings
+}
+
+// THE IDENTITIES, DISTINCT, BECAUSE THE COUNT AND THE POPULATION ARE DIFFERENT FINDINGS. Six
+// crossings over three identities and six over six are the same number and opposite conclusions:
+// the first is a small set of rows sitting on the line in every run, the second is a corpus-wide
+// effect. A count alone cannot separate them.
+//
+// SORTED SCAN RATHER THAN A MEMBERSHIP FOLD, for the reason `identity_envelopes` states: a fold
+// that re-scans its own accumulator per element is quadratic in the population, and "the population
+// is small here" is not a time-stable fact -- the sample this runs over is a caller's choice and
+// grows with the roster.
+fn distinct_sorted_identities(identities: List<String>) -> List<String> {
+  fold(
+    identities |> sort_by(i => i),
+    init: [],
+    f: (acc, i) => match acc |> first {
+      Absent => [i]
+      Present { value: head } => if head == i { acc } else { concat([i], acc) }
+    }
+  ) |> reverse
+}
+
+fn crossing_population_identities(rows: List<CrossingPopulationRow>) -> List<String> {
+  distinct_sorted_identities(identities: rows |> map(r => r.identity))
+}
+
+// ONE IDENTITY ON BOTH SIDES OF THE LINE: THE JOIN THAT ASKS WHETHER THE INTERRUPT ARM IS ALSO
+// MEASURING THE HOST.
+//
+// THE OBSERVATION THAT COMMISSIONED IT. `v2.test.execution.emit_host_complement_equals_eval` was
+// observed on two runs of ONE branch landing in two DIFFERENT dispositions: completed and
+// reclassified on cost once, and preempted before any verdict the other time. A census keyed on
+// DISPOSITION splits that row across two buckets and reports one witness as two problems, so the
+// join below is keyed on IDENTITY and carries the disposition as a count.
+//
+// WHAT A NON-EMPTY RESULT MEANS, AND WHAT IT DOES NOT. An identity that COMPLETED on one run and
+// was PREEMPTED on another is a row whose disposition is not determined by the row: the same work
+// reached a verdict once and did not the other time. That is the interrupt arm's version of the
+// question `IdentityEnvelope.work_invariant` asks on the cost axis, and it is why the two are
+// carried together rather than in separate analyses. It does NOT establish that the interrupt is
+// unnecessary: a preempted claim genuinely produced no verdict, and the executor-protection
+// argument for stopping it does not depend on the charge being intrinsic. This family reports the
+// population; the ruling is `v2.workflow.required_floor`'s and the operator's.
+//
+// THE AXIS IS THE COST READING AND NOT `verdict_reached`, for the reason `FloorCostRow` states
+// where it carries both: a host panic reaches no verdict while its clocks stay EXACT, so keying
+// this join on the verdict would count a panic as a deadline preemption. A right-censored reading
+// is the deadline arm by construction.
+type IdentityDisposition {
+  identity: String
+  completed_runs: Int
+  preempted_runs: Int
+}
+
+fn identity_disposition_is_split(d: IdentityDisposition) -> Bool {
+  d.completed_runs > 0 && d.preempted_runs > 0
+}
+
+type DispositionScan
+  = DispositionScanEmpty
+  | DispositionScanOpen {
+      current: String
+      completed: Int
+      preempted: Int
+      done: List<IdentityDisposition>
+    }
+
+fn disposition_scan_close(current: String, completed: Int, preempted: Int) -> IdentityDisposition {
+  IdentityDisposition { identity: current, completed_runs: completed, preempted_runs: preempted }
+}
+
+// SORTED SCAN, one pass over the sample's rows, for the reason `identity_envelopes` states: a fold
+// that re-filters the whole population per identity is quadratic in the corpus.
+fn identity_dispositions(runs: List<RunCost>) -> List<IdentityDisposition> {
+  let rows = runs
+    |> flat_map(run => run.rows)
+    |> sort_by(r => r.identity)
+  let scanned = fold(
+    rows,
+    init: DispositionScanEmpty {},
+    f: (acc, r) => match acc {
+      DispositionScanEmpty => DispositionScanOpen {
+        current: r.identity,
+        completed: if reading_is_censored(reading: r.cost) { 0 } else { 1 },
+        preempted: if reading_is_censored(reading: r.cost) { 1 } else { 0 },
+        done: []
+      }
+      DispositionScanOpen { current: cur, completed: c, preempted: p, done: prior } =>
+        if cur == r.identity {
+          DispositionScanOpen {
+            current: cur,
+            completed: if reading_is_censored(reading: r.cost) { c } else { c + 1 },
+            preempted: if reading_is_censored(reading: r.cost) { p + 1 } else { p },
+            done: prior
+          }
+        } else {
+          DispositionScanOpen {
+            current: r.identity,
+            completed: if reading_is_censored(reading: r.cost) { 0 } else { 1 },
+            preempted: if reading_is_censored(reading: r.cost) { 1 } else { 0 },
+            done: concat([disposition_scan_close(current: cur, completed: c, preempted: p)], prior)
+          }
+        }
+    }
+  )
+  match scanned {
+    DispositionScanEmpty => []
+    DispositionScanOpen { current: cur, completed: c, preempted: p, done: prior } =>
+      reverse(concat([disposition_scan_close(current: cur, completed: c, preempted: p)], prior))
+  }
+}
+
+fn split_disposition_identities(runs: List<RunCost>) -> List<IdentityDisposition> {
+  identity_dispositions(runs: runs) |> filter(d => identity_disposition_is_split(d: d))
 }
