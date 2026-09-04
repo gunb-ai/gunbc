@@ -26,11 +26,6 @@ import gunbc.emit_copy_qualification {
   StaticObservationDidNotRun, StaticObservationNonDiscriminating,
   clone_lint_discrimination, LintDiscriminates, LintNonDiscriminating
 }
-import gunbc.witness_floor_workflow {
-  emit_copy_qualification_capability_closure_holds,
-  emit_copy_qualification_battery_job,
-  emit_copy_qualification_run_script
-}
 import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantCopiedAccumulator, DisconnectCounter, PlantHiddenDeepCopy,
   PlantRedundantShareClone, PlantRedundantDeepClone,
@@ -485,25 +480,21 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
   (split(s: haystack, delimiter: marker) |> count) > 1
 }
 
-// ── The inert workflow job (authored emission; activation is ROOT-N's, not this lane's) ──────
-test fn ecq_battery_job_capability_closure_holds() -> Bool {
-  emit_copy_qualification_capability_closure_holds()
-}
-
-test fn ecq_battery_job_is_emitted_inert_holds() -> Bool {
-  let job = emit_copy_qualification_battery_job()
-  match job.if_condition {
-    Present { value: cond } => cond == "false" && job.id == "emit-copy-qualification-battery"
-    Absent => false
-  }
-}
-
-test fn ecq_battery_job_runs_the_wet_entry_holds() -> Bool {
-  string_contains_marker(
-    haystack: emit_copy_qualification_run_script(),
-    marker: "dag/gunbc/emit_copy_qualification_wet_battery.dag"
-  ) && string_contains_marker(
-    haystack: emit_copy_qualification_run_script(),
-    marker: "--functions ecq_wet_shard_copy_scalar_qualifies_holds"
-  )
-}
+// ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
+//
+// Three rows stood here asserting the `emit-copy-qualification-battery` job's capability closure,
+// its inert `if_condition: "false"`, and that its argv named this module's wet entry. All three
+// had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no longer exists:
+// the operator spent the held activation token on DELETION rather than activation, so the job is
+// gone from the emitted workflow instead of having its "false" lifted.
+//
+// WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
+// `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
+// calibration mutants below now have no executing consumer at all -- they are specification
+// without execution in the sense DESIGN section 5 names, and the rows above this comment establish
+// nothing about a running system until one is restored. That is recorded at
+// `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
+// this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
+// `witness_floor_workflow` now requires operator sign-off for, but by converting these functions
+// to floor-enrolled `*_test.dag` witnesses -- the same conversion the deleted job's dissolution
+// row demanded, now with nothing else holding the module up.
