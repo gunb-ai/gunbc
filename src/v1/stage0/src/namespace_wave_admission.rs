@@ -885,6 +885,61 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
+///
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
+///
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
+///
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
+///
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
+/// SIXTH CONFLICT, AND THE RULE ABOVE DECIDES IT RATHER THAN A UNION -- TWO INCOMING ROWS DELETED,
+/// BOTH READ FROM THE TREE INSTEAD OF GUESSED. The gunbc#10218 row arriving with this merge is
+/// CONSUMED: origin/main's `gunbc.product.placement_supply` declares `physical_asset_identity_eq`
+/// and `gunbc.product.printed_chassis.manufacturing_manifest` no longer does, so the base already
+/// binds that spelling to that target and no run can produce the delta. The gunbc#10206 row is
+/// consumed on the same read -- `gunbc.design_ledgers` imports `recurring_failure_mode_roster` from
+/// `gunbc.recurring_failure_mode.roster` on main -- and it survived my PREVIOUS merge of main only
+/// because I unioned the sides, which is exactly the mistake this rule was written from. Both
+/// deletions are charged here because this is the roster-touching change.
+///
+/// THE ROWS KEPT BELOW ARE THIS BRANCH'S OWN, and the same read decides them the other way: no base
+/// binds these spellings to `extdeps.systems.nvidia_dgx_spark_setup`, because the relocation is what
+/// this PR does. They are consumed the moment it merges.
 /// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
 /// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
 /// because the type module cannot import the rows back without a cycle. Two bindings in
@@ -2345,66 +2400,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "w_the_only_password_length_rule_is_six_characters",
             spelling: "oobe_screen_account",
             target: "extdeps.systems.nvidia_dgx_spark_setup",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_preamble_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "collect_pattern_rc_variant_guards",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_typed_match_arm_strs",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_arm_has_refutable_plain_field",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_pattern_preludes",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
