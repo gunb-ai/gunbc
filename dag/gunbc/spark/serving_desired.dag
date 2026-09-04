@@ -41,7 +41,7 @@ import extdeps.ollama.capability {
 import gunbc.spark.serving_release {
   SparkServingRelease,
   SparkServingOccurrence,
-  OllamaServingLaunchProfile,
+  ServingLaunchProfile, ServingContract, ServingEngine, OllamaSingleHost, VllmTensorParallel,
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
   SparkServingBindListen,
@@ -288,12 +288,28 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
 
 data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
 
-fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
-  OllamaServingLaunchProfile {
-    bind: spark_serving_desired_bind_listen,
-    default_context: spark_serving_desired_context_length,
-    serving_slots: spark_serving_desired_serving_slots_value,
+fn spark_serving_desired_launch_profile() -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    engine: spark_serving_desired_engine,
+    contract: ServingContract {
+      bind: spark_serving_desired_bind_listen,
+      default_context: spark_serving_desired_context_length,
+      serving_slots: spark_serving_desired_serving_slots_value,
+    },
   }
+}
+
+// THE ENGINE THIS FLEET ACTUALLY RUNS, authored for the first time. Until now the deployment in
+// service could not be declared at all -- the launch profile named Ollama in its type, so the
+// vLLM tensor-parallel pair that has been serving this fleet had no representation, which is
+// exactly why it lived in hand-written units and why convergence kept restoring the engine we had
+// abandoned. A model that cannot describe what is running cannot converge toward it.
+//
+// WORLD SIZE 2, not 4: the pairs sit on point-to-point direct-attach rails and the only path
+// between pairs is the WiFi LAN, so a group of four cannot route its per-layer all-reduce at all.
+// That topology is already modeled in gunbc.spark.fabric_link_desired rather than restated here.
+data spark_serving_desired_engine: ServingEngine = VllmTensorParallel {
+  world_size: 2,
 }
 
 // THE SERVER'S DEFAULT CONTEXT WINDOW, AUTHORED AS THE MIGRATION DECISION.
@@ -360,11 +376,11 @@ data spark_serving_desired_serving_slots_value: PositiveSlotCount = positive_slo
 // it, and the unit's content identity is a function of the text -- so a policy change cannot fail
 // to reach the file, and cannot reach it without producing a member delta.
 fn spark_serving_desired_serving_slots() -> PositiveSlotCount {
-  spark_serving_desired_launch_profile().serving_slots
+  spark_serving_desired_launch_profile().contract.serving_slots
 }
 
 fn spark_serving_desired_default_context() -> TokenCount {
-  spark_serving_desired_launch_profile().default_context
+  spark_serving_desired_launch_profile().contract.default_context
 }
 
 fn spark_serving_terminal_intent() -> SparkServingIntent {

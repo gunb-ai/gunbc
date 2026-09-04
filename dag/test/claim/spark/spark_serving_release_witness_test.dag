@@ -14,7 +14,7 @@ import gunbc.spark.serving_realization {
 import gunbc.spark.serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence,
   SparkServingRelease, RuntimeArtifactIdentity,
-  OllamaServingLaunchProfile,
+  ServingLaunchProfile, ServingContract, ServingEngine, OllamaSingleHost,
   SparkServingBindListen,
   spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
@@ -77,19 +77,25 @@ fn witness_bind() -> SparkServingBindListen {
   SparkServingBindListen { host: "0.0.0.0", port: 11434 }
 }
 
-fn profile_base() -> OllamaServingLaunchProfile {
-  OllamaServingLaunchProfile {
-    bind: witness_bind(),
-    default_context: token_count(count: 4096),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
+fn profile_base() -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    engine: OllamaSingleHost,
+    contract: ServingContract {
+      bind: witness_bind(),
+      default_context: token_count(count: 4096),
+      serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
+    },
   }
 }
 
-fn profile_other_window() -> OllamaServingLaunchProfile {
-  OllamaServingLaunchProfile {
-    bind: witness_bind(),
-    default_context: token_count(count: 8192),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
+fn profile_other_window() -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    engine: OllamaSingleHost,
+    contract: ServingContract {
+      bind: witness_bind(),
+      default_context: token_count(count: 8192),
+      serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
+    },
   }
 }
 

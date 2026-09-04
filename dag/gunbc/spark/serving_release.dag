@@ -7,6 +7,7 @@ import gunbc.model_artifact { ModelArtifact }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
+import std.integer { PositiveInt }
 import std.measure { TokenCount, PositiveSlotCount }
 import gunbc.spark.serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
@@ -81,10 +82,34 @@ type SparkServingRelease {
 // spark_serving_user_unit_content_identity), which the desired and observed sides already share --
 // enumerating these fields into another hand-maintained hash tree would put one fact in two
 // identity domains.
-type OllamaServingLaunchProfile {
+// WHAT A CELL SERVES, SEPARATED FROM HOW IT SERVES IT. These three fields were already
+// engine-agnostic -- a bind address, a working window and a slot count are facts about the SERVICE,
+// true of any engine that offers it -- but they sat under a type named for one engine, so the
+// engine was carried by the type's NAME rather than by a field anything could match on. That is the
+// DESIGN section 3 interface/realization fusion in its quietest form: nothing was wrong with the
+// fields, and yet the deployment this fleet actually runs could not be written down.
+type ServingContract {
   bind: SparkServingBindListen
   default_context: TokenCount
   serving_slots: PositiveSlotCount
+}
+
+// HOW IT IS SERVED -- one realization of the contract above, N of which may exist. Ollama occupies a
+// single host and needs no further facts; a tensor-parallel engine is defined by the size of the
+// group that must move an all-reduce per layer, so world_size is the fact that distinguishes it and
+// the fact every downstream placement question turns on.
+//
+// THE WORLD SIZE IS CARRIED, NOT ASSUMED. A tensor-parallel launch whose group never assembles is
+// the failure this fleet met on the hosts: the engine started before its peer joined and refused
+// with "Tensor parallel size (2) exceeds available GPUs (1)". With the size modeled, that becomes a
+// question the graph can answer before anything launches, rather than a runtime string.
+type ServingEngine
+  = OllamaSingleHost
+  | VllmTensorParallel { world_size: PositiveInt }
+
+type ServingLaunchProfile {
+  contract: ServingContract
+  engine: ServingEngine
 }
 
 // The identity is DERIVED from the release, never authored. It previously carried a NonEmptyStr
@@ -139,7 +164,7 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
-  launch_profile: OllamaServingLaunchProfile
+  launch_profile: ServingLaunchProfile
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what

@@ -1,0 +1,90 @@
+module test.claim.spark.serving_cotenancy_witness
+
+import std.types { Bool, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.spark.serving_release { ServingEngine, OllamaSingleHost, VllmTensorParallel }
+import gunbc.spark.serving_cotenancy {
+  ServingCellMemory, UnifiedPool, DisjointPools,
+  ServingResidency, CellUnoccupied, CellOccupied,
+  ServingCoTenancyDecision, ServingAdmitted, ServingRefusedCellOccupied, ServingRefusedPoolExhausted,
+  serving_cotenancy_decision, serving_cotenancy_admits, serving_cotenancy_refusal_text,
+}
+
+// THE WEDGE OF 2026-09-03, REPLAYED AS A FIXTURE. The numbers are the ones actually observed on the
+// host: a 128 GB unified pool, an incumbent vLLM holding ~100 GB, and an arriving engine asking for
+// the 108 GiB its stale probe told it was free. The witness asserts the arrival is REFUSED, which is
+// what no mechanism did on the night.
+data spark_pool: ByteSize = byte_size(count: 137438953472)
+data incumbent_reservation: ByteSize = byte_size(count: 107374182400)
+data arriving_request: ByteSize = byte_size(count: 116049345740)
+
+fn occupied_cell() -> ServingResidency {
+  CellOccupied { engine: VllmTensorParallel { world_size: 2 }, reserved: incumbent_reservation }
+}
+
+// THE LOAD-BEARING WITNESS. On the night, the arriving engine's own probe said the pool was free and
+// it proceeded. Here occupancy alone refuses, with no probe consulted at all.
+test fn a_second_engine_on_an_occupied_unified_cell_is_refused() -> Bool {
+  !serving_cotenancy_admits(
+    decision: serving_cotenancy_decision(
+      memory: UnifiedPool { capacity: spark_pool },
+      residency: occupied_cell(),
+      requested: arriving_request,
+    ),
+  )
+}
+
+// THE REFUSAL NAMES THE INCUMBENT, because the operator's next action is to find that process and a
+// byte count does not identify it.
+test fn the_refusal_names_the_incumbent_engine() -> Bool {
+  serving_cotenancy_refusal_text(
+    decision: serving_cotenancy_decision(
+      memory: UnifiedPool { capacity: spark_pool },
+      residency: occupied_cell(),
+      requested: arriving_request,
+    ),
+  ).contains("vllm")
+}
+
+// THE DISCRIMINATING CONTROL. The SAME request on an EMPTY cell is admitted -- 108 GiB fits in
+// 128 GB. This is what proves the refusal above is about CO-TENANCY and not about size: had the
+// fence merely been a capacity check, this would refuse too and the witness above would prove
+// nothing. It also states the true fact about that night, which is that the model would have loaded
+// fine on a genuinely empty box.
+test fn the_same_request_on_an_empty_cell_is_admitted() -> Bool {
+  serving_cotenancy_admits(
+    decision: serving_cotenancy_decision(
+      memory: UnifiedPool { capacity: spark_pool },
+      residency: CellUnoccupied,
+      requested: arriving_request,
+    ),
+  )
+}
+
+// OCCUPANCY IS CHECKED BEFORE SIZE, and this pins the order. A request that would ALSO exhaust the
+// pool must still report the occupancy cause, because the two have different remedies: move the
+// placement, versus resize the model.
+test fn occupancy_is_reported_ahead_of_exhaustion() -> Bool {
+  match serving_cotenancy_decision(
+    memory: UnifiedPool { capacity: spark_pool },
+    residency: occupied_cell(),
+    requested: byte_size(count: 999999999999),
+  ) {
+    ServingRefusedCellOccupied { incumbent: _, incumbent_reserved: _ } => true
+    ServingRefusedPoolExhausted { pool: _, requested: _ } => false
+    ServingAdmitted { remaining: _ } => false
+  }
+}
+
+// An oversized request on an empty cell refuses for the OTHER reason, so both arms are reachable.
+test fn an_oversized_request_on_an_empty_cell_reports_exhaustion() -> Bool {
+  match serving_cotenancy_decision(
+    memory: UnifiedPool { capacity: spark_pool },
+    residency: CellUnoccupied,
+    requested: byte_size(count: 999999999999),
+  ) {
+    ServingRefusedPoolExhausted { pool: _, requested: _ } => true
+    ServingRefusedCellOccupied { incumbent: _, incumbent_reserved: _ } => false
+    ServingAdmitted { remaining: _ } => false
+  }
+}
