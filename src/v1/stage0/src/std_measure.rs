@@ -393,6 +393,8 @@ pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
+pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
+
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
 pub type Watt = Rc<Measure<Power, One, i64>>;
@@ -1052,6 +1054,17 @@ pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
 }
 
 pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn power_cord_count(count: Nat) -> PowerCordCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn power_cord_count_value(c: PowerCordCount) -> Nat {
     measure_count(c.clone())
 }
 

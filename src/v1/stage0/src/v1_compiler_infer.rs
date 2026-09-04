@@ -248,6 +248,8 @@ use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
@@ -812,6 +814,7 @@ pub fn nominal_ref_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2005,6 +2008,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
     is_self_recursive: sf.is_self_recursive.clone(),
     has_non_tail_self_call: sf.has_non_tail_self_call.clone(),
     match_pattern: sf.match_pattern.clone(),
+    module_item_kind: sf.module_item_kind.clone(),
     expr_data: sf.expr_data.clone(),
     ident: None,
 }));
@@ -7644,6 +7648,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -8367,6 +8372,7 @@ let fold_callable = Rc::new(Node {
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
+    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 });
@@ -8933,6 +8939,7 @@ pub fn elaborated_expr_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -10075,6 +10082,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     is_self_recursive: receiver.is_self_recursive.clone(),
     has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
     match_pattern: receiver.match_pattern.clone(),
+    module_item_kind: receiver.module_item_kind.clone(),
     expr_data: receiver.expr_data.clone(),
     ident: None,
 })
@@ -11729,6 +11737,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             is_self_recursive: pn.is_self_recursive.clone(),
                             has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
                             match_pattern: pn.match_pattern.clone(),
+                            module_item_kind: pn.module_item_kind.clone(),
                             expr_data: pn.expr_data.clone(),
                         })
                     });
@@ -13458,6 +13467,7 @@ Rc::new(FieldInferResult {
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }));
@@ -13482,6 +13492,7 @@ Rc::new(FieldInferResult {
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -15832,6 +15843,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: Rc::new(ExprData::ExprCall {
                         call_semantics: cs.clone(),
                         descent_evidence: Some(evidence.clone()),
@@ -16144,6 +16156,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16269,6 +16282,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16360,6 +16374,7 @@ Rc::new(BlockAnnotateAcc {
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -16633,6 +16648,7 @@ Rc::new(BlockAnnotateAcc {
                             is_self_recursive: body.is_self_recursive.clone(),
                             has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                             match_pattern: body.match_pattern.clone(),
+                            module_item_kind: body.module_item_kind.clone(),
                             expr_data: body.expr_data.clone(),
                             ident: None,
                         })
@@ -16727,6 +16743,7 @@ Rc::new(BlockAnnotateAcc {
                     is_self_recursive: body.is_self_recursive.clone(),
                     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
                     match_pattern: body.match_pattern.clone(),
+                    module_item_kind: body.module_item_kind.clone(),
                     expr_data: body.expr_data.clone(),
                     ident: None,
                 })
@@ -18587,6 +18604,7 @@ pub fn infer_property_values(
                             is_self_recursive: p.is_self_recursive.clone(),
                             has_non_tail_self_call: p.has_non_tail_self_call.clone(),
                             match_pattern: p.match_pattern.clone(),
+                            module_item_kind: p.module_item_kind.clone(),
                             expr_data: p.expr_data.clone(),
                             ident: None,
                         }),
@@ -18697,6 +18715,7 @@ Rc::new(PropertyInferenceResult {
     is_self_recursive: p.is_self_recursive.clone(),
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
+    module_item_kind: p.module_item_kind.clone(),
     expr_data: p.expr_data.clone(),
     ident: None,
 }),
@@ -18770,6 +18789,7 @@ pub fn infer_transport_node(
                     is_self_recursive: t.is_self_recursive.clone(),
                     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
                     match_pattern: t.match_pattern.clone(),
+                    module_item_kind: t.module_item_kind.clone(),
                     expr_data: t.expr_data.clone(),
                     ident: None,
                 })),
@@ -18822,6 +18842,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: item.module_item_kind.clone(),
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -18957,6 +18978,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 scope.type_env.clone().source_indices.clone(),
                             ),
                             match_pattern: std::option::Option::None,
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -19031,6 +19053,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: item.module_item_kind.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -19100,6 +19123,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19146,6 +19170,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19188,6 +19213,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: item.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -19669,6 +19695,7 @@ pub fn substitute_generics_apply(
                                 is_self_recursive: n.is_self_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
+                                module_item_kind: n.module_item_kind.clone(),
                                 expr_data: n.expr_data.clone(),
                                 ident: None,
                             })
@@ -20244,6 +20271,7 @@ pub fn local_binding_for_item(
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
+                        module_item_kind: item.module_item_kind.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     });
@@ -20279,6 +20307,7 @@ pub fn local_binding_for_item(
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -20315,6 +20344,7 @@ pub fn local_binding_for_item(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: item.module_item_kind.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             });
@@ -20374,6 +20404,7 @@ pub fn local_binding_for_item(
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: item.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -21930,6 +21961,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -21951,6 +21983,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -21975,6 +22008,7 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -22099,6 +22133,7 @@ pub fn build_type_env(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -22133,6 +22168,7 @@ pub fn build_type_env(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -22159,6 +22195,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22180,6 +22217,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22201,6 +22239,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22222,6 +22261,7 @@ pub fn build_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22817,6 +22857,7 @@ pub fn build_type_env_unresolved(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -22845,6 +22886,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22866,6 +22908,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22887,6 +22930,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22908,6 +22952,7 @@ pub fn build_type_env_unresolved(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -23017,6 +23062,7 @@ pub fn build_type_env_unresolved(
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: item.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     });
@@ -23057,6 +23103,7 @@ pub fn build_type_env_unresolved(
                                             is_self_recursive: false,
                                             has_non_tail_self_call: false,
                                             match_pattern: std::option::Option::None,
+                                            module_item_kind: item.module_item_kind.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         });
@@ -24466,6 +24513,7 @@ pub fn typecheck_module(
                             is_self_recursive: item.is_self_recursive.clone(),
                             has_non_tail_self_call: item.has_non_tail_self_call.clone(),
                             match_pattern: item.match_pattern.clone(),
+                            module_item_kind: item.module_item_kind.clone(),
                             expr_data: item.expr_data.clone(),
                             ident: None,
                         })
@@ -25706,6 +25754,7 @@ pub fn compiler_kernel_type_env(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -25740,6 +25789,7 @@ pub fn compiler_kernel_type_env(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -25766,6 +25816,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25787,6 +25838,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25808,6 +25860,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25829,6 +25882,7 @@ pub fn compiler_kernel_type_env(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

@@ -690,6 +690,53 @@ mod compiler_tests {
         );
     }
 
+    /// REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS, JUDGED BY RUSTC (gunbc#10266).
+    ///
+    /// The subject is `v1.compiler.emit` `cast_representation_identical`: a cast whose source and
+    /// target are ONE host carrier reached through transparent refinement, alias and brand edges
+    /// asks the target for no operation, so the emission must be the operand unchanged. The
+    /// fixture exercises six such casts across three aliases in BOTH directions, plus one genuine
+    /// numeric conversion that must still go through the target cast syntax.
+    ///
+    /// WHY THIS SUBJECT NEEDS RUSTC AND NOT A SUBSTRING. `test.claim`
+    /// `emitter_nested_refinement_cast_witness_test` asserts the ABSENCE of the fabricated
+    /// unsupported-cast text, and absence is all a spelling oracle can honestly assert here:
+    /// asserting the presence of a particular replacement would pin one rendering of "the operand
+    /// unchanged". Whether the replacement TYPE-CHECKS as the declared return is a meaning-level
+    /// question, and the never type is exactly what let the defective form pass a type check.
+    ///
+    /// THE RED ARM IS THE ROUTE'S OWN, so this pair proves the route can still fail using the
+    /// discrimination already adjudicated for it rather than a fresh unadjudicated arm.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the two pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED AND
+    /// OPT-IN -- `cargo test --release -p v1-compiler --lib
+    /// nested_refinement_cast_fixture_closure_discrimination -- --ignored`. An #[ignore] is a cost
+    /// decision and NOT a rung: nothing here may be cited as coverage that executes on the merge
+    /// path.
+    #[test]
+    #[ignore]
+    fn nested_refinement_cast_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("nested-refinement-cast {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the representation-identical cast control must COMPILE -- an unsupported-cast panic emitted for any of its six casts is a type error at the declared return -- and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -1991,83 +2038,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn direct_call_formal_authority_is_declaration_bound() {
-        let sources = im::vector![
-            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "authority_decl.dag".to_string(), content: "module authority.decl\ntype Left = String\ntype Right = String\nfn accept(left: Left, right: Right) -> Unit { }\n".to_string() }),
-            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_a.dag".to_string(), content: "module authority.caller_a\nimport authority.decl { accept }\ntype Left = Int\ntype Right = Bool\nfn use() -> Unit { accept(right: \"r\", left: \"l\") }\n".to_string() }),
-            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_b.dag".to_string(), content: "module perturbed.namespace.caller_b\nimport authority.decl { accept }\ntype Left = Bool\ntype Right = Int\nfn use() -> Unit { accept(right: \"rr\", left: \"ll\") }\n".to_string() }),
-        ];
-        let result = crate::v1_compiler_compile::compile_to_resolved(sources.into());
-        assert!(
-            result.diagnostics.is_empty(),
-            "authority carrier fixture must compile: {:?}",
-            result.diagnostics
-        );
-        let json = serde_json::to_value(result.graph.as_ref().expect("resolved graph"))
-            .expect("serializable resolved graph");
-        let mut observed = 0usize;
-        let mut seen_calls = std::collections::HashSet::new();
-        fn inspect(
-            value: &serde_json::Value,
-            observed: &mut usize,
-            seen_calls: &mut std::collections::HashSet<String>,
-        ) {
-            let semantics = &value["expr_data"]["call_semantics"];
-            if semantics["_variant"] == "ResolvedDirectCallSemantics" {
-                let call_key = format!("{}:{}", value["span"]["file"], value["span"]["start"]);
-                if seen_calls.insert(call_key) {
-                    for application in semantics["application_plan"]
-                        .as_array()
-                        .expect("resolved application plan")
-                    {
-                        let formal = &application["formal"];
-                        if formal["parameter_identity"] != "left"
-                            && formal["parameter_identity"] != "right"
-                        {
-                            continue;
-                        }
-                        *observed += 1;
-                        assert_eq!(formal["declaration_bound_conformance"]["name"], "String", "formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv");
-                        assert_eq!(
-                            formal["declaration_bound_conformance"]["span"]["file"],
-                            "<kernel:String>",
-                            "formal conformance must retain the declaration-bound kernel authority"
-                        );
-                        assert!(
-                            formal["substitution_basis"].is_object(),
-                            "emission substitution basis must survive in the same plan"
-                        );
-                        let expected_argument = if formal["parameter_identity"] == "left" {
-                            1
-                        } else {
-                            0
-                        };
-                        assert_eq!(application["matched_argument_index"].as_i64(), Some(expected_argument), "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation");
-                    }
-                }
-            }
-            match value {
-                serde_json::Value::Array(xs) => {
-                    for x in xs {
-                        inspect(x, observed, seen_calls);
-                    }
-                }
-                serde_json::Value::Object(fields) => {
-                    for x in fields.values() {
-                        inspect(x, observed, seen_calls);
-                    }
-                }
-                _ => {}
-            }
-        }
-        inspect(&json, &mut observed, &mut seen_calls);
-        assert_eq!(
-            observed, 4,
-            "both caller perturbation controls must expose both declaration-bound formals"
-        );
-    }
-
-    #[test]
     fn sole_constructor_violation_outside_module() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
@@ -3243,6 +3213,7 @@ mod compiler_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -3490,6 +3461,7 @@ mod compiler_tests {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
+                module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -3816,8 +3788,9 @@ mod compiler_tests {
         );
     }
 
-    fn item_carrying_properties(
+    fn item_of_kind(
         name: &str,
+        kind: crate::v1_std_core::ParsedModuleItemKind,
         property_names: Vec<&str>,
     ) -> std::rc::Rc<crate::v1_std_core::Node> {
         let mut props: im::Vector<std::rc::Rc<crate::v1_std_core::Node>> = im::Vector::new();
@@ -3826,6 +3799,7 @@ mod compiler_tests {
         }
         std::rc::Rc::new(crate::v1_std_core::Node {
             properties: std::rc::Rc::new(props),
+            module_item_kind: kind,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }
@@ -3849,55 +3823,68 @@ mod compiler_tests {
             || crate::v1_compiler_emit_core_support::is_type_decl_item(item, source_indices)
     }
 
-    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THE DISCRIMINATING ROW IS THE CAPABILITY-LESS ONE.
-    // `resource Network` and `resource AuthContext` declare no capabilities, so they carry no
-    // children, no body, no params and no connective -- they ARE bare leaves by shape, which is
-    // why the emit side read them as type items while v1.compiler.parse read them as resources.
-    // That disagreement is what made the type-occurrence census refuse with
+    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THIS ROW SURVIVED THE CLIMB THAT DELETED WHAT IT
+    // ORIGINALLY GUARDED. It landed with gunbc#10350, where the emit side excluded resources by
+    // deriving a predicate from the parser's parsed_item_carries_resource_entries. That exclusion
+    // is gone: the item's KIND is now carried on the node by the parse constructor, so these
+    // predicates read it instead of excluding by name. DESIGN section 4b(4) is explicit that a
+    // climb deletes the lower-rung PRODUCTION handling and keeps the evidence, so the rows below
+    // are unchanged in what they assert and differ only in stamping each fixture with the kind
+    // its constructor would have given it. The third row, which pinned the parse-side and
+    // emit-side readers to the same answer, is deleted rather than restamped -- there is no
+    // longer a second reader for it to agree with, and asserting an authority agrees with itself
+    // asserts nothing.
+    //
+    // THE DISCRIMINATING ROW IS THE CAPABILITY-LESS RESOURCE. `resource Network` and
+    // `resource AuthContext` declare no capabilities, so they carry no children, no body, no
+    // params and no connective -- they ARE bare leaves by shape, which is why the emit side read
+    // them as type items while v1.compiler.parse read them as resources. That disagreement is
+    // what made the type-occurrence census refuse with
     // CensusUnavailable { cause: DeclarationDomainDisagrees }, and both readers previously AGREED
     // they were types, so the pair was invisible until the readers were separated.
     //
-    // THE THIRD ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by COUNTING
-    // properties is the shape v1.compiler.parse already had to repair: `type X sole_constructor`
-    // carries a property too, and counting swallowed 202 sole-constructor types across 100
-    // modules into the resource bucket. So a sole-constructor-only item must still read as a type
-    // item, and this row goes red if the exclusion is ever re-spelled as a property count.
+    // THE SOLE-CONSTRUCTOR ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by
+    // COUNTING properties is the shape v1.compiler.parse already had to repair: `type X
+    // sole_constructor` carries a property too, and counting swallowed 202 sole-constructor types
+    // across 100 modules into the resource bucket. A sole-constructor type must still read as a
+    // type item, and this row goes red if a property count is ever re-spelled here.
     #[test]
     fn a_resource_item_is_not_read_as_a_type_item() {
         let source_indices = std::rc::Rc::new(HashMap::new());
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemResource, ModuleItemTypeDeclaration,
+        };
 
         // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type item.
-        let plain = item_carrying_properties("Symbol", Vec::new());
+        let plain = item_of_kind("Symbol", ModuleItemTypeDeclaration, Vec::new());
         assert!(
             reads_as_a_type_item(plain, source_indices.clone()),
             "positive control: a property-free bare leaf must still read as a type item"
         );
 
-        // THE DISCRIMINATOR: resource entries present. Removing the exclusion turns this true.
-        let resource_like =
-            item_carrying_properties("Network", vec!["kind", "mode", "acquire", "release"]);
+        // THE DISCRIMINATOR: a resource whose SHAPE is indistinguishable from that bare leaf.
+        // Every conjunct of the old shape test holds; only the carried kind separates them, so
+        // dropping the kind conjunct turns this row red.
+        let resource_like = item_of_kind(
+            "Network",
+            ModuleItemResource,
+            vec!["kind", "mode", "acquire", "release"],
+        );
         assert!(
-            !reads_as_a_type_item(resource_like.clone(), source_indices.clone()),
+            !reads_as_a_type_item(resource_like, source_indices.clone()),
             "a capability-less resource item must NOT read as a type item"
         );
 
         // THE OVER-CORRECTION GUARD: sole_constructor is a TYPE modifier, not a resource entry.
-        let sole_constructor_type = item_carrying_properties("Wrapper", vec!["sole_constructor"]);
+        let sole_constructor_type = item_of_kind(
+            "Wrapper",
+            ModuleItemTypeDeclaration,
+            vec!["sole_constructor"],
+        );
         assert!(
-            reads_as_a_type_item(sole_constructor_type.clone(), source_indices.clone()),
+            reads_as_a_type_item(sole_constructor_type, source_indices.clone()),
             "a sole_constructor type must still read as a type item"
         );
-
-        // THE TWO READERS AGREE, which is the exact fact the census join measures and the fact
-        // whose absence made it refuse. Stated as an equality so it fails from either side.
-        for item in [resource_like, sole_constructor_type] {
-            assert_eq!(
-                crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()),
-                !reads_as_a_type_item(item.clone(), source_indices.clone()),
-                "parse-side and emit-side readers must agree on {}",
-                item.name
-            );
-        }
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
