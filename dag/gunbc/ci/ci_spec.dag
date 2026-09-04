@@ -1569,9 +1569,11 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 // being green on a merge candidate IS the statement that every path this invoke would write is
 // already at its fixed point -- hence no git diff, and no second heal.
 //
-// TWO BOUNDARIES, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The phase covers the
-// REGISTRY, roughly 35 artifacts including DESIGN.md, ROADMAP.md and the workflow emissions; the
-// stage0 mirror population is the separate RegenPhase. A generated `.rs` outside both --
+// TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
+// GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
+// DESIGN.md, ROADMAP.md and the workflow emissions) AND the stage0 mirror population formerly
+// adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
+// their independently-green terminal outcomes are gone. A generated `.rs` outside both --
 // `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
 // landed there without its projection and merged green. That is a real coverage gap about a THIRD
 // population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
