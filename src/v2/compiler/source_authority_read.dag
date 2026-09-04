@@ -184,16 +184,16 @@ fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<Dag
     SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
       outcome_accepted(value: witness)
     SourceRefFilesystemReadRefused { ref: ref, error: error } =>
-      outcome_rejected(
-        d: source_ref_read_failed_diagnostic(ref: ref, error: error)
-      )
+      Rejected {
+        diagnostics: source_ref_read_failed_diagnostic(ref: ref, error: error)
+      }
     SourceRefReadHashMismatch { ref: ref, expected: _, observed: observed } =>
-      outcome_rejected(
-        d: source_ref_content_hash_mismatch_diagnostic(
+      Rejected {
+        diagnostics: source_ref_content_hash_mismatch_diagnostic(
           ref: ref,
           observed: observed
         )
-      )
+      }
   }
 }
 
@@ -243,15 +243,14 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
       match source_ref_read_result_to_outcome(result: r) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: _, diagnostics: _ } =>
-          outcome_rejected(
-            d: source_ref_read_failed_diagnostic(
+          Rejected {
+            diagnostics: source_ref_read_failed_diagnostic(
               ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
               error: "internal: read-through accepted without ingest row"
             )
-          )
+          }
       }
     SourceRootIngestBuildOk { ingest: ingest } =>
       outcome_accepted(value: ingest)
   }
 }
-
