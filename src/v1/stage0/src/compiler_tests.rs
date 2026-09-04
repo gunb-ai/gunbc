@@ -3245,7 +3245,8 @@ mod compiler_tests {
             );
             assert_eq!(
                 recognized, minted,
-                "recognizer and provenance mint must give one verdict for `{name}`"
+                "recognizer and provenance mint must give one verdict for `{}`",
+                name
             );
         }
 
