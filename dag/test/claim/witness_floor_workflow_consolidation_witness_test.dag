@@ -2,7 +2,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -288,24 +288,25 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 
 // THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
 //
-// It replaces w_RED_fabric_evidence_failure_reaches_required_context, whose subject was the
-// gating edge that gunbc.rung_drop `fabric_evidence_gating` withdraws. That row is not
-// retired as obsolete -- its subject is real and its restoration is the drop's trigger -- it is
-// asserting a fact that is deliberately no longer true, so keeping it would have been a red
-// against the declared state rather than evidence about it.
+// It replaces w_RED_fabric_evidence_executes_without_gating, whose subject was the lane still
+// EXECUTING while `gunbc.rung_drop` `fabric_evidence_gating` withheld only its merge block. The
+// 2026-09-04 runner-capacity ruling deleted the job itself, so that row asserted a fact that is
+// deliberately no longer true. It is not retired as obsolete -- the lane's restoration is still
+// the drop's trigger -- it is restated at the subject the drop now covers.
 //
-// What survives is the half the drop does NOT withdraw: the calibration keeps executing on every
-// push and pull request, so the evidence stream is unbroken and only the merge block is gone. A
-// diff that deletes the job to "finish" the drop authors RED here; so does one that restores the
-// needs edge or the FABRIC_EVIDENCE binding without also retiring the drop, because the second
-// and third conjuncts forbid exactly the two spellings the gating form emits.
-test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
+// SO THE CLAIM IS ABSENCE, AND ABSENCE OF ALL THREE SPELLINGS RATHER THAN ONE. A diff that
+// re-adds the job authors RED here; so does one that restores only the `needs` edge or only the
+// FABRIC_EVIDENCE binding, because a lane that gates without running is the fail-open a skipped
+// required check produces. The row goes green again only together with the drop's retirement,
+// which is a measured wall and not a pull request.
+test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("  ", concat(fabric_evidence_job_id, ":")))
-        && string_contains(s: yml, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
+      !string_contains(s: yml, pattern: "\n  fabric-evidence:")
         && !string_contains(s: yml, pattern: "FABRIC_EVIDENCE")
-        && !string_contains(s: yml, pattern: concat(", ", concat(fabric_evidence_job_id, "]")))
+        && !string_contains(s: yml, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
+        && !string_contains(s: yml, pattern: "\n  rust-unit-tests:")
+        && !string_contains(s: yml, pattern: "\n  emit-copy-qualification-battery:")
     WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
