@@ -1003,37 +1003,81 @@ pub struct TransitionAdmission {
 /// base both carry it, no run can produce these deltas, and all of them report stale -- which
 /// refuses every unrelated PR, the shape recorded for the 53 and the 314 above. The shrink is the
 /// fix, not housekeeping.
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04, gunbc#10197), PAID ON THE SAME RULE, READ THE SAME WAY,
+/// AND AT FULL IDENTITY GRAIN RATHER THAN ON THE TRIGGER SENTENCE. All 142
+/// `spark OOBE vendor-interface consolidation gunbc#10254` rows are deleted, and the
+/// SPARK_OOBE_VENDOR_INTERFACE_LABEL that named them goes with them, because a label with no rows
+/// is a second name for an empty set.
 ///
-/// TWENTY-SIXTH DISSOLUTION (2026-09-04). THAT TRIGGER IS NOW PAID: #10254 is on main, and all 142
-/// spark rows are deleted here. Their consumption was READ FROM THE BASE, not taken from the run
-/// that reported it -- for every one of the 142, the row's own module imports the row's spelling
-/// from `extdeps.systems.nvidia_dgx_spark_setup` by name, across both
-/// `gunbc.spark.oobe_screen_observation` and its witness, so no run can produce those deltas. The
-/// roster reached this change holding nothing but those 142; it is now the 30 below and nothing
-/// else.
+/// The entry directly above states the trigger -- "these rows go when #10254 merges" -- and #10254
+/// merged as deb3c86b96e, which is this branch's merge base. That sentence is NOT what authorized
+/// the deletion. Each of the 142 rows was joined against main's tree by its own (module, spelling,
+/// target) triple: for every row, the named module's source at deb3c86b96e already imports that
+/// spelling from `extdeps.systems.nvidia_dgx_spark_setup` -- 14 rows in
+/// gunbc.spark.oobe_screen_observation and 128 in
+/// test.claim.spark.spark_oobe_screen_observation_witness, zero rows unbound. Base and head
+/// therefore agree on all 142, no run can produce those deltas, and a surviving row could only be
+/// stale.
 ///
-/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
-/// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
-/// supersession -- which is what the module does -- and two-commit merging, which it does not do
-/// and which `gunbc.scm.ancestry` is the subject of. The nouns move to their own authority,
-/// `gunbc.scm.proposal`, which deliberately depends on neither `ObjectStore` nor `ObjectId`; the
-/// operation over them becomes `gunbc.scm.role_requirement_integration`.
+/// THE FIRST RUN OF THAT JOIN REPORTED 128 UNBOUND AND WAS WRONG, and it is recorded because the
+/// failure is silent by construction. The witness module's path was guessed from its module path as
+/// `.../spark_oobe_screen_observation_witness.dag`; the real file is
+/// `..._witness_test.dag`. Reading a path that does not exist returns empty, and empty reads exactly
+/// like "the import is absent" -- the answer that would have had me CARRY 128 consumed rows.
+/// The repair is that a source read asserts the file is non-empty before its absence is allowed to
+/// mean anything.
+///
+/// MY OWN TWENTY-FOURTH ENTRY IS DROPPED IN FAVOUR OF MAIN'S. Both sides deleted the one
+/// `gunbc#10218` row, independently and on the same base check, so the deletion is taken once and
+/// narrated once -- the rule main's TWENTY-FOURTH states for the six rows before it, applied to the
+/// entry that would otherwise double-record it.
+///
+///
+/// TWENTY-SEVENTH DISSOLUTION (2026-09-04, gunbc#10355), ON THE RULE THE TWENTY-SIXTH JUST PAID AND
+/// WITH ITS RECORDED BUG TREATED AS THE METHOD. All 16 `rung-drop per-row file split gunbc#10197`
+/// rows are deleted, and RUNG_DROP_PER_ROW_SPLIT_LABEL goes with them, a label naming no rows being
+/// a second name for an empty set. #10197 is on main and main is this branch's base, so the prior
+/// the entry above states -- an incoming row has already landed -- is the one that applies.
+///
+/// EACH ROW WAS JOINED AGAINST THE TREE BY ITS OWN (module, spelling, target) TRIPLE, and all 16
+/// bind: the named module already imports that spelling from that target, across
+/// gunbc.design_ledgers, tools.ci_gates and the rung-drop roster's readers. Zero rows unbound, so
+/// base and head agree, no run can produce those deltas, and a surviving row could only be stale.
+///
+/// THE TWENTY-SIXTH'S PATH BUG IS WHY THAT JOIN WAS RUN TWICE. Resolving a module to a file by
+/// TRANSLITERATING ITS MODULE PATH reproduces exactly the silent failure recorded above: the first
+/// pass resolved `tools.ci_gates` to `dag/tools/ci_gates.dag`, which does not exist, and an empty
+/// read is indistinguishable from an absent import -- the answer that would have had me carry a
+/// consumed row. The module actually declares itself in `dag/gunbc/instruments/ci_gates.dag`. The
+/// second pass indexed every `.dag` by its own `module` DECLARATION and re-joined all 16, which is
+/// the only form of this check that is not guessing.
+///
+/// MY OWN TWENTY-SIXTH ENTRY IS DROPPED IN FAVOUR OF MAIN'S. Both sides deleted the same 142 spark
+/// rows, independently and on the same base join; one event, one record, which is the rule main's
+/// TWENTY-FOURTH states and its TWENTY-SIXTH just applied to itself.
+///
+/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering two
+/// questions, and the spelling `merge` was carrying two contracts: roles, requirements and
+/// supersession -- what the module does -- and two-commit merging, which it does not do and which
+/// `gunbc.scm.ancestry` is the subject of. The nouns move to their own authority,
+/// `gunbc.scm.proposal`, which depends on neither `ObjectStore` nor `ObjectId`; the operation over
+/// them becomes `gunbc.scm.role_requirement_integration`.
 ///
 /// EVERY ROW BELOW IS A PURE RELOCATION OF A NOUN THE NEW AUTHORITY OWNS -- `Proposal`,
 /// `Requirement`, `RequireBinding`, `RequireBindingAbsent`, `requirement_role`. No declaration
-/// changes what it denotes: the consumers bind the same spellings through the module that now owns
-/// them, so the wall reports `TargetChanged` at each binding site. The rows are enumerated by exact
-/// identity rather than matched on the module pair, for the reason the entry above gives -- a
-/// pattern would admit a genuine rebind that happened to land in the same two modules.
+/// changes what it denotes: consumers bind the same spellings through the module that now owns them,
+/// so the wall reports `TargetChanged` at each binding site. Rows are enumerated by exact identity
+/// rather than matched on the module pair -- a pattern would admit a genuine rebind that happened to
+/// land in the same two modules.
 ///
 /// ONLY THE `gunbc.scm.proposal` HALF NEEDS ADMISSION. The module rename is a module removal plus a
 /// module addition, which the wall classifies on its own rows; what needs naming here is the 30
 /// binding sites whose TARGET moved while their spelling did not.
 ///
-/// TRIGGER: these rows go when #10355 merges. The base will then bind each spelling to
+/// TRIGGER: these rows go when #10355 merges. The base then binds each spelling to
 /// `gunbc.scm.proposal`, the deltas stop being producible, and they are owed deletion by the next
-/// roster-touching change -- decidable from the tree by the same import read performed above, and
-/// so not to be guessed.
+/// roster-touching change -- decidable by the module-declaration join above, and so not to be
+/// guessed.
 const SCM_PROPOSAL_VOCABULARY_LABEL: &str =
     "gunbc#10355 SCM proposal-vocabulary split: the proposal nouns move from gunbc.scm.merge to \
      gunbc.scm.proposal";
