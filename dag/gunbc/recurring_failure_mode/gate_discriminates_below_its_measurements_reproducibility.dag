@@ -31,7 +31,11 @@ data gate_discriminates_below_its_measurements_reproducibility: RecurringFailure
 
     "RECOGNITION RULE: FOR EVERY BLOCKING THRESHOLD, ASK WHAT THE SAME SUBJECT MEASURES ACROSS TWO RUNS, AND COMPARE THE SPREAD TO THE DISTANCE BETWEEN THE POPULATION AND THE LINE. If the p90 inflation moves any row across, that row's verdict is a fact about the machine. The tell available without a second run: a blocking line denominated in a CLOCK beside a published DETERMINISTIC work measure that nothing compares against. ",
 
-    "RUNG FOUND AT: MITIGATABLE. The harm is contained only by a human noticing the verdict is not reproducible and rerunning, which also means a genuine regression and a jitter crossing are handled by the same gesture. ",
+    "**RUNG FOUND AT: BELOW THE LADDER, NOT MITIGATABLE, AND AN EARLIER REVISION OF THIS ROW SAID MITIGATABLE UNTIL REVIEW REFUSED IT (codex/gpt-5.6-sol, review 59774).** Rung 1 requires harm CONTAINED by total operations, typed outcomes, bounds, rollback or isolation. Nothing here contains anything: the gate emits a REFUSAL THAT IS NOT A PROPERTY OF THE SUBJECT, which is a fabricated verdict, and DESIGN section 4b places silent wrongness outside the ladder and forbids it outright. ",
+
+    "**THE ONLY THING RESEMBLING A CONTAINMENT IS THE RERUN, AND THIS ROW ALREADY ESTABLISHES THAT THE RERUN IS THE SECOND HALF OF THE DEFECT.** It handles a jitter crossing and a genuine regression with the same gesture, it overwrites the failed attempt's conclusion, and it leaves no record that a verdict was reversed. Calling that containment would be citing the erasure mechanism as the mitigation -- and the inflation was written by the author of the paragraph immediately above that says so. ",
+
+    "THE CORRECTION IS RECORDED RATHER THAN QUIETLY APPLIED, because rung inflation inside a row ABOUT INSTRUMENTS OVERSTATING THEMSELVES is the specimen the class most needs. A class that reaches the ladder only by ceasing to fabricate has not climbed a rung; it has become eligible to be ranked. ",
 
     "ATTAINABLE CEILING: MECHANICALLY PREVENTABLE, and honestly not higher. Wall-clock and CPU-clock costs on shared hardware are external facts, so no construction makes an unreproducible measurement reproducible -- DESIGN's OUTSIDE THE MODELED GUARANTEE column. What IS decidable is whether a gate is permitted to discriminate at a resolution its input cannot support. ",
 
