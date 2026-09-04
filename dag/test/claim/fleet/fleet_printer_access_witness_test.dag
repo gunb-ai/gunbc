@@ -8,10 +8,12 @@ import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus,
   PrinterAccessCodeLocusFound,
   PrinterAccessCodeLocusUnknown,
+  PrinterAccessCodeLocusConflict,
   printer_01_access_code_locus,
   printer_02_access_code_locus,
   printer_access_code_loci,
   printer_access_code_locus,
+  printer_access_code_locus_in,
 }
 
 fn roster_has_printer(rows: List<PrinterAccessCodeLocus>, printer: PhysicalAssetIdentity) -> Bool {
@@ -55,6 +57,18 @@ test fn an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus() -> Bo
   match printer_access_code_locus(printer: unknown) {
     PrinterAccessCodeLocusUnknown { printer: p } => p == unknown
     PrinterAccessCodeLocusFound { locus: _ } => false
+    PrinterAccessCodeLocusConflict { printer: _, matches: _ } => false
+  }
+}
+
+test fn duplicate_printer_loci_refuse_instead_of_taking_the_last_row() -> Bool {
+  match printer_access_code_locus_in(
+    rows: [printer_01_access_code_locus, printer_01_access_code_locus],
+    printer: printer_01,
+  ) {
+    PrinterAccessCodeLocusConflict { printer: p, matches: n } => p == printer_01 && n == 2
+    PrinterAccessCodeLocusUnknown { printer: _ } => false
+    PrinterAccessCodeLocusFound { locus: _ } => false
   }
 }
 
@@ -67,5 +81,6 @@ test fn fleet_printer_access_witnesses_hold() -> Bool {
   printer_access_code_locus_roster_is_the_exact_declared_population()
     && each_printer_locus_names_its_exact_secret_manager_version()
     && an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus()
+    && duplicate_printer_loci_refuse_instead_of_taking_the_last_row()
     && both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
 }

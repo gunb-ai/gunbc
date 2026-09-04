@@ -1,6 +1,6 @@
 module gunbc.fleet_printer_access
 
-import std.types { List }
+import std.types { Int, List }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.uri { Uri, uri_https }
@@ -30,6 +30,7 @@ type PrinterAccessCodeLocus {
 type PrinterAccessCodeLocusLookup
   = PrinterAccessCodeLocusFound { locus: PrinterAccessCodeLocus }
   | PrinterAccessCodeLocusUnknown { printer: PhysicalAssetIdentity }
+  | PrinterAccessCodeLocusConflict { printer: PhysicalAssetIdentity, matches: Int }
 
 // DISCLOSURE STANDING. printer-01's former access code was relayed through an agent transcript on
 // 2026-09-04 and then rotated by toggling LAN Only Mode. That event reissues the code, which is why
@@ -71,11 +72,27 @@ data printer_access_code_loci: List<PrinterAccessCodeLocus> = [
 // UNKNOWN PRINTERS REFUSE BY NAME. There is no caller-supplied fallback SecretRef: spelling a
 // plausible secret id for a printer absent from the roster would turn a missing binding into a 403
 // or 404 at the transport boundary and send the operator debugging the wrong system.
+fn printer_access_code_locus_in(
+  rows: List<PrinterAccessCodeLocus>,
+  printer: PhysicalAssetIdentity,
+) -> PrinterAccessCodeLocusLookup {
+  let matching = filter(rows, row => row.printer == printer)
+  let matches = length(matching)
+  if matches == 0 {
+    PrinterAccessCodeLocusUnknown { printer: printer }
+  } else {
+    if matches > 1 {
+      PrinterAccessCodeLocusConflict { printer: printer, matches: matches }
+    } else {
+      fold(
+        matching,
+        init: PrinterAccessCodeLocusUnknown { printer: printer },
+        f: fn(_, row) { PrinterAccessCodeLocusFound { locus: row } },
+      )
+    }
+  }
+}
+
 fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCodeLocusLookup {
-  let matching = filter(printer_access_code_loci, row => row.printer == printer)
-  fold(
-    matching,
-    init: PrinterAccessCodeLocusUnknown { printer: printer },
-    f: fn(_, row) { PrinterAccessCodeLocusFound { locus: row } },
-  )
+  printer_access_code_locus_in(rows: printer_access_code_loci, printer: printer)
 }
