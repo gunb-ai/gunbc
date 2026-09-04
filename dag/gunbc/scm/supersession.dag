@@ -42,7 +42,7 @@ import std.decl_ref { DeclarationRef }
 import gunbc.scm.object_store { ObjectId, object_id_eq }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtWrongKind,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequirementAtWrongKind,
 }
 
 // A NAMED PLACE HOLDING EXACTLY ONE GENERATION. The slot is the unit supersession destroys, so it
@@ -151,7 +151,7 @@ fn observe_generation(
 //     In `gunbc.scm.commit_closure_json_v2`: `closure_document_load_standing` classifies one format's
 //       refusals, descending through `MemberReadRefusal`'s four modes and `TargetReferenceRefusal`'s
 //       four; `loaded_closure_standing` answers `LoadComplete`, `LoadPartial`, or
-//       `LoadRequiresNodeAtWrongKind`; `closure_document_standing` is the join of the two and
+//       `LoadRequirementAtWrongKind`; `closure_document_standing` is the join of the two and
 //       mints no standing of its own.
 //     In `gunbc.scm.repository_envelope`: `repository_envelope_load_standing`.
 //     In `gunbc.scm.object_table_json`: `object_table_load_standing`.
@@ -170,7 +170,7 @@ fn observe_generation(
 //
 //   WHAT THAT LEAVES STANDING, at arm grain rather than at the grain of "success". The
 //     `ClosureDocLoaded` branch cannot authorize supersession: `loaded_closure_standing` returns only
-//     `LoadComplete`, `LoadPartial` or `LoadRequiresNodeAtWrongKind`, and none permits. The arm
+//     `LoadComplete`, `LoadPartial` or `LoadRequirementAtWrongKind`, and none permits. The arm
 //     is named rather than the word "succeeded" because this module deliberately separates a document
 //     that DECODED from one whose standing answers `standing_loaded` true -- a requirement sitting on
 //     authored source decodes fine and is not loaded -- and a sentence about success blurs exactly
@@ -206,8 +206,8 @@ fn standing_permission_refusal(standing: LoadStanding) -> SupersessionRefusalCau
     LoadPartial => Present { value: StandingDoesNotPermit { standing: LoadPartial } }
     LoadUnsupportedProtocol =>
       Present { value: StandingDoesNotPermit { standing: LoadUnsupportedProtocol } }
-    LoadRequiresNodeAtWrongKind =>
-      Present { value: StandingDoesNotPermit { standing: LoadRequiresNodeAtWrongKind } }
+    LoadRequirementAtWrongKind =>
+      Present { value: StandingDoesNotPermit { standing: LoadRequirementAtWrongKind } }
     LoadIdentityCollision =>
       Present { value: StandingDoesNotPermit { standing: LoadIdentityCollision } }
   }

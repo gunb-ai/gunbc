@@ -177,6 +177,32 @@ fn build_grafted_store() -> ObjectStore {
   }
 }
 
+// A NODE THE ROOT DOES NOT REACH, which is the whole discriminator for what a closure IMAGE contains.
+fn unrelated_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^closure_witness_unrelated } },
+    children: [],
+  )
+}
+
+type GraftedWithUnrelated {
+  store: ObjectStore
+  unrelated: ObjectId
+}
+
+// THE GRAFTED STORE PLUS ONE UNREACHABLE NODE, and without that second object the image claims below
+// cannot discriminate at all: a grafted store holds exactly the root, so "return the root-reachable
+// nodes" and "return every semantic node in the supplied store" produce the SAME one-element answer
+// and both satisfy a fixture built from it. The unrelated node is what makes those two
+// implementations disagree.
+fn build_grafted_store_with_unrelated() -> GraftedWithUnrelated {
+  match store_node(store: build_grafted_store(), n: unrelated_node()) {
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      GraftedWithUnrelated { store: build_grafted_store(), unrelated: i }
+    Stored { store: s, node: n } => GraftedWithUnrelated { store: s, unrelated: n.locator }
+  }
+}
+
 // TWO UNCONTAINED CHILDREN, IN ORDER, and this fixture exists because the ones above cannot see
 // order at all. names_exactly is a membership fold and every other closure fixture asserts exactly
 // ONE missing identity -- and a one-element list reversed is itself. So the unresolved list could
@@ -1317,10 +1343,14 @@ test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_populat
 // closure while the ordinary one ran the census -- so narrowing one and not the other would have
 // left partial documents silently carrying the whole repository, with every other claim in this file
 // still green. Mutating either route back to the raw store takes this red.
+// IT EXCLUDES AN UNREACHABLE NODE, and that exclusion is the claim. Asserting only "one node, and it
+// is the root" over a store that holds nothing else is satisfied identically by the correct
+// implementation and by one that ships every semantic node the supplied store happens to contain --
+// which is exactly the regression this exists to catch, and was the shape it shipped in.
 test fn both_admission_routes_derive_the_same_population() -> Bool {
   let full = build_full_store()
-  let grafted = build_grafted_store()
-  let closure = CommitClosure { store: grafted, root: full.root }
+  let grafted = build_grafted_store_with_unrelated()
+  let closure = CommitClosure { store: grafted.store, root: full.root }
   match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
     ClosureCompleteSoNothingToAdmit => false
     ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
@@ -1330,13 +1360,21 @@ test fn both_admission_routes_derive_the_same_population() -> Bool {
         WellKinded { admitted: ordinary, unresolved: _ } =>
           match well_kinded_nodes(admitted: admitted_well_kinded(admitted: a)) {
             partial_nodes =>
-              (list_length(items: partial_nodes)
-                == list_length(items: well_kinded_nodes(admitted: ordinary)))
-                && (list_length(items: partial_nodes) == 1)
-                && nodes_hold(
-                  nodes: partial_nodes,
-                  identity: node_target_locator(target: full.root),
-                )
+              match well_kinded_nodes(admitted: ordinary) {
+                ordinary_nodes =>
+                  (list_length(items: partial_nodes) == 1)
+                    && (list_length(items: ordinary_nodes) == 1)
+                    && nodes_hold(
+                      nodes: partial_nodes,
+                      identity: node_target_locator(target: full.root),
+                    )
+                    && nodes_hold(
+                      nodes: ordinary_nodes,
+                      identity: node_target_locator(target: full.root),
+                    )
+                    && !nodes_hold(nodes: partial_nodes, identity: grafted.unrelated)
+                    && !nodes_hold(nodes: ordinary_nodes, identity: grafted.unrelated)
+              }
           }
       }
   }

@@ -22,7 +22,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtWrongKind,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequirementAtWrongKind,
   standing_loaded,
 }
 import std.decl_ref { DeclarationRef }
@@ -151,7 +151,7 @@ fn standing_tag(s: LoadStanding) -> Int {
     LoadUnsupportedProtocol => 2
     LoadDocumentMalformed => 3
     LoadIdentityCollision => 4
-    LoadRequiresNodeAtWrongKind => 5
+    LoadRequirementAtWrongKind => 5
   }
 }
 
@@ -182,7 +182,7 @@ test fn a_partial_load_is_never_supersedable() -> Bool {
 // vacuously.
 //
 // THE CLAIM NAMES THE WHOLE POPULATION, SO IT MUST CHECK IT. This said "the three refusals" and
-// checked two, omitting `LoadRequiresNodeAtWrongKind` -- which meant the standing added by this
+// checked two, omitting `LoadRequirementAtWrongKind` -- which meant the standing added by this
 // very branch could have permitted replacement with the claim still green. LoadComplete and
 // LoadPartial are checked by a_partial_load_is_never_supersedable above; the remaining three are
 // checked here, so the five are covered between the pair rather than by either alone.
@@ -190,7 +190,7 @@ test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
   ls_permits(standing: LoadDocumentMalformed)
     && !ls_permits(standing: LoadUnsupportedProtocol)
     && !ls_permits(standing: LoadIdentityCollision)
-    && !ls_permits(standing: LoadRequiresNodeAtWrongKind)
+    && !ls_permits(standing: LoadRequirementAtWrongKind)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 
@@ -345,7 +345,7 @@ test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -
 // is exported and takes any store, and a REPOSITORY store is genuinely mixed -- nodes, authored
 // sources and manifests under one population. So asking the standing of a commit's closure over a
 // repository store is an ordinary call that can meet a file at a semantic requirement, and
-// LoadRequiresNodeAtWrongKind is reachable exactly there rather than through any document.
+// LoadRequirementAtWrongKind is reachable exactly there rather than through any document.
 
 fn ls_file_text() -> String {
   "a carried file\n"
@@ -389,9 +389,9 @@ test fn a_requirement_over_a_carried_file_is_not_partial() -> Bool {
   fx.ok
     && standing_eq(
       a: loaded_closure_standing(store: fx.store, root: fx.root),
-      b: LoadRequiresNodeAtWrongKind,
+      b: LoadRequirementAtWrongKind,
     )
-    && !standing_loaded(standing: LoadRequiresNodeAtWrongKind)
+    && !standing_loaded(standing: LoadRequirementAtWrongKind)
 }
 
 // AND IT DOES NOT PERMIT SUPERSESSION. The document read fine and what it ASSERTS is unsatisfiable,

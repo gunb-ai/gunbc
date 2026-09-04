@@ -36,6 +36,9 @@ import gunbc.scm.object_store {
   CorpusManifestDuplicatePath,
   CorpusManifestLocatorCollision,
   store_corpus_manifest,
+  find_corpus_manifest_record,
+  CorpusManifestFound,
+  authored_source_target_locator,
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
   store_authored_source,
@@ -567,7 +570,26 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
 // this is exactly the state the source-only position index turns into a MISS rather than a hit. A
 // miss becomes the uncontained arm, which claims the object is simply not carried here; it is, and
 // no fetch repairs an occupied locator.
-fn scm_env_manifest_over(store: ObjectStore, locator: ObjectId) -> ObjectStore {
+// THE FIXTURE REPORTS ITS OWN FAILURE RATHER THAN FALLING BACK TO ITS INPUT. An earlier version
+// returned the ORIGINAL store when the manifest could not be stored, so a construction failure
+// silently turned the absence control below into an empty-repository control -- still green, and no
+// longer about manifests at all. That is the fabricated-plausible-output failure wearing a fixture's
+// clothes, and it matters most against the mutation the control exists to catch: an implementation
+// that refused manifests with genuinely missing sources would have kept the control green through
+// that fallback.
+// A LOCATOR NO FIXTURE HERE STORES, used only where a construction failed and `built` is already
+// false. It exists so the failure arm carries a value at all; every claim reads `built` first.
+fn scm_env_absent_identity() -> ObjectId {
+  node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_two()).identity)
+}
+
+type ScmEnvManifestFixture {
+  store: ObjectStore
+  manifest: ObjectId
+  built: Bool
+}
+
+fn scm_env_manifest_over(store: ObjectStore, locator: ObjectId) -> ScmEnvManifestFixture {
   match store_corpus_manifest(
     store: store,
     entries: [
@@ -577,34 +599,99 @@ fn scm_env_manifest_over(store: ObjectStore, locator: ObjectId) -> ObjectStore {
       },
     ],
   ) {
-    CorpusManifestStored { store: with_manifest, manifest: _ } => with_manifest
-    CorpusManifestDuplicatePath { path: _ } => store
-    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => store
+    CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+      ScmEnvManifestFixture { store: with_manifest, manifest: manifest.locator, built: true }
+    CorpusManifestDuplicatePath { path: _ } =>
+      ScmEnvManifestFixture { store: store, manifest: scm_env_absent_identity(), built: false }
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmEnvManifestFixture { store: store, manifest: scm_env_absent_identity(), built: false }
+  }
+}
+
+// THE EMPTY MANIFEST, whose locator is what the manifest-occupied claim points a second manifest at.
+fn scm_env_empty_manifest(store: ObjectStore) -> ScmEnvManifestFixture {
+  match store_corpus_manifest(store: store, entries: []) {
+    CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+      ScmEnvManifestFixture { store: with_manifest, manifest: manifest.locator, built: true }
+    CorpusManifestDuplicatePath { path: _ } =>
+      ScmEnvManifestFixture { store: store, manifest: scm_env_absent_identity(), built: false }
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmEnvManifestFixture { store: store, manifest: scm_env_absent_identity(), built: false }
+  }
+}
+
+fn scm_env_refused_manifest_source(outcome: RepositoryEncodeOutcome) -> ObjectId? {
+  match outcome {
+    RepositoryEncoded { value: _ } => none
+    RepositoryEncodeRefused { cause: cause } =>
+      match cause {
+        RepositoryEncodeManifestSourceIsSemanticNode { source: source } => Present { value: source }
+        RepositoryEncodeManifestSourceIsCorpusManifest { source: source } => Present { value: source }
+        _ => none
+      }
+  }
+}
+
+// IT ASSERTS THE LOCATOR, NOT ONLY THE TAG. A refusal that fired on the right class while naming the
+// wrong object sends a reader to the wrong place, which is the located-refusal claim this module
+// makes everywhere else.
+fn scm_env_refusal_names_source(outcome: RepositoryEncodeOutcome, expected: ObjectId) -> Bool {
+  match scm_env_refused_manifest_source(outcome: outcome) {
+    Absent => false
+    Present { value: found } => object_id_eq(left: found, right: expected)
   }
 }
 
 test fn scm_env_a_manifest_source_at_a_program_refuses_rather_than_going_uncontained() -> Bool {
   let put = scm_env_put(store: empty_store(), n: scm_env_program_one())
-  let store = scm_env_manifest_over(
-    store: put.store,
-    locator: node_target_locator(target: put.identity),
+  let locator = node_target_locator(target: put.identity)
+  let fixture = scm_env_manifest_over(store: put.store, locator: locator)
+  let outcome = encode_repository_checked(
+    repo: scm_env_repository_with_store(store: fixture.store),
   )
-  scm_env_encode_cause_tag(
-    outcome: encode_repository_checked(repo: scm_env_repository_with_store(store: store)),
-  ) == "manifest_source_is_node"
+  fixture.built
+    && (scm_env_encode_cause_tag(outcome: outcome) == "manifest_source_is_node")
+    && scm_env_refusal_names_source(outcome: outcome, expected: locator)
+}
+
+// THE OTHER OCCUPYING KIND, EXECUTED RATHER THAN MERELY CLASSIFIED. The tag helper above has carried
+// an arm for this cause since it landed, and an exhaustive tag helper is not execution of the arm it
+// names -- so until this claim the refusal existed and nothing had ever produced it.
+test fn scm_env_a_manifest_source_at_a_manifest_refuses_and_names_it() -> Bool {
+  let first = scm_env_empty_manifest(store: empty_store())
+  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
+  let outcome = encode_repository_checked(
+    repo: scm_env_repository_with_store(store: fixture.store),
+  )
+  first.built
+    && fixture.built
+    && (scm_env_encode_cause_tag(outcome: outcome) == "manifest_source_is_manifest")
+    && scm_env_refusal_names_source(outcome: outcome, expected: first.manifest)
 }
 
 // THE CONTROL, AND IT IS THE ONE THAT KEEPS THE REFUSAL FROM BEING "ANY MANIFEST REFUSES". A
 // manifest naming a source this repository genuinely does not carry is a legitimate partial corpus,
-// with the same standing an absent semantic child has, so it must encode.
+// with the same standing an absent semantic child has, so it must encode -- and the manifest must
+// still be there afterwards, carrying the target it named, or the control has proved something about
+// a repository that no longer contains its subject.
 test fn scm_env_a_manifest_source_this_store_lacks_is_not_a_refusal() -> Bool {
-  let store = scm_env_manifest_over(
-    store: empty_store(),
-    locator: node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_two()).identity),
-  )
-  scm_env_encode_cause_tag(
-    outcome: encode_repository_checked(repo: scm_env_repository_with_store(store: store)),
-  ) == "encoded"
+  let absent_program = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let missing = node_target_locator(target: absent_program.identity)
+  let fixture = scm_env_manifest_over(store: empty_store(), locator: missing)
+  let repo = scm_env_repository_with_store(store: fixture.store)
+  fixture.built
+    && (scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: repo)) == "encoded")
+    && match find_corpus_manifest_record(store: fixture.store, identity: fixture.manifest) {
+         CorpusManifestFound(record) =>
+           fold(record.entries, init: false, f: fn(seen, entry) {
+             seen
+               || object_id_eq(
+                 left: authored_source_target_locator(target: entry.source),
+                 right: missing,
+               )
+           })
+         _ => false
+       }
 }
 
 // A commit whose root is not in the store at all.
@@ -793,6 +880,82 @@ fn scm_env_decode_members(members: List<JsonKeyValue>) -> RepositoryDecodeOutcom
   decode_repository(v: json_object(members: members))
 }
 
+// ── THE READER'S MANIFEST-SOURCE ADJUDICATION ──
+//
+// THE SPECIMEN IS WRITTEN BY THE UNCHECKED ENCODER ON PURPOSE. encode_repository_checked refuses
+// exactly these stores, so routing the fixture through it would stop the bytes ever reaching the
+// reader and the claim would be about the writer a second time. The raw writer spells an occupied
+// locator `uncontained`, which is the wire form this reader has to refuse.
+//
+// BOTH ORDERINGS, because the occupying object may be emitted AFTER the manifest that refers to it,
+// and a per-entry judgment would see nothing at that point. Dependency order is derived, so the two
+// fixtures differ in what they store rather than in a hand-written array order -- which is the honest
+// way to reach both, since the wire order is not something a caller chooses here.
+
+fn scm_env_decode_tag_of_store(store: ObjectStore) -> String {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: scm_env_wire_of(repo: scm_env_repository_with_store(store: store)),
+    ),
+  )
+}
+
+test fn scm_env_a_decoded_manifest_source_at_a_program_refuses() -> Bool {
+  let put = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let fixture = scm_env_manifest_over(
+    store: put.store,
+    locator: node_target_locator(target: put.identity),
+  )
+  fixture.built
+    && (scm_env_decode_tag_of_store(store: fixture.store) == "decoded_manifest_source_node")
+}
+
+// THE MANIFEST FIRST, THE PROGRAM AFTER. Same predicament, opposite construction order, and this is
+// the one a per-entry check could not have caught.
+test fn scm_env_a_decoded_manifest_source_refuses_when_the_program_arrives_after_it() -> Bool {
+  let put = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let locator = node_target_locator(target: put.identity)
+  let fixture = scm_env_manifest_over(store: empty_store(), locator: locator)
+  let after = scm_env_put(store: fixture.store, n: scm_env_program_one())
+  fixture.built
+    && (scm_env_decode_tag_of_store(store: after.store) == "decoded_manifest_source_node")
+}
+
+test fn scm_env_a_decoded_manifest_source_at_a_manifest_refuses() -> Bool {
+  let first = scm_env_empty_manifest(store: empty_store())
+  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
+  first.built
+    && fixture.built
+    && (scm_env_decode_tag_of_store(store: fixture.store) == "decoded_manifest_source_manifest")
+}
+
+// THE ROUND TRIP THAT KEEPS THE TWO REFUSALS FROM BEING "ANY UNCONTAINED SOURCE REFUSES". A manifest
+// naming a source this document genuinely does not carry survives the wire with its target intact,
+// which is the reader's half of the writer's absence control.
+test fn scm_env_a_decoded_manifest_keeps_a_genuinely_absent_source() -> Bool {
+  let absent_program = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let missing = node_target_locator(target: absent_program.identity)
+  let fixture = scm_env_manifest_over(store: empty_store(), locator: missing)
+  fixture.built
+    && match scm_env_decode_members(
+         members: scm_env_wire_of(repo: scm_env_repository_with_store(store: fixture.store)),
+       ) {
+         RepositoryDecodeRefused { cause: _ } => false
+         RepositoryDecoded { envelope: back } =>
+           match find_corpus_manifest_record(store: back.store, identity: fixture.manifest) {
+             CorpusManifestFound(record) =>
+               fold(record.entries, init: false, f: fn(seen, entry) {
+                 seen
+                   || object_id_eq(
+                     left: authored_source_target_locator(target: entry.source),
+                     right: missing,
+                   )
+               })
+             _ => false
+           }
+       }
+}
+
 // The claims below assert the CAUSE, not merely that something refused: a document that refused for
 // an unrelated reason would satisfy a bare refusal claim and prove nothing about the member set.
 fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
@@ -808,6 +971,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
         RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
         RepositoryCommitRootIsCorpusManifest { root: _ } => "commit_root_manifest"
+        RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => "decoded_manifest_source_node"
+        RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => "decoded_manifest_source_manifest"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "commit_duplicate"
         RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "commit_parent"

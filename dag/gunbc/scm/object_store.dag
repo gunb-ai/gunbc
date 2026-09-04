@@ -461,7 +461,7 @@ fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject
           }
         )
     }
-    OrderAcc { emitted: concat(after_children.emitted, [object]) }
+    OrderAcc { emitted: concat([object], after_children.emitted) }
   }
 }
 
@@ -474,12 +474,18 @@ fn emit_dependency(store: ObjectStore, acc: OrderAcc, identity: ObjectId) -> Ord
   }
 }
 
+// THE ACCUMULATOR PREPENDS AND IS REVERSED ONCE HERE, which is what preserves child-before-parent
+// output without copying a growing list on every emitted object. `emitted_holds` still scans that
+// list linearly, and that is a DIFFERENT defect with a different retirement -- a keyed collection --
+// so it stays; repeatedly copying an accumulator was never covered by that deferral.
 fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
-  fold(
-    store.objects,
-    init: OrderAcc { emitted: [] },
-    f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
-  ).emitted
+  reverse(
+    fold(
+      store.objects,
+      init: OrderAcc { emitted: [] },
+      f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
+    ).emitted
+  )
 }
 
 fn empty_store() -> ObjectStore {

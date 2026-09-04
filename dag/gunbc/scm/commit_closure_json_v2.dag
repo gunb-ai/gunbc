@@ -63,7 +63,7 @@ import gunbc.scm.load_standing {
   LoadStanding,
   LoadComplete,
   LoadPartial,
-  LoadRequiresNodeAtWrongKind,
+  LoadRequirementAtWrongKind,
   LoadUnsupportedProtocol,
   LoadDocumentMalformed,
   LoadIdentityCollision,
@@ -675,7 +675,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 fn loaded_closure_standing(store: ObjectStore, root: SemanticNodeTarget) -> LoadStanding {
   let census = closure_census(closure: CommitClosure { store: store, root: root })
   if list_length(items: wrong_kind_identities(census: census)) > 0 {
-    LoadRequiresNodeAtWrongKind
+    LoadRequirementAtWrongKind
   } else {
     if list_length(items: census.absent) == 0 {
       LoadComplete

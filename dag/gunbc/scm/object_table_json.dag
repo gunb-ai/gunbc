@@ -176,7 +176,7 @@ import gunbc.scm.load_standing {
   LoadIdentityCollision,
   LoadComplete,
   LoadPartial,
-  LoadRequiresNodeAtWrongKind,
+  LoadRequirementAtWrongKind,
   LoadUnsupportedProtocol,
 }
 import std.content_hash {

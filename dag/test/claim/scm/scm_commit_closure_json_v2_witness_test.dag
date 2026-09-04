@@ -123,7 +123,7 @@ import gunbc.scm.load_standing {
   LoadUnsupportedProtocol,
   LoadDocumentMalformed,
   LoadIdentityCollision,
-  LoadRequiresNodeAtWrongKind,
+  LoadRequirementAtWrongKind,
 }
 import gunbc.scm.role_requirement_integration {
   RoleRequirementIntegrationOutcome,
@@ -473,7 +473,7 @@ test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -
         LoadPartial => false
         LoadDocumentMalformed => false
         LoadIdentityCollision => false
-        LoadRequiresNodeAtWrongKind => false
+        LoadRequirementAtWrongKind => false
       }
   }
 }
@@ -1436,7 +1436,7 @@ fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -
 // ------------------------------------------------------------------------------------------------
 // THE WRONG-KIND STANDING, EXECUTED AGAINST A REAL DOCUMENT.
 //
-// LoadRequiresNodeAtWrongKind had an implementation, exhaustive plumbing at every consumer, and
+// LoadRequirementAtWrongKind had an implementation, exhaustive plumbing at every consumer, and
 // NO executed evidence that an external document actually reaches it rather than LoadPartial. That is
 // the shape DESIGN section 5 names: a typed carrier and a tag are not a consumer.
 //
