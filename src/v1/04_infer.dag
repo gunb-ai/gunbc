@@ -2195,24 +2195,6 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
   }
 }
 
-// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
-// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
-// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
-// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
-// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
-// ones, and the check refused that correct module before this predicate existed.
-fn arm_body_diverges(n: Node) -> Bool {
-  match n.expr_data {
-    ExprReturn => true
-    ExprBlock =>
-      match n.children |> last {
-        Present { value: tail } => arm_body_diverges(n: tail)
-        Absent => false
-      }
-    _ => false
-  }
-}
-
 // THE JOIN ANSWERS WITH ONE TYPE, so an arm whose body type is not that type is never judged
 // anywhere downstream: the match's inferred type is the join's, and a consumer's declared-type check
 // sees only that. The join tie-breaks to the FIRST arm, so before this predicate a later arm
@@ -2300,7 +2282,7 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
 }
 
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
-  if arm_body_diverges(n: arm_body(n: arm.typed_arm)) {
+  if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
   } else if match_arm_types_are_disjoint_coproducts(
     unified_arm_type: unified_arm_type,
@@ -3047,13 +3029,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
-// TWO OF THE TWELVE ARE WIRED. THE OTHER TEN ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// THREE OF THE TWELVE ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
 // THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
-// Measured by construction site, not by reading: PositionDirectCallArgument and
-// PositionListElement are the only two members CONSTRUCTED anywhere -- every other member
-// occurs solely in declared_type_position_label's match, which renders a name and judges
-// nothing. So this coproduct is today an OBLIGATION VOCABULARY, of which two positions have a
-// producer.
+// Measured by construction site, not by reading: PositionDirectCallArgument,
+// PositionListElement, and PositionGenericTypeArgument are the only three members CONSTRUCTED
+// anywhere -- every other member occurs solely in declared_type_position_label's match, which
+// renders a name and judges nothing. So this coproduct is today an OBLIGATION VOCABULARY, of
+// which three positions have a producer.
 //
 // WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
 // MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
@@ -3067,14 +3049,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
 // decision procedure is already shared and position-agnostic, so wiring one is authoring a
 // construction site, never extending this relation -- which is the whole point of the carrier
-// and is why the residual ten cost a call each rather than a rule each.
+// and is why the residual nine cost a call each rather than a rule each.
 //
-// THE TEN AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
+// THE NINE AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
 // PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
-// PositionGenericTypeArgument, PositionCastTarget, PositionParameterDefault,
-// PositionCallableReturn. Wiring any of them is a separate change with its own evidence: a
+// PositionCastTarget, PositionParameterDefault, PositionCallableReturn. Wiring any of them is a
 // discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
-// carrier's honest claim is TWO POSITIONS JUDGED, ten declared -- and any statement that it
+// carrier's honest claim is THREE POSITIONS JUDGED, nine declared -- and any statement that it
 // judges "every grammar type position" is false.
 type DeclaredTypePosition
   = PositionRecordLiteralField
@@ -3910,6 +3891,7 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 type CallFormalApplication {
   index: Int
   param_name: String
+  formal_raw: Node
   formal_subst: Node
   formal: Node
   matched_arg: Optional<Node>
@@ -3949,6 +3931,7 @@ fn build_call_application_plan(
       CallFormalApplication {
         index: pair.first,
         param_name: param_name,
+        formal_raw: formal_raw,
         formal_subst: formal_subst,
         formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
         matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
@@ -4022,6 +4005,71 @@ fn direct_call_argument_inhabitance_diags(
               scope: scope
             )
           }
+        Absent => []
+      }
+  )
+}
+
+// A direct-call obligation over an applied element container reaches the shared relation as the
+// OUTER generic node, where UndecidableGenericFormal is the honest verdict for that outer fact.
+// Its concrete element pair is a separate declared position and used to have no producer at all:
+// List<RightCensoredCost> could therefore inhabit List<ExactCompletionCost> even though both
+// element identities were established. Construct that inner obligation here, at the same matched
+// formal/actual seam, and leave the position-agnostic relation unchanged. Both sides must expose
+// the same applied constructor and arity; a bare, malformed, or different carrier is not this
+// position and produces no fabricated comparison. Every aligned argument gets its own obligation,
+// so this is the generic-argument position rather than a List-specific second relation. A raw
+// generic formal (K/V/T) and an inference placeholder (`element`) do not yet name an identity that
+// this nominal obligation can judge; keep those with the existing outer obligation instead of
+// manufacturing false mismatches from an unresolved substitution.
+fn direct_call_generic_type_argument_inhabitance_diags(
+  plan: List<CallFormalApplication>,
+  scope: InferScope
+) -> List<ErrorNode> {
+  let source_indices = scope.type_env.source_indices
+  flat_map(
+    plan,
+    app =>
+      match app.matched_arg {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          let actual = resolved_type(n: actual_expr)
+          if exposure_is_application(exposure: exposure_view_for_node(n: app.formal_subst, source_indices: source_indices))
+            && exposure_is_application(exposure: exposure_view_for_node(n: actual, source_indices: source_indices))
+            && (app.formal_subst.children |> count) > 0
+            && (app.formal_subst.children |> count) == (actual.children |> count)
+            && authored_name_at(source_indices: source_indices, node: app.formal_subst)
+              == authored_name_at(source_indices: source_indices, node: actual) {
+            flat_map(
+              app.formal_subst.children |> enumerate,
+              declared_pair =>
+                match app.formal_raw.children |> skip(declared_pair.first) |> first {
+                  Present { value: raw_declared_child } =>
+                    match actual.children |> skip(declared_pair.first) |> first {
+                      Present { value: produced_child } =>
+                        if applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
+                          && applied_type_argument_identity_known(
+                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                          declared_type_obligation_diags(
+                            obligation: DeclaredTypeObligation {
+                              position: PositionGenericTypeArgument,
+                              subject: app.param_name,
+                              declared: peel_nominal_alias_identity(
+                                n: child_type_node(ch: declared_pair.second), env: scope.type_env, module_name: scope.module_name),
+                              produced: peel_nominal_alias_identity(
+                                n: child_type_node(ch: produced_child), env: scope.type_env, module_name: scope.module_name),
+                              span: actual_expr.span
+                            },
+                            scope: scope
+                          )
+                        } else { [] }
+                      Absent => []
+                    }
+                  Absent => []
+                }
+            )
+          } else { [] }
         Absent => []
       }
   )
@@ -5909,6 +5957,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           plan: call_application_plan,
           scope: scope
         )
+        let generic_type_argument_inhabitance_diags = direct_call_generic_type_argument_inhabitance_diags(
+          plan: call_application_plan,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
@@ -5917,7 +5969,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, inhabitance_arg_diags))))
+          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags)))))
         }
       } else {
         let first_arg_type = match typed_args |> first {
@@ -6391,7 +6443,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           body_type: resolved_type(n: body_typed)
         }
       )
-      let arm_body_types = arm_infer_results |> map(ar => ar.body_type)
+      let non_diverging_arm_results = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm)))
+      let arm_body_types = match non_diverging_arm_results |> first {
+        Present { value: _ } => non_diverging_arm_results |> map(ar => ar.body_type)
+        Absent => match expected {
+          Present { value: expected_type } => [expected_type]
+          Absent => [divergent_type()]
+        }
+      }
       let unified_arm_type = match arm_body_types |> first {
         Present { value: first_type } =>
           arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
@@ -6408,7 +6467,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: ar } => ar
             Absent => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
           }
-          if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
+          if arm_body_diverges(body: arm_body(n: arm_node)) {
+            original
+          } else if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
@@ -9631,6 +9692,39 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
 type BodyTerminal {
   expr: Node
   let_prov: Map<String, Map<String, SubValueRelation>>
+}
+
+// A DIVERGING ARM PRODUCES NO VALUE OF THE MATCH'S TYPE, so it is not a party to the join: its
+// body's inferred type is the ENCLOSING FUNCTION'S return type, which is a different question and
+// answers to the return seam. Judging it against the join is the fabricated refusal DESIGN section 5
+// forbids as firmly as a fabricated success -- measured, not reasoned: extdeps.uri_path
+// path_segment_tokens has four `Absent => return MalformedPathSegment { .. }` arms beside String
+// ones, and the check refused that correct module before this predicate existed.
+//
+// TWO DECLARATIONS OF THIS PREDICATE MET IN A MERGE (2026-09-02, #9964 into main after #10045).
+// The survivor is this one, and it is the NEWCOMER, not the incumbent: it delegates the walk to
+// ownership.fold_terminal_expr, which folds through ExprLet as well as ExprBlock. The deleted
+// declaration was main's incumbent from #10045; it hand-rolled the block-tail recursion and handled
+// no ExprLet, so an arm shaped `let x = ...; return y` diverges and it answered false. Re-inventing
+// a walk the codebase already owns is the DESIGN section 2 failure, and here it cost correctness
+// too. Deleting the incumbent re-points its call site at this declaration -- a deliberate narrowing
+// of two spellings to one, not an incidental merge artifact.
+//
+// THE BLAST RADIUS OF THAT DELETION IS EMPTY, CHECKED RATHER THAN ASSUMED (tidy-lynx-804,
+// independently, 2026-09-02): on origin/main the deleted declaration had exactly ONE declaration
+// site, ONE recursive self-call, and ONE caller, plus its generated Rust mirror. No third caller
+// depended on the ExprBlock-only answer, so re-pointing that one call site orphans nothing. The
+// section 3 argument says the deletion is defensible; this census is what makes it landable, and
+// the two are not the same claim.
+//
+// THE MERGE WAS TEXTUALLY CLEAN. The two declarations landed in different regions of one file, so
+// no conflict was raised and no diff review of either side could see it; only compiling the merged
+// authority reported it, as a call-shape mismatch against the surviving parameter name.
+fn arm_body_diverges(body: Node) -> Bool {
+  match fold_terminal_expr(body: body).expr_data {
+    ExprReturn => true
+    _ => false
+  }
 }
 
 fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {

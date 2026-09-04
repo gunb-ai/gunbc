@@ -1,6 +1,23 @@
 use std::path::Path;
 use std::process::Command;
 
+const MATERIALIZED_TREE_IDENTITY_ENV: &str = "GUNBC_MATERIALIZED_TREE_IDENTITY";
+
+fn validate_materialized_tree_identity(identity: &str) -> bool {
+    let hex = identity
+        .strip_prefix("tree:sha1:")
+        .filter(|hex| hex.len() == 40)
+        .or_else(|| {
+            identity
+                .strip_prefix("tree:sha256:")
+                .filter(|hex| hex.len() == 64)
+        });
+    hex.is_some_and(|hex| {
+        hex.bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 fn git_output(args: &[&str]) -> Option<String> {
     // NO OPTIONAL LOCKS: `git status` refreshes `.git/index` as a side effect, and this script
     // watches that path (`rerun-if-changed` below). Refreshing it DURING the script's own run
@@ -35,6 +52,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-env-changed={MATERIALIZED_TREE_IDENTITY_ENV}");
 
     // Ask Git for its real paths: a linked worktree's `.git` is a pointer file, and a branch's
     // HEAD file contains only a stable symbolic-ref name. Watch both the worktree HEAD and its
@@ -61,20 +79,34 @@ fn main() {
         }
     }
 
-    let commit = git_output(&["rev-parse", "HEAD"]).expect(
-        "gunbc build cannot observe its source commit: `git rev-parse HEAD` failed or Git is unavailable",
-    );
-    assert!(
-        commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "gunbc build received a non-40-hex source commit from `git rev-parse HEAD`"
-    );
-    let dirty = git_output(&["status", "--porcelain"])
-        .map(|s| !s.is_empty())
-        .unwrap_or(true);
-    let identity = if dirty {
-        format!("{commit}-dirty")
-    } else {
-        commit
+    let identity = match std::env::var(MATERIALIZED_TREE_IDENTITY_ENV) {
+        Ok(materialized) => {
+            assert!(
+                validate_materialized_tree_identity(&materialized),
+                "gunbc build received an invalid materialized-tree identity; expected tree:sha1:<40 lowercase hex> or tree:sha256:<64 lowercase hex>"
+            );
+            materialized
+        }
+        Err(std::env::VarError::NotUnicode(_)) => {
+            panic!("gunbc build received a non-Unicode materialized-tree identity")
+        }
+        Err(std::env::VarError::NotPresent) => {
+            let commit = git_output(&["rev-parse", "HEAD"]).expect(
+                "gunbc build cannot observe its source commit: `git rev-parse HEAD` failed or Git is unavailable",
+            );
+            assert!(
+                commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "gunbc build received a non-40-hex source commit from `git rev-parse HEAD`"
+            );
+            let dirty = git_output(&["status", "--porcelain"])
+                .map(|s| !s.is_empty())
+                .unwrap_or(true);
+            if dirty {
+                format!("{commit}-dirty")
+            } else {
+                commit
+            }
+        }
     };
     println!("cargo:rustc-env=GUNBC_BUILD_IDENTITY={identity}");
 }

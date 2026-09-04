@@ -92,6 +92,7 @@ pub enum EvalBuiltinArm {
     FreeCallDocGraphAdmittedRootCount,
     FreeCallDocGraphDanglingLinkCount,
     FreeCallDocGraphDocCount,
+    FreeCallParsedImportStatements,
     FreeCallNamespaceStructuralObservationAdmissions,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
@@ -225,6 +226,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "doc_graph_admitted_root_count" => Some(EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount),
         "doc_graph_dangling_link_count" => Some(EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount),
         "doc_graph_doc_count" => Some(EvalBuiltinArm::FreeCallDocGraphDocCount),
+        "parsed_import_statements" => Some(EvalBuiltinArm::FreeCallParsedImportStatements),
         "namespace_structural_observation_admissions" => Some(EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
@@ -356,6 +358,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.doc_graph_admitted_root_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount };
     ("free_call.doc_graph_dangling_link_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount };
     ("free_call.doc_graph_doc_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDocCount };
+    ("free_call.parsed_import_statements") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParsedImportStatements };
     ("free_call.namespace_structural_observation_admissions") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
@@ -611,14 +614,12 @@ macro_rules! eval_call_bridge__v2_std_concept_index_arm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdFnIndexArm {
     V4BridgeFnArrowDeclFactsLive,
-    V4BridgeFnArrowDeclSubstrateIsWholeTree,
 }
 
 #[rustfmt::skip]
 pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBridgeStdFnIndexArm> {
     match spelling {
         "fn_arrow_decl_facts_live" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive),
-        "fn_arrow_decl_substrate_is_whole_tree" => Some(EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree),
         _ => None,
     }
 }
@@ -626,25 +627,6 @@ pub fn lookup_eval_call_bridge_std_fn_index(spelling: &str) -> Option<EvalCallBr
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__v2_std_fn_index_arm {
     ("v4_bridge.fn_arrow_decl_facts_live") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclFactsLive };
-    ("v4_bridge.fn_arrow_decl_substrate_is_whole_tree") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdFnIndexArm::V4BridgeFnArrowDeclSubstrateIsWholeTree };
-}
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeLensAffectedSetCorpusDependencyViewArm {
-    V4BridgeCorpusDependencyViewPerPrSubstrateRefuse,
-}
-
-#[rustfmt::skip]
-pub fn lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view(spelling: &str) -> Option<EvalCallBridgeLensAffectedSetCorpusDependencyViewArm> {
-    match spelling {
-        "corpus_dependency_view_per_pr_substrate_refuse" => Some(EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-    ("v4_bridge.corpus_dependency_view_per_pr_substrate_refuse") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeLensAffectedSetCorpusDependencyViewArm::V4BridgeCorpusDependencyViewPerPrSubstrateRefuse };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

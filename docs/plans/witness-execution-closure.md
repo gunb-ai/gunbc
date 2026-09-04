@@ -310,3 +310,28 @@ claim to join to (§3), so they are named as triggers rather than improvised:
 without either match acquiring an arm, and nothing refused — the module's own witness is outside
 the gate closure, so no executing path typechecks it. The arms are added here and the claim
 restated at its honest rung, with the trigger recorded in the module.
+
+### A false specification selected out of the nonexecuting population (2026-09-02, gunbc#10092)
+
+The changed-witness sublane selected
+`test.claim.discovery_census_witness.w_unrostered_sibling_in_the_same_module_is_planned`, an
+identity the ordinary required floor did not execute. The claim called
+`required_floor_site_disposition` with module path
+`dag.test.claim.lifecycle_survivor_corpus_census` and asserted `Planned`, although that path
+matches none of `required_gate_prefixes` and the function therefore answers
+`DeclinedOutsideRequiredGate`. The specification was false and stayed green because it did not
+run — this document's class at one identity, not a new failure class.
+
+Run `33656005986` is the discriminating receipt. Its identity-grain changed-witness ledger reports
+the claim as `planned-without-terminal-verdict`, `outcome=failed`; the aggregate reports
+`changed_witnesses=12 changed_witness_blocking=1
+changed_witness_declined_in_declared_nonexecuting_root=0`, so the row executed rather than being
+declined again. The same run measured the containing universe as 15,383 declared identities,
+3,499 routed and 11,277 declined outside the gate closure, and ended with exactly one semantic
+failure and zero interrupted verdicts. Those population figures are bound to that run and tree:
+declared, offered and routed populations move with the tree, so figures from another head are
+neither approximations of nor superseded by this receipt. The repair renames the claim to
+`w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline` and asserts the disposition its
+own input entails; direct claim execution then passes. The reusable fact is not the spelling fix:
+selection of a normally nonexecuting identity is an executable falsifier for specifications that
+ordinary floor green cannot adjudicate.

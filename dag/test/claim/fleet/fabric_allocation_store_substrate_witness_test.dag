@@ -9,6 +9,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
 }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import gunbc.fabric_allocation_store_substrate {
@@ -61,6 +62,7 @@ fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestat
     }
     FilesystemEntryListed { directory: _, name: _ } => Absent
     FilesystemEntryPresenceIndeterminate { cause: _ } => Absent
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => Absent
   }
 }
 
@@ -275,5 +277,6 @@ fn allocation_store_target_absent_fixture() -> Optional<AllocationStoreDirectory
     FilesystemEntryAbsent(established) => Present { value: allocation_store_directory_absent(path: spec.path, evidence: established) }
     FilesystemEntryListed { directory: _, name: _ } => Absent
     FilesystemEntryPresenceIndeterminate { cause: _ } => Absent
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => Absent
   }
 }

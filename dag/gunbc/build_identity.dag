@@ -1,0 +1,20 @@
+module gunbc.build_identity
+
+import std.types { String }
+import extdeps.git { TreeObj }
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_type_wire_name,
+}
+import gunbc.merge_admission_subject { render_git_object_id_wire }
+
+// A MATERIALIZED TREE HAS CONTENT PROVENANCE, NOT AMBIENT CHECKOUT HISTORY. The tree tag keeps
+// the value distinct from a commit of the same width; the Git object-format family keeps SHA-1
+// and SHA-256 identities distinct. Both the producer-to-build-script binding and the product
+// --version projection consume this one spelling.
+fn materialized_tree_build_identity_text(tree: GitObjectId) -> String {
+  join([
+    git_object_type_wire_name(object_type: TreeObj),
+    render_git_object_id_wire(oid: tree),
+  ], ":")
+}

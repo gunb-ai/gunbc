@@ -2,7 +2,58 @@ module gunbc.cli_dispatch_surface
 
 import std.measure { Millisecond, millisecond_count }
 import std.types { Bool, CommitSha, Int, List, Port, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// One-consumer realization helper: only the generated dispatch emitter consumes this spelling,
+// and the spelling never enters CLI identity, build identity, receipts, cache keys, or product
+// output. The blocked population is derived from the same operand/option projections that produce
+// the pattern bindings. N blocked identities produce N+1 valid numeric candidates in deterministic
+// order. Dissolve into a general Rust value-identifier allocation authority when one exists.
+type CliDispatchGuaranteePosition
+  = CliDispatchStructurallyGuaranteed
+  | CliDispatchOutsideGuaranteeLadder
+
+type CliDispatchRungClass {
+  identity: String,
+  position: CliDispatchGuaranteePosition,
+  invalid_state: String,
+  harm: String,
+  found_at: String,
+  ceiling: String,
+  dissolution: DissolutionCondition,
+}
+
+// `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
+// while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
+// consumer typechecks and computes a false answer without a diagnostic. The executing known-red
+// `interpreter_first_returns_the_modeled_optional` is the confirmed specimen. A source census
+// found 187 terminal `|> first` sites across 82 files; that is a lower bound on candidate
+// consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
+// interpreter and emitted realizations from one authority for `first`. When that capability lands,
+// the known-red turns green and becomes an ordinary regression control; this row then deletes.
+fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
+  [
+    CliDispatchRungClass {
+      identity: "generated_dispatch_executor_binding_collision",
+      position: CliDispatchStructurallyGuaranteed {},
+      invalid_state: "the generated dispatch executor binding collides with a modeled local binding",
+      harm: "the emitted Rust declaration and its uses can bind or address the wrong value",
+      found_at: "the enrolled allocator collision mutation and emitted definition/use-site control",
+      ceiling: "a total signature backed by a substrate nonempty-list carrier whose first returns the element type",
+      dissolution: unbound_dissolution(description: "dissolve-on: fresh_rust_value_binding_name returns a nonempty-list-backed value rather than Optional, so the unreachable Absent arm deletes while the allocator collision mutation remains enrolled"),
+    },
+    CliDispatchRungClass {
+      identity: "interpreter_algebra_optional_method_semantic_divergence",
+      position: CliDispatchOutsideGuaranteeLadder {},
+      invalid_state: "interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control",
+      harm: "silent wrongness outside the ladder",
+      found_at: "one executing known-red first specimen; candidate consumers and executed probes are recorded in docs/plans/first-optional-divergence-census.md on PR #9785, without claiming every candidate is harmed",
+      ceiling: "structural",
+      dissolution: unbound_dissolution(description: "dissolve-on: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf — first, last, get, and lookup — from that existing row rather than hand-implementing it, AND builtin parameter cardinality is grounded beside the return type in the builtin signature authority so argument coercion is derivable for builtin callees; repairing result construction alone does not satisfy this trigger because the raw-element arms currently compensate for missing coercion"),
+    },
+  ]
+}
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
@@ -82,19 +133,16 @@ type CliOptionValue
   | CliPortValue { port_default: Port? }
   | CliMillisecondValue { millisecond_default: Millisecond? }
 
-// WHETHER `emit_main_rs` PRODUCES THIS ROW TODAY.
+// WHETHER THE INSTALLED GENERATED DISPATCH CARRIES THIS ROW TODAY.
 //
 // This is the divergence census carried at ROW GRAIN, and it replaces a line count. The
-// registration in `v2.compiler.self_host.stage0_crate_layout` that suppresses main.rs from the
-// required-regen comparison carried the divergence as the prose "552 lines against the committed
-// 1318" -- a measurement transcribed into a carrier that cannot re-derive it, which the DESIGN
-// CI clause rules is debt for exactly the reason it proved to be here: the committed file is
-// 1426 lines today and nothing moved the sentence. `gunbc_cli_emitter_gap` answers the same
-// question as an identity join over declarations, so it is a fact about the surface rather than
-// about the day someone counted.
+// generated sibling is the ordinary admitted artifact that owns the shipped grammar and
+// realization selection. `gunbc_cli_shipped_dispatch_gap` answers membership as an identity join
+// over declarations, so the result is a fact about the installed surface rather than about a
+// discarded main.rs candidate or the day someone counted its lines.
 type CliSurfaceEmission
-  = EmittedByEmitMainRs
-  | AbsentFromEmitMainRs
+  = CarriedByGeneratedDispatch
+  | AbsentFromShippedDispatch
 
 // WHICH IDENTITY `gunbc --version` REPORTS.
 //
@@ -125,6 +173,44 @@ type CliArmRealization
   | CliRetainedHostKernel
   | CliRefusesUnwired { successor: String }
   | CliInvokesBoundTargetProducer
+  | CliInvokesBootstrapDagOperation { binding: CliBootstrapDagOperationBinding }
+  | CliKnownOperationNoRealization { operation: DeclarationRef }
+
+// A TEMPORARY CROSS-SEED BINDING, narrow by construction: only a successor-authored operation may
+// inhabit this execution class. Ordinary target producers remain ineligible for the retained
+// interpreter seam. The declaration is structural identity; source location and argv projection
+// are data consumed by the generic emitter, never literals in an arm renderer.
+type CliBootstrapExecutionClass = BootstrapSuccessorOperation {}
+
+// Closed admission population for the temporary interpreter boundary. An ordinary target
+// producer has no constructor here, so it cannot acquire BootstrapSuccessorOperation by tagging
+// an arbitrary DeclarationRef.
+type AdmittedBootstrapOperationIdentity = GunbcProductBuildBootstrapOperation {}
+
+fn admitted_bootstrap_operation_declaration(identity: AdmittedBootstrapOperationIdentity) -> DeclarationRef {
+  match identity {
+    GunbcProductBuildBootstrapOperation {} => gunbc_build_operation_ref()
+  }
+}
+
+type CliBootstrapOperandBinding {
+  parameter: String
+  operand_field: String
+}
+
+type CliBootstrapReceiptChannel {
+  parameter: String
+  path: String
+}
+
+type CliBootstrapDagOperationBinding {
+  operation: AdmittedBootstrapOperationIdentity
+  entry_path: String
+  source_roots: List<String>
+  public_operands: List<CliBootstrapOperandBinding>
+  receipt: CliBootstrapReceiptChannel
+  execution_class: CliBootstrapExecutionClass
+}
 
 // THE OPERAND AXIS, AND WHY IT IS NOT AN OPTION ROW WITH A DIFFERENT SPELLING.
 //
@@ -145,6 +231,7 @@ type CliArmRealization
 type CliOperandValue
   = CliAbsoluteLabelOperand {}
   | CliScmReadVerbOperand {}
+  | CliProgramOperand {}
 
 // EXACTLY ONE, AND THE ARITY IS ITS OWN COPRODUCT RATHER THAN `CliOptionArity` REUSED.
 //
@@ -182,6 +269,20 @@ type CliSubcommandRow {
   options: List<CliOptionRow>
   realization: CliArmRealization
   emission: CliSurfaceEmission
+}
+
+fn modeled_subcommand_bound_fields(sub: CliSubcommandRow) -> List<String> {
+  let operands = cli_subcommand_generated_dispatch_operands(sub: sub) |> map(operand => operand.field)
+  let options = cli_subcommand_generated_dispatch_options(sub: sub) |> map(option => option.field)
+  concat(operands, options)
+}
+
+fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
+  concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
+}
+
+fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
+  "__gunbc_dispatch_executor_"
 }
 
 fn gunbc_cli_binary_name() -> String {
@@ -222,6 +323,39 @@ data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbo
 // debt DESIGN section 3 forbids, marked or not. The surface below is the SUBCOMMAND surface, and
 // that is the whole of what `has_pipeline` fused into the emitter.
 
+fn gunbc_build_operation_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.devboot.build",
+    decl_name: "gunbc_build_cli_entry",
+    field: WholeDeclaration,
+  }
+}
+
+fn gunbc_build_operation_binding() -> CliBootstrapDagOperationBinding {
+  CliBootstrapDagOperationBinding {
+    operation: GunbcProductBuildBootstrapOperation {},
+    entry_path: "dag/gunbc/devboot/build.dag",
+    source_roots: ["dag", "src/v2"],
+    public_operands: [
+      CliBootstrapOperandBinding { parameter: "program", operand_field: "program" },
+    ],
+    receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-build-receipts" },
+    execution_class: BootstrapSuccessorOperation {},
+  }
+}
+
+fn cli_realization_missing_refusal(realization: CliArmRealization) -> String? {
+  match realization {
+    CliKnownOperationNoRealization { operation } =>
+      Present { value: join(["known operation, no realization: ", operation.module_path, ".", operation.decl_name], "") }
+    CliDelegatesToHostFn { symbol } => none
+    CliRetainedHostKernel => none
+    CliRefusesUnwired { successor } => none
+    CliInvokesBoundTargetProducer => none
+    CliInvokesBootstrapDagOperation { binding } => none
+  }
+}
+
 fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
   [
     CliSubcommandRow {
@@ -239,7 +373,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Source root directories (searched recursively for .dag files).",
             "Module imports are resolved transitively from these roots."
           ],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "source_dir",
@@ -247,7 +381,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliAtMostOne,
           doc: ["Legacy: single source directory (all .dag files loaded, no import resolution)"],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "output_dir",
@@ -255,7 +389,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRequired,
           doc: [],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "target",
@@ -263,7 +397,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: Present { value: "rust" } },
           arity: CliRequired,
           doc: ["Target language: rust, python, go, dag, or + separated set such as rust+dag"],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "dependency_pool_index",
@@ -271,7 +405,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: Present { value: "strict" } },
           arity: CliRequired,
           doc: [],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "entry",
@@ -283,11 +417,11 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "(not every `.dag` file under the first --source-root). Scopes the compile",
             "to a subtree so a small closure can be emitted without a whole-tree pass."
           ],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliRetainedHostKernel,
-      emission: EmittedByEmitMainRs
+      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "run",
@@ -301,7 +435,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRepeated,
           doc: ["Source root directories (searched recursively for .dag files)"],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "function",
@@ -309,7 +443,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: Present { value: "main" } },
           arity: CliRequired,
           doc: ["Entry function to execute (default: \"main\")"],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "entry",
@@ -320,7 +454,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Entry `.dag` file: load only this module and its transitive imports",
             "(not every file under --source-root). Required for scoped TestClaim runs."
           ],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "claim_run",
@@ -328,7 +462,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliToggleValue,
           arity: CliRequired,
           doc: ["TestClaim / witness run: Bool false -> exit 1; requires --entry"],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "args",
@@ -339,11 +473,29 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Named argument for the entry function, repeatable: `--arg name=value`.",
             "Values enter as String; a missing `=` refuses rather than guessing."
           ],
-          emission: EmittedByEmitMainRs
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliDelegatesToHostFn { symbol: "run_verb" },
-      emission: EmittedByEmitMainRs
+      emission: CarriedByGeneratedDispatch
+    },
+    CliSubcommandRow {
+      verb: "build",
+      variant: "Build",
+      doc: ["Build one exact executable for a named program"],
+      operands: [
+        CliOperandRow {
+          field: "program",
+          placeholder: "PROGRAM",
+          value: CliProgramOperand {},
+          arity: CliExactlyOneOperand {},
+          doc: ["Program name from the offered program roster"],
+          emission: CarriedByGeneratedDispatch
+        }
+      ],
+      options: [],
+      realization: CliInvokesBootstrapDagOperation { binding: gunbc_build_operation_binding() },
+      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "converge",
@@ -361,11 +513,11 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRequired,
           doc: ["Fleet host identity (e.g. \"srv1\") to converge"],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliRefusesUnwired { successor: "gunbc.fleet_converge_apply" },
-      emission: AbsentFromEmitMainRs
+      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "scm",
@@ -382,7 +534,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliScmReadVerbOperand {},
           arity: CliExactlyOneOperand {},
           doc: ["Which read to perform: `log` or `status`"],
-          emission: AbsentFromEmitMainRs
+          emission: AbsentFromShippedDispatch
         }
       ],
       options: [
@@ -392,13 +544,13 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRequired,
           doc: ["Path to the repository document to read"],
-          emission: AbsentFromEmitMainRs
+          emission: AbsentFromShippedDispatch
         }
       ],
       realization: CliRefusesUnwired {
         successor: "unwired AS A SUBCOMMAND -- `gunbc scm log` does not exist -- but the answer is now REACHABLE, and this row said it was not. The successor is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<p>`, which prints the rendered answer and exits on the exit the response itself carries. What changed: gunbc.cli_wire CliWireResponse gained a host binding in run_verb (cli_run classify_cli_wire + cli_wire_outcome), so a wire-returning entry is no longer refused with `returned ScmReadResult, not ProcessExit` and its answer is no longer computed and discarded. The earlier text -- `there is NO route a user can invoke today` -- was true when written and this row is the authority that has to stop saying it, because a surface that keeps asserting an absence the host has since filled is a §3 fork between the model and the thing it models. scm_status and scm_init are reachable by the same route; scm_init REFUSES an occupied path (gunbc.scm.init)."
       },
-      emission: AbsentFromEmitMainRs
+      emission: AbsentFromShippedDispatch
     },
     CliSubcommandRow {
       verb: "serve",
@@ -416,7 +568,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRepeated,
           doc: ["Source root directories (searched recursively for .dag files)"],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "entry",
@@ -424,7 +576,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRequired,
           doc: ["Entry `.dag` file: load only this module and its transitive imports"],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "function",
@@ -432,7 +584,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: none },
           arity: CliRequired,
           doc: ["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse"],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "host",
@@ -440,7 +592,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliTextValue { text_default: Present { value: "127.0.0.1" } },
           arity: CliRequired,
           doc: [],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "port",
@@ -448,7 +600,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliPortValue { port_default: Present { value: 8080 } },
           arity: CliRequired,
           doc: [],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "release_revision",
@@ -459,7 +611,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Release revision this process serves, bound ONCE at startup and",
             "immutable for the process lifetime."
           ],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "eval_budget_cpu_ms",
@@ -467,7 +619,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliMillisecondValue { millisecond_default: none },
           arity: CliAtMostOne,
           doc: ["Per-request THREAD-CPU evaluation budget in milliseconds."],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "eval_budget_wall_ms",
@@ -475,11 +627,11 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           value: CliMillisecondValue { millisecond_default: none },
           arity: CliAtMostOne,
           doc: ["Per-request MONOTONIC-WALL evaluation budget in milliseconds."],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliDelegatesToHostFn { symbol: "handle_serve" },
-      emission: AbsentFromEmitMainRs
+      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "test",
@@ -499,34 +651,41 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Absolute label of exactly one target, e.g.",
             "`//gunbc/instruments:heads-reading-differential`."
           ],
-          emission: AbsentFromEmitMainRs
+          emission: CarriedByGeneratedDispatch
         }
       ],
       options: [],
       realization: CliInvokesBoundTargetProducer,
-      emission: AbsentFromEmitMainRs
+      emission: CarriedByGeneratedDispatch
     }
   ]
 }
 
 // THE CANONICAL QUERIES, owned here rather than by whoever is rendering.
 //
-// `CliSurfaceEmission` is this module's coproduct, so the question "does the emitter produce this
-// row" is this module's to answer. A consumer that matched the variants itself would be a second
+// `CliSurfaceEmission` is this module's coproduct, so the question "does the installed generated
+// dispatch carry this row" is this module's to answer. A consumer that matched the variants itself would be a second
 // site deciding what each arm means, and a third arm added here would then be answered in two
 // places -- once correctly and once by whichever existing arm the consumer's match happened to
 // widen into. The emitter asks for the population it should render and never sees the tag.
-fn gunbc_cli_emitted_subcommands() -> List<CliSubcommandRow> {
+fn gunbc_cli_generated_dispatch_subcommands() -> List<CliSubcommandRow> {
   gunbc_cli_subcommands() |> filter(sub => match sub.emission {
-    EmittedByEmitMainRs => true
-    AbsentFromEmitMainRs => false
+    CarriedByGeneratedDispatch => true
+    AbsentFromShippedDispatch => false
   })
 }
 
-fn cli_subcommand_emitted_options(sub: CliSubcommandRow) -> List<CliOptionRow> {
+fn cli_subcommand_generated_dispatch_options(sub: CliSubcommandRow) -> List<CliOptionRow> {
   sub.options |> filter(opt => match opt.emission {
-    EmittedByEmitMainRs => true
-    AbsentFromEmitMainRs => false
+    CarriedByGeneratedDispatch => true
+    AbsentFromShippedDispatch => false
+  })
+}
+
+fn cli_subcommand_generated_dispatch_operands(sub: CliSubcommandRow) -> List<CliOperandRow> {
+  sub.operands |> filter(operand => match operand.emission {
+    CarriedByGeneratedDispatch => true
+    AbsentFromShippedDispatch => false
   })
 }
 
@@ -540,29 +699,29 @@ fn cli_subcommand_emitted_options(sub: CliSubcommandRow) -> List<CliOptionRow> {
 // An option under an absent verb is NOT listed separately: the verb subsumes it, and listing both
 // would report one repair twice and make the population's size depend on how many options a
 // missing verb happens to declare.
-fn gunbc_cli_emitter_gap() -> List<String> {
-  cli_emitter_gap_of(subcommands: gunbc_cli_subcommands())
+fn gunbc_cli_shipped_dispatch_gap() -> List<String> {
+  cli_shipped_dispatch_gap_of(subcommands: gunbc_cli_subcommands())
 }
 
 // The fold is PARAMETERIZED on the population rather than reaching for the gunbc rows directly,
 // so its behaviour is checkable against a controlled fixture whose input and expected output are
 // authored independently. Folded over the live rows it would only ever be checkable against a
 // transcription of those same rows, which is the change detector DESIGN's oracle rule rejects.
-fn cli_emitter_gap_of(subcommands: List<CliSubcommandRow>) -> List<String> {
+fn cli_shipped_dispatch_gap_of(subcommands: List<CliSubcommandRow>) -> List<String> {
   fold(subcommands, init: [], f: fn(acc, sub) {
     match sub.emission {
-      AbsentFromEmitMainRs => concat(acc, [sub.verb])
-      EmittedByEmitMainRs => {
+      AbsentFromShippedDispatch => concat(acc, [sub.verb])
+      CarriedByGeneratedDispatch => {
         let with_operands = fold(sub.operands, init: acc, f: fn(inner, operand) {
           match operand.emission {
-            AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", operand.placeholder))])
-            EmittedByEmitMainRs => inner
+            AbsentFromShippedDispatch => concat(inner, [concat(sub.verb, concat(".", operand.placeholder))])
+            CarriedByGeneratedDispatch => inner
           }
         })
         fold(sub.options, init: with_operands, f: fn(inner, opt) {
           match opt.emission {
-            AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", opt.long))])
-            EmittedByEmitMainRs => inner
+            AbsentFromShippedDispatch => concat(inner, [concat(sub.verb, concat(".", opt.long))])
+            CarriedByGeneratedDispatch => inner
           }
         })
       }
@@ -570,8 +729,8 @@ fn cli_emitter_gap_of(subcommands: List<CliSubcommandRow>) -> List<String> {
   })
 }
 
-fn gunbc_cli_emitter_gap_rendered() -> String {
-  fold(gunbc_cli_emitter_gap(), init: "", f: fn(acc, name) {
+fn gunbc_cli_shipped_dispatch_gap_rendered() -> String {
+  fold(gunbc_cli_shipped_dispatch_gap(), init: "", f: fn(acc, name) {
     if acc == "" { name } else { concat(acc, concat(", ", name)) }
   })
 }

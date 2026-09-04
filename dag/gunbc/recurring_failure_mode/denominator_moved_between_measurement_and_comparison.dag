@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data denominator_moved_between_measurement_and_comparison: RecurringFailureMode = RecurringFailureMode {
+  identity: "denominator_moved_between_measurement_and_comparison" as NonEmptyStr,
+
+  receipts: [
+    "**denominator moved between the measurement and the comparison** (an identity-grain join is only as stable as the POPULATION it joins against, and `refs/remotes/origin/main` is not stable: it is one ref shared by every worktree of a clone, and any concurrent session's fetch fast-forwards it under a lane that is mid-merge. So a check of the shape `merge, then join the result against origin/main` reads the ref TWICE AT TWO TIMES and reports the interval's inbound commits as rows the merge lost. Specimen (2026-09-03, gunbc#10197): merging `origin/main` at `b05994a8e39` into the rung-drop split, then joining `gunbc.recurring_failure_mode` rows by identity, reported three of main's rows silently dropped by a clean auto-merge with no conflict -- which would have been a severe finding about the single-line-row carrier the PR exists to repair, and it read as a confirmation of that PR's own thesis, which is what made it credible. It was false. `git reflog show origin/main` showed the ref had fast-forwarded 78 -> 79 -> 81 rows in the four minutes after the merge, twice by other sessions; the three rows had ARRIVED, not vanished. `git merge-tree --write-tree` against the CURRENT ref reproduced the complete 81 and a re-run of the identical merge in a scratch worktree produced 81 as well, which is what falsified it. ",
+
+    "**THE TELL IS THAT THE ORACLE AND THE SUBJECT WERE PRODUCED AT DIFFERENT TIMES AND THE ORACLE IS THE ONE THAT MOVED**, and it is invisible in the check's own output, because a join against a moving ref prints exactly what a join against a stable ref would print for a real drop. ",
+
+    "Distinct from `stale_base_branch_reads_as_pending_work`, which is about a BRANCH whose content is superseded: here nothing is stale and nothing is superseded -- the two reads are both current, of different instants. ",
+
+    "**RECOGNITION RULE: for any check whose expected value is derived from a remote-tracking ref, a shared mutable file, a live API or wall-clock-dependent state, ask whether the subject and the oracle were read at the SAME INSTANT; if not, the delta is not attributable to the subject.** ",
+
+    "THE REPAIR IS A PIN AND NOT A RETRY: resolve the ref to a SHA once, record it, and make every downstream derivation, merge and oracle read that SHA -- a re-run merely samples the moving ref again and can agree with itself while both reads are wrong. ",
+
+    "The re-run is a diagnostic, not the fix. ",
+
+    "The generalization worth carrying past git: the direction of a suspicious delta is evidence, and `corruption shortens` reasoning is the same instrument -- but it decides nothing when the denominator itself may have grown, so pin first and read the direction second.)",
+  ],
+
+  evidence: [],
+}

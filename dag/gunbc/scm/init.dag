@@ -54,6 +54,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_read_outcome,
   filesystem_file_observation
@@ -69,7 +70,15 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded,
   RepositoryDecodeRefused
 }
-import gunbc.scm.repository_save { RepositorySave, create_repository }
+import gunbc.scm.repository_save {
+  RepositorySave,
+  RepositorySaved,
+  RepositorySaveRefusedByCodec,
+  RepositoryFileUnwritable,
+  RepositoryWriteByteCountUnrepresentable,
+  create_repository_at_absence,
+}
+import std.measure { ByteSize }
 
 // THE ARMS ARE THE ANSWER. There is no `initialized: Bool` beside a save outcome: a value whose
 // flag disagreed with its shape would have a spelling, and the refusals are distinguished because
@@ -93,8 +102,19 @@ type ScmInitRefusal
 // operator's next action differs -- one path already IS a repository, one holds something else that
 // would be destroyed, one could not be observed at all, and one was never a valid
 // entry name.
+// AND `ScmInitialized` MAY NOT CONTAIN A FAILED CREATION. It used to carry the whole
+// `RepositorySave`, whose arms include codec refusal, file-unwritable and unrepresentable byte
+// count -- so `ScmInitialized { save: RepositoryFileUnwritable { .. } }` was a spellable value that
+// told every consumer matching the outer arm that initialization HAPPENED when it did not. The
+// renderer noticed the nested failure and exited nonzero, which repaired the message and not the
+// carrier: a consumer reading the arm rather than re-folding its payload was simply lied to, on the
+// ordinary write-refusal path. Found in review on gunbc#10026.
+//
+// The outer arm is now the answer by itself. `ScmInitialized` carries only what a SUCCESSFUL create
+// produced, and every other save arm reaches `ScmInitWriteRefused`, which asserts nothing.
 type ScmInitOutcome
-  = ScmInitialized { save: RepositorySave }
+  = ScmInitialized { path: String, written: ByteSize }
+  | ScmInitWriteRefused { save: RepositorySave }
   | ScmInitRefused { cause: ScmInitRefusal }
 
 // WHAT THE OBSERVATION DECIDES, WITHOUT PERFORMING ANYTHING. `ScmInitMayCreate` carries the
@@ -158,8 +178,23 @@ fn initialize_repository_at(
     path: path,
   ) {
     ScmInitDecided { cause: c } => ScmInitRefused { cause: c }
-    ScmInitMayCreate(_) =>
-      ScmInitialized { save: create_repository(path: path, repo: empty_repository()) }
+    ScmInitMayCreate(absence) => init_outcome_of_save(
+      save: create_repository_at_absence(absence: absence, repo: empty_repository())
+    )
+  }
+}
+
+// THE SAVE RESULT IS FOLDED, NOT WRAPPED. This is a total match over all four RepositorySave arms,
+// and only RepositorySaved may construct ScmInitialized. A mutation that routes any other arm to
+// ScmInitialized changes what the outer arm ASSERTS, which is exactly the edit the claims enrolled
+// beside this function hold red.
+fn init_outcome_of_save(save: RepositorySave) -> ScmInitOutcome {
+  match save {
+    RepositorySaved { path: p, written: w } => ScmInitialized { path: p, written: w }
+    RepositorySaveRefusedByCodec { path: _, cause: _ } => ScmInitWriteRefused { save: save }
+    RepositoryFileUnwritable { path: _, error: _ } => ScmInitWriteRefused { save: save }
+    RepositoryWriteByteCountUnrepresentable { path: _, reported: _ } =>
+      ScmInitWriteRefused { save: save }
   }
 }
 
@@ -169,10 +204,31 @@ fn initialize_repository_at(
 // only_an_established_absence_may_create each fail under exactly that edit). Routing the DISAGREEMENT
 // arm there is not authorable at all: ScmInitMayCreate carries a FilesystemEstablishedAbsence, which
 // is sole_constructor and minted only by the substrate fold from a listing that succeeded, so no arm
-// can manufacture the permission to write. The rung is therefore split and stated rather than
-// averaged: structurally impossible for fabricating a write permission (rung 4, no constructor),
-// and mechanically preventable for routing a REAL absence to the wrong outcome (rung 2, held by the
-// claims above).
+// can manufacture the permission to write.
+//
+// THAT CLAIM WAS OVERSTATED UNTIL THIS CHANGE, AND THE CORRECTION IS THE POINT. The token being
+// unforgeable bought nothing while the actuation ignored it: this function matched
+// `ScmInitMayCreate(_)`, discarded the absence, and wrote to an independently supplied `path`. An
+// absence established for one subject could therefore sit beside a write to a DIFFERENT one, and no
+// mutation to the write target went red. Four external reviews read the sole_constructor and
+// endorsed a rung-4 authorization claim; the designated reviewer read the MATCH and found the token
+// was never consumed. A capability that is carried past its actuation authorizes nothing.
+//
+// The absence is now CONSUMED: create_repository_at_absence derives its target from the carrier's
+// own directory and name, so there is no second target to disagree with.
+//
+// THE RUNG, SPLIT AND STATED RATHER THAN AVERAGED, AND SMALLER THAN IT WAS CLAIMED TO BE:
+//   - fabricating a write permission out of nothing: structurally impossible (rung 4, no
+//     constructor for FilesystemEstablishedAbsence outside the substrate fold);
+//   - authorizing a write to a subject the absence was NOT established for: structurally impossible
+//     for THIS caller (rung 4, the path has one derivation and no independent target), and NOT a
+//     property of create_repository, which still takes a bare String for its own callers;
+//   - routing a REAL absence to the wrong outcome: mechanically preventable (rung 2, held by the
+//     claims above).
+//
+// AND THE RACE ITSELF IS NOT ON THAT LADDER AT ALL. No preflight closes a TOCTOU; O_EXCL does. The
+// observation decides WHAT TO TELL THE OPERATOR and which subject may be written; the exclusive
+// create is the wall against an actor that arrives between the two.
 //
 // THE DECISION IS ITS OWN FUNCTION SO IT CAN BE WITNESSED WITHOUT A FILESYSTEM. Every arm below is a
 // choice about whether bytes may be written, and while it lived inside the effectful entry the only
@@ -180,6 +236,11 @@ fn initialize_repository_at(
 // the write arm left every enrolled claim green. Separating the fold from the two operations that
 // feed it makes the four arms drivable one fact apart, which is the difference between a tested
 // decision and a tested renderer.
+// INIT REFUSES RATHER THAN CREATING, WHICH IS THE ONLY SAFE ARM FOR A REFUSED SUBJECT.
+// `ScmInitMayCreate` is reachable only from an ESTABLISHED absence, and a subject that was never
+// admitted established nothing -- so a subject refusal cannot fall through to the create. It
+// collapses into this module's unobserved cause VISIBLY, and the text says the repository path was
+// not a directory subject, so the operator fixes the argument rather than hunting a host fault.
 fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> ScmInitDecision {
   match observation {
     FilesystemFileAbsent(absence) => ScmInitMayCreate(absence)
@@ -189,5 +250,15 @@ fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> Sc
       ScmInitDecided { cause: ScmInitPathUnobserved { path: path, cause: c } }
     FilesystemFileObservationsDisagree { path: p, cause: c } =>
       ScmInitDecided { cause: ScmInitPathUnobserved { path: p, cause: c } }
+    FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+      ScmInitDecided {
+        cause: ScmInitPathUnobserved {
+          path: path,
+          cause: join([
+            "the repository ", n, " was requested under ", d,
+            ", which is not a directory subject, so the supplied outcomes establish no observation of it, and no create is authorized -- ", c,
+          ], ""),
+        },
+      }
   }
 }

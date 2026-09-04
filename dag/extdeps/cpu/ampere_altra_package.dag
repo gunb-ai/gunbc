@@ -3,7 +3,7 @@ module extdeps.cpu.ampere_altra_package
 import std.types { String, NonEmptyStr, List, Map }
 import std.measure { Micrometer, micrometer }
 import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere { ampere_lga4926_socket, ampere_altra_rev_a1_datasheet_authority }
+import extdeps.cpu.ampere { ampere_lga4926_socket, ampere_altra_max_rev_a1_datasheet_authority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -495,7 +495,7 @@ data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [ampere_altra_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
+  further_citations: [ampere_altra_max_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
 }
 
 data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope

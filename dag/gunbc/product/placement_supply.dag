@@ -24,6 +24,17 @@ fn host_identity_eq(a: HostIdentity, b: HostIdentity) -> Bool {
   a as String == b as String
 }
 
+// The same comparison for physical assets, and it lives here for the same reason the one above does:
+// product.placement_supply owns PhysicalAssetIdentity, so consumers that need to ask whether two
+// asset identities are the same asset should not each re-derive it. It was re-derived once already
+// -- product.printed_chassis.manufacturing_manifest defined a private copy -- which was tolerable
+// only while that module was the sole consumer, and stopped being tolerable as soon as
+// product.inventory needed the same question answered, because inventory is a generic authority and
+// importing a specific product's helper to get it would invert the layering.
+fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+  a as String == b as String
+}
+
 // SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
 // sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
 // packet reach (extdeps.network.reach) and logical topology zones

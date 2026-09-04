@@ -1725,15 +1725,27 @@ struct CrossClaimPureMemo {
     /// recompute, never a wrong value. Served-on-hash-alone, main's floor produced six emit
     /// failures whose values belonged to OTHER calls of the same producer (no field
     /// 'produced_decl_support' on type 'TargetModel', run 33269961629).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
+    /// THE RETAINED VALUE IS THE REIFIED `Value`, NOT THE PORTABLE FORM, AND THAT IS WHAT
+    /// MAKES A SERVE ZERO-WALK. Publication still reifies to `PortableValue` first — that walk
+    /// is the TOTAL portability check and the byte-budget measurement — but the portable form
+    /// is then converted ONCE, here, and every later claim is handed an `Rc` clone. `Value`'s
+    /// containers are all `Rc`-backed and `Symbol` is a process-canonical `&'static str`, so a
+    /// value reconstructed from a portable form carries nothing frame-bound: field order sorts
+    /// on process-global pointer identity, and equality no longer depends on which frame
+    /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
+    /// used to rebuild per consuming frame, at O(1) instead of O(size).
+    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
     /// from missing hits.
     overflow: u64,
     /// Estimated retained bytes over every stored entry (argument rows AND values, collision
-    /// buckets included), computed from the reified `PortableValue` at publication — reification
-    /// is total, so the size is known before the store lands. The ACTUAL byte bound review
+    /// buckets included), measured on the `PortableValue` at publication — reification is
+    /// total, so the size is known before the store lands. It is measured on the portable form
+    /// and CHARGED for the `Value` retained in its place: the two carry the same reachable
+    /// content (the same `Rc<str>` spellings, the same numbers, the same field count), so the
+    /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
@@ -2080,16 +2092,11 @@ fn try_cross_claim_pure_memo(
     // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
     // the full portable argument row, so an intra-frame hash collision cannot alias either.
     let portable_args = portable_args_from_ctx(ctx, args)?;
-    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key).and_then(
-        |entries: &Vec<(Vec<(Option<String>, PortableValue)>, Value)>| {
-            entries.iter().find_map(|(stored_args, v)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| v.clone())
-            })
-        },
-    ) {
-        return Some(v);
-    }
-    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
+    // per-context hit cache this path used to maintain is gone with the walk it existed to
+    // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
+    // machinery it obsoletes.
+    let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
         m.borrow().map.get(&memo_key).and_then(|bucket| {
             bucket.iter().find_map(|(stored_args, stored)| {
                 cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
@@ -2097,12 +2104,6 @@ fn try_cross_claim_pure_memo(
         })
     })?;
     cross_claim_observe_hit(func_name);
-    let value = value_from_portable_ctx(ctx, &portable);
-    ctx.cross_claim_hit_cache
-        .borrow_mut()
-        .entry(memo_key)
-        .or_default()
-        .push((portable_args, value.clone()));
     Some(value)
 }
 
@@ -2233,10 +2234,14 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
+        // Reify ONCE, at publication, and retain the value every later claim will be handed.
+        // The portable form has done its two jobs by here — it proved total portability and it
+        // measured the entry — and nothing downstream needs it again.
+        let served = value_from_portable_ctx(ctx, &portable);
         m.map
             .entry(memo_key)
             .or_default()
-            .push((portable_args, portable));
+            .push((portable_args, served));
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -2811,6 +2816,60 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED FOR THE ZERO-WALK SERVE. The re-enrol trigger `v2.workflow.floor_pure_producer_share`
+    // carries is "a serve that does not re-intern and re-sort per consuming frame — an
+    // interner-stable representation the tier can hand over without walking the whole value".
+    // This is the executed evidence that it holds, and it discriminates: under the previous
+    // serve every consuming frame ran `value_from_portable_ctx` over the whole value, so two
+    // frames received two DISTINCT allocations of an equal value and `Rc::ptr_eq` was false.
+    // Structural equality cannot see the difference — it was equal before and is equal now —
+    // so the assertion is on ALLOCATION IDENTITY, which is what "did not walk it" means.
+    #[test]
+    fn two_frames_are_served_the_same_allocation_rather_than_two_reconstructions() {
+        use super::{
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let filling = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args: [(Option<String>, Value); 0] = [];
+        // A nested value, so a walk would have to rebuild an inner container too.
+        let value = list_value(vec![
+            Value::Str(RcStr::from("alpha")),
+            list_value(vec![Value::Int(1), Value::Int(2)]),
+        ]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&filling, &fn_node, "prepare_grammar", &args, &value, None),
+            CrossClaimStoreOutcome::Stored
+        );
+
+        let consumer_a = fresh_ctx();
+        let consumer_b = fresh_ctx();
+        let served_a = try_cross_claim_pure_memo(&consumer_a, &fn_node, "prepare_grammar", &args)
+            .expect("frame A is served");
+        let served_b = try_cross_claim_pure_memo(&consumer_b, &fn_node, "prepare_grammar", &args)
+            .expect("frame B is served");
+
+        let (Value::List(a), Value::List(b)) = (&served_a, &served_b) else {
+            panic!("expected two served lists, got {served_a:?} and {served_b:?}");
+        };
+        assert!(
+            Rc::ptr_eq(a, b),
+            "two consuming frames must share one allocation: a serve that reconstructs the \
+             value per frame is the cost this tier's re-enrol trigger names"
+        );
+        // And the served value is still the value that was stored, in both frames.
+        assert_eq!(served_a, value);
+        assert_eq!(served_b, value);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -4174,13 +4233,6 @@ pub struct InterpContext {
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstruction
-    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
-    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
-    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
-    cross_claim_hit_cache: std::cell::RefCell<
-        HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
-    >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -4487,7 +4539,6 @@ impl InterpContext {
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
-            cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
@@ -7114,13 +7165,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
-                arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
-                    crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
-            }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
-                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-                arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
-                    crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
@@ -7218,10 +7262,6 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
-}
-
-pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
-    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
@@ -11490,6 +11530,83 @@ fn subject_module_value(
     }
 }
 
+/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
+/// refusal. A source that did not parse and a source with no imports are different values here
+/// because they are different facts, and a caller that stripped nothing from the first would
+/// report a clean rewrite of a file it never read.
+fn parsed_import_statements_value(
+    outcome: &crate::std_import::ParsedImportStatements,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ParsedImportStatements as P;
+    match outcome {
+        P::ImportStatementsParsed { statements } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementsParsed"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("statements"),
+                list_value(
+                    statements
+                        .iter()
+                        .map(|statement| Value::Record {
+                            type_name: ctx.sym("ParsedImportStatement"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("span"),
+                                    Value::Record {
+                                        type_name: ctx.sym("SourceSpan"),
+                                        fields: Rc::new(sorted_fields(vec![
+                                            (
+                                                ctx.sym("file"),
+                                                str_value(statement.span.file.clone()),
+                                            ),
+                                            (ctx.sym("start"), Value::Int(statement.span.start)),
+                                            (ctx.sym("end"), Value::Int(statement.span.end)),
+                                        ])),
+                                    },
+                                ),
+                                (
+                                    ctx.sym("imported_module"),
+                                    str_value(statement.imported_module.clone()),
+                                ),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+        P::ImportStatementParseRefused { cause } => Value::Variant {
+            type_name: ctx.sym("ParsedImportStatements"),
+            variant_name: ctx.sym("ImportStatementParseRefused"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("cause"),
+                import_statement_parse_cause_value(cause.clone(), ctx),
+            )])),
+        },
+    }
+}
+
+fn import_statement_parse_cause_value(
+    cause: Rc<crate::std_import::ImportStatementParseCause>,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ImportStatementParseCause as C;
+    let (variant, fields) = match &*cause {
+        C::SourceHasNoModuleDeclaration => ("SourceHasNoModuleDeclaration", vec![]),
+        C::ModuleDeclarationPathMalformed => ("ModuleDeclarationPathMalformed", vec![]),
+        C::ImportStatementMalformed => ("ImportStatementMalformed", vec![]),
+        C::ImportParseInstrumentAnomaly { detail } => (
+            "ImportParseInstrumentAnomaly",
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
+        ),
+    };
+    Value::Variant {
+        type_name: ctx.sym("ImportStatementParseCause"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(fields)),
+    }
+}
+
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
@@ -12862,13 +12979,42 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// EXISTENCE are independent facts; a caller that obtained create-only from it would silently also
 /// get 0600, and would break if owner-only ever stopped needing O_EXCL. This is portable and sets no
 /// mode, because setting one would be the same conflation in reverse.
-fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    file.write_all(content)?;
-    Ok(())
-}
+/// THE TARGET IS PUBLISHED ONLY WHEN ITS CONTENT IS COMPLETE.
+///
+/// The first cut of this was `create_new(true).open(path)` followed by `write_all`, and review on
+/// gunbc#10026 found the state that construction cannot describe: if the open SUCCEEDS and the
+/// write then fails, the target has already been created and holds zero or partial bytes. The
+/// helper returned an ordinary error, the transport reported `success=false, bytes_written=0`, and
+/// the caller classified it as merely unwritable -- so the model said the create did not happen
+/// while a new, incomplete artifact sat at the path. That collapses "nothing was created" into "a
+/// truncated repository now exists", which is a worse lie than the overwrite race this operation
+/// was added to close: the original race could destroy someone else's bytes, and this one
+/// FABRICATES a repository nobody wrote.
+///
+/// Two dispositions are not modeled here, because a construction that cannot reach the bad state
+/// is available (DESIGN section 4b: construction over proof, proof over validation). Content is
+/// written to a sibling temporary that is itself created with O_EXCL, and the target name is
+/// claimed by `hard_link`, which FAILS IF THE TARGET EXISTS -- so exclusivity is preserved by the
+/// publish step rather than by the open. Every failure before the link leaves the target absent,
+/// which is exactly what the operation reports.
+///
+/// The temporary is removed on every path. Its removal failure is deliberately NOT propagated: it
+/// leaves a stray sibling and does not affect what the target is, and reporting it as a write
+/// failure would say the repository was not created when it was.
+// THE CREATE-NEW REALIZATION IS NOT WRITTEN HERE ANY MORE, AND THAT IS THE POINT.
+//
+// This function used to be a hand-written twin of the Rust source string
+// v1.compiler.emit_rust emitted into every compiled program. One fact, two authorities: review
+// 5089156132 on gunbc#10069 repaired the defect in THIS one while the emitted spelling still
+// opened the target directly, so a failed emitted write left a partial repository the model
+// reported as never created. The two were brought back into agreement by hand, and #10069's own
+// annotation admitted that nothing but review held them there.
+//
+// The implementation now has ONE home, extdeps.filesystem.rust_realization, and both consumers
+// receive its exact bytes: the emitted crate through its lib.rs root, the seed through the
+// committed generated artifact this call resolves to. The regeneration and fixed-point gates
+// refuse drift on that artifact, so the agreement is machine-held rather than review-held.
+use crate::gunbc_file_transport_generated::gunbc_file_write_create_new as write_file_create_new;
 
 // ------------------------------------------------------------------------------------------------
 // THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
@@ -12878,6 +13024,374 @@ fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
 // ------------------------------------------------------------------------------------------------
 #[cfg(test)]
 mod write_file_create_new_tests {
+    // ---------------------------------------------------------------------------------------
+    // PROJECTION INTEGRITY, EXECUTED RATHER THAN ASSERTED.
+    //
+    // This module's whole claim is that ONE authority
+    // (extdeps.filesystem.rust_realization rust_file_write_create_new_fn_def) reaches two committed
+    // consumers verbatim. A one-time manual comparison is a receipt about the tree that existed when
+    // someone ran it; it is not enforcement, and external review required this to execute. A future
+    // rustfmt release or a generator edit could reopen the difference without touching the authority
+    // at all, and nothing would say so.
+    //
+    // THIS IS NOT THE FORBIDDEN EQUALITY WITNESS. That pattern pins two independently authored
+    // implementations to each other and calls the agreement a guarantee. There is one implementation
+    // here; this checks that its two PROJECTIONS carry it unchanged, which is necessary precisely
+    // because one of those paths passes through an external canonicalizer this repo does not own.
+    //
+    // The fourth assertion is the load-bearing one: `cargo fmt --all --check` is a declared rung
+    // drop as a merge gate, so nothing else in CI would notice the seed artifact drifting out of
+    // rustfmt's fixed point.
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("stage0 crate sits three levels under the repo root")
+            .to_path_buf()
+    }
+
+    // THE BLOCK, NOT THE FUNCTION. Extraction starts at the generated CONSTANT, not at `pub fn`.
+    // Starting at the function would leave a real blind spot the moment the limit became a named
+    // authority: seed renders 1024, v1_rt renders a stale 512, the function bytes match, BOTH
+    // projections compile, this control stays green, and the two behave differently. "It would not
+    // compile without the constant" proves presence, never agreement.
+    const CANONICAL_BLOCK_MARKER: &str = "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT";
+
+    fn extract_create_new_definition(source: &str, what: &str) -> String {
+        let start = source
+            .find(CANONICAL_BLOCK_MARKER)
+            .unwrap_or_else(|| panic!("{what} does not carry the create-new canonical block"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n}\n")
+            .unwrap_or_else(|| panic!("{what}'s definition is not brace-terminated"));
+        rest[..end + 3].to_string()
+    }
+
+    #[test]
+    fn both_projections_carry_the_one_authority_verbatim() {
+        let root = repo_root();
+        let seed_path = root.join("src/v1/stage0/src/gunbc_file_transport_generated.rs");
+        let runtime_path = root.join("src/v1/stage0/src/v1_rt.rs");
+
+        let seed_src = std::fs::read_to_string(&seed_path).expect("seed projection");
+        let runtime_src = std::fs::read_to_string(&runtime_path).expect("runtime projection");
+
+        let seed = extract_create_new_definition(&seed_src, "the generated seed module");
+        let runtime = extract_create_new_definition(&runtime_src, "emitted v1_rt");
+
+        // (2) exactly once in the runtime projection -- a second copy would be a second authority,
+        // checked for the constant AND the function, since either alone could be duplicated.
+        for marker in [CANONICAL_BLOCK_MARKER, "pub fn gunbc_file_write_create_new"] {
+            assert_eq!(
+                runtime_src.matches(marker).count(),
+                1,
+                "v1_rt must carry {marker} exactly once",
+            );
+        }
+        // The block really must carry the limit, or the extraction range proves nothing about it.
+        assert!(
+            seed.starts_with(CANONICAL_BLOCK_MARKER),
+            "the compared range must begin at the generated limit, not at the function",
+        );
+        // (3) the two extracted byte ranges are identical
+        assert_eq!(
+            seed, runtime,
+            "the seed artifact and emitted v1_rt must carry byte-identical definitions",
+        );
+
+        // (4) the seed artifact is already at rustfmt's fixed point
+        let fmt = std::process::Command::new("rustfmt")
+            .args(["--edition", "2021", "--emit", "stdout", "--quiet"])
+            .arg(&seed_path)
+            .output()
+            .expect("rustfmt must be available: this check refuses rather than skipping");
+        assert!(fmt.status.success(), "rustfmt failed on the seed artifact");
+        let formatted = String::from_utf8(fmt.stdout).expect("rustfmt output is utf-8");
+        assert_eq!(
+            extract_create_new_definition(&formatted, "rustfmt output"),
+            seed,
+            "the seed artifact must already be at rustfmt's fixed point, or the two projections \
+             will drift the next time a formatter runs over one of them",
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // THE SAME-PROCESS STAGING COLLISION, AND WHY THE FIRST FORMULATION OF THIS CONTROL WAS
+    // NOT DISCRIMINATING.
+    //
+    // Review 58836 on gunbc#10069 found that the staging name was `{path}.gunbc-create-{pid}`:
+    // unique per TARGET, but not per THREAD. Two threads of one process creating the same target
+    // derived the SAME staging name, so the loser failed its exclusive open on the TEMPORARY and
+    // reported AlreadyExists against an internal name it never asked to write -- and if the winner
+    // then failed too, both calls could refuse with no target ever published.
+    //
+    // The obvious control -- race N threads and assert exactly one wins -- PASSES under the
+    // defective construction, because there too exactly one wins and the losers report
+    // AlreadyExists. Same verdict, same ErrorKind, no information. It would have been a decoration
+    // (DESIGN section 4b), and #10069 already paid for one of those.
+    //
+    // THIS ONE IS DETERMINISTIC AND SEPARATES THE TWO CONSTRUCTIONS. It plants exactly the staging
+    // file the OLD naming rule would have chosen and leaves the TARGET ABSENT. The old rule
+    // collides with that leftover and refuses a create that was entirely legitimate; the sequence
+    // suffix makes each attempt's staging name its own, so the create proceeds. Red on the defect,
+    // green on the repair, with no timing dependence.
+    // THE GENERALIZED CONTROL: AN OCCUPIED CANDIDATE UNDER THE *CURRENT* RULE.
+    //
+    // External review established that the previous control, which plants the PID-only name #10069
+    // used, does not prove the class closed -- it only proves the literal suffix changed. Under the
+    // current rule that planted file is not a candidate at all, so the test passes without ever
+    // exercising an occupied candidate.
+    //
+    // The defect it failed to catch is real: a per-attempt sequence makes the name unique among LIVE
+    // calls in one process, but this function deliberately ignores removal failure after
+    // publication, so stale staging files are an admitted physical state, and a later process may
+    // reuse the pid and restart its sequence at zero. A one-shot candidate that returned its own
+    // AlreadyExists would reproduce the identical defect -- target absent, legitimate create refused
+    // because an INTERNAL name was occupied -- at a frequency low enough to be harder to observe.
+    //
+    // So this control plants the FIRST candidate the current rule derives, in a freshly spawned
+    // process so the sequence is known to start at zero, and requires the operation to SKIP it,
+    // acquire the next, and publish the requested target -- leaving the planted file untouched,
+    // because it belongs to another attempt and deleting it would turn a naming collision into data
+    // loss. It goes red against a one-shot candidate, which the previous control could not do.
+    #[test]
+    fn an_occupied_staging_candidate_is_skipped_rather_than_refused() {
+        // A FRESH PROCESS, NOT A FORK. The previous version of this control forked and asserted the
+        // child's first candidate was seq 0. That was wrong, and external review caught it: fork
+        // COPIES the counter's current value, and cargo runs these tests as threads of ONE process
+        // where sibling tests have already advanced it. The planted name was then not a candidate at
+        // all, so the control passed without ever exercising an occupied candidate -- the identical
+        // vacuity this test exists to rule out. Only a new process gives the static its initializer.
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        // The helper is inert without the variable, so prove the child actually RAN it -- otherwise a
+        // renamed test would leave this green while asserting nothing.
+        assert!(
+            rendered.contains("1 passed"),
+            "the helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an occupied staging candidate must be skipped, the next acquired, the target \
+             published, and the planted file left untouched; got:\n{rendered}",
+        );
+    }
+
+    // THE BUDGET REFUSAL HAS TO BE REACHED, NOT ASSERTED. Nothing above this exercises the arm that
+    // ends the candidate search, so without it the limit is a number no executed path ever meets.
+    // It occupies exactly the CONFIGURED number of candidates -- read from the one authority, never
+    // retyped -- so that changing the limit changes this control rather than leaving it stale.
+    #[test]
+    fn the_candidate_budget_refuses_rather_than_publishing_or_looping() {
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, BUDGET_HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(BUDGET_HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        assert!(
+            rendered.contains("1 passed"),
+            "the budget helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an exhausted candidate budget must refuse, leave the target absent, and leave every \
+             planted candidate untouched; got:\n{rendered}",
+        );
+    }
+
+    const BUDGET_HELPER_ENV: &str = "GUNBC_STAGING_CANDIDATE_BUDGET_CHILD";
+    const BUDGET_HELPER_LEAF: &str = "::staging_candidate_budget_child_helper";
+
+    #[test]
+    fn staging_candidate_budget_child_helper() {
+        if std::env::var(BUDGET_HELPER_ENV).is_err() {
+            return;
+        }
+        let limit =
+            crate::gunbc_file_transport_generated::GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT;
+        let dir = std::env::temp_dir().join(format!("gunbc-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Occupy every candidate this call is permitted to try, and no more.
+        let planted: Vec<String> = (0..limit)
+            .map(|seq| format!("{}.gunbc-create-{}-{}", target, std::process::id(), seq))
+            .collect();
+        for (seq, name) in planted.iter().enumerate() {
+            std::fs::write(name, format!("occupant {seq}")).expect("plant a candidate");
+        }
+
+        let refusal = super::write_file_create_new(&target, b"a fresh repository")
+            .expect_err("an exhausted candidate budget must refuse");
+        // NOT AlreadyExists: the target is absent, and conflating the two is the defect this
+        // whole module exists to remove.
+        assert_eq!(refusal.kind(), std::io::ErrorKind::Other, "{refusal}");
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains("StagingCandidateBudgetExhausted")
+                && rendered.contains(&format!("attempted={limit}"))
+                && rendered.contains(&format!("limit={limit}")),
+            "the refusal must name the cause and the budget it reached: {rendered}",
+        );
+        assert!(
+            !path.exists(),
+            "no target may be published when the budget is exhausted"
+        );
+        for (seq, name) in planted.iter().enumerate() {
+            assert_eq!(
+                std::fs::read_to_string(name).expect("a planted candidate must survive"),
+                format!("occupant {seq}"),
+                "a refusal must not delete another attempt's file",
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Ask the harness for a helper's own full path rather than spelling it here: a hardcoded module
+    // path would go stale on a rename and leave the control running nothing at all.
+    fn exact_helper_name(exe: &std::path::Path, leaf: &str) -> String {
+        let listed = std::process::Command::new(exe)
+            .args(["--list"])
+            .output()
+            .expect("list tests");
+        let listing = String::from_utf8_lossy(&listed.stdout);
+        let matches: Vec<&str> = listing
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .filter(|name| name.ends_with(leaf))
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one helper named {leaf}, found {matches:?}",
+        );
+        matches[0].to_string()
+    }
+
+    const HELPER_ENV: &str = "GUNBC_OCCUPIED_STAGING_CANDIDATE_CHILD";
+    const HELPER_LEAF: &str = "::occupied_staging_candidate_child_helper";
+
+    // Runs for real ONLY in the child process the control above spawns, where this is the first and
+    // only caller and the sequence therefore starts at its initializer.
+    #[test]
+    fn occupied_staging_candidate_child_helper() {
+        if std::env::var(HELPER_ENV).is_err() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("gunbc-occupied-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
+        std::fs::write(&planted, b"a stale internal candidate").expect("plant the first candidate");
+
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("an occupied staging candidate must be skipped, not refused");
+        assert_eq!(
+            std::fs::read(&path).expect("target must be published"),
+            b"a fresh repository",
+        );
+        // The occupied candidate must survive: it is another attempt's file, and removing it would
+        // convert a naming collision into data loss.
+        assert_eq!(
+            std::fs::read(&planted).expect("the planted candidate must survive"),
+            b"a stale internal candidate",
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Kept as the historical mutation control for #10069's PID-only naming. It is NOT sufficient on
+    // its own -- see the generalized control above -- but it still pins the specific regression.
+    #[test]
+    fn a_leftover_staging_file_does_not_refuse_a_legitimate_create() {
+        let dir = std::env::temp_dir().join(format!("gunbc-stale-staging-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Exactly the name the pre-repair rule derived, and nothing else.
+        let collided = format!("{}.gunbc-create-{}", target, std::process::id());
+        std::fs::write(&collided, b"a leftover from an earlier attempt")
+            .expect("plant the leftover");
+
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("a leftover staging file must not refuse a create whose TARGET is absent");
+        assert_eq!(
+            std::fs::read(&path).expect("target must exist"),
+            b"a fresh repository",
+        );
+
+        let _ = std::fs::remove_file(&collided);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // AND THE RACE ITSELF STILL HAS TO BEHAVE. This one is not discriminating on its own -- see
+    // above -- but it is the positive control for the claim the repair makes about concurrency:
+    // every refusal must name a target that REALLY exists, so no caller is told AlreadyExists about
+    // a target nobody published, and no staging file may survive the run.
+    #[test]
+    fn concurrent_same_target_creates_produce_one_winner_and_no_residue() {
+        let dir = std::env::temp_dir().join(format!("gunbc-race-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        let payload = vec![b'x'; 512 * 1024];
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let t = target.clone();
+                let p = payload.clone();
+                std::thread::spawn(move || super::write_file_create_new(&t, &p))
+            })
+            .collect();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("thread"))
+            .collect();
+
+        let winners = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(winners, 1, "exactly one creator may publish the target");
+        for r in results.iter().filter(|r| r.is_err()) {
+            let e = r.as_ref().unwrap_err();
+            assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        }
+        assert!(path.exists(), "the winner's target must be published");
+        assert_eq!(std::fs::read(&path).expect("target").len(), payload.len());
+
+        let residue: Vec<_> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".gunbc-create-"))
+            .collect();
+        assert!(
+            residue.is_empty(),
+            "staging files must not survive: {residue:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));
@@ -12895,6 +13409,70 @@ mod write_file_create_new_tests {
         assert_eq!(
             after, b"SOMEONE ELSE'S BYTES",
             "the existing bytes must be untouched by a refused create"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE POST-OPEN FAILURE CONTROL, and it took two attempts to make it real.
+    //
+    // Review on gunbc#10026 found that neither existing cell observes a failure AFTER the target
+    // name would have been claimed -- exactly where the old open-then-write construction left a
+    // created-but-incomplete file while reporting that nothing was created.
+    //
+    // THE FIRST ATTEMPT WAS A DECORATION AND IS RECORDED HERE SO IT IS NOT REBUILT. It put a
+    // DIRECTORY at the target and asserted the target was untouched. Measured against the old
+    // construction, it PASSED: `create_new` fails at the OPEN when the name exists, so nothing was
+    // ever created and the assertion was satisfied by the defect. A check that cannot go red on the
+    // fault it names is worse than absent (DESIGN section 4b) because it gets cited as coverage.
+    //
+    // THIS ONE REACHES THE FAULT. RLIMIT_FSIZE makes `write_all` fail with EFBIG on a path that is
+    // ABSENT, so the create genuinely succeeds and the write genuinely fails -- the one ordering
+    // that distinguishes the two constructions. It runs in a forked child because the limit and the
+    // SIGXFSZ disposition are process-wide and this binary runs tests concurrently; the parent only
+    // reads the filesystem afterwards.
+    #[test]
+    fn a_write_failure_after_creation_leaves_no_target_behind() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-create-new-efbig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("repo.json");
+        let target_s = target.to_str().unwrap().to_string();
+
+        // 64 bytes allowed, 4 KiB written: the create succeeds, the write cannot.
+        let content = vec![b'x'; 4096];
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe {
+                libc::signal(libc::SIGXFSZ, libc::SIG_IGN);
+                let lim = libc::rlimit {
+                    rlim_cur: 64,
+                    rlim_max: 64,
+                };
+                libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
+            }
+            let _ = super::write_file_create_new(&target_s, &content);
+            unsafe { libc::_exit(0) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+        // THE LOAD-BEARING ASSERTION. Under the old construction the target was created by the open
+        // and survived the failed write as a zero-or-partial file -- a repository nobody wrote.
+        // Publishing only when the content is complete means there is nothing at the target at all.
+        assert!(
+            !target.exists(),
+            "a write that failed after creation must leave NO target behind"
+        );
+        let strays: Vec<String> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            strays.is_empty(),
+            "no staging temporary may survive either: {strays:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -17047,6 +17625,16 @@ macro_rules! v1_builtin_arms {
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+            arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let observed =
+                    crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
+                        file, source,
+                    );
+                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+            },
+
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
                 let file = expect_str($positional.first().copied(), $name)?;
                 let source = expect_str($positional.get(1).copied(), $name)?;
@@ -17313,12 +17901,126 @@ macro_rules! v1_builtin_dispatch {
     };
 }
 
+// ── OPAQUE-HOST-CALL REACH: OBSERVED AT THE ONE DISPATCH THAT CAN SEE IT ──────────────────
+//
+// WHY THIS EXISTS AND WHY IT IS HERE RATHER THAN AT THE FLOOR. `v2.workflow.required_floor`
+// classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
+// `ClaimPreemptionReachability`, and `gunbc.v1_interpreter_opaque_host_call` already grounds
+// which operations are unpollable. But the seed had no way to say which arm a claim actually
+// REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
+// discarded everywhere else -- the two populations the model distinguishes arrived at the floor
+// as one bucket. `eval_builtin_inner` is the single point every `free_call.*` arm passes
+// through, so recording reach here costs one site rather than one per arm, and no arm can be
+// added that silently escapes it.
+//
+// IT RECORDS, IT DOES NOT DECIDE. Nothing here compares a cost or blocks a claim: the floor
+// reads this to REPORT which population a crossing belongs to, and blocking behaviour is
+// unchanged. The roster is NOT duplicated in Rust -- the floor reads
+// `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
+// it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
+// arming an empty one (an empty roster would report every crossing as pollable, which is the
+// reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
+thread_local! {
+    static OPAQUE_HOST_CALL_SURFACE: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
+    static OPAQUE_HOST_CALL_REACHED: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    // THE DENOMINATOR FOR THE REACH RECORD, AND THE ONLY THING THAT SEPARATES ITS TWO FAILURES.
+    // A claim reporting no reach is either a claim that called no opaque arm (the finding the
+    // column exists to report) or a claim whose calls never passed this hook at all (the column
+    // being a decoration). Those are indistinguishable from an empty list, so the hook counts
+    // EVERY dispatch it sees beside the ones it matches: `dispatches` is the population the
+    // identity test was applied to, and zero dispatches under a claim that provably compiled a
+    // module says the hook is not on the path — a statement the reach list alone cannot make.
+    static BUILTIN_DISPATCHES_OBSERVED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static BUILTIN_DISPATCH_LAST_NAME: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Arm the recorder with the grounded surface. `None` DISARMS it, which is not the same fact as
+/// an empty surface: a disarmed recorder answers `SurfaceUnarmed` and a caller that cannot tell
+/// those apart would read "no opaque call reached" out of "nobody told me what opaque means".
+pub fn set_opaque_host_call_surface(operations: Option<Vec<String>>) {
+    OPAQUE_HOST_CALL_SURFACE.with(|s| *s.borrow_mut() = operations);
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+}
+
+/// Clear the per-claim record. Called by the floor before each claim; the surface stays armed.
+pub fn reset_opaque_host_call_reach() {
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(0));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = None);
+}
+
+/// How many builtin dispatches passed the reach hook since the last reset, and the last name it
+/// saw. Reported beside the reach so an empty reach can be read: with dispatches > 0 the hook ran
+/// and the claim genuinely reached no listed arm; with dispatches == 0 the hook never ran and the
+/// reach is not an observation at all.
+pub fn builtin_dispatches_observed() -> (u64, Option<String>) {
+    (
+        BUILTIN_DISPATCHES_OBSERVED.with(|c| c.get()),
+        BUILTIN_DISPATCH_LAST_NAME.with(|n| n.borrow().clone()),
+    )
+}
+
+/// Which armed opaque operations this claim reached, in first-reach order, deduplicated.
+pub fn opaque_host_call_reach() -> OpaqueHostCallReach {
+    let armed = OPAQUE_HOST_CALL_SURFACE.with(|s| s.borrow().is_some());
+    if !armed {
+        return OpaqueHostCallReach::SurfaceUnarmed;
+    }
+    let reached = OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow().clone());
+    if reached.is_empty() {
+        OpaqueHostCallReach::CooperativelyPollable
+    } else {
+        OpaqueHostCallReach::OpaqueHostCallUnbounded {
+            operations: reached,
+        }
+    }
+}
+
+/// The seed's spelling of `v2.workflow.floor_terminal_ledger`'s `ClaimPreemptionReachability`,
+/// plus the third state the model does not need and the seed does: the surface was never armed.
+/// `SurfaceUnarmed` is a REFUSAL cause at the floor, never a synonym for `CooperativelyPollable`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpaqueHostCallReach {
+    SurfaceUnarmed,
+    CooperativelyPollable,
+    OpaqueHostCallUnbounded { operations: Vec<String> },
+}
+
+/// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
+/// AUTHORED SPELLING `free_call.<name>`, which is what
+/// `gunbc.v1_interpreter_opaque_host_call` rosters -- not the bare builtin name, because the
+/// roster deliberately carries both the `free_call.*` and `cli_run.*` spellings of one arm and
+/// matching on the bare name would collide them.
+fn note_opaque_host_call_reach(name: &str) {
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = Some(name.to_string()));
+    OPAQUE_HOST_CALL_SURFACE.with(|s| {
+        let borrowed = s.borrow();
+        let Some(surface) = borrowed.as_ref() else {
+            return;
+        };
+        let identity = format!("free_call.{name}");
+        if surface.iter().any(|op| op == &identity) {
+            OPAQUE_HOST_CALL_REACHED.with(|r| {
+                let mut reached = r.borrow_mut();
+                if !reached.iter().any(|o| o == &identity) {
+                    reached.push(identity);
+                }
+            });
+        }
+    });
+}
+
 fn eval_builtin_inner(
     name: &str,
     args: &[(Option<String>, Value)],
     ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    note_opaque_host_call_reach(name);
     v1_builtin_arms!(v1_builtin_dispatch, name, positional, ctx)
 }
 
@@ -17909,6 +18611,20 @@ pub fn eval_profile_enabled() -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceReceipt {
     pub subject_key: String,
+    /// WHICH PREEMPTION POPULATION THIS CLAIM BELONGS TO, OBSERVED RATHER THAN ASSUMED.
+    ///
+    /// `v2.workflow.required_floor` classifies a completed-over-limit claim as
+    /// `CompletedPastSafetyLimit` carrying a `ClaimPreemptionReachability`, because completion is
+    /// evidence of safety ONLY for a claim the poll could have stopped. For a claim whose cost
+    /// accrued inside an opaque host call no stride point falls inside it, so it completes
+    /// however far over the ceiling and the limit observed nothing. Until this field the seed
+    /// could not tell the two apart: the reachability was hand-supplied in
+    /// `test.claim.preemption_reachability` and every real crossing arrived at the floor as one
+    /// undifferentiated bucket, which is why nobody could say how many crossings were missed
+    /// interrupts and how many were near-line overshoots.
+    ///
+    /// IT REPORTS; IT DOES NOT GATE. Blocking behaviour is unchanged by this field's presence.
+    pub opaque_host_call_reach: OpaqueHostCallReach,
     pub work_shape: String,
     /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
     /// existing receipt column projects.
@@ -18029,6 +18745,7 @@ pub fn performance_receipt_from_witness(
         .unwrap_or(0);
     PerformanceReceipt {
         subject_key,
+        opaque_host_call_reach: opaque_host_call_reach(),
         work_shape: work_shape.to_string(),
         wall_nanos,
         cpu_nanos,
@@ -20718,6 +21435,110 @@ mod evaluator_step_work_measure_tests {
             "the claim that PAID for a shared fill and the claim that read it warm must carry \
              the same marginal step count, or the measure is a function of execution order: \
              filler={marginal_filler}, reader={marginal_reader}"
+        );
+    }
+}
+
+// ── OPAQUE-HOST-CALL REACH: THE EXECUTED EVIDENCE ────────────────────────────────────────────
+//
+// These are the discriminating controls for the recorder, not a demonstration that it runs. Each
+// one is RED under a specific wrong behaviour, and the third is the one that matters most: an
+// unarmed surface must NOT answer `CooperativelyPollable`, because that is the reassuring
+// direction — it would report every completed-over-ceiling crossing as an ordinary overshoot on
+// a run that never observed reachability at all.
+#[cfg(test)]
+mod opaque_host_call_reach_tests {
+    use super::*;
+
+    // The tests share one thread-local recorder, so each arms the surface it needs rather than
+    // inheriting whatever ran before it. Serial by construction within a thread; the arming call
+    // is itself the reset.
+    #[test]
+    fn a_listed_arm_is_recorded_and_an_unlisted_one_is_not() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string()
+        ]));
+        note_opaque_host_call_reach("parse_stage0_cargo_manifest_bins");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "an arm that is NOT on the surface must leave the claim in the pollable population"
+        );
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["free_call.compile_dag_rust_emit_check".to_string()],
+            },
+            "a listed arm must move the claim into the unbounded population, carrying the \
+             operation rather than only the fact"
+        );
+    }
+
+    // THE IDENTITY COMPARED IS THE AUTHORED SPELLING, NOT THE BARE NAME. The roster carries both
+    // `free_call.X` and `cli_run...X` for one arm; matching on the bare name would collide them
+    // and admit an arm the surface never listed.
+    #[test]
+    fn the_bare_builtin_name_does_not_match_a_free_call_identity() {
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "a surface listing the BARE name must not match the `free_call.` identity — the \
+             roster's spellings are distinct and collapsing them would admit unlisted arms"
+        );
+    }
+
+    // THE ONE THAT GUARDS THE REASSURING DIRECTION.
+    #[test]
+    fn an_unarmed_surface_is_unknown_and_never_the_benign_population() {
+        set_opaque_host_call_surface(None);
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::SurfaceUnarmed,
+            "an unarmed surface must report UNKNOWN; answering `CooperativelyPollable` would \
+             report every crossing on such a run as a benign overshoot"
+        );
+    }
+
+    // Reach is per claim: the floor clears it between claims and the surface survives that.
+    #[test]
+    fn reset_clears_the_reach_but_leaves_the_surface_armed() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string()
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        reset_opaque_host_call_reach();
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "after a reset the next claim starts clean — but still ARMED, or every later claim \
+             would report `SurfaceUnarmed`"
+        );
+    }
+
+    // A claim reaching two opaque arms reports both: naming only the first would under-state the
+    // surface a repair has to cover.
+    #[test]
+    fn multiple_reached_operations_are_all_carried_and_deduplicated() {
+        set_opaque_host_call_surface(Some(vec![
+            "free_call.compile_dag_rust_emit_check".to_string(),
+            "free_call.compile_dag_diagnostic_census".to_string(),
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        note_opaque_host_call_reach("compile_dag_diagnostic_census");
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec![
+                    "free_call.compile_dag_rust_emit_check".to_string(),
+                    "free_call.compile_dag_diagnostic_census".to_string(),
+                ],
+            },
+            "both operations must appear, in first-reach order, without the repeat"
         );
     }
 }

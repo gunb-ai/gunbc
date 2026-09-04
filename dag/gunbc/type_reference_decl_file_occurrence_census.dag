@@ -263,7 +263,7 @@ data type_reference_decl_file_census_provenance: List<DeclarationRef> = [
   decl_ref(module_path: "v1.compiler.coercion", decl_name: "numeric_realization_roster_extension_note"),
   decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note"),
   decl_ref(module_path: "gunbc.bare_name_identity_consumer_census", decl_name: "bare_name_identity_consumers"),
-  decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "recurring_failure_mode_roster"),
+  decl_ref(module_path: "gunbc.recurring_failure_mode.roster", decl_name: "recurring_failure_mode_roster"),
 ]
 
 // DERIVED READS. Every one is a fold over the roster above, never a stored number: adding a class

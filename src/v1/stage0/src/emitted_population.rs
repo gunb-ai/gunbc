@@ -6,6 +6,7 @@
 // src/extdeps_container_oci_digest.rs
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
+// src/extdeps_filesystem_rust_realization.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
 // src/extdeps_languages_dag_types.rs
@@ -29,6 +30,7 @@
 // src/extdeps_uri_path.rs
 // src/extdeps_version.rs
 // src/extdeps_version_semver.rs
+// src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_rust_decl_type_overlay.rs
@@ -55,6 +57,7 @@
 // src/std_error_primitives.rs
 // src/std_execution_mode.rs
 // src/std_graph.rs
+// src/std_import.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
@@ -138,6 +141,7 @@
 // src/v1_compiler_workspace_members.rs
 // src/v1_gunbc_namespace_reference_derived_closure_production_observations.rs
 // src/v1_gunbc_occurrence_binding_parser_walk.rs
+// src/v1_gunbc_parsed_import_statements.rs
 // src/v1_probe_emit_interp.rs
 // src/v1_rt.rs
 // src/v1_std_core.rs
@@ -145,8 +149,10 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
+// src/v1_tests_claim_type_declaration_occurrence_control_test.rs
 // src/wt_a.rs
 // src/wt_b.rs
 // src/wt_common.rs

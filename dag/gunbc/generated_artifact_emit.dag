@@ -1,19 +1,23 @@
 
 module gunbc.generated_artifact_emit
 
+import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact,
   artifact_path,
   artifact_commit_policy,
   CommitRequired, NotCommitted,
   GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
-  committed_generated_artifacts
+  committed_generated_artifacts,
+  heal_regenerated_after_provisional_merge_paths
 }
 import gunbc.generated_workflow_provenance {
   generated_workflow_provenance_header,
@@ -28,7 +32,7 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
-import gunbc.design_ledgers { expected_design_ledgers_md }
+import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
@@ -38,6 +42,7 @@ import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.runner_host_grants { runner_host_sudoers_content }
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.plan { expected_plan_md }
+import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
 import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_dag,
   expected_stage0_crate_layout_generated_rs
@@ -48,6 +53,7 @@ import gunbc.stage0_crate_partition_emit {
 import gunbc.stage0_executable_assembly_emit {
   expected_stage0_executable_assembly_generated_dag
 }
+import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
 import gunbc.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs,
   V1InterpreterDispatchGenerated,
@@ -83,20 +89,31 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     }
     RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
     DesignArtifact => artifact_generated(content: expected_design_md())
-    DesignLedgersArtifact => artifact_generated(content: expected_design_ledgers_md())
+    DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
+    DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
-    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
+    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
+      regen_command: ci_heal_author_commit_regen_command,
+      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+    ))
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
+    CouponCadQueryProgramArtifact => match expected_coupon_cadquery_program() {
+      CouponProgramGenerated { content } => artifact_generated(content: content)
+      CouponProgramRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
     Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_dag())
     Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: expected_stage0_crate_layout_generated_rs())
     Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: expected_stage0_crate_partition_generated_dag())
     Stage0ExecutableAssemblyGeneratedDagArtifact => artifact_generated(content: expected_stage0_executable_assembly_generated_dag())
+    EvaluationBudgetConsequenceGeneratedRsArtifact =>
+      artifact_generated(content: expected_evaluation_budget_consequence_generated_rs())
     V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
       V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
       V1InterpreterDispatchGenerationRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
+    FileTransportRealizationGeneratedRsArtifact => artifact_generated(content: expected_gunbc_file_transport_generated_rs())
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
     RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
       RunnerHostDeployFound { deploy } =>
@@ -160,19 +177,23 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     GitattributesArtifact => true
     RoadmapArtifact => true
     DesignArtifact => true
-    DesignLedgersArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     GeneratedArtifactMergeDriverArtifact => true
     RunnerDeployArtifact => true
+    CouponCadQueryProgramArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
     Stage0ExecutableAssemblyGeneratedDagArtifact => true
+    EvaluationBudgetConsequenceGeneratedRsArtifact => true
     V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
+    FileTransportRealizationGeneratedRsArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
     RunnerHostSudoersArtifact { host: _ } => match generated {
       ArtifactGenerated { content: _ } => true

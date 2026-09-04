@@ -513,7 +513,14 @@ fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structu
 //
 // It is not reachable today: this repository's stores are SHA-1, so one family is in play and the collision has no way to occur. That is a fact about the current population, not about the carrier, and the repository is explicitly moving toward SHA-256 object format -- the moment both exist, an identity that ignores which one it is becomes wrong silently.
 //
-// The fix mirrors the ref token, which already prefixes its family for the same reason, so the two places that turn a hash into an identity string now agree instead of one quietly being weaker. Found by review, and the argument that convinced me is that the adjacent note already made the case -- the code simply did not do what its own reasoning said.
+// THE DIGEST ATOM AND RENDERED GIT WIRE DELIBERATELY KEEP DIFFERENT FAMILY TOKENS. This
+// `git.oid.v1.*` atom is frozen because it participates in build_subject_digest, the artifact
+// cache key: renaming it would invalidate existing artifacts and make prior receipts
+// unreproducible. Rendered identity text instead consumes render_git_object_id_wire's `sha1:` /
+// `sha256:` spelling. That renderer currently lives in gunbc.merge_admission_subject despite
+// object_store's own note citing it as GitObjectId-authority behavior; the resulting
+// build-identity -> merge-admission dependency and this split dissolve together when the renderer
+// is relocated to the GitObjectId authority. Found by review; relocation is outside BT-0P.
 fn tree_oid_identity_atom(oid: GitObjectId) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_atom(value: git_object_format_identity_tag(format: git_object_id_format(oid: oid))),

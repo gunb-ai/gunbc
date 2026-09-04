@@ -6,6 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
+import std.measure { Minute, minute, MergeQueueEntryCount, merge_queue_entry_count }
 import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -51,26 +52,126 @@ type RulesetRuleType
   | PullRequestRule
   | CreationRule
   | UpdateRule
+  | MergeQueueRule
   | UnrecognizedRuleType { raw: String }
 
-// current_user_can_bypass is documented as one of never / pull_requests_only / always. It is the
-// only response field answering "can the rule be walked past" — the question a required context
-// exists to make unanswerable — so it is decoded rather than skipped.
-type RulesetBypassStanding
-  = BypassNever
-  | BypassPullRequestsOnly
-  | BypassAlways
-  | UnrecognizedBypassStanding { raw: String }
+// current_user_can_bypass is documented as one of never / pull_requests_only / always, and IT IS A
+// FACT ABOUT THE READER, NOT ABOUT THE RULESET. GitHub answers it for the identity that made the
+// request. The type is named for that: `ThisReaderCannotBypass` is what the response supports, and
+// "nobody can bypass" is a DIFFERENT claim about a DIFFERENT subject -- the bypass_actors roster --
+// which this field does not answer at any authorization level.
+//
+// The former spelling (`RulesetBypassStanding`, `BypassNever`) named the ruleset, and that is
+// precisely the confusion that let a reader-relative "I cannot bypass" be read as "no bypass
+// exists". The three inhabitants stay separate rather than collapsing the two grants into one arm
+// with a mode: review 56496 established that `pull_requests_only` and `always` are different grants
+// with different remedies, and an unrecognized standing is a third thing again -- GitHub's
+// vocabulary moved and this reading is no longer established.
+type ReaderBypassStanding
+  = ThisReaderCannotBypass
+  | ThisReaderCanBypassPullRequestsOnly
+  | ThisReaderCanBypassAlways
+  | UnrecognizedReaderBypassStanding { raw: String }
+
+// THE ROSTER IS THE OTHER SUBJECT AND IT HAS AN UNAVAILABLE STATE, WHICH IS THE WHOLE POINT.
+//
+// bypass_actors answers "who may walk past this ruleset". GitHub OMITS the key when the roster is
+// empty AND when the reading credential is not authorized to see it, and the response carries
+// nothing that separates those. So an absent key is UNAVAILABLE, never EMPTY -- and only a
+// complete, sufficiently authorized observation of an EMPTY roster establishes that no route
+// around the ruleset exists.
+//
+// Collapsing unavailable into empty is the empty-observation narrow: it would let a credential of
+// unknown visibility mint the strongest possible claim about a subject it never saw. The reader
+// field records WHOSE observation this is, because the answer is relative to it.
+type RulesetBypassActor {
+  actor_type: String
+  actor_id: Int
+  bypass_mode: String
+}
+
+type BypassActorRosterObservation
+  = BypassRosterObserved { actors: List<RulesetBypassActor> }
+  | BypassRosterUnavailable { reader: NonEmptyStr, cause: NonEmptyStr }
 
 type RequiredStatusCheckWire {
   context: String
   integration_id: Int
 }
 
+// ONE RECORD FOR A KEY GITHUB SENDS WITH DIFFERENT CONTENTS PER RULE TYPE, AND THE REASON IT IS
+// NOT A COPRODUCT IS A TRANSPORT FACT RATHER THAN A MODELLING PREFERENCE.
+//
+// `parameters` is one JSON key whose object differs by the rule's `type`: a required_status_checks
+// rule sends a strict policy and a roster, a merge_queue rule sends seven scheduling fields, a
+// deletion rule sends nothing. The shape that says that is a coproduct discriminated on the type
+// tag -- and it cannot be READ here. The REST realization decodes a nested object into an untagged
+// map and the record is a static read-shape over it, so a coproduct arm would have no constructor
+// tag to match on and every read would refuse. So the record is the UNION OF THE READABLE SHAPES,
+// which is what the transport can actually answer.
+//
+// THAT IS SAFE ONLY BECAUSE EVERY READ IS GUARDED BY THE TYPE TAG FIRST. required_status_check_standing
+// and merge_queue_standing each `filter` on the rule type before touching a field, so no field is
+// ever read off a rule whose `parameters` object does not carry it. The guard is the invariant this
+// shape depends on: a reader that folded over unfiltered rules would read a key GitHub never sent.
+//
+// THE merge_queue FIELDS ARE OPTIONAL AND THE required_status_checks FIELDS ARE NOT, which is the
+// union carrying what it can say about presence. A record literal must supply every non-optional
+// field, so a rule this module CONSTRUCTS could not otherwise be built without inventing seven
+// scheduling values GitHub does not accept on it. Optional lets the constructor say `none` --
+// "this rule carries no merge-queue parameters" -- which is the true statement. The required
+// fields stay mandatory because a required_status_checks rule always carries them.
+//
+// merge_queue_standing therefore REFUSES on a merge_queue rule whose parameters arrived incomplete
+// rather than defaulting the missing ones, which is the second half of the guard: the type tag says
+// which fields to expect, and the optionals say whether they came.
+//
+// ESTABLISHED BY EXECUTION: AN ABSENT OPTIONAL DOES NOT REACH THE WIRE AT ALL, as a null or
+// otherwise. The REST body goes through cli_run value_to_wire_json, whose record arm SKIPS a null
+// field rather than emitting it, and the `none` literal is the host null carrier. Both halves are
+// asserted by cli_run wire_body_omits_absent_optional_record_fields, which serializes a record
+// carrying one present and one absent field and requires the body to contain exactly the present
+// one -- with the same record carrying the field PRESENT as the control, so a serializer that
+// dropped everything could not pass it. That test runs in the required unit lane.
+//
+// So a required_status_checks rule sends its own three keys and not seven nulls, which is the
+// fact a converge body depends on. It was a mechanism argument until the receipt existed; it is
+// now a wire fact.
+//
+// NEXT-RUNG TRIGGER, named as the capability rather than as an artifact: a transport decode that
+// carries a discriminator from the enclosing object into a tagged value, so `parameters` can be a
+// coproduct selected by `type` and the guard becomes unnecessary rather than load-bearing. Until
+// that exists, this is mitigatable-by-guard and is stated as such.
+//
+// THE PRODUCER THAT MUST CHANGE IS NAMED, AND WHAT IT MUST BE SUFFICIENT FOR IS STATED, because a
+// trigger that names only a capability is satisfiable by anything and a trigger that names only an
+// artifact is satisfied while the capability stays dead. The producer is `v1_interpreter`
+// `json_to_value`: its object arm collects every key into a `map_value` with no type context and
+// no discriminator, so a nested object reaches the substrate as an untagged map and a coproduct arm
+// has nothing to select on. It is SUFFICIENT when a decode of `{"type": "merge_queue",
+// "parameters": {...}}` can yield a value whose `parameters` is the merge_queue ARM -- not a map
+// that a later guard classifies -- so that reading a required_status_checks field off it is a
+// resolve refusal rather than a read this module has to prevent by filtering first. Anything less
+// leaves the guard load-bearing, and this row stays at mitigatable no matter what lands.
+//
+// WHY THE COPRODUCT IS NOT SIMPLY DECLARED HERE NOW, which is the obvious objection and deserves
+// the mechanical answer rather than a preference: declaring it changes nothing about what can be
+// READ, because the decode above produces the same untagged map either way, so every arm would
+// refuse and the module would report NoMergeQueueRule for a ruleset that has one. That is a
+// silently wrong answer where there is currently a correct one, which is the direction DESIGN
+// section 5 forbids outright. The declaration is not being deferred for convenience; it is
+// unreadable until its producer changes.
 type RulesetRuleParametersWire {
   strict_required_status_checks_policy: Bool
   do_not_enforce_on_create: Bool
   required_status_checks: List<RequiredStatusCheckWire>
+  check_response_timeout_minutes: Int?
+  grouping_strategy: String?
+  max_entries_to_build: Int?
+  max_entries_to_merge: Int?
+  merge_method: String?
+  min_entries_to_merge: Int?
+  min_entries_to_merge_wait_minutes: Int?
 }
 
 type RulesetRuleWire {
@@ -151,7 +252,8 @@ fn parse_ruleset_rule_type(raw: String) -> RulesetRuleType {
   else { if raw == "pull_request" { PullRequestRule }
   else { if raw == "creation" { CreationRule }
   else { if raw == "update" { UpdateRule }
-  else { UnrecognizedRuleType { raw: raw } } } } } } } } }
+  else { if raw == "merge_queue" { MergeQueueRule }
+  else { UnrecognizedRuleType { raw: raw } } } } } } } } } }
 }
 
 fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
@@ -164,23 +266,38 @@ fn ruleset_rule_type_wire_label(t: RulesetRuleType) -> String {
     PullRequestRule => "pull_request"
     CreationRule => "creation"
     UpdateRule => "update"
+    MergeQueueRule => "merge_queue"
     UnrecognizedRuleType { raw: r } => r
   }
 }
 
-fn parse_ruleset_bypass_standing(raw: String) -> RulesetBypassStanding {
-  if raw == "never" { BypassNever }
-  else { if raw == "pull_requests_only" { BypassPullRequestsOnly }
-  else { if raw == "always" { BypassAlways }
-  else { UnrecognizedBypassStanding { raw: raw } } } }
+fn parse_reader_bypass_standing(raw: String) -> ReaderBypassStanding {
+  if raw == "never" { ThisReaderCannotBypass }
+  else { if raw == "pull_requests_only" { ThisReaderCanBypassPullRequestsOnly }
+  else { if raw == "always" { ThisReaderCanBypassAlways }
+  else { UnrecognizedReaderBypassStanding { raw: raw } } } }
 }
 
-fn ruleset_bypass_standing_wire_label(b: RulesetBypassStanding) -> String {
+fn reader_bypass_standing_wire_label(b: ReaderBypassStanding) -> String {
   match b {
-    BypassNever => "never"
-    BypassPullRequestsOnly => "pull_requests_only"
-    BypassAlways => "always"
-    UnrecognizedBypassStanding { raw: r } => r
+    ThisReaderCannotBypass => "never"
+    ThisReaderCanBypassPullRequestsOnly => "pull_requests_only"
+    ThisReaderCanBypassAlways => "always"
+    UnrecognizedReaderBypassStanding { raw: r } => r
+  }
+}
+
+// THE ROSTER IS NOT DECODED FROM THIS RESPONSE, AND THAT IS A REFUSAL RATHER THAN AN OMISSION.
+// Adding a `bypass_actors` field to RulesetWire would decode an absent key to an empty list, which
+// is exactly the conflation the type above exists to prevent -- and no field in the response says
+// whether the reader was authorized to see the roster. So every observation built from this
+// endpoint is Unavailable, carrying who asked and why the answer is not established. An
+// authorized read is a different observation with its own producer, and it is what may mint
+// BypassRosterObserved.
+fn bypass_roster_unavailable_from_get(reader: NonEmptyStr) -> BypassActorRosterObservation {
+  BypassRosterUnavailable {
+    reader: reader,
+    cause: "GitHub omits bypass_actors from the single-ruleset GET when the roster is empty AND when the reading credential is not authorized to see it, and the response carries nothing that separates those two",
   }
 }
 
@@ -188,10 +305,24 @@ fn ruleset_rule_wire_type(rule: RulesetRuleWire) -> RulesetRuleType {
   parse_ruleset_rule_type(raw: rule.type)
 }
 
+// ITS SIBLING BELOW CARRIES THE SAME WILDCARD DEFECT AND IS REPAIRED WITH IT, because leaving one
+// of two identical predicates exhaustive would make the pair a worse guide than either choice made
+// consistently: a reader adding a third would copy whichever they happened to read. This one is
+// older than the merge-queue work and is not repaired because it was flagged -- it is repaired
+// because the flag was correct about the shape and this is the same shape, in the same module,
+// guarding the same coproduct.
 fn rule_is_required_status_checks(rule: RulesetRuleWire) -> Bool {
   match ruleset_rule_wire_type(rule: rule) {
     RequiredStatusChecksRule => true
-    _ => false
+    DeletionRule => false
+    NonFastForwardRule => false
+    RequiredLinearHistoryRule => false
+    RequiredSignaturesRule => false
+    PullRequestRule => false
+    CreationRule => false
+    UpdateRule => false
+    MergeQueueRule => false
+    UnrecognizedRuleType { raw: _ } => false
   }
 }
 
@@ -233,10 +364,205 @@ fn ruleset_rule_types(rules: List<RulesetRuleWire>) -> List<RulesetRuleType> {
   map(rules, r => ruleset_rule_wire_type(rule: r))
 }
 
+// THE MERGE_QUEUE RULE. GitHub's merge queue is configured as a ruleset rule, not as a repository
+// setting, so it is decoded here beside the rule this repository already gates on. Its parameters
+// are documented under the same rules API this module anchors on
+// (docs.github.com/en/rest/repos/rules, the `merge_queue` entry of the rules array); the two
+// enumerated fields carry GitHub's own SCREAMING spellings on the wire and are parsed into closed
+// coproducts with an unrecognized arm, exactly as enforcement, target and bypass standing are.
+//
+// grouping_strategy IS THE FIELD THE WHOLE QUEUE TURNS ON, so it is decoded rather than skipped.
+// ALLGREEN admits an entry only when it and every entry ahead of it in the group passed;
+// HEADGREEN admits on the head entry's result alone, which re-opens exactly the joint-failure
+// class a queue exists to close — two changes independently green and jointly broken. A queue
+// running HEADGREEN is therefore a materially different guarantee wearing the same name, and this
+// module's job is to make that difference readable rather than to have an opinion about it.
+type MergeQueueGroupingStrategy
+  = AllGreenGrouping
+  | HeadGreenGrouping
+  | UnrecognizedGroupingStrategy { raw: String }
+
+// The queue's OWN merge method, which is a separate fact from what the repository allows: a queue
+// configured to MERGE composes merge commits onto the default branch whatever
+// allow_merge_commit says, because the queue merges as the app rather than as a person.
+type MergeQueueMergeMethod
+  = QueueMergeCommit
+  | QueueSquash
+  | QueueRebase
+  | UnrecognizedQueueMergeMethod { raw: String }
+
+fn parse_merge_queue_grouping_strategy(raw: String) -> MergeQueueGroupingStrategy {
+  if raw == "ALLGREEN" { AllGreenGrouping }
+  else { if raw == "HEADGREEN" { HeadGreenGrouping }
+  else { UnrecognizedGroupingStrategy { raw: raw } } }
+}
+
+fn merge_queue_grouping_strategy_wire_label(g: MergeQueueGroupingStrategy) -> String {
+  match g {
+    AllGreenGrouping => "ALLGREEN"
+    HeadGreenGrouping => "HEADGREEN"
+    UnrecognizedGroupingStrategy { raw: r } => r
+  }
+}
+
+fn parse_merge_queue_merge_method(raw: String) -> MergeQueueMergeMethod {
+  if raw == "MERGE" { QueueMergeCommit }
+  else { if raw == "SQUASH" { QueueSquash }
+  else { if raw == "REBASE" { QueueRebase }
+  else { UnrecognizedQueueMergeMethod { raw: raw } } } }
+}
+
+fn merge_queue_merge_method_wire_label(m: MergeQueueMergeMethod) -> String {
+  match m {
+    QueueMergeCommit => "MERGE"
+    QueueSquash => "SQUASH"
+    QueueRebase => "REBASE"
+    UnrecognizedQueueMergeMethod { raw: r } => r
+  }
+}
+
+// EXHAUSTIVE RATHER THAN WILDCARD, for the reason `workflow_trigger_is_merge_group` is: a
+// `_ => false` arm answers for constructors that do not exist yet, so adding a rule type to the
+// coproduct above would silently classify it as not-a-merge-queue instead of failing here until
+// someone decides what it means. GitHub adds rule types; this repository has already had to add
+// `UnrecognizedRuleType` for the ones it does not model. A wildcard is the fabricated default
+// DESIGN section 5 reserves for a refusal, and it was left standing here when the sibling
+// predicate was written out.
+fn rule_is_merge_queue(rule: RulesetRuleWire) -> Bool {
+  match ruleset_rule_wire_type(rule: rule) {
+    MergeQueueRule => true
+    DeletionRule => false
+    NonFastForwardRule => false
+    RequiredStatusChecksRule => false
+    RequiredLinearHistoryRule => false
+    RequiredSignaturesRule => false
+    PullRequestRule => false
+    CreationRule => false
+    UpdateRule => false
+    UnrecognizedRuleType { raw: _ } => false
+  }
+}
+
+// THE WIRE CARRIES BARE NUMBERS AND THE DOMAIN DOES NOT, which is this module's stated split
+// applied to the fields that bear units. GitHub's merge_queue `parameters` object sends plain JSON
+// integers and is read as such; the STANDING is the domain, and there those numbers are a duration
+// and a count of queue entries. std.measure already owns both, so carrying them as Int here would be a second
+// authority for minutes and for cardinality (DESIGN section 2: net concepts must not grow by
+// re-invention). The distinction is load-bearing rather than decorative: the two timeouts and the
+// four entry counts are all bare integers on the wire, and only the carrier stops a wait in
+// minutes being compared against a count of entries. Both carriers are imported from
+// std.measure -- MergeQueueEntryCount sits with its Count siblings there rather than being minted
+// here, so the count-at-unit-scale axis is not forked once per upstream that counts something.
+// THREE STATES FOR THE SAME REASON RequiredStatusCheckStanding HAS THREE. "No queue is configured"
+// and "a queue is configured with these settings" are different facts with different remedies, and
+// both would render as a default-valued record under a projection returning bare settings. The
+// third refuses rather than picking: GitHub admits at most one merge_queue rule per ruleset, so two
+// means the upstream shape moved and this module's reading of it is no longer established.
+type MergeQueueStanding
+  = NoMergeQueueRule
+  | MergeQueueConfigured {
+      grouping_strategy: MergeQueueGroupingStrategy
+      merge_method: MergeQueueMergeMethod
+      check_response_timeout: Minute
+      max_entries_to_build: MergeQueueEntryCount
+      max_entries_to_merge: MergeQueueEntryCount
+      min_entries_to_merge: MergeQueueEntryCount
+      min_entries_to_merge_wait: Minute
+    }
+  | MergeQueueParametersIncomplete { missing: List<String> }
+  | MultipleMergeQueueRules { count: Int }
+
+fn missing_str_field(name: String, v: String?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn missing_int_field(name: String, v: Int?) -> List<String> {
+  match v {
+    Absent => [name]
+    Present { value: _ } => []
+  }
+}
+
+fn merge_queue_missing_fields(p: RulesetRuleParametersWire) -> List<String> {
+  fold(
+    [
+      missing_str_field(name: "merge_method", v: p.merge_method),
+      missing_int_field(name: "check_response_timeout_minutes", v: p.check_response_timeout_minutes),
+      missing_int_field(name: "max_entries_to_build", v: p.max_entries_to_build),
+      missing_int_field(name: "max_entries_to_merge", v: p.max_entries_to_merge),
+      missing_int_field(name: "min_entries_to_merge", v: p.min_entries_to_merge),
+      missing_int_field(name: "min_entries_to_merge_wait_minutes", v: p.min_entries_to_merge_wait_minutes),
+    ],
+    init: missing_str_field(name: "grouping_strategy", v: p.grouping_strategy),
+    f: fn(acc, more) { append(acc, items: more) },
+  )
+}
+
+// THE TWO READERS BELOW ARE REACHABLE ONLY WHERE merge_queue_missing_fields IS EMPTY. Their
+// fallbacks exist because the language requires a total read of an optional, not because a default
+// is a meaningful value here -- a merge_queue rule missing a parameter takes the
+// MergeQueueParametersIncomplete arm and never reaches them.
+fn merge_queue_str(v: String?) -> String {
+  match v {
+    Absent => ""
+    Present { value: x } => x
+  }
+}
+
+fn merge_queue_int(v: Int?) -> Int {
+  match v {
+    Absent => 0
+    Present { value: x } => x
+  }
+}
+
+fn merge_queue_standing(rules: List<RulesetRuleWire>) -> MergeQueueStanding {
+  let matched = filter(rules, r => rule_is_merge_queue(rule: r))
+  if length(matched) == 0 {
+    NoMergeQueueRule
+  } else {
+    if length(matched) > 1 {
+      MultipleMergeQueueRules { count: length(matched) }
+    } else {
+      fold(matched, init: NoMergeQueueRule, f: fn(_, rule) {
+        let missing = merge_queue_missing_fields(p: rule.parameters)
+        if length(missing) > 0 {
+          MergeQueueParametersIncomplete { missing: missing }
+        } else {
+          MergeQueueConfigured {
+            grouping_strategy: parse_merge_queue_grouping_strategy(
+              raw: merge_queue_str(v: rule.parameters.grouping_strategy)),
+            merge_method: parse_merge_queue_merge_method(
+              raw: merge_queue_str(v: rule.parameters.merge_method)),
+            check_response_timeout: minute(
+              count: merge_queue_int(v: rule.parameters.check_response_timeout_minutes)),
+            max_entries_to_build: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.max_entries_to_build)),
+            max_entries_to_merge: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.max_entries_to_merge)),
+            min_entries_to_merge: merge_queue_entry_count(
+              count: merge_queue_int(v: rule.parameters.min_entries_to_merge)),
+            min_entries_to_merge_wait: minute(
+              count: merge_queue_int(v: rule.parameters.min_entries_to_merge_wait_minutes)),
+          }
+        }
+      })
+    }
+  }
+}
+
 fn required_status_check_row(context: String, integration_id: Int) -> RequiredStatusCheckWire {
   RequiredStatusCheckWire { context: context, integration_id: integration_id }
 }
 
+// THE CONSTRUCTOR OMITS THE merge_queue FIELDS AND THAT IS DELIBERATE, NOT AN OVERSIGHT. This
+// builds the rule GitHub is SENT, and the PUT body carries exactly the keys present; supplying
+// zeroes for seven scheduling fields GitHub does not accept on a required_status_checks rule would
+// be a fabricated value on the wire. An omitted field is unwritten rather than defaulted, so a read
+// of one refuses -- which is the guard above restated at the write end.
 fn required_status_checks_rule(
   checks: List<RequiredStatusCheckWire>,
   strict: Bool,
@@ -248,6 +574,13 @@ fn required_status_checks_rule(
       strict_required_status_checks_policy: strict,
       do_not_enforce_on_create: do_not_enforce_on_create,
       required_status_checks: checks,
+      check_response_timeout_minutes: none,
+      grouping_strategy: none,
+      max_entries_to_build: none,
+      max_entries_to_merge: none,
+      merge_method: none,
+      min_entries_to_merge: none,
+      min_entries_to_merge_wait_minutes: none,
     },
   }
 }

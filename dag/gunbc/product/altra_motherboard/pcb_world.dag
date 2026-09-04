@@ -84,6 +84,10 @@ import product.altra_motherboard.placement {
   placeable_components,
   board_body_layout_standing,
   altra_reference_plan,
+  BoardPlanDesignNotAdmitted,
+  BoardPlanUnavailableForDesign,
+  BoardPlanOutlineRefused,
+  BoardPlanReady,
   altra_1p_minimum_ref,
   admit_placement,
 }
@@ -107,10 +111,13 @@ import product.altra_motherboard.attachment_stack {
 import extdeps.ocp.mt_jade.platform { mt_jade_motherboard_mechanical }
 import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import product.altra_motherboard.minimal_design {
-  AltraMinimalMotherboard,
+  complete_design_eq,
+  DesignRefusalSet,
+  AltraMinimalMotherboard, RoutedDdrTopology, MemoryPopulationLifecycle,
+  ShipsWithProductionPopulation, BringUpThenFill, EngineeringFixturePopulation, routed_slot_identities,
   ActiveDdrTopology,
   DdrSlotIdentity,
-  DesignIntent,
+
   EngineeringBringUp,
   Production,
   ddr_slot_identity_eq,
@@ -135,37 +142,6 @@ import product.altra_motherboard.minimal_design {
 // with a nonempty obligation, never an empty list. The outline constructing is
 // PartialPcbWorldReady — a preview, not an admitted board. A six-channel design has no plan on
 // this increment, so it refuses rather than borrowing the reference plan.
-fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
-  match a {
-    EngineeringBringUp => match b {
-      EngineeringBringUp => true
-      Production => false
-    }
-    Production => match b {
-      Production => true
-      EngineeringBringUp => false
-    }
-  }
-}
-
-fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Bool {
-  fold(ys, init: true, f: fn(acc, p) {
-    acc && fold(xs, init: false, f: fn(seen, q) { seen || ddr_slot_identity_eq(a: p, b: q) })
-  })
-}
-
-fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
-  let aslots = topology_slot_identities(t: a)
-  let bslots = topology_slot_identities(t: b)
-  list_length(items: aslots) == list_length(items: bslots)
-    && slot_list_covers(xs: aslots, ys: bslots)
-}
-
-fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
-  intent_eq(a: a.intent, b: b.intent)
-    && topologies_eq(a: a.memory.topology, b: b.memory.topology)
-    && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
-}
 
 fn mt_jade_reference_board_width_um() -> Int {
   micrometer_count(m: mt_jade_motherboard_mechanical.outline_width)
@@ -332,12 +308,14 @@ fn pcb_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: 
 }
 
 fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWorld> {
-  if !designs_eq(a: d, b: altra_1p_minimum) {
+  if !complete_design_eq(a: d, b: altra_1p_minimum) {
     PcbWorldRefused { cause: PcbDesignPlanUnavailable { only_available: altra_1p_minimum_ref() } }
   } else {
     match altra_reference_plan() {
-      OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-      OrthogonalReady { value: plan } =>
+      BoardPlanDesignNotAdmitted { causes: _ } => PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+      BoardPlanUnavailableForDesign { only_available: r } => PcbWorldRefused { cause: PcbDesignPlanUnavailable { only_available: r } }
+      BoardPlanOutlineRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+      BoardPlanReady { value: plan } =>
         if outline_copies_mt_jade_reference(o: plan.outline) {
           PcbWorldRefused { cause: PcbOutlineCopiedFromCitedForeignBoard }
         } else {
@@ -351,6 +329,28 @@ fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
   altra_pcb_world_for(d: altra_1p_minimum)
 }
 
+// AN UNADMITTED DESIGN IS NOT A PLAN-VERSUS-DESIGN MISMATCH, so it returns none here and the
+// caller renders PcbPlacementNotAdmitted -- a refused design still cannot produce a PCB world.
+//
+// A dedicated PcbDesignNotAdmitted arm was the obvious move and would have been a LAYER INVERSION:
+// PcbWorldRefusal is declared in product.pcb.world, a generic hub that may not carry rows about
+// Altra memory admission.
+//
+// THIS BOUNDARY NOW PRESERVES THE CAUSE, AND TWO EARLIER REVISIONS OF THIS COMMENT DID NOT. The
+// first claimed the cause "is not lost, it is DesignIsNotAdmitted in the placement causes", which
+// was true of the placement layer and false here; review 5094151475 caught that. The second stated
+// the loss honestly but recorded exact-cause transport as debt whose discharge was "a separate
+// change with its own consumers" -- and review 59145 was right that a declared loss under 4b(2)
+// owes a next-rung trigger naming a capability, which that sentence did not give. The excuse also
+// did not survive counting: admit_pcb_world had exactly two consumers, both witnesses.
+//
+// SO THE CAUSE IS CARRIED RATHER THAN DECLARED LOST. AltraPcbWorldConstruction is the Altra-owned
+// outer result the debt note described, and it exists because product.pcb.world is a generic hub
+// that may not carry rows about Altra memory admission -- a DesignRefusalSet named there would be
+// the layer inversion 3 forbids, and flattening it to a string would destroy the structure that
+// makes it locatable. The two arms below are exactly the two places the payload used to be
+// dropped: a design the judge refused, and a placement refused for a reason design_mismatch_from_causes
+// does not lift into the hub's vocabulary.
 fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
   fold(cs, init: none, f: fn(acc, c) {
     match acc {
@@ -365,6 +365,7 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
           PlannedIdentityRepeated { component: _ } => none
           RoleFilledMoreThanOnce { role: _, fills: _ } => none
           RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => none
+          DesignIsNotAdmitted { causes: _ } => none
         }
     }
   })
@@ -373,22 +374,29 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
 // THE DESIGN'S IDENTITY IS SUPPLIED BY WHOEVER READ IT. Passing plan.design here instead would
 // make the join compare the plan against itself -- a tautology, and a worse defect than the
 // hardcoded reference it replaced, because it can never fail.
-fn admit_pcb_world(d: AltraMinimalMotherboard, d_ref: DeclarationRef, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
+type AltraPcbWorldConstruction
+  = AltraPcbWorldDesignNotAdmitted { causes: DesignRefusalSet }
+  | AltraPcbWorldPlacementNotAdmitted { causes: List<PlacementRefusal> }
+  | AltraPcbWorldSettledInHub { inner: PcbWorldConstruction<PcbWorld> }
+
+fn admit_pcb_world(d: AltraMinimalMotherboard, d_ref: DeclarationRef, w: PcbWorld) -> AltraPcbWorldConstruction {
   match altra_reference_plan() {
-    OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-    OrthogonalReady { value: plan } =>
+    BoardPlanDesignNotAdmitted { causes: c } => AltraPcbWorldDesignNotAdmitted { causes: c }
+    BoardPlanUnavailableForDesign { only_available: r } => AltraPcbWorldSettledInHub { inner: PcbWorldRefused { cause: PcbDesignPlanUnavailable { only_available: r } } }
+    BoardPlanOutlineRefused { cause: c } => AltraPcbWorldSettledInHub { inner: PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } } }
+    BoardPlanReady { value: plan } =>
       if !declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design) {
-        PcbWorldRefused { cause: PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: pcb_world_design(w: w) } }
+        AltraPcbWorldSettledInHub { inner: PcbWorldRefused { cause: PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: pcb_world_design(w: w) } } }
       } else {
         match first_unsettled_capability(w: w) {
-          Present { value: r } => PcbWorldRefused { cause: r }
+          Present { value: r } => AltraPcbWorldSettledInHub { inner: PcbWorldRefused { cause: r } }
           Absent =>
             match admit_placement(d: d, d_ref: d_ref, plan: plan) {
-              PlacementAdmitted { plan: _ } => AdmittedPcbWorld { value: w }
+              PlacementAdmitted { plan: _ } => AltraPcbWorldSettledInHub { inner: AdmittedPcbWorld { value: w } }
               PlacementRefused { causes: cs } =>
                 match design_mismatch_from_causes(cs: cs) {
-                  Present { value: r } => PcbWorldRefused { cause: r }
-                  Absent => PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+                  Present { value: r } => AltraPcbWorldSettledInHub { inner: PcbWorldRefused { cause: r } }
+                  Absent => AltraPcbWorldPlacementNotAdmitted { causes: cs }
                 }
             }
         }

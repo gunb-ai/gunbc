@@ -378,6 +378,78 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
+/// Read the grounded opaque-host-call surface, or refuse.
+///
+/// RETURNS THE OPERATIONS, NEVER AN EMPTY VEC ON FAILURE. `opaque_host_call_surface()` answers a
+/// coproduct whose ungrounded arm carries WHY the join broke (`unresolved` / `not_free_call`),
+/// and both of those are reported here rather than collapsed into one sentence, because they
+/// have different repairs: an unresolved identity is a roster row pointing at nothing, while a
+/// not-free-call arm is an identity whose dispatch shape the criterion does not admit.
+pub(crate) fn floor_required_opaque_host_call_surface(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<String>, String> {
+    let qualified = "gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface";
+    let value = v1_interpreter::run_in_context(ctx, qualified, false)
+        .map_err(|e| format!("{qualified}: {e}"))?;
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(format!(
+            "{qualified}: expected an OpaqueHostCallSurface variant, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "OpaqueHostCallSurfaceGrounded" => {
+            let operations = floor_decode_list(ctx, ctx.field(fields, "operations"))?;
+            operations
+                .into_iter()
+                .map(|v| match v {
+                    v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "{qualified}: operations carries a non-string member: {}",
+                        floor_value_shape(Some(other))
+                    )),
+                })
+                .collect()
+        }
+        "OpaqueHostCallSurfaceUngrounded" => Err(format!(
+            "{qualified}: the opaque-host-call surface is UNGROUNDED, so which arms are \
+             unpollable is unreadable and no claim's preemption reachability can be observed. \
+             The floor refuses rather than arming an empty surface, which would report every \
+             completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
+             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?}",
+            floor_value_shape(ctx.field(fields, "unresolved")),
+            floor_value_shape(ctx.field(fields, "not_free_call")),
+        )),
+        other => Err(format!(
+            "{qualified}: unknown OpaqueHostCallSurface arm {other:?}"
+        )),
+    }
+}
+
+/// The published spelling of a claim's observed `ClaimPreemptionReachability`.
+///
+/// THE OPERATIONS ARE CARRIED, NOT JUST THE ARM. A reader asking "why could the deadline not
+/// fire here" needs the operation name to act, and re-deriving it from the claim body is the
+/// positional citation DESIGN §3 forbids. They are joined with `+` because a claim may reach
+/// more than one opaque arm and reporting only the first would under-state the surface a repair
+/// has to cover.
+pub(crate) fn preemption_reachability_label(reach: &v1_interpreter::OpaqueHostCallReach) -> String {
+    match reach {
+        v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed => "surface_unarmed".to_string(),
+        v1_interpreter::OpaqueHostCallReach::CooperativelyPollable => {
+            "cooperatively_pollable".to_string()
+        }
+        v1_interpreter::OpaqueHostCallReach::OpaqueHostCallUnbounded { operations } => {
+            format!("opaque_host_call_unbounded:{}", operations.join("+"))
+        }
+    }
+}
+
 pub fn run_claim_measured(
     ctx: &v1_interpreter::InterpContext,
     closure_subject_digest: &str,
@@ -387,6 +459,10 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    // PER-CLAIM, NOT PER-RUN: reach is a fact about THIS claim's evaluation, so it is cleared
+    // here beside the profile and the subject rather than at floor start. The armed surface
+    // survives the reset -- disarming per claim would make every claim report `SurfaceUnarmed`.
+    v1_interpreter::reset_opaque_host_call_reach();
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
@@ -462,6 +538,29 @@ pub fn run_claim_measured(
             eval_steps,
             fill_eval_steps,
             measured_eval_steps,
+        );
+        // THE DISCRIMINATOR FOR THE PREEMPTION-REACHABILITY COLUMN, PRINTED OVER THE POPULATION
+        // THAT MAKES IT DECIDABLE. A shared fill is opaque host work by construction — that is
+        // what the fill IS — so any claim reaching this line provably ran a host call, and its
+        // reach record is therefore FALSIFIABLE here and nowhere else in the corpus.
+        //
+        // WHY THE DENOMINATOR IS PRINTED BESIDE THE REACH RATHER THAN THE REACH ALONE. On run
+        // 33832137832 the column read `cooperatively_pollable` for 3602 of 3602 claims,
+        // INCLUDING a witness authored to enter a listed arm, and an empty reach cannot say
+        // which of its two causes produced it: the claim called no listed arm, or the hook was
+        // never on the path the call took. `dispatches` separates them. Zero dispatches under a
+        // claim that just paid a multi-hundred-millisecond fill is the decoration reading, and
+        // it is a statement about the INSTRUMENT; a positive count with an empty reach is a
+        // statement about the IDENTITY TEST, and the last name observed says which spelling to
+        // compare against. Both readings are actionable and neither is available from the
+        // published column.
+        let (dispatches, last_name) = v1_interpreter::builtin_dispatches_observed();
+        eprintln!(
+            "[floor-reach-probe] claim={function} fill_cpu_ms={} reach={} dispatches={}              last_builtin={}",
+            fill_cpu_nanos / 1_000_000,
+            preemption_reachability_label(&v1_interpreter::opaque_host_call_reach()),
+            dispatches,
+            last_name.unwrap_or_else(|| "<none>".to_string()),
         );
     }
     ctx.clear_eval_deadline();
@@ -966,7 +1065,16 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
     changed_witness_identities_from_edited_test_fns(
         &process_workspace_root(),
         &edits.edited_test_fns,
+        &quarantine_probe_admitted_pairs(),
     )
+}
+
+/// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
+/// changed-witness selection decides at. Read once from the one function-grain authority.
+fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, String)> {
+    crate::cli_run::quarantine_probe_admission_pairs()
+        .into_iter()
+        .collect()
 }
 
 /// The identity spelling, separated from the observation so it is testable against fixture
@@ -974,12 +1082,35 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
 /// header — the same two facts the disposition loop joins into `RequiredFloorDispositionRow`'s
 /// identity. A touched file that declares a test fn but no module header refuses: an identity
 /// cannot be spelled for it, and dropping it would silently exempt exactly the malformed case.
+///
+/// A WITNESS CARRYING A `QuarantineProbeExpectRed` ADMISSION IS NOT SELECTED, and this is the one
+/// place that decision belongs. Editing a quarantined witness's file does not un-quarantine it --
+/// its dissolution trigger does -- so the override must not outrank an admission that already
+/// answered whether this row is scheduled per-PR.
+///
+/// THE DEFECT THIS CLOSES, found by gunbc#10245 giving four such witnesses a declared subject. The
+/// four `production_qualification_origin_probe_witness` frontier rows are admitted RED with
+/// declared dissolutions and are declined by the ordinary floor. Touching their entry file planned
+/// them anyway; they then failed exactly as admitted and were counted as UNEXPECTED failures,
+/// refusing the floor (run 33793591024, `claims_failed=5`). The hold could not save them and must
+/// not be taught to: `floor_expected_red_roster` means RUN-AND-EXPECT-RED while this admission
+/// means DO-NOT-RUN-PER-PR, and making one consumer read the other's carrier is a §3 meaning fork.
+/// The row was never supposed to execute here, so the repair is on the SELECTION side.
+///
+/// IT IS KEYED ON THE ADMISSION, NEVER ON THE LANE. Excluding by long-home prefix would wave a
+/// touched witness through by virtue of the lane it happens to sit in, which is precisely what the
+/// changed-witness override exists to prevent. A long-home witness with no quarantine admission is
+/// selected, executes, and reds the floor exactly as before.
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
+    quarantine_probe_admitted: &std::collections::HashSet<(String, String)>,
 ) -> Result<Vec<String>, String> {
     let mut identities: Vec<String> = Vec::new();
     for (file, function) in edited_test_fns {
+        if quarantine_probe_admitted.contains(&(file.clone(), function.clone())) {
+            continue;
+        }
         let content = std::fs::read_to_string(base.join(file))
             .map_err(|e| format!("changed-witness identity derivation: read {file}: {e}"))?;
         let module = extract_module_path(&content).ok_or_else(|| {
@@ -1222,8 +1353,8 @@ impl LocalRepoWetObserved {
         }
     }
 
-    /// The host realization of `local_repo_wet_expectation_met` for the one expectation arm
-    /// `LocalRepoWetExpectation` carries. Exhaustive on the observed side by construction.
+    /// The host realization of `wet_disposition_is_agreement` for the one arm of
+    /// `ClaimExpectation` this lane realizes. Exhaustive on the observed side by construction.
     fn meets_pass_expectation(&self) -> bool {
         matches!(self, LocalRepoWetObserved::Passed)
     }
@@ -1335,7 +1466,7 @@ pub(crate) enum LocalRepoWetExecution {
 
 /// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once and unconditionally, with execution as an
 /// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize` and
-/// of the `local_repo_wet_join` it defers to: the same three finalization causes and the same
+/// of the `wet_evidence_validate` it defers to: the same three finalization causes and the same
 /// bidirectional join, separated by remedy rather than collapsed into "the receipt is bad".
 ///
 /// An empty schedule with no invocation HOLDS: a lane that scheduled nobody claims nobody. It is
@@ -1388,7 +1519,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
             .collect();
         match hits.len() {
             0 => refusals.push(format!(
-                "{}: LocalRepoWetTerminalMissing — scheduled, and the executor produced no terminal \
+                "{}: WetTerminalMissing — scheduled, and the executor produced no terminal \
                  for it",
                 row.identity
             )),
@@ -1396,19 +1527,19 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 let t = hits[0];
                 if t.candidate != candidate {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignCandidate — terminal names {}, this floor \
+                        "{}: WetBindingPreparedSubjectDiffers — terminal names {}, this floor \
                          is evaluating {candidate}",
                         row.identity, t.candidate
                     ));
                 } else if t.entry != row.entry {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignEntry — the roster's entry {:?} is not the \
+                        "{}: WetTerminalForeignEntry — the roster's entry {:?} is not the \
                          source the prepared subject resolved ({})",
                         row.identity, row.entry, t.entry
                     ));
                 } else if t.function != row.function {
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalForeignFunction — terminal names {}, the roster \
+                        "{}: WetTerminalForeignFunction — terminal names {}, the roster \
                          scheduled {}",
                         row.identity, t.function, row.function
                     ));
@@ -1420,7 +1551,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                         format!(" — {detail}")
                     };
                     refusals.push(format!(
-                        "{}: LocalRepoWetTerminalVerdictNotExpected — expected passed, observed \
+                        "{}: WetTerminalVerdictNotExpected — expected passed, observed \
                          {}{suffix}",
                         row.identity,
                         t.observed.name()
@@ -1430,7 +1561,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
                 }
             }
             n => refusals.push(format!(
-                "{}: LocalRepoWetTerminalDuplicated — {n} terminals claim this identity and neither \
+                "{}: WetTerminalDuplicated — {n} terminals claim this identity and neither \
                  can be trusted over the other",
                 row.identity
             )),
@@ -1441,7 +1572,7 @@ pub(crate) fn finalize_local_repo_wet_lane(
     for t in &terminals {
         if !schedule.iter().any(|row| row.identity == t.identity) {
             refusals.push(format!(
-                "{}: LocalRepoWetTerminalUnscheduled — a terminal for an identity this lane never \
+                "{}: WetTerminalUnscheduled — a terminal for an identity this lane never \
                  scheduled",
                 t.identity
             ));
@@ -1490,13 +1621,13 @@ fn local_repo_wet_schedule(
     for item in items {
         let v1_interpreter::Value::Record { type_name, fields } = item else {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got {}",
                 floor_value_shape(Some(&item))
             ));
         };
-        if !hermetic.sym_eq(*type_name, "LocalRepoWetScheduled") {
+        if !hermetic.sym_eq(*type_name, "WetScheduledClaim") {
             return Err(format!(
-                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got record {}",
+                "local_repo_wet_schedule: expected WetScheduledClaim, got record {}",
                 hermetic.resolve(*type_name)
             ));
         }
@@ -1509,41 +1640,87 @@ fn local_repo_wet_schedule(
                 )),
             }
         };
-        let identity = str_field("identity")?;
         let function = str_field("function")?;
         let entry = str_field("entry")?;
-        // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
-        // `<module>.<function>` and the module is what the prepared subject is keyed by; the
-        // roster's `entry` field is the file the local recipe names, which is a different
-        // question (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
-        let entry_module = match identity.strip_suffix(&format!(".{function}")) {
-            Some(m) if !m.is_empty() => m.to_string(),
-            _ => {
+        // THE IDENTITY IS A STRUCTURED `WitnessIdentity`, NOT A SPELLED NAME. It carries
+        // `module_path` and `function` as separate fields, so the qualified name is DERIVED here
+        // rather than parsed back out of a string — which is what the authority does in
+        // `witness_identity_qualified_name`, and deriving it twice the same way is the point.
+        let (module_path, identity_function) = match hermetic.field(&fields, "identity") {
+            Some(v1_interpreter::Value::Record {
+                type_name: id_type,
+                fields: id_fields,
+            }) => {
+                if !hermetic.sym_eq(*id_type, "WitnessIdentity") {
+                    return Err(format!(
+                        "local_repo_wet_schedule: identity must be a WitnessIdentity, got record {}",
+                        hermetic.resolve(*id_type)
+                    ));
+                }
+                let id_str = |name: &str| -> Result<String, String> {
+                    match hermetic.field(id_fields, name) {
+                        Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                        other => Err(format!(
+                            "local_repo_wet_schedule: identity.{name} must be String, got {}",
+                            floor_value_shape(other)
+                        )),
+                    }
+                };
+                (id_str("module_path")?, id_str("function")?)
+            }
+            other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: identity {identity:?} does not end in .{function} \
-                     — the roster's identity and function disagree"
+                    "local_repo_wet_schedule: identity must be a WitnessIdentity record, got {}",
+                    floor_value_shape(other)
                 ));
             }
         };
-        // `LocalRepoWetExpectation` HAS ONE ARM, so there is nothing to collapse. A second arm
-        // reaching here refuses rather than defaulting: the widening that admits an expected-red
-        // member must arrive with the executor arm that realizes it, and this refusal is what
-        // stops the authority from claiming a behaviour production cannot perform.
-        match hermetic.field(&fields, "expected") {
+        let identity = format!("{module_path}.{identity_function}");
+        // THE ENTRY MODULE IS READ FROM THE IDENTITY, NOT PARSED OUT OF IT. `WitnessIdentity`
+        // carries `module_path` as its own field, so what used to be a suffix-strip is now a
+        // projection (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        //
+        // THE AGREEMENT WALL SURVIVES AND GOT STRONGER RATHER THAN WEAKER. The old check inferred
+        // disagreement from a failed suffix-strip, which could only notice it when the spelled
+        // identity did not END in the function. The row carries the function name TWICE — once in
+        // `identity.function`, once as its own `function` field — so the two are compared directly
+        // and any disagreement refuses, not only the ones a suffix happens to expose. An empty
+        // module_path is refused for the same reason the strip refused an empty prefix: a member
+        // whose module is unnamed cannot key a prepared subject.
+        if identity_function != function {
+            return Err(format!(
+                "local_repo_wet_schedule: identity.function {identity_function:?} and the row's \
+                 function {function:?} disagree — one member, two names"
+            ));
+        }
+        if module_path.is_empty() {
+            return Err(format!(
+                "local_repo_wet_schedule: identity {identity:?} carries an empty module_path"
+            ));
+        }
+        let entry_module = module_path;
+        // `ClaimExpectation` HAS TWO ARMS WHERE ITS PREDECESSOR HAD ONE, AND THIS LANE STILL
+        // REALIZES EXACTLY ONE. That is the whole reason this refusal is kept rather than widened
+        // with the type: the shared expectation vocabulary can now SAY `ExpectedRed`, and nothing
+        // in this executor RUNS an expected-red member. A wider type is not a wider capability, and
+        // defaulting here would let the authority claim a behaviour production cannot perform.
+        // The widening that admits an expected-red member must arrive with the executor arm that
+        // realizes it, and this line is what forces those two to land together.
+        match hermetic.field(&fields, "expectation") {
             Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
                 match hermetic.resolve(*variant_name).as_str() {
-                    "LocalRepoWetExpectPassed" => {}
+                    "ExpectedToHold" => {}
                     other => {
                         return Err(format!(
                             "local_repo_wet_schedule: expectation {other} has no executor arm in this \
-                             lane; only LocalRepoWetExpectPassed is realizable today"
+                             lane; only ExpectedToHold is realizable today"
                         ));
                     }
                 }
             }
             other => {
                 return Err(format!(
-                    "local_repo_wet_schedule: expected must be a typed variant, got {}",
+                    "local_repo_wet_schedule: expectation must be a typed variant, got {}",
                     floor_value_shape(other)
                 ));
             }
@@ -1575,7 +1752,7 @@ fn local_repo_wet_schedule(
 /// IT PRODUCES TERMINALS AND ADJUDICATES NOTHING. Every disagreement between the roster and what
 /// ran — a member with no receipt, a receipt naming another entry, a verdict that was not the
 /// expected one — is decided by `finalize_local_repo_wet_lane` against the SAME schedule, which is
-/// the host realization of `local_repo_wet_join`. An executor that judged its own completeness
+/// the host realization of `wet_evidence_validate`. An executor that judged its own completeness
 /// would be a second authority for the join, and the one whose payload the finalizer then trusted.
 pub(crate) fn run_local_repo_wet_lane(
     prepared: &PreparedRepository,
@@ -3092,7 +3269,17 @@ pub(crate) fn floor_authority_frame(
 /// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
 /// skip at any of these arms would leave admission empty while CI reads green, memoizing
 /// nothing (a green over a flag that never ran).
-pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Result<(), String> {
+// RETURNS ITS OBSERVATIONS RATHER THAN JUST ITS ERRORS, because the warm fills are a shared
+// preparation build and the preparation refusal is denominated over the observations its caller
+// collects. Before this, the warm ran, printed a wall figure and produced nothing the adjudicator
+// could see: it sits OUTSIDE the per-claim ceiling by construction (the deadlines are armed inside
+// `run_claim_measured`), and it was outside the preparation limits too, because those iterate a
+// vector this function never contributed to. Bounded by neither is not the same as billed to
+// preparation. One observation per warm row, measured on the same clock and RSS reads as every
+// other shared build, so all five phases go through ONE refusal.
+pub(crate) fn install_pure_producer_share(
+    prepared: &PreparedRepository,
+) -> Result<Vec<(String, SharedBuildObservation)>, String> {
     const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
     const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
     let roster_frame =
@@ -3148,6 +3335,20 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             })?;
         admitted_nodes.push(node);
     }
+    let refused = floor_decode_refused_share_candidates(
+        &roster_frame,
+        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_refused_candidates"),
+    )?;
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        *r.borrow_mut() = Some(PureProducerShareRoster {
+            admitted_qualified: warm_rows
+                .iter()
+                .chain(claim_forced_rows.iter())
+                .cloned()
+                .collect(),
+            refused,
+        });
+    });
     v1_interpreter::install_cross_claim_pure_share_roster(admitted_nodes);
     v1_interpreter::install_cross_claim_share_observer(Some(
         v1_interpreter::CrossClaimShareObserver {
@@ -3166,6 +3367,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             }),
         },
     ));
+    let mut warm_observations: Vec<(String, SharedBuildObservation)> = Vec::new();
     for qualified in &warm_rows {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
@@ -3174,8 +3376,42 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         // Resolution above already refused any row whose module the subject no longer
         // carries, so the frame is present; reuse it rather than re-preparing the module.
         let producer_frame = &resolution_frames[&module];
-        let warm_started = std::time::Instant::now();
-        match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
+        // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
+        // first revision of this line got that wrong in the direction DESIGN section 4b names.
+        // It passed `already_built: false` unconditionally, on the reasoning that the outcome
+        // below is the authority for whether the value was already retained. THAT REASONING
+        // FAILS BECAUSE THIS LOOP ALSO REPORTS A PROVENANCE: on the `AlreadyPresent` path the
+        // receipt said `BuiltByPreparation` for an artifact preparation FOUND rather than built.
+        // Two representations of one fact with one of them lying is worse than either alone, and
+        // a fabricated provenance in a receipt is the fabricated-plausible-output failure applied
+        // to this compiler's own self-description (review 59035, codex/gpt-5.6-sol).
+        //
+        // The flag cannot carry it: `observe_shared_build` is told before it runs, and the fact
+        // does not exist until the call returns. So the observation is corrected AFTER the fact,
+        // from the outcome that owns it.
+        //
+        // THE TRIGGER NAME STATES ONLY WHAT IS DECIDABLE. `AlreadyPresent` establishes PRESENCE
+        // and not who caused it, so the label names the boundary that is knowable rather than
+        // fabricating a call site -- inside this loop the only writer that can already have
+        // stored a rostered producer's value is an earlier rostered producer whose traversal
+        // reached it. That is the same discipline `warm_bare_reference_edge_index` uses when it
+        // names `a-site-ahead-of-floor-preparation` instead of inventing an author, and it is
+        // deliberately weaker than a call-site name because a call site is not recorded.
+        let (warm_result, mut warm_observation) =
+            observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified)
+            });
+        if let Ok(outcome) = &warm_result {
+            if matches!(
+                outcome,
+                v1_interpreter::CrossClaimStoreOutcome::AlreadyPresent
+            ) {
+                warm_observation.provenance = SharedBuildProvenance::AlreadyWarmOnEntry {
+                    triggered_by: "an-earlier-rostered-producer-in-this-warm-loop",
+                };
+            }
+        }
+        match warm_result {
             Ok(outcome) => {
                 // A NON-SERVABLE outcome means nothing is retained for later claims, so a
                 // silent decline would relocate the fill onto the first toucher: stop the
@@ -3209,10 +3445,18 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} disposition={} wall_ms={}",
+                     producer={qualified} disposition={} cpu_ms={} wall_ms={} \
+                     rss_growth_bytes={} provenance={}",
                     outcome.cause(),
-                    warm_started.elapsed().as_millis()
+                    warm_observation.cpu_ms,
+                    warm_observation.wall_ms,
+                    warm_observation.rss_growth_bytes,
+                    warm_observation.provenance.render(),
                 );
+                warm_observations.push((
+                    format!("CrossClaimPureProducerWarm/{qualified}"),
+                    warm_observation,
+                ));
             }
             Err(why) => {
                 return Err(format!(
@@ -3220,6 +3464,304 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                      producer={qualified} — {why}"
                 ));
             }
+        }
+    }
+    Ok(warm_observations)
+}
+
+/// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
+/// a producer that was proposed for the cross-claim share tier, MEASURED, and refused.
+#[derive(Clone)]
+pub(crate) struct RefusedShareRow {
+    producer: String,
+    verdict: String,
+    /// The consuming modules the refusal was measured over, read from the deciding run's own
+    /// `[floor-shared-fill]` `modules=` field.
+    carrier_modules: std::collections::BTreeSet<String>,
+}
+
+/// What the fold needs at the END of the run to adjudicate the refused roster: the admitted
+/// spellings (to name the subject of an overlap) and the refused rows (to join against).
+#[derive(Clone, Default)]
+pub(crate) struct PureProducerShareRoster {
+    admitted_qualified: Vec<String>,
+    refused: Vec<RefusedShareRow>,
+}
+
+thread_local! {
+    /// Set by `install_pure_producer_share` and read once the fold is over. Thread-local for the
+    /// same reason the shared-fill ledger is: it is the SAME thread's observation, and a state
+    /// that could be written by one thread and read by another would let the wall adjudicate a
+    /// roster that never governed the fills it is reading.
+    static PURE_PRODUCER_SHARE_ROSTER: std::cell::RefCell<Option<PureProducerShareRoster>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Decode the refused roster. Every arm refuses: a missing declaration, a non-record row, a
+/// wrong record type, a non-String field, an unknown verdict variant. An unknown variant is
+/// deliberately NOT tolerated — a fourth verdict arrives with a meaning this wall does not know
+/// how to weigh, and treating it as "some refusal" would let the authority claim a judgement the
+/// executor cannot perform.
+fn floor_decode_refused_share_candidates(
+    hermetic: &v1_interpreter::InterpContext,
+    qualified_name: &str,
+) -> Result<Vec<RefusedShareRow>, String> {
+    let value = v1_interpreter::run_in_context(hermetic, qualified_name, false)
+        .map_err(|e| format!("{qualified_name}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|why| format!("{qualified_name} decode: {why}"))?;
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = &item else {
+            return Err(format!(
+                "{qualified_name}: expected RefusedShareCandidate rows, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "RefusedShareCandidate") {
+            return Err(format!(
+                "{qualified_name}: expected RefusedShareCandidate, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let producer = match hermetic.field(fields, "producer") {
+            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "{qualified_name}: producer must be String, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let verdict = match hermetic.field(fields, "verdict") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                let name = hermetic.resolve(*variant_name);
+                match name.as_str() {
+                    "MeasuredServeAboveRecompute"
+                    | "NoMeasuredEffectOverItsConsumers"
+                    | "SupersededBySingleAuthorityRepair" => name,
+                    other => {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
+                             producer={producer} verdict={other} — the refused roster grew a \
+                             verdict arm this executor cannot weigh; the arm and the handling \
+                             land together or the wall is claiming a judgement it cannot make"
+                        ));
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "{qualified_name}: verdict must be a ShareRefusalVerdict variant, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let carriers = floor_decode_list(hermetic, hermetic.field(fields, "carrier_modules"))
+            .map_err(|why| format!("{qualified_name}: {producer} carrier_modules: {why}"))?;
+        let mut carrier_modules = std::collections::BTreeSet::new();
+        for carrier in carriers {
+            match carrier {
+                v1_interpreter::Value::Str(s) => {
+                    carrier_modules.insert(s.to_string());
+                }
+                other => {
+                    return Err(format!(
+                        "{qualified_name}: {producer} carrier_modules must be String rows, got {}",
+                        floor_value_shape(Some(&other))
+                    ))
+                }
+            }
+        }
+        // A REFUSED ROW WITH NO CARRIERS WOULD BE PERMANENTLY UNJOINABLE. It would sit in the
+        // roster reading as covered while intersecting nothing, which is the vacuously-green
+        // shape DESIGN §4b warns about, so it stops the line at decode rather than at nothing.
+        if carrier_modules.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusedRowCarrierless \
+                 producer={producer} — a refused row with an empty carrier_modules set can never \
+                 join against an observed fill, so it would be enrolled coverage that cannot fire"
+            ));
+        }
+        out.push(RefusedShareRow {
+            producer,
+            verdict,
+            carrier_modules,
+        });
+    }
+    Ok(out)
+}
+
+/// THE OVERLAP WALL, run once the fold is over and the shared-fill ledger is final.
+///
+/// The identity-grain check lives in the `.dag` and refuses a producer that is admitted and
+/// refused at once. It is not sufficient, and this file's own roster contains the case it
+/// misses: `rust_target_model_staging` measured clean while `rust_target_model` was enrolled,
+/// then INHERITED that row's consumers and its regression the moment the wider row was
+/// withdrawn. A distinct identity reaching the same measured neighbourhood is the same refusal
+/// arriving by a second name, so the join is on the OBSERVED carriers, not on the spelling.
+///
+/// WHOSE RUN THIS FIRES ON, STATED BECAUSE IT IS NOT THE OBVIOUS ONE. The overlap can be created
+/// by a diff that touches neither the admitted key nor its cost: withdrawing a wide row hands
+/// its consumers to a narrower one, and the refusal then lands on the WITHDRAWER's run. That is
+/// an externalized cost (DESIGN §5) unless the diagnostic says so, so it names three things —
+/// the admitted key that now overlaps, the refused row it inherited the carriers from, and that
+/// the trigger was a roster change rather than that key's own cost.
+fn refuse_pure_producer_share_refused_carrier_overlap() -> Result<(), String> {
+    const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
+    let observed = crate::cli_run::shared_fill::consumer_modules_by_key(CROSS_CLAIM_SHARE_CACHE);
+    let roster = PURE_PRODUCER_SHARE_ROSTER.with(|r| r.borrow().clone());
+    let roster = match roster {
+        Some(roster) => roster,
+        // NOT A SKIP. No roster installed and no fill observed is a lane that never entered the
+        // share tier; no roster installed WITH fills observed means something filled the tier
+        // outside the install this wall reads, and the wall would be adjudicating one run's
+        // fills against another run's roster.
+        None if observed.is_empty() => return Ok(()),
+        None => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareLedgerWithoutRoster keys={} — the \
+                 cross-claim share ledger recorded fills but no roster was installed on this \
+                 thread, so the refused-carrier join has no population to adjudicate",
+                observed.len()
+            ));
+        }
+    };
+    // THE DOMAIN IS ASSERTED BEFORE THE VERDICT IS READ. An empty intersection is evidence only
+    // when both operands are known non-empty, and this wall was itself built on a green that was
+    // the identity element on an empty domain: the pre-merge join I ran by hand captured
+    // `consumer_modules=53` instead of `modules=a,b,c` — the count, not the set — so every
+    // intersection was empty and every key read clean while a real overlap stood in the same
+    // ledger. The refused side is asserted at decode (a carrierless row refuses there); this is
+    // the observed side. A SINGLE fill legitimately carries no modules — one filled outside the
+    // fold and read by nobody has neither filler nor consumer — so the assertion is over the
+    // whole ledger: fills recorded and not one module observed anywhere is an observation defect,
+    // never a clean run. This is the rostered `predicate_vacuously_true_on_an_empty_domain`.
+    if !observed.is_empty() && observed.iter().all(|(_, modules)| modules.is_empty()) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareObservedCarriersVacuous keys={} — the \
+             cross-claim share ledger recorded fills but not one of them carries a consuming \
+             module, so the refused-carrier join would intersect against an empty domain and \
+             report clean without comparing anything",
+            observed.len()
+        ));
+    }
+    // Bare ledger key -> the admitted spellings that end in it. The interpreter bills the share
+    // ledger under the BARE function name, and the roster's whole admission discipline is that
+    // identity is the resolved declaration, never the bare name — so an overlapping key whose
+    // bare name is claimed by two admitted rows cannot be attributed, and naming either one
+    // would be a fabricated subject.
+    let mut by_bare: std::collections::BTreeMap<&str, Vec<&String>> =
+        std::collections::BTreeMap::new();
+    for qualified in &roster.admitted_qualified {
+        let bare = qualified
+            .rsplit_once('.')
+            .map_or(qualified.as_str(), |(_, b)| b);
+        by_bare.entry(bare).or_default().push(qualified);
+    }
+    for (key, modules) in &observed {
+        for row in &roster.refused {
+            // MIRROR of `v2.workflow.floor_pure_producer_share` `refused_row_carriers_transfer`,
+            // which is the authority for WHICH verdicts transfer through carriers and carries the
+            // reasoning. A verdict that measured NO effect has nothing for a later identity to
+            // inherit, and a §3 supersession is a ruling about one spelling; refusing another
+            // producer for reaching their modules would charge it with a harm the measurement
+            // never found. Both rows the inheritance actually happened through are
+            // MeasuredServeAboveRecompute and stay in this population. The match is exhaustive
+            // over the decoded arms, so a fourth verdict cannot join by default — and the decode
+            // refuses an arm it does not know before this point is reached.
+            let carriers_transfer = match row.verdict.as_str() {
+                "MeasuredServeAboveRecompute" => true,
+                "NoMeasuredEffectOverItsConsumers" => false,
+                "SupersededBySingleAuthorityRepair" => false,
+                other => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusalVerdictUnknown \
+                         producer={} verdict={other} — the overlap wall cannot decide \
+                         whether this verdict's carriers transfer",
+                        row.producer
+                    ));
+                }
+            };
+            if !carriers_transfer {
+                continue;
+            }
+            // THE TRIGGER IS COMPUTATION IDENTITY, NOT CO-LOCATION. An earlier revision of this
+            // wall refused on module-set intersection alone, and that fabricates causal
+            // equivalence from shared neighbourhood: two producers using one consuming module
+            // establishes neither one computation identity nor any transfer of a measured cost,
+            // so ANY unrelated admitted producer reaching that module could stop the required
+            // floor. DESIGN §2 requires that one COMPUTATION IDENTITY join the demands to a
+            // provider, and §4 refuses a heuristic where the richer source exists — it does
+            // here, because the interpreter bills this ledger under the producing function's own
+            // key. So the refusal fires when the ledger observes a fill under the BARE NAME OF A
+            // REFUSED PRODUCER: that is the withdrawn computation recurring under a spelling the
+            // static fold cannot see, since a transitively reached producer is in the tier and
+            // not in the roster. Carrier overlap is retained as a REQUIRED CORROBORATION and
+            // reported as evidence, never as the trigger on its own.
+            //
+            // WHAT THIS NARROWING GIVES UP, DECLARED RATHER THAN DISCOVERED LATER. The case that
+            // motivated this wall is TWO IDENTITIES SHARING ONE EFFECT: `rust_target_model_staging`
+            // was refused for the same measured effect as `rust_target_model`, and its consumer set
+            // grew from 17 to 44 modules on the run where the first row was withdrawn and staging
+            // inherited its consumers. That is a DIFFERENT computation identity, so this wall is
+            // now green on it — deliberately, because module overlap cannot establish the transfer
+            // and refusing on it charges a producer with a harm nothing measured. NEXT TRIGGER,
+            // NAMED AS THE CAPABILITY: a modeled produces-the-same-value relation between two
+            // producer identities, so inheritance is read off a declared equivalence rather than
+            // inferred from co-location. A wider module heuristic is not that capability and must
+            // not retire this gap.
+            let refused_bare = row
+                .producer
+                .rsplit_once('.')
+                .map_or(row.producer.as_str(), |(_, b)| b);
+            if key.as_str() != refused_bare {
+                continue;
+            }
+            let shared: Vec<&str> = modules
+                .intersection(&row.carrier_modules)
+                .map(|m| m.as_str())
+                .collect();
+            if shared.is_empty() {
+                continue;
+            }
+            let subject = match by_bare.get(key.as_str()).map(|v| v.as_slice()) {
+                Some([one]) => (*one).clone(),
+                Some(many) => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareOverlapSubjectAmbiguous \
+                         key={key} candidates={} — this key's fills overlap the carriers of \
+                         refused row {}, and the bare ledger key is claimed by more than one \
+                         admitted spelling, so the overlap cannot be attributed to an identity",
+                        many.iter()
+                            .map(|q| q.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        row.producer
+                    ));
+                }
+                // Reachable and NOT an error: the store admits producers reached transitively
+                // from a rostered one, so a key with no roster spelling is a real member of the
+                // tier. It is named by its ledger key, which is what the operator can grep.
+                _ => format!("<reached-from-roster>:{key}"),
+            };
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRefusedCarrierOverlap \
+                 admitted_key={key} admitted_producer={subject} refused_row={} \
+                 refused_verdict={} shared_carrier_modules={} — THIS LEDGER KEY IS THE REFUSED \
+                 PRODUCER'S OWN COMPUTATION IDENTITY, recurring under a spelling the roster \
+                 does not name, and the shared modules corroborate that its measured carriers \
+                 came with it. WHAT CHANGED IS THE ROSTER, NOT THIS KEY'S OWN COST. The named refused row was measured over those modules and \
+                 withdrawn; this admitted key is now serving into the same measured \
+                 neighbourhood, which is how a narrower identity inherits a withdrawn row's \
+                 regression without any measurement of its own moving. Either re-measure this \
+                 key over those consumers and carry the result, or withdraw it: \
+                 v2.workflow.floor_pure_producer_share names the run pair and the next trigger \
+                 on the refused row",
+                row.producer,
+                row.verdict,
+                shared.join(",")
+            ));
         }
     }
     Ok(())
@@ -3731,25 +4273,31 @@ pub fn run_required_floor(
     // prepared subject is drift, and the install REFUSES rather than skipping — a silent
     // skip would relocate every warm fill onto the first toucher, the exact
     // nondeterministic charge this mechanism deletes.
-    install_pure_producer_share(&prepared)?;
-    let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
-        ("ModulePathIndexBuild", module_path_index_warm),
-        ("SharedModuleIndexBuild", shared_index_warm),
+    // THE WARM OBSERVATIONS JOIN THE SAME VECTOR THE PREPARATION REFUSAL ITERATES, which is the
+    // whole of this change: the fills were already outside the per-claim ceiling and were until
+    // now outside the preparation bound as well, so a rostered producer could warm for any cost at
+    // all and stop nothing. The label carries the producer because the refusal names a phase and
+    // "which shared build" must resolve to one roster row, not to the roster.
+    let pure_producer_warms = install_pure_producer_share(&prepared)?;
+    let mut shared_build_warms: Vec<(String, SharedBuildObservation)> = vec![
+        ("ModulePathIndexBuild".to_string(), module_path_index_warm),
+        ("SharedModuleIndexBuild".to_string(), shared_index_warm),
     ];
     if let Some(warm) = lens_pool_root_warm {
-        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots".to_string(), warm));
     }
     if let Some(warm) = languages_census_warm {
-        shared_build_warms.push(("LanguagesConsumerCensusBuild", warm));
+        shared_build_warms.push(("LanguagesConsumerCensusBuild".to_string(), warm));
     }
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/source-roots",
+        "BareReferenceEdgeIndexBuild/source-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
     ));
     shared_build_warms.push((
-        "BareReferenceEdgeIndexBuild/witness-layer-roots",
+        "BareReferenceEdgeIndexBuild/witness-layer-roots".to_string(),
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
+    shared_build_warms.extend(pure_producer_warms);
     // The two earlier phases already printed their own lines at the point they ran; only the
     // edge-index entries are reported here, so a phase is reported exactly once and under its own
     // name. Every entry — all three phases — is adjudicated together further down.
@@ -4006,6 +4554,23 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
+    // ARM THE OPAQUE-HOST-CALL SURFACE FROM ITS ONE AUTHORITY, AND REFUSE IF IT IS UNGROUNDED.
+    //
+    // The roster is NOT restated in Rust: it is read out of
+    // `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
+    // §4b drop's bounded population is derived from, so the seed and the model cannot drift into
+    // two answers about which arms are unpollable.
+    //
+    // THE UNGROUNDED ARM REFUSES RATHER THAN ARMING AN EMPTY SURFACE. An empty roster would
+    // classify every crossing as `cooperatively_pollable` -- a mere overshoot -- which is the
+    // reassuring direction and precisely the absorbing fallback DESIGN §5 forbids: the run would
+    // report a population it never observed and the deficit would stop being visible at the
+    // moment the join broke. So a broken join stops the line here, typed and located, and the
+    // remedy is named rather than left to the reader.
+    let opaque_surface_frame =
+        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+    let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
+    v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
@@ -5615,11 +6180,16 @@ pub fn run_required_floor(
             identity: claim.qualified.clone(),
             module_path: claim.module_path.clone(),
             outcome: witness_execution_outcome_label(&result).to_string(),
-            wall_nanos: receipt.wall_nanos,
-            cpu_nanos: receipt.cpu_nanos,
+            // MINT THE READING FROM THE TERMINALITY, not from the receipt. The receipt's two
+            // clocks are the same numbers either way; what `claim_terminality` adds — and what
+            // reading them straight off the receipt DISCARDED — is whether a deadline preempted
+            // the subject, which is the only thing that decides if those numbers are
+            // measurements or lower bounds.
+            reading: ClaimCostReading::of(&terminality),
             eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
+            preemption_reachability: preemption_reachability_label(&receipt.opaque_host_call_reach),
         });
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the
@@ -6152,12 +6722,54 @@ pub fn run_required_floor(
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
+                // WHICH POPULATION THIS CROSSING IS IN, NAMED IN THE SENTENCE THAT BLOCKS.
+                //
+                // The two are different facts with different remedies and they were arriving
+                // here as one bucket. For a `cooperatively_pollable` claim the deadline had
+                // every stride point available and the claim finished anyway, so the crossing is
+                // an overshoot between two polls -- a charge. For an
+                // `opaque_host_call_unbounded` claim no stride point falls inside the operation,
+                // so the deadline OBSERVED NOTHING and the crossing is a missed interrupt, which
+                // is the case `claim_safety_outcome_blocks` exists for.
+                //
+                // BOTH STILL BLOCK, IDENTICALLY. This names the population; it does not decide
+                // admission, and no arm below returns early or skips the push. Whether the
+                // pollable population should keep blocking is the open question this column
+                // exists to make answerable with counts instead of argument -- it stays with the
+                // operator, and `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable`
+                // stays standing until then.
+                let reachability = outcome
+                    .claim_cost
+                    .iter()
+                    .find(|row| row.identity == claim.qualified)
+                    .map(|row| row.preemption_reachability.clone())
+                    .unwrap_or_else(|| "surface_unarmed".to_string());
+                let population = if reachability.starts_with("opaque_host_call_unbounded") {
+                    format!(
+                        "MISSED INTERRUPT: the deadline could not fire — this claim's cost \
+                         accrued inside {}, where no stride poll lands, so completing under the \
+                         ceiling was never something the limit could enforce",
+                        reachability
+                            .strip_prefix("opaque_host_call_unbounded:")
+                            .unwrap_or(&reachability)
+                    )
+                } else if reachability == "cooperatively_pollable" {
+                    "OVERSHOOT: every stride poll was reachable and the claim completed anyway, \
+                     so the deadline missed nothing — what this crossing reports is a charge, \
+                     not a failed interrupt"
+                        .to_string()
+                } else {
+                    "REACHABILITY UNOBSERVED: the opaque-host-call surface was not armed for \
+                     this run, so which population this crossing belongs to is unknown and is \
+                     NOT assumed to be the benign one"
+                        .to_string()
+                };
                 outcome.completed_over_cost_requirement.push(format!(
-                    "{} reached its verdict and then exceeded its budget. {}. The cost is \
+                    "{} reached its verdict and then exceeded its budget. {}. {}. The cost is \
                      therefore known and actionable. This is a cost debt only — it is not a \
                      defect and it does not belong on the expected-red roster, which asserts an \
                      expected FAILURE this row does not exhibit.",
-                    claim.qualified, figure
+                    claim.qualified, figure, population
                 ))
             }
             // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic
@@ -6233,6 +6845,10 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
+    // decision reads; this call is what refuses one. It runs after the render so an operator has
+    // the whole ledger in the log above the refusal that cites two of its rows.
+    refuse_pure_producer_share_refused_carrier_overlap()?;
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
@@ -6808,7 +7424,16 @@ pub fn run_required_floor(
     let over_cost_members: Vec<&WitnessExecutionOccurrence> = outcome
         .claim_cost
         .iter()
-        .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
+        // `exact_cost_ms` IS THE FILTER'S OWN REFUSAL. It answers `None` for a right-censored
+        // row, so a bound cannot reach the comparison at all — where the predicate previously
+        // relied on the `verdict_reached` conjunct being remembered, the type now supplies it.
+        // The conjunct stays because it is a DIFFERENT fact (an unwound claim has an exact cost
+        // and no completion to judge), and dropping it would judge a panicked row against a
+        // completion line.
+        .filter(|row| {
+            row.verdict_reached
+                && exact_cost_ms(row, cost_basis).is_some_and(|cost| cost > row.cost_line_ms)
+        })
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
     // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
@@ -6835,14 +7460,34 @@ pub fn run_required_floor(
     // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
     // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
     let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
-    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    // Every member reached the filter above through `Some`, so this cannot rank a bound; the
+    // `unwrap_or(0)` is unreachable rather than a substituted figure, and it sorts such a row to
+    // the BOTTOM where it would be visible rather than into the actionable head.
+    ranked.sort_by_key(|row| std::cmp::Reverse(exact_cost_ms(row, cost_basis).unwrap_or(0)));
     const OVER_COST_PRINT_LIMIT: usize = 25;
     for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
+        // NAMED `observed_*`, and destructured rather than accessed, for the same reason the
+        // artifact's columns are disjoint: this listing is a COMPLETED-cost ranking, and the
+        // former `cpu_ms=` label was a slot a censored figure could be dropped into by a later
+        // edit without anything reading differently. The censored arm is unreachable here — every
+        // member passed `exact_cost_ms` — and it renders the bound's own field names rather than
+        // a cost if that ever stops being true.
+        let (observed_wall_ms, observed_cpu_ms) = match &row.reading {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => (observed_wall_ms.to_string(), observed_cpu_ms.to_string()),
+            ClaimCostReading::RightCensored(reading) => (
+                format!("at_least_{}", reading.elapsed_wall_at_least_ms),
+                format!("at_least_{}", reading.elapsed_cpu_at_least_ms),
+            ),
+        };
         eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} eval_steps={} line_ms={} outcome={}",
+            "[over-cost] {} observed_wall_ms={} observed_cpu_ms={} eval_steps={} line_ms={} \
+             outcome={}",
             row.identity,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            observed_wall_ms,
+            observed_cpu_ms,
             row.eval_steps,
             row.cost_line_ms,
             row.outcome
@@ -6877,11 +7522,28 @@ pub fn run_required_floor(
         // column is inclusive of callees and therefore NOT additive. Without it the first thing a
         // reader does is sum the column, which on the first artifact gave ~14x the run's entire
         // claim-side CPU.
+        // SUMMED OVER OBSERVED ROWS ONLY, AND THE EXCLUSION IS COUNTED RATHER THAN SILENT. A
+        // right-censored row has no cost to contribute: adding its lower bound would understate
+        // the total by an unbounded amount while the figure kept reading as a ceiling, which is
+        // the one direction this value must not fail in — it exists so a reader can tell that the
+        // census's inclusive-of-callees column has been over-summed, and a ceiling that is itself
+        // too low cannot do that job. Excluding them makes the ceiling a ceiling ON THE MEASURED
+        // POPULATION, so the count travels beside it and the label below says which population.
         let claim_cpu_total_ms: u128 = outcome
             .claim_cost
             .iter()
-            .map(|row| row.cpu_nanos / 1_000_000)
+            .filter_map(|row| match &row.reading {
+                ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                } => Some(*observed_cpu_ms as u128),
+                ClaimCostReading::RightCensored(_) => None,
+            })
             .sum();
+        let claim_cpu_censored_rows = outcome
+            .claim_cost
+            .iter()
+            .filter(|row| matches!(row.reading, ClaimCostReading::RightCensored(_)))
+            .count();
         // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
         // orders by cross-claim recomputation and says so in band, so no consumer can read a
         // log head as the census's own ranking or as a candidate roster.
@@ -6891,12 +7553,16 @@ pub fn run_required_floor(
         eprintln!(
             "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
              omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
-             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             absorb_ms={} absorb_max_ms={} claim_cpu_observed_total_ms={} \
+             claim_cpu_censored_rows_excluded={} (observation only; nothing \
              refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
              it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
              is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
              are inclusive of callees, so a producer and its callees overlap and the sum counts \
-             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             the same nanoseconds once per level of nesting -- claim_cpu_observed_total_ms is \
+             the ceiling over the MEASURED rows only, with the censored rows counted beside it \
+             because their cost is a lower bound and summing bounds into a ceiling would push \
+             the ceiling down; it is the ceiling \
              any true total must sit under.)",
             disclosure.claims_absorbed,
             rows.len(),
@@ -6906,7 +7572,8 @@ pub fn run_required_floor(
             disclosure.overflow_keys,
             disclosure.absorb_ns_total / 1_000_000,
             disclosure.absorb_ns_max / 1_000_000,
-            claim_cpu_total_ms
+            claim_cpu_total_ms,
+            claim_cpu_censored_rows
         );
         const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
         eprintln!(
@@ -6948,6 +7615,7 @@ pub fn run_required_floor(
                 &rows,
                 &disclosure,
                 claim_cpu_total_ms,
+                claim_cpu_censored_rows,
             )?;
         }
     }
@@ -7139,12 +7807,112 @@ mod pure_producer_share_tests {
             "module v2.workflow.floor_pure_producer_share\n\
              fn tm_local() -> Bool { true }\n\
              data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
-             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n",
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [\n\
+               RefusedShareCandidate {\n\
+                 producer: \"v2.workflow.floor_pure_producer_share.tm_refused\",\n\
+                 verdict: MeasuredServeAboveRecompute,\n\
+                 carrier_modules: [\"v2.test.fixture.a_consumer\"],\n\
+                 measurement: \"fixture\",\n\
+                 next_trigger: \"fixture\"\n\
+               }\n\
+             ]\n",
         )]);
-        install_pure_producer_share(&prepared).expect("carried roster installs and warms");
+        let observations =
+            install_pure_producer_share(&prepared).expect("carried roster installs and warms");
         let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
         assert_eq!(overflow, 0);
         assert!(stores >= 1, "the warm must land in the store, got {stores}");
+        // THE DISCRIMINATING ASSERTION, and it is why this control is no longer only positive:
+        // the warm is a shared preparation build, and a shared build that produces no
+        // observation is bounded by nothing -- the preparation refusal is denominated over the
+        // observations collected here. Before the observation existed this function returned
+        // `()`, so this assertion could not be written at all, which is precisely the shape of
+        // the gap: the cost was real, printed, and invisible to the only wall that could stop it.
+        assert_eq!(
+            observations.len(),
+            1,
+            "one observation per warm row, got {observations:?}"
+        );
+        let (label, observed) = &observations[0];
+        assert_eq!(
+            label, "CrossClaimPureProducerWarm/v2.workflow.floor_pure_producer_share.tm_local",
+            "the label must name the ROW, since the refusal names one phase and a reader must \
+             reach one roster row from it"
+        );
+        // The three axes the preparation refusal reads. Asserting they are PRESENT rather than
+        // asserting a magnitude: a fixture's absolute cost is a property of the fixture and the
+        // runner it ran on, and a threshold copied from this tree would be the measurement-as-
+        // oracle DESIGN section 5 refuses.
+        let _: u64 = observed.cpu_ms;
+        let _: u64 = observed.wall_ms;
+        let _: u64 = observed.rss_growth_bytes;
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// THE `AlreadyPresent` PATH REPORTS THAT IT FOUND THE VALUE, NOT THAT IT BUILT IT.
+    /// The discriminating red for review 59035: before the fix this asserted
+    /// `BuiltByPreparation` on a warm that built nothing, so the receipt claimed preparation
+    /// produced an artifact it merely found. Running the install TWICE without clearing the
+    /// memos in between is what puts the second warm on that path, and nothing else in this
+    /// module reaches it — which is why the defect survived the first round of tests.
+    #[test]
+    fn a_second_warm_of_the_same_producer_reports_that_it_was_found_not_built() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn tm_local() -> Bool { true }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n\
+             type ShareRefusalVerdict =\n\
+                 MeasuredServeAboveRecompute\n\
+               | NoMeasuredEffectOverItsConsumers\n\
+             type RefusedShareCandidate {\n\
+               producer: String\n\
+               verdict: ShareRefusalVerdict\n\
+               carrier_modules: List<String>\n\
+               measurement: String\n\
+               next_trigger: String\n\
+             }\n\
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+        )]);
+
+        let first = install_pure_producer_share(&prepared).expect("first install warms");
+        assert!(
+            matches!(
+                first[0].1.provenance,
+                SharedBuildProvenance::BuiltByPreparation
+            ),
+            "the first warm BUILDS it: {:?}",
+            first[0].1.provenance
+        );
+
+        // No `clear_cross_claim_pure_memos()` here, deliberately: the retained value is the
+        // whole subject of this test.
+        let second = install_pure_producer_share(&prepared).expect("second install re-warms");
+        match &second[0].1.provenance {
+            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
+                // The label names a BOUNDARY and not a call site, because `AlreadyPresent`
+                // establishes presence and not cause. Asserting the exact string keeps a
+                // future edit from quietly upgrading it into a fabricated attribution.
+                assert_eq!(
+                    *triggered_by,
+                    "an-earlier-rostered-producer-in-this-warm-loop"
+                );
+            }
+            other => panic!("a warm that found the value must not claim it built it: {other:?}"),
+        }
         v1_interpreter::clear_cross_claim_pure_memos();
     }
 
@@ -7469,7 +8237,7 @@ mod changed_witness_projection_tests {
         .expect_err("a scheduled member with no terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalMissing")
+                && refused.contains("WetTerminalMissing")
                 && refused.contains("w_other"),
             "exactly the skipped member refuses, by name, got: {refused}"
         );
@@ -7491,7 +8259,7 @@ mod changed_witness_projection_tests {
         .expect_err("an unscheduled terminal must refuse");
         assert!(
             refused.contains("1 refusal(s)")
-                && refused.contains("LocalRepoWetTerminalUnscheduled")
+                && refused.contains("WetTerminalUnscheduled")
                 && refused.contains("w_nobody_scheduled"),
             "got: {refused}"
         );
@@ -7507,7 +8275,7 @@ mod changed_witness_projection_tests {
         let refused =
             finalize(&schedule, vec![terminal]).expect_err("a failed member must not be admitted");
         assert!(
-            refused.contains("LocalRepoWetTerminalVerdictNotExpected")
+            refused.contains("WetTerminalVerdictNotExpected")
                 && refused.contains("observed failed"),
             "got: {refused}"
         );
@@ -7524,7 +8292,7 @@ mod changed_witness_projection_tests {
         let refused = finalize(&schedule, vec![terminal])
             .expect_err("a roster entry that is not the resolved source must refuse");
         assert!(
-            refused.contains("LocalRepoWetTerminalForeignEntry")
+            refused.contains("WetTerminalForeignEntry")
                 && refused.contains("somewhere_else_test.dag"),
             "got: {refused}"
         );
@@ -7737,12 +8505,148 @@ mod changed_witness_projection_tests {
         let mut edited = std::collections::HashSet::new();
         edited.insert(("added_test.dag".to_string(), "added_holds".to_string()));
         let identities =
-            changed_witness_identities_from_edited_test_fns(&dir, &edited).expect("identities");
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect("identities");
         assert_eq!(
             identities,
             vec!["fixture.changed_witness_spelling.added_holds".to_string()]
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE FOUR CONTROLS ON QUARANTINE-KEYED SELECTION, and (a) is deliberately written first
+    // because it is the arm that stops this degrading into holding everything.
+    //
+    // The subject is `changed_witness_identities_from_edited_test_fns`, whose output IS the
+    // selection: an identity it returns is planned, one it omits is not. So these assert
+    // NOT-SCHEDULED rather than not-failing, which are different claims and only the first is
+    // what the admission promises.
+
+    /// Build a two-witness fixture in one file: both are long-home, only one is admitted.
+    fn quarantine_selection_fixture(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-quarantine-selection-{tag}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("probe_test.dag"),
+            "module v2.test.long.quarantine_selection_fixture
+
+             test fn admitted_reds() -> Bool { false }
+             test fn unadmitted_reds() -> Bool { false }
+",
+        )
+        .expect("fixture write");
+        dir
+    }
+
+    fn edited(pairs: &[(&str, &str)]) -> std::collections::HashSet<(String, String)> {
+        pairs
+            .iter()
+            .map(|(f, n)| (f.to_string(), n.to_string()))
+            .collect()
+    }
+
+    /// (a) A LONG-HOME WITNESS WITH NO ADMISSION IS STILL SELECTED. This is the discriminating
+    /// RED for the whole change: an exclusion keyed on the lane rather than on the admission
+    /// would drop this row too, and the floor would stop noticing a failing witness the PR
+    /// touched. Sitting in `v2.test.long.` earns nothing by itself.
+    #[test]
+    fn an_unadmitted_long_home_witness_is_still_selected_as_a_changed_witness() {
+        let dir = quarantine_selection_fixture("unadmitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "unadmitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert_eq!(
+            identities,
+            vec!["v2.test.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
+            "a long-home witness with no quarantine admission must still be planned"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (b) AN ADMITTED WITNESS THE DIFF EDITED IS NOT SELECTED. Not merely "does not fail" —
+    /// it is absent from the identities, so nothing plans it.
+    #[test]
+    fn a_quarantine_admitted_witness_is_not_selected_even_when_edited() {
+        let dir = quarantine_selection_fixture("admitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "admitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert!(
+            identities.is_empty(),
+            "an edited quarantine-admitted witness must not be scheduled: {identities:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (c) THE KEY IS THE EXACT CADENCE, NOT "HAS AN ADMISSION". A row admitted under a
+    /// different cadence is a different obligation, so it is absent from the quarantine set and
+    /// stays selected. Asserted through the real authority rather than the fixture set, since
+    /// the cadence read is where a widened head would leak.
+    #[test]
+    fn only_quarantine_probe_cadence_rows_reach_the_selection_exclusion() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let all: std::collections::HashSet<(String, String)> =
+            crate::cli_run::explicit_witness_admission_pairs()
+                .into_iter()
+                .collect();
+        assert!(
+            !quarantine.is_empty(),
+            "fixture drift: the authority declares quarantine probes"
+        );
+        assert!(
+            quarantine.is_subset(&all),
+            "every quarantine row is an admission row"
+        );
+        // The positive control: some admitted row is NOT a quarantine probe. Without this a
+        // reader that returned every admission would satisfy the subset check above.
+        assert!(
+            all.len() > quarantine.len(),
+            "the authority carries admissions under other cadences; if this ever became an \
+             equality the exclusion would have widened to every admitted witness"
+        );
+        std::fs::remove_dir_all(std::env::temp_dir().join("gunbc-quarantine-noop")).ok();
+    }
+
+    /// The four rows that produced the incident are actually in the set this reads — an exclusion
+    /// keyed on a head that parsed nothing would pass every test above while changing nothing.
+    #[test]
+    fn the_origin_probe_frontier_rows_are_read_as_quarantine_admissions() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag";
+        for f in [
+            "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+            "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+            "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+            "witness_live_structural_fixture_mint_site_discovered_reds",
+        ] {
+            assert!(
+                quarantine.contains(&(entry.to_string(), f.to_string())),
+                "{f} must be read as a quarantine admission"
+            );
+        }
     }
 
     /// A touched file declaring a test fn without a module header REFUSES — the identity
@@ -7761,8 +8665,9 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut edited = std::collections::HashSet::new();
         edited.insert(("bare_test.dag".to_string(), "nameless".to_string()));
-        let err = changed_witness_identities_from_edited_test_fns(&dir, &edited)
-            .expect_err("headerless file must refuse");
+        let err =
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect_err("headerless file must refuse");
         assert!(err.contains("no module header"), "cause named: {err}");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -8086,5 +8991,248 @@ mod expected_red_roster_join_suppression_tests {
         );
         assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
         assert_eq!(expected_red_roster_join_suppressed(report), 1);
+    }
+}
+
+#[cfg(test)]
+mod pure_producer_share_refused_carrier_overlap_tests {
+    use super::*;
+    use crate::cli_run::shared_fill;
+
+    const CACHE: &str = "cross_claim_pure_share";
+
+    fn refused_row(producer: &str, carriers: &[&str]) -> RefusedShareRow {
+        RefusedShareRow {
+            producer: producer.to_string(),
+            verdict: "MeasuredServeAboveRecompute".to_string(),
+            carrier_modules: carriers.iter().map(|m| (*m).to_string()).collect(),
+        }
+    }
+
+    /// Bill one fill of `key` to a claim in `module`, exactly as the interpreter's share
+    /// observer does: the ledger key is the BARE function name.
+    fn fill_from(module: &str, key: &str) {
+        shared_fill::set_current_claim(Some(&format!("{module}.a_witness")));
+        shared_fill::begin_fill();
+        shared_fill::record_fill(CACHE, key, 0);
+        shared_fill::set_current_claim(None);
+    }
+
+    fn install(admitted: &[&str], refused: Vec<RefusedShareRow>) {
+        PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+            *r.borrow_mut() = Some(PureProducerShareRoster {
+                admitted_qualified: admitted.iter().map(|q| (*q).to_string()).collect(),
+                refused,
+            });
+        });
+    }
+
+    /// THE DISCRIMINATING RED. A distinct admitted identity, whose own cost nothing measured,
+    /// serving into a module a refused row was measured over and withdrawn from — the
+    /// `rust_target_model_staging` shape, in miniature.
+    #[test]
+    fn an_admitted_key_serving_a_refused_rows_carriers_stops_the_line() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        // THE LEDGER OBSERVES A FILL UNDER THE REFUSED PRODUCER'S OWN KEY. That is the
+        // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
+        // thing this wall is entitled to charge. The admitted spelling is reached from the
+        // roster rather than named by it, which is why the static fold cannot see it.
+        fill_from("v2.test.emit.produced_decl_two_target", "rust_target_model");
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("a refused producer's own key recurring over its carriers must refuse");
+        // The three things the diagnostic owes: the admitted subject, the row it inherited the
+        // carriers from, and that the trigger was the roster rather than this key's own cost.
+        assert!(
+            why.contains("cause=PureProducerShareRefusedCarrierOverlap"),
+            "{why}"
+        );
+        assert!(
+            why.contains("admitted_producer=<reached-from-roster>:rust_target_model"),
+            "{why}"
+        );
+        assert!(
+            why.contains("refused_row=v2.extdeps.languages.rust.rust_target_model"),
+            "{why}"
+        );
+        assert!(
+            why.contains("WHAT CHANGED IS THE ROSTER, NOT THIS KEY'S OWN COST"),
+            "{why}"
+        );
+        assert!(
+            why.contains("shared_carrier_modules=v2.test.emit.produced_decl_two_target"),
+            "{why}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL, varying exactly the consuming module. Same roster, same refused
+    /// row, same admitted key — a fill that reaches none of the measured carriers is ordinary.
+    #[test]
+    fn the_same_key_serving_modules_no_refusal_measured_is_ordinary() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        fill_from(
+            "v2.test.claim.bash_command_fold",
+            "rust_target_model_staging",
+        );
+        assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
+    }
+
+    /// THE VACUITY REFUSAL. Fills recorded with no consuming module anywhere is the shape that
+    /// produced this wall's own false green: a join whose domain is empty answers clean without
+    /// comparing anything. Recorded outside any claim, so the ledger has fills and no modules.
+    #[test]
+    fn a_ledger_whose_fills_carry_no_modules_refuses_instead_of_reading_clean() {
+        install(
+            &["v2.extdeps.languages.rust.rust_target_model_staging"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.rust_target_model",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        shared_fill::set_current_claim(None);
+        shared_fill::begin_fill();
+        shared_fill::record_fill(CACHE, "rust_target_model_staging", 0);
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("an empty observed domain must refuse rather than read clean");
+        assert!(
+            why.contains("cause=PureProducerShareObservedCarriersVacuous"),
+            "{why}"
+        );
+    }
+
+    /// THE NARROWING, EXECUTED. A refused row that measured NO effect over its consumers has
+    /// nothing for a later identity to inherit, so an admitted key reaching those same modules is
+    /// ordinary. This is the arm that run 33696651737 proved was needed: it refused
+    /// grammar_relation_row_for_emitted over rust_add_emit_translate, an overlap with a row whose
+    /// own measurement found zero.
+    #[test]
+    fn a_refused_row_that_measured_no_effect_transfers_nothing_through_its_carriers() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "grammar_relation_row_for_emitted",
+        );
+        assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
+    }
+
+    /// AND THE SAME OVERLAP UNDER A MEASURED-COST VERDICT STILL REFUSES, so the narrowing is to
+    /// the verdict and not to the join. Identical roster, identical key, identical module — only
+    /// the refused row's verdict differs.
+    #[test]
+    fn the_same_overlap_under_a_measured_cost_verdict_still_stops_the_line() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "MeasuredServeAboveRecompute".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "rust_target_model_core_edges",
+        );
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("a measured-cost row's carriers still transfer");
+        assert!(
+            why.contains("cause=PureProducerShareRefusedCarrierOverlap"),
+            "{why}"
+        );
+    }
+
+    /// CO-LOCATION IS NOT CAUSAL TRANSFER, AND THIS IS THE CONTROL THAT SAYS SO BY EXECUTION.
+    /// An earlier revision of this wall refused here, on module-set intersection alone: a
+    /// DIFFERENT admitted producer whose fills reach a module the refused row was measured over.
+    /// Sharing a consuming module establishes neither one computation identity nor any transfer
+    /// of a measured cost, so refusing on it charges an unrelated producer with a harm nothing
+    /// measured — and would let any admitted producer reaching that module stop the required
+    /// floor. Raised as review 59213 finding 2 against gunbc#10141 and enrolled here rather than
+    /// fixed silently, because this exact fixture was GREEN under the old trigger.
+    #[test]
+    fn a_different_producer_merely_sharing_a_carrier_module_does_not_refuse() {
+        install(
+            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            vec![RefusedShareRow {
+                producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
+                verdict: "MeasuredServeAboveRecompute".to_string(),
+                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                    .into_iter()
+                    .collect(),
+            }],
+        );
+        fill_from(
+            "v2.test.manual.rust_add_emit_translate",
+            "grammar_relation_row_for_emitted",
+        );
+        assert!(
+            refuse_pure_producer_share_refused_carrier_overlap().is_ok(),
+            "co-location must not be read as inheritance"
+        );
+    }
+
+    /// AN OVERLAP THE WALL CANNOT ATTRIBUTE REFUSES RATHER THAN PICKING ONE. The ledger key is
+    /// the bare function name while admission is by resolved declaration, so two admitted rows
+    /// spelling one bare name leave the overlap real and its subject unknown — and a diagnostic
+    /// that named either would be naming a fabricated subject.
+    #[test]
+    fn an_overlap_whose_bare_key_two_admitted_rows_claim_refuses_as_unattributable() {
+        install(
+            &["a.module.shared_spelling", "b.module.shared_spelling"],
+            vec![refused_row(
+                "v2.extdeps.languages.rust.shared_spelling",
+                &["v2.test.emit.produced_decl_two_target"],
+            )],
+        );
+        // The refused producer's own key recurs over its own carriers, so the identity trigger
+        // fires — and then the bare key is claimed by two admitted spellings, so naming either
+        // one would be a fabricated subject.
+        fill_from("v2.test.emit.produced_decl_two_target", "shared_spelling");
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("an unattributable overlap must refuse");
+        assert!(
+            why.contains("cause=PureProducerShareOverlapSubjectAmbiguous"),
+            "{why}"
+        );
+        assert!(
+            why.contains("a.module.shared_spelling, b.module.shared_spelling"),
+            "{why}"
+        );
+    }
+
+    /// A LEDGER WITH NO ROSTER IS NOT A CLEAN RUN. The tier filled under a roster this wall
+    /// cannot read, so there is no population to adjudicate and the arm refuses rather than
+    /// reporting the absence as no overlap.
+    #[test]
+    fn fills_without_an_installed_roster_refuse_rather_than_read_as_clean() {
+        PURE_PRODUCER_SHARE_ROSTER.with(|r| *r.borrow_mut() = None);
+        fill_from("v2.test.claim.bash_command_fold", "bash_fold_lex");
+        let why = refuse_pure_producer_share_refused_carrier_overlap()
+            .expect_err("fills with no installed roster must refuse");
+        assert!(
+            why.contains("cause=PureProducerShareLedgerWithoutRoster"),
+            "{why}"
+        );
     }
 }

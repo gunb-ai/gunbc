@@ -1,0 +1,161 @@
+module test.claim.guarantee_stall_witness_test
+
+import std.types { String, Bool }
+import gunbc.guarantee_rung {
+  OutsideTheLadder, Mitigatable, MechanicallyPreventable,
+  StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
+}
+import gunbc.guarantee_stall {
+  GuaranteeStall,
+  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
+  BoundedPopulation, UncountedNotEnumerable,
+  stall_is_below_ceiling, stall_report_message,
+  every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
+}
+import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
+import gunbc.guarantee_stall.roster {
+  all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,
+}
+
+// Local one-liner over the builtin rather than an import: three test files already declare their
+// own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a
+// witness's incidental helper, not a shared authority, and it is named distinctly for that reason.
+fn contains_text(haystack: String, needle: String) -> Bool {
+  haystack.contains(needle)
+}
+
+// A CONTROL STALL DIFFERING FROM THE LIVE ROW IN EVERY DECIDED FIELD, for the reason the control
+// drop above gives: a renderer that ignored its argument, or a predicate that answered a constant,
+// would agree with the live row and go unseen.
+data control_stall: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.subject",
+  current: StructurallyGuaranteed,
+  ceiling: StructurallyGuaranteed,
+  blocker: CannotClimbFurther { why: "control why" },
+  population: BoundedPopulation { members: ["control.stall.member"] },
+  next_rung_trigger: "control stall trigger"
+}
+
+// THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
+// and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
+test fn stall_permanence_follows_the_blocker() -> Bool {
+  match control_stall.blocker {
+    CannotClimbFurther { why: _ } => true
+    AwaitsOneGrounding { grounding: _ } => false
+    ClimbableButUnbuilt => false
+  } && match next_rung_trigger_enforcement_stall.blocker {
+    CannotClimbFurther { why: _ } => false
+    AwaitsOneGrounding { grounding: _ } => true
+    ClimbableButUnbuilt => true
+  }
+}
+
+// THE LIVE ROW IS BELOW ITS CEILING AND THE CONTROL IS NOT. This is the assertion that makes the
+// live row a stall rather than a class that already arrived: if it is ever edited so that current
+// equals ceiling, the row stops describing a stall and this reds.
+test fn live_stall_is_below_its_ceiling() -> Bool {
+  stall_is_below_ceiling(s: next_rung_trigger_enforcement_stall)
+    && !stall_is_below_ceiling(s: control_stall)
+}
+
+
+// AN UNCOUNTED POPULATION RENDERS AS UNCOUNTED, NEVER AS EMPTY. This is the discriminating claim
+// against the empty-observation narrow: a renderer that folded UncountedNotEnumerable through the
+// same path as a bounded list would emit nothing here and the stall would read as affecting no one.
+test fn uncounted_population_does_not_render_as_empty() -> Bool {
+  let live = stall_report_message(s: next_rung_trigger_enforcement_stall)
+  let ctl = stall_report_message(s: control_stall)
+  contains_text(haystack: live, needle: "UNCOUNTED, not enumerable")
+    && !contains_text(haystack: ctl, needle: "UNCOUNTED, not enumerable")
+    && contains_text(haystack: ctl, needle: "control.stall.member")
+}
+
+// THE REPORT READS ITS ARGUMENT AND CARRIES THE ROW'S OWN TRIGGER. The trigger half is the point of
+// the carrier: if the required field is ever emptied or the renderer stops projecting it, the fact
+// section 4b(2) obliges becomes invisible again and this reds.
+test fn stall_report_names_subject_and_trigger() -> Bool {
+  let live = stall_report_message(s: next_rung_trigger_enforcement_stall)
+  let ctl = stall_report_message(s: control_stall)
+  contains_text(haystack: live, needle: "DESIGN section 4b(2) next-rung trigger enforcement")
+    && contains_text(haystack: live, needle: "GuaranteeStall rather than in prose")
+    && contains_text(haystack: live, needle: "climbable now but unbuilt")
+    && !contains_text(haystack: live, needle: "control.stall.subject")
+    && !contains_text(haystack: ctl, needle: "DESIGN section 4b(2)")
+}
+
+// THE ROSTER FOLD IS WHAT MAKES EVERY ROW LOAD-BEARING, and it is the repair for a defect this
+// file had since it was written: it exercised ONE stall by name, so every other row in the carrier
+// was consumed by nothing. Found in review of the third row and true of the first two all along.
+//
+// EACH ARM CARRIES ITS OWN DISCRIMINATOR rather than trusting the live roster to be interesting.
+// A fold that ignored its argument, or an && that collapsed to a constant, agrees with the live
+// roster and is caught by the control list beside it -- which is the same reason the control drop
+// at the top of this file exists.
+data stall_at_its_ceiling: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.at.ceiling",
+  current: StructurallyImpossible,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: "control trigger"
+}
+
+data stall_missing_its_trigger: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.no.trigger",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: ""
+}
+
+// THE LIVE ROSTER PASSES AND A ROSTER CARRYING AN ARRIVED CLASS DOES NOT. A row whose current
+// equals its ceiling is not a stall -- it describes work that is finished, and any consumer
+// reading it as outstanding reads a false claim.
+test fn every_live_stall_is_below_its_ceiling() -> Bool {
+  every_stall_is_below_its_ceiling(ss: all_guarantee_stalls)
+    && !every_stall_is_below_its_ceiling(ss: [stall_at_its_ceiling])
+}
+
+// SECTION 4b(2), MADE DECIDABLE: a class below its ceiling must name its next-rung trigger, so
+// that "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
+// stall the clause forbids, and it reds here instead of surviving review.
+test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
+  every_stall_names_a_trigger(ss: all_guarantee_stalls)
+    && !every_stall_names_a_trigger(ss: [stall_missing_its_trigger])
+}
+
+// THE ROSTER IS NOT EMPTY, and this arm is the one that stops the two folds above from being
+// satisfiable by DELETION. Both return TRUE on an empty list -- correctly, since the obligation is
+// universally quantified -- so a roster that lost its rows would satisfy every other assertion in
+// this file while observing nothing. That is the vacuous green DESIGN section 4b names: permanently
+// passing, carrying no information, and cited as coverage. Asserting the SIZE is what makes the
+// quantifier's domain load-bearing; asserting a property of one named row would not, because a row
+// can be well-formed and absent from the roster at the same time.
+test fn the_stall_roster_is_not_empty() -> Bool {
+  stall_roster_size(ss: all_guarantee_stalls) > 0
+    && stall_roster_size(ss: []) == 0
+    && every_stall_is_below_its_ceiling(ss: [])
+}
+
+// THE FOUR RESTORED SUBJECTS STAY ROSTERED, AND THIS DOES NOT RETIRE WHEN THIS PR LANDS.
+//
+// Four stalls were declared in gunbc.guarantee_stall and left out of all_guarantee_stalls, so the
+// three walls above ranged over 21 of the 25 rows that module declares. Nothing was red: a wall
+// whose input is short is green for the same reason a wall over a clean corpus is green. Widening
+// the roster is the repair; this arm is what stops the repair from being undone silently, since a
+// row dropped from the roster again would restore the green and change no assertion in this file.
+//
+// WHAT IT COVERS, stated so the coverage is falsifiable rather than assumed: exactly the four named
+// subjects, each required to appear EXACTLY ONCE. It does NOT detect a new stall declared and left
+// unrostered -- that needs a corpus-wide census of GuaranteeStall declarations, which is a separate
+// obligation gated on whether its RED is authorable at all, since a stall declared in a module the
+// roster cannot import may not be expressible in any fixture.
+//
+// THE NEGATIVE ARM IS THE WHOLE POINT: over an empty roster the fold must REFUSE, which is what
+// distinguishes this from the universally-quantified walls above that are vacuously true on [].
+test fn every_restored_stall_is_still_rostered() -> Bool {
+  every_restored_stall_is_rostered_once(ss: all_guarantee_stalls)
+    && !every_restored_stall_is_rostered_once(ss: [])
+    && every_restored_stall_is_rostered_once(ss: restored_stalls)
+}

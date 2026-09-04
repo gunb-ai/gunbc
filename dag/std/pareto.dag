@@ -268,8 +268,23 @@ type AxisReading {
   interval_micro: OrderedClosedInterval<Int>
 }
 
+// A GAP IS ABOUT ONE AXIS, BECAUSE THAT IS THE GRAIN AT WHICH IT EXCUSES ANYTHING. The prior
+// carrier was a bare List<NonEmptyStr> over the whole entry, and entry_contradicts_its_declaration
+// read it as a single Bool OUTSIDE its per-axis fold - so a gap declared about one axis exempted
+// the absent-reading check on EVERY axis. Measured on the spine's own fixtures: an entry declaring
+// power unmeasured, carrying a power reading, and silently missing its COST reading produced an
+// EMPTY contradiction list, identical to an honest complete row. Both still reached NotComputable,
+// so dominance did not fail open - what failed was DISTINGUISHABILITY: a dropped reading was
+// indistinguishable from a declaration. That is the same conflation the per-defect-class exemption
+// split was made to end, one level down - the split separated DUPLICATE from ABSENT and left ABSENT
+// blind to WHICH axis had been excused.
+type AxisGap {
+  axis: DeclarationRef
+  cause: NonEmptyStr
+}
+
 // One candidate as the spine sees it: a structural identity, a display label, its
-// funded-axis readings, and the inputs it is missing. A nonempty missing_inputs list makes
+// funded-axis readings, and the axis-scoped gaps it declares. A nonempty missing_inputs list makes
 // the entry incomparable BY ITS OWN declaration - the projector states what is absent
 // instead of substituting a zero or an average, the same rule the node-build model already
 // enforces for missing rates.
@@ -277,7 +292,7 @@ type ParetoEntry {
   identity: DeclarationRef
   display_label: NonEmptyStr
   readings: List<AxisReading>
-  missing_inputs: List<NonEmptyStr>
+  missing_inputs: List<AxisGap>
 }
 
 type Domination {
@@ -319,10 +334,21 @@ type ReadingLookup
   | ReadingAbsent { absent_axis: DeclarationRef }
   | ReadingDuplicated { duplicated_axis: DeclarationRef }
 
+// PairEvidenceIncomplete IS NOT PairNoDominance AND IS NOT PairRefused, and keeping the three apart
+// is the whole point of this arm. A candidate that DECLARES a gap has not been shown not to
+// dominate - nothing was shown about it at all - and it is not malformed either: declaring your
+// missing inputs is the honest thing the spine asks for. It is simply not ELIGIBLE to be shown
+// dominating anyone, because dominance is a claim over evidence it says it does not have.
+//
+// Without this arm compare_pair answered the dominance question while ignoring missing_inputs
+// entirely, so it could return PairDominates for a candidate whose own standing is NotComputable -
+// and entry_standing disagreed with it, because challenger_applies excluded exactly those
+// challengers. Two answers to one question, with the exported one permissive.
 type PairStanding
   = PairDominates { winning_axes: List<DeclarationRef> }
   | PairNoDominance
   | PairPendingEvidence { undecided_axes: List<DeclarationRef> }
+  | PairEvidenceIncomplete { missing: NonEmptyStr }
   | PairRefused { cause: NonEmptyStr }
 
 fn reading_matches(e: ParetoEntry, wanted: DeclarationRef) -> Int {
@@ -362,6 +388,22 @@ data no_axis_ids: List<DeclarationRef> = []
 data no_dominators: List<Domination> = []
 
 fn one_name(name: NonEmptyStr) -> List<NonEmptyStr> { [name] }
+
+data no_gaps: List<AxisGap> = []
+
+// The prose a gap carries, for the diagnostics that render a cause. The axis is kept beside it
+// rather than folded into the string, so the exemption below reads the AXIS and never parses text.
+fn gap_causes(gaps: List<AxisGap>) -> List<NonEmptyStr> {
+  fold(gaps, init: no_names, f: fn(acc, g) { concat(acc, one_name(name: g.cause)) })
+}
+
+fn gap_on_axis(gaps: List<AxisGap>, wanted: DeclarationRef) -> Bool {
+  fold(gaps, init: false, f: fn(acc, g) { acc || declaration_ref_eq(a: g.axis, b: wanted) })
+}
+
+fn axis_is_funded(axes: List<SelectionAxis>, wanted: DeclarationRef) -> Bool {
+  fold(axes, init: false, f: fn(acc, ax) { acc || declaration_ref_eq(a: ax.identity, b: wanted) })
+}
 
 fn one_axis_id(id: DeclarationRef) -> List<DeclarationRef> { [id] }
 
@@ -444,10 +486,84 @@ fn pair_from_accum(folded: PairAccum) -> PairStanding {
   }
 }
 
+// THE DECLARED GAPS ARE READ BEFORE ANY AXIS IS. This check used to live only in
+// challenger_applies, one layer up, so a caller reaching compare_pair directly got a dominance
+// verdict computed from readings while the entry's own declaration said its inputs were incomplete.
+// Measured on the private node-build field: a board declaring unproven supply depth was reported
+// DOMINATING a peer at the low memory price, while entry_standing reported it NotComputable.
+//
+// Either side's gap makes the question unanswerable, not answerable-in-the-negative: a is not
+// eligible to be shown dominating, and a b that cannot be evaluated cannot be shown dominated.
+fn declared_gap_cause(a: ParetoEntry, b: ParetoEntry) -> List<NonEmptyStr> {
+  let from_a = if count(a.missing_inputs) > 0 {
+    one_name(name: join([declaration_ref_display_key(ref: a.identity), " declares missing inputs, so it is not eligible to be shown dominating: ", join(gap_causes(gaps: a.missing_inputs), " ; ")], ""))
+  } else { no_names }
+  let from_b = if count(b.missing_inputs) > 0 {
+    one_name(name: join([declaration_ref_display_key(ref: b.identity), " declares missing inputs, so it cannot be shown dominated: ", join(gap_causes(gaps: b.missing_inputs), " ; ")], ""))
+  } else { no_names }
+  concat(from_a, from_b)
+}
+
+// MALFORMED BEATS INCOMPLETE, AND THE SHARED FUNCTION IS THE WHOLE POINT - compare_pair and
+// field_contradictions consume ONE projector-contradiction reader, entry_contradicts_its_declaration,
+// so the two paths cannot answer differently about the same evidence. That reader exempts an ABSENT
+// reading when the entry declares its gaps, and pointedly does NOT exempt a DUPLICATE: two readings
+// on one axis identity is malformed evidence whatever else the entry declares, because the spine
+// would have to pick one.
+//
+// duplicate_reading_causes WAS HERE AND IS DELETED (2026-09-02). It was a second, weaker copy of
+// that reader - identical duplicate arm, right down to the message string, with the absent arm
+// dropped - and a second authority for one question is the §3 violation whichever copy is wrong.
+// This one was wrong in a specific way: an entry declaring complete inputs while missing a funded
+// reading is a projector defect the field path refuses as SelectionRefused, but the pair path never
+// reached its axis fold to see it, because an HONEST declared gap on the OTHER operand
+// short-circuited first. So malformed evidence on one entry was masked by truthful incompleteness on
+// its opponent - the same masking review 58743 caught one arm earlier, surviving in the arm that
+// review did not name. Reported on review 5091604216, which was right.
+//
+// The precedence now falls out of the shared reader rather than being restated here: projector
+// contradiction (duplicate anywhere, or absent-while-declaring-complete) > honest declared
+// incompleteness > ordinary axis comparison.
+// A SELF-COMPARISON IS ANSWERED, NOT REFUSED -- AND NOT LEFT TO THE FOLD EITHER. Identity equality
+// is not evidence that some field holds a duplicate: that is a FIELD POPULATION property, one
+// identity in two positions, which two operands cannot carry. So this does not refuse, and
+// field_has_duplicate_identity stays field-only.
+//
+// But identity equality IS proof that the relation is a subject compared with itself, and nothing
+// dominates itself, so the answer is PairNoDominance and it has to be CONSTRUCTED. An earlier
+// revision deleted the wrong answer (a refusal) and left the axis fold to produce the right one,
+// which it does not: two point-identical payloads happen to reach PairNoDominance, but the result is
+// not stable under the evidence carrier. A clean WIDE reading such as [10,20] compared with itself
+// reaches UndecidedOnEvidence -- correct for two independently-valued subjects, wrong here, since
+// this is one subject -- and returned PairPendingEvidence. Worse, two complete payloads carrying one
+// identity but different exact readings returned PairDominates: the exported API saying a structural
+// candidate dominates ITSELF.
+//
+// Precedence is malformed query first: the axis roster and either operand's projector contradiction
+// are defects in what was ASKED, and they outrank the answer to the question. Identity equality then
+// short-circuits ahead of declared gaps and the axis fold, because a self-comparison needs no
+// evidence -- a gap cannot make a subject fail to tie with itself.
 fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> PairStanding {
-  pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
-    axis_pair_step(acc: acc, axis: axis, a: a, b: b)
-  }))
+  let axis_defects = axis_roster_contradiction(axes: axes)
+  if count(axis_defects) > 0 {
+    PairRefused { cause: join(axis_defects, " ; ") }
+  } else {
+    let malformed = concat(entry_contradicts_its_declaration(e: a, axes: axes), entry_contradicts_its_declaration(e: b, axes: axes))
+    if count(malformed) > 0 {
+      PairRefused { cause: join(malformed, " ; ") }
+    } else if declaration_ref_eq(a: a.identity, b: b.identity) {
+      PairNoDominance
+    } else {
+      let gaps = declared_gap_cause(a: a, b: b)
+      if count(gaps) > 0 {
+        PairEvidenceIncomplete { missing: join(gaps, " ; ") }
+      } else {
+        pair_from_accum(folded: fold(axes, init: PairAccum { refusal_causes: no_names, a_worse_somewhere: false, winning_axes: no_axis_ids, undecided_axes: no_axis_ids }, f: fn(acc, axis) {
+          axis_pair_step(acc: acc, axis: axis, a: a, b: b)
+        }))
+      }
+    }
+  }
 }
 
 // pair_dominates WAS HERE AND IS DELETED (2026-08-19). It answered Bool over
@@ -462,12 +578,61 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
 // Duplicate-identity refusals: an axis roster or a candidate field carrying one identity
 // twice REFUSES the whole selection, because the fold would otherwise resolve the collision
 // silently (first-reading-wins for axes, skipped-as-self for candidates).
-fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
-  fold(axes, init: 0, f: fn(acc, ax) { if declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
+// THE AXIS ROSTER IS EVIDENCE TOO, AND ITS CONTRADICTION HAS ONE AUTHORITY. This replaces the Bool
+// predicate that used to stand here, a THIRD instance of the split this PR exists to close:
+// entry_standing consulted it and refused, exported compare_pair never looked at the roster at all,
+// so the two paths answered differently about the same malformed selection input -- a duplicated
+// cost identity reads Better on its first row and Worse on its second under the opposite goal, and
+// compare_pair returned an ordinary PairNoDominance where entry_standing returned SelectionRefused.
+//
+// A Bool could not have been shared honestly: both paths must report the same CAUSE and a Bool
+// carries none, so the old spelling kept its refusal text inline in entry_standing and sharing the
+// predicate would still have forked the message. Returning causes is what makes this ONE authority
+// rather than two callers of one predicate.
+//
+// Reported on review 5092638535, which was right that the earlier repair closed the reading-level
+// split and left the axis-level one standing.
+// A CONTRADICTION IS A PROPERTY OF THE IDENTITY, NOT OF EACH OCCURRENCE OF IT. Folding over axes
+// and emitting on every axis whose identity repeats names one duplicated identity once PER COPY, so
+// a roster with one defect reports two causes and a roster with two copies of two defects reports
+// four. The Bool this replaced could not exhibit that -- it collapsed to a single refusal string --
+// so the cause-returning form INTRODUCED the defect, which is the price of carrying causes and has
+// to be paid explicitly rather than noticed later.
+//
+// This module already refuses the same shape one layer over: see the control
+// a_contradiction_is_named_once_not_once_per_spelling, which requires one entry's contradiction to
+// read identically whether or not the field happens to contain it. Reported on review of this head.
+type AxisScan = { prefix: List<DeclarationRef>, causes: List<NonEmptyStr> }
+
+fn count_identity_in(seen: List<DeclarationRef>, id: DeclarationRef) -> Int {
+  fold(seen, init: 0, f: fn(acc, s) { if declaration_ref_eq(a: s, b: id) { acc + 1 } else { acc } })
 }
 
-fn axes_have_duplicate_identity(axes: List<SelectionAxis>) -> Bool {
-  fold(axes, init: false, f: fn(acc, ax) { acc || count_axis_identity(axes: axes, id: ax.identity) > 1 })
+// ONE TRAVERSAL, ONE LOOKUP PER AXIS. The previous shape did TWO full-list scans per element -- a
+// count_axis_identity over the whole roster plus an already-named scan -- which is the copied-
+// accumulator cost defect §6 says is always fixed regardless of realized n. This carries the prefix
+// already traversed and emits exactly when an identity's prefix count is 1, i.e. on its SECOND
+// occurrence: the third and later copies see a count of 2 or more and add nothing, so one duplicated
+// identity still yields one cause without a separate already-named population to rescan.
+//
+// This is O(n*distinct), not linear, and that is a floor rather than a shortcut: exact duplicate
+// detection needs a map, set or ordering to beat it, and std carries none -- std.keyed_roster, the
+// repo's canonical duplicate-detection authority, documents itself as O(n^2) worst case in its own
+// header for exactly this reason. It is not consumed here because it answers a different question:
+// it locates the FIRST duplicate as evidence, where a roster scan owes one cause per duplicated
+// identity. A linear surface would dissolve both.
+fn axis_roster_contradiction(axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  fold(axes, init: AxisScan { prefix: no_axis_ids, causes: no_names }, f: fn(acc, ax) {
+    AxisScan {
+      prefix: concat(acc.prefix, [ax.identity]),
+      causes: if count_identity_in(seen: acc.prefix, id: ax.identity) == 1 {
+        concat(acc.causes, one_name(name: join([
+          "two selection axes share one identity ",
+          declaration_ref_display_key(ref: ax.identity),
+          " - a duplicate axis would resolve first-one-wins, so the selection refuses"], "")))
+      } else { acc.causes },
+    }
+  }).causes
 }
 
 fn count_entry_identity(field: List<ParetoEntry>, id: DeclarationRef) -> Int {
@@ -492,26 +657,40 @@ fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
 // rule exists to refuse. Exempting the whole entry let a duplicate ride in behind an unrelated
 // declared gap and surface as NotComputable -- a projector defect wearing the report of an honest
 // one, which is exactly the conflation this split was made to end.
+// THE EXEMPTION IS SCOPED TO THE AXIS THE GAP NAMES. A gap about power excuses an absent power
+// reading and nothing else; an absent COST reading beside it is still a projector defect and is
+// still named. A gap naming an axis this selection does not fund is itself a contradiction rather
+// than a silent no-op: without that arm a mistyped axis reference would quietly stop excusing
+// anything AND quietly stop blocking, which is a fail-open reachable by a typo.
 fn entry_contradicts_its_declaration(e: ParetoEntry, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
-  let declares_its_gaps = count(e.missing_inputs) > 0
-  fold(axes, init: no_names, f: fn(acc, ax) {
+  let unfunded_gaps = fold(e.missing_inputs, init: no_names, f: fn(acc, g) {
+    if axis_is_funded(axes: axes, wanted: g.axis) { acc } else {
+      concat(acc, one_name(name: join([
+        declaration_ref_display_key(ref: e.identity),
+        " declares a gap on ",
+        declaration_ref_display_key(ref: g.axis),
+        ", which this selection does not fund - a gap must name a funded axis or it excuses and blocks nothing"], "")))
+    }
+  })
+  concat(unfunded_gaps, fold(axes, init: no_names, f: fn(acc, ax) {
     match reading_for(e: e, wanted: ax.identity) {
       ReadingFound { interval_micro } => acc
       ReadingAbsent { absent_axis } =>
-        if declares_its_gaps {
+        if gap_on_axis(gaps: e.missing_inputs, wanted: absent_axis) {
           acc
         } else {
           concat(acc, one_name(name: join([
             declaration_ref_display_key(ref: e.identity),
-            " declares complete inputs but has no reading on funded axis ",
-            declaration_ref_display_key(ref: absent_axis)], "")))
+            " has no reading on funded axis ",
+            declaration_ref_display_key(ref: absent_axis),
+            " and declares no gap naming it"], "")))
         }
       ReadingDuplicated { duplicated_axis } => concat(acc, one_name(name: join([
         declaration_ref_display_key(ref: e.identity),
         " has duplicate readings on funded axis ",
         declaration_ref_display_key(ref: duplicated_axis)], "")))
     }
-  })
+  }))
 }
 
 fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> List<NonEmptyStr> {
@@ -520,8 +699,12 @@ fn field_contradictions(field: List<ParetoEntry>, axes: List<SelectionAxis>) -> 
   })
 }
 
+// ONE AUTHORITY FOR ELIGIBILITY, NOW THAT compare_pair CARRIES IT. This used to restate the
+// gap rule beside compare_pair's silence about it; the rule lives in compare_pair, and the fold
+// below reads its PairEvidenceIncomplete arm. All that is left here is the self-comparison guard,
+// which is about identity rather than evidence.
 fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
-  !declaration_ref_eq(a: other.identity, b: subject.identity) && count(other.missing_inputs) == 0
+  !declaration_ref_eq(a: other.identity, b: subject.identity)
 }
 
 // The field accumulator: every refusal and every dominator is collected, so the derived
@@ -552,6 +735,7 @@ fn field_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis
           join(fold(undecided_axes, init: no_names, f: fn(a2, ax) { concat(a2, one_name(name: declaration_ref_display_key(ref: ax))) }), ", "),
           " - the readings overlap, so whether it dominates is undecided on this evidence"], ""))),
       },
+      PairEvidenceIncomplete { missing } => acc,
       PairRefused { cause } => FieldAccum {
         refusal_causes: concat(acc.refusal_causes, one_name(name: join(["comparison against ", declaration_ref_display_key(ref: other.identity), " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], ""))),
         dominators: acc.dominators,
@@ -612,8 +796,9 @@ fn scanned_population(subject: ParetoEntry, field: List<ParetoEntry>) -> List<Pa
 // lies about its completeness invalidates every standing derived in it -- including the honest
 // report that this particular subject is short an input.
 fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
-  if axes_have_duplicate_identity(axes: axes) {
-    SelectionRefused { cause: "two selection axes share one identity - a duplicate axis would resolve first-one-wins, so the selection refuses" }
+  let axis_defects = axis_roster_contradiction(axes: axes)
+  if count(axis_defects) > 0 {
+    SelectionRefused { cause: join(axis_defects, " ; ") }
   } else {
     if field_has_duplicate_identity(field: field) {
       SelectionRefused { cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses" }
@@ -623,7 +808,7 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
         SelectionRefused { cause: join(contradictions, " ; ") }
       } else {
       if count(subject.missing_inputs) > 0 {
-        NotComputable { missing: join(subject.missing_inputs, " ; ") }
+        NotComputable { missing: join(gap_causes(gaps: subject.missing_inputs), " ; ") }
       } else {
         standing_from_accum(
           folded: fold(field, init: FieldAccum { refusal_causes: no_names, dominators: no_dominators, pending_causes: no_names }, f: fn(acc, other) {

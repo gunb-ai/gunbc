@@ -415,6 +415,77 @@ mod compiler_tests {
     }
 
     #[test]
+    fn a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "entry_point_absent.dag".to_string(),
+                    content: "module entry.point.absent\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let main_rs = result.files.iter()
+                    .find(|f| f.path == "src/main.rs")
+                    .expect("emission must produce src/main.rs");
+                let marker = crate::v1_compiler_emit_rust::entry_point_absent_refusal_marker();
+                assert!(
+                    main_rs.content.contains(&marker),
+                    "a corpus with no workflow function and no pipeline module must emit a main that REFUSES, carrying {:?}; got: {:?}",
+                    marker, main_rs.content
+                );
+                assert!(
+                    !main_rs.content.contains("fn main() {}"),
+                    "the fabricating empty-body entry point must not be emitted -- it builds, runs, exits zero and does nothing; got: {:?}",
+                    main_rs.content
+                );
+                assert!(
+                    main_rs.content.contains("std::process::exit(2)"),
+                    "the refusal must leave a nonzero exit status; got: {:?}",
+                    main_rs.content
+                );
+                let cargo_toml = result.files.iter()
+                    .find(|f| f.path == "Cargo.toml")
+                    .expect("emission must produce Cargo.toml");
+                assert!(
+                    !cargo_toml.content.contains("clap"),
+                    "a crate whose emitted sources reference clap nowhere must not declare it; got: {:?}",
+                    cargo_toml.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap panicked",
+        );
+    }
+
+    #[test]
+    fn the_clap_dependency_follows_the_emitted_cli_demand_in_both_directions() {
+        let with_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
+            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                renders_clap_cli: true,
+                renders_async_services: false,
+            },
+        );
+        let without_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
+            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                renders_clap_cli: false,
+                renders_async_services: false,
+            },
+        );
+        assert!(
+            with_cli.iter().any(|line| line.starts_with("clap = ")),
+            "a crate that renders a clap CLI must declare clap; got: {:?}",
+            with_cli
+        );
+        assert!(
+            !without_cli.iter().any(|line| line.starts_with("clap = ")),
+            "a crate that renders no clap CLI must not declare clap; got: {:?}",
+            without_cli
+        );
+    }
+
+    #[test]
     fn emit_import_lines_follow_resolved_binding_identity() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -504,6 +575,45 @@ mod compiler_tests {
         );
     }
 
+    /// THE PRODUCT FALSIFIER FOR THE EVALUATION-BUDGET CONSEQUENCE BRIDGE.
+    ///
+    /// It moves the authority value in a disposable worktree and requires the SERVED response
+    /// to move with it: exactly one drift before regeneration, the regenerated constant
+    /// carrying the moved value, a rebuilt seed, a real thread-CPU breach over the committed
+    /// fixture, the moved code once and the former code zero times, then a restored tree.
+    ///
+    /// WHY THE PERTURBATION IS THE INSTRUMENT: unperturbed, every step of that chain is green
+    /// whether or not the seed reads the projection at all, because the value the boundary
+    /// would have chosen independently is the same value.
+    ///
+    /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
+    /// generations and starts a server, which is tens of minutes rather than milliseconds,
+    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
+    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn evaluation_budget_consequence_falsifier() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let scratch = std::env::var("GUNBC_FALSIFIER_SCRATCH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let outcome =
+            crate::cli_run::run_evaluation_budget_consequence_falsifier(&repo_root, &scratch);
+        // The receipt is printed on the way past whichever verdict is reached, so a red names
+        // the step that refused rather than only the fact that the transaction did not pass.
+        eprintln!("evaluation-budget falsifier: {:?}", outcome);
+        assert!(
+            crate::cli_run::evaluation_budget_consequence_falsifier_passed(&outcome),
+            "the served consequence must move with its authority: {:?}",
+            outcome
+        );
+    }
+
     /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
     ///
     /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
@@ -527,9 +637,11 @@ mod compiler_tests {
     /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
     /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
     /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
-    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
-    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
-    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. CANDIDATE
+    /// EVIDENCE, NO WALL, AND THE `#[ignore]` IS THE WHOLE OF THAT. A second clause stood here
+    /// until gunbc#10078, saying `rust-unit-tests` is additionally not a `needs` of the required
+    /// aggregate; the lane IS required now, so it is removed rather than softened -- deleting the
+    /// `#[ignore]` is by itself sufficient to put this on the acceptance path. Until then: an
     /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
     /// executes on the merge path or as a rung for the adapter.
     #[test]
@@ -1108,30 +1220,107 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(32 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe.dag".to_string(),
-                    content: "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n".to_string(),
-                });
-                let r = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![source]),
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                // The SAME module, differing only in WHICH output field carries the
+                // unmodeled key. Any span that does not belong to the offending field
+                // is identical across the pair, so assertion four cannot be satisfied
+                // by a location that merely lands somewhere inside the service.
+                let first_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"not_a_channel\"\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let second_field_offends = "module probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      first: String from \"stdout\"\n      out: String from \"not_a_channel\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n";
+                let probe = |content: &str| {
+                    let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let r = crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![source]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    );
+                    let located = r
+                        .diagnostics
+                        .iter()
+                        .filter_map(|d| match &*d.diagnostic {
+                            crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
+                                missing_realization_fact,
+                                span,
+                                ..
+                            } if missing_realization_fact.contains("not_a_channel") => {
+                                Some((span.start, span.end, missing_realization_fact.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    let emitted = r
+                        .files
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<_>>();
+                    (located, emitted, format!("{:?}", r.diagnostics))
+                };
+                let (a_hits, a_files, a_all) = probe(first_field_offends);
+                let (b_hits, b_files, _) = probe(second_field_offends);
+
+                // ONE: the refusal class, and exactly one row of it.
+                assert_eq!(
+                    a_hits.len(),
+                    1,
+                    "an unmodeled output key must refuse with exactly one TransportEmissionNotModeled naming the key, got: {}",
+                    a_all
                 );
-                let named = r.diagnostics.iter().any(|d| match &*d.diagnostic {
-                    crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled {
-                        missing_realization_fact,
-                        ..
-                    } => missing_realization_fact.contains("not_a_channel"),
-                    _ => false,
-                });
+                assert_eq!(b_hits.len(), 1, "the mutated module must refuse the same way");
+                let (a_start, a_end, a_fact) = a_hits[0].clone();
+                let (b_start, b_end, _) = b_hits[0].clone();
+
+                // TWO: the EXACT refused output key, not merely that something was unmodeled.
                 assert!(
-                    named,
-                    "an unmodeled output key must refuse with TransportEmissionNotModeled naming the key, got: {:?}",
-                    r.diagnostics
+                    a_fact.contains("not_a_channel"),
+                    "the refusal must name the offending key. Got: {}",
+                    a_fact
                 );
+
+                // THREE: the span belongs to THAT key -- checked by slicing the span
+                // back out of the source it points into, not by trusting the offsets.
+                // The span covers the offending FIELD'S NAME rather than the key
+                // literal, so the slice is the field name and the assertion says so
+                // exactly; asserting it merely "contains" something would pass on a
+                // span that had swallowed the whole output block.
+                let a_text = &first_field_offends[a_start as usize..a_end as usize];
+                let b_text = &second_field_offends[b_start as usize..b_end as usize];
+                assert_eq!(
+                    a_text, "first",
+                    "the span must cover the field carrying the unmodeled key. It covers: {:?}",
+                    a_text
+                );
+
+                // FOUR, the discriminator: moving the unmodeled key to a DIFFERENT field
+                // must MOVE the location. Without this a span pointing anywhere fixed
+                // inside the service satisfies one through three and proves nothing.
+                // Asserted on the RESOLVED TEXT and not only on the offsets, because
+                // equal-length fields could move the numbers without the location ever
+                // having been derived from the offending field at all.
+                assert_eq!(
+                    b_text, "out",
+                    "when the unmodeled key moves to the other field, the span must follow it. It covers: {:?}",
+                    b_text
+                );
+                assert_ne!(
+                    (a_start, a_end),
+                    (b_start, b_end),
+                    "the refusal is not located: the span did not move when the offending key moved to another field. Both refusals point at {}..{}",
+                    a_start,
+                    a_end
+                );
+
+                // The line stops: a refused operation emits no module carrying the
+                // refusal into its own runtime.
                 assert!(
-                    !r.files.iter().any(|f| f.path == "src/probe.rs"),
+                    !a_files.iter().any(|p| p == "src/probe.rs"),
                     "a refused operation must STOP THE LINE, not emit a module carrying the refusal into its runtime. Emitted: {:?}",
-                    r.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()
+                    a_files
+                );
+                assert!(
+                    !b_files.iter().any(|p| p == "src/probe.rs"),
+                    "likewise when the offending field moves. Emitted: {:?}",
+                    b_files
                 );
             })
             .expect("failed to spawn thread")

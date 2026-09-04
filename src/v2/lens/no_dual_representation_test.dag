@@ -37,6 +37,7 @@ fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepM
 
 fn dual_rep_live_module_scans() -> List<DualRepModuleScan> {
   dual_rep_module_scans_from_fn_index(
+    pool_roots: witness_layer_roots,
     modules: module_refs_from_declaration_facts(pool_roots: witness_layer_roots)
   )
 }

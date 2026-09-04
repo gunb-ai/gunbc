@@ -14,22 +14,8 @@ use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
 
-#[derive(Parser)]
-#[command(
-    name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go.",
-    version = env!("GUNBC_BUILD_IDENTITY")
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-    /// Run in dry-run mode (mock all service calls)
-    #[arg(long, global = true)]
-    dry_run: bool,
-}
-
 #[derive(Subcommand)]
-enum Commands {
+enum RetainedCommands {
     /// Compile .dag source files to a target language
     Compile {
         /// Source root directories (searched recursively for .dag files).
@@ -371,10 +357,94 @@ fn write_output_files(
 }
 
 fn main() {
-    let cli = Cli::parse();
-    let dry_run = cli.dry_run;
-    let _result = match cli.command {
-        Commands::Compile {
+    let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
+    let host = RetainedCliHost {
+        dry_run: cli.dry_run,
+    };
+    v1_compiler::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
+}
+
+struct RetainedCliHost {
+    dry_run: bool,
+}
+
+impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliHost {
+    fn retained_host_kernel(
+        &self,
+        source_roots: Vec<String>,
+        source_dir: Option<String>,
+        output_dir: String,
+        target: String,
+        dependency_pool_index: String,
+        entry: Option<String>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Compile {
+                source_roots,
+                source_dir,
+                output_dir,
+                target,
+                dependency_pool_index,
+                entry,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn run_verb(
+        &self,
+        source_roots: Vec<String>,
+        function: String,
+        entry: Option<String>,
+        claim_run: bool,
+        args: Vec<String>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Run {
+                source_roots,
+                function,
+                entry,
+                claim_run,
+                args,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn handle_serve(
+        &self,
+        source_roots: Vec<String>,
+        entry: String,
+        function: String,
+        host: String,
+        port: u16,
+        release_revision: String,
+        eval_budget_cpu_ms: Option<u64>,
+        eval_budget_wall_ms: Option<u64>,
+    ) -> ! {
+        retained_dispatch(
+            RetainedCommands::Serve {
+                source_roots,
+                entry,
+                function,
+                host,
+                port,
+                release_revision,
+                eval_budget_cpu_ms,
+                eval_budget_wall_ms,
+            },
+            self.dry_run,
+        )
+    }
+
+    fn invoke_bound_target_producer(&self, target: String) -> ! {
+        retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
+    }
+}
+
+fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
+    match command {
+        RetainedCommands::Compile {
             source_roots,
             source_dir,
             output_dir,
@@ -688,7 +758,7 @@ fn main() {
         //
         // NOT a scaffold with a trigger standing in for a decision: the terminal construction
         // is named, its two halves exist, and the missing piece is the wiring between them.
-        Commands::Run {
+        RetainedCommands::Run {
             source_roots,
             function,
             entry,
@@ -716,7 +786,7 @@ fn main() {
         // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
-        Commands::Test { target } => {
+        RetainedCommands::Test { target } => {
             let outcome = cli_run::target_invocation_host::test_verb(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
@@ -739,7 +809,7 @@ fn main() {
         // engine stands, and exactly why it is wrong -- it would make the interpreter
         // LOAD-BEARING FOR A NEW capability while two lanes are deleting it, converting
         // removable debt into an architectural dependency.
-        Commands::Converge { .. } => Verdict {
+        RetainedCommands::Converge { .. } => Verdict {
             status: 2,
             message: Some(
                 "error: `converge` is not wired to the retained engine.\n  \
@@ -772,7 +842,7 @@ fn main() {
         // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
         // until #8286), but if this route attracts completion work the freeze has been repealed
         // by drift.
-        Commands::Serve {
+        RetainedCommands::Serve {
             source_roots,
             entry,
             function,
@@ -801,6 +871,7 @@ fn main() {
             .apply()
         }
     };
+    std::process::exit(0)
 }
 
 /// Severity of one diagnostic, as a TOTAL partition.
@@ -940,14 +1011,19 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
+    use v1_compiler::gunbc_cli_dispatch_generated::Cli;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
     // against this file's private `extract_module_path`, deleted by the fork closure, they pin
     // `cli_run`'s behaviour and now assert it there. Deleting them with the function would
     // retire the evidence with one of two implementations -- what DESIGN §4b(4) forbids: the
     // redundant machinery goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn shipped_cli_parses_the_generated_build_surface() {
+        assert!(Cli::try_parse_from(["gunbc", "build", "gunbc"]).is_ok());
+    }
 
     #[test]
     fn version_surface_reports_the_exact_source_commit() {

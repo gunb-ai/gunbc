@@ -1,6 +1,6 @@
 module extdeps.systems.nvidia_dgx_spark_setup
 
-import std.types { NonEmptyStr, Bool, List, String }
+import std.types { NonEmptyStr, Bool, List, String, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -181,3 +181,479 @@ fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<
   let with_noui = if params.user_interface_disabled { append(with_unattended, "noui") } else { with_unattended }
   if params.skip_firmware_update { append(with_noui, "usb.skipfw") } else { with_noui }
 }
+
+
+// ==========================================================================================
+// THE WIZARD'S INTERFACE, CONSOLIDATED HERE FROM extdeps.systems.nvidia_dgx_spark_setup.
+//
+// These rows describe what NVIDIA'S PRODUCT PRESENTS -- its screen routes, headings, control
+// identities, form field names, and the validation rules its client enforces. They were discovered
+// by driving the wizard rather than by reading a vendor page, and that changes the CITATION, not
+// the OWNER: a route the vendor can rename in a firmware update is a fact about the vendor, and
+// modeling it beside our own receipts made this repository a second authority for someone else's
+// interface.
+//
+// WHAT DID NOT MOVE, and the line is DESIGN §3's: observations produced by this repository are
+// receipts in the OBSERVING layer, never facts owned by the observed upstream. So which run saw
+// which screen, through which proxy locus, at what time, and where a walk halted all remain in
+// gunbc.spark.oobe_screen_observation, which imports the vocabulary below. The wizard's shape is
+// upstream; our having looked at it is ours.
+//
+// The subject vocabulary OobeSetupField above was ALREADY the single authority and was already
+// consumed across that boundary -- this consolidation extends the same discipline to the rest of
+// the surface rather than introducing it.
+// ==========================================================================================
+type TestId = NonEmptyStr where brand("TestId")
+type PlaceholderText = NonEmptyStr where brand("PlaceholderText")
+type FormFieldName = NonEmptyStr where brand("FormFieldName")
+type ControlLabel = NonEmptyStr where brand("ControlLabel")
+
+// ------------------------------------------------------------------------------------------
+// THE CONTROLS ON A SCREEN.
+//
+// Decomposed rather than carried as one "control: String" leaf (DESIGN section 2, deep
+// direction): a submit button, a combobox over a hidden field, and a bare hidden field are
+// three different things to an automation that has to DRIVE them, and collapsing them into a
+// tag name would push that distinction back onto the driver as a guess.
+//
+// HiddenBackingField is modeled because it is the thing that actually carries the answer.
+// The screen-02 comboboxes are presentation over hidden inputs named language / timezone /
+// locale; a driver that types into the visible box without the hidden field updating has
+// filled in nothing, and that failure is silent. Naming both halves is what lets a witness
+// assert the committed value rather than the typed one.
+// ------------------------------------------------------------------------------------------
+
+// THE ADDRESS IS NOT THE IDENTITY, and conflating them was a real defect in the first
+// revision of this module. Every forward control on every screen carries the SAME observed
+// data-testid, "nv-button": it is a component address issued by NVIDIA's design system, scoped
+// by route and label, and it is emphatically not the identity of "Get Started" versus
+// "Continue" versus "Accept". A model that treated the testid as the identity would name three
+// different actions with one word -- the §3 meaning fork, where one spelling carries materially
+// different obligations.
+//
+// So identity is declared here and the observed address is carried BESIDE it. An actuator
+// resolves an identity to a route-scoped address; it never resolves a bare testid, because a
+// bare testid does not distinguish the three.
+//
+// NOTHING HERE CLAIMS NVIDIA PUBLISHES A SELECTOR CONTRACT. These are addresses this repository
+// OBSERVED on one image. If a later image renames them the model goes red at the address, which
+// is the loud failure wanted, rather than a silent mis-click on whatever else answers.
+// WHAT THE FORM ACTUALLY SUBMITS, and the finding that most changes what an actuator may do.
+//
+// The hidden fields were read directly on the live portal: language carries "25", timezone
+// carries "593", and locale carries "en-US". The first two are OPAQUE VENDOR INDICES -- ordinal
+// positions in NVIDIA's own list -- not identifiers. The wizard does not accept
+// "America/New_York"; there is no field in which that string could be written.
+//
+// The consequence is structural and an earlier revision of this module implied the opposite. An
+// actuator CANNOT set a zone by writing its identifier: it must drive the visible combobox by
+// its displayed label and let the application compute the index. And because the index is an
+// ordinal into a vendor-controlled list, it is not stable across images the way an IANA
+// identifier is -- recording 593 as though it meant a zone would be recording a position as a
+// name, which is the positional-citation failure §3 names, in data rather than in a comment.
+//
+// VendorOpaqueOrdinal therefore deliberately carries NO value. Nothing downstream should be
+// able to read one and believe it has learned a zone.
+type SubmittedValueRepresentation
+  = VendorOpaqueOrdinal
+  | Bcp47LanguageTagValue
+
+type OobeControlIdentity
+  = WelcomeGetStartedAction
+  | SettingsContinueAction
+  | EulaAcceptAction
+  | AccountContinueAction
+
+// THE ACCOUNT SCREEN MAKES THE ADDRESS-IS-NOT-IDENTITY POINT TWICE, and the second time is
+// sharper than the first. Every forward control shares the testid "nv-button", which
+// route-scoping resolves. But the account screen's THREE text inputs all share the testid
+// "nv-text-input-element" ON ONE ROUTE, so route-scoping does not resolve them at all. The only
+// observed discriminator is the form field NAME -- username, password, confirmPassword -- which
+// is also the name the submitted form carries. An actuator that resolved "the text input" on
+// this screen would fill whichever one the DOM happened to order first, and typing a password
+// into the username box fails in the most expensive possible way: it succeeds, and the
+// credential is stored in cleartext under a different field.
+type EntrySecrecy
+  = PlainTextEntry
+  | MaskedSecretEntry
+
+type FieldRequiredness
+  = RequiredField
+  | OptionalField
+
+type OobeControl
+  = AdvanceButton {
+      identity: OobeControlIdentity,
+      address: TestId,
+      label: ControlLabel,
+    }
+  | SubmitButton {
+      identity: OobeControlIdentity,
+      address: TestId,
+      label: ControlLabel,
+    }
+  | ComboBoxOverHiddenField {
+      placeholder: PlaceholderText,
+      backing_field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
+    }
+  | HiddenBackingField {
+      field: FormFieldName,
+      submitted_representation: SubmittedValueRepresentation,
+    }
+  | TextEntryField {
+      address: TestId,
+      field: FormFieldName,
+      placeholder: PlaceholderText,
+      secrecy: EntrySecrecy,
+      requiredness: FieldRequiredness,
+    }
+
+// ------------------------------------------------------------------------------------------
+// THE ADVANCE GATE -- the finding that most justifies having driven a real device.
+//
+// A screen's forward control is not always live when the screen arrives. On the EULA screen
+// the single Accept button is rendered disabled, and it becomes enabled only after the terms
+// pane is scrolled to its end. We did not infer this from the markup: we measured the button
+// disabled on arrival, scrolled the one scrollable container on the page, and measured it
+// enabled afterwards.
+//
+// THIS IS MODELED AS A PRECONDITION ON THE SCREEN RATHER THAN AS A STEP IN THE DRIVER because
+// it is a fact about the screen, not a preference of whoever automates it. A driver that
+// clicks a disabled button observes nothing and moves nowhere, and Playwright's auto-waiting
+// would sit on that button until it timed out -- a hang whose cause is nowhere in the log.
+// Carrying the gate structurally means an author cannot write a screen transition that skips
+// it; the constructor demands the container.
+//
+// THE ACCOUNT SCREEN CARRIES A THIRD GATE SHAPE, and it is the one an automation is most likely
+// to mis-handle. Its Continue button is also disabled on arrival, but no scroll releases it:
+// it becomes enabled only when the field values themselves validate. That is a gate whose
+// precondition is the DATA, not a gesture, so it cannot be discharged by an action the driver
+// takes -- only by values the driver supplies. A driver written against the scroll gate would
+// scroll a page with nothing to scroll and then click a control that is still dead.
+//
+// The rules below were measured by supplying values and reading the control's enablement after
+// each, not read off the markup. Each carries the exact message the screen rendered, because
+// the message is the evidence: a rule with no observed message would be an inference about what
+// the client checks.
+type ObservedValidationMessage = NonEmptyStr where brand("ObservedValidationMessage")
+
+type ObservedFieldValidationRule
+  = FieldRequiredNonEmpty {
+      field: FormFieldName,
+      message: ObservedValidationMessage,
+    }
+  | FieldMinimumLength {
+      field: FormFieldName,
+      minimum: Int,
+      message: ObservedValidationMessage,
+    }
+  | FieldMustEqual {
+      field: FormFieldName,
+      other: FormFieldName,
+      message: ObservedValidationMessage,
+    }
+
+type OobeAdvanceGate
+  = ForwardControlEnabledOnArrival
+  | ForwardControlEnabledAfterScrollToEnd {
+      scroll_container: TestId,
+    }
+  | ForwardControlEnabledWhenFieldsValidate {
+      rules: List<ObservedFieldValidationRule>,
+    }
+
+// ------------------------------------------------------------------------------------------
+// WHAT A SCREEN COMMITS.
+//
+// Separated from the screen's controls because "what you can type here" and "what leaves this
+// machine changed when you press the button" are different questions, and only the second one
+// decides whether re-running the workflow is safe. AcceptsLegalAgreement is its own arm and
+// not a flavor of PersistsDeviceSetting deliberately: agreeing to a license on an operator's
+// behalf is a legal act, it is the one step in this flow a machine should not take on its own
+// initiative, and an automation that cannot SEE that distinction cannot be built to respect
+// it.
+// EFFECT NAMES WHAT WAS OBSERVED, NOT WHAT WAS PERSISTED. The first revision used
+// PresentsOnlyNoCommit and PersistsDeviceSetting, and both outran the measurement: reaching the
+// next route establishes that a submission was ACCEPTED and the app advanced, and it says
+// nothing about whether the value survives a refresh, a reboot, or the end of the wizard --
+// nor, for the "no commit" arm, that nothing at all was written.
+//
+// The measurement that settles this is now in hand and it cuts against the durable reading:
+// after the agreement was accepted, navigating to the portal root STILL resolves to /welcome
+// (initial_navigation_observation below). The wizard does not resume where it stopped, so at
+// least that far, acceptance did not persist as resumable progress.
+//
+// AcceptsLegalAgreement survives as its own arm, and not because its durability is established
+// either. It is distinct because the LEGAL BOUNDARY is what the automation must be able to see
+// in order to refuse to cross it unauthorized -- a different question from what the device
+// stored.
+//
+// CreatesDeviceAccount is a THIRD arm for the same reason AcceptsLegalAgreement is a second one,
+// and not a flavour of SubmitsSelections. Advancing past the settings screen submits choices
+// that can be made again; advancing past the account screen MINTS A CREDENTIAL on the device.
+// It is the step after which the wizard is no longer a fresh unit, it consumes a secret the
+// automation must have been authorized to use, and re-running it is not the same as running it
+// once. An automation that cannot SEE that distinction cannot be built to require authorization
+// before crossing it -- which is the whole reason the legal arm exists, applied to credentials.
+type OobeScreenEffect
+  = PresentsNoConfigurableField
+  | SubmitsSelections { fields: List<OobeSetupField> }
+  | AcceptsLegalAgreement
+  | CreatesDeviceAccount { fields: List<OobeSetupField> }
+
+type OobeScreenRoute = NonEmptyStr where brand("OobeScreenRoute")
+type OobeScreenHeading = NonEmptyStr where brand("OobeScreenHeading")
+
+// presented_subjects IS THE COVERAGE AUTHORITY, and it exists because the first revision of
+// this module got the derivation wrong in a way the PR text then advertised as correct. That
+// revision carried a hand-written match over every OobeSetupField beside the screen list, so
+// appending a screen retired NOTHING: an author had to remember to edit a second table, and the
+// claim that coverage was "derived, not asserted" was simply false. Two structures answering one
+// question is the parallel authority §3 forbids, and the failure mode is silent -- both tables
+// stay type-correct while they disagree.
+//
+// The subject a screen PRESENTS is deliberately not the same field as the effect of ADVANCING
+// past it. The EULA screen presents the terms-and-conditions subject whether or not anyone
+// accepts; the settings screen presents language and timezone and, separately, submits them.
+// Folding the prefix over presented_subjects is now the only account of what has been observed.
+type ObservedOobeScreen {
+  route: OobeScreenRoute
+  heading: OobeScreenHeading
+  controls: List<OobeControl>
+  advance_gate: OobeAdvanceGate
+  effect: OobeScreenEffect
+  presented_subjects: List<OobeSetupField>
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 01 -- /welcome
+//
+// The landing screen. One button, nothing to fill, nothing committed. Modeled even though it
+// carries no settings because the ROUTE SEQUENCE is itself the finding: the portal's root
+// redirects to /welcome, so a driver that navigates to "/" and immediately looks for a
+// language selector is one screen early. That off-by-one is exactly the kind of defect a
+// guessed flow produces and a measured one cannot.
+// ------------------------------------------------------------------------------------------
+// WHAT THIS MODULE DOES NOT DECLARE: WHEN WE LOOKED.
+//
+// A previous head carried an OobeInterfaceSession here, grouping screens by the sitting that saw
+// them. That was a layer inversion of exactly the kind this PR exists to fix: the screens are
+// NVIDIA's interface and belong here, but WHICH ONES WE WATCHED, ON WHAT DAY, AND WHETHER TWO
+// SITTINGS SAW ONE INTERFACE are facts about our observation and live in
+// gunbc.spark.oobe_screen_observation. It also duplicated the run's own screen list, so one sitting
+// was authored twice and a join was needed to keep the copies honest.
+
+data oobe_screen_welcome: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome" as OobeScreenRoute,
+  heading: "Welcome To DGX Spark" as OobeScreenHeading,
+  controls: [
+    AdvanceButton {
+      identity: WelcomeGetStartedAction,
+      address: "nv-button" as TestId,
+      label: "Get Started" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledOnArrival,
+  effect: PresentsNoConfigurableField,
+  presented_subjects: [],
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 02 -- /welcome/settings
+//
+// Language and timezone TOGETHER ON ONE SCREEN, which is the first place the observed flow
+// departs from the shape the vendor page implies. dgx_spark_oobe_fields lists language,
+// timezone and keyboard layout as separate prompted subjects in order; this screen prompts
+// two of them at once and does not prompt keyboard layout at all up to the point we reached.
+// That divergence is recorded structurally below (observed_screen_covers_field) rather than
+// in prose, so a consumer asks the model rather than trusting a comment.
+//
+// THE THIRD HIDDEN FIELD IS NOT A THIRD PROMPT. The screen carries hidden inputs named
+// language, timezone AND locale, but only two comboboxes, so locale is not operator-chosen. It
+// is carried because a driver that hunts for a control will not find one and a model that
+// omitted it would leave an unexplained field in the submitted form.
+//
+// AN EARLIER REVISION SAID locale WAS "evidently derived" FROM THE LANGUAGE CHOICE. That was an
+// inference, and it is withdrawn: what is observed is that the field carries "en-US" while
+// nothing was selected. Establishing derivation needs one language changed and the locale
+// watched to move, which has not been done. The representation IS now established, which is the
+// part that matters -- it is a BCP 47 language tag, not a POSIX locale, and the two are not
+// interchangeable.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_settings: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/settings" as OobeScreenRoute,
+  heading: "Set Up Your NVIDIA DGX Spark" as OobeScreenHeading,
+  controls: [
+    ComboBoxOverHiddenField {
+      placeholder: "US - English" as PlaceholderText,
+      backing_field: "language" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
+    },
+    ComboBoxOverHiddenField {
+      placeholder: "UTC" as PlaceholderText,
+      backing_field: "timezone" as FormFieldName,
+      submitted_representation: VendorOpaqueOrdinal,
+    },
+    HiddenBackingField {
+      field: "locale" as FormFieldName,
+      submitted_representation: Bcp47LanguageTagValue,
+    },
+    SubmitButton {
+      identity: SettingsContinueAction,
+      address: "nv-button" as TestId,
+      label: "Continue" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledOnArrival,
+  effect: SubmitsSelections { fields: [OobeLanguage, OobeTimeZone] },
+  presented_subjects: [OobeLanguage, OobeTimeZone],
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 03 -- /welcome/eula
+//
+// NVIDIA's Terms Of Use, and the screen that carries the advance gate. The forward control is
+// a single button labelled Accept, rendered disabled, inside a page whose only scrollable
+// element is the terms pane at data-testid nv-modal-main. Scrolling that pane to its end
+// enables the button.
+//
+// THE SCROLL TARGET IS NAMED, NOT DISCOVERED. The measurement that found it enumerated every
+// element whose scrollHeight exceeded its clientHeight and found exactly one. A driver could
+// repeat that search at run time, but then the automation's behavior would depend on a page
+// property that a layout change can make ambiguous -- two scrollable panes and the heuristic
+// silently picks the wrong one. Naming the container makes a layout change a loud address
+// failure instead (DESIGN section 4: in a closed system a heuristic is never necessary).
+//
+// THE EFFECT ARM IS AcceptsLegalAgreement AND THAT IS LOAD-BEARING. This is the step this
+// session declined to take without the operator's explicit instruction. The model exists so
+// that refusal is expressible: a workflow can be asked whether any screen it is about to
+// drive accepts an agreement, and answer without a human reading the screen.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/eula" as OobeScreenRoute,
+  heading: "Terms Of Use" as OobeScreenHeading,
+  controls: [
+    AdvanceButton {
+      identity: EulaAcceptAction,
+      address: "nv-button" as TestId,
+      label: "Accept" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledAfterScrollToEnd {
+    scroll_container: "nv-modal-main" as TestId,
+  },
+  effect: AcceptsLegalAgreement,
+  presented_subjects: [OobeTermsAndConditions],
+}
+
+// ------------------------------------------------------------------------------------------
+// SCREEN 04 -- /welcome/account
+//
+// The screen the earlier walk stopped in front of, now modeled. It is the credential boundary:
+// three required inputs and a submit that creates a local account on the device.
+//
+// THE THREE INPUTS SHARE ONE ADDRESS. All three carry data-testid "nv-text-input-element", on
+// one route, so the testid does not name any of them. The discriminator is the form field name,
+// which is also what the submitted form carries, so the model addresses them by name and
+// records the shared testid beside it rather than as the identity.
+//
+// THE SECRECY OF A FIELD IS OBSERVED, NOT ASSUMED FROM ITS LABEL. password and confirmPassword
+// render as type=password; username renders as type=text. That distinction is what lets a
+// workflow bind a secret-filling operation to exactly the fields that take a secret, and refuse
+// to route a secret into a plaintext control -- the FillTextControl/FillSecretControl split, in
+// the model rather than in the driver.
+//
+// WHAT THE VALIDATION ACTUALLY REQUIRES, and it is weaker than one would guess. The minimum
+// password length is SIX. Twelve lowercase letters with no digit, symbol or capital was accepted,
+// which refutes the common complexity rules that value would violate -- it does not establish the
+// absence of EVERY possible rule, because one accepted value cannot. The rejections we observed are
+// empty-required, under-six, and confirm-mismatch. So any complexity policy this fleet wants is OUR
+// obligation upstream of the screen: not because the wizard is proven to have none, but because it
+// is proven not to have the ones that would have caught this password.
+//
+// AND THE FINDING THAT MATTERS MOST: THE CLIENT ADMITS THE USERNAME "root". Supplied as the
+// username with a valid password, the Continue control became ENABLED. That is a measured
+// non-rejection, not an absence of evidence -- we asked and the screen said yes. It is a CLIENT
+// admission and only that: the probe ended at the enabled control, so nothing here says the device
+// would have created the account, and no reserved-name or server-side check has been ruled out.
+// The client not stopping it is already enough to act on, because a workflow that lets an operator
+// or a generator choose "root" here would be inviting a collision with uid 0 on
+// a device whose wizard did not stop us. The refusal has to be ours, and it has to sit upstream
+// of the fill, because by the time the control is enabled the client has already agreed.
+// ------------------------------------------------------------------------------------------
+data oobe_screen_account: ObservedOobeScreen = ObservedOobeScreen {
+  route: "/welcome/account" as OobeScreenRoute,
+  heading: "Set Up Your NVIDIA DGX Spark" as OobeScreenHeading,
+  controls: [
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "username" as FormFieldName,
+      placeholder: "Username" as PlaceholderText,
+      secrecy: PlainTextEntry,
+      requiredness: RequiredField,
+    },
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "password" as FormFieldName,
+      placeholder: "Password" as PlaceholderText,
+      secrecy: MaskedSecretEntry,
+      requiredness: RequiredField,
+    },
+    TextEntryField {
+      address: "nv-text-input-element" as TestId,
+      field: "confirmPassword" as FormFieldName,
+      placeholder: "Confirm Password" as PlaceholderText,
+      secrecy: MaskedSecretEntry,
+      requiredness: RequiredField,
+    },
+    SubmitButton {
+      identity: AccountContinueAction,
+      address: "nv-button" as TestId,
+      label: "Continue" as ControlLabel,
+    },
+  ],
+  advance_gate: ForwardControlEnabledWhenFieldsValidate {
+    rules: [
+      FieldRequiredNonEmpty {
+        field: "username" as FormFieldName,
+        message: "This field is required" as ObservedValidationMessage,
+      },
+      FieldMinimumLength {
+        field: "password" as FormFieldName,
+        minimum: 6,
+        message: "Password must be at least 6 characters long" as ObservedValidationMessage,
+      },
+      FieldMustEqual {
+        field: "confirmPassword" as FormFieldName,
+        other: "password" as FormFieldName,
+        message: "Passwords do not match" as ObservedValidationMessage,
+      },
+    ],
+  },
+  effect: CreatesDeviceAccount { fields: [OobeUserAccount] },
+  presented_subjects: [OobeUserAccount],
+}
+
+// ------------------------------------------------------------------------------------------
+// WHAT THE CLIENT ADMITS AS A USERNAME.
+//
+// A SEPARATE ROW FROM THE VALIDATION RULES, because a rule is something the screen enforces and
+// this is a record of what it declined to enforce. Folding "root was accepted" into the rule
+// list would put a non-rule in a list of rules; keeping it here means a consumer asking "what
+// does the client reject" gets the rules, and a consumer asking "what did we actually try" gets
+// this.
+//
+// THE POPULATION IS TWO PROBES AND THIS ROW CLAIMS NOTHING BEYOND THEM. It does not say the
+// client admits every username; it says these two were supplied and the forward control became
+// enabled. The empty username is deliberately absent: it is refused, and it is already carried
+// as FieldRequiredNonEmpty above -- and it could not be written here anyway, because the
+// username type is NonEmptyStr and the invalid state has no constructor.
+type ClientUsernameAdmission
+  = ClientAdmittedUsername { username: NonEmptyStr }
+  | ClientRefusedUsername {
+      username: NonEmptyStr,
+      message: ObservedValidationMessage,
+    }
+
+

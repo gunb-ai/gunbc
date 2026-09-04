@@ -65,16 +65,38 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
+// Divergent is the fourth answer to what inference knows about a node, and it is
+// deliberately NOT a shape of Resolved: an expression that never produces a value
+// has no type to resolve, and an expression whose type the walk could not establish
+// has one it failed to find. Collapsing them -- which a nameless Resolved node does,
+// since the only feature distinguishing it is an absent name -- makes every consumer
+// that declines on a missing name decline on both, and the second is a state that
+// must still be judged. review 5085499375 (D1).
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
   | TypeVariable { id: String }
+  | Divergent
+
+// The type of an expression that never produces a value. The divergence is carried
+// as an EXPLICIT FACT in `inferred` (InferredNode Divergent), not inferred from the
+// absent name: namelessness is shared with a type the walk merely failed to resolve,
+// so a consumer keyed on it cannot tell the two apart and silences the second.
+// review 58406: the divergence fact has to survive independently of whether a
+// contextual expected type happens to exist -- an ordinary non-tail `let` initializer
+// passes `expected: none`, so a fallback to the arms return payloads fabricates a
+// type for unreachable code. The name stays empty because there is genuinely no type
+// to name; what consumers match on is the fact, via type_is_divergent.
+fn divergent_type() -> Node {
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
   match inferred {
     Resolved { node: n } => Present { value: n }
     CompilerError { message: _, span: _ } => none
     TypeVariable { id: _ } => none
+    Divergent => none
   }
 }
 
@@ -83,6 +105,7 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
     Resolved { node: _ } => false
     CompilerError { message: _, span: _ } => true
     TypeVariable { id: _ } => false
+    Divergent => false
   }
 }
 
@@ -195,6 +218,23 @@ type MatchPattern
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
+
+// IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
+// answered twice -- once for emission and once for exhaustiveness -- and two authorities for one
+// classification drift apart as the type grows, which is the parallel authority DESIGN section 3
+// forbids. Consumers import this; neither re-derives it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm. A catch-all would answer `false` for any
+// constructor added to `MatchPattern` later, silently classifying a new irrefutable form as
+// refutable; without one, adding a constructor refuses here and the author is made to decide.
+fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
+  match pattern {
+    Wildcard => true
+    Bind { declaration: _ } => true
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
+    LitPattern { value: _ } => false
+  }
+}
 
 type UnaryOpKind = Not | Neg
 
@@ -2466,10 +2506,13 @@ fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
 // source index -- and the service path is exactly that: check_service_field_access_node
 // builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
 // segment is a container name and which is not a container. Excluding it by
-// authorship rather than by an exception list is what keeps the six known
+// authorship rather than by an exception list is what keeps the five known
 // false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
-// tmux.Session.List, os.Hostname.Set, req.Header.Set) out by construction: a
-// seventh service operation named after a container needs no edit here.
+// tmux.Session.List, req.Header.Set) out by construction: a
+// sixth service operation named after a container needs no edit here.
+// (os.Hostname.Set left this list with the CLI-invocation migration: the op's
+// hand-authored transport row was deleted and the hostnamectl set-hostname
+// vertical realizes through hostnamectl.Process.Run.)
 fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match node.ident_span {
     Present { value: span } =>

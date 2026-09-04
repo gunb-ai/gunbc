@@ -1,0 +1,126 @@
+module v1.tests.claim.type_declaration_occurrence_control_test
+
+import std.types { String, List, Int, Bool }
+import std.occurrence_identity {
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSource,
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+}
+
+// THE DECLARATION SIDE OF THE TYPE RELATION, ASSERTED AGAINST THE PRODUCTION COLLECTOR RATHER THAN
+// AGAINST A HAND-BUILT TRANSPORT. This control exists because that distinction was, for the whole
+// life of the containment-binding authority, the difference between a green suite and zero evidence.
+//
+// WHAT WAS TRUE BEFORE THE CHANGE THIS PROTECTS. v1.compiler.parse stamped type REFERENCES as
+// TypeOccurrence and never stamped a type DECLARATION as one: ParsedOccurrenceDeclaration was
+// produced with FieldOccurrence, LexicalValueOccurrence, CallableOccurrence and
+// NamespaceSegmentOccurrence only. Measured over dag/std -- 142 files -- the production transport
+// carried 9672 TypeOccurrence references and ZERO TypeOccurrence declarations.
+// std.occurrence_binding_candidates buckets candidates by authored spelling and
+// std.occurrence_binding_resolve admits a TypeOccurrence reference against a TypeOccurrence
+// declaration only, so every type reference in the corpus was UNBINDABLE -- not mis-bound.
+//
+// WHY EVERY EXISTING FIXTURE STAYED GREEN THROUGH THAT, which is the reason this file is a
+// PRODUCTION-FED control and not another fixture.
+// test.claim.type_reference_containment_binding_witness_test hand-builds its declarations with
+// `category: TypeOccurrence` -- exactly the shape production never emitted -- so the suite supplied
+// the missing side of the join itself. Those fixtures are correct about the authority's LOGIC and
+// nothing here weakens them; they were never SUFFICIENT, and nothing in the tree said so. DESIGN
+// section 5: a green suite that cannot see the production population is not weak evidence, it is
+// zero evidence, and it gets cited as coverage.
+//
+// THIS ASSERTION WAS UNWRITABLE UNTIL THE STAMPING LANDED, and that is the shape of the gap rather
+// than an excuse: there was no expression in the corpus that could have gone red, because the
+// declaration side did not exist to be counted. It is enrolled here as a PERMANENT REGRESSION
+// CONTROL, not retired by the change that made it pass -- if the stamping is ever removed or
+// narrowed, this is how anyone finds out, and the failure it guards against is silent by
+// construction everywhere else.
+//
+// WHY IT LIVES IN THE v1 TEST TREE AND EXECUTES ON NO REQUIRED RUN, stated rather than left to be
+// discovered, exactly as its neighbour bare_variant_reference_occurrence_control_test states it: the
+// required floor's source roots are `dag` and `src/v2`, and this subject is only reachable through
+// v1.compiler.parse, so no witness under dag/test/claim can call it. It executes when invoked and on
+// no required run. Direct execution is evidence the assertions HOLD; it is never evidence that CI
+// runs them, and conflating those is rung inflation.
+//
+// Rung: mitigatable. Next-rung trigger: a witness home whose source roots reach src/v1, or a host
+// builtin exposing the parser's transport the way compile_dag_diagnostic_census exposes diagnostics.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/type_declaration_occurrence_control_test.dag \
+//     --function production_parser_stamps_type_declarations_holds
+
+// THE SUBJECT. Three authored type-declaration forms in one module -- a record, a coproduct, and a
+// bare alias -- beside a function and a `data` value that must NOT be counted as type declarations.
+// Names are corpus-unique so the source cannot accidentally bind to anything real.
+data subject_with_type_declarations: String = "module zqxdecl.user\n\ntype ZqxRecord {\n  field_one: Int\n}\n\ntype ZqxChoice = ZqxLeft | ZqxRight\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = 1\n\nfn zqx_fn(arg: Int) -> Int {\n    arg\n}\n"
+
+// THE CONTROL THAT GIVES THE ASSERTION POWER TO REJECT. Same module shape, same function, same data
+// row -- and NO type declaration of any kind. If this one also reported type declarations, the
+// assertion above would be measuring the parser's willingness to stamp declarations at all rather
+// than its treatment of THIS class, and a stamper that marked every module item would satisfy both.
+data subject_without_type_declarations: String = "module zqxdecl.user\n\ndata zqx_value: Int = 1\n\nfn zqx_fn(arg: Int) -> Int {\n    arg\n}\n"
+
+fn category_is_type(c: OccurrenceCategory) -> Bool {
+  match c {
+    TypeOccurrence => true
+    LexicalValueOccurrence => false
+    CallableOccurrence => false
+    ConstructorOccurrence => false
+    NamespaceSegmentOccurrence => false
+    FieldOccurrence => false
+    MethodOccurrence => false
+  }
+}
+
+// A refusal to parse renders as -1 rather than as 0, so a broken subject cannot pass as an empty
+// one -- the absence-versus-zero distinction this whole class turns on.
+fn type_declaration_count(source: String) -> Int {
+  match parse_authored_occurrence_binding_source(file: "type_declaration_control.dag", source: source) {
+    ParsedOccurrenceBindingSourceRefused => 0 - 1
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+      t.declarations
+        |> filter(d => category_is_type(c: d.category))
+        |> count
+  }
+}
+
+fn type_reference_count(source: String) -> Int {
+  match parse_authored_occurrence_binding_source(file: "type_declaration_control.dag", source: source) {
+    ParsedOccurrenceBindingSourceRefused => 0 - 1
+    ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } =>
+      t.references
+        |> filter(r => category_is_type(c: r.category))
+        |> count
+  }
+}
+
+// THE ASSERTION AND ITS CONTROLS IN ONE ROW, deliberately.
+//
+// Read alone, "the subject has three type declarations" is satisfied by a stamper that marks every
+// module item -- the subject also carries a `data` row and a `fn`, and a blanket stamper would
+// report five. The second conjunct is what makes the three a measurement of THIS class.
+//
+// The third conjunct is the one that would have been RED before the stamping landed and is the
+// reason this file exists: the control subject has no type declarations AND yet has type
+// REFERENCES (`Int` in the data annotation and in the function signature). A transport carrying
+// references with an empty declaration side is precisely the state that made every type reference
+// in the corpus unbindable while every fixture stayed green.
+test fn production_parser_stamps_type_declarations_holds() -> Bool {
+  type_declaration_count(source: subject_with_type_declarations) == 3
+    && type_declaration_count(source: subject_without_type_declarations) == 0
+    && type_reference_count(source: subject_without_type_declarations) > 0
+}
