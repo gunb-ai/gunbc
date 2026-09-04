@@ -29675,6 +29675,8 @@ mod discovery_summary_merge_tests {
             total_stage_nanos: ResolveStageNanos::default(),
             performance_receipts: vec![
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 1_000,
@@ -29684,6 +29686,8 @@ mod discovery_summary_merge_tests {
                     sample_count: 1,
                 },
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-b".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 50_000,
@@ -29693,6 +29697,8 @@ mod discovery_summary_merge_tests {
                     sample_count: 1,
                 },
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 5_000,
@@ -40110,6 +40116,27 @@ pub struct WitnessExecutionOccurrence {
     /// The policy line this claim was measured against -- an INPUT, not a derivation, and
     /// carried per row because a future per-claim line must not silently re-judge old rows.
     pub cost_line_ms: u64,
+    /// WHICH PREEMPTION POPULATION THIS CLAIM IS IN, OBSERVED AT THE DISPATCH THAT CAN SEE IT.
+    ///
+    /// `cooperatively_pollable` -- every stride point was reachable, so the CPU deadline had
+    /// each chance to fire. A claim in this population that nonetheless COMPLETED over the
+    /// ceiling overshot between two polls; nothing was missed, and what its crossing reports is
+    /// a charge, not a failed interrupt.
+    ///
+    /// `opaque_host_call_unbounded:<operations>` -- the claim's cost accrued inside one or more
+    /// arms of `gunbc.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
+    /// falls. Here completion over the ceiling means the deadline OBSERVED NOTHING, so the
+    /// crossing is a missed interrupt and blocking it is the enforcement the model intends.
+    ///
+    /// `surface_unarmed` -- the run never armed the surface, so reachability is UNKNOWN. It is
+    /// spelled distinctly rather than folded into `cooperatively_pollable` because the two would
+    /// otherwise be one bucket in the reassuring direction: an unarmed run would report every
+    /// crossing as a mere overshoot. The floor refuses rather than publishing this value.
+    ///
+    /// PUBLISHED AND COMPARED AGAINST NOTHING, exactly as `eval_steps` above: this column is the
+    /// evidence a reachability-aware verdict would later be built on, not that verdict.
+    /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing.
+    pub preemption_reachability: String,
 }
 
 /// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
@@ -40409,16 +40436,24 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
 /// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
 /// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
-/// `..._claim_forced`, via `install_pure_producer_share`). Every one is a closure seed of the
+/// `..._claim_forced`, via `install_pure_producer_share`), and the opaque-host-call surface
+/// (`opaque_host_call_surface`, via `floor_required_opaque_host_call_surface`, which arms the
+/// per-claim preemption-reachability recorder). Every one is a closure seed of the
 /// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 4] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
     "v2.workflow.floor_pure_producer_share",
+    // The grounded opaque-host-call surface (`opaque_host_call_surface`, qualified, from
+    // `floor_required_opaque_host_call_surface`). Enrolled here rather than read out of the
+    // policy module's frame because this list IS the declaration that a module is evaluated by
+    // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
+    // `v2.workflow.*` -- is what this comment's own rule refuses.
+    "gunbc.v1_interpreter_opaque_host_call",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -40788,7 +40823,8 @@ fn write_required_floor_claim_cost_tsv(
         file,
         "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
          observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
-         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
+         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\t\
+         preemption_reachability"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
@@ -40827,7 +40863,7 @@ fn write_required_floor_claim_cost_tsv(
         };
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
@@ -40841,7 +40877,8 @@ fn write_required_floor_claim_cost_tsv(
             cpu_limit,
             raised,
             row.eval_steps,
-            row.cost_line_ms
+            row.cost_line_ms,
+            row.preemption_reachability.replace(['\t', '\n'], " ")
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     }
