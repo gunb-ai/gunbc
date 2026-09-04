@@ -1,6 +1,6 @@
 module product.network_topology
 
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
 import std.measure { Bandwidth }
 import std.types { NonEmptyStr, Bool, List }
 import std.cache_interface { ReadLatencyClass }
@@ -47,9 +47,33 @@ type NetworkSegment {
   locality: NetworkLocality
 }
 
+// WHAT THE ENDPOINT IS AN ADDRESS *OF*, AS A CLOSED CHOICE RATHER THAN A BAG OF OPTIONALS.
+//
+// This field was `host: HostIdentity?`, which could name a host and nothing else. That was adequate
+// while every endpoint was a host or the gateway, and it broke the moment an appliance arrived: the
+// printer endpoint had to carry `host: none` and bind to its PhysicalAsset through the LABEL STRING
+// alone. review 59815 named that correctly -- a string leaf hiding a named part, with the endpoint
+// free to drift from the asset it is supposed to address, and the binding living nowhere the
+// compiler can see.
+//
+// The repair is not a second optional beside the first. `host: HostIdentity?` plus
+// `asset: PhysicalAssetIdentity?` would make two states writable that mean nothing -- both present,
+// and both absent -- so validation would have to forbid what construction can simply not offer. A
+// closed coproduct makes the subject exactly one thing, and DESIGN section 4b prefers construction
+// over the check.
+//
+// THE THIRD ARM IS NOT A NULL. The operator's LAN gateway is a real device at a real address for
+// which this repository holds no inventory row, and that is a different fact from "this endpoint
+// addresses nothing". Naming it Unregistered keeps it distinguishable and leaves it fillable: the
+// day the router gets a PhysicalAsset row, the arm changes and nothing else does.
+type NetworkEndpointSubject
+  = EndpointHost { host: HostIdentity }
+  | EndpointAsset { asset: PhysicalAssetIdentity }
+  | EndpointSubjectUnregistered
+
 type NetworkEndpoint {
   label: NonEmptyStr
-  host: HostIdentity?
+  subject: NetworkEndpointSubject
   address: NonEmptyStr
   role: NetworkAttachmentRole
   locality: NetworkLocality

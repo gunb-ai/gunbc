@@ -28,6 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import gunbc.fleet_asset_identity { chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -90,17 +91,6 @@ data operator_physical_site: PhysicalSite = PhysicalSite {
 data nominal_rackmount_units_declared: RackUnit = rack_unit(14)
 data operator_switch_shelf_units: RackUnit = rack_unit(1)
 
-data chassis_srv1: PhysicalAssetIdentity = "chassis-srv1" as PhysicalAssetIdentity
-data chassis_srv2: PhysicalAssetIdentity = "chassis-srv2" as PhysicalAssetIdentity
-data chassis_srv3: PhysicalAssetIdentity = "chassis-srv3" as PhysicalAssetIdentity
-data chassis_srv4: PhysicalAssetIdentity = "chassis-srv4" as PhysicalAssetIdentity
-data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder" as PhysicalAssetIdentity
-data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
-data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
-data printer_01: PhysicalAssetIdentity = "printer-01" as PhysicalAssetIdentity
-data ams_01: PhysicalAssetIdentity = "ams-01" as PhysicalAssetIdentity
-data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
-data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
 
 
 // THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
@@ -256,8 +246,6 @@ data srv1_measured_wireless_note: String = "srv1 fleet controller measured Wirel
 // containment arm every other host component uses. product.cooling_qualification consumes these
 // rows to reach a catalog verdict, and gunbc.bmc_fan_converge requires that verdict before any
 // host may claim a thermally qualified fan configuration.
-data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
-data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
 
 data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
   identity: cooler_srv3,
