@@ -148,6 +148,7 @@ type FilamentMaterial
   = Pla
   | Petg
   | Tpu
+  | Tpe
   | Pva
   | Abs
   | Asa
@@ -169,6 +170,99 @@ type MaterialSuitability
   = SuitabilityIdeal
   | SuitabilityNotRecommended
   | SuitabilityUnstated
+
+// ONE SCAN OVER A MATERIAL-KEYED TABLE, SHARED BY BOTH LOOKUPS AND WALKING THE ROWS ONCE.
+//
+// Both tables in this module are keyed by FilamentMaterial and both must refuse a material named
+// twice rather than silently taking one row. That refusal is one decision, so it is counted in one
+// place: a second copy would let the two lookups disagree, and the way this function came to exist
+// is exactly that -- the feed-path lookup shipped with the last-match-wins arm the suitability
+// lookup had already been repaired for. DESIGN section 2: net concepts must not grow by
+// re-invention, and a defect class is not closed at one site.
+type MaterialKeyedScan<V> sole_constructor {
+  count: Int
+  value: V
+}
+
+fn material_keyed_scan<R, V>(
+  rows: List<R>,
+  material: FilamentMaterial,
+  key: fn(R) -> FilamentMaterial,
+  value: fn(R) -> V,
+  absent: V,
+) -> MaterialKeyedScan<V> {
+  fold(rows, init: MaterialKeyedScan { count: 0, value: absent }, f: fn(acc, r) {
+    if filament_material_eq(a: key(r), b: material) {
+      MaterialKeyedScan { count: acc.count + 1, value: value(r) }
+    } else { acc }
+  })
+}
+
+// WHETHER A FEED MECHANISM CAN CONVEY A MATERIAL, WHICH IS NOT WHETHER THE MACHINE CAN PRINT IT.
+//
+// These two grades look alike and are not the same fact, so they are deliberately two types rather
+// than one. The A1 mini's own vendor table grades Tpu and Pva SuitabilityIdeal -- the machine prints
+// both, fed from the external spool holder -- while the AMS Lite manual excludes both from the AMS
+// Lite path. Collapsing feed-path exclusion into MaterialSuitabilityNotRecommended would report a
+// material the vendor endorses as one the machine cannot print, and would lose which of the two
+// facts a consumer is actually reading. DESIGN section 3: a materially different contract needs a
+// materially different name.
+//
+// THE EXCLUSION CARRIES ITS STATED CAUSE, because the causes are not interchangeable. A flexible
+// filament is excluded by the geometry of the path; an absorbent one by what sitting in the path
+// does to the material; a high-modulus or brittle one by fracture and wear. A consumer choosing a
+// substitute material needs the cause, not merely the refusal -- and a blocklist of product names
+// would be a second naming scheme for properties the material already has.
+type FeedPathExclusionCause
+  = ExcludedAsFlexible
+  | ExcludedAsMoistureAbsorbent
+  | ExcludedAsHighModulusOrBrittle
+
+// The third arm is the same silence-preserving arm MaterialSuitability carries, and for the same
+// reason: a material the manual does not mention is neither admitted nor excluded by it.
+type FeedPathSuitability
+  = FeedPathAdmitted
+  | FeedPathExcluded { cause: FeedPathExclusionCause }
+  | FeedPathUnstated
+
+type FeedPathSuitabilityRow sole_constructor {
+  material: FilamentMaterial
+  suitability: FeedPathSuitability
+}
+
+fn feed_path_suitability_row(material: FilamentMaterial, suitability: FeedPathSuitability) -> FeedPathSuitabilityRow {
+  FeedPathSuitabilityRow { material: material, suitability: suitability }
+}
+
+type FeedPathSuitabilityLookup
+  = FeedPathResolved { suitability: FeedPathSuitability }
+  | FeedPathRowsConflict { material: FilamentMaterial, count: Int }
+
+// LOOKUP DEFAULTS TO UNSTATED, NEVER TO ADMITTED. An unlisted material means the manual is silent,
+// and reading silence as permission is the fail-open arm DESIGN section 5 forbids: it would feed a
+// material the vendor never cleared through a mechanism the vendor documents exclusions for.
+//
+// AND DUPLICATE ROWS REFUSE RATHER THAN RESOLVING TO THE LAST ONE. The first revision of this
+// function folded to the last matching row's suitability, which is byte-for-byte the defect
+// material_suitability below was rewritten to refuse -- landed sixty lines from the repair, in the
+// same file, by the same author, in the same change. That is why the count is not re-derived here:
+// both lookups now ask material_key_match_count, so the decision that a duplicate is a conflict has
+// ONE authority and closing the class at one site cannot leave the other site open. Selecting the
+// last value stays local and is only ever reached when the count is exactly one.
+fn feed_path_suitability(rows: List<FeedPathSuitabilityRow>, material: FilamentMaterial) -> FeedPathSuitabilityLookup {
+  let scan = material_keyed_scan(
+    rows: rows,
+    material: material,
+    key: fn(r) { r.material },
+    value: fn(r) { r.suitability },
+    absent: FeedPathUnstated,
+  )
+  if scan.count > 1 {
+    FeedPathRowsConflict { material: material, count: scan.count }
+  } else {
+    FeedPathResolved { suitability: scan.value }
+  }
+}
 
 type MaterialSuitabilityRow sole_constructor {
   material: FilamentMaterial
@@ -220,21 +314,17 @@ type MaterialSuitabilityLookup
   = SuitabilityResolved { suitability: MaterialSuitability }
   | SuitabilityRowsConflict { material: FilamentMaterial, count: Int }
 
-type SuitabilityScan sole_constructor {
-  count: Int
-  suitability: MaterialSuitability
-}
-
 fn material_suitability(rows: List<MaterialSuitabilityRow>, material: FilamentMaterial) -> MaterialSuitabilityLookup {
-  let scan = fold(rows, init: SuitabilityScan { count: 0, suitability: SuitabilityUnstated }, f: fn(acc, row) {
-    match filament_material_eq(a: row.material, b: material) {
-      true => SuitabilityScan { count: acc.count + 1, suitability: row.suitability }
-      false => acc
-    }
-  })
+  let scan = material_keyed_scan(
+    rows: rows,
+    material: material,
+    key: fn(r) { r.material },
+    value: fn(r) { r.suitability },
+    absent: SuitabilityUnstated,
+  )
   if scan.count > 1 {
     SuitabilityRowsConflict { material: material, count: scan.count }
   } else {
-    SuitabilityResolved { suitability: scan.suitability }
+    SuitabilityResolved { suitability: scan.value }
   }
 }
