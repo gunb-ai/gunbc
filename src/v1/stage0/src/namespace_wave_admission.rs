@@ -1213,8 +1213,12 @@ pub struct TransitionAdmission {
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
 ///
-const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
-    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10445). All six `gunbc#10439` serving-engine rows
+/// are deleted, and SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL with them. #10439 merged, so this
+/// branch's base carries the relocation, no run can produce those deltas, and the wall reports them
+/// CONSUMED rather than stale -- the death the entry above predicts for itself, coming due on the
+/// first change to touch this roster. That is this change, and the wall's own run at the exact head
+/// is what adjudicated it rather than the trigger sentence.
 
 /// TWENTY-FIFTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
 /// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
@@ -1280,66 +1284,6 @@ const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
      gunbc.scm.object_store and had no base declaration";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_host_port",
-            spelling: "spark_serving_bind_listen_wire",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_listen",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_launch_profile",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_base",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_other_window",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "witness_bind",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
         subject: AdmissionSubject::Binding {
@@ -1534,26 +1478,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
             module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_repository_checked",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_repository_v2",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
             in_declaration: "unresolved_commit_root",
             spelling: "EncodeAcc",
             target: "gunbc.scm.object_table_json",
@@ -1566,6 +1490,26 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.scm.repository_envelope",
             in_declaration: "unresolved_commit_root_step",
             spelling: "EncodeAcc",
+            target: "gunbc.scm.object_table_json",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.scm.repository_envelope",
+            in_declaration: "encode_repository_checked",
+            spelling: "encode_object_table",
+            target: "gunbc.scm.object_table_json",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.scm.repository_envelope",
+            in_declaration: "encode_repository_v3",
+            spelling: "encode_object_table",
             target: "gunbc.scm.object_table_json",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
