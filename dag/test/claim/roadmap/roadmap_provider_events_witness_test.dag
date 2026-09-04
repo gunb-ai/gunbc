@@ -193,6 +193,14 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
 // changed data items — that is exactly how `2 as Seconds` shipped green from this branch. Reading
 // the values here makes an unevaluable budget row red locally.
 
+test fn the_projection_keeps_the_round_usage_clock_and_tokens() -> Bool {
+  let f = codex_provider_event_projection_filter as String
+  string_contains(s: f, pattern: "$type == \"round.usage\"")
+    && string_contains(s: f, pattern: "\"epoch_ms\":(.epoch_ms | num)")
+    && string_contains(s: f, pattern: "\"output_tokens\":(.output_tokens | num)")
+    && string_contains(s: f, pattern: "{\"files_changed\":.files_changed}")
+}
+
 test fn codex_character_budgets_are_measured_counts() -> Bool {
   character_count_value(c: codex_provider_event_line_observation_budget) == 65536
     && character_count_value(c: codex_provider_projection_type_budget) == 128
