@@ -11,6 +11,8 @@ import product.printed_chassis.hole_fit_measurement {
   ThresholdBracketed, ThresholdLowerBoundUnestablished, ThresholdUpperBoundUnestablished,
   ThresholdUnobserved, ThresholdObservationsNonMonotone, ThresholdLadderUnavailable,
   entry_threshold_from_observations, m3_fastener, operator_ladder_reading_2026_09_04,
+  FreePassSelection, FreePassNominalSelected, FreePassUnobserved, FreePassLadderUnavailable,
+  select_free_pass_nominal, m3_free_pass_selection,
 }
 
 fn obs(rung: Nat, g: FastenerFitGrade) -> HoleFitObservation {
