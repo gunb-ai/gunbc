@@ -1,0 +1,52 @@
+module test.claim.superseded_run_starvation_census_witness
+
+import gunbc.superseded_run_starvation_census {
+  dead_head_start_standing,
+  DeadHeadReachedInProgressFirst,
+  LiveHeadRegisteredJobFirst,
+  NeitherRunRegisteredAJob
+}
+
+test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
+    live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
+  ) {
+    DeadHeadReachedInProgressFirst => true
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn started_dead_job_precedes_live_job_that_has_not_registered() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
+    live_first_job_created_at: none
+  ) {
+    DeadHeadReachedInProgressFirst => true
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn registered_live_job_precedes_dead_job_that_has_not_started() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: none,
+    live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
+  ) {
+    DeadHeadReachedInProgressFirst => false
+    LiveHeadRegisteredJobFirst => true
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: none,
+    live_first_job_created_at: none
+  ) {
+    DeadHeadReachedInProgressFirst => false
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => true
+  }
+}
