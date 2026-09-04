@@ -9,7 +9,12 @@ import gunbc.systemd_property_directive_overlap {
   systemd_property_consumers,
   systemd_property_directive_overlap_dissolution,
 }
-import extdeps.systemd { MemoryMax, MemoryCurrent, ActiveState, TasksMax, systemd_unit_property_wire }
+import extdeps.systemd {
+  MemoryMax, MemoryCurrent, ActiveState, TasksMax,
+  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
+  User, WorkingDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
+  systemd_unit_property_wire,
+}
 import std.dissolution { dissolution_trigger_ref, DissolutionCondition, BoundDissolution, UnboundDissolution }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -35,6 +40,25 @@ test fn a_settable_knob_and_a_read_only_observation_classify_apart() -> Bool {
     && systemd_property_is_settable(property: TasksMax)
     && !systemd_property_is_settable(property: MemoryCurrent)
     && !systemd_property_is_settable(property: ActiveState)
+}
+
+// THE MEMBERS ADDED BY THE LIVE-READ SURFACE ARE CLASSIFIED BY THEIR SYSTEMD DENOTATION, not by
+// one fallback for everything added in the same change. ExecStart, User, WorkingDirectory and
+// Unit are writable unit-file directives. Load/result/process/timer readings are manager-derived;
+// AccuracyUSec is also a reading because the writable directive has the distinct name AccuracySec.
+test fn the_live_read_members_preserve_the_writable_boundary() -> Bool {
+  !systemd_property_is_settable(property: LoadState)
+    && !systemd_property_is_settable(property: UnitFileState)
+    && !systemd_property_is_settable(property: SubState)
+    && !systemd_property_is_settable(property: Result)
+    && !systemd_property_is_settable(property: ExecMainStatus)
+    && systemd_property_is_settable(property: ExecStartProperty)
+    && systemd_property_is_settable(property: User)
+    && systemd_property_is_settable(property: WorkingDirectoryProperty)
+    && systemd_property_is_settable(property: Unit)
+    && !systemd_property_is_settable(property: NextElapseUSecMonotonic)
+    && !systemd_property_is_settable(property: AccuracyUSec)
+    && !systemd_property_is_settable(property: TimersMonotonic)
 }
 
 // THE CONFLATION IS PRESENT TODAY. This is the carrier's central factual claim and the thing a

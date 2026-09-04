@@ -20,13 +20,8 @@ import gunbc.runner_activation {
   admit_runner_activation,
 }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.guarantee_rung_drop {
-  GuaranteeStall,
-  OutsideTheLadder, Mitigatable, StructurallyGuaranteed,
-  AwaitsOneGrounding, ClimbableButUnbuilt,
-  BoundedPopulation,
-  stall_report_message,
-}
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, BoundedPopulation, stall_report_message }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
 data runner_service_activation_scope_disposition: Disposition = SingleAuthority

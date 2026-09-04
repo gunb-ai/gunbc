@@ -4,7 +4,7 @@ import std.types { Bool, Int, List }
 import std.measure {
   bandwidth, bandwidth_count,
   byte_size_count, cpu_core_count_value,
-  hardware_thread_count_value, hour_count,
+  hardware_thread_count_value,
   packet_rate_count, usd_whole_dollars_count,
   milliwatt_count, watt_count, hertz_count,
   gigabyte_count, mebibyte_count, volt_count,

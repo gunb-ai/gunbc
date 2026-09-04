@@ -11,7 +11,7 @@ import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.collection { List }
 import v2.std.data_index { DataInitDecl }
 import v2.std.effect_reach { EffectReachClassification }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -45,14 +45,37 @@ data fixture_path_data_inits: List<DataInitDecl> = [
 
 data fixture_empty_data_inits: List<DataInitDecl> = []
 
-// Explicit fixture standing in for `decls` on every synthetic "fix.*" specimen below.
-// call_reachable_decls filters decls by qualified-name membership in the fixture's own
+// Explicit fixture standing in for `decls` on EVERY specimen in this module.
+// v2.std.fn_index call_reachable_decls filters decls by qualified-name membership in the fixture's own
 // closure_modules ("fix.*"), and no real corpus decl is ever named "fix.*" — so the
 // live-scan result is filtered to nothing for these specimens regardless, and substituting
 // it costs a whole-tree scan for zero signal (DESIGN §5 witness-cost-derives-from-purpose:
-// a test is not entitled to arbitrary computation merely because it is a test). Only the
-// one named live integration below (effect_reach_live_03_normalize_witness_derived_host_reading_holds)
-// legitimately reads fn_arrow_decl_facts_live().
+// a test is not entitled to arbitrary computation merely because it is a test).
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH ENDED "Only the one named live integration below
+// (effect_reach_live_03_normalize_witness_derived_host_reading_holds) legitimately reads
+// fn_arrow_decl_facts_live()", AND THAT SENTENCE WAS FALSE IN BOTH DIRECTIONS. That row passed
+// fn_arrow_decl_facts_live() as `decls` while ALSO passing a hand-authored one-element
+// live_03_normalize_data_inits as `data_inits`, and in effect_reach_classification_from_facts the
+// data-init arm (closure_data_init_path_flows) reads NEITHER decls NOR reachability: a path-shaped
+// literal_fp in any closure module yields a GunbcCompileEntrySink flow on its own, so the
+// classification was HostEffectReach before the decls argument was consulted at all. MEASURED, both
+// arms, via claim_batch on this lens: with decls SUBSTITUTED TO EMPTY and the same hand data_inits,
+// derived_host_reading still holds; with the LIVE decls and data_inits EMPTY, derived_host_reading
+// is FALSE and effect_reach_flow_count is 0 — the live scan contributes zero flows from this entry.
+// So the "live" name and the whole-tree fill it bought were carried entirely by a hand-authored
+// fixture arm, which is the decoration DESIGN §4b calls worse than absent because it is cited as
+// coverage. The row is deleted rather than renamed because its deciding arm is already enrolled,
+// over the identical literal_fp, as effect_reach_path_data_init_derived_host_reading_holds in this module —
+// renaming would have kept a §2 duplicate of that row spelled with real module names.
+//
+// AND NO LIVE ROW IS AUTHORABLE ON THIS LENS TODAY, which is why the deletion leaves no gap to fill
+// here: effect_reach_classification_from_facts takes its closure from ModuleImportFact, and
+// v2.lens.live_read_classification g2_live_production_boundary_law declares that shape FIXTURE-FACING
+// with no live producer in the corpus. A row whose `facts` are hand-authored is a fixture row however
+// its other arguments are sourced. The next-rung trigger is that law's own: a live
+// ModuleDependencyEdge closure reaching this lens, at which point a genuinely live 03_normalize row
+// has a producer to read.
 data fixture_empty_decls: List<FnArrowDecl> = []
 
 data fixture_prose_facts: List<ModuleImportFact> = [
@@ -165,56 +188,4 @@ fn witness_frontier_concat_built_path_not_classified() -> Bool {
 
 test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
-}
-
-data live_03_normalize_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
-    module: "test.claim.self_host_03_normalize_behavioral_witness",
-    imports: ["tools.self_host_module_behavioral_transport_roster"]
-  },
-  ModuleImportFact {
-    module: "tools.self_host_module_behavioral_transport_roster",
-    imports: [
-      "tools.self_host_curated_seed_linked_harness",
-      "v2.std.algebra",
-      "v2.std.collection",
-      "v2.std.logic",
-      "v2.std.text"
-    ]
-  },
-  ModuleImportFact {
-    module: "tools.self_host_curated_seed_linked_harness",
-    imports: [
-      "extdeps.shell",
-      "extdeps.filesystem.filesystem_io",
-      "extdeps.cargo_build",
-      "extdeps.git",
-      "extdeps.gunbc",
-      "std.logic",
-      "v2.std.algebra",
-      "v2.std.collection",
-      "v2.std.text",
-      "tools.host_prelude"
-    ]
-  }
-]
-
-data live_03_normalize_data_inits: List<DataInitDecl> = [
-  DataInitDecl {
-    qualified_name: "tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_transport_roster",
-    module: "tools.self_host_module_behavioral_transport_roster",
-    name: "compiler_module_behavioral_transport_roster",
-    literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
-  }
-]
-
-test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> Bool {
-  derived_host_reading(
-    classification: effect_reach_classification_from_facts(
-      entry_module: "test.claim.self_host_03_normalize_behavioral_witness",
-      facts: live_03_normalize_facts,
-      decls: fn_arrow_decl_facts_live(),
-      data_inits: live_03_normalize_data_inits
-    )
-  )
 }

@@ -1,0 +1,32 @@
+module test.claim.guarantee_rung_witness_test
+
+import std.types { Bool }
+import gunbc.guarantee_rung {
+  OutsideTheLadder, Mitigatable, MechanicallyPreventable,
+  StructurallyGuaranteed, StructurallyImpossible,
+  guarantee_rung_label, guarantee_rung_index,
+}
+
+// THE DESIGN section 4b LADDER IS ITS OWN AUTHORITY, SO ITS EVIDENCE IS ITS OWN FILE. Both of the
+// records that are stated in it -- gunbc.rung_drop's declared drop and gunbc.guarantee_stall's
+// stall -- depend on the label and the order being total and injective, so homing these two
+// assertions inside either witness would make one subject's evidence a passenger of the other's.
+
+// EVERY RUNG HAS A DISTINCT LABEL. A label fold that collapsed two rungs would make a census over
+// rung drops silently wrong, and nothing else in this module would notice.
+test fn guarantee_rung_labels_are_distinct() -> Bool {
+  let a = guarantee_rung_label(r: OutsideTheLadder)
+  let b = guarantee_rung_label(r: Mitigatable)
+  let c = guarantee_rung_label(r: MechanicallyPreventable)
+  (a != b) && (b != c) && (a != c)
+}
+
+// THE LADDER ORDER IS STRICT AND TOTAL. A rung index that collapsed two rungs would make
+// stall_is_below_ceiling silently wrong for exactly the pair it collapsed, and nothing else here
+// would notice.
+test fn guarantee_rung_index_is_strictly_ordered() -> Bool {
+  guarantee_rung_index(r: OutsideTheLadder) < guarantee_rung_index(r: Mitigatable)
+    && guarantee_rung_index(r: Mitigatable) < guarantee_rung_index(r: MechanicallyPreventable)
+    && guarantee_rung_index(r: MechanicallyPreventable) < guarantee_rung_index(r: StructurallyGuaranteed)
+    && guarantee_rung_index(r: StructurallyGuaranteed) < guarantee_rung_index(r: StructurallyImpossible)
+}

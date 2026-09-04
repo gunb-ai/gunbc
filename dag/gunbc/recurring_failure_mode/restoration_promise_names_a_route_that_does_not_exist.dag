@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.restoration_promise_names_a_route_that_does_not_exist
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data restoration_promise_names_a_route_that_does_not_exist: RecurringFailureMode = RecurringFailureMode {
+  identity: "restoration_promise_names_a_route_that_does_not_exist" as NonEmptyStr,
+
+  receipts: [
+    "**a restoration promise names a route that does not exist** (a mechanism withholds, defers or dormant-marks a population and tells the reader it becomes observable again under some named condition — and that condition names a RUN, LANE, CADENCE OR SWEEP the tree does not contain. ",
+
+    "Nothing refuses, because the promise is a string in a diagnostic rather than a citation anything resolves; the population is not silently dropped, which is what makes the class survive review — it is dropped WITH A RECEIPT, and the receipt is what stops anyone looking. ",
+
+    "**THE BOUNDARY AGAINST `unbacked_execution_claim` IS THE TENSE AND IT DECIDES THE REMEDY.** That class is prose asserting a relation that RUNS NOW; this is prose asserting a relation that WILL run — a future condition, so `git log --all -S` over the declaration form finds nothing to past-tense and the origin arms there do not apply. ",
+
+    "It is also not `absorbing_fallback`: nothing widens, the withhold is precise and correctly counted. ",
+
+    "It is 4b(3)'s trigger trap with the polarity inverted — there a trigger names LESS than the capability it restores and gets satisfied while the capability stays dead; here the trigger names a capability whose PRECONDITION IS ALREADY FALSE, so it can never be satisfied at all and the row waits forever in a state that reads as temporary. ",
+
+    "**SPECIMEN WITH A RECEIPT, measured 2026-09-01 on head 4c6c509e and unrepaired at authoring.** `v1_compiler.cli_run.required_floor_runner` `suppress_withheld` removes enrolled expected-red identities whose module sits outside the required gate, printing that their enrolment `becomes observable again when the gate roster admits the module or in the whole-corpus receipts run`. ",
+
+    "THAT RUN DOES NOT EXIST: the phrase occurs exactly once in the tree, inside the message that promises it, and the repository carries three workflows of which none is it. ",
+
+    "39 identities across 23 modules sit under that promise. ",
+
+    "Each is enrolled on `v2.workflow.floor_expected_red`, whose own header states what an enrolment asserts — that the identity REACHES ITS SUBJECT AND ANSWERS, and that a row belongs there only while someone is fixing it — so every one of the 39 asserts `runs, fails, someone is fixing it` about a row no run reaches. ",
+
+    "The only surviving route by which one executes is the changed-witness override, i.e. ",
+
+    "somebody editing it. ",
+
+    "**THE POPULATION IS DERIVABLE AND IS DELIBERATELY NOT TRANSCRIBED HERE**: it is `v2.workflow.floor_expected_red` `floor_expected_red_roster` minus the identities whose module matches `v2.workflow.required_floor` `required_gate_prefixes` — two authorities and a set difference, so it re-derives instead of rotting. ",
+
+    "**THE SAME ROSTER'S HEADER ALREADY RECORDS THE ANCESTOR OF THIS MISTAKE**, which is why it is a class: 101 rows were held there as agreement while never reaching their subject, and were reclassified into `v2.workflow.floor_route_gap` on 2026-08-20 once `ExpectedRedArm` was taught to refuse `HostEffectRefused`, `HostToolUnresolved` and an interrupted budget. ",
+
+    "That repair closed the arm where a NON-VERDICT was read as agreement; this class is the same harm one step earlier, where a row never reaches an arm at all and a sentence promises it will. ",
+
+    "**RECOGNITION RULE: whenever a diagnostic says a withheld thing becomes observable again `in`/`under`/`by` some named run, grep the tree for that name and require an executing consumer — a workflow job, a scheduled entry point, an actuator argv. ",
+
+    "If the only occurrence is the promise itself, the population is dormant forever and the honest states are two: admit the row cannot be observed on any cadence, or delete the enrolment. ",
+
+    "**RUNG: 1 (mitigatable) — the withhold is counted and located, which is the whole of what holds. ",
+
+    "CEILING: 3, since `whether a named route exists` is decidable from the workflow and entry-point authorities the tree already carries. ",
+
+    "NEXT-RUNG TRIGGER, a CAPABILITY and not an artifact: restoration conditions expressed as a resolvable citation to an executing consumer rather than as prose, so a promise naming no route fails to compile — writing this particular sentence better retires nothing.)",
+  ],
+
+  evidence: [],
+}

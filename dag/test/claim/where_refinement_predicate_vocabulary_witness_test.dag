@@ -1,0 +1,358 @@
+module test.claim.where_refinement_predicate_vocabulary_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+import gunbc.where_refinement_predicate_vocabulary {
+  WherePredicateRow,
+  WherePredicateEnforcement,
+  IntLiteralDecidable,
+  StringLiteralDecidable,
+  DeferredAtCompileTime,
+  UnenrolledNoTableRow,
+  where_refinement_predicate_vocabulary,
+  where_predicate_spellings,
+  where_predicate_rows_of_enforcement
+}
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_advisory_rows,
+  census_rows_of_class,
+  census_total_count
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree and not SubstrateInputsOnly, for the same reason the sibling census witness
+// declares it: compile_dag_diagnostic_census resolves its synthetic source against
+// build_module_path_index_from_witness_roots, which walks the live tree. The read is real, and an
+// undeclared read is ReadsLiveTree by the fail-closed default anyway. Copying a cheaper claim from
+// a neighbour would buy selection-eligibility with a false statement.
+
+// WHAT THIS WITNESS PROVES, AND THE ONE THING IT DELIBERATELY ASSERTS AS DEBT.
+//
+// It executes gunbc.where_refinement_predicate_vocabulary against the real v1 compile path, one
+// probe per rostered predicate spelling, and asserts that the compiler's OBSERVED behaviour agrees
+// with the class the row declares. The join is by SPELLING and it runs in both directions -- every
+// roster row has a probe and every probe has a roster row -- so a spelling added to one side alone
+// reds rather than being silently skipped. That bidirectional assertion is the whole point: a
+// one-directional check over a table you also author is satisfied by narrowing the table, and a
+// count equality is satisfied by any two sets of the same size.
+//
+// THE OBSERVABLE IS BINARY, AND SAYING SO IS PART OF THE RUNG. The census surface projects a
+// diagnostic's CLASS and SUBJECT NAME, never its REASON. "predicate deferred at compile time" and
+// "predicate not enforced at compile time" are therefore indistinguishable through it -- both are
+// one advisory WhereRefinementUnenforced row keyed to the predicate. So what executes here is the
+// TWO-way partition {refuses a violating literal} vs {never refuses}, not the roster's four-way
+// class. The roster's split of the never-refuses bucket into DeferredAtCompileTime and
+// UnenrolledNoTableRow is author-vouched and this file does not pretend otherwise. Next-rung
+// trigger for that half, named as the capability: the census surface projecting the diagnostic
+// reason alongside class and subject name, SUFFICIENT FOR a probe to distinguish a deliberate
+// deferral from an unrecognised spelling without reading the compiler's tables.
+//
+// THIS WITNESS IS CHANGE-TRIGGERED, NOT CONTINUOUSLY EXECUTING, and the roster records the
+// measurement: its seven identities ran as planned_as_changed_witness because these files changed,
+// while the sibling it was modelled on sits in declined_outside_gate_closure on the same run. So an
+// edit to the compiler's classifier tables does not re-run this join -- it reaches the compiler
+// through a host builtin, not an import edge. Do not read a green floor as evidence this executed;
+// read required_floor_disposition.tsv.
+//
+// THE THREE UNENROLLED ROWS ARE ASSERTED AS A MONOTONE DEBT CONTRACT, NOT AS CORRECT BEHAVIOUR.
+// w_unenrolled_predicates_admit_a_violating_literal asserts that a plainly invalid literal at each
+// of the three unenrolled refined positions compiles with ZERO refusals. That is the defect, held
+// as a control so it cannot grow: a FOURTH unenrolled spelling reds
+// w_every_roster_spelling_has_exactly_one_probe, and enrolling one of the three reds this
+// assertion until its roster row is deleted in the same change. The subject universe is closed by
+// the roster and membership is checked at spelling grain, never by count, which is what DESIGN
+// section 5 requires of a debt contract before it may block a merge.
+
+// FIELD NOTES, hoisted here because source annotations are module-item grain and one inside a
+// declaration body refuses (DESIGN 4c). `clause` is the full where-clause text as an author writes
+// it and is NOT the spelling: `brand` and `range` are parenthesised forms and a bare spelling would
+// not parse, so carrying only the key would have quietly restricted this witness to the
+// unparenthesised predicates -- the narrowed subject that looks identical to a passing one.
+// `value_text` is the literal as it appears in source, quotes included for string bases, and every
+// one of them VIOLATES its predicate wherever the predicate is decidable at all, because a
+// satisfying literal is silent under both arms of the partition and could not discriminate them.
+
+type WherePredicateProbe {
+  spelling: String
+  clause: String
+  base_type: String
+  value_text: String
+  expected_refusal: Bool
+}
+
+// THE LAST THREE ROWS ARE THE FINDING. oci_path_component_syntax, oci_tag_syntax and
+// c_translation_unit_basename_safe each carry a value_text no author could mistake for a valid
+// instance of the type -- an OCI path component may not contain spaces or exclamation marks, an OCI
+// tag may not either, and a C translation-unit basename may not. All three predicates are declared,
+// total String -> Bool functions that decide exactly this. All three compile clean.
+
+data where_predicate_probes: List<WherePredicateProbe> = [
+  WherePredicateProbe {
+    spelling: "brand",
+    clause: "brand(\"wpv_probe_brand\")",
+    base_type: "String",
+    value_text: "\"anything\"",
+    expected_refusal: false
+  },
+  WherePredicateProbe {
+    spelling: "range",
+    clause: "range(min: 1, max: 5)",
+    base_type: "Int",
+    value_text: "9",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "gt_zero",
+    clause: "gt_zero",
+    base_type: "Int",
+    value_text: "0",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "non_empty",
+    clause: "non_empty",
+    base_type: "String",
+    value_text: "\"\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "lower_hex_16",
+    clause: "lower_hex_16",
+    base_type: "String",
+    value_text: "\"zz\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "lower_hex_40",
+    clause: "lower_hex_40",
+    base_type: "String",
+    value_text: "\"zz\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "lower_hex_64",
+    clause: "lower_hex_64",
+    base_type: "String",
+    value_text: "\"zz\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "lower_hex_128",
+    clause: "lower_hex_128",
+    base_type: "String",
+    value_text: "\"zz\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "oci_other_digest_algorithm",
+    clause: "oci_other_digest_algorithm",
+    base_type: "String",
+    value_text: "\"NOT+AN+ALGORITHM\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "oci_other_digest_encoded",
+    clause: "oci_other_digest_encoded",
+    base_type: "String",
+    value_text: "\"NOT+AN+ENCODING\"",
+    expected_refusal: true
+  },
+  WherePredicateProbe {
+    spelling: "unicode_scalar",
+    clause: "unicode_scalar",
+    base_type: "Int",
+    value_text: "0 - 1",
+    expected_refusal: false
+  },
+  WherePredicateProbe {
+    spelling: "is_text_readable",
+    clause: "is_text_readable",
+    base_type: "String",
+    value_text: "\"anything\"",
+    expected_refusal: false
+  },
+  WherePredicateProbe {
+    spelling: "oci_path_component_syntax",
+    clause: "oci_path_component_syntax",
+    base_type: "String",
+    value_text: "\"NOT A PATH COMPONENT!!\"",
+    expected_refusal: false
+  },
+  WherePredicateProbe {
+    spelling: "oci_tag_syntax",
+    clause: "oci_tag_syntax",
+    base_type: "String",
+    value_text: "\"NOT A TAG!!\"",
+    expected_refusal: false
+  },
+  WherePredicateProbe {
+    spelling: "c_translation_unit_basename_safe",
+    clause: "c_translation_unit_basename_safe",
+    base_type: "String",
+    value_text: "\"NOT A BASENAME!!\"",
+    expected_refusal: false
+  }
+]
+
+fn probe_source(p: WherePredicateProbe) -> String {
+  concat(
+    concat(
+      concat(
+        concat("module wpv_probe\ntype WpvProbe = ", p.base_type),
+        concat(" where ", p.clause)
+      ),
+      "\nfn wpv_f() -> WpvProbe { "
+    ),
+    concat(p.value_text, " as WpvProbe }\n")
+  )
+}
+
+// A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO. CensusNotRunnable is an
+// infrastructural failure of the probe compile, and folding it to 0 would make a broken harness
+// read as a clean source -- the top-as-answer conflation DESIGN section 5 names. Every assertion
+// below therefore compares against a non-negative expectation, so an unrunnable probe reds.
+
+fn probe_blocking_count(p: WherePredicateProbe) -> Int {
+  match compile_dag_diagnostic_census(probe_source(p: p)) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn probe_where_advisory_count(p: WherePredicateProbe) -> Int {
+  match compile_dag_diagnostic_census(probe_source(p: p)) {
+    CensusObserved { rows: rows } =>
+      census_total_count(
+        rows: census_advisory_rows(
+          rows: census_rows_of_class(rows: rows, wanted: "WhereRefinementUnenforced")
+        )
+      )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn probe_agrees_with_roster(p: WherePredicateProbe) -> Bool {
+  let blocking = probe_blocking_count(p: p)
+  if p.expected_refusal {
+    blocking >= 1
+  } else {
+    blocking == 0 && probe_where_advisory_count(p: p) >= 1
+  }
+}
+
+fn probe_spellings() -> List<String> {
+  where_predicate_probes |> map(p => p.spelling)
+}
+
+fn roster_spellings() -> List<String> {
+  where_predicate_spellings(rows: where_refinement_predicate_vocabulary)
+}
+
+fn count_occurrences(xs: List<String>, wanted: String) -> Int {
+  xs |> filter(x => x == wanted) |> count
+}
+
+// THE BIDIRECTIONAL IDENTITY JOIN. Not a count equality: two sets of the same size satisfy that
+// while sharing no members, and automating a count would collapse the assertion to
+// measure() == measure(). This asserts that every roster spelling appears EXACTLY ONCE among the
+// probes and every probe spelling appears EXACTLY ONCE in the roster, which also carries the
+// no-duplicate-spelling requirement in both tables without a separate check to keep in step.
+
+test fn w_every_roster_spelling_has_exactly_one_probe() -> Bool {
+  roster_spellings() |> all(s => count_occurrences(xs: probe_spellings(), wanted: s) == 1)
+}
+
+test fn w_every_probe_spelling_has_exactly_one_roster_row() -> Bool {
+  probe_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
+}
+
+// THIS IS THE COLLISION ASSERTION, named rather than left to be inferred from its shape. A
+// where-predicate's identity is its SPELLING -- where_refinement_predicates_equivalent compares
+// predicate names for equality with no declaration binding -- so one spelling standing for two
+// meanings is silently judged EQUIVALENT and the site is accepted with no diagnostic at all. That
+// is the state this assertion exists to make loud: two rows claiming one spelling, which is how a
+// second meaning would have to enter this roster, red here.
+//
+// WHAT IT CAN AND CANNOT SEE, because a collision check that quietly ranges over the wrong
+// population is worse than none. It ranges over the ROSTER, so it catches a spelling given two
+// groundings HERE. It does NOT range over the corpus: two declarations claiming one predicate name
+// where neither reaches this file are invisible to it, for the same reason the membership half is
+// author-vouched -- no substrate reader projects where-clause predicates, so there is nothing to
+// join the corpus against. The corpus is collision-free as measured at authoring time (15 spellings
+// each denoting one thing, and 230 brand("...") literals all distinct), and it is held that way by
+// authoring diligence -- rung 1 -- not by this witness.
+
+test fn w_roster_spellings_are_pairwise_distinct() -> Bool {
+  roster_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
+}
+
+// THE EXECUTED HALF: every rostered spelling driven through the real v1 compile path, and the
+// observed refusal behaviour asserted against the class its row declares. checked == total by
+// construction, because the two joins above force the probe set and the roster set to be the same
+// set before this runs over all of it.
+
+test fn w_every_rostered_predicate_behaves_as_its_row_declares() -> Bool {
+  where_predicate_probes |> all(p => probe_agrees_with_roster(p: p))
+}
+
+// THE CONTRAST CONTROL, and without it the assertion above proves nothing. If the probe harness
+// could not refuse ANYTHING -- a malformed source shape, a cast the compiler ignores -- then every
+// expected_refusal: false row would pass for the wrong reason and the three unenrolled rows would
+// read as measured when they were merely unrefuted. This pins one enrolled predicate refusing and
+// one unenrolled predicate not refusing, on sources differing ONLY in the predicate spelling, so
+// the discriminator is the predicate and not the shape.
+
+data enrolled_contrast_probe: WherePredicateProbe = WherePredicateProbe {
+  spelling: "lower_hex_40",
+  clause: "lower_hex_40",
+  base_type: "String",
+  value_text: "\"NOT A TAG!!\"",
+  expected_refusal: true
+}
+
+data unenrolled_contrast_probe: WherePredicateProbe = WherePredicateProbe {
+  spelling: "oci_tag_syntax",
+  clause: "oci_tag_syntax",
+  base_type: "String",
+  value_text: "\"NOT A TAG!!\"",
+  expected_refusal: false
+}
+
+test fn w_one_literal_two_predicates_one_refuses_and_one_does_not() -> Bool {
+  probe_blocking_count(p: enrolled_contrast_probe) >= 1
+    && probe_blocking_count(p: unenrolled_contrast_probe) == 0
+    && probe_where_advisory_count(p: unenrolled_contrast_probe) >= 1
+}
+
+// THE DEBT CONTRACT, ASSERTED AT SPELLING GRAIN. The roster's UnenrolledNoTableRow rows are exactly
+// the three, and each of them admits a violating literal today. Enrolling one without deleting its
+// row reds here; adding a fourth reds the join above. Neither can happen quietly.
+
+test fn w_unenrolled_roster_holds_exactly_three_spellings() -> Bool {
+  let unenrolled = where_predicate_rows_of_enforcement(
+    rows: where_refinement_predicate_vocabulary,
+    wanted: UnenrolledNoTableRow
+  )
+  count(unenrolled) == 3
+    && (unenrolled |> all(r =>
+         r.spelling == "oci_path_component_syntax"
+           || r.spelling == "oci_tag_syntax"
+           || r.spelling == "c_translation_unit_basename_safe"))
+}
+
+test fn w_unenrolled_predicates_admit_a_violating_literal() -> Bool {
+  where_predicate_probes
+    |> filter(p =>
+         p.spelling == "oci_path_component_syntax"
+           || p.spelling == "oci_tag_syntax"
+           || p.spelling == "c_translation_unit_basename_safe")
+    |> all(p => probe_blocking_count(p: p) == 0 && probe_where_advisory_count(p: p) >= 1)
+}

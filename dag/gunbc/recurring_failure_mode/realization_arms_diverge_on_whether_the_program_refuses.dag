@@ -1,0 +1,68 @@
+module gunbc.recurring_failure_mode.realization_arms_diverge_on_whether_the_program_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data realization_arms_diverge_on_whether_the_program_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "realization_arms_diverge_on_whether_the_program_refuses" as NonEmptyStr,
+
+  receipts: [
+    "realization arms diverge on WHETHER THE PROGRAM REFUSES (two realizations of one accepted program agree on the returned value and disagree on whether an evaluation-time refusal fires, because the fact that decides it -- evaluation order -- is modeled nowhere and each arm improvises). ",
+
+    "INVALID STATE: a connective whose operand evaluation strategy is unmodeled, realized strictly by one arm and lazily by another. ",
+
+    "gunbc v1 today: v1.compiler.interpreter eval_expr_inner's ExprBinOp arm evaluates BOTH operands through `?` before dispatching. ",
+
+    "eval_binop DOES carry And and Or arms -- `Value::Bool(left.is_truthy() && right.is_truthy())` -- and they are irrelevant to this class and worth naming precisely because they look like the repair: they run on operands ALREADY EVALUATED at the call site, so their Rust && is over two bools and short-circuits nothing. ",
+
+    "A reader grepping eval_binop for And finds a hit and concludes the case is handled, while std.operator_realization maps BinOp::And and BinOp::Or to OperatorRealization::HostOperator, rendered as Rust && and ||, which short-circuit. ",
+
+    "HARM: the guard idiom -- a cheap precondition guarding an expression that can refuse -- means two different programs. ",
+
+    "The interpreter runs the guarded expression when the guard is FALSE and refuses; emitted Rust never runs it and returns a value. ",
+
+    "Silent in both directions and invisible to any oracle comparing returned values on guard-true inputs, which is every value-comparison oracle we have. ",
+
+    "DISCRIMINATING RED, executed 2026-09-02, not asserted: `fn guarded_division(n: Int) -> Bool { n != 0 && (100 / n) > 1 }`. ",
+
+    "At n=0 the interpreter refuses DivisionByZero and the emitted Rust returns false; at n=5 both return true. ",
+
+    "Division by zero was chosen deliberately because BOTH realizations abort identically IF the expression is evaluated, so evaluation order is the only variable in the pair. ",
+
+    "CONTROLS, because a false from a harness that cannot observe an abort is a vacuous green: the same function with the guard forced true and n=0 PANICKED with 'attempt to divide by zero' and was caught and reported, so the harness can see the abort; and the guard-true positive control agrees across both arms. ",
+
+    "HONESTY BOUND ON THE EVIDENCE: the interpreter arm ran on the real acceptance path via `gunbc run`; the emitted arm executed the emitted function bodies extracted VERBATIM into a rustc harness, not the whole emitted crate. ",
+
+    "WHY IT IS NOT refusal_deferred_to_emitted_runtime: that class is a compiler writing a refusal construct INTO the artifact while reporting success. ",
+
+    "Here no refusal is written anywhere and the compile is honest; the two arms simply disagree at run time about whether one fires. ",
+
+    "Same neighbourhood, different invalid state, different repair. ",
+
+    "THE POPULATION IS SURVIVORSHIP-FILTERED AND A GREP UNDERSTATES IT BY CONSTRUCTION. ",
+
+    "The interpreter is the STRICTER arm, so any author who wrote the guard idiom over a refusing right operand hit the refusal while authoring and rewrote it -- most likely into a nested if or match. ",
+
+    "So the sites matching `cheap_guard && expensive` are the SURVIVORS, the cases where the right operand happens not to refuse; the cases carrying the correctness consequence were already edited away. ",
+
+    "A LOW COUNT IS THEREFORE NOT EVIDENCE THE CLASS IS MINOR AND MUST NOT BE REPORTED AS ONE. ",
+
+    "The honest population is sites where an author WANTED the guard idiom, which lives in the rewrites and is not reachable by the same needle. ",
+
+    "RECOGNITION RULE, stated to generalise past this operator: wherever a construct is realized independently by the interpreter and by an emission target, ask what fact decides its behaviour and where that fact is DECLARED. ",
+
+    "If the deciding fact is absent from the authority both arms are supposed to consult, the arms are not implementing one semantics, they are each inventing one, and agreement on the values you happened to test is not evidence they agree. ",
+
+    "The tell is a realization shape -- HostOperator -- that names WHO evaluates without naming WHAT is evaluated. ",
+
+    "RUNG: mitigatable at best, and only because one arm refuses loudly; against a source-to-emission path this is silent wrongness, which DESIGN section 4b places outside the ladder. ",
+
+    "NEXT-RUNG TRIGGER, named as a capability and not an artifact: EVALUATION ORDER MODELED AS A PROPERTY OF A CONNECTIVE IN THE .dag AUTHORITY AND CONSULTED BY BOTH REALIZATIONS -- sufficient for the interpreter's binop arm to derive its strictness from the same row the emitter derives its rendering from, so that a connective's operand strategy cannot be stated twice or left unstated. ",
+
+    "A grep across dag/, src/v2/ and src/v1/*.dag on 2026-09-02 found no such fact: every short-circuit hit is prose in a comment or a witness name. ",
+
+    "NOT REPAIRED HERE: changing the interpreter to short-circuit is a corpus-wide evaluation-semantics change and needs its own subject, population and review; filing it against the missing carrier is the point of this row.",
+  ],
+
+  evidence: [],
+}

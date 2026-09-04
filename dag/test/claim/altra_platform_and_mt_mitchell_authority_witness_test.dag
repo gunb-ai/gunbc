@@ -64,7 +64,6 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   dimm_slot_farther_from_cpu,
   dimm_slots_per_socket,
   one_dimm_per_channel_populated_slot,
-  platform_facts_are_from_the_latest_revision,
   refclk_always_required,
   root_complex_count_of_type,
   root_complex_supports_ccix,
@@ -100,6 +99,9 @@ import extdeps.ocp.mt_mitchell.platform {
   ocp_nic_unstrapped_host_mode,
 }
 import extdeps.publication {
+  HeldRevisionIsCurrentPublicCopy,
+  NewerRevisionExistsUnretrieved,
+  NewerRevisionPubliclyServed,
   AccessGatedNotPubliclyPublished,
   PubliclyPublishedUnderOpenLicense,
   PubliclyPublishedWithRestrictiveMarking,
@@ -132,8 +134,23 @@ test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
 
 // --- Ampere Altra Platform Hardware Design Specification, revision 1.00 ---
 
+// THE STANDING IS READ WHERE IT LIVES, NOT THROUGH A PREDICATE. An earlier revision asked
+// `platform_facts_are_from_the_latest_revision()`, a Bool over the supersession coproduct declared
+// beside the platform facts. Review 59072 identified it as the same shape the 2026-07-12
+// dissolution deleted -- one arm true, the rest false, and no production consumer, this witness
+// being its only caller -- and it is the third place that one `is_current` concept had been
+// spelled. That it PRE-EXISTED and this change merely widened its match to the new arm is not a
+// defence: DESIGN section 2 says net concepts must not grow by re-invention, and a concept
+// surviving in a third home is exactly that growth.
+//
+// EXHAUSTIVENESS IS PRESERVED AND MOVES NOWHERE. It belonged to the match, never to the name in
+// front of it, so a fourth arm still reds this file.
 test fn w_altra_platform_facts_are_not_claimed_current() -> Bool {
-  !platform_facts_are_from_the_latest_revision()
+  match altra_platform_hw_design_subject.supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => false
+    NewerRevisionExistsUnretrieved { newer_version_label: _, newer_publication_date: _, index_authority: _, held_version_label: _, detail: _ } => true
+    NewerRevisionPubliclyServed { newer_version_label: _, newer_authority: _, index_authority: _, held_version_label: _, detail: _ } => true
+  }
 }
 
 test fn w_altra_two_dimms_per_channel_reaches_package_ceiling() -> Bool {

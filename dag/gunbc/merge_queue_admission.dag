@@ -1,0 +1,463 @@
+module gunbc.merge_queue_admission
+
+import std.types { Bool, Int, CommitSha, String, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.github.checks { CheckConclusion, check_conclusion_is_success }
+import extdeps.github.actions { workflow_triggers_admit_merge_group }
+import extdeps.github.rulesets {
+  MergeQueueStanding,
+  NoMergeQueueRule,
+  MergeQueueConfigured,
+  MultipleMergeQueueRules,
+  MergeQueueParametersIncomplete,
+  MergeQueueGroupingStrategy,
+  AllGreenGrouping,
+  HeadGreenGrouping,
+  UnrecognizedGroupingStrategy,
+  BypassActorRosterObservation,
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
+  merge_queue_grouping_strategy_wire_label,
+}
+import gunbc.witness_floor_workflow { witness_floor_triggers }
+import v2.std.collection { Absent, Present }
+
+// WHAT A MERGE QUEUE IS, AS A FACT ABOUT ADMISSION RATHER THAN ABOUT THROUGHPUT.
+//
+// gunbc.merge_admission already models the KeyedReceipt answer to stale-green: a receipt is
+// admissible only if the base it was tested against IS the current target and the gate roster has
+// not moved. That predicate is checked at merge time about work that has already finished, so it
+// has one structural consequence nobody chose: under contention it can be UNSATISFIABLE. Every
+// generation of a change is individually admissible and none of them is admissible AT THE MOMENT
+// the merge happens, because the target moved while the floor ran. Adding runners shortens the
+// window; it never closes it, because the window is (validation time) against (arrival rate) and
+// both are properties of other people's work.
+//
+// The queue is the different answer, and the difference is WHEN the tree exists. Instead of
+// validating a tree and hoping the target has not moved, the queue CONSTRUCTS the tree that will
+// become the target -- the merge_group composition -- validates THAT, and fast-forwards it. There
+// is no interval in which the validated tree can go stale, because the validated tree is the
+// published one. That is the DESIGN section 5 climb the whole lane is for: stale-green stops being
+// a state that must be detected and becomes a state with no constructor.
+//
+// THIS MODULE IS THE ADMISSION HALF AND OWNS NO SETTINGS. Which queue this repository wants and
+// what the live ruleset says are gunbc.repo_ruleset's facts; whether the required workflow can
+// schedule for a merge_group is gunbc.witness_floor_workflow's. This module joins them into the
+// two terminals below and models the laws a queue must satisfy for either terminal to be honest.
+//
+// DISSOLVE/REBIND-ON: MAIN-6 replaces GitHub merge publication with the BusinessMain
+// source-publication bridge. At that point the composition and ordering laws below are laws about
+// the bridge's publication rendezvous rather than about GitHub's queue, and this module either
+// rebinds its observations to the bridge or deletes with the GitHub publication path. It does not
+// become permanent by default.
+data merge_queue_admission_rebind: DissolutionCondition = unbound_dissolution(description: "REBIND-OR-DELETE-ON: MAIN-6 lands the BusinessMain source-publication bridge and ordinary publication stops going through GitHub's merge queue. The exact-subject and ordering laws here are about a publication rendezvous, not about GitHub, so they rebind to the bridge's rendezvous; the GitHub-shaped observations (MergeQueueStanding, the merge_group trigger enrolment) delete with the publication path they read. Whichever happens, this module does not survive MAIN-6 unexamined.")
+
+// WHAT THIS DOES NOT SOLVE, STATED AS A NON-GOAL SO NOBODY LATER READS IT AS RETIRED.
+//
+// A queue serializes COMPOSITIONS. It cannot semantically compose two edits to the same
+// multi-kilobyte authority row: it composes trees, and two authors appending to one generated
+// projection produce a textual conflict that no ordering resolves. Measured on 2026-09-03, #10194
+// merged and knocked two sibling pull requests DIRTY on one generated projection; a queue would not
+// have prevented it. So the one-row/one-writer rule for shared authority rows STANDS, and the queue
+// is not an argument for relaxing it. What the queue removes is stale-green admission and the
+// publication race; what it leaves untouched is shared-row authorship.
+//
+// THE BOUNDED GAP THIS MODULE LANDS WITH, and its trigger.
+//
+// Nothing here proves that the required aggregate EXECUTES on a real merge_group composition,
+// because no queue exists to compose one. The half this repository owns is asserted by witness from
+// the workflow authority -- witness_floor_workflow lists the merge_group trigger, so the required
+// check can schedule for a composition. The world half -- that GitHub builds the composition, that
+// the aggregate runs on it, and that a green candidate advances -- is unobservable from inside the
+// repository and stays unobserved until the queue is enabled. That is a gap in the EVIDENCE, not a
+// weaker claim: MergeQueueOperational is not reported for gunb-ai/gunbc, because its standing reads
+// NoMergeQueueRule.
+data merge_queue_world_half_gap: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the merge queue is enabled on gunb-ai/gunbc after operator sign-off (gunbc.repo_ruleset desired_merge_queue moves to MergeQueueSignedOff), and one merge_group run of the required aggregate is observed on a queue-built composition -- the run's subject commit equal to the composition GitHub fast-forwards. Until that observation exists, the exact-subject and ordering laws below are established over authored inputs only, and the terminal for this repository is MergeQueueUnconfigured. This gap is why merge_queue_terminal reports a terminal rather than this module asserting one.")
+
+// THE BYPASS QUESTION IS SETTLED, IN THE POSITIVE DIRECTION, AND THE ROUTE TO SETTLING IT IS THE
+// PART WORTH KEEPING.
+//
+// Three reads of ruleset 16178731 on 2026-09-03 by unprivileged credentials returned no
+// bypass_actors key and current_user_can_bypass "never". That is an UNAVAILABLE observation of the
+// roster, not an empty one: GitHub omits the key both when the roster is empty and when the reader
+// may not see it. Reading those as "no bypass exists" would have answered a question about the
+// RULESET with evidence about the READER -- minting the strongest available claim from the weakest
+// available observation.
+//
+// A PRIVILEGED OBSERVATION THEN REPORTED AN ALWAYS-BYPASS ACTOR: actor_type RepositoryRole,
+// actor_id 2. So the terminal for gunb-ai/gunbc is not open pending evidence -- were the queue
+// configured today it would be MergeQueueOperational carrying AlwaysBypassActorObserved, because a
+// role holding an always-bypass grant can publish past the ruleset while the queue runs correctly
+// beside it. Exclusive is not merely unproven here; it is FALSE until that grant is removed.
+//
+// The types below are what make that unmistakable, and they are why the reader standing and the
+// actor roster are separate carriers: nothing built from an Unavailable observation can reach
+// Exclusive, so the three unprivileged reads could never have produced the wrong terminal even
+// before the privileged one arrived.
+
+// THE QUEUE ENTRY. Four commit identities are involved and collapsing any two of them is how a
+// queue silently stops providing its guarantee, so each is its own field.
+//
+// branch_head_sha is the author's commit. It is NOT what CI tests under a queue and it is NOT what
+// lands. It is carried only so a verdict can name the pull request a reader has to go look at.
+//
+// composed_commit_sha is the merge_group commit: the tree GitHub built by composing this entry
+// onto everything ahead of it. It is the subject of the check run and it is the commit that
+// fast-forwards onto the target. THOSE BEING THE SAME COMMIT IS THE ENTIRE GUARANTEE.
+//
+// composed_parent_sha is what it was composed onto -- the target tip for the first entry, the
+// previous entry's composition for every other. It is what makes the chain checkable.
+type MergeQueueEntry {
+  position: Int
+  pr_number: Int
+  branch_head_sha: CommitSha
+  composed_commit_sha: CommitSha
+  composed_parent_sha: CommitSha
+  conclusion: CheckConclusion
+}
+
+// THE EXACT-SUBJECT LAW, STATED AS AN IDENTITY AND NOT AS A CONCLUSION. "The required check
+// passed" and "the required check passed ON THE COMMIT THAT LANDED" are different claims, and only
+// the second is what a queue buys. A verdict that folded them together would be green in exactly
+// the case the queue exists to make impossible: a check run against one composition while a
+// different composition fast-forwards.
+type ExactSubjectVerdict
+  = ExactSubject
+  | SubjectSubstituted { tested: CommitSha, admitted: CommitSha }
+
+fn merge_group_exact_subject_verdict(
+  entry: MergeQueueEntry,
+  admitted_commit_sha: CommitSha,
+) -> ExactSubjectVerdict {
+  if entry.composed_commit_sha == admitted_commit_sha {
+    ExactSubject
+  } else {
+    SubjectSubstituted { tested: entry.composed_commit_sha, admitted: admitted_commit_sha }
+  }
+}
+
+// THE ORDERING LAW, AND WHY IT IS THE ONE THAT BREAKS WHEN MAIN MOVES.
+//
+// A queue's compositions form a chain: entry 0 onto the target tip, entry N onto entry N-1's
+// composition. If the target tip advances by any route that is not the queue -- a direct push, an
+// administrative merge, a bypass actor publishing past the ruleset -- entry 0's parent is no
+// longer the tip, and every composition behind it was built on a tree that is not what publication
+// will land on. Every check in the queue is then green about a tree that will never exist.
+//
+// So this is checked against the OBSERVED tip rather than against the tip the queue was built on.
+// Refusing here is what turns "main moved under the queue" from a silent re-validation into a
+// located stop.
+type QueueOrderingBreak
+  = QueueHeadNotOnTarget { position: Int, expected_parent: CommitSha, observed_parent: CommitSha }
+  | QueueEntryNotChained { position: Int, expected_parent: CommitSha, observed_parent: CommitSha }
+  | QueuePositionsNotConsecutive { position: Int, expected: Int }
+
+type QueueChainState {
+  index: Int
+  expected_parent: CommitSha
+  refusal: QueueOrderingBreak?
+}
+
+// THE HEAD BREAK AND AN INTERIOR BREAK ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, so the
+// position in the chain selects the arm rather than one message being parameterised by an index.
+// A head break says the TARGET moved -- somebody published past the queue. An interior break says
+// the QUEUE's own composition is not the chain it claims to be, which is an upstream defect and
+// not a race.
+fn parent_break(
+  index: Int,
+  position: Int,
+  expected_parent: CommitSha,
+  observed_parent: CommitSha,
+) -> QueueOrderingBreak {
+  if index == 0 {
+    QueueHeadNotOnTarget {
+      position: position,
+      expected_parent: expected_parent,
+      observed_parent: observed_parent,
+    }
+  } else {
+    QueueEntryNotChained {
+      position: position,
+      expected_parent: expected_parent,
+      observed_parent: observed_parent,
+    }
+  }
+}
+
+fn queue_chain_step(state: QueueChainState, entry: MergeQueueEntry) -> QueueChainState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent =>
+      if entry.position != state.index {
+        QueueChainState {
+          index: state.index,
+          expected_parent: state.expected_parent,
+          refusal: Present { value: QueuePositionsNotConsecutive {
+            position: entry.position,
+            expected: state.index,
+          } },
+        }
+      } else if entry.composed_parent_sha != state.expected_parent {
+        QueueChainState {
+          index: state.index,
+          expected_parent: state.expected_parent,
+          refusal: Present { value: parent_break(
+            index: state.index,
+            position: entry.position,
+            expected_parent: state.expected_parent,
+            observed_parent: entry.composed_parent_sha,
+          ) },
+        }
+      } else {
+        QueueChainState {
+          index: state.index + 1,
+          expected_parent: entry.composed_commit_sha,
+          refusal: none,
+        }
+      }
+  }
+}
+
+fn queue_ordering_break(
+  target_tip_sha: CommitSha,
+  entries: List<MergeQueueEntry>,
+) -> QueueOrderingBreak? {
+  let walked = fold(
+    entries,
+    init: QueueChainState { index: 0, expected_parent: target_tip_sha, refusal: none },
+    f: fn(state, entry) { queue_chain_step(state: state, entry: entry) },
+  )
+  walked.refusal
+}
+
+// THE GROUPING STRATEGY DECIDES WHAT A GREEN AT POSITION N IS EVIDENCE ABOUT, so it is answered
+// as its own verdict rather than folded into admission. Under ALLGREEN an entry is admitted only
+// when it and everything ahead of it passed, which is what makes the composition's green a claim
+// about the tree that lands. Under HEADGREEN the head's result alone decides, so a red entry ahead
+// of the head is dropped and the head is RE-composed -- meaning the commit that lands is not the
+// commit that was checked, and this repository's whole reason for wanting a queue is gone. An
+// unrecognized strategy refuses: GitHub's vocabulary moved and this module's reading of what a
+// green means is no longer established.
+type GroupingAdmission
+  = GroupAdmits
+  | GroupDeniedPredecessorNotSuccess { position: Int }
+  | GroupDeniedEntrySelfNotSuccess { position: Int }
+  | GroupDeniedStrategyUnrecognized { raw: String }
+
+fn first_non_success_position(entries: List<MergeQueueEntry>) -> Int? {
+  fold(entries, init: none, f: fn(acc, entry) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if check_conclusion_is_success(c: entry.conclusion) {
+          none
+        } else {
+          Present { value: entry.position }
+        }
+    }
+  })
+}
+
+fn grouping_admission(
+  strategy: MergeQueueGroupingStrategy,
+  entries: List<MergeQueueEntry>,
+  entry: MergeQueueEntry,
+) -> GroupingAdmission {
+  match strategy {
+    UnrecognizedGroupingStrategy { raw: r } => GroupDeniedStrategyUnrecognized { raw: r }
+    HeadGreenGrouping =>
+      if check_conclusion_is_success(c: entry.conclusion) {
+        GroupAdmits
+      } else {
+        GroupDeniedEntrySelfNotSuccess { position: entry.position }
+      }
+    AllGreenGrouping => {
+      let ahead = filter(entries, e => e.position <= entry.position)
+      match first_non_success_position(entries: ahead) {
+        Absent => GroupAdmits
+        Present { value: p } =>
+          if p == entry.position {
+            GroupDeniedEntrySelfNotSuccess { position: p }
+          } else {
+            GroupDeniedPredecessorNotSuccess { position: p }
+          }
+      }
+    }
+  }
+}
+
+// THE JOINED VERDICT. Order matters and is not arbitrary: an ordering break invalidates every
+// green in the queue, so it is answered before any question about a particular entry's result; and
+// an entry whose tested composition is not the admitted commit is not "red", it is about something
+// else, so subject substitution is answered before grouping.
+type QueueAdmissionVerdict
+  = QueueAdmitted
+  | QueueDeniedOrderBroken { cause: QueueOrderingBreak }
+  | QueueDeniedSubjectSubstituted { tested: CommitSha, admitted: CommitSha }
+  | QueueDeniedGrouping { cause: GroupingAdmission }
+
+fn classify_queue_admission(
+  strategy: MergeQueueGroupingStrategy,
+  target_tip_sha: CommitSha,
+  entries: List<MergeQueueEntry>,
+  entry: MergeQueueEntry,
+  admitted_commit_sha: CommitSha,
+) -> QueueAdmissionVerdict {
+  match queue_ordering_break(target_tip_sha: target_tip_sha, entries: entries) {
+    Present { value: b } => QueueDeniedOrderBroken { cause: b }
+    Absent =>
+      match merge_group_exact_subject_verdict(entry: entry, admitted_commit_sha: admitted_commit_sha) {
+        SubjectSubstituted { tested: t, admitted: a } =>
+          QueueDeniedSubjectSubstituted { tested: t, admitted: a }
+        ExactSubject =>
+          match grouping_admission(strategy: strategy, entries: entries, entry: entry) {
+            GroupAdmits => QueueAdmitted
+            GroupDeniedPredecessorNotSuccess { position: p } =>
+              QueueDeniedGrouping { cause: GroupDeniedPredecessorNotSuccess { position: p } }
+            GroupDeniedEntrySelfNotSuccess { position: p } =>
+              QueueDeniedGrouping { cause: GroupDeniedEntrySelfNotSuccess { position: p } }
+            GroupDeniedStrategyUnrecognized { raw: r } =>
+              QueueDeniedGrouping { cause: GroupDeniedStrategyUnrecognized { raw: r } }
+          }
+      }
+  }
+}
+
+fn queue_admission_admits(v: QueueAdmissionVerdict) -> Bool {
+  match v {
+    QueueAdmitted => true
+    QueueDeniedOrderBroken { cause: _ } => false
+    QueueDeniedSubjectSubstituted { tested: _, admitted: _ } => false
+    QueueDeniedGrouping { cause: _ } => false
+  }
+}
+
+// THE TWO TERMINALS, AND WHY THEY ARE SEPARATE CONSTRUCTORS RATHER THAN ONE WITH A FLAG.
+//
+// OPERATIONAL means the queue can do its job: it is configured, the required workflow can schedule
+// for a merge_group composition, and a green candidate can advance. That is what ends starvation --
+// a change gets a publication rendezvous instead of racing a moving target.
+//
+// EXCLUSIVE means the queue is the ONLY way ordinary publication happens: no bypass standing
+// leaves a route around it. Operational does not imply Exclusive, and the gap is not theoretical --
+// a ruleset that admits a bypass actor lets an identity publish past every check while the queue
+// runs correctly beside it. Claiming Exclusive on the strength of Operational would be rung
+// inflation on precisely the axis a queue is adopted for (DESIGN section 4b): the loud property is
+// "no route around admission", and Operational establishes nothing about routes.
+//
+// So they are two constructors, Exclusive carries what Operational carries plus the bypass fact,
+// and the type makes it impossible to report the second while holding only the first's evidence.
+// WHY A QUEUE IS NOT EXCLUSIVE IS ITSELF A COPRODUCT. "A role may always bypass", "a role may
+// bypass pull requests" and "nobody has established the roster" have three different remedies --
+// revoke the grant, revoke the narrower grant, obtain an authorized read -- and only the third is
+// about evidence rather than about the world. Rendering all three as "not exclusive" would report
+// a missing observation as a known route and a known route as a missing observation.
+type QueueNonexclusiveCause
+  = AlwaysBypassActorObserved { actor_type: String, actor_id: Int }
+  | PullRequestBypassActorObserved { actor_type: String, actor_id: Int }
+  | BypassRosterNotObserved { reader: NonEmptyStr, cause: NonEmptyStr }
+
+type MergeQueueTerminal
+  = MergeQueueUnconfigured { reason: NonEmptyStr }
+  | MergeQueueOperational { grouping_strategy: String, nonexclusive: QueueNonexclusiveCause }
+  | MergeQueueExclusive { grouping_strategy: String }
+
+// THE merge_group ENROLMENT IS READ OFF THE WORKFLOW AUTHORITY, NOT RESTATED. witness_floor_triggers
+// is the same row the emitted YAML's `on` block is projected from, so deleting the trigger drops
+// this terminal rather than leaving a second declaration agreeing with nothing.
+//
+// IT READS THE TRIGGER ROW AND NOT `witness_floor_workflow.on`, WHICH IS THE SAME AUTHORITY AT A
+// USABLE COST. Reaching the field forces the whole Workflow value -- every job, step and
+// expression -- to answer a question about four trigger constructors, and the floor measured that
+// at over its 500ms per-claim CPU budget on five witnesses at once. The workflow is assembled FROM
+// this row, so reading the row is not a shortcut past the authority; it is the authority, without
+// the jobs attached.
+fn floor_workflow_admits_merge_group() -> Bool {
+  workflow_triggers_admit_merge_group(triggers: witness_floor_triggers())
+}
+
+// AN UNAVAILABLE ROSTER PRODUCES A CAUSE, NEVER AN ABSENCE OF ONE. This is the arm that makes
+// Exclusive unreachable from an unauthorized read: there is no path from BypassRosterUnavailable to
+// `none`, so a credential of unknown visibility cannot mint the claim that no route exists.
+//
+// An UNRECOGNIZED bypass_mode on an observed actor is read as the WIDER grant rather than skipped:
+// an actor carrying a mode this repository cannot read is an actor whose grant is not established,
+// and the fail-closed reading of an unestablished grant is that it grants everything.
+fn bypass_actor_cause(actor: RulesetBypassActor) -> QueueNonexclusiveCause {
+  if actor.bypass_mode == "pull_request" {
+    PullRequestBypassActorObserved { actor_type: actor.actor_type, actor_id: actor.actor_id }
+  } else {
+    AlwaysBypassActorObserved { actor_type: actor.actor_type, actor_id: actor.actor_id }
+  }
+}
+
+fn first_bypass_route(roster: BypassActorRosterObservation) -> QueueNonexclusiveCause? {
+  match roster {
+    BypassRosterUnavailable { reader: rd, cause: c } =>
+      Present { value: BypassRosterNotObserved { reader: rd, cause: c } }
+    BypassRosterObserved { actors: xs } =>
+      fold(xs, init: none, f: fn(acc, actor) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => Present { value: bypass_actor_cause(actor: actor) }
+        }
+      })
+  }
+}
+
+fn merge_queue_terminal(
+  standing: MergeQueueStanding,
+  bypass_roster: BypassActorRosterObservation,
+) -> MergeQueueTerminal {
+  match standing {
+    NoMergeQueueRule =>
+      MergeQueueUnconfigured { reason: "no merge_queue rule in the live ruleset" }
+    MultipleMergeQueueRules { count: _ } =>
+      MergeQueueUnconfigured { reason: "more than one merge_queue rule: the live queue configuration is not established" }
+    MergeQueueParametersIncomplete { missing: _ } =>
+      MergeQueueUnconfigured { reason: "a merge_queue rule is present but its parameters did not arrive complete, so what the queue does is not established" }
+    MergeQueueConfigured {
+      grouping_strategy: g,
+      merge_method: _,
+      check_response_timeout: _,
+      max_entries_to_build: _,
+      max_entries_to_merge: _,
+      min_entries_to_merge: _,
+      min_entries_to_merge_wait: _,
+    } =>
+      if !floor_workflow_admits_merge_group() {
+        MergeQueueUnconfigured { reason: "the required workflow does not list the merge_group trigger, so its check can never schedule for a queue composition" }
+      } else {
+        match first_bypass_route(roster: bypass_roster) {
+          Present { value: cause } => MergeQueueOperational {
+            grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g),
+            nonexclusive: cause,
+          }
+          Absent =>
+            MergeQueueExclusive { grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g) }
+        }
+      }
+  }
+}
+
+fn nonexclusive_cause_label(c: QueueNonexclusiveCause) -> String {
+  match c {
+    AlwaysBypassActorObserved { actor_type: t, actor_id: i } =>
+      join([t, " ", to_string(i), " may always bypass the ruleset"], "")
+    PullRequestBypassActorObserved { actor_type: t, actor_id: i } =>
+      join([t, " ", to_string(i), " may bypass the ruleset for pull requests"], "")
+    BypassRosterNotObserved { reader: rd, cause: c2 } =>
+      join(["the bypass roster is not established for ", rd, ": ", c2], "")
+  }
+}
+
+fn merge_queue_terminal_label(t: MergeQueueTerminal) -> String {
+  match t {
+    MergeQueueUnconfigured { reason: r } => concat("unconfigured: ", r)
+    MergeQueueOperational { grouping_strategy: g, nonexclusive: cause } =>
+      join(["operational, grouping ", g, "; not exclusive: ", nonexclusive_cause_label(c: cause)], "")
+    MergeQueueExclusive { grouping_strategy: g } =>
+      concat("exclusive, grouping ", g)
+  }
+}

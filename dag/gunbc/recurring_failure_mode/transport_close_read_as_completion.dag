@@ -1,0 +1,54 @@
+module gunbc.recurring_failure_mode.transport_close_read_as_completion
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data transport_close_read_as_completion: RecurringFailureMode = RecurringFailureMode {
+  identity: "transport_close_read_as_completion" as NonEmptyStr,
+
+  receipts: [
+    "**a transport close is read as protocol completion** (a consumer of a streamed response decides the response is FINISHED because the connection ENDED, rather than because the protocol's own terminator arrived. ",
+
+    "Every partial answer then presents as a complete one, and the consumer reports success while holding a fragment. ",
+
+    "This is state-space conflation on the completion axis specifically -- `the bytes stopped` and `the sender said it was done` are two facts, and a stream has a third state, SEVERED, that a two-state reading cannot express. ",
+
+    "**SPECIMEN, measured 2026-09-01 by a peer session on its own routing layer.** A streaming SSE client accumulated `message_start`, then a long run of `content_block_delta`, and registered completion in `res.on('end')` UNCONDITIONALLY -- never checking that `content_block_stop`, `message_delta` carrying `stop_reason`, and `message_stop` had arrived. ",
+
+    "A stream severed after 364 thinking deltas therefore produced a well-formed response object containing an intro line and a heading, which the transcript recorded with a tidy `stop_reason` and the UI rendered faithfully as the model's answer. ",
+
+    "**EVERY LAYER DOWNSTREAM OF THE READING LAYER BEHAVED CORRECTLY, AND THAT IS WHY THE TRUNCATION PROPAGATED SILENTLY.** The reading layer did NOT behave correctly -- it is the defect, converting a transport termination into a protocol completion and minting a `stop_reason` no sender had emitted. ",
+
+    "What every layer BELOW it then did was faithful: the transcript recorded the object it was handed, and the UI rendered that object exactly. ",
+
+    "The distinction is the whole diagnostic value of the row -- a defect that hands its consumers a WELL-FORMED artifact recruits every correct layer beneath it into carrying the wrong answer, so correctness downstream is not evidence of correctness upstream. ",
+
+    "It is also why the class survived a full evening of investigation that cleared the UI, the parser, the token budget, and the serving stack in turn: each of those really was innocent, and each exoneration made the true location look less likely rather than more. ",
+
+    "**THE DIAGNOSIS WAS INVERTED FOR HOURS BY THE ARTIFACT THE DEFECT ITSELF PRODUCED.** The fabricated `stop_reason: end_turn` was read at face value as `the model chose to stop`, so the investigation was pointed at the model and at long-context serving -- a lead reinforced by a genuinely large KV allocation -- while the defect sat in the layer doing the reading. ",
+
+    "**RECOGNITION RULE: find the completion predicate and ask whether it names a PROTOCOL EVENT or a TRANSPORT EVENT.** `on('end')`, `on('close')`, process exit, EOF, a read returning zero, and `the socket closed` are transport; a terminator frame, a `done` member, a declared length satisfied, and a trailer are protocol. ",
+
+    "A consumer whose completion predicate is transport-shaped cannot distinguish a finished answer from a severed one, no matter what it does downstream. ",
+
+    "**THE SECOND HALF OF THE RULE IS ABOUT RECOVERY, AND IT IS WHY THE CLASS IS NOT MERELY A MISSING CHECK.** Neither the Messages API nor Ollama's compatibility layer carries a resumption protocol -- no sequence numbers, no cursor, no reattachable session -- so a severed stream cannot be resumed and the only recovery is re-issuing the whole request. ",
+
+    "A client that cannot DETECT truncation therefore cannot retry either, and the missing predicate silently removes the entire recovery arm rather than one diagnostic. ",
+
+    "**THE REMEDY IS ORDERED AND THE ORDER IS LOAD-BEARING**: make truncation a typed refusal FIRST, because until it is detectable a retry cannot be triggered and a fix cannot be verified; only then add re-issue. ",
+
+    "Adding retry first produces a client that retries the errors it can already see and silently accepts the ones it cannot. ",
+
+    "**GUNBC'S OWN EQUIVALENT PATH IS STRUCTURALLY IMMUNE, and the contrast is the useful part rather than a boast.** `gunbc.spark.serving_readback_parse` `spark_serving_parse_generate_done` reads completion from the response's OWN `done` member, and `spark_serving_parse_version_json` refuses a body it cannot parse with `SparkServingReadbackRefused` carrying a typed cause instead of collapsing to an absent reading. ",
+
+    "A severed body there produces a refusal, not a short answer -- the protocol terminator is the predicate, which is exactly the repair the specimen needs. ",
+
+    "**BOUNDED AGAINST NEIGHBOURS.** Against `empty_observation_narrow`: there an observation that could not express what changed renders as `nothing is affected`; here a PARTIAL observation renders as a COMPLETE one, so the count is plausible rather than empty and no zero draws attention. ",
+
+    "Against `absorbing_fallback`: that arm WIDENS on ignorance and is merely expensive; this arm reports a fragment as an answer and is silently wrong, which is below the ladder rather than on it. ",
+
+    "Against `unbacked_execution_claim`: there prose asserts a relation no authority backs; here a machine-generated artifact asserts a completion no protocol event backs, and it is more dangerous precisely because a `stop_reason` field reads as evidence.)",
+  ],
+
+  evidence: [],
+}

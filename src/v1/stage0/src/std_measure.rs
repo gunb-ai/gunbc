@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveShardCount::*;
 use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
@@ -133,6 +134,13 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
     {
         let k = kibi_factor();
         ((k.clone() * k.clone()) * k.clone())
+    }
+}
+
+pub fn mebibyte_scale_factor_bytes() -> Nat {
+    {
+        let k = kibi_factor();
+        (k.clone() * k.clone())
     }
 }
 
@@ -361,6 +369,10 @@ pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
 }
 
+pub fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+    byte_size((mebibyte_count(m.clone()) * mebibyte_scale_factor_bytes()))
+}
+
 pub type BitWidth = Rc<Measure<Information, One, i64>>;
 
 pub fn bits_per_byte() -> Nat {
@@ -376,6 +388,8 @@ pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
+
+pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
@@ -599,6 +613,33 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
     measure_count(r.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveShardCount {
+    PositiveShardCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveShardCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveShardCount::PositiveShardCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn positive_shard_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveShardCount> {
+    Rc::new(PositiveShardCount::PositiveShardCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
+    match (*shards.clone()).clone() {
+        PositiveShardCount::PositiveShardCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
 }
 
 pub fn watt(count: Nat) -> Watt {
@@ -953,6 +994,19 @@ pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
 }
 
+pub type ParameterCount = Rc<Measure<Count, Mega, i64>>;
+
+pub fn parameter_count(millions: Nat) -> ParameterCount {
+    Rc::new(Measure {
+        count: millions.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn parameter_count_value(p: ParameterCount) -> Nat {
+    measure_count(p.clone())
+}
+
 pub fn token_count(count: Nat) -> TokenCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -962,6 +1016,30 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;
+
+pub fn tokens_per_second(count: Nat) -> TokensPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+    measure_count(r.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {
