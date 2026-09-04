@@ -37,6 +37,9 @@ import product.printed_chassis.realization_contract {
   raw_operation_row,
   contract_schema_version,
 }
+import product.printed_chassis.fan_mount {
+  FanMountGeometry, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // THE HANDLER TAKES ONE ARGUMENT AND IT IS THE CAPABILITY, WHICH IS THE WHOLE DESIGN.
 //
@@ -374,7 +377,16 @@ data cadquery_preamble: String = "import cadquery as cq\n"
 // private one is reachable by the next function added to this module, and the pairing this
 // discharges was writable rather than reachable, which is the same distinction.
 fn realize_admitted(a: AdmittedRealizationV0) -> CadQueryEmission {
-  let plan = cadquery_emission_plan(a: a)
+  emit_instruction_plan(plan: cadquery_emission_plan(a: a))
+}
+
+// THE ASSEMBLER, FACTORED OUT SO THERE IS ONE OF IT RATHER THAN ONE PER PART.
+//
+// It takes a sealed plan and nothing else. Every part-shaped entry point above it converts a sealed
+// part geometry into a plan; none of them re-implements the line fold, the dimension refusal, or the
+// preamble. A second copy of this fold is how two parts would start emitting subtly different
+// programs from the same instruction vocabulary.
+fn emit_instruction_plan(plan: CadQueryEmissionPlanV0) -> CadQueryEmission {
   let scan = fold(
     map(plan.instructions, i => instruction_line(i: i)),
     init: LineScan { lines: [], refusal: NoDimensionRefused },
@@ -455,4 +467,64 @@ fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
       }
     }
   }
+}
+
+
+// ═══ PARTS THAT ARE A PLATE WITH THROUGH-HOLES, WHICH IS MOST OF THEM ═══
+//
+// The emitter above reached exactly one part, because its capability argument was the COUPON's
+// admitted carrier. That is a narrower gate than the instruction vocabulary needs: RealizePlateV0
+// and RealizeThroughHoleV0 already describe any rectangular plate with circular through-holes, and
+// the fan mount and the standoff gauge are both exactly that. The vocabulary was general and the
+// door was part-shaped.
+//
+// THIS DOES NOT WEAKEN THE SEAL, AND THE DISTINCTION IS THE WHOLE DESIGN. The module states that
+// there is no overload taking a plate and a feature list, and there still is not: this entry point
+// takes AdmittedPlatePartV0, which is sole_constructor and therefore miniable only here. Each mint
+// below requires a part geometry that is ITSELF sole_constructor in its own module -- so possessing
+// a FanMountGeometry is already proof that admit_fan_mount ran and its refusals did not fire. The
+// capability is converted, never manufactured, and no bare plate or bare hole list enters emission.
+//
+// WHAT IS DELIBERATELY NOT SHARED is the conformance judgment. The coupon's judgment compares a
+// specimen against a hole-diameter ladder; the fan mount's asks whether the bore reaches the
+// mounting holes. Those are different questions about different parts and folding them into one
+// gate would produce a check that answers neither. Each part keeps its own admission; only the
+// realization is common.
+type AdmittedPlatePartV0 sole_constructor {
+  plate: PlateDimensions
+  holes: List<CouponOperation>
+  part: NonEmptyStr
+}
+
+fn admitted_plate_part_holes(p: AdmittedPlatePartV0) -> List<CouponOperation> { p.holes }
+
+fn admitted_plate_part_name(p: AdmittedPlatePartV0) -> NonEmptyStr { p.part }
+
+// The bore is placed FIRST and the mounting holes follow, matching the order the fan mount authority
+// declares them in. Order is not cosmetic here: it is the correspondence between one modeled feature
+// and one emitted cut, which is the property that lets a reader check the program against the model
+// by reading down both.
+fn plate_part_from_fan_mount(g: FanMountGeometry) -> AdmittedPlatePartV0 {
+  AdmittedPlatePartV0 {
+    plate: fan_mount_plate(g: g),
+    holes: concat([fan_mount_bore(g: g)], fan_mount_mounting_holes(g: g)),
+    part: "fan_mount",
+  }
+}
+
+fn plate_part_emission_plan(p: AdmittedPlatePartV0) -> CadQueryEmissionPlanV0 {
+  CadQueryEmissionPlanV0 {
+    instructions: concat(
+      [CadQueryInstructionV0 { subject: RealizePlateV0 { plate: p.plate } }],
+      fold(p.holes, init: [], f: fn(acc, op) {
+        concat(acc, [CadQueryInstructionV0 {
+          subject: RealizeThroughHoleV0 { operation: op, plate_thickness: p.plate.size_z },
+        }])
+      }),
+    ),
+  }
+}
+
+fn realize_plate_part(p: AdmittedPlatePartV0) -> CadQueryEmission {
+  emit_instruction_plan(plan: plate_part_emission_plan(p: p))
 }
