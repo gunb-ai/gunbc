@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 //
 // This is a SEPARATE authority from extdeps.ssh.session deliberately. That module anchors to RFC
 // 4254, the SSH Connection Protocol, which defines the channel requests it declares (Exec,
-// ExecArgv, ExecScript) but NOT -o, ssh_config keywords, or their value domains — those are OpenSSH
+// ExecScript) but NOT -o, ssh_config keywords, or their value domains — those are OpenSSH
 // implementation surface, documented in ssh_config(5). session.dag already separates PROTOCOL from
 // IMPLEMENTATION; putting these keywords under its RFC anchor would ground them in a document that
 // does not contain them, the citation defect DESIGN section 3 names.

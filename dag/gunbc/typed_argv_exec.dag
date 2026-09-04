@@ -3,8 +3,8 @@ module gunbc.typed_argv_exec
 import std.types { String, List, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.ssh.session {
-  ssh_session_exec_argv,
   ssh_session_exec_result_from_service,
+  ssh_session_exec_portable_words,
   SshSessionExecResult,
 }
 import extdeps.ssh.session
@@ -15,10 +15,12 @@ import gunbc.fleet_known_hosts_anchor {
   portable_remote_words,
   shape_fleet_ssh_exec,
 }
-import extdeps.ssh.session { ssh_session_exec_portable_words }
 
 // Realization edge for remote command dispatch over SSH: one argv shape per op, taken from the
-// extdeps authority that owns that operation, handed to the ssh.Session.ExecArgv transport.\n\nWhy
+// extdeps authority that owns that operation, handed to the ssh.Session.ExecPortableWords
+// transport. ExecPortableWords takes client_args already shaped (with host, credentials, and
+// portable-word allowlist) rather than building [ssh, host, --, argv] inside a transport literal,
+// so the shaping is callable and testable by witnesses.\n\nWhy
 // the allowlist below is a wall and not decoration: the remote half of that transport is a command
 // STRING, and under the OpenSSH client and server the corpus actually deploys against, that string
 // is re-parsed by the remote user's shell. Those are two facts of different weight and
@@ -31,9 +33,9 @@ import extdeps.ssh.session { ssh_session_exec_portable_words }
 // and refuses the empty word, which leaves no space, quote, redirect, expansion, or separator able
 // to reach that shell, and refuses (typed, located, carrying the offending word) rather than
 // quoting or dropping it.\n\nThe wall is at this edge rather than in the transport, so it holds for
-// callers that come through typed_argv_exec_over_ssh or typed_argv_probe_over_ssh - today the only
-// callers of ExecArgv in the corpus - and not by construction for a future caller that imports
-// extdeps.ssh.session directly. Wave C5 / bash-emit #5828 slice.
+// callers that come through typed_argv_exec_over_ssh or typed_argv_probe_over_ssh, and not by
+// construction for a future caller that imports extdeps.ssh.session directly. Wave C5 / bash-emit
+// #5828 slice.
 
 type TypedArgvExecOutcome =
   | TypedArgvExecConverged { result: SshSessionExecResult }
@@ -105,7 +107,11 @@ fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
 fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
-    Absent => TypedArgvExecConverged { result: ssh_session_exec_argv(host: host, argv: argv) }
+    Absent => TypedArgvExecConverged {
+      result: ssh_session_exec_portable_words(
+        client_args: concat([host as String, "--"], argv),
+      ),
+    }
   }
 }
 
@@ -113,9 +119,8 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => {
-      let result = ssh.Session.ExecArgv(
-        host: host,
-        argv: argv,
+      let result = ssh.Session.ExecPortableWords(
+        client_args: concat([host as String, "--"], argv),
         expect: OutcomeIsData,
       )
       TypedArgvExecConverged {
