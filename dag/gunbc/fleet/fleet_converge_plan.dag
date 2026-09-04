@@ -163,6 +163,7 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.runner_slot_provision {
+  runner_slot_provenance_wire,
   RunnerSlotMember,
   RunnerSlotMemberAt,
   runner_slot_member_key,
@@ -182,6 +183,8 @@ import gunbc.runner_host_deploy {
   admit_runner_host,
 }
 import gunbc.runner_service_activation {
+  RunnerUnitStandings,
+  runner_unit_standings_baseline_rows,
   RunnerActivationReadiness,
   RunnerTransitionPlan,
   runner_activation_plans_for_deploy,
@@ -393,6 +396,7 @@ type FleetConvergeRequest
       observed_slots: List<RunnerSlotMember>
       observed_fabric_cells: FabricCellObservationDecision
       observed_activation_readiness: RunnerActivationReadiness
+      observed_unit_standings: RunnerUnitStandings
     }
   | LaunchEnvironmentConverge {
       host: NonEmptyStr
@@ -413,7 +417,7 @@ type FleetConvergeRequest
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => FullHost
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => FullHost
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
@@ -423,7 +427,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
 
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
-    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => h
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => h
     LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
@@ -578,7 +582,7 @@ fn fleet_converge_apply_artifact_admits(
                 store_path: fabric_allocation_store_substrate_spec().path,
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => ApplyMemberSetMismatch
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => ApplyMemberSetMismatch
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
             SparkServingConverge { host: _, spark_plan: _ } => ApplyMemberSetMismatch
@@ -1171,6 +1175,7 @@ fn fleet_converge_slot_refusal_count(
 fn fleet_converge_activation_plans(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<RunnerTransitionPlan> {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
@@ -1179,6 +1184,7 @@ fn fleet_converge_activation_plans(
         host_admission: admit_runner_host(deploy: d),
         deploy: d,
         readiness: readiness,
+        standings: standings,
       )
   }
 }
@@ -1186,9 +1192,10 @@ fn fleet_converge_activation_plans(
 fn fleet_converge_activation_lines(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<String> {
   map(
-    fleet_converge_activation_plans(host: host, readiness: readiness),
+    fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
     p => runner_transition_plan_line(plan: p),
   )
 }
@@ -1196,9 +1203,10 @@ fn fleet_converge_activation_lines(
 fn fleet_converge_activation_refusal_count(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> Int {
   runner_activation_refusal_count(
-    plans: fleet_converge_activation_plans(host: host, readiness: readiness),
+    plans: fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
   )
 }
 
@@ -1263,12 +1271,13 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } => {
       let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
       let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
-      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness)
+      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings)
       let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
       if total == 0 {
         FullyApplied
@@ -1329,6 +1338,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       concat(
         concat(
@@ -1340,7 +1350,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
         ),
         concat(
           concat(
-            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness)),
+            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness, standings: standings)),
             fleet_converge_activation_declaration_lines(),
           ),
           concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
@@ -1373,11 +1383,12 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       [
         concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
-        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness))),
+        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
         concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
@@ -1454,9 +1465,10 @@ fn fleet_converge_activation_declaration_lines() -> List<String> {
 fn activation_apply_lines(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<String> {
   flat_map(
-    fleet_converge_activation_plans(host: host, readiness: readiness),
+    fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
     p => runner_transition_apply_lines(plan: p),
   )
 }
@@ -1483,11 +1495,18 @@ fn slot_apply_lines(
         "exit 1",
       ]
     SlotFamilyPlanned { plan: p } =>
-      if membership_added_count(plan: p.membership) == 0 {
-        ["# runner-slot: no slots to add"]
-      } else {
-        concat([p.base_dir_script], p.upsert_extract_scripts)
-      }
+      concat(
+        if membership_added_count(plan: p.membership) == 0 {
+          ["# runner-slot: no slots to add"]
+        } else {
+          concat([p.base_dir_script], p.upsert_extract_scripts)
+        },
+        if length(p.teardown_scripts) == 0 {
+          ["# runner-slot: no retired trees to remove"]
+        } else {
+          concat(["# runner-slot: retired incarnations (unregistered, unit inactive and disabled, name in this host's grammar)"], p.teardown_scripts)
+        },
+      )
   }
 }
 
@@ -1754,6 +1773,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: _,
+      observed_unit_standings: standings,
     } =>
       join(
         concat(
@@ -1769,7 +1789,10 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
                     "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
                   )),
                 ),
-                map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+                concat(
+                  map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
+                  runner_unit_standings_baseline_rows(standings: standings),
+                ),
               ),
           ),
           fabric_cell_baseline_rows(population: observed_fabric_cells),
@@ -2602,7 +2625,7 @@ fn fleet_converge_apply_shell(
 
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } =>
       "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
@@ -2625,6 +2648,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       concat(
         concat(
@@ -2638,7 +2662,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
             concat(
               ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
               concat(
-                activation_apply_lines(host: host, readiness: readiness),
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
                 fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
               ),
             ),
@@ -2851,6 +2875,7 @@ fn fleet_converge_plan_artifact(
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
 ) -> FleetConvergePlanArtifactOutcome {
   match spark_axis {
     SparkServingAxisUnobserved { host: ah } =>
@@ -2886,6 +2911,7 @@ fn fleet_converge_plan_artifact(
           observed_slots: observed_slots,
           observed_fabric_cells: observed_fabric_cells,
           observed_activation_readiness: observed_activation_readiness,
+          observed_unit_standings: observed_unit_standings,
           ),
         }
       }
@@ -2909,6 +2935,7 @@ fn fleet_converge_plan_artifact(
           observed_slots: observed_slots,
           observed_fabric_cells: observed_fabric_cells,
           observed_activation_readiness: observed_activation_readiness,
+          observed_unit_standings: observed_unit_standings,
           ),
         }
       }
@@ -2938,6 +2965,7 @@ fn fleet_converge_plan_artifact_assembled(
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
 ) -> FleetConvergePlanArtifact {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
@@ -2948,6 +2976,7 @@ fn fleet_converge_plan_artifact_assembled(
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
     },
     prior_generation: prior_generation,
     spark_rows: spark_rows,
@@ -2976,6 +3005,7 @@ fn fleet_converge_plan_outcome_of_request(
       observed_slots: sl,
       observed_fabric_cells: fc,
       observed_activation_readiness: ar,
+      observed_unit_standings: st,
     } =>
       fleet_converge_plan_artifact(
         host: h,
@@ -2986,6 +3016,7 @@ fn fleet_converge_plan_outcome_of_request(
         observed_slots: sl,
         observed_fabric_cells: fc,
         observed_activation_readiness: ar,
+        observed_unit_standings: st,
       )
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       FleetConvergePlanArtifactReady {
@@ -3034,7 +3065,7 @@ fn fleet_converge_plan_spark_wire_lines(
   match request {
     FullHostConverge {
       host: _, observed_timers: _, observed_caps: _, observed_spark: _,
-      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _,
+      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _,
     } => [
       concat(
         "# spark-serving-typed-actions:",
