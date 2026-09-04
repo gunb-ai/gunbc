@@ -1,89 +1,127 @@
-# SCM `add`/`commit` — what the corpus already models, and what is declared red
+# SCM `add`/`commit` — a commit freezes an authored corpus; a program is a projection of it
 
-Subject of gunbc#9891 finding 6. This note settles the model before anything is built. Two of its
-findings correct claims I made earlier in this analysis, and both corrections came from measuring
-rather than searching.
+Subject of gunbc#9891 finding 6, settled with the designated SCM reviewer before implementation.
+The governing sentence:
+
+> **A repository commit freezes an authored corpus manifest. A semantic program is a separately
+> bound ingestion projection of that corpus, not an alternative kind of commit subject.**
 
 ## 1. The gap
 
-`gunbc.scm.cli` exposes three verbs — `scm_log`, `scm_status`, `scm_init`. There is no `add` and no
-`commit`. `cli.dag` documents the consequence about itself: it passes `empty_proposal()` because
-"the entry does not carry what is staged", and calls that "a REAL limitation rather than a
-placeholder".
+`gunbc.scm.cli` exposes `scm_log`, `scm_status`, `scm_init` — no `add`, no `commit`. `cli.dag`
+documents the consequence about itself: it passes `empty_proposal()` because "the entry does not
+carry what is staged", "a REAL limitation rather than a placeholder". So the kernel has no producer,
+which is the §5 specification-without-execution gap the SCM design note also names.
 
-So the kernel — object store, checkout, identity, role-requirement integration, ancestry, JSON
-round-trip — has no producer. That is the specification-without-execution gap DESIGN §5 names, and
-the SCM design note names it too: *nothing has ever consumed this kernel; a witness suite is not a
-consumer.*
+## 2. Two corrections to this note's own earlier drafts
 
-## 2. Correction: ingestion is modeled, not absent
+**Ingestion is modeled, not absent.** An earlier draft asserted otherwise. It searched
+`dag/gunbc/scm`, found nothing, and let an empty subtree speak for the repository — *a partial
+observer returning the negative value of a total observer*, the class recorded in
+`gunbc.namespace_wave_admission`'s ledger. `src/v2/compiler` models `01_tokenize`, `02_parse`,
+`03_ingest`, `00_compile`.
 
-An earlier draft of this note asserted that ingestion is not reachable from `.dag`. **That was
-wrong**, and wrong in a specific way: it searched `dag/gunbc/scm`, found nothing, and let an empty
-subtree speak for the repository — a partial observer returning the negative value of a total
-observer, which is the class `gunbc.namespace_wave_admission`'s ledger records from this same
-branch.
+**Most of the proposed vocabulary exists.** `v2.compiler.source_authority` declares
+`SourceRef { path, source_root, content_hash }` and `SourceRootIngest`, with
+`source_root_ingest_build_from_source_refs`. Minting a manifest of `path -> content identity` would
+be a second name for it. Finding 6's *substance* stands; its proposed vocabulary does not.
 
-`src/v2/compiler` models the pipeline: `01_tokenize` (`lex_walk_artifact(source, file, rules)`),
-`02_parse`, `03_ingest`, and `00_compile` with `compile(source: CoreNode, mode)` and
-`compile_source_root_ingest_with_admission(ingest: SourceRootIngest, …)`.
+## 3. `semantic_root` does not belong in the manifest
 
-## 3. Correction: the manifest vocabulary largely exists
+Finding 6 phrases the manifest as `path -> semantic_root -> authored_source_identity`. That is
+wrong for a deeper reason than present-day constructibility: **`semantic_root` is a derived
+ingestion result**, depending on the source object, corpus context and imports, the ingestion rule,
+language and rule versions, and possibly source-root and target configuration. Putting it in the
+manifest fuses an input with a realization result, and makes the manifest unauthorable for
+malformed or not-yet-ingested source — precisely the corpora a source-control system must still be
+able to freeze.
 
-Finding 6 describes a `CorpusManifestObject` of `path -> semantic_root -> authored_source_identity`.
-`v2.compiler.source_authority` already declares:
+The authored manifest is therefore only:
 
-    type SourceRef             { path: String, source_root: SourceRootRef, content_hash: ContentHash }
-    type SourceStorageIdentity { path: String, source_root: SourceRootRef }
-    type SourceRootIngest      = FreeMonoid<DagSourceReadWitness>
+    canonical corpus path -> exact authored-source target
 
-with `source_root_ingest_build_from_source_refs(refs: List<SourceRef>)` in `source_authority_read`.
+and the semantic relation lives in a separate carrier, whose load-bearing properties are that it
+names the manifest it is about, names the ingestion rule/version, keeps each per-file semantic
+result bound to the exact source identity, and derives the global program root rather than
+accepting one supplied beside the corpus:
 
-**Minting a manifest carrying `path -> content identity` would be a second name for most of
-`SourceRef`** — the §3 nicknaming violation. Finding 6's phrasing predates, or overlooked, this
-authority; the finding's *substance* stands, its proposed vocabulary does not.
+    type CorpusIngestionProjection { corpus, ingestion_rule, program_root, files }
+    type FileIngestionProjection   { path, source, semantic_root }
 
-## 4. The measurement: ingest is modeled AND DECLARED RED
+This preserves the case that proves the split: a comment-only edit changes authored bytes, so
+manifest A ≠ manifest B, while the semantic root is unchanged.
 
-`v2.test.program_assembly.real_ingest` is the instrument. It builds a `SourceRootIngest` from the
-host's real source refs and asserts the parse. Executed at main with `claim_batch`:
+## 4. Object-store membership and edge admissibility are separate axes
 
-| claim | result |
-|---|---|
-| `program_assembly_real_ingest_module_roots_parse_holds` | **FAIL** |
-| `program_assembly_real_ingest_host_manifest_receipt_holds` | **FAIL** |
-| `program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots` | passes (expecting-red control) |
+The manifest joins `ScmObject` **without** becoming a legal `StoredEdge` target:
 
-Both failures are **declared**: `src/v2/workflow/floor_expected_red.dag` enrolls
-`…real_ingest.program_assembly_real_ingest_module_roots_parse_holds` and
-`…_host_manifest_receipt_holds` as expected red. The local result matches the declared expectation,
-so these are the corpus's stated position, not a regression.
+    type ScmObject = SemanticNodeObject(ObjectRecord)
+                   | AuthoredSourceObject(AuthoredSourceRecord)
+                   | CorpusManifestObject(CorpusManifestRecord)
 
-**So `scm` cannot obtain a semantic program root from files today** — not because the machinery is
-missing, but because the claims demonstrating it parsing real source are enrolled as expected
-failures.
+`StoredEdge.target` remains exactly `SemanticNodeTarget`, so #9891's distinction is untouched. Each
+kind gets its own target and its own three-way find outcome, so a walk cannot read one kind's
+absence as another's: the manifest walk follows only authored-source targets, a semantic node only
+semantic targets, an authored source nothing.
 
-## 5. What that leaves
+`CommitClosure` is **not** silently widened — its subject is a semantic root. Either a separate
+corpus closure, or a parameterized mechanism whose exported outcomes still distinguish
+semantic-node requirements from authored-source requirements.
 
-A commit's subject is a semantic program (`RepositoryCommit.root: SemanticNodeObjectRef`,
-`mint_repository_commit(root: SemanticNodeTarget, …)`). With §4 red, `commit` cannot honestly
-produce one, and a `commit` that always refuses is specification-without-execution wearing a verb.
+## 5. `commit` must not refuse for want of ingestion
 
-**Proposed slice — `add` and `status`, not `commit`:**
+This corrects an earlier proposal in this note that `commit` be withheld until ingestion is green.
 
-- `add` stages `SourceRef`s, reusing `v2.compiler.source_authority` rather than minting a manifest;
-- `status` reports what is staged, which repairs the limitation `cli.dag` documents about itself.
+Freezing what was authored is **fully answerable today**: paths are known, bytes are known, source
+identities and the manifest identity derive from them, and the exact authored state is
+reconstructible. The missing fact appears only when a *semantic* question is asked — reconstruct the
+node, integrate role requirements, validate, produce semantic closure. Those answer
+`SemanticProjectionUnavailable { corpus }` or an ingestion refusal carrying real diagnostics.
 
-That is a real executed consumer for the staging half — `add` writes, `status` reads it back —
-without inventing vocabulary and without pretending the program half exists.
+Refusing `commit` would fuse **recording state** with **establishing semantic validity**, which the
+SCM design keeps apart. An invalid corpus, or one this compiler cannot ingest, must still be
+committable if `commit` is to remain distinct from certification.
 
-**`commit`'s trigger, named as a capability rather than an artifact:** when the corpus can parse
-real source into module roots — i.e. when the §4 claims leave `floor_expected_red` — `commit` can
-produce a genuine program root. Until then it is not built, rather than built and refusing.
+So the canonical record becomes approximately:
 
-## 6. Open question
+    type RepositoryCommit sole_constructor {
+      reference: RepositoryCommitRef
+      corpus: CorpusManifestObjectRef
+      message: String
+      ancestry: CommitAncestry
+    }
 
-Is staging-without-`commit` a coherent slice, or a half-verb that should be refused until the whole
-vertical can land? The case for it is that it creates the kernel's first real consumer and fixes a
-documented limitation; the case against is that `add` whose product nothing can commit is itself
-unconsumed, one level up.
+Two repositories may differ in *projection availability* while agreeing entirely about the commit.
+Disagreement about which manifest a commit names stays forbidden; two projections under one
+`(manifest, ingestion rule)` key yielding different roots must refuse as an authority collision.
+
+Compatibility with the existing semantic-root format belongs in a **versioned decoder**, not in the
+canonical writer — and absent a measured durable population, root-migrate rather than keep a
+permanent legacy arm.
+
+## 6. A naming fork to close before both sides gain consumers
+
+`gunbc.scm.checkout` declares a bare `Commit`, which role-requirement integration returns; the
+repository record is `RepositoryCommit`. They currently meet on a semantic root. Once repository
+history is corpus-rooted they stop meaning the same thing, so the bare one becomes
+`SemanticCommit` / `ProgramRoot` before both gain production consumers — the same §3 fork this
+lane's previous PR closed for `merge`.
+
+## 7. Scope, stated no larger than it is
+
+`add`/`commit` makes load-bearing: the authored-source store, the manifest, repository history,
+persistence, `log`, `status`, and the ancestry spine.
+
+It does **not** make role-requirement integration load-bearing. That operation returns the separate
+semantic commit whose only content is a node root; it does not produce a `RepositoryCommit`.
+Joining those two worlds still needs ingestion, and eventually semantic-to-authored emission.
+
+## 8. Sequence
+
+1. **Model**: the manifest object, its ref and target, the three-way find outcome, the corpus
+   closure, `RepositoryCommit.corpus`, the `Commit` rename, the versioned decoder.
+2. **Verbs**: `add` (stage), `status` (report staged), `commit` (freeze the manifest).
+
+Pending state is not option B: a *committed* manifest must be reachable from the commit, while a
+*pending* one is intentionally not — `RepositoryEnvelope.checked_out` is already local workspace
+state rather than authoritative history.
