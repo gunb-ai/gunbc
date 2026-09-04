@@ -2,13 +2,13 @@ module v2.test.emit.semantic_decl_lookup_receipt_test
 
 import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,
-  rust_decl_derive_lex_spelling
+  rust_decl_derive_lex_spelling,
+  rust_semantic_decl_serialize_profile_bundle_node
 }
-import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.compilers.semantic_decl_emission {
+  decode_semantic_decl_serialize_profile_bundle,
   semantic_decl_binding_spelling_lookup,
-  semantic_decl_emission_from_target,
   semantic_decl_profile_binding_spellings
 }
 import v2.std.compilers.target_model { bound_spelling_from_map }
@@ -19,10 +19,12 @@ import v2.std.text { String }
 data expected_derive_spelling: String = rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
 
 test fn row_lookup_returns_derive_spelling() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
-    Accepted { value: emission, diagnostics: _ } =>
+  match decode_semantic_decl_serialize_profile_bundle(
+    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+  ) {
+    Accepted { value: profile, diagnostics: _ } =>
       match semantic_decl_binding_spelling_lookup(
-        profile: emission.enum_serialize_profile,
+        profile: profile,
         binding: ^rust_decl_derive_enum_copy_binding
       ) {
         Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
@@ -33,9 +35,11 @@ test fn row_lookup_returns_derive_spelling() -> Bool {
 }
 
 test fn map_lookup_returns_derive_spelling() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
-    Accepted { value: emission, diagnostics: _ } =>
-      match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
+  match decode_semantic_decl_serialize_profile_bundle(
+    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+  ) {
+    Accepted { value: profile, diagnostics: _ } =>
+      match semantic_decl_profile_binding_spellings(profile: profile) {
         Accepted { value: decoded_bindings, diagnostics: _ } =>
           match bound_spelling_from_map(
             binding_spellings: decoded_bindings,
