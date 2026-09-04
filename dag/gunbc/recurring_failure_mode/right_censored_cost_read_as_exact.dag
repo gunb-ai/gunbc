@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.right_censored_cost_read_as_exact
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data right_censored_cost_read_as_exact: RecurringFailureMode = RecurringFailureMode {
+  identity: "right_censored_cost_read_as_exact" as NonEmptyStr,
+
+  receipts: [
+    "**a right-censored cost read as an exact one** (an instrument stops because a POLICY THRESHOLD fired before the subject completed, and the figure it emits is a LOWER BOUND on the true cost. Carried in the same field, column or type as a completed measurement, it is then summed, ranked, compared against a line, or deflated into a budget as though it were the cost. ",
+
+    "WHAT MAKES IT INVISIBLE IS THAT THE BOUND LOOKS LIKE DATA: it has the right units, the right magnitude and the right shape, so nothing about the value marks it as incomplete. ",
+
+    "AND THE MAGNITUDE IS APPROXIMATELY THE CEILING THAT STOPPED IT, which inverts every ranking built on it. A preempted row reports a figure near the budget, so it sorts ABOVE genuinely expensive completed rows and a 'worst observed' derived from the population describes THE CEILING, NOT THE MACHINE. The remedy sized from it is then sized against a policy constant that the operator chose, wearing the authority of a measurement. ",
+
+    "RECOGNITION RULE: WHEREVER A COST, DURATION, SIZE OR COUNT CAN BE TRUNCATED BY A DEADLINE, BUDGET, RETRY CAP, PAGE LIMIT OR TIMEOUT, ASK WHETHER THE STOPPED CASE AND THE COMPLETED CASE INHABIT THE SAME CARRIER. If one field, column or constructor holds both, the conflation has already happened and no consumer can undo it -- the information distinguishing them was destroyed at the write, not at the read. The tell is a field named for the quantity (`cpu_ms`) rather than for the measurement's completeness, beside a separate flag nobody joins to it. ",
+
+    "THIS IS THE INVERSE OPERATION OF `censored_estimator_drops_its_own_tail` AND THE TWO MUST NOT BE MERGED. There, censored observations are EXCLUDED from an estimate and the statistic is biased low with no bound; here a censored observation is INCLUDED and read as exact. Dropping the tail and admitting the tail as a point are opposite mistakes over the same population, and a repair for one is not a repair for the other -- a system can and did commit both about the same artifact. It is also distinct from `window_rendered_subject_misattribution`: there a correctly-measured figure is attributed to the wrong subject; here the subject is right and the figure is not a measurement at all. ",
+
+    "SPECIMEN, gunbc#10210. `required_floor_claim_cost.tsv` carried one `cpu_ms` column for every claim. A claim the per-claim CPU deadline preempted goes INTERRUPTED-BEFORE-VERDICT and reports where the POLL OBSERVED THE CEILING -- 500ms against a 500ms budget, or 502ms -- while a completed claim reports its cost. The floor cost distribution's bands, percentiles, worst-row and inflation pairing consumed the column undifferentiated, so the implied-budget derivation deflated a ceiling by a ratio computed partly from ceilings. ",
+
+    "RUNG FOUND AT: BELOW THE FLOOR, WHICH IS NOT RUNG 1 AND THE DISTINCTION IS THE POINT. Rung 1 requires harm CONTAINED by total operations, typed outcomes, bounds, rollback or isolation. A column rendering a bound and a completion under one name contains nothing: it does not refuse, bound or prevent, and a censored value consumed where an exact cost is read is a FABRICATED PLAUSIBLE OUTPUT, which DESIGN section 4b places outside the ladder and forbids outright. This row was first filed claiming `mitigatable` and that was refused by review; the correction is recorded because the inflated reading was written by the author of the repair, inside the change that fixed it. ",
+
+    "IT IS EXPLICITLY NOT THE *OUTSIDE THE MODELED GUARANTEE* BOUNDARY ONE SENTENCE AWAY IN DESIGN. The cost is measured and then misrepresented; it is neither external, nor undecidable, nor unstated intent. A class that reaches the ladder only by ceasing to fabricate has not climbed a rung -- it has become eligible to be ranked. ",
+
+    "ATTAINABLE CEILING: STRUCTURALLY IMPOSSIBLE, because membership is decidable at the WRITE. The instrument always knows which arm it took -- it stopped the subject itself -- so the distinction is available at the moment the row is produced and needs no inference at any consumer. A carrier with disjoint constructors makes the conflated state unconstructible rather than merely refused. ",
+
+    "NEXT-RUNG TRIGGER, AND IT IS THE WHOLE PAIRING RATHER THAN ANY ONE OF ITS PARTS. Each half alone is satisfiable while the class stays alive, which is why a trigger naming less than all four is a trigger that retires the row while the harm persists: (i) DISJOINT CONSTRUCTORS, so a bound and a completion cannot inhabit one value; (ii) DISJOINT WIRE FIELD NAMES, because a shared column re-fuses them at the artifact boundary no matter how the in-memory type is shaped, and a consumer projecting that column gets an empty cell rather than a figure near the ceiling; (iii) EVERY ARITHMETIC CONSUMER REQUIRING THE EXACT TYPE IN ITS SIGNATURE, so summing, ranking or deflating a bound is a compile refusal rather than a discipline; and (iv) A DYNAMIC MIXED POPULATION THAT REFUSES RATHER THAN FILTERING, because silently dropping the censored members is `censored_estimator_drops_its_own_tail` -- the repair for one failure mode arriving as the other. ",
+
+    "THE FOURTH CLAUSE IS THE ONE AUTHORS OMIT, and omitting it converts this class into its inverse in a single edit that looks like a fix. ",
+
+    "A GUARD THAT EXCLUDES THE CENSORED POPULATION BY A CORRELATED PROXY IS NOT THIS REPAIR AND IS `incidental_denominator_as_wall`. In the specimen a verdict-absence flag very nearly separates the two populations, because a deadline-preempted claim also reaches no verdict -- but the axes are independent by construction: an unwound claim reaches no verdict with EXACT clocks, and a claim can reach its verdict while its cost is a bound. A witness keyed to the proxy stays green under a fold that reads the bound as a cost, because its fixture is excluded before the cost is consulted, so the proxy guard also DEFEATS THE EVIDENCE that would detect the class. ",
+
+    "THE REPAIR IS THEREFORE TWO ROWS, EACH FIXING ONE INPUT AND VARYING THE OTHER, and one of them alone proves nothing about the axis it is named for.)",
+  ],
+
+  evidence: [],
+}
