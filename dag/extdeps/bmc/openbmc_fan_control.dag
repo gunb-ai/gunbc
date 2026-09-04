@@ -1452,16 +1452,26 @@ type OpenBmcRemoteJqOutcome
 // design 4b(2) trigger is genuine (not a permanent stall wearing a trigger's clothes). When an
 // operator runs remote_exec_command_live_confirmation against a live target and records the
 // observation, this match resolves to the Observed arm and the path opens.
-fn openbmc_remote_jq_execute(
-  session: PasswordSshSession,
-  plan: JqAdmittedProcessPlan,
-) -> OpenBmcRemoteJqOutcome {
-  let interpretation = match remote_exec_command_live_confirmation {
+
+// PURE DERIVATION: extract an interpretation from the confirmation receipt. Exists as a named
+// function so that witnesses can test BOTH arms with a fixture — the Observed arm returns
+// openbmc_dropbear_interpretation (the citation, not a bare constant), the Unexecuted arm
+// returns Unknown. No BMC is needed: a witness constructs the confirmation value as a fixture
+// and asserts the derived interpretation without ever touching the transport.
+fn openbmc_remote_jq_interpretation(confirmation: RemoteExecCommandLiveConfirmation) -> RemoteExecCommandInterpretation {
+  match confirmation {
     RemoteExecCommandLiveConfirmationObserved { target: _, result: _ } =>
       openbmc_dropbear_interpretation
     RemoteExecCommandLiveConfirmationUnexecuted { trigger: _ } =>
       Unknown
   }
+}
+
+fn openbmc_remote_jq_execute(
+  session: PasswordSshSession,
+  plan: JqAdmittedProcessPlan,
+) -> OpenBmcRemoteJqOutcome {
+  let interpretation = openbmc_remote_jq_interpretation(confirmation: remote_exec_command_live_confirmation)
   match openbmc_remote_jq_command(plan: plan, interpretation: interpretation) {
     OpenBmcRemoteJqCommandRefused { cause: cause } =>
       OpenBmcRemoteJqRefused { cause: cause }
