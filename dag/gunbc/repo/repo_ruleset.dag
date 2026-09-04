@@ -1072,21 +1072,6 @@ type RepoRulesetConvergedEvidence {
   reader_cannot_bypass: Bool
 }
 
-fn apply_desired_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetReadRefusal? {
-  let r = github.Rulesets.Update(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    ruleset_id: ruleset_id,
-    name: gunbc_passing_ci_ruleset_name,
-    target: ruleset_target_wire_label(t: desired_ruleset_target),
-    enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
-    conditions: desired_ruleset_conditions(),
-    rules: desired_ruleset_rules(),
-  )
-  read_refusal_of_outcome(outcome: r.outcome)
-}
-
 fn converged_evidence_of(
   writes: Int,
   removals: Int,
