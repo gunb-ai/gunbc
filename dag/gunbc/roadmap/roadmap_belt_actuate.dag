@@ -5549,6 +5549,19 @@ fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
 
+// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. belt_run_once_json
+// above is bound to the srv1 live instance; run on any other host it ticks a nonexistent layout and
+// reports refusals about the wrong machine. This entry takes the workdir as its argument and returns
+// the full per-attempt commit, verify and publish outcomes as one JSON document for a reader.
+fn belt_run_once_json_in(spawn_workdir: String) -> String {
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      join(["{\"refused\": \"spawn workdir does not match a known dashboard instance repo root: ", w, "\"}"], "")
+    DashboardInstanceResolved { instance } =>
+      serialize_json(v: belt_tick_result_json_value(t: belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)))
+  }
+}
+
 data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). EXIT SEMANTICS (operator P0, 2026-08-02): exit 0 when the tick COMPLETED and PERSISTED its BeltTickReceipt — spawn failures, recorded validation refusals, and observe_refused on the spawn pass do NOT flip the exit, because those are counted outcomes in the receipt, not a failure to run or record the tick. Nonzero ONLY when the tick could not persist its receipt (BeltPassFailed on write) or when GUNBC_BELT_SPAWN_WORKDIR is missing/empty. systemd therefore distinguishes 'tick crashed' from 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick operational receipt for journald; the persisted BeltTickReceipt (roadmap-belt-tick-receipt/v3) is what /workflow.json reads for presentation."
 
 // THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK; MAKING IT A LITERAL WAS THE DEFECT.
