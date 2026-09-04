@@ -10,9 +10,9 @@ import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,
   rust_decl_general_lex,
   rust_enum_general_decl_productions_only_translation_rules,
-  rust_enum_general_decl_structural_target_model,
-  rust_target_model
+  rust_enum_general_decl_structural_target_model
 }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.compilers.semantic_decl_emission {
   semantic_decl_emission_from_target,
@@ -94,7 +94,7 @@ fn bool_serialize_target(lex: LexRules, bindings: Map<Symbol, String>) -> Target
 
 fn bool_text_with_target(target: TargetModel) -> Outcome<String> {
   bind_outcome(
-    o: semantic_decl_emission_from_target(target: rust_target_model()),
+    o: semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()),
     f: fn(emission) {
       bind_outcome(
         o: target_semantic_enum_surface_from_coproduct(
@@ -116,7 +116,7 @@ fn bool_text_with_target(target: TargetModel) -> Outcome<String> {
 }
 
 test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_bindings, diagnostics: _ } =>
@@ -172,7 +172,7 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
 }
 
 test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_lex, diagnostics: _ } =>
@@ -228,7 +228,7 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
 }
 
 test fn decoded_lex_live_bindings_match_live_target() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_lex, diagnostics: _ } =>
@@ -258,7 +258,7 @@ test fn decoded_lex_live_bindings_match_live_target() -> Bool {
 
 // Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path.
 test fn decoded_row_profile_matches_golden() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
         Accepted { value: decoded_lex, diagnostics: _ } =>
@@ -298,7 +298,7 @@ test fn live_via_bool_serialize_target_matches_golden() -> Bool {
 }
 
 test fn generic_row_profile_matches_golden() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
