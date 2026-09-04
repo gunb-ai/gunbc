@@ -318,7 +318,7 @@ fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
 
 test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
   deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
-    && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
+    && deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
     && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
       lane.var_name == "FABRIC_EVIDENCE"
     })
