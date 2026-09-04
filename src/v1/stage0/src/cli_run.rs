@@ -10085,6 +10085,120 @@ pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<Safety
     }
 }
 
+/// ONE CLAIM'S COST, WITH ITS CENSORING IN THE VALUE RATHER THAN BESIDE IT.
+///
+/// `ClaimTerminality` above already separates a completed reading from a preempted one, and
+/// names their fields for opposite facts (`observed_*_ms` against `elapsed_*_at_least_ms`). The
+/// per-claim cost RECEIPT then threw that away: `WitnessExecutionOccurrence` carried a flat
+/// `wall_nanos`/`cpu_nanos` pair with a separate `verdict_reached: bool`, so the artifact this
+/// repository's own ledger rows name as THE COMPLETE POPULATION re-created the writable erasure
+/// the `ClaimOutcome` split had just removed one surface over. A right-censored lower bound and
+/// an exact measurement sat in one column named for the latter, and a consumer projecting that
+/// column alone received a number that IS APPROXIMATELY THE CEILING THAT STOPPED THE ROW.
+///
+/// THE ADJACENT BOOLEAN IS NOT THE REPAIR AND THAT IS THE POINT. A discriminator a consumer must
+/// remember to join on is a warning; the merged 3x host calibration retracted by gunbc#10205
+/// (`1ea6a949e0`) is the receipt that review discipline is not a mechanism -- the row that
+/// authored it had the boolean available and did not consult it. So the two readings become two
+/// CONSTRUCTORS with disjoint field names, and there is no accessor that hands out a millisecond
+/// figure without a `match`: `exact_cost_ms` returns `None` on the censored arm rather than the
+/// bound.
+///
+/// WHY THIS IS NOT `verdict_reached` UNDER ANOTHER NAME, and the two axes must not be fused
+/// again: `ClaimTerminality::Unwound` -- a host panic -- reached no verdict and yet its clocks
+/// are EXACT, because the unwind ended the evaluation and the measured cost is the whole of what
+/// the claim spent. Censoring is a property of a DEADLINE PREEMPTING the subject, not of a
+/// verdict being absent, so an aborted claim reads `Exact` here and `verdict_reached: false`
+/// there. Collapsing the two would mint a bound for a row that has a measurement.
+///
+/// The censored arm carries `SafetyInterruptReading` rather than re-spelling its five fields:
+/// that type is already the authority for both clocks and both limits at the interrupt point,
+/// and a second spelling of it here would be the meaning fork DESIGN section 3 forbids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimCostReading {
+    /// The claim ran to its own end -- to a verdict, or to an unwind -- so both clocks measure
+    /// the whole of what it spent. These are occurrence facts and not a canonical cost of the
+    /// witness, which is why they keep `ClaimTerminality`'s `observed_` spelling rather than
+    /// gaining an `exact_` one that would invite the stronger reading.
+    Observed {
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
+    /// A safety deadline preempted the claim, so both clocks are LOWER BOUNDS on what reaching
+    /// an end would have cost, unbounded above. Every censored row reports approximately
+    /// whatever ceiling stopped it, so these figures are a property of the BUDGET before they
+    /// are a property of the row -- see `budget_figure_phrase`, which refuses to put any digit
+    /// in a cost field for this arm.
+    RightCensored(SafetyInterruptReading),
+}
+
+impl ClaimCostReading {
+    /// The reading one terminality produces. Total over `ClaimTerminality`'s three arms with no
+    /// wildcard, for the reason `claim_terminality` itself names: a `_` here is correct for every
+    /// arm on the day it is written and silently wrong for the first one added afterwards, and
+    /// the fact it would state falsely is whether a number is a measurement.
+    pub fn of(terminality: &ClaimTerminality) -> Self {
+        match terminality {
+            ClaimTerminality::VerdictReached {
+                observed_cpu_ms,
+                observed_wall_ms,
+                ..
+            }
+            | ClaimTerminality::Unwound {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => ClaimCostReading::Observed {
+                observed_cpu_ms: *observed_cpu_ms,
+                observed_wall_ms: *observed_wall_ms,
+            },
+            ClaimTerminality::SafetyInterrupted {
+                raised_by,
+                elapsed_cpu_at_least_ms,
+                elapsed_wall_at_least_ms,
+                cpu_safety_limit_ms,
+                wall_safety_limit_ms,
+            } => ClaimCostReading::RightCensored(SafetyInterruptReading {
+                raised_by: *raised_by,
+                elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
+                elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
+                cpu_safety_limit_ms: *cpu_safety_limit_ms,
+                wall_safety_limit_ms: *wall_safety_limit_ms,
+            }),
+        }
+    }
+
+    /// THE ONLY WAY TO OBTAIN A MILLISECOND FIGURE FOR ARITHMETIC, and it is an `Option` rather
+    /// than a number precisely so a censored row cannot be summed, ranked, averaged or compared
+    /// against a line without the caller writing the word `None` somewhere. There is deliberately
+    /// no `cpu_ms()` beside it: a total accessor is the shape that let the bound travel, because
+    /// every caller that wanted "the number" got one whether or not the row had one.
+    ///
+    /// A caller that receives `None` must EXCLUDE the row and say so in its own output, never
+    /// substitute the bound -- substituting it is the fabricated-plausible-output arm DESIGN
+    /// section 5 forbids, and it fails in one direction only, always low.
+    pub fn exact_cost_ms(&self, basis: RequiredFloorCostBasis) -> Option<u64> {
+        match self {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => Some(match basis {
+                RequiredFloorCostBasis::CpuCost => *observed_cpu_ms,
+                RequiredFloorCostBasis::WallCost => *observed_wall_ms,
+            }),
+            ClaimCostReading::RightCensored(_) => None,
+        }
+    }
+
+    /// The wire tag naming WHICH KIND of reading a receipt row carries, so a consumer joining on
+    /// the artifact reads the kind before it reads any figure.
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            ClaimCostReading::Observed { .. } => "observed",
+            ClaimCostReading::RightCensored(_) => "right_censored",
+        }
+    }
+}
+
 /// ONE INTERRUPTED CLAIM, WITH THE CAUSE STILL TYPED.
 ///
 /// `RequiredFloorOutcome::interrupted_before_verdict` was a `Vec<String>`: one bucket whose
@@ -39914,18 +40028,36 @@ pub struct WitnessExecutionOccurrence {
     pub identity: String,
     pub module_path: String,
     pub outcome: String,
-    pub wall_nanos: u128,
-    pub cpu_nanos: u128,
+    /// THIS CLAIM'S COST, WITH ITS CENSORING INSIDE THE VALUE. Formerly a flat
+    /// `wall_nanos`/`cpu_nanos` pair, which is the field shape that let a right-censored lower
+    /// bound occupy the slot a consumer reads as a completed measurement — see
+    /// `ClaimCostReading`'s own note for why the adjacent `verdict_reached` below is a warning
+    /// rather than the repair, and for the retracted calibration that is the receipt.
+    ///
+    /// Milliseconds, not nanoseconds, and that is a narrowing rather than a loss: every consumer
+    /// of the former field divided by 1_000_000 before doing anything with it, and
+    /// `claim_terminality` — the authority this reading is minted from — has already taken both
+    /// clocks at millisecond grain. Carrying nanos here would be a second, finer spelling of a
+    /// quantity whose authority is coarser, which is the fork DESIGN section 3 forbids.
+    pub reading: ClaimCostReading,
     /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
     /// deterministic work measure beside the two clocks, invariant across the execution
     /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
     /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing, and this column is the
     /// evidence a step-denominated verdict would later be built on, not that verdict.
+    ///
+    /// UNLIKE THE CLOCKS, THIS IS NOT CENSORED BY THE DEADLINE IN THE SAME SENSE and is still a
+    /// bound on an interrupted row: the poll fires every 1024 steps, so an interrupted row's step
+    /// count is a quantised lower bound while a completed one is a true count. It stays a flat
+    /// field because nothing compares it against anything — the moment something does, it needs
+    /// the same treatment the clocks just received.
     pub eval_steps: u64,
-    /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
-    /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
-    /// claim has no cost to be over, and inferring that from the duration would make a slow
-    /// claim and a killed one the same fact.
+    /// Whether the claim reached a verdict rather than being safety-interrupted or unwound.
+    /// SEPARATE FROM `reading` AND NOT DERIVABLE FROM IT, in both directions: a host panic
+    /// (`ClaimTerminality::Unwound`) reaches no verdict while its clocks are exact, so this is
+    /// `false` beside an `Observed` reading. Retained because `exceeds_completed_cost_line` only
+    /// judges COMPLETED claims, and because a run wants to count verdicts independently of
+    /// counting measurements.
     pub verdict_reached: bool,
     /// The policy line this claim was measured against -- an INPUT, not a derivation, and
     /// carried per row because a future per-claim line must not silently re-judge old rows.
@@ -40558,12 +40690,8 @@ fn write_expected_red_roster_join_tsv(
 /// comparison; the other rides in the receipt beside it as a remedy discriminator (high wall
 /// with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O,
 /// subprocess or scheduling). It is not a second threshold.
-fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> u64 {
-    let exact = match basis {
-        RequiredFloorCostBasis::CpuCost => row.cpu_nanos,
-        RequiredFloorCostBasis::WallCost => row.wall_nanos,
-    };
-    (exact / 1_000_000) as u64
+fn exact_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> Option<u64> {
+    row.reading.exact_cost_ms(basis)
 }
 
 /// The identity-grain cost receipt: one row for EVERY executed claim, not only the over-cost
@@ -40573,6 +40701,22 @@ fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBa
 ///
 /// There is no `over_cost` column. Membership is the policy predicate applied to these
 /// measurements, and a stored flag would be a second representation of it that can disagree.
+///
+/// THE COST COLUMNS ARE DISJOINT BY READING KIND, and this is the wire half of the pairing
+/// `ClaimCostReading` carries in the type. There is no `cpu_ms` column: a completed row populates
+/// `observed_cpu_ms`/`observed_wall_ms` and leaves the bound columns empty, an interrupted row
+/// populates `cpu_at_least_ms`/`wall_at_least_ms` and its two ceilings and leaves the observed
+/// columns empty. A consumer that projects `observed_cpu_ms` over the whole file therefore gets
+/// nothing at all for a censored row rather than a number that is approximately the ceiling — the
+/// empty cell is the refusal, and it is loud in exactly the arithmetic (sum, mean, max, ratio)
+/// that the old shared column made silently wrong.
+///
+/// A SHARED COLUMN PLUS A KIND FLAG WAS THE REJECTED DESIGN, stated here because it is the
+/// tempting one and it looks equivalent. It is not: it leaves the bound sitting in the field a
+/// reader scans for a cost, with the qualification one join away, which is precisely the shape
+/// `BudgetCompletion::elapsed_reading` was deleted for on the console path. `cost_reading` is
+/// carried anyway — as the row's own statement of which columns it filled, not as the thing that
+/// makes the figures safe.
 fn write_required_floor_claim_cost_tsv(
     path: &str,
     rows: &[WitnessExecutionOccurrence],
@@ -40594,19 +40738,60 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
+         observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
+         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
+        // THE MATCH IS THE POINT. Rendering these columns requires naming which reading this row
+        // carries, so no future edit can fill a cost column from a bound without deleting an arm.
+        let (
+            observed_wall,
+            observed_cpu,
+            wall_at_least,
+            cpu_at_least,
+            wall_limit,
+            cpu_limit,
+            raised,
+        ) = match &row.reading {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => (
+                observed_wall_ms.to_string(),
+                observed_cpu_ms.to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
+            ClaimCostReading::RightCensored(reading) => (
+                String::new(),
+                String::new(),
+                reading.elapsed_wall_at_least_ms.to_string(),
+                reading.elapsed_cpu_at_least_ms.to_string(),
+                reading.wall_safety_limit_ms.to_string(),
+                reading.cpu_safety_limit_ms.to_string(),
+                reading.raised_by.label().to_string(),
+            ),
+        };
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            row.reading.kind_label(),
+            observed_wall,
+            observed_cpu,
+            wall_at_least,
+            cpu_at_least,
+            wall_limit,
+            cpu_limit,
+            raised,
             row.eval_steps,
             row.cost_line_ms
         )
@@ -40627,14 +40812,18 @@ fn write_required_floor_cross_claim_demand_tsv(
     path: &str,
     rows: &[v1_interpreter::CrossClaimDemandRow],
     disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
-    claim_cpu_total_ms: u128,
+    // The ceiling any true total must sit under, over the MEASURED rows ONLY. Right-censored
+    // rows are excluded rather than contributing their lower bounds, and their count travels
+    // beside it, because a ceiling assembled from bounds is itself too low — see the caller.
+    claim_cpu_observed_total_ms: u128,
+    claim_cpu_censored_rows_excluded: usize,
 ) -> Result<(), String> {
     use std::io::Write;
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
     writeln!(
         file,
-        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_observed_total_ms={}\tclaim_cpu_censored_rows_excluded={}\tcost_columns=inclusive_of_callees_do_not_sum",
         disclosure.claims_absorbed,
         rows.len(),
         disclosure.omitted_keys,
@@ -40642,7 +40831,8 @@ fn write_required_floor_cross_claim_demand_tsv(
         disclosure.overflow_keys,
         disclosure.absorb_ns_total / 1_000_000,
         disclosure.absorb_ns_max / 1_000_000,
-        claim_cpu_total_ms
+        claim_cpu_observed_total_ms,
+        claim_cpu_censored_rows_excluded
     )
     .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
     writeln!(
