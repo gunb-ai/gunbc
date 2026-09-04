@@ -137,13 +137,20 @@ import gunbc.scm.load_standing {
 // dissolve-on: a deterministic emission order -- a topological order with a content-digest tie-break
 // -- which is canonical because the digests are already content-derived. That is a real change to
 // encode_object_table rather than a flag, so it is a separate slice, not a footnote.
-// v2, FOR TWO CHANGES THAT ARE BOTH SCHEMA CHANGES BY THIS STACK'S OWN RULE. The embedded object
-// table is gunbc.scm.commit_closure_json_v2's, which now admits authored-source entries, so a v1
-// reader refuses documents this writer can produce. And a commit's `root` is now RESOLVED against
+// v1 -> v2 MOVED FOR TWO CHANGES THAT WERE BOTH SCHEMA CHANGES BY THIS STACK'S OWN RULE, kept here
+// because the rule they establish is what decides every later bump. The embedded object table is
+// gunbc.scm.commit_closure_json_v2's, which gained authored-source entries, so a v1
+// reader refuses documents that writer could produce. And a commit's `root` is now RESOLVED against
 // that table at decode -- a root the table does not carry, or carries as a file, refuses here rather
 // than being admitted and noticed later -- so the set of documents that decode is different in both
 // directions. Either change alone would move the tag.
-data repository_envelope_format_tag: String = "gunbc-scm-repository-v2"
+// V3, BECAUSE THE OBJECT-ENTRY LANGUAGE GREW A THIRD ARM. The embedded object table now admits
+// {manifest} entries beside {kind, children} and {source}, so a v2 reader refuses documents this
+// writer can produce -- the same rule that moved v1 to v2 when the source arm arrived. The commit
+// closure moved the other way on its own axis and for its own reason: its subject is one root, and a
+// manifest is not reachable from one, so its v4 emits nodes ALONE. The two documents version
+// separately because the repository owns the mixed object population and the closure never did.
+data repository_envelope_format_tag: String = "gunbc-scm-repository-v3"
 
 // THE IDENTITY RULE IS VERSIONED SEPARATELY FROM THE SCHEMA, AND THE TWO ARE DIFFERENT AXES.
 //
@@ -180,7 +187,13 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v2"
 // LAW over the object coproduct, and this tag names the law, so the version advances with it. The
 // tag is not pre-bumped for a branch that does not exist; what is corrected here is the transition
 // rule, so the next author does not read this as permission to grow the law under a fixed name.
-data repository_object_identity_rule_tag: String = "scm-object-identity-v1"
+// V2: A THIRD IDENTITY FAMILY. The store derived two rules -- fnv1a64 over a canonicalized node, and
+// content_hash_tagged_structural over a domain tag and text for an authored source. A corpus manifest
+// adds a third, combining each entry's path with its source locator so a file moved to a new path is
+// a different manifest even though no bytes changed. A document carrying a manifest is reconstructed
+// by a rule the v1 value does not describe, which is exactly the silent reinterpretation this tag
+// exists to turn into a refusal.
+data repository_object_identity_rule_tag: String = "scm-object-identity-v2"
 
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
 // rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
@@ -1119,24 +1132,27 @@ fn decode_commit_members_after_reference(
 // DIFFERENT identities, so discovering the mismatch after the walk would mean reporting a
 // well-formed repository that silently is not the one that was stored.
 // FORMAT DISPATCH IS ITS OWN STEP, and it selects a decoder that understands ONE exact schema. The
-// shape a THIRD version must take is a third arm here calling decode_repository_v3 -- never the v2
-// body widened to admit v3's members, which would erase the reason the member sets are closed at all.
+// shape a FOURTH version must take is a further arm here calling its own decoder -- never the v3
+// body widened to admit the newer members, which would erase the reason the member sets are closed
+// at all.
 //
-// THE ARMS AND THE CODEC FUNCTIONS ARE NAMED FOR THE TAG THEY ACTUALLY IMPLEMENT. They said v1 while
-// repository_envelope_format_tag said v2, which is the meaning fork DESIGN section 3 names: one
-// spelling over two materially different contracts, with the wrong one left standing where a reader
-// looks first. Nothing about the schema changed in this rename -- the names were simply lying about
-// which schema they were.
-// The identity-rule tag stays a separate axis for the same reason it is separate today: a schema-v2
-// document may still carry the v1 node-identity rule, and an identity migration may leave the JSON
-// schema untouched.
+// THE ARMS AND THE CODEC FUNCTIONS ARE NAMED FOR THE TAG THEY ACTUALLY IMPLEMENT, which is the rule
+// that made this rename mechanical rather than a judgment call: they said v2 while
+// repository_envelope_format_tag moved to v3, and one spelling over two materially different
+// contracts is the meaning fork DESIGN section 3 names -- with the wrong one left standing where a
+// reader looks first.
+// The identity-rule tag stays a separate axis for the same reason it is separate today: a schema-v3
+// document may still carry an older node-identity rule, and an identity migration may leave the JSON
+// schema untouched. This change moved BOTH, independently and for different reasons: the schema
+// because the object-entry language grew a {manifest} arm, and the identity rule because a manifest
+// is a third identity family.
 type RepositoryFormat
-  = RepositoryFormatV2
+  = RepositoryFormatV3
   | RepositoryFormatUnknown { found: String }
 
 fn repository_format_of(tag: String) -> RepositoryFormat {
   if tag == repository_envelope_format_tag {
-    RepositoryFormatV2
+    RepositoryFormatV3
   } else {
     RepositoryFormatUnknown { found: tag }
   }
@@ -1149,7 +1165,7 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
       match repository_format_of(tag: format) {
         RepositoryFormatUnknown { found: f } =>
           RepositoryDecodeRefused { cause: RepositoryFormatUnrecognized { found: f } }
-        RepositoryFormatV2 => decode_repository_v2(v: v)
+        RepositoryFormatV3 => decode_repository_v3(v: v)
       }
     _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
@@ -1157,7 +1173,7 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
 
 // EXACTLY v2. Every member population below is v2's, and this body is frozen once a v2 document
 // exists anywhere.
-fn decode_repository_v2(v: JsonValue) -> RepositoryDecodeOutcome {
+fn decode_repository_v3(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>

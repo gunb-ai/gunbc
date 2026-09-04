@@ -225,7 +225,7 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
 // An admitted partial closure is well-kinded BY CONSTRUCTION: admit_partial_commit_closure refuses the
 // source_occupied population before it mints one, so this re-seals rather than re-judges.
 fn admitted_well_kinded(admitted: AdmittedPartialCommitClosure) -> WellKindedClosure {
-  WellKindedClosure { closure: admitted.closure }
+  well_kinded_image(closure: admitted.closure)
 }
 
 // A CLOSURE WHOSE EVERY REQUIREMENT IS SATISFIABLE, WHICH IS NOT THE SAME AS COMPLETE.
@@ -240,8 +240,26 @@ fn admitted_well_kinded(admitted: AdmittedPartialCommitClosure) -> WellKindedClo
 // sole_constructor seals it: the only way to obtain one is admit_well_kinded_closure, which runs the
 // census. An ABSENT population is fine here and is the partial-closure case the format exists for --
 // this carrier is about KIND, not about completeness.
+//
+// IT CARRIES THE DERIVED POPULATION, NOT THE STORE IT CAME FROM. Holding the store left the encoder
+// looking at every object a repository happened to contain, which is how unreachable inventory
+// reached a document whose subject is one root -- and once a manifest can sit in a store it is also
+// how the encoder would acquire an arm it has no honest way to write. With the nodes derived here,
+// the encoder's parameter cannot name a manifest at all: unconstructible rather than validated.
 type WellKindedClosure sole_constructor {
-  closure: CommitClosure
+  root: SemanticNodeTarget
+  nodes: List<ObjectRecord>
+}
+
+// THE SINGLE PLACE A WellKindedClosure IS BUILT, so the ordinary and partial admissions cannot
+// derive different populations for the same closure. Two independent walks is the authority
+// substitution this carrier exists to remove, and it would have failed silently -- ordinary
+// admission narrowed while partial admission still shipped the whole repository store.
+fn well_kinded_image(closure: CommitClosure) -> WellKindedClosure {
+  WellKindedClosure {
+    root: closure.root,
+    nodes: derive_semantic_closure(store: closure.store, root: closure.root).nodes,
+  }
 }
 
 type WellKindedAdmission
@@ -263,16 +281,19 @@ fn admit_well_kinded_closure(closure: CommitClosure) -> WellKindedAdmission {
       manifest_occupied: census.manifest_occupied,
     }
   } else {
-    WellKinded { admitted: WellKindedClosure { closure: closure } }
+    WellKinded { admitted: well_kinded_image(closure: closure) }
   }
 }
 
-fn well_kinded_store(admitted: WellKindedClosure) -> ObjectStore {
-  admitted.closure.store
+// NOT well_kinded_store. A store-shaped name over a List<ObjectRecord> would say the carrier still
+// holds a store, and a consumer that genuinely needs an ObjectStore should have to say so rather
+// than receive a narrower thing under the old name.
+fn well_kinded_nodes(admitted: WellKindedClosure) -> List<ObjectRecord> {
+  admitted.nodes
 }
 
 fn well_kinded_root(admitted: WellKindedClosure) -> SemanticNodeTarget {
-  admitted.closure.root
+  admitted.root
 }
 
 // A closure is the store plus the root the commit names. Nothing about how it is written down.
@@ -397,6 +418,131 @@ fn census_of_target(store: ObjectStore, acc: ClosureCensus, target: SemanticNode
   }
 }
 
+// THE ONE DERIVATION AUTHORITY, and the reason it is one rather than two.
+//
+// A commit closure is the population ROOT-REACHABLE from its root, not every object its store
+// happens to hold. Those coincided only while nothing produced unreachable objects, which is exactly
+// the condition this codec's predecessor recorded as its own dissolution trigger; a corpus manifest
+// is the event that makes it false. A repository holding an unrelated manifest must still be able to
+// publish the closure rooted at P, so "a manifest exists in the store" is not a fact about P.
+//
+// WHAT COMES BACK IS NODES ONLY, AND THAT IS A DISCOVERY RATHER THAN A NARROWING FOR CONVENIENCE.
+// Starting from a SemanticNodeTarget every traversable edge is again a SemanticNodeTarget -- an
+// ObjectRecord carries a kind and children and nothing else -- so there is no typed path from a
+// commit root to an authored source. The authored sources that used to appear in these documents
+// were never reachable content; they were repository inventory arriving through an encoder that
+// serialized the whole store. A coproduct with an authored-source arm here would be uninhabited, and
+// an uninhabited arm is decoration.
+//
+// The wrong-kind populations survive that narrowing and are not in tension with it: they are facts
+// encountered WHILE DERIVING the closure, at required node positions, rather than members of it.
+//
+// VISITED COVERS ALL THREE OUTCOMES, not just the found ones. Keying only on admitted nodes would
+// re-classify a shared child once per parent, so a diamond over one absent object would report that
+// object twice and every consumer counting the population would be off by the graph's shape.
+type ClosureWalk {
+  nodes: List<ObjectRecord>
+  visited: List<ObjectId>
+  census: ClosureCensus
+}
+
+fn walk_visited(acc: ClosureWalk, identity: ObjectId) -> Bool {
+  fold(
+    acc.visited,
+    init: false,
+    f: fn(seen, seen_id) { seen || object_id_eq(left: seen_id, right: identity) }
+  )
+}
+
+// CHILDREN BEFORE THE PARENT THAT NAMES THEM, appended in that order for the same reason
+// emit_in_dependency_order appends: a decoder assigning positions as it reads must have seen every
+// referenced object before the reference. Cost has the same shape and the same bound as the store's
+// own walk -- visited is a linear scan, so this is quadratic in the reachable count, and a keyed
+// collection retires both at once rather than leaving one of them indexed and the other not.
+fn walk_target(store: ObjectStore, acc: ClosureWalk, target: SemanticNodeTarget) -> ClosureWalk {
+  let locator = node_target_locator(target: target)
+  if walk_visited(acc: acc, identity: locator) {
+    acc
+  } else {
+    let seen = ClosureWalk {
+      nodes: acc.nodes,
+      visited: concat(acc.visited, [locator]),
+      census: acc.census,
+    }
+    match resolve_node_target(store: store, target: target) {
+      NodeRecordFound(record) =>
+        match fold(
+          record.children,
+          init: seen,
+          f: fn(inner, child) { walk_target(store: store, acc: inner, target: child.target) }
+        ) {
+          after =>
+            ClosureWalk {
+              nodes: concat(after.nodes, [record]),
+              visited: after.visited,
+              census: after.census,
+            }
+        }
+      NodeRecordAbsent { identity: identity } =>
+        ClosureWalk {
+          nodes: seen.nodes,
+          visited: seen.visited,
+          census: ClosureCensus {
+            absent: concat([identity], seen.census.absent),
+            source_occupied: seen.census.source_occupied,
+            manifest_occupied: seen.census.manifest_occupied,
+          },
+        }
+      NodeRecordIsAuthoredSource { identity: identity } =>
+        ClosureWalk {
+          nodes: seen.nodes,
+          visited: seen.visited,
+          census: ClosureCensus {
+            absent: seen.census.absent,
+            source_occupied: concat([identity], seen.census.source_occupied),
+            manifest_occupied: seen.census.manifest_occupied,
+          },
+        }
+      NodeRecordIsCorpusManifest { identity: identity } =>
+        ClosureWalk {
+          nodes: seen.nodes,
+          visited: seen.visited,
+          census: ClosureCensus {
+            absent: seen.census.absent,
+            source_occupied: seen.census.source_occupied,
+            manifest_occupied: concat([identity], seen.census.manifest_occupied),
+          },
+        }
+    }
+  }
+}
+
+type SemanticClosureDerivation {
+  nodes: List<ObjectRecord>
+  census: ClosureCensus
+}
+
+fn derive_semantic_closure(
+  store: ObjectStore,
+  root: SemanticNodeTarget
+) -> SemanticClosureDerivation {
+  match walk_target(
+    store: store,
+    acc: ClosureWalk { nodes: [], visited: [], census: empty_census() },
+    target: root
+  ) {
+    walk =>
+      SemanticClosureDerivation {
+        nodes: walk.nodes,
+        census: ClosureCensus {
+          absent: reverse(walk.census.absent),
+          source_occupied: reverse(walk.census.source_occupied),
+          manifest_occupied: reverse(walk.census.manifest_occupied),
+        },
+      }
+  }
+}
+
 fn census_in_record(store: ObjectStore, acc: ClosureCensus, record: ObjectRecord) -> ClosureCensus {
   fold(
     record.children,
@@ -432,18 +578,13 @@ fn store_census(store: ObjectStore) -> ClosureCensus {
 // closure whose store does not hold its own root is the sharpest incompleteness there is; a closure
 // whose root locator holds a FILE is not incomplete at all, it is wrong-kind, and the two must not
 // arrive at the caller as one list.
-fn root_census(closure: CommitClosure) -> ClosureCensus {
-  census_of_target(store: closure.store, acc: empty_census(), target: closure.root)
-}
-
+// THE CLOSURE'S CENSUS IS THE DERIVATION'S CENSUS, AND ASKING IT ANY OTHER WAY IS A SECOND
+// AUTHORITY. It used to be the whole store's census concatenated with the root's, which counted
+// requirements of objects the root cannot reach and counted the root's own requirements twice over
+// where the root was also a table entry. Both are gone: there is one walk, from the root, and every
+// population reported here was encountered on it.
 fn closure_census(closure: CommitClosure) -> ClosureCensus {
-  let table = store_census(store: closure.store)
-  let root = root_census(closure: closure)
-  ClosureCensus {
-    absent: concat(table.absent, root.absent),
-    source_occupied: concat(table.source_occupied, root.source_occupied),
-    manifest_occupied: concat(table.manifest_occupied, root.manifest_occupied),
-  }
+  derive_semantic_closure(store: closure.store, root: closure.root).census
 }
 
 // THE TABLE'S OWN QUESTION, WITHOUT A ROOT, because two consumers ask two different things and only

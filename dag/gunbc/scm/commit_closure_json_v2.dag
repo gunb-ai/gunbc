@@ -40,7 +40,7 @@ import gunbc.scm.commit_closure {
   NotWellKinded,
   admit_well_kinded_closure,
   admitted_well_kinded,
-  well_kinded_store,
+  well_kinded_nodes,
   well_kinded_root,
 }
 import gunbc.scm.object_table_json {
@@ -51,6 +51,7 @@ import gunbc.scm.object_table_json {
   ObjectTableUnknownLabelTag,
   ObjectTableEdgeTargetUnresolved,
   ObjectTableEdgeTargetIsAuthoredSource,
+  ObjectTableEdgeTargetIsCorpusManifest,
   ObjectTableObjectCollision,
   object_table_load_standing,
 }
@@ -146,6 +147,9 @@ import gunbc.scm.object_store {
   ScmObject,
   SemanticNodeObject,
   AuthoredSourceObject,
+  CorpusManifestObject,
+  CorpusManifestEntry,
+  authored_source_target_locator,
   AuthoredSourceContent,
   AuthoredSourceEmpty,
   AuthoredSourceText,
@@ -155,6 +159,7 @@ import gunbc.scm.object_store {
   ScmObjectRef,
   SemanticNodeRef,
   AuthoredSourceRef,
+  CorpusManifestRef,
   StoreOutcome,
   Stored,
   LocatorCollision,
@@ -211,6 +216,7 @@ type ClosureDocRefusal
   | ClosureDocFormatUnrecognized { found: String }
   | ClosureDocRootPositionUnresolved { reference: String }
   | ClosureDocRootIsAuthoredSource { reference: String }
+  | ClosureDocRootIsCorpusManifest { reference: String }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
@@ -258,6 +264,8 @@ type ClosureDocMemberContext
   = ClosureDocEnvelopeMembers
   | ClosureDocObjectRecordMembers
   | ClosureDocAuthoredSourceMembers
+  | ClosureDocCorpusManifestMembers
+  | ClosureDocManifestEntryMembers
   | ClosureDocTypeKindMembers
   | ClosureDocAtomKindMembers
   | ClosureDocComputationKindMembers
@@ -291,7 +299,25 @@ type ClosureDocLoadOutcome
 // versioned test inputs updated with the schema they exercise, not data whose old spelling anyone
 // is owed. Neither is a live population that a compatibility arm would serve, and an arm with no
 // consumer is machinery this repository refuses to carry.
-data closure_document_format_tag: String = "gunbc-scm-commit-closure-v3"
+// V4, AND THE VERSION MOVES BECAUSE THE LANGUAGE THIS FORMAT CAN EMIT GENUINELY CHANGED.
+//
+// v3 admitted two entry shapes, {kind, children} and {source}. Its writer serialized the whole
+// store, so authored sources appeared in commit-closure documents -- but nothing could ever REACH
+// one from a commit root, because every traversable edge from a SemanticNodeTarget is again a
+// SemanticNodeTarget. Those entries were repository inventory arriving through a whole-store
+// encoder, not content of the closure the document names.
+//
+// v4's writer derives the root-reachable population, so it can never emit a {source} entry, and its
+// reader refuses one. That is a materially NARROWER language under the same protocol, which is
+// exactly why the tag has to move: this module's own policy is that a format tag means "I understand
+// this exact schema", and holding v3 while the emitted language shrinks would be the same false
+// version claim as holding it while the language grows, run in the other direction. Under the
+// one-current-version policy a v3 document is UnsupportedProtocol here -- refused as a predecessor
+// rather than read as malformed.
+//
+// The repository object table keeps the mixed vocabulary and versions separately; sources belong to
+// the repository image, which is the layer that always owned them.
+data closure_document_format_tag: String = "gunbc-scm-commit-closure-v4"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
 //
@@ -539,6 +565,38 @@ fn encode_authored_source_content(content: AuthoredSourceContent) -> JsonValue {
   }
 }
 
+// A MANIFEST ENTRY'S SOURCE RESOLVES THROUGH THE WHOLE-OBJECT INDEX, NOT THE NODE INDEX, and the
+// asymmetry is the point rather than an oversight. A child edge requires a NODE at its target, so it
+// looks only at node positions and a file there becomes uncontained rather than silently binding. A
+// manifest entry requires an AUTHORED SOURCE, so the node index would find nothing and every entry
+// would encode as uncontained even for sources this very document carries. The required kind differs,
+// so the index consulted differs; what stays constant is that the decoder re-checks the kind it
+// resolved rather than trusting the position.
+fn encode_source_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+  match position_of(positions: positions, identity: target) {
+    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Absent =>
+      json_object(
+        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      )
+  }
+}
+
+fn encode_manifest_entry(positions: EncodePositions, entry: CorpusManifestEntry) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "path", value: json_string(s: entry.path as String)),
+      json_kv(
+        key: "source",
+        value: encode_source_target(
+          positions: positions,
+          target: authored_source_target_locator(target: entry.source),
+        ),
+      ),
+    ]
+  )
+}
+
 fn encode_object(positions: EncodePositions, object: ScmObject) -> JsonValue {
   match object {
     SemanticNodeObject(record) => encode_record(positions: positions, record: record)
@@ -546,6 +604,17 @@ fn encode_object(positions: EncodePositions, object: ScmObject) -> JsonValue {
       json_object(
         members: [
           json_kv(key: "source", value: encode_authored_source_content(content: record.content)),
+        ]
+      )
+    CorpusManifestObject(record) =>
+      json_object(
+        members: [
+          json_kv(
+            key: "manifest",
+            value: json_array(
+              elements: map(record.entries, e => encode_manifest_entry(positions: positions, entry: e))
+            ),
+          ),
         ]
       )
   }
@@ -570,6 +639,7 @@ fn encode_step(acc: EncodeAcc, object: ScmObject) -> EncodeAcc {
         SemanticNodeObject(_) =>
           map_insert(m: acc.positions.nodes_by_identity, key: key, value: reference)
         AuthoredSourceObject(_) => acc.positions.nodes_by_identity
+        CorpusManifestObject(_) => acc.positions.nodes_by_identity
       },
       next: acc.positions.next + 1,
     },
@@ -597,6 +667,52 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
       objects: [],
     },
     f: fn(acc, object) { encode_step(acc: acc, object: object) }
+  ) {
+    EncodeAcc { positions: positions, objects: reversed } =>
+      EncodeAcc { positions: positions, objects: reverse(reversed) }
+  }
+}
+
+// THE TABLE A COMMIT CLOSURE ACTUALLY HAS, WHICH IS NODES AND NOTHING ELSE.
+//
+// Every object here came back from derive_semantic_closure, so the parameter cannot name an authored
+// source or a corpus manifest and there is no arm for either to be written honestly or dishonestly.
+// That is what the mixed encode_object below stopped being able to promise once a third object kind
+// existed: it has no refusal channel, so a manifest reaching it had no answer that was not a lie.
+//
+// ON THE DUPLICATED INDEX, declared rather than left to be discovered. EncodePositions carries both
+// by_identity and nodes_by_identity, and over a nodes-only table those two maps are equal by
+// construction -- one fact in two places, which is exactly what DESIGN section 2 prices. It survives
+// here only because the type is still shared with the mixed repository table, where the two maps
+// genuinely differ. It dissolves when the mixed node+source+manifest object-table codec is extracted
+// to repository grain and this module's positions carry node positions alone.
+// dissolve-on: the repository object-table codec owning its own object vocabulary and accumulator,
+// at which point by_identity leaves this module with it.
+fn encode_node_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
+  let key = object_id_key(identity: record.identity.locator)
+  let reference = position_reference(n: acc.positions.next)
+  EncodeAcc {
+    positions: EncodePositions {
+      by_identity: map_insert(m: acc.positions.by_identity, key: key, value: reference),
+      nodes_by_identity: map_insert(m: acc.positions.nodes_by_identity, key: key, value: reference),
+      next: acc.positions.next + 1,
+    },
+    objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
+  }
+}
+
+fn encode_node_table(nodes: List<ObjectRecord>) -> EncodeAcc {
+  match fold(
+    nodes,
+    init: EncodeAcc {
+      positions: EncodePositions {
+        by_identity: empty_map(),
+        nodes_by_identity: empty_map(),
+        next: 0,
+      },
+      objects: [],
+    },
+    f: fn(acc, record) { encode_node_step(acc: acc, record: record) }
   ) {
     EncodeAcc { positions: positions, objects: reversed } =>
       EncodeAcc { positions: positions, objects: reverse(reversed) }
@@ -695,9 +811,8 @@ fn an_uncontained_key(missing: List<ObjectId>) -> String {
 }
 
 fn encode_closure_document(image: WellKindedClosure) -> JsonValue {
-  let store = well_kinded_store(admitted: image)
   let root = well_kinded_root(admitted: image)
-  let acc = encode_object_table(store: store)
+  let acc = encode_node_table(nodes: well_kinded_nodes(admitted: image))
   let root_reference = encoded_root_reference(acc: acc, root: node_target_locator(target: root))
   json_object(
     members: [
@@ -965,6 +1080,11 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                         edges: acc.edges,
                         refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } } },
                       }
+                    Present { value: CorpusManifestRef(_) } =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } } },
+                      }
                     Absent =>
                       EdgeAcc {
                         edges: acc.edges,
@@ -1019,6 +1139,58 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
+      match read_member(v: object_value, key: "manifest") {
+        MemberArray { elements: entry_values } =>
+          match member_set_refusal(
+            v: object_value,
+            allowed: ["manifest"],
+            context: ClosureDocCorpusManifestMembers
+          ) {
+            Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+            Absent => decode_corpus_manifest(acc: acc, entry_values: entry_values)
+          }
+        MemberString { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+          )
+        MemberObject { value: _ } =>
+          decode_acc_refused(
+            acc: acc,
+            cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "manifest" } }
+          )
+        MemberFailed { cause: manifest_cause } =>
+          match manifest_cause {
+            MemberReadMissing { key: _ } =>
+              decode_object_or_source_step(acc: acc, object_value: object_value)
+            MemberReadDuplicated { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } }
+              )
+            MemberReadWrongShape { key: k } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } }
+              )
+            MemberReadSubjectNotObject =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+              )
+          }
+      }
+  }
+}
+
+// THE SOURCE-OR-NODE HALF, unchanged from when those were the only two entry shapes. It is reached
+// only after the manifest member is known ABSENT rather than merely unread, so a malformed
+// `manifest` cannot arrive here as "not a manifest" and be re-reported as a missing `kind` -- the
+// not-applicable-rendered-as-malformed collapse this function's own history records one member up.
+fn decode_object_or_source_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
       match read_member(v: object_value, key: "source") {
         MemberString { value: text } =>
           match member_set_refusal(
@@ -1065,6 +1237,180 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                 acc: acc,
                 cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
               )
+          }
+      }
+  }
+}
+
+// A MANIFEST ENTRY'S SOURCE TAKES BOTH TARGET ARMS FOR THE SAME REASON AN EDGE DOES: a repository
+// may legitimately carry a manifest whose sources it does not itself hold, and an uncontained arm is
+// a well-formed statement of that rather than a decode failure. What it may NOT do is resolve to the
+// wrong kind -- a position holding a node or another manifest is not a source, and binding it anyway
+// would put an authored-source identity on an object that is not one, which is the whole reason
+// AuthoredSourceTarget is its own type.
+type ManifestEntryAcc {
+  entries: List<CorpusManifestEntry>
+  refusal: ClosureDocRefusal?
+}
+
+fn manifest_entry_refused(acc: ManifestEntryAcc, cause: ObjectTableDecodeRefusal) -> ManifestEntryAcc {
+  ManifestEntryAcc {
+    entries: acc.entries,
+    refusal: Present { value: ClosureDocObjectTableRefused { cause: cause } },
+  }
+}
+
+fn manifest_entry_with(
+  acc: ManifestEntryAcc,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget
+) -> ManifestEntryAcc {
+  ManifestEntryAcc {
+    entries: concat(acc.entries, [CorpusManifestEntry { path: path, source: source }]),
+    refusal: acc.refusal,
+  }
+}
+
+fn decode_manifest_source(
+  positions: DecodePositions,
+  acc: ManifestEntryAcc,
+  path: NonEmptyStr,
+  source_value: JsonValue
+) -> ManifestEntryAcc {
+  match decode_target_reference(target_value: source_value) {
+    TargetReferenceRefused { cause: c } =>
+      ManifestEntryAcc {
+        entries: acc.entries,
+        refusal: Present { value: ClosureDocTargetReferenceRefused { cause: c } },
+      }
+    TargetUncontained { digest: identity } =>
+      manifest_entry_with(acc: acc, path: path, source: AuthoredSourceTarget { locator: identity })
+    TargetContainedAt { reference: reference } =>
+      match resolve_reference(positions: positions, reference: reference) {
+        Present { value: AuthoredSourceRef(source) } =>
+          manifest_entry_with(
+            acc: acc,
+            path: path,
+            source: authored_source_target_of(reference: source),
+          )
+        Present { value: SemanticNodeRef(_) } =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceIsSemanticNode { reference: reference },
+          )
+        Present { value: CorpusManifestRef(_) } =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceIsCorpusManifest { reference: reference },
+          )
+        Absent =>
+          manifest_entry_refused(
+            acc: acc,
+            cause: ObjectTableManifestSourceUnresolved { reference: reference },
+          )
+      }
+  }
+}
+
+// AN EMPTY PATH REFUSES RATHER THAN BEING CAST. CorpusManifestEntry.path is a NonEmptyStr, so the
+// empty string has no inhabitant to become -- the check is what makes the cast honest rather than a
+// second place the invariant is asserted.
+fn decode_manifest_entry(
+  positions: DecodePositions,
+  acc: ManifestEntryAcc,
+  entry_value: JsonValue
+) -> ManifestEntryAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match member_set_refusal(
+        v: entry_value,
+        allowed: ["path", "source"],
+        context: ClosureDocManifestEntryMembers
+      ) {
+        Present { value: c } =>
+          ManifestEntryAcc { entries: acc.entries, refusal: Present { value: c } }
+        Absent =>
+          match read_string_member(v: entry_value, key: "path") {
+            MemberFailed { cause: c } =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present { value: ClosureDocMemberReadRefused { cause: c } },
+              }
+            MemberString { value: path } =>
+              if path == "" {
+                manifest_entry_refused(acc: acc, cause: ObjectTableManifestPathEmpty)
+              } else {
+                match read_member(v: entry_value, key: "source") {
+                  MemberFailed { cause: c } =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present { value: ClosureDocMemberReadRefused { cause: c } },
+                    }
+                  MemberObject { value: source_value } =>
+                    decode_manifest_source(
+                      positions: positions,
+                      acc: acc,
+                      path: path as NonEmptyStr,
+                      source_value: source_value,
+                    )
+                  _ =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present {
+                        value: ClosureDocMemberReadRefused {
+                          cause: MemberReadWrongShape { key: "source" }
+                        }
+                      },
+                    }
+                }
+              }
+            _ =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present {
+                  value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE DECODER IS NOT A THIRD PRODUCER OF MANIFEST IDENTITIES EITHER, for the reason the authored-source
+// decode records below: it hands the entries to store_corpus_manifest, which derives the identity by
+// the one rule, so a document cannot assert a manifest identity it did not derive.
+fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> DecodeAcc {
+  match fold(
+    entry_values,
+    init: ManifestEntryAcc { entries: [], refusal: none },
+    f: fn(inner, entry_value) {
+      decode_manifest_entry(positions: acc.positions, acc: inner, entry_value: entry_value)
+    }
+  ) {
+    ManifestEntryAcc { entries: entries, refusal: refusal } =>
+      match refusal {
+        Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+        Absent =>
+          match store_corpus_manifest(store: acc.store, entries: entries) {
+            CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ClosureDocObjectTableRefused {
+                  cause: ObjectTableObjectCollision { identity: i }
+                },
+              )
+            CorpusManifestStored { store: next_store, manifest: manifest } =>
+              DecodeAcc {
+                store: next_store,
+                positions: map_insert(
+                  m: acc.positions,
+                  key: position_reference(n: acc.next),
+                  value: CorpusManifestRef(manifest),
+                ),
+                next: acc.next + 1,
+                refusal: acc.refusal,
+              }
           }
       }
   }
@@ -1171,7 +1517,43 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   }
 }
 
-// THE TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
+// THE CLOSURE'S OWN TABLE DECODE, WHICH IS WHERE v4 REFUSES A SOURCE.
+//
+// It is a separate step rather than a flag on the mixed one because the two formats have genuinely
+// different closed member sets: a commit-closure entry is {kind, children} and nothing else, while a
+// repository object-table entry is that OR {source} OR {manifest}. A shared step with a leniency
+// switch would put the two vocabularies back into one authority and make the narrower one the one
+// that has to remember to be strict.
+//
+// A {source} or {manifest} entry here refuses by its OWN name rather than as a missing `kind`. Both
+// are well-formed entries of the repository table, so reporting them as malformed node entries would
+// name the wrong defect -- the not-applicable-rendered-as-malformed failure this module's header
+// already records, which is precisely what a caller pointing a v4 reader at a v3 document or a
+// repository table would hit first.
+fn decode_node_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match member_set_refusal(
+        v: object_value,
+        allowed: ["kind", "children"],
+        context: ClosureDocObjectRecordMembers
+      ) {
+        Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
+        Absent => decode_object_members(acc: acc, object_value: object_value)
+      }
+  }
+}
+
+fn decode_node_table(object_values: List<JsonValue>) -> DecodeAcc {
+  fold(
+    object_values,
+    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    f: fn(acc, object_value) { decode_node_step(acc: acc, object_value: object_value) }
+  )
+}
+
+// THE MIXED TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
 // roots against one decoded population. Returning the accumulator rather than a finished store means
 // the caller keeps the position-to-identity map it needs to resolve those roots, which a
 // store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
@@ -1209,7 +1591,7 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
-      match decode_object_table(object_values: object_values) {
+      match decode_node_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
             Present { value: c } => ClosureDocRefused { cause: c }
@@ -1228,6 +1610,8 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
                           ClosureDocLoaded { store: store, root: node_target_of(reference: root) }
                         Present { value: AuthoredSourceRef(_) } =>
                           ClosureDocRefused { cause: ClosureDocRootIsAuthoredSource { reference: reference } }
+                        Present { value: CorpusManifestRef(_) } =>
+                          ClosureDocRefused { cause: ClosureDocRootIsCorpusManifest { reference: reference } }
                         Absent =>
                           ClosureDocRefused { cause: ClosureDocRootPositionUnresolved { reference: reference } }
                       }
@@ -1304,6 +1688,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
     ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
     ClosureDocRootIsAuthoredSource { reference: _ } => LoadDocumentMalformed
+    ClosureDocRootIsCorpusManifest { reference: _ } => LoadDocumentMalformed
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } =>
       match c {

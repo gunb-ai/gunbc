@@ -86,6 +86,11 @@ type ObjectTableDecodeRefusal
   | ObjectTableUnknownLabelTag { found: String }
   | ObjectTableEdgeTargetUnresolved { reference: String }
   | ObjectTableEdgeTargetIsAuthoredSource { reference: String }
+  | ObjectTableEdgeTargetIsCorpusManifest { reference: String }
+  | ObjectTableManifestPathEmpty
+  | ObjectTableManifestSourceUnresolved { reference: String }
+  | ObjectTableManifestSourceIsSemanticNode { reference: String }
+  | ObjectTableManifestSourceIsCorpusManifest { reference: String }
   | ObjectTableObjectCollision { identity: ObjectId }
 
 // THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3: the dispatch
@@ -93,7 +98,7 @@ type ObjectTableDecodeRefusal
 // shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
 // the same rule from the other side -- a new format is a new classifier beside its own refusals.
 //
-// This match is exhaustive over the seven and assigns per cause, never per group. The collision arm is
+// This match is exhaustive over the twelve and assigns per cause, never per group. The collision arm is
 // the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
 // permitting supersession.
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
@@ -105,5 +110,10 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
     ObjectTableUnknownLabelTag { found: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadDocumentMalformed
+    ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => LoadDocumentMalformed
+    ObjectTableManifestPathEmpty => LoadDocumentMalformed
+    ObjectTableManifestSourceUnresolved { reference: _ } => LoadDocumentMalformed
+    ObjectTableManifestSourceIsSemanticNode { reference: _ } => LoadDocumentMalformed
+    ObjectTableManifestSourceIsCorpusManifest { reference: _ } => LoadDocumentMalformed
   }
 }
