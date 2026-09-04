@@ -1197,7 +1197,7 @@ test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool 
       closure: CommitClosure { store: fx.store, root: fx.root }
     ) {
       NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
-      WellKinded { admitted: image } =>
+      WellKinded { admitted: image, unresolved: _ } =>
         match well_kinded_nodes(admitted: image) {
           nodes =>
             (list_length(items: nodes) == 2)
@@ -1227,7 +1227,7 @@ test fn an_unreachable_authored_source_is_not_part_of_the_semantic_closure() -> 
       closure: CommitClosure { store: fx.store, root: fx.root }
     ) {
       NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
-      WellKinded { admitted: image } =>
+      WellKinded { admitted: image, unresolved: _ } =>
         !nodes_hold(nodes: well_kinded_nodes(admitted: image), identity: fx.source)
     }
 }
@@ -1269,7 +1269,7 @@ test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
     && match admit_well_kinded_closure(
       closure: CommitClosure { store: fx.store, root: fx.root }
     ) {
-      WellKinded { admitted: _ } => false
+      WellKinded { admitted: _, unresolved: _ } => false
       NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
         (list_length(items: manifests) == 1)
           && names_exactly(missing: manifests, expected: fx.child)
@@ -1282,6 +1282,33 @@ test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
 
 // PARITY. The ordinary and partial admission routes derive the SAME population.
 //
+// THE UNRESOLVED POPULATION COMES FROM THE SAME DERIVATION AS THE IMAGE, and this is the claim that
+// says so. `admit_partial_commit_closure` no longer walks the closure itself: it delegates to
+// `admit_well_kinded_closure` and takes both the image and the unresolved population off the one
+// admitted arm. If a later author restores a second walk in the partial route, the two populations
+// become independently derived again -- which is the authority substitution this module already
+// records catching once, at a different level -- and this claim is what goes red when they disagree.
+//
+// IT ASSERTS THE POPULATION, NOT MERELY THAT BOTH ARE NONEMPTY. Two independent walks of the same
+// closure agree on a count far more readily than on membership, so a count-only assertion would let
+// exactly the divergence this exists to catch pass.
+test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_population() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  let closure = CommitClosure { store: grafted, root: full.root }
+  match admit_well_kinded_closure(closure: closure) {
+    NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
+    WellKinded { admitted: _, unresolved: unresolved } =>
+      match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
+        ClosureCompleteSoNothingToAdmit => false
+        ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
+        PartialClosureAdmitted { admitted: a } =>
+          list_length(items: unresolved) > 0
+            && (unresolved == admitted_unresolved(admitted: a))
+      }
+  }
+}
+
 // This is the claim with no observable symptom until it is wrong. Both routes mint a
 // WellKindedClosure, and until this cut the partial one built the carrier straight from its stored
 // closure while the ordinary one ran the census -- so narrowing one and not the other would have
@@ -1297,7 +1324,7 @@ test fn both_admission_routes_derive_the_same_population() -> Bool {
     PartialClosureAdmitted { admitted: a } =>
       match admit_well_kinded_closure(closure: closure) {
         NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
-        WellKinded { admitted: ordinary } =>
+        WellKinded { admitted: ordinary, unresolved: _ } =>
           match well_kinded_nodes(admitted: admitted_well_kinded(admitted: a)) {
             partial_nodes =>
               (list_length(items: partial_nodes)

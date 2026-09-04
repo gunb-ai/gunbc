@@ -184,7 +184,7 @@ import gunbc.scm.commit_closure_json_v2 {
 fn scm_image_encode_or_empty(store: ObjectStore, root: SemanticNodeTarget) -> JsonValue {
   match admit_well_kinded_closure(closure: CommitClosure { store: store, root: root }) {
     NotWellKinded { source_occupied: _, manifest_occupied: _ } => json_object(members: [])
-    WellKinded { admitted: image } => encode_closure_document(image: image)
+    WellKinded { admitted: image, unresolved: _ } => encode_closure_document(image: image)
   }
 }
 

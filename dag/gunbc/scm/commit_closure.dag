@@ -160,6 +160,7 @@ type AdmittedPartialCommitClosure sole_constructor {
   closure: CommitClosure
   unresolved: List<ObjectId>
   reason: PartialClosureReason
+  image: WellKindedClosure
 }
 
 // THE REFUSALS ARE ARMS OF THE OUTCOME, not a coproduct beside it. The note here used to say there
@@ -189,24 +190,25 @@ fn admit_partial_commit_closure(
   closure: CommitClosure,
   reason: PartialClosureReason
 ) -> PartialClosureAdmissionOutcome {
-  let census = closure_census(closure: closure)
-  if list_length(items: wrong_kind_identities(census: census)) > 0 {
-    ClosureRequiresNodeAtWrongKind {
-      source_occupied: census.source_occupied,
-      manifest_occupied: census.manifest_occupied,
-    }
-  } else {
-    if list_length(items: census.absent) == 0 {
-      ClosureCompleteSoNothingToAdmit
-    } else {
-      PartialClosureAdmitted {
-        admitted: AdmittedPartialCommitClosure {
-          closure: closure,
-          unresolved: census.absent,
-          reason: reason,
+  match admit_well_kinded_closure(closure: closure) {
+    NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
+      ClosureRequiresNodeAtWrongKind {
+        source_occupied: sources,
+        manifest_occupied: manifests,
+      }
+    WellKinded { admitted: image, unresolved: unresolved } =>
+      if list_length(items: unresolved) == 0 {
+        ClosureCompleteSoNothingToAdmit
+      } else {
+        PartialClosureAdmitted {
+          admitted: AdmittedPartialCommitClosure {
+            closure: closure,
+            unresolved: unresolved,
+            reason: reason,
+            image: image,
+          }
         }
       }
-    }
   }
 }
 
@@ -222,10 +224,11 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
   admitted.unresolved
 }
 
-// An admitted partial closure is well-kinded BY CONSTRUCTION: admit_partial_commit_closure refuses the
-// source_occupied population before it mints one, so this re-seals rather than re-judges.
+// A FIELD READ, NOT A RE-DERIVATION. The image was minted by the one census-guarded literal above
+// and carried here, so this cannot answer about a different population than the admission did. It
+// used to re-derive, which is what made the guarantee restatable rather than carried.
 fn admitted_well_kinded(admitted: AdmittedPartialCommitClosure) -> WellKindedClosure {
-  well_kinded_image(closure: admitted.closure)
+  admitted.image
 }
 
 // A CLOSURE WHOSE EVERY REQUIREMENT IS SATISFIABLE, WHICH IS NOT THE SAME AS COMPLETE.
@@ -251,19 +254,21 @@ type WellKindedClosure sole_constructor {
   nodes: List<ObjectRecord>
 }
 
-// THE SINGLE PLACE A WellKindedClosure IS BUILT, so the ordinary and partial admissions cannot
-// derive different populations for the same closure. Two independent walks is the authority
-// substitution this carrier exists to remove, and it would have failed silently -- ordinary
-// admission narrowed while partial admission still shipped the whole repository store.
-fn well_kinded_image(closure: CommitClosure) -> WellKindedClosure {
-  WellKindedClosure {
-    root: closure.root,
-    nodes: derive_semantic_closure(store: closure.store, root: closure.root).nodes,
-  }
-}
-
+// THE ADMITTED ARM CARRIES THE UNRESOLVED POPULATION BESIDE THE IMAGE, which is what lets the
+// partial admission below delegate here instead of walking the closure a second time. Both facts
+// come from ONE derivation of ONE closure, so they cannot disagree; two walks would be the authority
+// substitution this carrier exists to remove, and DESIGN section 2 prices the second one as
+// redundant regardless of how small the closure happens to be.
+//
+// UNRESOLVED IS ON THE OUTCOME, NOT ON WellKindedClosure. The carrier is about KIND. A closure with
+// an absent child is perfectly well-kinded -- that is the partial-write case the format exists for
+// -- so putting completeness inside the carrier would make its name answer a question it does not
+// decide.
 type WellKindedAdmission
-  = WellKinded { admitted: WellKindedClosure }
+  = WellKinded {
+      admitted: WellKindedClosure,
+      unresolved: List<ObjectId>
+    }
   | NotWellKinded {
       source_occupied: List<ObjectId>,
       manifest_occupied: List<ObjectId>
@@ -273,15 +278,27 @@ type WellKindedAdmission
 // closure that is wrong in both ways report only whichever arm was tested first, so a caller
 // repairing one class and retrying would discover the other a round later -- the same objection this
 // module already records against naming the first identity instead of the population, one level up.
+// THE ONLY PLACE IN THE CORPUS A WellKindedClosure IS BUILT, and the census that authorizes it is
+// in the same expression as the literal.
+//
+// THIS REPLACES A PUBLIC well_kinded_image(closure) THAT RAN NO CENSUS. sole_constructor stops a
+// caller writing the record literal, and `.dag` has no module privacy, so that helper was a freely
+// callable mint for the exact state the carrier exists to exclude -- the bearer-token defect this
+// module already records, one level down, in the function that was supposed to have fixed it. The
+// repair is the same repair: there is no mint to call, because the literal never leaves the branch
+// its evidence guards.
 fn admit_well_kinded_closure(closure: CommitClosure) -> WellKindedAdmission {
-  let census = closure_census(closure: closure)
-  if list_length(items: wrong_kind_identities(census: census)) > 0 {
+  let derived = derive_semantic_closure(store: closure.store, root: closure.root)
+  if list_length(items: wrong_kind_identities(census: derived.census)) > 0 {
     NotWellKinded {
-      source_occupied: census.source_occupied,
-      manifest_occupied: census.manifest_occupied,
+      source_occupied: derived.census.source_occupied,
+      manifest_occupied: derived.census.manifest_occupied,
     }
   } else {
-    WellKinded { admitted: well_kinded_image(closure: closure) }
+    WellKinded {
+      admitted: WellKindedClosure { root: closure.root, nodes: derived.nodes },
+      unresolved: derived.census.absent,
+    }
   }
 }
 

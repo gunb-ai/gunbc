@@ -1199,8 +1199,13 @@ pub struct TransitionAdmission {
 /// trigger sentence is not evidence that the trigger fired -- and because that join's own two
 /// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
 /// in a shape indistinguishable from "not declared".
-const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
-    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10445). Both rows of the entry above are deleted,
+/// and KERNEL_IDENTITY_RELOCATION_LABEL with them. #10350 merged, so this branch's merge commit and
+/// its base both carry the relocation, no run can produce those deltas, and the wall reports them
+/// CONSUMED rather than stale -- the exact death the entry predicts for itself, coming due on the
+/// first change to touch this roster. That is this change. Adjudicated by the wall's own run at the
+/// exact head, not by the trigger sentence: `resolved_node_is_kernel_identity_for_name` is declared
+/// in `v1.std.core` at the merge base, and both rows named it there.
 
 /// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
 /// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
@@ -1227,15 +1232,16 @@ const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
 /// base there is nothing left to delete and this entry claims no credit for it. What this branch
 /// contributes is the rows below and nothing else.
 ///
-/// THE ROWS BELOW ARE THREE CLASSES UNDER THREE LABELS, BECAUSE THEIR REASONS DIFFER. One label
-/// spanning all three would make a single sentence answer for three distinct motions, and a row's
-/// only value is that a reader can check its stated reason against the row itself.
+/// THE ROWS BELOW ARE TWO CLASSES UNDER TWO LABELS, BECAUSE THEIR REASONS DIFFER. One label
+/// spanning both would make a single sentence answer for two distinct motions, and a row's only
+/// value is that a reader can check its stated reason against the row itself. A third class was
+/// authored and is deleted below, for the reason given there.
 ///
 /// Rows are enumerated by exact identity, never matched on the module pair: a pattern over
 /// (`commit_closure_json_v2` -> `object_table_json`) would silently admit a genuine rebind that
 /// happened to land between those same two modules.
 ///
-/// TRIGGER: all three sets go when #10445 merges. The base then binds each spelling to the module
+/// TRIGGER: both sets go when #10445 merges. The base then binds each spelling to the module
 /// named as its target, the deltas stop being producible, and the rows are owed deletion by the
 /// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
 /// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
@@ -1244,13 +1250,16 @@ const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
     "gunbc#10445 SCM object-table codec move: the mixed-table encoder, decoder and their positions \
      move from gunbc.scm.commit_closure_json_v2 to gunbc.scm.object_table_json";
 
-/// The vocabulary the third object kind brings with it: the manifest arms of every kind-specific
-/// lookup, the manifest and wrong-kind causes of the object-table decoder, and the store operations
-/// over manifests. Each spelling below resolved to NOTHING at the base, so these are first
-/// resolutions of names the corpus did not previously contain -- not rebinds of existing ones.
-const SCM_MANIFEST_VOCABULARY_LABEL: &str =
-    "gunbc#10445 SCM corpus-manifest vocabulary: the third object kind's lookup arms, decoder \
-     causes and store operations are newly authored and had no base declaration";
+/// THERE IS NO MANIFEST-VOCABULARY LABEL, AND THE 38 ROWS THAT CARRIED ONE ARE DELETED. An earlier
+/// head of this branch authored one row per newly authored manifest spelling, each reported as a
+/// `NewPoolCoincidenceResolution` binding delta by the wall at that base. Against the merged base
+/// the wall reports none of them: all 38 came back STALE -- matching no delta in the run -- while
+/// every `TargetChanged` and `AuthoredReferenceResolution` row beside them still matched.
+///
+/// THE ROWS GO RATHER THAN THEIR LABEL BEING REWORDED, because a row that matches no delta is a
+/// standing claim about a motion that is not happening. Carrying it would be the roster's own
+/// version of the defect this branch is made of: a well-formed statement of the right type whose
+/// subject does not exist. The wall decides which rows exist, and it says these do not.
 
 /// `node_target_of` is the sole constructor of `SemanticNodeTarget` in `gunbc.scm.object_store`,
 /// introduced when the untyped locator was split so an authored-source identity can no longer
@@ -1261,386 +1270,6 @@ const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
      gunbc.scm.object_store and had no base declaration";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer",
-            in_declaration: "ancestry_binding_is_kernel_identity",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: KERNEL_IDENTITY_RELOCATION_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
-            spelling: "resolved_node_is_kernel_identity_for_name",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.log",
-            in_declaration: "logged_commit_standing",
-            spelling: "NodeRecordIsCorpusManifest",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration: "scm_ck_a_lost_object_is_the_stores_fact_not_the_callers",
-            spelling: "ObjectIsCorpusManifest",
-            target: "gunbc.scm.checkout",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_checkout_verb_witness",
-            in_declaration: "scm_ck_minted_or",
-            spelling: "RepositoryCommitMintRootIsCorpusManifest",
-            target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_store_witness",
-            in_declaration: "same_record",
-            spelling: "NodeRecordIsCorpusManifest",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestAbsent",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestEntry",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestFound",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestIsAuthoredSource",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestIsSemanticNode",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestLocatorCollision",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "CorpusManifestStored",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "authored_source_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "find_corpus_manifest_record",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_a_manifest_survives_the_table",
-            spelling: "store_corpus_manifest",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_an_authored_source_keeps_its_derived_identity",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableEdgeTargetIsCorpusManifest",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableManifestPathEmpty",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableManifestSourceIsCorpusManifest",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableManifestSourceIsSemanticNode",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableManifestSourceUnresolved",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableMemberReadRefused",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableTargetReferenceRefused",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_cause_tag",
-            spelling: "ObjectTableUnexpectedMember",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_content_at",
-            spelling: "AuthoredSourceAbsent",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_content_at",
-            spelling: "AuthoredSourceFound",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_content_at",
-            spelling: "AuthoredSourceIsCorpusManifest",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_content_at",
-            spelling: "AuthoredSourceIsSemanticNode",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_content_at",
-            spelling: "find_authored_source_record",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_decoded",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_decoded",
-            spelling: "decode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_reencoded",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_reencoded",
-            spelling: "decode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_reencoded",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_table_json_witness",
-            in_declaration: "ot_the_two_authored_arms_stay_distinct",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
     TransitionAdmission {
         label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
         subject: AdmissionSubject::Binding {
@@ -1880,26 +1509,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             target: "gunbc.scm.object_table_json",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_log_witness",
-            in_declaration: "log_witness_mint",
-            spelling: "RepositoryCommitMintRootIsCorpusManifest",
-            target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_MANIFEST_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_object_store_witness",
-            in_declaration: "refusal_names",
-            spelling: "ObjectIsCorpusManifest",
-            target: "gunbc.scm.checkout",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
     },
 ];
 

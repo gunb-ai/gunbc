@@ -430,7 +430,7 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
           manifest_occupied: manifests,
         }
       }
-    WellKinded { admitted: image } =>
+    WellKinded { admitted: image, unresolved: _ } =>
       match unresolved_identities(closure: closure) {
         missing =>
           if list_length(items: missing) == 0 {
