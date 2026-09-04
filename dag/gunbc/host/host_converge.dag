@@ -324,7 +324,17 @@ fn find_by_identity<T>(items: List<T>, identity: HostIdentity, key: fn(T) -> Hos
 // compiler deficit, not a taste one: a generic `-> T?` loses its Optional through inference, so a
 // `match` directly over find_by_identity's result sees bare HostConverge and reports Present as a
 // missing variant of it -- at the type declaration, nowhere near the call. Naming the return type
-// once here restores it for every consumer. Dissolves when generic Optional returns infer.
+// once here restores it for every consumer.
+//
+// DISSOLVE-ON, NAMED AS A CAPABILITY RATHER THAN AN EVENT: inference carrying the Optional through
+// a generic return position, so that a `match` directly over `find_by_identity`'s result sees
+// `Optional<HostConverge>` rather than bare `HostConverge`. That capability must be SUFFICIENT FOR
+// every consumer to match on such a call with no monomorphic wrapper standing in front of it,
+// because the loss this fn pays for is corpus-wide -- three call sites had each privately authored
+// the same workaround -- and a trigger at a smaller grain would retire the row while the deficit
+// still bites. Nothing smaller retires it: not a clearer diagnostic pointing at the real call site,
+// not a fix holding only where the caller annotates the type, and not this wrapper acquiring more
+// consumers, which is growth of the workaround and not its dissolution.
 fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
