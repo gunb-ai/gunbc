@@ -12018,7 +12018,7 @@ thread_local! {
         match_pattern: None,
         expr_data: Rc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
-            message: "pool census heads-only: function body stripped — refuse to interpret"
+            message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
                 .to_string(),
         }),
         ident: None,
@@ -15447,10 +15447,11 @@ fn parse_module_heads_for_pool_census(
         m
     });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
-    // parsed by the same productions; a brace-delimited fn body is skipped at token
-    // grain instead of being built, because `census_heads_module_node` two lines below
-    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
-    // of function bodies for a consumer that discards them was the largest single term
+    // parsed by the same productions; brace-delimited fn bodies and data initializer
+    // values are skipped at token grain instead of being built, because
+    // `census_heads_module_node` below replaces every body with the shared stand-in
+    // anyway. Building thousands of modules' bodies for a consumer that discards them
+    // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
     // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
     //

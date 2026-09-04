@@ -11777,7 +11777,13 @@ pub fn parse_data_after_kw(
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr(r.tokens.clone(), ctx.clone());
+        // Heads-only pool consumers need the data declaration's name and type, never its value.
+        // Do not build a potentially multi-kilobyte initializer AST just to discard it.
+        let r = if ctx.heads_only {
+            parse_data_value_heads_only(r.tokens.clone(), ctx.clone())
+        } else {
+            parse_expr(r.tokens.clone(), ctx.clone())
+        };
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -12027,6 +12033,117 @@ pub struct HeadsBlockSkipResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HeadsDataValueSkipResult {
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
+    [
+        "alias",
+        "type",
+        "fn",
+        "func",
+        "service",
+        "resource",
+        "data",
+        "extern",
+        "pattern",
+        "interface",
+    ]
+    .into_iter()
+    .any(|keyword| tok_is_keyword(tok.clone(), keyword.to_string()))
+}
+
+pub fn heads_skip_data_value_tokens_at(
+    tokens: Rc<TokenStream>,
+    mut offset: i64,
+    mut braces: i64,
+    mut parens: i64,
+    mut brackets: i64,
+    mut seen: bool,
+) -> Rc<HeadsDataValueSkipResult> {
+    loop {
+        let tok = token_stream_peek(tokens.clone(), offset);
+        if tok_is_eof(tok.clone()) {
+            break if seen && braces == 0 && parens == 0 && brackets == 0 {
+                Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens, offset),
+                    err: None,
+                })
+            } else {
+                Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens, offset),
+                    err: Some(parse_error(
+                        "heads-only parse: unterminated data value".to_string(),
+                        token_span(tok),
+                    )),
+                })
+            };
+        }
+        if tok_is_newline(tok.clone()) && braces == 0 && parens == 0 && brackets == 0 && {
+            let next =
+                token_stream_first(skip_newlines(token_stream_advance(tokens.clone(), offset)));
+            tok_is_eof(next.clone()) || heads_token_starts_item(next)
+        } {
+            break if seen {
+                Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens, offset),
+                    err: None,
+                })
+            } else {
+                Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens, offset),
+                    err: Some(parse_error(
+                        "heads-only parse: empty data value".to_string(),
+                        token_span(tok),
+                    )),
+                })
+            };
+        }
+        let Some(t) = tok else {
+            break Rc::new(HeadsDataValueSkipResult {
+                tokens: token_stream_advance(tokens, offset),
+                err: Some(parse_error(
+                    "heads-only parse: unterminated data value".to_string(),
+                    crate::v1_std_core::no_span(),
+                )),
+            });
+        };
+        braces += i64::from(is_lbrace_shape(t.shape.clone()))
+            - i64::from(is_rbrace_shape(t.shape.clone()));
+        parens += i64::from(is_lparen_shape(t.shape.clone()))
+            - i64::from(is_rparen_shape(t.shape.clone()));
+        brackets += i64::from(is_lbracket_shape(t.shape.clone()))
+            - i64::from(is_rbracket_shape(t.shape.clone()));
+        if braces < 0 || parens < 0 || brackets < 0 {
+            break Rc::new(HeadsDataValueSkipResult {
+                tokens: token_stream_advance(tokens, offset),
+                err: Some(parse_error(
+                    "heads-only parse: unmatched delimiter in data value".to_string(),
+                    t.span.clone(),
+                )),
+            });
+        }
+        offset += 1;
+        seen = true;
+    }
+}
+
+pub fn parse_data_value_heads_only(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    let skipped = heads_skip_data_value_tokens_at(tokens, 0, 0, 0, 0, false);
+    Rc::new(ExprResult {
+        expr: census_heads_body_stand_in(),
+        tokens: skipped.tokens.clone(),
+        ctx,
+        err: skipped.err.clone(),
+    })
+}
+
 pub fn heads_skip_block_tokens(
     mut tokens: Rc<TokenStream>,
     mut depth: i64,
@@ -12093,7 +12210,8 @@ pub fn heads_skip_block_tokens(
 pub fn census_heads_body_stand_in_message() -> String {
     thread_local! {
         static CACHED: String = {
-            "pool census heads-only: function body stripped -- refuse to interpret".to_string()
+            "pool census heads-only: declaration body/value stripped -- refuse to interpret"
+                .to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
