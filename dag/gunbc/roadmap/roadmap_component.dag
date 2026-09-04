@@ -30,7 +30,7 @@ import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
   ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
   ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
-  ts_array, ts_index, ts_try,
+  ts_array, ts_index, ts_try, ts_for_of,
 }
 import extdeps.w3c.device_orientation_and_motion {
   devicemotion_event_type, device_motion_event_interface,
@@ -3177,6 +3177,57 @@ fn dispatch_client_js_source() -> String {
 }
 
 data sandbox_live_class: String = "sandbox-live-btn"
+data strip_lab_replay_class: String = "strip-lab-replay"
+data strip_lab_slow_class: String = "strip-lab-slow"
+data strip_lab_section_class: String = "sandbox-strip-lab"
+
+fn strip_lab_query_all(selector: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: selector)])
+}
+
+fn strip_lab_set_style(target: String, property: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: target), property: "style"), property: property), op: "=", right: value))
+}
+
+fn strip_lab_on_click(selector: String, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: strip_lab_query_all(selector: selector), property: "forEach"),
+    args: [ts_arrow(params: ["b"], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "b"), property: "addEventListener"),
+      args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: body))],
+    )))],
+  ))
+}
+
+fn strip_lab_bind_statements() -> List<TsStmt> {
+  [
+    ts_let(name: "gunbcStripSlow", value: ts_ident(name: "false")),
+    ts_const(name: "gunbcStripApply", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: strip_lab_query_all(selector: join([".", strip_lab_section_class, " .", activity_round_strip_class], "")), property: "forEach"),
+      args: [ts_arrow(params: ["strip"], body: ts_block(stmts: [
+        ts_let(name: "i", value: ts_lit_num(text: "0")),
+        ts_for_of(var_name: "seg", iterable: ts_member(object: ts_ident(name: "strip"), property: "children"), body: ts_block(stmts: [
+          strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "none")),
+          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "seg"), property: "getBoundingClientRect"), args: [])),
+          strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "")),
+          strip_lab_set_style(target: "seg", property: "animationDuration", value: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_str(value: "3400ms"), alternate: ts_lit_str(value: ""))),
+          strip_lab_set_style(target: "seg", property: "animationDelay", value: ts_binop(
+            left: ts_binop(left: ts_ident(name: "i"), op: "*", right: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_num(text: "320"), alternate: ts_lit_num(text: "40"))),
+            op: "+", right: ts_lit_str(value: "ms"))),
+          ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "i"), op: "=", right: ts_binop(left: ts_ident(name: "i"), op: "+", right: ts_lit_num(text: "1")))),
+        ])),
+      ]))],
+    )))),
+    strip_lab_on_click(selector: join([".", strip_lab_replay_class], ""), body: [
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcStripApply"), args: [])),
+    ]),
+    strip_lab_on_click(selector: join([".", strip_lab_slow_class], ""), body: [
+      ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "gunbcStripSlow"), op: "=", right: ts_prefix(op: "!", expr: ts_ident(name: "gunbcStripSlow")))),
+      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "b"), property: "textContent"), op: "=", right: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_str(value: "slow: on"), alternate: ts_lit_str(value: "slow: off")))),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcStripApply"), args: [])),
+    ]),
+  ]
+}
 
 // The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one
 // behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to
@@ -3204,7 +3255,7 @@ fn sandbox_client_program() -> TsProgram {
       "same render as the real dispatch button, but POSTs to /sandbox/echo?status=<data-status>",
       "so every wire arm is pressable without dispatching a real session",
     ],
-    instance_statements: [],
+    instance_statements: strip_lab_bind_statements(),
   )
 }
 
