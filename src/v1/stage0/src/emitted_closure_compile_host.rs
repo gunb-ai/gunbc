@@ -1363,6 +1363,43 @@ pub(crate) fn run_function_value_adapter_discrimination(
     }
 }
 
+/// THE REPRESENTATION-IDENTICAL CAST CONTROL, POSED TO RUSTC (gunbc#10266).
+///
+/// THE SUBJECT IS `v1.compiler.emit` `cast_representation_identical`: a cast whose source and
+/// target are one host carrier reached through transparent refinement, alias and brand edges has
+/// NO target operation to perform, so the emission must be the operand unchanged. Before that
+/// decision existed the emitter fabricated `panic!("unsupported cast from ..")` into the generated
+/// Rust for every such cast but the flattest one.
+///
+/// WHY A SUBSTRING ORACLE IS NOT ENOUGH FOR THIS SUBJECT, which is why the fixture is here as well
+/// as in `test.claim.emitter_nested_refinement_cast_witness_test`. That witness can assert the
+/// ABSENCE of the unsupported-cast text, and absence is all it can assert: asserting the presence
+/// of some particular replacement would pin one rendering of "the operand unchanged" and redden on
+/// any faithful change to it. Whether what replaced the panic actually TYPE-CHECKS as the declared
+/// return -- six casts, both directions, across three aliases -- is a question only rustc answers,
+/// and the never type is precisely what let the defective form pass a type check before.
+///
+/// THE RED ARM IS THE ROUTE'S OWN, NOT A SECOND ONE, and that is deliberate. This pair's claim is
+/// about its GREEN arm; the red exists to prove the route can still fail, so reusing
+/// `FIXTURE_RED_PATH` -- adjudicated by the same predicate, with the same expected rustc code --
+/// makes that proof the route's established one rather than a fresh unadjudicated arm. A green
+/// here with that red passing means the closure compiled because these bytes type-check.
+#[cfg(test)]
+const FIXTURE_NESTED_REFINEMENT_CAST_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/nested_refinement_cast_probe.dag";
+
+/// The representation-identical cast pair, assembled from the SAME arm runner and adjudicated by
+/// the SAME predicate the route's own pair uses -- a third discrimination, not a third harness.
+#[cfg(test)]
+pub(crate) fn run_nested_refinement_cast_discrimination(
+    probe_root: &Path,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_NESTED_REFINEMENT_CAST_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///
