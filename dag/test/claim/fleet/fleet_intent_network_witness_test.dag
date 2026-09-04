@@ -65,6 +65,7 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv4_bmc_endpoint,
   srv1_tailscale_endpoint,
   srv2_tailscale_endpoint,
+  printer_01_lan_endpoint,
 ]
 
 test fn fleet_intent_network_topology_membership_is_an_identity_join() -> Bool {
@@ -124,10 +125,27 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
 test fn fleet_intent_network_srv5_srv6_enrolled_at_their_reserved_addresses() -> Bool {
   srv5_host_lan_endpoint.address == "192.168.1.226"
     && srv5_host_lan_endpoint.role == HostOperatingSystem
-    && srv5_host_lan_endpoint.host == Present { value: operator_host_srv5 }
+    && srv5_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv5 }
     && srv6_host_lan_endpoint.address == "192.168.1.225"
     && srv6_host_lan_endpoint.role == HostOperatingSystem
-    && srv6_host_lan_endpoint.host == Present { value: operator_host_srv6 }
+    && srv6_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv6 }
     && operator_host_srv5 == "srv5"
     && operator_host_srv6 == "srv6"
+}
+
+// THE BINDING review 59815 REQUIRED, MADE EXECUTABLE. Before the repair the printer endpoint and the
+// printer asset were joined only by the label string "printer-01-lan", so the two could drift with
+// nothing failing. This asserts the endpoint names printer_01 STRUCTURALLY -- it goes red if the
+// endpoint is repointed at another asset, and it could not have been written at all against the old
+// `host: HostIdentity?` field, because there was no place on the record to put a PhysicalAssetIdentity.
+test fn w_the_printer_endpoint_names_the_registered_printer_asset() -> Bool {
+  printer_01_lan_endpoint.subject == EndpointAsset { asset: printer_01 }
+    && printer_01_lan_endpoint.role == FabricationAppliance
+}
+
+// AND THE GATEWAY IS UNREGISTERED, NOT UNBOUND. It is a real device this repository holds no
+// inventory row for, which is a different fact from an endpoint that addresses nothing. If the
+// router ever gets an asset row this arm changes and nothing else does.
+test fn w_the_lan_gateway_subject_is_unregistered_rather_than_a_null() -> Bool {
+  operator_lan_gateway_endpoint.subject == EndpointSubjectUnregistered
 }
