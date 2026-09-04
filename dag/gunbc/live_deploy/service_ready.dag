@@ -62,7 +62,17 @@ type ServiceNotReady {
 // exit paths (source load, blocking diagnostics, no graph, bind failure) and the probe alone cannot
 // tell them apart.
 
-data live_deploy_roadmap_unit_expected_startup: Second = second(count: 40)
+// THIRD CALIBRATION, 2026-09-04, AND THE SAME SHAPE AS THE SECOND: the corpus grew and the bound
+// did not. The first deploy through `gunbc converge --mode deploy` on srv1 that reached the readiness
+// gate refused ServiceNotReady at 120s while the unit was still typechecking; the unit's own journal
+// then reads `Started` at 15:49:28 and `gunbc serve listening on 0.0.0.0:8080` at 15:53:07 -- 219s,
+// a SUCCESSFUL start, with `resolved 611 sources` at 97s and the typecheck phase after it. The July
+// observations were 35-39s over 2,356 files; the serve now resolves 611 sources of a larger corpus and
+// typechecks them, so the dominant term moved from load to typecheck and grew about five-fold. The
+// expectation is set above the one measured start, the margin factor is unchanged, and the
+// dissolution trigger below still names the only real fix: demand-scoping the load and typecheck to
+// the entry's closure, at which point this number falls back to seconds without touching the margin.
+data live_deploy_roadmap_unit_expected_startup: Second = second(count: 240)
 
 data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 
