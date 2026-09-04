@@ -8,6 +8,7 @@ data parallel_representation_debt: RecurringFailureMode = RecurringFailureMode {
 
   receipts: [
     "parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is still a violation)",
+    "hand-authored equality beside a native relation: a *_eq or is_* predicate folding over a closed coproduct the substrate already compares with ==. Found on gunbc#10396, where mounting_location_id_eq was authored as an 81-arm nested match over a 9-variant id AND a second instance was re-minted in the same PR's witness file; both deleted after a probe established that == returns true for like variants and false for unlike ones, and compares payloads on payload-carrying arms. The authoring pressure is that the exhaustive match has a real virtue -- a tenth variant fails to compile -- which reads as justification for a fold that need not exist. A discovery grep for hand-authored *_eq declarations returns a population in the low hundreds; that is a CANDIDATE CENSUS whose members are not dispositioned, NOT a defect count, and members over payload coproducts may differ from == in ways a bulk rewrite would silently change. The next step is a typed report-only census, not a sweep.",
   ],
 
   evidence: [],
