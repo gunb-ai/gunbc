@@ -9,9 +9,11 @@ echo "  Git resolved nothing here. The path is left UNMERGED and the worktree fi
 echo "  Do NOT resolve these bytes by hand or pretend the provisional bytes are derived. Follow this path's declared repair route:" >&2
 case "$merged_path" in
   docs/design-failure-modes.md|docs/design-rung-drops.md)
-    echo "1. stage the driver-left bytes as an explicitly PROVISIONAL projection: git add -- $merged_path" >&2
-    echo "2. finish the authority merge and push the branch; do not regenerate this projection locally" >&2
-    echo "3. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head" >&2
+    echo "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base" >&2
+    echo "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count: comm -23 <(git show <base-ref>:$merged_path | sed -n 's/^- `\([a-z0-9_]*\)`.*/\1/p' | sort) <(git show HEAD:$merged_path | sed -n 's/^- `\([a-z0-9_]*\)`.*/\1/p' | sort) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding" >&2
+    echo "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours" >&2
+    echo "4. finish the authority merge and push the branch; do not regenerate this projection locally" >&2
+    echo "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head" >&2
     ;;
   *)
     echo "  This path requires author regeneration before the merge can finish:" >&2

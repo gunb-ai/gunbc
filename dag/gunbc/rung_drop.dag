@@ -247,6 +247,8 @@ type LegacyProseIdentity
   | FloorCutRegenSecondGenerationAgreement
   | FloorCutReceiptDiscriminatingArms
   | FloorCutBehaviouralRegressionDifferential
+  | RustUnitTestsOffTheMergePath
+  | EmitCopyQualificationWithoutAConsumer
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -259,6 +261,8 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     RequiredGateBankruptcy => "required_gate_bankruptcy"
     TextBoundaryIdentityWall => "text_boundary_identity_wall"
     FabricEvidenceGating => "fabric_evidence_gating"
+    RustUnitTestsOffTheMergePath => "rust_unit_tests_off_the_merge_path"
+    EmitCopyQualificationWithoutAConsumer => "emit_copy_qualification_without_a_consumer"
     EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
     DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
@@ -399,6 +403,8 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   RequiredGateBankruptcy,
   TextBoundaryIdentityWall,
   FabricEvidenceGating,
+  RustUnitTestsOffTheMergePath,
+  EmitCopyQualificationWithoutAConsumer,
   EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
   DirectCallUnboundCarriedGenericCompat,
