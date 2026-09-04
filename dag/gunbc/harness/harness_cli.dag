@@ -255,7 +255,12 @@ fn harness_worker_config(
 
 data harness_worker_system_prompt: String = harness_guidance_prose(rows: harness_worker_guidance())
 
-data harness_worker_step_budget: Int = 24
+// RAISED FROM 24 ON A MEASUREMENT. A mechanical four-file deletion, run under Think Max, spent its
+// rounds at roughly one sed edit per declaration plus a verification read per file, and exhausted 24
+// with two files complete and two untouched -- every write correct, none wasted. A budget that ends
+// a correct run mid-task is a cost with no safety behind it; the per-round deadline still bounds
+// each step, so the total wall bound grows with the count rather than being replaced by it.
+data harness_worker_step_budget: Int = 40
 
 // EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
