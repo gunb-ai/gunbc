@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data discriminating_arm_built_but_never_enrolled: RecurringFailureMode = RecurringFailureMode {
+  identity: "discriminating_arm_built_but_never_enrolled" as NonEmptyStr,
+
+  receipts: [
+    "**a claim file builds its discriminating arms and enrols only its accepting control** (the fixtures that would go red are constructed, named and committed, but no assertion consumes them; the one enrolled assertion is the arm whose expected answer is `accepted`, so the file cannot fail on the behaviour it was built to police). ",
+    "IT READS AS COVERAGE FROM EVERY ANGLE THAT DOES NOT COUNT ASSERTIONS. The file is named for the property, its receipts are named for the property, the discriminating inputs are present and correct, and a reader tracing the subject finds everything they expect — because everything they expect IS there except the consumption. This is DESIGN section 4b's decoration reached by a different road than a permanently-green check: the check is not weak, it is ABSENT, while the surrounding material asserts it exists. ",
+    "THE CHEAP DETECTOR IS A RATIO, NOT A READING: count the constructed fixtures or receipts against the enrolled assertions. `n` receipts and one `test fn` is the signature, and it is decidable without understanding the subject at all. Reading the file for meaning is what FAILS here, because the meaning is entirely correct — the author of the specimen understood the class precisely and wrote the right probes. ",
+    "SPECIMEN, and the reason this row does not name a repair: `v2.test.manual.nominal_distinctness_cross_call` constructs three compile receipts — records cross-call, desugared-brands cross-call, and an accepting control — and enrols exactly one `test fn`, `nominal_distinct_control_compiles_ok`. The two discriminating arms have receipts and no assertion. ",
+    "THE ARMS CANNOT BE ENROLLED TODAY AND THAT IS THE ACTUAL FINDING. `v2.compiler.00_compile compile_ingest_staging` composes lex, parse, normalize, resolve and translate and NO INFER STAGE, even though `src/v2/compiler/04_infer.dag` exists on disk and is simply not composed into that pipeline. So those receipts cannot form a nominal-mismatch judgment under any keying of any identity: enrolling them as expecting-red would enrol two assertions that are red today and red for as long as staging cannot type. The file is not negligent; it is BLOCKED, and its silence is the only part that is wrong. ",
+    "Rung found at 1. CEILING for the enrolment itself is 3 once the capability exists. NEXT TRIGGER, capability and not artifact: a type-judging stage reachable from `compile_ingest_staging`, sufficient for those receipts to yield `Rejected` on a cross-call nominal mismatch — NOT merely the existence of `src/v2/compiler/04_infer.dag`, which already exists and satisfies nothing. Until then the honest state is a declared 4b(2) cannot-climb-until row rather than an unenrolled file that reads as coverage. ",
+    "SUBJECT BOUNDARY, recorded because these two were conflated once already during this row's own discovery: this class is about v2 RECORD nominal distinctness through the staging pipeline — `type IntentId { value: String }`, which is what a brand looks like AFTER desugaring. It is NOT the `where brand(\"...\")` refinement walled in gunbc#10337, which is a v1 `04_infer` concern. Same word, two representations, two pipelines; a reader who merges them will conclude the wall already covers this and it does not. ",
+  ],
+
+  evidence: [],
+}
