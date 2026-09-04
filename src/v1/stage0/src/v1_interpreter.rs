@@ -17925,6 +17925,16 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
     static OPAQUE_HOST_CALL_REACHED: std::cell::RefCell<Vec<String>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    // THE DENOMINATOR FOR THE REACH RECORD, AND THE ONLY THING THAT SEPARATES ITS TWO FAILURES.
+    // A claim reporting no reach is either a claim that called no opaque arm (the finding the
+    // column exists to report) or a claim whose calls never passed this hook at all (the column
+    // being a decoration). Those are indistinguishable from an empty list, so the hook counts
+    // EVERY dispatch it sees beside the ones it matches: `dispatches` is the population the
+    // identity test was applied to, and zero dispatches under a claim that provably compiled a
+    // module says the hook is not on the path — a statement the reach list alone cannot make.
+    static BUILTIN_DISPATCHES_OBSERVED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static BUILTIN_DISPATCH_LAST_NAME: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Arm the recorder with the grounded surface. `None` DISARMS it, which is not the same fact as
@@ -17938,6 +17948,19 @@ pub fn set_opaque_host_call_surface(operations: Option<Vec<String>>) {
 /// Clear the per-claim record. Called by the floor before each claim; the surface stays armed.
 pub fn reset_opaque_host_call_reach() {
     OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(0));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = None);
+}
+
+/// How many builtin dispatches passed the reach hook since the last reset, and the last name it
+/// saw. Reported beside the reach so an empty reach can be read: with dispatches > 0 the hook ran
+/// and the claim genuinely reached no listed arm; with dispatches == 0 the hook never ran and the
+/// reach is not an observation at all.
+pub fn builtin_dispatches_observed() -> (u64, Option<String>) {
+    (
+        BUILTIN_DISPATCHES_OBSERVED.with(|c| c.get()),
+        BUILTIN_DISPATCH_LAST_NAME.with(|n| n.borrow().clone()),
+    )
 }
 
 /// Which armed opaque operations this claim reached, in first-reach order, deduplicated.
@@ -17971,6 +17994,8 @@ pub enum OpaqueHostCallReach {
 /// `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
 /// the `free_call.*` arm identity, which is the join's INPUT and never its output.
 fn note_opaque_host_call_reach(name: &str) {
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = Some(name.to_string()));
     OPAQUE_HOST_CALL_SURFACE.with(|s| {
         let borrowed = s.borrow();
         let Some(surface) = borrowed.as_ref() else {
