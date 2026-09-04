@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.observation_heartbeat_lockstep_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data observation_heartbeat_lockstep_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the observation heartbeat implementation and its declared cadence are out of lockstep",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_period_matches_the_seed_cadence", tail: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_source_still_refuses_to_fabricate", tail: Empty {} } } },
+  next_rung_trigger: "node://adhoc-3cb769e0-0a6 lands: the heartbeat period is derived from one declared cadence and the source refuses fabricated heartbeat observations"
+}
