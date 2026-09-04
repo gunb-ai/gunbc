@@ -1,0 +1,389 @@
+module std.page_fold
+
+import std.types { NonEmptyStr, Int, Bool, List, String }
+import std.integer { PositiveInt }
+import extdeps.uri { Uri }
+
+// THREE CLAIMS, NOT ONE, AND CONFLATING THEM IS WHY THIS MODULE DID NOT EXIST FOR SO LONG.
+//
+// A listing read makes three separable claims and every one of them can be true while the others
+// are false. (1) PAGE SIZE is how many items one request asks for -- a request parameter, bounded
+// by the serving authority. (2) CURSOR SHAPE is how the next request is named -- an offset, an
+// opaque token, or a link target, and they are different protocols rather than spellings of one.
+// (3) CONTINUATION CLOSURE is whether the sequence of requests was consumed until the authority
+// said there was no next -- a property of the WHOLE fold, which no single response carries.
+//
+// Two sessions read a `per_page` field and concluded pagination was modeled: they substituted
+// claim (1) for claim (3). The substitution is easy precisely because claim (1) is the one that
+// appears lexically in a request declaration while claim (3) appears nowhere unless a fold
+// exists. So the three are declared here as three carriers, and no projection of one answers for
+// another.
+//
+// WHAT IS DELIBERATELY NOT HERE: the effect that fetches a page. This module is the pure driver --
+// it decides, given what a page said, whether another request is owed, whether the fold is closed,
+// or whether it must refuse. The transport that performs the request is a realization bound at the
+// caller's boundary (DESIGN section 3: the dispatch that selects a realization is itself
+// realization). The driver is total and executable against a recorded page sequence, which is what
+// page_fold_run consumes.
+
+// THE BOUND IS THE POINT, AND IT IS A CONSTRUCTOR RATHER THAN A CHECK.
+//
+// An external listing has no modeled length. A fold that follows continuations until the authority
+// stops is an unbounded external read, and an unbounded external read is the absorbing fallback
+// DESIGN section 5 forbids: a serving side that keeps answering `next` -- through a defect, a
+// cursor that does not advance, or a corpus larger than anyone budgeted -- turns a read into a
+// non-terminating one, and the honest arms are exhaustion or refusal, never a truncated result
+// wearing the shape of a complete one.
+//
+// max_pages is PositiveInt rather than Int because a zero-page budget refuses every fold before it
+// begins, which is a policy nobody means and which would report the same refusal as a genuine
+// overrun. The single authority for positivity is std.integer, consumed rather than re-minted.
+type PageBound {
+  max_pages: PositiveInt
+}
+
+// PAGE SIZE, CLAIM ONE, AND ITS ADMISSION AGAINST A SERVING MAXIMUM.
+//
+// The serving maximum is a fact about the authority being read, so it is supplied by the extdeps
+// module that cites it and is never defaulted here. The admission REFUSES an over-large request
+// rather than clamping it: an authority that silently clamps (GitHub's REST API is documented to)
+// answers a request that was never made, and the caller has no way to learn that the size it
+// reasoned about is not the size it got. Refusing keeps the disagreement visible at the boundary
+// where it is still cheap.
+type PageSize {
+  count: PositiveInt
+}
+
+type PageSizeAdmission
+  = PageSizeAdmitted { size: PageSize }
+  | PageSizeAboveAuthorityMaximum { requested: PageSize, maximum: PageSize }
+
+fn admit_page_size(requested: PageSize, maximum: PageSize) -> PageSizeAdmission {
+  if requested.count > maximum.count {
+    PageSizeAboveAuthorityMaximum { requested: requested, maximum: maximum }
+  } else {
+    PageSizeAdmitted { size: requested }
+  }
+}
+
+// CURSOR SHAPE, CLAIM TWO, AS A CLOSED COPRODUCT OF THE FORMS REAL AUTHORITIES DOCUMENT.
+//
+// It is closed rather than a String because the three forms have different advance laws and
+// different failure modes, and a String erases which one is in play. An offset advances by
+// arithmetic the CLIENT performs and is therefore the form that can loop forever if the server
+// stops honouring it; an opaque token advances only by echoing what the server said and must never
+// be interpreted; a link target is a whole request the server authored (RFC 8288 rel="next"), so
+// the client composes no request at all.
+//
+// Adding a fourth form is a row here, and the exhaustive matches below fail to compile until every
+// consumer has said what it means -- which is the point of closing it.
+type PageCursor
+  = OffsetPage { page: PositiveInt }
+  | OpaqueToken { token: NonEmptyStr }
+  | LinkNext { target: Uri }
+
+fn page_cursor_shape_key(c: PageCursor) -> NonEmptyStr {
+  match c {
+    OffsetPage { page: p } => "offset_page" as NonEmptyStr
+    OpaqueToken { token: t } => "opaque_token" as NonEmptyStr
+    LinkNext { target: u } => "link_next" as NonEmptyStr
+  }
+}
+
+fn page_cursor_eq(a: PageCursor, b: PageCursor) -> Bool {
+  match a {
+    OffsetPage { page: pa } => match b {
+      OffsetPage { page: pb } => pa == pb
+      OpaqueToken { token: tb } => false
+      LinkNext { target: ub } => false
+    }
+    OpaqueToken { token: ta } => match b {
+      OffsetPage { page: pb } => false
+      OpaqueToken { token: tb } => ta == tb
+      LinkNext { target: ub } => false
+    }
+    LinkNext { target: ua } => match b {
+      OffsetPage { page: pb } => false
+      OpaqueToken { token: tb } => false
+      LinkNext { target: ub } => ua.locator == ub.locator
+    }
+  }
+}
+
+// CONTINUATION CLOSURE, CLAIM THREE. What ONE page says about whether another is owed.
+//
+// ContinuationClosed is the authority's statement that the sequence ends here. It is not the same
+// fact as "this page was short", and the difference is why a short-page heuristic is not offered:
+// a page shorter than the requested size is evidence about the serving side's batching, not about
+// exhaustion, and reading it as exhaustion silently truncates exactly the listings whose last full
+// page happens to land on a boundary.
+type PageContinuation
+  = ContinuationClosed
+  | ContinuationNext { cursor: PageCursor }
+
+// THE SUBJECT IS WHAT MAKES A REFUSAL LOCATED. A refusal that says only "the page budget ran out"
+// names no operation, so a consumer holding several folds cannot tell which listing is incomplete.
+type PageFoldSubject {
+  operation: NonEmptyStr
+}
+
+// EVERY REFUSAL ARM CARRIES ITS SUBJECT AND ITS POSITION, and none of them carries a partial
+// result. That absence is the wall: DESIGN section 5 requires the failure arm to refuse rather
+// than widen, and a refusal that also handed back the items read so far would let a caller use a
+// truncated listing by reading one field and ignoring the other.
+//
+// The arms are separate because their remedies are separate. A budget overrun is a policy question
+// -- raise the bound, or narrow the query. A non-advancing cursor is a defect on the serving side
+// or in the cursor projection, and folding it into the budget arm would report a real infinite
+// loop as a budget that was set too low, sending the operator to change the wrong number. A shape
+// change mid-fold means two protocols answered one listing. A fold still open when the page
+// sequence ran out is the caller's own truncation, and it is the arm that catches a transport
+// that stopped early without saying so.
+type PageFoldRefusal
+  = PageBudgetExhausted {
+      subject: PageFoldSubject
+      max_pages: PositiveInt
+      pages_read: Int
+      stopped_at: PageCursor
+    }
+  | CursorDidNotAdvance {
+      subject: PageFoldSubject
+      page_index: Int
+      cursor: PageCursor
+    }
+  | ContinuationShapeChanged {
+      subject: PageFoldSubject
+      page_index: Int
+      from_shape: NonEmptyStr
+      to_shape: NonEmptyStr
+    }
+  | ContinuationNotObserved {
+      subject: PageFoldSubject
+      pages_read: Int
+      awaiting: PageCursor
+    }
+  | PageObservedAfterFoldEnded {
+      subject: PageFoldSubject
+      pages_read: Int
+    }
+
+fn page_fold_refusal_subject(r: PageFoldRefusal) -> PageFoldSubject {
+  match r {
+    PageBudgetExhausted { subject: s, max_pages: m, pages_read: n, stopped_at: c } => s
+    CursorDidNotAdvance { subject: s, page_index: i, cursor: c } => s
+    ContinuationShapeChanged { subject: s, page_index: i, from_shape: f, to_shape: t } => s
+    ContinuationNotObserved { subject: s, pages_read: n, awaiting: c } => s
+    PageObservedAfterFoldEnded { subject: s, pages_read: n } => s
+  }
+}
+
+fn page_fold_refusal_key(r: PageFoldRefusal) -> NonEmptyStr {
+  match r {
+    PageBudgetExhausted { subject: s, max_pages: m, pages_read: n, stopped_at: c } => "page_budget_exhausted" as NonEmptyStr
+    CursorDidNotAdvance { subject: s, page_index: i, cursor: c } => "cursor_did_not_advance" as NonEmptyStr
+    ContinuationShapeChanged { subject: s, page_index: i, from_shape: f, to_shape: t } => "continuation_shape_changed" as NonEmptyStr
+    ContinuationNotObserved { subject: s, pages_read: n, awaiting: c } => "continuation_not_observed" as NonEmptyStr
+    PageObservedAfterFoldEnded { subject: s, pages_read: n } => "page_observed_after_fold_ended" as NonEmptyStr
+  }
+}
+
+// ONE PAGE AS THE DRIVER SEES IT: the items it carried, and what it said about a next one.
+type PageObservation<I> {
+  items: List<I>
+  continuation: PageContinuation
+}
+
+type PageFoldStatus
+  = FoldOpen { next: PageCursor }
+  | FoldEnded
+  | FoldRefused { refusal: PageFoldRefusal }
+
+type PageFoldState<I> {
+  subject: PageFoldSubject
+  bound: PageBound
+  pages_read: Int
+  items: List<I>
+  status: PageFoldStatus
+}
+
+fn page_fold_begin<I>(subject: PageFoldSubject, bound: PageBound, first: PageCursor) -> PageFoldState<I> {
+  PageFoldState {
+    subject: subject
+    bound: bound
+    pages_read: 0
+    items: []
+    status: FoldOpen { next: first }
+  }
+}
+
+// WHAT THE DRIVER OWES BEFORE IT MAY OBSERVE ANOTHER PAGE. A caller drives the transport from this
+// projection rather than from the state's fields, so "is another request owed" is answered in one
+// place instead of once per transport.
+type PageFoldDemand
+  = DemandPage { cursor: PageCursor }
+  | DemandNone
+
+fn page_fold_demand<I>(state: PageFoldState<I>) -> PageFoldDemand {
+  match state.status {
+    FoldOpen { next: c } => DemandPage { cursor: c }
+    FoldEnded => DemandNone
+    FoldRefused { refusal: r } => DemandNone
+  }
+}
+
+// THE ONE TRANSITION. Every arm below either ends the fold, refuses, or advances to a STRICTLY
+// different cursor, so the state machine cannot revisit a cursor it has already demanded and the
+// page count rises by exactly one per observation -- the descent that makes the bound a real bound
+// rather than a hope.
+//
+// THE BOUND IS CHECKED WHEN A FURTHER PAGE IS DEMANDED, not when one is delivered, and the
+// distinction is load-bearing. A listing that fits in exactly max_pages pages and then says
+// ContinuationClosed must CLOSE, not refuse: checking on delivery would refuse the last page of
+// every listing whose length happens to equal the budget, which is a false incompleteness report
+// about a listing that was in fact read to exhaustion.
+fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> PageFoldState<I> {
+  match state.status {
+    FoldEnded => PageFoldState {
+      subject: state.subject
+      bound: state.bound
+      pages_read: state.pages_read
+      items: state.items
+      status: FoldRefused {
+        refusal: PageObservedAfterFoldEnded { subject: state.subject, pages_read: state.pages_read }
+      }
+    }
+    FoldRefused { refusal: r } => state
+    FoldOpen { next: current } =>
+      let read = state.pages_read + 1
+      let carried = concat(state.items, page.items)
+      match page.continuation {
+        ContinuationClosed => PageFoldState {
+          subject: state.subject
+          bound: state.bound
+          pages_read: read
+          items: carried
+          status: FoldEnded
+        }
+        ContinuationNext { cursor: nxt } =>
+          if page_cursor_eq(a: current, b: nxt) {
+            PageFoldState {
+              subject: state.subject
+              bound: state.bound
+              pages_read: read
+              items: state.items
+              status: FoldRefused {
+                refusal: CursorDidNotAdvance { subject: state.subject, page_index: read, cursor: nxt }
+              }
+            }
+          } else {
+            if page_cursor_shape_key(c: current) != page_cursor_shape_key(c: nxt) {
+              PageFoldState {
+                subject: state.subject
+                bound: state.bound
+                pages_read: read
+                items: state.items
+                status: FoldRefused {
+                  refusal: ContinuationShapeChanged {
+                    subject: state.subject
+                    page_index: read
+                    from_shape: page_cursor_shape_key(c: current)
+                    to_shape: page_cursor_shape_key(c: nxt)
+                  }
+                }
+              }
+            } else {
+              if read >= state.bound.max_pages {
+                PageFoldState {
+                  subject: state.subject
+                  bound: state.bound
+                  pages_read: read
+                  items: state.items
+                  status: FoldRefused {
+                    refusal: PageBudgetExhausted {
+                      subject: state.subject
+                      max_pages: state.bound.max_pages
+                      pages_read: read
+                      stopped_at: nxt
+                    }
+                  }
+                }
+              } else {
+                PageFoldState {
+                  subject: state.subject
+                  bound: state.bound
+                  pages_read: read
+                  items: carried
+                  status: FoldOpen { next: nxt }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE OUTCOME CARRIES THE ITEMS ONLY ON THE CLOSED ARM. This is the whole safety claim of the
+// module stated as a constructor: there is no way to obtain a list of items from a fold that did
+// not reach the authority's own end-of-listing, so a truncated listing is not a value a consumer
+// can hold, let alone one it can mistake for a complete one.
+type PageFoldOutcome<I>
+  = PagesClosed {
+      subject: PageFoldSubject
+      pages_read: Int
+      items: List<I>
+    }
+  | PagesRefused { refusal: PageFoldRefusal }
+
+fn page_fold_finish<I>(state: PageFoldState<I>) -> PageFoldOutcome<I> {
+  match state.status {
+    FoldEnded => PagesClosed {
+      subject: state.subject
+      pages_read: state.pages_read
+      items: state.items
+    }
+    FoldRefused { refusal: r } => PagesRefused { refusal: r }
+    FoldOpen { next: c } => PagesRefused {
+      refusal: ContinuationNotObserved {
+        subject: state.subject
+        pages_read: state.pages_read
+        awaiting: c
+      }
+    }
+  }
+}
+
+// THE DRIVER OVER A RECORDED PAGE SEQUENCE. It is a fold over the pages a transport actually
+// delivered, so it executes -- under the interpreter, over a controlled fixture, or over a
+// replayed live read -- rather than describing what an executing fold would do.
+//
+// A live transport calls page_fold_demand / page_fold_observe in its own loop instead; this
+// projection exists because the two must not be two state machines, and the recorded form is the
+// one a witness can drive.
+fn page_fold_run<I>(
+  subject: PageFoldSubject,
+  bound: PageBound,
+  first: PageCursor,
+  pages: List<PageObservation<I>>
+) -> PageFoldOutcome<I> {
+  page_fold_finish(
+    state: fold_list(
+      xs: pages,
+      empty: page_fold_begin(subject: subject, bound: bound, first: first),
+      cons: fn(st, p) { page_fold_observe(state: st, page: p) }
+    )
+  )
+}
+
+// THE RESIDUE, NAMED RATHER THAN LEFT TO BE DISCOVERED: nothing in this module performs a request.
+// A .dag caller that must page a live listing today binds the transport at its own realization
+// boundary and drives the two projections above, because the substrate has no construct for an
+// effectful loop whose continuation is decided by the value the previous effect returned -- Loop
+// is bounded and forward over a value the graph already carries, and a page sequence is not such a
+// value until the reads have happened.
+//
+// THE CAPABILITY THAT WOULD CLOSE IT is an effect-driven bounded loop: a Loop whose iteration
+// count is bounded by a declared budget and whose per-iteration input is the typed result of a
+// declared effect, with the refusal on budget exhaustion raised by the loop rather than by the
+// caller. Until that exists, page_fold_run over a recorded sequence is the executing form and the
+// live form is a realization binding; this is a stated boundary, not a rung claim about live reads.
+data page_fold_effect_loop_capability_trigger: String = "std.page_fold drives a page sequence purely and does not perform the reads. NEXT-RUNG TRIGGER: an effect-driven bounded Loop construct in the substrate -- iteration count bounded by a declared budget, per-iteration input the typed result of a declared effect, budget exhaustion refused by the loop itself. Naming a transport, a handler, or one paginated operation does NOT satisfy this trigger: those are one caller each, and the loss is that EVERY live listing read in the tree is driven by hand-bound realization rather than by a modeled construct."

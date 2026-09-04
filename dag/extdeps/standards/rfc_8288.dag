@@ -1,0 +1,240 @@
+module extdeps.standards.rfc_8288
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https, Http }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8288"
+  }
+}
+
+// RFC 8288 WEB LINKING, MODELLED HERE BECAUSE IT IS THE AUTHORITY FOR A CURSOR SHAPE.
+//
+// A listing that continues by a Link header does not hand the client a token to put in a query --
+// it hands it a whole request it authored, under a registered relation type. Section 3 defines the
+// field value as a comma-separated list of link-values, each a URI-Reference in angle brackets
+// followed by semicolon-separated parameters, of which `rel` names the relation. Section 3.3 makes
+// the relation type case-insensitive.
+//
+// IT IS ITS OWN MODULE RATHER THAN A GITHUB DETAIL. GitHub, the GitLab API, and every other service
+// that paginates by Link header are consumers of one standard, and modelling it inside one of them
+// would make the next consumer either import a vendor module for a standard or fork it (DESIGN
+// section 3, external upstream decomposition: a shared standard is its own authority beside the
+// products that implement it).
+
+type LinkRelation
+  = RelNext
+  | RelPrev
+  | RelFirst
+  | RelLast
+  | RelUnmodelled { name: NonEmptyStr }
+
+fn link_relation_key(r: LinkRelation) -> NonEmptyStr {
+  match r {
+    RelNext => "next" as NonEmptyStr
+    RelPrev => "prev" as NonEmptyStr
+    RelFirst => "first" as NonEmptyStr
+    RelLast => "last" as NonEmptyStr
+    RelUnmodelled { name: n } => n
+  }
+}
+
+// RelUnmodelled IS NOT A FALLBACK ARM, and the distinction is the reason it carries the spelling.
+// The IANA link relation registry is open and the four arms above are the four this repository has
+// a consumer for. An unregistered or simply unmodelled relation is a real link that this model can
+// carry and cannot interpret -- so it is kept, named, and never matched as `next`. Answering
+// RelNext for an unrecognised relation would be the absorbing fallback DESIGN section 5 forbids,
+// aimed at the one relation that drives a fold.
+fn link_relation_from_key(raw: String) -> LinkRelation {
+  if raw == "next" {
+    RelNext
+  } else if raw == "prev" {
+    RelPrev
+  } else if raw == "first" {
+    RelFirst
+  } else if raw == "last" {
+    RelLast
+  } else {
+    RelUnmodelled { name: raw as NonEmptyStr }
+  }
+}
+
+type WebLink {
+  target: Uri
+  relation: LinkRelation
+}
+
+// THE PARSE REFUSES RATHER THAN SKIPPING, and for a pagination cursor the direction matters more
+// than usual: a parser that drops a link-value it cannot read reports "no next link" for a listing
+// that HAS one, which is a truncation indistinguishable from exhaustion. Every refusal below
+// therefore carries the offending field value, and there is no arm that returns a partial link
+// list.
+//
+// THE MODELLED SUBSET IS DECLARED, NOT IMPLIED: angle-bracketed URI-References, a `rel` parameter
+// with a quoted or bare value, and nothing else. RFC 8288 admits further parameters (`title`,
+// `type`, `media`, `hreflang`, extension parameters), quoted-string escaping, and relation values
+// that are themselves URIs; none of those has a consumer here, so each refuses by name instead of
+// being silently ignored -- a consumer that meets one learns it met one.
+type LinkFieldValueParse
+  = LinkFieldValueParsed { links: List<WebLink> }
+  | LinkValueMissingAngleBrackets { field_value: String, segment: String }
+  | LinkValueMissingRelParameter { field_value: String, segment: String }
+  | LinkValueParameterNotModelled { field_value: String, segment: String, parameter: String }
+
+// LIST INDEXING IS TOTAL HERE, AND THE EMPTY STRING IT RETURNS IS NOT A FALLBACK.
+// `first()` is optional-valued, so every position read owes an absence arm. Each call site below
+// has already established the length it indexes into, so Absent is unreachable -- and rather than
+// assert that, the absent arm yields "", which EVERY consumer in this module refuses explicitly: an
+// empty target refuses as LinkValueMissingAngleBrackets and an empty parameter name refuses as
+// LinkValueParameterNotModelled. The value can therefore never reach a parsed link.
+fn nth_field(xs: List<String>, n: Int) -> String {
+  match xs.skip(n: n).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn strip_quotes(raw: String) -> String {
+  let n = string_length(s: raw)
+  if n >= 2 && starts_with(s: raw, prefix: "\"") && ends_with(s: raw, suffix: "\"") {
+    substring(s: raw, start: 1, end: n - 1)
+  } else {
+    raw
+  }
+}
+
+type LinkSegmentParse
+  = LinkSegmentParsed { link: WebLink }
+  | LinkSegmentRefused { reason: LinkFieldValueParse }
+
+type RelParameterParse
+  = RelParsed { relation: LinkRelation }
+  | RelRefused { reason: LinkFieldValueParse }
+
+fn parse_rel_parameter(field_value: String, segment: String, params: List<String>) -> RelParameterParse {
+  fold_list(
+    xs: params,
+    empty: RelRefused {
+      reason: LinkValueMissingRelParameter { field_value: field_value, segment: segment }
+    },
+    cons: fn(acc, raw_param) {
+      let param = trim(s: raw_param)
+      if param == "" {
+        acc
+      } else {
+        let kv = split(s: param, delimiter: "=")
+        if length(kv) != 2 {
+          RelRefused {
+            reason: LinkValueParameterNotModelled {
+              field_value: field_value, segment: segment, parameter: param
+            }
+          }
+        } else if trim(s: nth_field(xs: kv, n: 0)) != "rel" {
+          RelRefused {
+            reason: LinkValueParameterNotModelled {
+              field_value: field_value, segment: segment, parameter: trim(s: nth_field(xs: kv, n: 0))
+            }
+          }
+        } else {
+          match acc {
+            RelParsed { relation: r } => acc
+            RelRefused { reason: r } => RelParsed {
+              relation: link_relation_from_key(raw: strip_quotes(raw: trim(s: nth_field(xs: kv, n: 1))))
+            }
+          }
+        }
+      }
+    }
+  )
+}
+
+fn parse_link_segment(field_value: String, raw_segment: String) -> LinkSegmentParse {
+  let segment = trim(s: raw_segment)
+  let halves = split(s: segment, delimiter: ">")
+  if !starts_with(s: segment, prefix: "<") || length(halves) != 2 {
+    LinkSegmentRefused {
+      reason: LinkValueMissingAngleBrackets { field_value: field_value, segment: segment }
+    }
+  } else {
+    let head = nth_field(xs: halves, n: 0)
+    let target_raw = substring(s: head, start: 1, end: string_length(s: head))
+    let tail = trim(s: nth_field(xs: halves, n: 1))
+    if !starts_with(s: tail, prefix: ";") {
+      LinkSegmentRefused {
+        reason: LinkValueMissingRelParameter { field_value: field_value, segment: segment }
+      }
+    } else if target_raw == "" {
+      LinkSegmentRefused {
+        reason: LinkValueMissingAngleBrackets { field_value: field_value, segment: segment }
+      }
+    } else {
+      match parse_rel_parameter(
+        field_value: field_value,
+        segment: segment,
+        params: split(s: substring(s: tail, start: 1, end: string_length(s: tail)), delimiter: ";")
+      ) {
+        RelParsed { relation: rel } => LinkSegmentParsed {
+          link: WebLink {
+            target: Uri {
+              scheme: if starts_with(s: target_raw, prefix: "http://") { Http } else { Https }
+              locator: target_raw as NonEmptyStr
+            }
+            relation: rel
+          }
+        }
+        RelRefused { reason: r } => LinkSegmentRefused { reason: r }
+      }
+    }
+  }
+}
+
+// SPLITTING ON THE COMMA IS THE ONE PLACE THIS PARSER IS NARROWER THAN THE RFC, AND IT IS NARROW
+// IN THE SAFE DIRECTION. A comma inside a URI-Reference's query would split one link-value into
+// two, and both halves then fail the angle-bracket test -- so the field value REFUSES rather than
+// yielding a wrong target. A tolerant splitter would instead produce a plausible-looking link with
+// a truncated URI, which is the fabricated-plausible-output failure aimed straight at the request
+// the fold is about to make.
+fn parse_link_field_value(field_value: String) -> LinkFieldValueParse {
+  fold_list(
+    xs: split(s: field_value, delimiter: ","),
+    empty: LinkFieldValueParsed { links: [] },
+    cons: fn(acc, raw_segment) {
+      match acc {
+        LinkFieldValueParsed { links: so_far } =>
+          if trim(s: raw_segment) == "" {
+            acc
+          } else {
+            match parse_link_segment(field_value: field_value, raw_segment: raw_segment) {
+              LinkSegmentParsed { link: l } => LinkFieldValueParsed { links: concat(so_far, [l]) }
+              LinkSegmentRefused { reason: r } => r
+            }
+          }
+        LinkValueMissingAngleBrackets { field_value: f, segment: s } => acc
+        LinkValueMissingRelParameter { field_value: f, segment: s } => acc
+        LinkValueParameterNotModelled { field_value: f, segment: s, parameter: p } => acc
+      }
+    }
+  )
+}
+
+fn link_with_relation(links: List<WebLink>, relation: LinkRelation) -> Uri? {
+  fold_list(
+    xs: links,
+    empty: none,
+    cons: fn(found, l) {
+      match found {
+        Present { value: u } => found
+        Absent =>
+          if link_relation_key(r: l.relation) == link_relation_key(r: relation) {
+            Present { value: l.target }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}

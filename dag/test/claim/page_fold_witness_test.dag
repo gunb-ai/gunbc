@@ -1,0 +1,296 @@
+module test.claim.page_fold_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.page_fold {
+  PageBound, PageSize, PageSizeAdmission, PageSizeAdmitted, PageSizeAboveAuthorityMaximum,
+  admit_page_size,
+  PageCursor, OffsetPage, OpaqueToken, LinkNext,
+  PageContinuation, ContinuationClosed, ContinuationNext,
+  PageObservation, PageFoldSubject,
+  PageFoldOutcome, PagesClosed, PagesRefused,
+  PageFoldDemand, DemandPage, DemandNone,
+  page_fold_begin, page_fold_observe, page_fold_demand,
+  page_fold_run, page_fold_refusal_key, page_cursor_eq
+}
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_8288 {
+  LinkFieldValueParse, LinkFieldValueParsed, LinkValueMissingAngleBrackets,
+  RelNext, RelPrev, RelLast,
+  parse_link_field_value, link_with_relation
+}
+import extdeps.github.pagination {
+  GitHubLinkHeader, LinkHeaderPresent, LinkHeaderAbsent,
+  GitHubContinuationRead, ContinuationRead, LinkHeaderUnreadable,
+  GitHubOffsetAdvance, OffsetAdvanced, OffsetAdvanceOnNonOffsetCursor,
+  github_continuation_from_link_header, github_next_offset_cursor,
+  github_default_page_size, github_max_page_size, github_first_page_cursor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn subject() -> PageFoldSubject {
+  PageFoldSubject { operation: "test.listing" as NonEmptyStr }
+}
+
+fn page(items: List<String>, next: PageContinuation) -> PageObservation<String> {
+  PageObservation { items: items, continuation: next }
+}
+
+fn to_page(n: Int) -> PageContinuation {
+  ContinuationNext { cursor: OffsetPage { page: n } }
+}
+
+fn outcome_items(o: PageFoldOutcome<String>) -> String {
+  match o {
+    PagesClosed { subject: s, pages_read: n, items: xs } => join(xs, ",")
+    PagesRefused { refusal: r } => ""
+  }
+}
+
+fn outcome_pages_read(o: PageFoldOutcome<String>) -> Int {
+  match o {
+    PagesClosed { subject: s, pages_read: n, items: xs } => n
+    PagesRefused { refusal: r } => 0 - 1
+  }
+}
+
+fn outcome_refusal_key(o: PageFoldOutcome<String>) -> String {
+  match o {
+    PagesClosed { subject: s, pages_read: n, items: xs } => "closed"
+    PagesRefused { refusal: r } => page_fold_refusal_key(r: r) as String
+  }
+}
+
+fn three_page_listing() -> List<PageObservation<String>> {
+  [
+    page(items: ["a", "b"], next: to_page(n: 2)),
+    page(items: ["c", "d"], next: to_page(n: 3)),
+    page(items: ["e"], next: ContinuationClosed)
+  ]
+}
+
+// THE POSITIVE CONTROL AND ITS DISCRIMINATING RED IN ONE WITNESS, because the defect this module
+// exists to close is precisely a read that stops at page one and reports success. The first arm
+// consumes all three pages and gets every item in order; the second arm hands the SAME fold only
+// the first page -- which is exactly what every listing read in this repository does today -- and
+// the fold must refuse with ContinuationNotObserved rather than answer with the two items it holds.
+test fn page_fold_closes_a_multi_page_listing_witness() -> Bool {
+  let bound = PageBound { max_pages: 10 }
+  let closed = page_fold_run(
+    subject: subject(), bound: bound, first: OffsetPage { page: 1 }, pages: three_page_listing()
+  )
+  let first_page_only = page_fold_run(
+    subject: subject(), bound: bound, first: OffsetPage { page: 1 },
+    pages: [page(items: ["a", "b"], next: to_page(n: 2))]
+  )
+
+  outcome_refusal_key(o: closed) == "closed"
+    && outcome_pages_read(o: closed) == 3
+    && outcome_items(o: closed) == "a,b,c,d,e"
+    && outcome_refusal_key(o: first_page_only) == "continuation_not_observed"
+    && outcome_items(o: first_page_only) == ""
+}
+
+// THE BOUND REFUSES RATHER THAN TRUNCATING, and the second arm is the boundary control that keeps
+// the first from being satisfied by an off-by-one: a listing of exactly three pages under a budget
+// of exactly three CLOSES, because the bound is a limit on requests owed, not on pages delivered.
+test fn page_fold_budget_exhaustion_refuses_witness() -> Bool {
+  let over = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 2 },
+    first: OffsetPage { page: 1 }, pages: three_page_listing()
+  )
+  let exact = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 3 },
+    first: OffsetPage { page: 1 }, pages: three_page_listing()
+  )
+
+  outcome_refusal_key(o: over) == "page_budget_exhausted"
+    && outcome_items(o: over) == ""
+    && outcome_refusal_key(o: exact) == "closed"
+    && outcome_items(o: exact) == "a,b,c,d,e"
+}
+
+// A CURSOR THAT DOES NOT ADVANCE IS ITS OWN REFUSAL, NOT A BUDGET OVERRUN. Reported as a budget
+// overrun it would send an operator to raise the bound on a fold that can never terminate at any
+// bound, so the two arms are separated and this witness is what holds them apart: the same page
+// sequence under a budget large enough that the budget arm cannot fire.
+test fn page_fold_non_advancing_cursor_refuses_witness() -> Bool {
+  let stuck = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: to_page(n: 2)),
+      page(items: ["b"], next: to_page(n: 2))
+    ]
+  )
+  outcome_refusal_key(o: stuck) == "cursor_did_not_advance" && outcome_items(o: stuck) == ""
+}
+
+// TWO PROTOCOLS ANSWERING ONE LISTING REFUSE. An offset fold that is suddenly handed an opaque
+// token has not continued -- it has been answered by something other than what it asked, and
+// following it would page a different listing while reporting the first one complete.
+test fn page_fold_continuation_shape_change_refuses_witness() -> Bool {
+  let shifted = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: to_page(n: 2)),
+      page(items: ["b"], next: ContinuationNext { cursor: OpaqueToken { token: "zzz" as NonEmptyStr } })
+    ]
+  )
+  outcome_refusal_key(o: shifted) == "continuation_shape_changed" && outcome_items(o: shifted) == ""
+}
+
+// A PAGE DELIVERED AFTER THE AUTHORITY SAID THE LISTING ENDED IS A TRANSPORT DEFECT, not extra
+// data: the fold has closed, and silently appending would make the result depend on how many pages
+// a broken transport happened to send.
+test fn page_fold_page_after_close_refuses_witness() -> Bool {
+  let extra = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 50 },
+    first: OffsetPage { page: 1 },
+    pages: [
+      page(items: ["a"], next: ContinuationClosed),
+      page(items: ["b"], next: ContinuationClosed)
+    ]
+  )
+  outcome_refusal_key(o: extra) == "page_observed_after_fold_ended" && outcome_items(o: extra) == ""
+}
+
+fn github_next_from_header(raw: String) -> String {
+  match github_continuation_from_link_header(header: LinkHeaderPresent { field_value: raw }) {
+    ContinuationRead { continuation: c } =>
+      match c {
+        ContinuationClosed => "closed"
+        ContinuationNext { cursor: cur } =>
+          match cur {
+            LinkNext { target: u } => u.locator as String
+            OffsetPage { page: p } => "offset"
+            OpaqueToken { token: t } => "token"
+          }
+      }
+    LinkHeaderUnreadable { parse: p } => "unreadable"
+  }
+}
+
+// THE LINK HEADER IS READ AS GITHUB ACTUALLY SENDS IT, and the three arms are the three claims a
+// header can make. A header carrying rel="next" yields that exact target; a header carrying only
+// rel="prev" and rel="last" -- which is what GitHub sends on the LAST page -- closes the fold; a
+// malformed field value refuses, because reading it as closed would report a truncated listing as
+// a complete one.
+test fn github_link_header_continuation_witness() -> Bool {
+  let page_one = "<https://api.github.com/repositories/1/issues?page=2>; rel=\"next\", <https://api.github.com/repositories/1/issues?page=9>; rel=\"last\""
+  let last_page = "<https://api.github.com/repositories/1/issues?page=8>; rel=\"prev\", <https://api.github.com/repositories/1/issues?page=1>; rel=\"first\""
+  let malformed = "https://api.github.com/repositories/1/issues?page=2; rel=\"next\""
+
+  github_next_from_header(raw: page_one) == "https://api.github.com/repositories/1/issues?page=2"
+    && github_next_from_header(raw: last_page) == "closed"
+    && github_next_from_header(raw: malformed) == "unreadable"
+    && match github_continuation_from_link_header(header: LinkHeaderAbsent) {
+         ContinuationRead { continuation: c } => match c {
+           ContinuationClosed => true
+           ContinuationNext { cursor: cur } => false
+         }
+         LinkHeaderUnreadable { parse: p } => false
+       }
+}
+
+fn link_header_driven_page(items: List<String>, header: GitHubLinkHeader) -> PageObservation<String> {
+  match github_continuation_from_link_header(header: header) {
+    ContinuationRead { continuation: c } => PageObservation { items: items, continuation: c }
+    LinkHeaderUnreadable { parse: p } => PageObservation { items: [], continuation: ContinuationClosed }
+  }
+}
+
+// THE END-TO-END TRANSITION: continuations read from real GitHub Link header values drive the
+// bounded fold across three pages to closure. This is the arm that a per_page declaration cannot
+// satisfy and that no lexical reading of the extdeps modules could have established -- the fold
+// consumes a continuation, advances to a strictly different cursor, and stops because the
+// AUTHORITY said the listing ended.
+test fn github_link_header_drives_a_bounded_fold_to_closure_witness() -> Bool {
+  let pages = [
+    link_header_driven_page(
+      items: ["i1"],
+      header: LinkHeaderPresent { field_value: "<https://api.github.com/r/1/issues?page=2>; rel=\"next\"" }
+    ),
+    link_header_driven_page(
+      items: ["i2"],
+      header: LinkHeaderPresent { field_value: "<https://api.github.com/r/1/issues?page=3>; rel=\"next\"" }
+    ),
+    link_header_driven_page(items: ["i3"], header: LinkHeaderAbsent)
+  ]
+  let closed = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 10 },
+    first: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/r/1/issues?page=1" as NonEmptyStr } },
+    pages: pages
+  )
+  let starved = page_fold_run(
+    subject: subject(), bound: PageBound { max_pages: 1 },
+    first: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/r/1/issues?page=1" as NonEmptyStr } },
+    pages: pages
+  )
+
+  outcome_refusal_key(o: closed) == "closed"
+    && outcome_items(o: closed) == "i1,i2,i3"
+    && outcome_pages_read(o: closed) == 3
+    && outcome_refusal_key(o: starved) == "page_budget_exhausted"
+}
+
+// PAGE SIZE IS CLAIM ONE AND IT IS ADMITTED AGAINST THIS AUTHORITY'S CITED MAXIMUM. GitHub is
+// documented to clamp an over-large per_page silently, which answers a request nobody made; the
+// admission refuses instead, so the disagreement is visible before the read.
+test fn github_page_size_admission_witness() -> Bool {
+  let admitted = admit_page_size(requested: github_default_page_size, maximum: github_max_page_size)
+  let refused = admit_page_size(requested: PageSize { count: 101 }, maximum: github_max_page_size)
+  let at_maximum = admit_page_size(requested: github_max_page_size, maximum: github_max_page_size)
+
+  match admitted { PageSizeAdmitted { size: s } => true PageSizeAboveAuthorityMaximum { requested: r, maximum: m } => false }
+    && match at_maximum { PageSizeAdmitted { size: s } => true PageSizeAboveAuthorityMaximum { requested: r, maximum: m } => false }
+    && match refused { PageSizeAdmitted { size: s } => false PageSizeAboveAuthorityMaximum { requested: r, maximum: m } => true }
+}
+
+// THE CLIENT-COMPOSED ADVANCE ADVANCES, AND REFUSES ON A CURSOR IT DOES NOT SPEAK.
+test fn github_offset_advance_witness() -> Bool {
+  let advanced = match github_next_offset_cursor(current: github_first_page_cursor) {
+    OffsetAdvanced { cursor: c } => page_cursor_eq(a: c, b: OffsetPage { page: 2 })
+    OffsetAdvanceOnNonOffsetCursor { shape: s } => false
+  }
+  let refused = match github_next_offset_cursor(
+    current: LinkNext { target: Uri { scheme: Https, locator: "https://api.github.com/x" as NonEmptyStr } }
+  ) {
+    OffsetAdvanced { cursor: c } => false
+    OffsetAdvanceOnNonOffsetCursor { shape: s } => s as String == "link_next"
+  }
+  advanced && refused
+}
+
+fn demand_key(d: PageFoldDemand) -> String {
+  match d {
+    DemandPage { cursor: c } => match c {
+      OffsetPage { page: n } => "offset"
+      OpaqueToken { token: t } => "token"
+      LinkNext { target: u } => u.locator as String
+    }
+    DemandNone => "none"
+  }
+}
+
+// THE INCREMENTAL API IS THE ONE A LIVE TRANSPORT DRIVES, so it is executed here rather than left
+// as a projection nothing calls -- the failure this whole item exists to repair. A transport asks
+// page_fold_demand what request is owed, performs it, and hands the page back; the demand must
+// follow the AUTHORITY's continuation and must fall silent the moment the fold ends.
+test fn page_fold_demand_tracks_the_open_cursor_witness() -> Bool {
+  let s0 = page_fold_begin(subject: subject(), bound: PageBound { max_pages: 10 }, first: OffsetPage { page: 1 })
+  let s1 = page_fold_observe(state: s0, page: page(items: ["a"], next: to_page(n: 7)))
+  let s2 = page_fold_observe(state: s1, page: page(items: ["b"], next: ContinuationClosed))
+
+  demand_key(d: page_fold_demand(state: s0)) == "offset"
+    && page_cursor_eq(
+         a: match page_fold_demand(state: s1) {
+              DemandPage { cursor: c } => c
+              DemandNone => OffsetPage { page: 1 }
+            },
+         b: OffsetPage { page: 7 }
+       )
+    && demand_key(d: page_fold_demand(state: s2)) == "none"
+}
