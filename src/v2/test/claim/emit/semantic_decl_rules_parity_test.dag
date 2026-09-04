@@ -6,9 +6,9 @@ import v2.compiler.translate {
   grammar_relation_row_tokens_root
 }
 import v2.extdeps.languages.rust {
-  rust_enum_general_decl_productions_only_translation_rules,
-  rust_target_model
+  rust_enum_general_decl_productions_only_translation_rules
 }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
   semantic_decl_emission_from_target,
   target_semantic_enum_surface_from_coproduct
@@ -46,7 +46,7 @@ fn tokens_for_rules(surface: Node, rules: Node) -> Bool {
 }
 
 test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
+  match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
