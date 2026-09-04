@@ -25,6 +25,7 @@ import v1.compiler.type_head_exposure {
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
+  resolved_node_is_kernel_identity_for_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
@@ -113,7 +114,6 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
-  resolved_node_is_kernel_identity_for_name,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -2290,17 +2290,37 @@ fn match_arm_types_are_disjoint_coproducts(unified_arm_type: Node, arm_type: Nod
   }
 }
 
+// The coproduct predicate above was the first proven slice of this wall, but the join discards
+// EVERY losing arm, not only coproduct arms. In particular, `Int` beside `String` is already a
+// settled refusal under the ground-kernel discipline the declaration-conformance path uses. Leaving
+// that judgment unconsumed here meant a function declared `-> Int` could return a String from one match arm: the
+// join selected the conforming Int arm, then the declared-return seam compared Int with Int and
+// never saw the String. Consume conformance_ground_type and node_type_compatible rather than
+// minting a second scalar relation. Shapes outside that established ground remain admitted here.
+fn match_arm_types_are_proven_disjoint(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
+  if match_arm_types_are_disjoint_coproducts(
+      unified_arm_type: unified_arm_type, arm_type: arm_type, scope: scope) {
+    true
+  } else {
+    let source_indices = scope.type_env.source_indices
+    conformance_ground_type(n: unified_arm_type, source_indices: source_indices)
+      && conformance_ground_type(n: arm_type, source_indices: source_indices)
+      && node_type_compatible(
+        left: unified_arm_type, right: arm_type, source_indices: source_indices) == false
+  }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
-  } else if match_arm_types_are_disjoint_coproducts(
+  } else if match_arm_types_are_proven_disjoint(
     unified_arm_type: unified_arm_type,
     arm_type: arm.body_type,
     scope: scope
   ) {
     [inference_error(
       message: concat(
-        "match arms produce disjoint declared coproducts: ",
+        "match arms produce proven-disjoint types: ",
         node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
         " vs ",
         node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices)
