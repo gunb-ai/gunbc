@@ -274,6 +274,22 @@ test fn w_every_probe_spelling_has_exactly_one_roster_row() -> Bool {
   probe_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
 }
 
+// THIS IS THE COLLISION ASSERTION, named rather than left to be inferred from its shape. A
+// where-predicate's identity is its SPELLING -- where_refinement_predicates_equivalent compares
+// predicate names for equality with no declaration binding -- so one spelling standing for two
+// meanings is silently judged EQUIVALENT and the site is accepted with no diagnostic at all. That
+// is the state this assertion exists to make loud: two rows claiming one spelling, which is how a
+// second meaning would have to enter this roster, red here.
+//
+// WHAT IT CAN AND CANNOT SEE, because a collision check that quietly ranges over the wrong
+// population is worse than none. It ranges over the ROSTER, so it catches a spelling given two
+// groundings HERE. It does NOT range over the corpus: two declarations claiming one predicate name
+// where neither reaches this file are invisible to it, for the same reason the membership half is
+// author-vouched -- no substrate reader projects where-clause predicates, so there is nothing to
+// join the corpus against. The corpus is collision-free as measured at authoring time (15 spellings
+// each denoting one thing, and 230 brand("...") literals all distinct), and it is held that way by
+// authoring diligence -- rung 1 -- not by this witness.
+
 test fn w_roster_spellings_are_pairwise_distinct() -> Bool {
   roster_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
 }
