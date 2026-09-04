@@ -1,6 +1,7 @@
 module gunbc.namespace_cut_subject_observation
 
 import std.types { String, NonEmptyStr, Bool, List }
+import std.render_repeat_string_bootstrap { repeat_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
@@ -277,12 +278,55 @@ fn probe_is_host(p: NamespaceCutSubjectProbe) -> Bool {
   }
 }
 
-fn observation_render(o: SubjectProbeObservation) -> String {
+// THE VERDICT WORD HAS ONE AUTHORITY. It was previously spelled once inside the renderer's own
+// match and again wherever anything needed to ask which verdict an observation carried -- and the
+// second spelling is what invites a hand-rolled variant-to-Bool predicate at every asking site,
+// which is the structural-equality residue DESIGN section 6 names (a param scrutinee with an
+// off-variant arm returning false). One total projection removes both: the renderer derives its
+// column from this, and a consumer asking "is this PRESENT" compares against this rather than
+// re-matching the coproduct. Raised by codex review 60447 against the fixture, but the duplication
+// was the renderer's first.
+fn observation_verdict(o: SubjectProbeObservation) -> String {
   match o {
-    SubjectProbePresent { probe } => concat("PRESENT      ", probe_render(p: probe))
-    SubjectProbeAbsent { probe } => concat("ABSENT       ", probe_render(p: probe))
-    SubjectProbeUnobservable { probe, why } =>
-      concat("UNOBSERVABLE ", concat(probe_render(p: probe), concat(" -- ", why)))
+    SubjectProbePresent { probe: _ } => "PRESENT"
+    SubjectProbeAbsent { probe: _ } => "ABSENT"
+    SubjectProbeUnobservable { probe: _, why: _ } => "UNOBSERVABLE"
+  }
+}
+
+// THE COLUMN IS DERIVED, NOT AUTHORED. Padding to the width of the longest verdict keeps the report
+// aligned without a second per-variant literal, so adding a verdict cannot leave the report ragged
+// in a way only a reader would notice.
+fn observation_verdict_column(o: SubjectProbeObservation) -> String {
+  let word = observation_verdict(o: o)
+  concat(word, repeat_string(s: " ", n: 13 - string_length(s: word)))
+}
+
+fn observation_render(o: SubjectProbeObservation) -> String {
+  concat(observation_verdict_column(o: o), concat(probe_render(p: probe_of(o: o)), unobservable_suffix(o: o)))
+}
+
+// The probe is carried by every arm, so asking for it is a total projection rather than a decision.
+fn probe_of(o: SubjectProbeObservation) -> NamespaceCutSubjectProbe {
+  match o {
+    SubjectProbePresent { probe } => probe
+    SubjectProbeAbsent { probe } => probe
+    SubjectProbeUnobservable { probe, why: _ } => probe
+  }
+}
+
+fn unobservable_suffix(o: SubjectProbeObservation) -> String {
+  let why = unobservable_reason(o: o)
+  if why == "" { "" } else { concat(" -- ", why) }
+}
+
+// THE REFUSAL REASON, empty for the two OBSERVED verdicts. This is the one query the refusal digest
+// and the fixture both need, so it is authored once here rather than re-matched at each site.
+fn unobservable_reason(o: SubjectProbeObservation) -> String {
+  match o {
+    SubjectProbePresent { probe: _ } => ""
+    SubjectProbeAbsent { probe: _ } => ""
+    SubjectProbeUnobservable { probe: _, why } => why
   }
 }
 
@@ -370,16 +414,20 @@ fn subject_report_lines() -> List<String> {
   observation_rows_lines(rows: subject_observation_rows())
 }
 
-// THE REFUSAL DIGEST. Folded from the observation coproduct, so an arm added to
-// SubjectProbeObservation without a decision here fails to compile rather than defaulting to
-// "not a problem". Present and Absent are both OBSERVED verdicts and neither refuses: ABSENT is
-// this instrument's success verdict.
+// THE REFUSAL DIGEST. It no longer matches the coproduct itself -- it consumes unobservable_reason,
+// which does, and which is where the exhaustiveness guarantee now lives: an arm added to
+// SubjectProbeObservation without a decision THERE fails to compile rather than defaulting to
+// "not a problem". That is deliberate rather than incidental. Every site that needed to know
+// whether an observation refused was otherwise going to re-match the coproduct, and each such match
+// is an independent place for a new variant to be silently absorbed; one total projection makes the
+// compile-time guarantee single rather than replicated. Present and Absent are both OBSERVED
+// verdicts and neither refuses: ABSENT is this instrument's success verdict.
 fn unobservable_in_observation(acc: String, o: SubjectProbeObservation) -> String {
-  match o {
-    SubjectProbePresent { probe: _ } => acc
-    SubjectProbeAbsent { probe: _ } => acc
-    SubjectProbeUnobservable { probe, why } =>
-      concat(acc, concat("\n  ", concat(probe_render(p: probe), concat(" -- ", why))))
+  let why = unobservable_reason(o: o)
+  if why == "" {
+    acc
+  } else {
+    concat(acc, concat("\n  ", concat(probe_render(p: probe_of(o: o)), concat(" -- ", why))))
   }
 }
 

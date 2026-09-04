@@ -17,10 +17,9 @@ import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
 import gunbc.namespace_cut_subject_roster { HostRustItemProbe, NamespaceCutSubjectProbe }
 import gunbc.namespace_cut_subject_observation {
   SubjectProbeObservation,
-  SubjectProbeAbsent,
-  SubjectProbePresent,
-  SubjectProbeUnobservable,
   host_probe_over_items,
+  observation_verdict,
+  unobservable_reason,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -66,29 +65,12 @@ fn observe(path: String, name: String) -> SubjectProbeObservation {
   host_probe_over_items(p: probe_citing(path: path, name: name), path: path, name: name, items: population())
 }
 
-fn is_present(o: SubjectProbeObservation) -> Bool {
-  match o {
-    SubjectProbePresent { probe: _ } => true
-    SubjectProbeAbsent { probe: _ } => false
-    SubjectProbeUnobservable { probe: _, why: _ } => false
-  }
-}
-
-fn is_absent(o: SubjectProbeObservation) -> Bool {
-  match o {
-    SubjectProbePresent { probe: _ } => false
-    SubjectProbeAbsent { probe: _ } => true
-    SubjectProbeUnobservable { probe: _, why: _ } => false
-  }
-}
-
-fn unobservable_why(o: SubjectProbeObservation) -> String {
-  match o {
-    SubjectProbePresent { probe: _ } => ""
-    SubjectProbeAbsent { probe: _ } => ""
-    SubjectProbeUnobservable { probe: _, why } => why
-  }
-}
+// NO HAND-ROLLED PREDICATE OVER THE COPRODUCT. An earlier cut of this fixture asked "is this
+// PRESENT" by matching the variants to true/false, which is the structural-equality residue DESIGN
+// section 6 names and which codex review 60447 refused. The assertions now go through the canonical
+// projections the production module owns -- observation_verdict and unobservable_reason -- so the
+// coproduct is matched in exactly one place and this file cannot drift from it when a verdict is
+// added.
 
 // THE RED. A probe citing the file the item USED TO occupy must refuse, and the refusal must name
 // both the cited path and the path the item was actually found at -- naming only one leaves the
@@ -97,9 +79,8 @@ fn unobservable_why(o: SubjectProbeObservation) -> String {
 // instrument's SUCCESS verdict and would report a live authority deleted.
 test fn stale_citation_refuses_and_names_both_paths() -> Bool {
   let o = observe(path: "src/v1/stage0/src/cli_run.rs", name: "build_import_adjacency")
-  let why = unobservable_why(o: o)
-  !is_present(o: o)
-    && !is_absent(o: o)
+  let why = unobservable_reason(o: o)
+  observation_verdict(o: o) == "UNOBSERVABLE"
     && string_contains(s: why, pattern: "STALE CITATION")
     && string_contains(s: why, pattern: "src/v1/stage0/src/cli_run.rs")
     && string_contains(s: why, pattern: "src/v1/stage0/src/cli_run/entry_resolve.rs")
@@ -109,7 +90,7 @@ test fn stale_citation_refuses_and_names_both_paths() -> Bool {
 // actually is resolves PRESENT. Without this the red above is satisfiable by an arm that refuses
 // everything, which would be a wall that never lets a true answer through.
 test fn correct_citation_is_present() -> Bool {
-  is_present(o: observe(path: "src/v1/stage0/src/cli_run/entry_resolve.rs", name: "build_import_adjacency"))
+  observation_verdict(o: observe(path: "src/v1/stage0/src/cli_run/entry_resolve.rs", name: "build_import_adjacency")) == "PRESENT"
 }
 
 // THE SECOND POSITIVE CONTROL, and the one that keeps the refusal NARROW: a name that exists
@@ -117,7 +98,7 @@ test fn correct_citation_is_present() -> Bool {
 // ABSENT and must not be swept into the refusal. This is what stops the arm degrading into
 // "refuse whenever unsure", which section 5 names as failing open while looking careful.
 test fn genuine_absence_in_a_scanned_file_stays_absent() -> Bool {
-  is_absent(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed"))
+  observation_verdict(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed")) == "ABSENT"
 }
 
 // THE THIRD ARM, kept distinct from the second: an unread file cannot distinguish a deleted item
@@ -125,9 +106,8 @@ test fn genuine_absence_in_a_scanned_file_stays_absent() -> Bool {
 // differ is what proves the two refusal arms are two verdicts and not one message reused.
 test fn unread_file_refuses_with_a_distinct_reason() -> Bool {
   let o = observe(path: "src/v1/stage0/src/never_scanned.rs", name: "an_item_that_never_existed")
-  let why = unobservable_why(o: o)
-  !is_present(o: o)
-    && !is_absent(o: o)
+  let why = unobservable_reason(o: o)
+  observation_verdict(o: o) == "UNOBSERVABLE"
     && !string_contains(s: why, pattern: "STALE CITATION")
     && string_contains(s: why, pattern: "cannot distinguish a deleted item from an unread file")
 }
