@@ -54,6 +54,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_read_outcome,
   filesystem_file_observation
@@ -235,6 +236,11 @@ fn init_outcome_of_save(save: RepositorySave) -> ScmInitOutcome {
 // the write arm left every enrolled claim green. Separating the fold from the two operations that
 // feed it makes the four arms drivable one fact apart, which is the difference between a tested
 // decision and a tested renderer.
+// INIT REFUSES RATHER THAN CREATING, WHICH IS THE ONLY SAFE ARM FOR A REFUSED SUBJECT.
+// `ScmInitMayCreate` is reachable only from an ESTABLISHED absence, and a subject that was never
+// admitted established nothing -- so a subject refusal cannot fall through to the create. It
+// collapses into this module's unobserved cause VISIBLY, and the text says the repository path was
+// not a directory subject, so the operator fixes the argument rather than hunting a host fault.
 fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> ScmInitDecision {
   match observation {
     FilesystemFileAbsent(absence) => ScmInitMayCreate(absence)
@@ -244,5 +250,15 @@ fn scm_init_decision(observation: FilesystemFileObservation, path: String) -> Sc
       ScmInitDecided { cause: ScmInitPathUnobserved { path: path, cause: c } }
     FilesystemFileObservationsDisagree { path: p, cause: c } =>
       ScmInitDecided { cause: ScmInitPathUnobserved { path: p, cause: c } }
+    FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+      ScmInitDecided {
+        cause: ScmInitPathUnobserved {
+          path: path,
+          cause: join([
+            "the repository ", n, " was requested under ", d,
+            ", which is not a directory subject, so the supplied outcomes establish no observation of it, and no create is authorized -- ", c,
+          ], ""),
+        },
+      }
   }
 }
