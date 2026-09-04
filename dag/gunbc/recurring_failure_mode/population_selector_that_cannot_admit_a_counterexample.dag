@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.population_selector_that_cannot_admit_a_counterexample
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data population_selector_that_cannot_admit_a_counterexample: RecurringFailureMode = RecurringFailureMode {
+  identity: "population_selector_that_cannot_admit_a_counterexample" as NonEmptyStr,
+
+  receipts: [
+    "**a population selector that cannot admit a counterexample** (the population under study is enumerated by a LEXICAL PROXY FOR THE PREDICATE being asked, so the selector and the evidence are one object. Every member is then found to satisfy the claim -- not because the claim holds, but because no member that would refute it was reachable by the query that defined membership. The output is a CATEGORICAL VERDICT that is UNFALSIFIABLE BY CONSTRUCTION: no member of that population could have come back the other way. ",
+
+    "**THE ONE-QUESTION REVIEW TEST, and it is the reason to key the row on this rather than on the cause: WHAT MEMBER OF THIS POPULATION COULD HAVE FALSIFIED THE CLAIM?** If the answer is none, the query was structurally incapable of returning the negative and the verdict carries no information. The question costs one sentence and is askable before any result is read, which is when it is worth asking. ",
+
+    "**THE BOUNDARY AGAINST `selection_view_read_as_population`, the nearest row, and it fails to fire here.** There membership is a property of THE MEASUREMENT -- the set moves when the instrument moves, when load moves, when the reporter truncates, while the subject is unchanged. Here membership is a STABLE PROPERTY OF THE SUBJECT: the files matching a token do not move with load or with the instrument. Every recognition rule that row offers is silent on this one, which is why it needs its own. ",
+
+    "**THE BOUNDARY AGAINST `censored_estimator_drops_its_own_tail`, which is the other near miss.** Censoring drops an EXTREME and biases an ESTIMATE low with no bound, so the excluded region is a tail. Here the excluded region is THE ENTIRE COMPLEMENT, and its members are not extreme -- they are the ONLY POSSIBLE COUNTEREXAMPLES. The output is not a biased number but a categorical capability verdict, so there is no estimator to debias and no bound to state; the repair is to re-derive the population, not to recover a tail. ",
+
+    "**AND AGAINST THE SELF-REFERENCE FAMILY** (`admission_predicate_evidenced_from_inside_its_own_subject`, `self_authorized_dissolution`, `predicate_vacuously_true_on_an_empty_domain`, `repair_enumerates_its_own_blast_radius_by_inspection`): each is about a SUBJECT supplying its own admission. This is about a POPULATION supplying its own verdict, which is a different object -- the subject here is perfectly ordinary and it is the enumeration that is circular. ",
+
+    "**SPECIMEN WITH A RECEIPT, measured 2026-09-04 across gunbc#10388's scaffold escalation, and it is filed as a PAIR because the second half is what makes it a class rather than an incident.** The question was whether bounded pagination is modelled in this repository. The population used was the files matching `default_per_page`, seven of them. That token is a LEXICAL PROXY for the predicate: it names a page-SIZE default, and every route that pages WITHOUT importing it -- a reflective host bridge, an endpoint carrying its own page parameter -- was unreachable by the query that defined the population. So the verdict `bounded pagination is established` could not have come back any other way. The truth, established later by reading operation graphs rather than tokens: `extdeps.github` contains no page parameter, no cursor advance and no link-header handling anywhere, and `type Pagination` is declared with ZERO consumers. ",
+
+    "**THE SECOND HALF: TWO ANALYSTS REPRODUCED ONE EVIDENCE LINEAGE AND READ IT AS CORROBORATION.** The second reader deliberately refused to relay the first's claim and re-measured independently -- and re-measured THE SAME SUBJECT WITH THE SAME TOKEN THROUGH THE SAME LEXICAL PROJECTION, making the same unstated substitution of `page size is configurable` for `continuation is consumed until closure`. One lineage, two signatures, and the agreement was read as confirmation. It then reached an operator escalation as a seconded premise, which is worse than one analyst being wrong: a second confirms a first without adding information. **A SECOND READING CORROBORATES ONLY WHEN IT CHANGES A LOAD-BEARING DERIVATION AXIS** -- operation-graph reachability, an executing transition, a controlled mutation. Any one of the three was cheap here and would have returned the truth on the first pass. ",
+
+    "**THREE CLAIMS WERE TREATED AS ONE, which is the specific substitution to watch for at an external boundary: page SIZE configured, cursor SHAPE declared, and continuation CLOSURE executed are independent.** A declared carrier proves the second and neither of the others; a configured size parameter proves the first and neither of the others. Reading any one as the conjunction is how the proxy gets adopted in the first place. ",
+
+    "**THE SEAL, and it is why per-member discipline does not repair this: `one disposition per member` is satisfiable with the predicate never executed.** A caller can map members to fabricated satisfied rows and obtain perfect cardinality and perfect key coverage over a population that was itself derived from the proxy. So the fix is not a count and not a coverage join: PROVENANCE MUST LIVE IN THE CONSTRUCTOR -- no path from a member, a file path, a symbol occurrence or a count to a disposition, and only the executor mints one. That is a structural statement rather than a discipline, which is the form that survives a reviewer who agrees with it and then does not do it. ",
+
+    "**RUNG: 1 (mitigatable).** The class is nameable and the review question is one sentence. **CEILING: 3 (structurally guaranteed), because the property is decidable from the tree the compiler already holds:** whether a population's enumerating expression shares a symbol with the predicate evaluated over it is a static question over the same `Node` graph a lens reads. **NEXT-RUNG TRIGGER, a capability and not an artifact: a census carrier whose population is constructed from a declared SUBJECT ENUMERATION and whose per-member dispositions are mintable only by an executor**, so that a population derived from a proxy for its own predicate fails to construct rather than being caught by a reviewer who thought to ask. ",
+  ],
+
+  evidence: [],
+}
