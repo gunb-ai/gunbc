@@ -126,6 +126,12 @@ data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease
 
 data actions_runner_base_dir: String = "/opt/actions-runner"
 
+// `config.sh` writes `.runner` beside the binaries when a runner registers with GitHub, and
+// `config.sh remove` deletes it; the file's presence is the runner's own record that this tree is
+// registered. It is the registration signal a fleet observer reads, cited here because it is the
+// upstream's convention and not ours.
+data actions_runner_registration_file_name: String = ".runner"
+
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
 
 data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
