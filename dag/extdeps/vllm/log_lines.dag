@@ -1,0 +1,83 @@
+module extdeps.vllm.log_lines
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+
+// THE ENGINE'S OWN STARTUP LINES, WHICH ARE THE ONLY AUTHORITY FOR WHAT IT ACTUALLY BUILT.
+//
+// WHY A MODULE FOR THREE LINES OF STDOUT. Two of the numbers this deployment most needs -- the KV
+// pool and the resolved cache format -- are RESIDUALS of the engine's own profiling, not functions
+// of the arguments it was given. They are computed after weights load and after an activation
+// profile that depends on the checkpoint, the batch shape and the device. There is no formula on
+// this side of the boundary that reproduces them, so the engine's report is the primary source and
+// anything else is a reconstruction.
+//
+// THIS WAS LEARNED BY GETTING IT WRONG TWICE. `num_gpu_blocks * block_size` looks like the pool and
+// is not: under MLA with the DeepSeek fp8 layout it reported roughly a fourteenth of the logged
+// figure. Both times the wrong number was arithmetic over real fields, which is what made it
+// convincing -- it is not a typo, it is a different quantity wearing the same units.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.log_lines",
+      decl_name: "VllmStartupLine",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The three lines this repository reads. Each is a STABLE PREFIX the engine emits once per launch;
+// the module cites the prefix rather than a line number, because a line number is a position in a
+// stream that reorders whenever logging changes.
+type VllmStartupLine
+  = GpuKvCacheSize
+  | MaximumConcurrency
+  | ResolvedKvCacheFormat
+
+fn vllm_startup_line_prefix(line: VllmStartupLine) -> NonEmptyStr {
+  match line {
+    GpuKvCacheSize => "GPU KV cache size:" as NonEmptyStr
+    MaximumConcurrency => "Maximum concurrency for" as NonEmptyStr
+    ResolvedKvCacheFormat => "Using DeepSeek's fp8_ds_mla KV cache format" as NonEmptyStr
+  }
+}
+
+data vllm_startup_lines: List<VllmStartupLine> = [
+  GpuKvCacheSize,
+  MaximumConcurrency,
+  ResolvedKvCacheFormat,
+]
+
+// ── THE OBSERVED READING ───────────────────────────────────────────────────────────────────────
+//
+// A READING CARRIES THE REVISION IT WAS READ AT, because a log prefix is an upstream surface and a
+// reading taken against one revision is not evidence about another.
+type VllmStartupReading sole_constructor {
+  line: VllmStartupLine
+  captured_text: NonEmptyStr
+  observed_at_revision: VllmSourceRevision
+}
+
+fn vllm_startup_reading(
+  line: VllmStartupLine,
+  captured_text: NonEmptyStr,
+) -> VllmStartupReading {
+  VllmStartupReading {
+    line: line,
+    captured_text: captured_text,
+    observed_at_revision: vllm_source_revision_read
+  }
+}
