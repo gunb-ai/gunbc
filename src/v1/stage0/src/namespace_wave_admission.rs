@@ -1444,16 +1444,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
             module: "gunbc.scm.repository_envelope",
-            in_declaration: "commit_root_standing",
-            spelling: "position_of",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
             in_declaration: "decode_commit_members",
             spelling: "DecodePositions",
             target: "gunbc.scm.object_table_json",
