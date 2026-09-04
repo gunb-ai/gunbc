@@ -40,6 +40,7 @@ import gunbc.guarantee_stall.two_nat_authorities_stall { two_nat_authorities_sta
 import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_model_scope_live_cover_stall }
 import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
+import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -140,6 +141,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
+  roster_re_enumerates_its_own_rows_stall,
   floor_cost_basis_boundedness_stall,
 ]
 
