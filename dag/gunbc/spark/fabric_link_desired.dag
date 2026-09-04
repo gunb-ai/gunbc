@@ -33,12 +33,23 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, oper
 // INTERFACE EQUALITY IS A WITHIN-LINK COMPATIBILITY LAW, NOT AN IDENTITY. This sentence used to say
 // the rail's identity WAS the interface name, which was true only while one pair was modeled. Both
 // pairs run the same NIC spellings on all four machines, so an interface name selects a link only by
-// accident of there being one candidate. Fleet link identity is PAIR PLUS RAIL, which is what the
-// qualified names below carry and what the distinctness witness enforces.
+// accident of there being one candidate. Fleet link identity is PAIR PLUS RAIL.
+//
+// AND PAIR-PLUS-RAIL IS A TYPE, NOT A SPELLING -- the correction this module most needed. An earlier
+// head said that same sentence and then carried the identity in a caller-authored `name:
+// NonEmptyStr`, with a witness asserting the four literals were pairwise distinct. That is validation
+// standing exactly where construction was available, and DESIGN section 5 names the tell: it can be
+// satisfied by editing the declaration while the realization still lies. `FabricLinkIdentity { pair,
+// rail }` is closed over both axes, so a duplicate is a repeated value of a finite type rather than a
+// repeated string, and `spark_fabric_link` answers with a typed lookup that cannot silently serve the
+// first of two. The rendered "srv5-srv6-rail0" is DERIVED from the identity, never its authority.
 //
 // The consequence is for consumers rather than for this file: anything binding to a rail -- the vLLM
-// or Ray adapter selecting the srv6 front door, for instance -- must resolve the named link and take
-// its endpoint on that host. Not by interface name, not by position in the roster, and not by the
+// or Ray adapter selecting the srv6 front door, for instance -- must resolve the link THROUGH
+// `spark_fabric_link(identity:)` and take its endpoint on that host via `fabric_endpoint_on`. That
+// names an operation that exists; the previous head said "resolve the named link" while the module
+// contained no resolving operation at all, which is a sentence asserting an enforcement no operation
+// can produce. Not by interface name, not by position in the roster, and not by the
 // literal address. An observed `VLLM_HOST_IP` equal to that endpoint's address is corroboration that
 // the binding is right; it is never the authority that selects it.
 //
@@ -55,6 +66,67 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, oper
 // one QSFP port. A jumbo ping on each rail passes in both cases, so the reachability evidence cannot
 // distinguish them. It does not affect addressing, which is what this module owns; it does bound any
 // future claim about aggregate fabric bandwidth, and such a claim needs its own instrument.
+// THE TWO IDENTITY AXES, CLOSED. A pair is two machines cabled to each other; a rail is which of the
+// two RoCE devices carries the link. Both are closed because the fleet is: a third pair is a row
+// added here, and adding it makes every match over these types fail to compile until the new case is
+// answered -- the census DESIGN section 5 asks for, rather than a default arm that absorbs it.
+type SparkFabricPair = Srv5Srv6 | Srv7Srv8
+
+type SparkFabricRail = Rail0 | Rail1
+
+// AND THE IDENTITY IS THEIR PRODUCT. Two links are the same link exactly when both axes agree, which
+// is decided by construction rather than asserted over spellings.
+type FabricLinkIdentity sole_constructor {
+  pair: SparkFabricPair
+  rail: SparkFabricRail
+}
+
+fn fabric_link_identity(pair: SparkFabricPair, rail: SparkFabricRail) -> FabricLinkIdentity {
+  FabricLinkIdentity { pair: pair, rail: rail }
+}
+
+fn spark_fabric_pair_eq(a: SparkFabricPair, b: SparkFabricPair) -> Bool {
+  match a {
+    Srv5Srv6 => match b { Srv5Srv6 => true, Srv7Srv8 => false }
+    Srv7Srv8 => match b { Srv5Srv6 => false, Srv7Srv8 => true }
+  }
+}
+
+fn spark_fabric_rail_eq(a: SparkFabricRail, b: SparkFabricRail) -> Bool {
+  match a {
+    Rail0 => match b { Rail0 => true, Rail1 => false }
+    Rail1 => match b { Rail0 => false, Rail1 => true }
+  }
+}
+
+fn fabric_link_identity_eq(a: FabricLinkIdentity, b: FabricLinkIdentity) -> Bool {
+  spark_fabric_pair_eq(a: a.pair, b: b.pair) && spark_fabric_rail_eq(a: a.rail, b: b.rail)
+}
+
+// THE HOSTS A PAIR NAMES, which is what makes the identity more than a label: the constructor refuses
+// a link whose endpoints do not inhabit the pair its identity claims, so `Srv5Srv6` plus `Rail0`
+// cannot be made to wrap srv7/srv8 endpoints.
+fn spark_fabric_pair_hosts(pair: SparkFabricPair) -> List<HostIdentity> {
+  match pair {
+    Srv5Srv6 => [operator_host_srv5, operator_host_srv6]
+    Srv7Srv8 => [operator_host_srv7, operator_host_srv8]
+  }
+}
+
+// A RENDERING, DERIVED. The netplan and NM surfaces want a string; that string is a projection of the
+// identity and is read back by nothing here.
+fn render_spark_fabric_pair(pair: SparkFabricPair) -> String {
+  match pair { Srv5Srv6 => "srv5-srv6", Srv7Srv8 => "srv7-srv8" }
+}
+
+fn render_spark_fabric_rail(rail: SparkFabricRail) -> String {
+  match rail { Rail0 => "rail0", Rail1 => "rail1" }
+}
+
+fn render_fabric_link_identity(identity: FabricLinkIdentity) -> String {
+  render_spark_fabric_pair(pair: identity.pair) + "-" + render_spark_fabric_rail(rail: identity.rail)
+}
+
 type FabricEndpoint sole_constructor {
   host: HostIdentity
   interface: NonEmptyStr
@@ -79,17 +151,33 @@ type FabricEndpoint sole_constructor {
 // The prefix must also be one `ipv4_same_network` can answer for; an unanswerable prefix refuses
 // rather than being assumed to match, because "I could not check" is not "it is fine".
 type FabricLink sole_constructor {
-  name: NonEmptyStr
+  identity: FabricLinkIdentity
   endpoint_a: FabricEndpoint
   endpoint_b: FabricEndpoint
 }
 
+// A SIXTH CONDITION, AND IT IS THE ONE THAT MAKES THE IDENTITY LOAD-BEARING RATHER THAN DECORATIVE:
+// the endpoints must inhabit the pair the identity names. Without it `Srv5Srv6` plus `Rail0` could
+// wrap srv7/srv8 endpoints, and the identity would be a label the constructor never checked -- a
+// field carried and never examined, which is the exact class the sibling failure-mode row names.
+fn fabric_endpoints_inhabit_pair(
+  pair: SparkFabricPair,
+  endpoint_a: FabricEndpoint,
+  endpoint_b: FabricEndpoint,
+) -> Bool {
+  any(spark_fabric_pair_hosts(pair: pair), h => host_identity_eq(a: h, b: endpoint_a.host))
+    && any(spark_fabric_pair_hosts(pair: pair), h => host_identity_eq(a: h, b: endpoint_b.host))
+}
+
 fn fabric_link(
-  name: NonEmptyStr,
+  identity: FabricLinkIdentity,
   endpoint_a: FabricEndpoint,
   endpoint_b: FabricEndpoint,
 ) -> FabricLink? {
   if host_identity_eq(a: endpoint_a.host, b: endpoint_b.host) {
+    none
+  } else if !fabric_endpoints_inhabit_pair(
+      pair: identity.pair, endpoint_a: endpoint_a, endpoint_b: endpoint_b) {
     none
   } else if (endpoint_a.interface as String) != (endpoint_b.interface as String) {
     none
@@ -106,7 +194,7 @@ fn fabric_link(
       Present { value: shared } =>
         if shared {
           Present { value: FabricLink {
-            name: name, endpoint_a: endpoint_a, endpoint_b: endpoint_b } }
+            identity: identity, endpoint_a: endpoint_a, endpoint_b: endpoint_b } }
         } else {
           none
         }
@@ -134,6 +222,68 @@ fn fabric_endpoint_on(link: FabricLink, host: HostIdentity) -> FabricEndpoint? {
     Present { value: link.endpoint_b }
   } else {
     none
+  }
+}
+
+// THE LOOKUP, AND WHY IT HAS THREE ARMS RATHER THAN RETURNING AN OPTION.
+//
+// A `FabricLink?` would collapse two materially different answers into `none` -- "the fleet declares
+// no such rail" and "the fleet declares it twice" -- and, worse, the obvious implementation of an
+// option-returning lookup takes the FIRST match, which serves one of two duplicates and reports
+// success. That is the absorbing fallback DESIGN section 5 forbids: the failure arm widens into a
+// plausible answer instead of refusing, and the duplicate that caused it is never surfaced.
+//
+// So duplication is its own arm and carries its count. This is also what replaces the previous head's
+// distinctness WITNESS: uniqueness is now decided where the link is resolved, on every call, rather
+// than asserted once over four literals by a test.
+type SparkFabricLinkLookup
+  = FoundExactlyOne { link: FabricLink }
+  | FabricLinkMissing { identity: FabricLinkIdentity }
+  | FabricLinkIdentityDuplicated { identity: FabricLinkIdentity, count: Int }
+
+fn spark_fabric_link_from(
+  matches: List<FabricLink>,
+  identity: FabricLinkIdentity,
+) -> SparkFabricLinkLookup {
+  if length(matches) == 1 {
+    match matches.first() {
+      Present { value: only } => FoundExactlyOne { link: only }
+      Absent => FabricLinkMissing { identity: identity }
+    }
+  } else if length(matches) == 0 {
+    FabricLinkMissing { identity: identity }
+  } else {
+    FabricLinkIdentityDuplicated { identity: identity, count: length(matches) }
+  }
+}
+
+fn spark_fabric_link(identity: FabricLinkIdentity) -> SparkFabricLinkLookup {
+  spark_fabric_link_from(
+    matches: filter(spark_fabric_links(), l =>
+      fabric_link_identity_eq(a: l.identity, b: identity)),
+    identity: identity)
+}
+
+// AND THE ENDPOINT A HOST OWNS ON A NAMED RAIL, which is the operation the consumer sentence at the
+// top of this module actually points at. It threads the lookup's refusals rather than flattening
+// them, so an adapter that asks for a rail the fleet does not declare gets a located cause and not a
+// missing address it might treat as "not configured yet".
+type SparkFabricEndpointAnswer
+  = FabricEndpointFound { endpoint: FabricEndpoint }
+  | FabricEndpointHostNotOnLink { identity: FabricLinkIdentity, host: HostIdentity }
+  | FabricEndpointLinkUnresolved { lookup: SparkFabricLinkLookup }
+
+fn spark_fabric_endpoint(
+  identity: FabricLinkIdentity,
+  host: HostIdentity,
+) -> SparkFabricEndpointAnswer {
+  match spark_fabric_link(identity: identity) {
+    FoundExactlyOne { link: link } =>
+      match fabric_endpoint_on(link: link, host: host) {
+        Present { value: e } => FabricEndpointFound { endpoint: e }
+        Absent => FabricEndpointHostNotOnLink { identity: identity, host: host }
+      }
+    other => FabricEndpointLinkUnresolved { lookup: other }
   }
 }
 
@@ -172,7 +322,7 @@ data fabric_mtu_bytes: ByteSize = byte_size(count: 9000)
 // configuration, and the two ends are free to disagree about it in a way they may never disagree
 // about interface, network or MTU.
 data fabric_rail0: FabricLink? = fabric_link(
-  name: "srv7-srv8-rail0" as NonEmptyStr,
+  identity: fabric_link_identity(pair: Srv7Srv8, rail: Rail0),
   endpoint_a: fabric_endpoint(
     host: operator_host_srv7,
     interface: "enp1s0f0np0" as NonEmptyStr,
@@ -185,7 +335,7 @@ data fabric_rail0: FabricLink? = fabric_link(
     prefix: fabric_prefix, mtu: fabric_mtu_bytes))
 
 data fabric_rail1: FabricLink? = fabric_link(
-  name: "srv7-srv8-rail1" as NonEmptyStr,
+  identity: fabric_link_identity(pair: Srv7Srv8, rail: Rail1),
   endpoint_a: fabric_endpoint(
     host: operator_host_srv7,
     interface: "enP2p1s0f0np0" as NonEmptyStr,
@@ -227,7 +377,7 @@ data fabric_rail1: FabricLink? = fabric_link(
 // measured in BOTH directions on BOTH rails at 8972 bytes with DF set, which is what makes MTU 9000
 // an observation here rather than a declaration.
 data first_pair_fabric_rail0: FabricLink? = fabric_link(
-  name: "srv5-srv6-rail0" as NonEmptyStr,
+  identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0),
   endpoint_a: fabric_endpoint(
     host: operator_host_srv6,
     interface: "enp1s0f0np0" as NonEmptyStr,
@@ -240,7 +390,7 @@ data first_pair_fabric_rail0: FabricLink? = fabric_link(
     prefix: fabric_prefix, mtu: fabric_mtu_bytes))
 
 data first_pair_fabric_rail1: FabricLink? = fabric_link(
-  name: "srv5-srv6-rail1" as NonEmptyStr,
+  identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail1),
   endpoint_a: fabric_endpoint(
     host: operator_host_srv6,
     interface: "enP2p1s0f0np0" as NonEmptyStr,
