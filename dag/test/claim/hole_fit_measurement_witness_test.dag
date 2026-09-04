@@ -6,7 +6,9 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
 import product.printed_chassis.coupon { HoleDiameterLadderR1, hole_ladder_spec }
 import product.printed_chassis.hole_fit_measurement {
-  FastenerFitGrade, FitFree, FitTight, FitRefused,
+  InsertionTraversal, TraversedFully, TraversedPartially, DidNotEnter,
+  InsertionEffort, NoDeliberateForce, DeliberateHandForce, EffortUnmeasured,
+  TrialStanding, TrialObserved, TrialRefused, trial_passes, trial_is_free,
   HoleFitObservation, HoleFitThresholdStanding,
   ThresholdBracketed, ThresholdLowerBoundUnestablished, ThresholdUpperBoundUnestablished,
   ThresholdUnobserved, ThresholdObservationsNonMonotone, ThresholdLadderUnavailable,
@@ -21,23 +23,31 @@ import product.printed_chassis.hole_fit_measurement {
   BedPositionCoverage, SinglePositionPerDiameter, MultiplePositionsSampled,
   fit_scope_admits, m3_free_pass_scope,
   FreePassObservationOutOfLadder, FreePassObservationsHeterogeneous,
-  FitInterference,
-  ClearanceTargetAgreement, FreePassMeetsPublishedClearance,
-  FreePassLooserThanPublishedClearance, FreePassTighterThanPublishedClearance,
+  ClearanceTargetAgreement, ObservedPassAtIso273SeriesNominal,
+  ObservedPassAboveIso273SeriesNominal, ObservedPassBelowIso273SeriesNominal,
   ClearanceTargetUnpublished, ClearanceComparisonHasNoObservation,
   clearance_target_agreement,
 }
 import extdeps.iso.iso_273 { IsoClearanceSeries, FineSeries, MediumSeries, CoarseSeries }
 
-fn obs(rung: Nat, g: FastenerFitGrade) -> HoleFitObservation {
+fn obs_at(rung: Nat, t: InsertionTraversal, e: InsertionEffort) -> HoleFitObservation {
   HoleFitObservation {
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: rung,
     fastener: m3_fastener,
-    grade: g,
+    traversal: t,
+    effort: e,
+    standing: TrialObserved,
     observer: "fixture",
   }
 }
+
+// The three fixture shapes the old FitFree / FitTight / FitRefused stood for, now spelled as what
+// they actually assert about a trial. A tight pass and a free pass differ ONLY in effort, which is
+// what makes them a discriminating pair for the free-pass selection.
+fn obs_free(rung: Nat) -> HoleFitObservation { obs_at(rung: rung, t: TraversedFully, e: NoDeliberateForce) }
+fn obs_tight(rung: Nat) -> HoleFitObservation { obs_at(rung: rung, t: TraversedFully, e: DeliberateHandForce) }
+fn obs_blocked(rung: Nat) -> HoleFitObservation { obs_at(rung: rung, t: DidNotEnter, e: EffortUnmeasured) }
 
 // THE LOAD-BEARING WITNESS. The operator's real reading -- rungs 2 and 3 both admit an M3 -- must
 // return LOWER BOUND UNESTABLISHED, not a compensation. Every observation in that population is a
@@ -64,9 +74,9 @@ test fn w_the_operators_reading_refuses_to_state_an_entry_threshold() -> Bool {
 // which is what makes them legitimately Micrometer; neither is a measured hole.
 test fn w_one_more_reading_brackets_the_entry_threshold() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 2, g: FitTight),
-    obs(rung: 3, g: FitFree),
+    obs_blocked(rung: 1),
+    obs_tight(rung: 2),
+    obs_free(rung: 3),
   ]) {
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } =>
       micrometer_count(m: a) == 3000 && micrometer_count(m: l) == 3100 && n == 3
@@ -85,10 +95,10 @@ test fn w_one_more_reading_brackets_the_entry_threshold() -> Bool {
 // rung-3 nominal (3200) and at or below the rung-4 nominal (3300).
 test fn w_the_bracket_follows_the_observations() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 2, g: FitRefused),
-    obs(rung: 3, g: FitRefused),
-    obs(rung: 4, g: FitFree),
+    obs_blocked(rung: 1),
+    obs_blocked(rung: 2),
+    obs_blocked(rung: 3),
+    obs_free(rung: 4),
   ]) {
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } =>
       micrometer_count(m: a) == 3200 && micrometer_count(m: l) == 3300
@@ -108,10 +118,10 @@ test fn w_the_bracket_follows_the_observations() -> Bool {
 // free, and must give the identical bracket.
 test fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
   let free = entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused), obs(rung: 3, g: FitFree),
+    obs_blocked(rung: 1), obs_blocked(rung: 2), obs_free(rung: 3),
   ])
   let tight = entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused), obs(rung: 3, g: FitTight),
+    obs_blocked(rung: 1), obs_blocked(rung: 2), obs_tight(rung: 3),
   ])
   match free {
     ThresholdBracketed { above_nominal: a1, at_or_below_nominal: l1, from_observations: n1 } => match tight {
@@ -141,7 +151,7 @@ test fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
 // they send the observer to opposite ends of the coupon.
 test fn w_all_refusing_leaves_the_upper_bound_open() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused),
+    obs_blocked(rung: 1), obs_blocked(rung: 2),
   ]) {
     ThresholdUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => r == 2
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } => false
@@ -174,8 +184,8 @@ test fn w_no_observations_is_unobserved_not_zero() -> Bool {
 // into a confident number. It refuses and names both rungs.
 test fn w_a_non_monotone_population_refuses_rather_than_averaging() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 2, g: FitFree),
-    obs(rung: 5, g: FitRefused),
+    obs_free(rung: 2),
+    obs_blocked(rung: 5),
   ]) {
     ThresholdObservationsNonMonotone { passing_rung: p, refusing_rung: q } => p == 2 && q == 5
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } => false
@@ -207,8 +217,8 @@ test fn w_the_operators_reading_does_establish_the_free_pass_nominal() -> Bool {
 // because a fastener that binds does not seat a panel.
 test fn w_a_tight_rung_alone_selects_no_free_pass_nominal() -> Bool {
   match select_free_pass_nominal(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 2, g: FitTight),
+    obs_blocked(rung: 1),
+    obs_tight(rung: 2),
   ], scope: m3_free_pass_scope) {
     FreePassUnobserved { missing: m } => true
     FreePassNominalSelected { nominal: n, basis_rung: r, scope: s } => false
@@ -222,9 +232,9 @@ test fn w_a_tight_rung_alone_selects_no_free_pass_nominal() -> Bool {
 // select the smallest, since anything larger is loose and wastes material and stiffness.
 test fn w_the_selection_takes_the_smallest_free_rung() -> Bool {
   match select_free_pass_nominal(construction: hole_ladder_spec, observations: [
-    obs(rung: 5, g: FitFree),
-    obs(rung: 3, g: FitFree),
-    obs(rung: 7, g: FitFree),
+    obs_free(rung: 5),
+    obs_free(rung: 3),
+    obs_free(rung: 7),
   ], scope: m3_free_pass_scope) {
     FreePassNominalSelected { nominal: n, basis_rung: r, scope: s } => r == 3 && micrometer_count(m: n) == 3200
     FreePassUnobserved { missing: m } => false
@@ -239,8 +249,8 @@ test fn w_the_selection_takes_the_smallest_free_rung() -> Bool {
 // hole that was never printed -- fabricated output reached by a computation with no error path.
 test fn w_an_ordinal_past_the_ladder_refuses_rather_than_computing_a_diameter() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 40, g: FitFree),
+    obs_blocked(rung: 1),
+    obs_free(rung: 40),
   ]) {
     ThresholdObservationOutOfLadder { ordinal: o, rung_count: rc } => o == 40 && rc == 11
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } => false
@@ -259,8 +269,8 @@ test fn w_an_ordinal_past_the_ladder_refuses_rather_than_computing_a_diameter() 
 // being reported as absent.
 test fn w_a_zero_ordinal_refuses_instead_of_vanishing_into_the_sentinel() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 0, g: FitRefused),
-    obs(rung: 3, g: FitFree),
+    obs_blocked(rung: 0),
+    obs_free(rung: 3),
   ]) {
     ThresholdObservationOutOfLadder { ordinal: o, rung_count: rc } => o == 0
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } => false
@@ -278,8 +288,8 @@ test fn w_a_zero_ordinal_refuses_instead_of_vanishing_into_the_sentinel() -> Boo
 // being one-off-conservative.
 test fn w_the_last_rung_of_the_ladder_is_admitted() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 11, g: FitFree),
+    obs_blocked(rung: 1),
+    obs_free(rung: 11),
   ]) {
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } =>
       micrometer_count(m: l) == 4000
@@ -301,11 +311,11 @@ test fn w_a_population_mixing_fasteners_refuses_rather_than_bracketing() -> Bool
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 3,
     fastener: MetricCoarseThread { designation: "M4" },
-    grade: FitFree,
+    traversal: TraversedFully, effort: NoDeliberateForce, standing: TrialObserved,
     observer: "fixture",
   }
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
+    obs_blocked(rung: 1),
     m4,
   ]) {
     ThresholdObservationsHeterogeneous { differing: dd } => true
@@ -323,8 +333,8 @@ test fn w_a_population_mixing_fasteners_refuses_rather_than_bracketing() -> Bool
 // rather than a refusal of every population with more than one row.
 test fn w_a_homogeneous_population_still_brackets() -> Bool {
   match entry_threshold_from_observations(construction: hole_ladder_spec, observations: [
-    obs(rung: 1, g: FitRefused),
-    obs(rung: 3, g: FitFree),
+    obs_blocked(rung: 1),
+    obs_free(rung: 3),
   ]) {
     ThresholdBracketed { above_nominal: a, at_or_below_nominal: l, from_observations: n } => n == 2
     ThresholdObservationsHeterogeneous { differing: dd } => false
@@ -342,7 +352,7 @@ test fn w_a_homogeneous_population_still_brackets() -> Bool {
 // other path rejects.
 test fn w_the_free_pass_selection_carries_the_same_two_gates() -> Bool {
   let out_of_range = match select_free_pass_nominal(construction: hole_ladder_spec,
-      observations: [obs(rung: 40, g: FitFree)], scope: m3_free_pass_scope) {
+      observations: [obs_free(rung: 40)], scope: m3_free_pass_scope) {
     FreePassObservationOutOfLadder { ordinal: o, rung_count: rc } => o == 40
     FreePassNominalSelected { nominal: n, basis_rung: r, scope: sc } => false
     FreePassUnobserved { missing: m } => false
@@ -350,10 +360,10 @@ test fn w_the_free_pass_selection_carries_the_same_two_gates() -> Bool {
     FreePassObservationsHeterogeneous { differing: dd } => false
   }
   let mixed = match select_free_pass_nominal(construction: hole_ladder_spec, observations: [
-      obs(rung: 2, g: FitFree),
+      obs_free(rung: 2),
       HoleFitObservation { specimen: HoleDiameterLadderR1 {}, rung_ordinal: 3,
                            fastener: MetricCoarseThread { designation: "M4" },
-                           grade: FitFree, observer: "fixture" },
+                           traversal: TraversedFully, effort: NoDeliberateForce, standing: TrialObserved, observer: "fixture" },
     ], scope: m3_free_pass_scope) {
     FreePassObservationsHeterogeneous { differing: dd } => true
     FreePassNominalSelected { nominal: n, basis_rung: r, scope: sc } => false
@@ -471,10 +481,10 @@ test fn w_the_free_pass_nominal_meets_the_published_fine_clearance_for_m3() -> B
     thread: m3_fastener,
     series: FineSeries
   ) {
-    FreePassMeetsPublishedClearance { observed_nominal: o, published_nominal: p, series: s } =>
+    ObservedPassAtIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } =>
       micrometer_count(m: o) == 3200 && micrometer_count(m: p) == 3200
-    FreePassLooserThanPublishedClearance { observed_nominal: o, published_nominal: p, series: s } => false
-    FreePassTighterThanPublishedClearance { observed_nominal: o, published_nominal: p, series: s } => false
+    ObservedPassAboveIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } => false
+    ObservedPassBelowIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } => false
     ClearanceTargetUnpublished { series: s } => false
     ClearanceComparisonHasNoObservation { cause: c } => false
   }
@@ -488,10 +498,10 @@ test fn w_the_same_reading_is_tighter_than_the_published_medium_clearance() -> B
     thread: m3_fastener,
     series: MediumSeries
   ) {
-    FreePassTighterThanPublishedClearance { observed_nominal: o, published_nominal: p, series: s } =>
+    ObservedPassBelowIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } =>
       micrometer_count(m: p) == 3400
-    FreePassMeetsPublishedClearance { observed_nominal: o, published_nominal: p, series: s } => false
-    FreePassLooserThanPublishedClearance { observed_nominal: o, published_nominal: p, series: s } => false
+    ObservedPassAtIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } => false
+    ObservedPassAboveIso273SeriesNominal { observed_nominal: o, published_nominal: p, series: s } => false
     ClearanceTargetUnpublished { series: s } => false
     ClearanceComparisonHasNoObservation { cause: c } => false
   }

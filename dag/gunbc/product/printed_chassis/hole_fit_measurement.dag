@@ -28,23 +28,53 @@ import product.printed_chassis.coupon {
 // observations, with a derivation that can fail. A Micrometer field would present a derived and
 // possibly underdetermined quantity in the same shape as a caliper reading, and nothing downstream
 // could tell them apart.
-// FitInterference EXISTS BECAUSE A READING FELL BETWEEN TWO ARMS AND NEITHER WAS HONEST.
+// THREE AXES, NOT ONE ENUM. The four-grade vocabulary that stood here conflated three different
+// kinds of statement, and the operator's reading is what exposed it: asked about the smallest rung
+// they answered BOTH "it goes in all the way" AND "it did need real force", which are answers to
+// DIFFERENT QUESTIONS. A sum type forced them into one constructor and made the pair unrepresentable.
 //
-// Asked whether the smallest coupon rung took an M3, the operator answered BOTH "it goes in all the
-// way" and "it did need real force". Under the three-grade vocabulary those two sentences select
-// different arms: seating fully is not FitRefused, and needing force is not FitTight. The grade was
-// anemic -- it had no constructor for the state the part was actually in, so whichever arm I picked
-// would have recorded a fact nobody observed.
+//   how far it went     an observation of the trial
+//   how hard it was     an observation of the trial, independent of how far
+//   whether it counts   an adjudication about the observation, not about the part
 //
-// An interference fit SEATS but transfers load to the wall. For a CLEARANCE hole that is a failure
-// of function rather than of assembly: the screw is carried by the plastic instead of passing
-// through it, and a printed wall under a press fit splits later rather than now. So this arm is
-// entry, and it is deliberately NOT free passage.
-type FastenerFitGrade
-  = FitFree
-  | FitTight
-  | FitInterference
-  | FitRefused
+// The middle axis is the one that had no home. The old vocabulary spelled it `FitInterference`,
+// borrowing ISO 286's word for a tactile reading -- and that borrowing is precisely the laundering
+// this module warns against two paragraphs down. ISO 286 classifies a fit from the LIMITS OF TWO
+// MATING FEATURES; a transition fit may realize either clearance or interference depending on where
+// each part lands in its band. Hand force establishes none of those constructors. Naming a felt
+// resistance after a dimensional relationship makes an unmeasured claim look like a measured one.
+//
+// So the coined tactile taxonomy is WITHDRAWN rather than extended, and the axes are separate.
+type InsertionTraversal
+  = TraversedFully
+  | TraversedPartially
+  | DidNotEnter
+
+// Effort is recorded and is NOT part of the pass decision. It is the difference between a hole that
+// works and a hole that works today: a fastener driven home by deliberate force is carried by the
+// wall rather than passing through it, and a printed wall under that load splits later. Keeping it
+// beside the verdict preserves the operator's second sentence instead of rounding it away.
+// KNOWN LIMIT, STATED RATHER THAN DISCOVERED LATER. This axis is ordinal in intent but carries only
+// one loaded value, so it cannot grade DEGREES of force. The operator's three descriptions were
+// "real force", "a little tight" and "fits"; the first two both land on DeliberateHandForce and the
+// distinction between them survives only in the observer's own words on each row, which no gate can
+// read. That is a real loss of a real reading, and it is recorded here rather than papered over.
+//
+// It does not affect either verdict -- pass is traversal alone, and free passage requires the ABSENCE
+// of deliberate force, so both rungs are correctly not-free. The trigger for splitting this axis is
+// a consumer that must rank two passing rungs by effort, which no current consumer does. Splitting
+// it before then would invent gradations nobody measured, which is the same error one axis over.
+type InsertionEffort
+  = NoDeliberateForce
+  | DeliberateHandForce
+  | EffortUnmeasured
+
+// Whether the trial may be admitted at all -- an adjudication about the OBSERVATION, which is why it
+// cannot sit on the same axis as what was seen. A trial nobody ran and a fastener that would not
+// enter are different facts, and the old `FitRefused` arm could not tell them apart.
+type TrialStanding
+  = TrialObserved
+  | TrialRefused { reason: NonEmptyStr }
 
 // The rung is named by its ORDINAL, one-based, exactly as a person counts holes along the coupon:
 // "the second smallest". Its DIAMETER is looked up in the ladder that generated the part, so an
@@ -53,8 +83,35 @@ type HoleFitObservation {
   specimen: CouponSpecimenIdentity
   rung_ordinal: Nat
   fastener: FastenerThread
-  grade: FastenerFitGrade
+  traversal: InsertionTraversal
+  effort: InsertionEffort
+  standing: TrialStanding
   observer: NonEmptyStr
+}
+
+// THE PASS DECISION IS ONE CONJUNCTION AND IT NAMES ITS TWO REASONS. A trial counts only if it was
+// admissible and the fastener went all the way through; partial entry is not entry, and effort does
+// not appear, because how hard it was is not whether it passed.
+fn trial_passes(o: HoleFitObservation) -> Bool {
+  match o.standing {
+    TrialRefused { reason: r } => false
+    TrialObserved =>
+      match o.traversal {
+        TraversedFully => true
+        TraversedPartially => false
+        DidNotEnter => false
+      }
+  }
+}
+
+fn trial_is_free(o: HoleFitObservation) -> Bool {
+  if trial_passes(o: o) {
+    match o.effort {
+      NoDeliberateForce => true
+      DeliberateHandForce => false
+      EffortUnmeasured => false
+    }
+  } else { false }
 }
 
 // WHAT IS BRACKETED IS A NOMINAL DIAMETER FROM THE COUPON, NOT A SHRINKAGE.
@@ -69,7 +126,7 @@ type HoleFitObservation {
 // word compensation does not appear.
 //
 // TWO THRESHOLDS, NOT ONE, because "it goes in" and "it goes in freely" are different questions with
-// different evidence. FitTight is entry but not free passage. The operator's reading establishes the
+// different evidence. Full traversal under deliberate force is entry but not free passage. The reading establishes the
 // FREE-PASS threshold at 3.20 mm outright, while leaving the ANY-ENTRY threshold open at the bottom
 // -- and a single arm would have reported the whole reading as unestablished, discarding the half
 // that is usable for design today.
@@ -194,26 +251,17 @@ fn entry_threshold_against_ladder(
   } else {
   let scan = fold(observations, init: FitScan { count: 0, smallest_pass: 0, largest_refuse: 0 },
     f: fn(acc, o) {
-      match o.grade {
-        FitRefused => FitScan {
+      if trial_passes(o: o) {
+        FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+      } else {
+        FitScan {
           count: acc.count + 1,
           smallest_pass: acc.smallest_pass,
           largest_refuse: if o.rung_ordinal > acc.largest_refuse { o.rung_ordinal } else { acc.largest_refuse },
-        }
-        FitTight => FitScan {
-          count: acc.count + 1,
-          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
-          largest_refuse: acc.largest_refuse,
-        }
-        FitInterference => FitScan {
-          count: acc.count + 1,
-          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
-          largest_refuse: acc.largest_refuse,
-        }
-        FitFree => FitScan {
-          count: acc.count + 1,
-          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
-          largest_refuse: acc.largest_refuse,
         }
       }
     })
@@ -267,9 +315,10 @@ fn rung_diameter(ladder: LengthLadder, ordinal: Nat) -> Micrometer {
 //
 // Reported 2026-09-04: the second and third smallest holes both admit an M3, the second is tight.
 // Asked about the first rung, the operator answered in two parts -- "it does go in all the way" AND
-// "it did need real force" -- and those two sentences are why FitInterference exists. Neither of the
-// arms available at the time was honest about that state: seating fully is not a refusal, and
-// needing force is not hand-tight. The reading was not rounded to whichever arm was closer.
+// "it did need real force". Those are answers to two DIFFERENT questions -- how far, and how hard --
+// and the sum type that stood here could hold only one of them, so the pair was unrepresentable and
+// whichever arm I picked would have recorded a fact nobody reported. Both are now carried, on their
+// own axes, exactly as spoken.
 //
 // The machine was still not named. When it is, this population splits per printer, because whether
 // the constant is shared or per-machine is the question the two coupons were printed to answer.
@@ -280,22 +329,28 @@ data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 1,
     fastener: m3_fastener,
-    grade: FitInterference,
+    traversal: TraversedFully,
+    effort: DeliberateHandForce,
+    standing: TrialObserved,
     observer: "operator, coupon in hand: goes in all the way, needed real force",
   },
   HoleFitObservation {
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 2,
     fastener: m3_fastener,
-    grade: FitTight,
-    observer: "operator, coupon in hand",
+    traversal: TraversedFully,
+    effort: DeliberateHandForce,
+    standing: TrialObserved,
+    observer: "operator, coupon in hand: a little tight",
   },
   HoleFitObservation {
     specimen: HoleDiameterLadderR1 {},
     rung_ordinal: 3,
     fastener: m3_fastener,
-    grade: FitFree,
-    observer: "operator, coupon in hand",
+    traversal: TraversedFully,
+    effort: NoDeliberateForce,
+    standing: TrialObserved,
+    observer: "operator, coupon in hand: fits",
   },
 ]
 
@@ -439,16 +494,13 @@ fn select_free_pass_nominal(
         }
       } else {
       let scan = fold(observations, init: FreeScan { smallest_free: 0 }, f: fn(acc, o) {
-        match o.grade {
-          FitFree => FreeScan {
+        if trial_is_free(o: o) {
+          FreeScan {
             smallest_free: if acc.smallest_free == 0 || o.rung_ordinal < acc.smallest_free {
               o.rung_ordinal
             } else { acc.smallest_free },
           }
-          FitTight => acc
-          FitInterference => acc
-          FitRefused => acc
-        }
+        } else { acc }
       })
       if scan.smallest_free == 0 {
         FreePassUnobserved {
@@ -507,17 +559,17 @@ data m3_free_pass_selection: FreePassSelection = select_free_pass_nominal(
 // The arms therefore name a DIRECTION and the step that bounds it, and no arm carries a
 // compensation.
 type ClearanceTargetAgreement
-  = FreePassMeetsPublishedClearance {
+  = ObservedPassAtIso273SeriesNominal {
       observed_nominal: Micrometer
       published_nominal: Micrometer
       series: IsoClearanceSeries
     }
-  | FreePassLooserThanPublishedClearance {
+  | ObservedPassAboveIso273SeriesNominal {
       observed_nominal: Micrometer
       published_nominal: Micrometer
       series: IsoClearanceSeries
     }
-  | FreePassTighterThanPublishedClearance {
+  | ObservedPassBelowIso273SeriesNominal {
       observed_nominal: Micrometer
       published_nominal: Micrometer
       series: IsoClearanceSeries
@@ -543,11 +595,11 @@ fn clearance_target_agreement(
         IsoClearanceThreadNotPublished { requested: t, series: s } => ClearanceTargetUnpublished { series: series }
         IsoClearanceFound { diameter: published, provenance: p } =>
           if micrometer_count(m: observed) == micrometer_count(m: published) {
-            FreePassMeetsPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+            ObservedPassAtIso273SeriesNominal { observed_nominal: observed, published_nominal: published, series: series }
           } else if micrometer_count(m: observed) > micrometer_count(m: published) {
-            FreePassLooserThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+            ObservedPassAboveIso273SeriesNominal { observed_nominal: observed, published_nominal: published, series: series }
           } else {
-            FreePassTighterThanPublishedClearance { observed_nominal: observed, published_nominal: published, series: series }
+            ObservedPassBelowIso273SeriesNominal { observed_nominal: observed, published_nominal: published, series: series }
           }
       }
   }
