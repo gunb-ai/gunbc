@@ -572,6 +572,18 @@ fn required_gate_prefixes() -> List<String> {
 // prefix would also admit product and operational witnesses the ruling explicitly moved off the
 // gate. The existing eight cost-debt identities remain withheld by their own authority; this
 // admission makes the other four execute, including the rung drops' named countable.
+//
+// THIS IS A PARTIAL CLIMB UNDER `gunbc.rung_drop.required_gate_bankruptcy`, not its retirement.
+// It follows that row's 2026-08-31 generated-artifact partial-climb precedent: one exact class is
+// restored and the static population moves. The standing drop's trigger remains a required run
+// deriving its population from the change with the whole corpus as universe; neither this exact
+// widening, another static widening, nor a faster static gate fires it. PRICE, from this change's
+// first required-floor receipts (run 33899564106): the admitted import closure resolved 2,339
+// modules versus 2,209 in the adjacent predecessor run 33889629622 (+130); strict preparation was
+// 635,645ms versus 630,511ms (+5,134ms, an adjacent-run observation rather than a causal claim).
+// The four newly planned claims cost 1ms, 54ms, and at least 507ms and 510ms CPU respectively; the
+// latter two were right-censored by the 500ms claim ceiling and are narrowed at their typed
+// producers in the same change. The next green receipt supplies their uncensored execution price.
 
 // test.claim.memory_stall_refusal_witness JOINS THE SAME FAMILY BY THE SAME TEST: it judges
 // the arm that stops a resolve which is thrashing instead of computing (gunbc.
