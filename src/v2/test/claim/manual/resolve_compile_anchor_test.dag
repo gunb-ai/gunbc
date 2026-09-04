@@ -60,17 +60,19 @@ fn service_atom_conj_tree() -> Node {
 }
 
 fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: service_atom_conj_tree(),
-    lm: dag_language_model_void()
-  )
+  match admit_normalized_tree(root: service_atom_conj_tree(), diagnostics: None) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: tree, diagnostics: _ } =>
+      resolve(tree: tree, lm: dag_language_model_void())
+  }
 }
 
 fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: service_atom_conj_tree(),
-    lm: dag_language_model_surface_empty_prelude()
-  )
+  match admit_normalized_tree(root: service_atom_conj_tree(), diagnostics: None) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: tree, diagnostics: _ } =>
+      resolve(tree: tree, lm: dag_language_model_surface_empty_prelude())
+  }
 }
 
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {

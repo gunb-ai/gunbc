@@ -115,6 +115,7 @@ import gunbc.recurring_failure_mode.policy_mechanism_adjudicates_the_merge_that_
 import gunbc.recurring_failure_mode.denominator_moved_between_measurement_and_comparison { denominator_moved_between_measurement_and_comparison }
 import gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked { absent_reads_identically_to_never_looked }
 import gunbc.recurring_failure_mode.append_only_carrier_whose_serialization_shares_a_merge_region { append_only_carrier_whose_serialization_shares_a_merge_region }
+import gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled { discriminating_arm_built_but_never_enrolled }
 import gunbc.recurring_failure_mode.fixture_flattened_to_the_reader_grain_it_should_falsify { fixture_flattened_to_the_reader_grain_it_should_falsify }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -222,5 +223,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   denominator_moved_between_measurement_and_comparison,
   absent_reads_identically_to_never_looked,
   append_only_carrier_whose_serialization_shares_a_merge_region,
+  discriminating_arm_built_but_never_enrolled,
   fixture_flattened_to_the_reader_grain_it_should_falsify,
 ]
