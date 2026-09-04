@@ -32,6 +32,8 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "partition_crate_boundary_host.rs",
     "generated_artifact_boundary_host.rs",
     "emitted_closure_compile_host.rs",
+    "evaluation_budget_consequence_falsifier_host.rs",
+    "process_group.rs",
     "v2_compiler_compile.rs",
     "v2_compiler_program_assembly.rs",
     "v2_compiler_source_authority.rs",
@@ -44,6 +46,8 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_infer.rs",
     "bootstrap_stage0_crate_layout_generated.rs",
     "v1_interpreter_dispatch_generated.rs",
+    "evaluation_budget_consequence_generated.rs",
+    "gunbc_file_transport_generated.rs",
     "main.rs"
 ];
 

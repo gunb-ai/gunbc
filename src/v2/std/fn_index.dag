@@ -2,7 +2,23 @@ module v2.std.fn_index
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.collection { List }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  any,
+  contains,
+  filter,
+  fold_list,
+  list_append,
+  list_head,
+  list_snoc_item,
+  list_tail
+}
+import v2.std.collection { Absent, List, Present }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
@@ -35,10 +51,286 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // projection is a modeled substrate fold emitting the same skeleton facts as
 // fn_arrow_decl_facts_live, retiring the hand-Rust marshal_generic expansion.
 
-fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
-  fn_arrow_decl_facts_live()
+// THE SUBJECT IS CALLER-NAMED (gunbc#10156 clause 2). `pool_roots` are workspace-relative
+// source roots, and the returned population is every declared function under them and nothing
+// else -- a function of the roots alone, not of whatever module closure the calling claim
+// happens to have resolved.
+//
+// WHAT THAT REPLACED, and why the replacement is a climb rather than a rename. The zero-arity
+// form walked `ctx.modules`: an input it did not declare, could not be asked for, and could not
+// be keyed. Two mechanisms existed only to cope with that, and both are DELETED here rather
+// than left standing beside the declared subject --
+// `fn_arrow_decl_substrate_is_whole_tree`, which asked AT RUNTIME whether the answer happened
+// to be corpus-wide, and `corpus_dependency_view_per_pr_substrate_refuse`, the arm taken when
+// it answered false. A caller that names its roots is not asking; the coverage question is
+// answered by construction at the call site, so the runtime predicate is not a weaker wall but
+// a second, now-wrong authority on the same fact.
+//
+// The consequence the cut was for: the acquisition is netted. `decls_parse_only_fail_closed`
+// keys the parse by (roots, kinds), so the floor's shared-artifact memo serves every claim
+// naming the same roots from one walk, and a claim that wants less than the corpus names less
+// and pays less. Neither was expressible while the subject was undeclared.
+// THE SUBJECT HAS TWO GRAINS AND THE CALLER DECLARES WHICH, gunbc#10245. `pool_roots` names
+// DIRECTORIES and `pool_files` names single .dag modules; the population is their union. Grain is
+// declared by which parameter the author wrote, never inferred from the path, so a FILE written in
+// `pool_roots` still refuses on PoolRootDefect::NamesFile exactly as it did before file grain
+// existed -- that refusal catches a module path written without `.dag` and was not relaxed to
+// admit this. An empty subject -- neither roots nor files -- refuses, because an empty population
+// makes every row over it pass by having nothing to look at.
+//
+// FILE GRAIN EXISTS BECAUSE DIRECTORY GRAIN COULD NOT EXPRESS REAL SUBJECTS, MEASURED. Acquisition
+// is pool-proportional at about 11ms per file with no floor and no knee (2 files 19ms, 3 files
+// 22ms, 63 files 543ms, 76 files 825ms, 1275 files 14663ms). Three consumers need 1, 2 and 3
+// modules; the smallest DIRECTORIES containing them hold 3, 63 and 1275 files, which costs one of
+// them 29x the floor's per-subject line and hands another two sibling fixtures that were never in
+// its subject. gunbc.ci_layer_roots already ruled file-grain pools unavailable, and that ruling
+// stands on its own frame: it measured [dag, src/v2] against [dag/gunbc], two LARGE pools four
+// seconds apart, which supports "cost barely moves between two large pools" and does not reach the
+// small region these consumers occupy.
+fn fn_arrow_decl_facts_live(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> List<FnArrowDecl> {
+  fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
 }
 
-fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
-  fn_arrow_decl_substrate_is_whole_tree()
+// SINGLE AUTHORITY FOR CALL REACHABILITY OVER FN-ARROW DECLARATIONS. Two lenses
+// (v2.lens.effect_reach, v2.lens.live_read_classification) each carried their own
+// byte-identical copy of this walk and of the declaration index it reads. The copies
+// differed in exactly one place — which callee lexemes TERMINATE the walk — so the fork
+// was parameterisation deferred, not two functions. That parameter is now explicit:
+// `terminal_callee_symbols` is the caller's roster of symbols whose bodies are not
+// entered (host effect sinks for one lens, live-read carriers for the other), and the
+// walk itself has one home beside the FnArrowDecl type it ranges over.
+
+data empty_fn_arrow_decl_list: List<FnArrowDecl> = []
+data empty_fn_arrow_symbol_list: List<Symbol> = []
+data empty_fn_arrow_string_list: List<String> = []
+
+fn fn_index_string_eq(a: String, b: String) -> Bool {
+  a == b
 }
+
+fn fn_index_symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn decl_module_prefix(mod_path: String) -> String {
+  concat(mod_path, ".")
+}
+
+fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
+  starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
+    || fn_index_string_eq(a: decl.qualified_name, b: mod_path)
+}
+
+fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
+  filter(
+    xs: decls,
+    predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
+  )
+}
+
+fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
+  fold_list(xs: modules, empty: empty_fn_arrow_decl_list, cons: fn(acc, mod_path) {
+    list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
+  })
+}
+
+fn decl_named_in_module(
+  decls: List<FnArrowDecl>,
+  mod_path: String,
+  fn_name: String
+) -> List<FnArrowDecl> {
+  filter(
+    xs: decls_in_module(decls: decls, mod_path: mod_path),
+    predicate: fn(decl) { fn_index_string_eq(a: decl.name, b: fn_name) }
+  )
+}
+
+fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => empty_fn_arrow_decl_list
+  }
+}
+
+fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
+  fn_index_string_eq(a: a.qualified_name, b: b.qualified_name)
+}
+
+fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
+  any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
+}
+
+fn decls_matching_callee(
+  decls: List<FnArrowDecl>,
+  modules: List<String>,
+  callee: String
+) -> List<FnArrowDecl> {
+  filter(
+    xs: decls_in_modules(decls: decls, modules: modules),
+    predicate: fn(decl) { fn_index_string_eq(a: decl.name, b: callee) }
+  )
+}
+
+// A path literal is never a callee: the fn-arrow skeleton marshals string-literal atoms
+// into the same atom channel as call identities, so the reachability walk must reject
+// them by shape or it will chase declarations named after a source path.
+fn is_path_like_lexeme(text: String) -> Bool {
+  string_contains(s: text, pattern: ".dag")
+    || starts_with(s: text, prefix: "src/")
+    || starts_with(s: text, prefix: "dag/")
+}
+
+// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
+// children — the fold_node it once ran recursed the whole subtree while its step discarded
+// every child's collected atoms, so the descent computed results nothing consumed
+// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
+// below is extensionally the same function at the cost of one probe per child.
+fn atom_identities_in_node(node: Node) -> List<Symbol> {
+  let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
+    match node_atom_identity_optional(node: e.target) {
+      Present { value: sym } =>
+        if contains(xs: acc, item: sym, eq: fn_index_symbol_eq) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: sym)
+        }
+      Absent => acc
+    }
+  })
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      if contains(xs: from_children, item: sym, eq: fn_index_symbol_eq) {
+        from_children
+      } else {
+        list_snoc_item(xs: from_children, item: sym)
+      }
+    Absent => from_children
+  }
+}
+
+fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
+  fold_list(
+    xs: atom_identities_in_node(node: node),
+    empty: empty_fn_arrow_string_list,
+    cons: fn(acc, sym) {
+      let text = symbol_lexeme(sym: sym)
+      if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
+        || is_path_like_lexeme(text: text) {
+        acc
+      } else if contains(xs: acc, item: text, eq: fn_index_string_eq) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: text)
+      }
+    }
+  )
+}
+
+fn call_reachable_decls_go(
+  seeds: List<FnArrowDecl>,
+  terminal_callee_symbols: List<String>,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>,
+  reached: List<FnArrowDecl>
+) -> List<FnArrowDecl> {
+  match list_head(xs: seeds) {
+    HeadAbsent => reached
+    HeadFound { value: seed } =>
+      let rest = tail_decls(xs: seeds)
+      if decl_in_list(decl: seed, xs: reached) {
+        call_reachable_decls_go(
+          seeds: rest,
+          terminal_callee_symbols: terminal_callee_symbols,
+          closure_modules: closure_modules,
+          decls: decls,
+          reached: reached
+        )
+      } else {
+        let next_reached = list_snoc_item(xs: reached, item: seed)
+        let callees = callees_from_node(
+          node: seed.output,
+          terminal_callee_symbols: terminal_callee_symbols
+        )
+        let callee_decls = fold_list(
+          xs: callees,
+          empty: empty_fn_arrow_decl_list,
+          cons: fn(acc, callee) {
+            list_append(
+              left: acc,
+              right: decls_matching_callee(
+                decls: decls,
+                modules: closure_modules,
+                callee: callee
+              )
+            )
+          }
+        )
+        call_reachable_decls_go(
+          seeds: list_append(left: rest, right: callee_decls),
+          terminal_callee_symbols: terminal_callee_symbols,
+          closure_modules: closure_modules,
+          decls: decls,
+          reached: next_reached
+        )
+      }
+  }
+}
+
+// ENTRY-MODULE GRAIN. Seeds every declaration in the entry module, so the answer is a
+// property of the FILE, not of one enrolled declaration. Callers that need declaration
+// grain must use call_reachable_decls_from_root, whose annotation carries the reason.
+fn call_reachable_decls(
+  entry_module: String,
+  terminal_callee_symbols: List<String>,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> List<FnArrowDecl> {
+  call_reachable_decls_go(
+    seeds: decls_in_module(decls: decls, mod_path: entry_module),
+    terminal_callee_symbols: terminal_callee_symbols,
+    closure_modules: closure_modules,
+    decls: decls,
+    reached: empty_fn_arrow_decl_list
+  )
+}
+
+// DECLARATION GRAIN. Roots the walk at the exact named declaration.
+//
+// THE ROOT IS THE ENROLLED DECLARATION, NOT ITS FILE. call_reachable_decls seeds every declaration
+// in the entry module, so reachability is computed for the FILE: one sibling function calling a
+// live-read carrier makes every witness in that file inherit the carrier, and their classifications
+// become indistinguishable. That is entry-module grain wearing declaration-grain clothing, and it
+// would have silently coarsened a per-declaration manifest -- a manifest keyed per declaration
+// whose VALUES were per file is worse than an honestly coarse one, because the key implies a
+// precision the value does not have.
+//
+// This seeded variant takes the exact enrolled function and roots the walk there. Entry-grain skip
+// is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip
+// only when every enrolled row in it is completely classified and untouched. That derivation is
+// what keeps a single live-read witness from making its siblings unskippable.
+//
+// CARRIED AS AN ANNOTATION, NOT AS DATA, and it was the other way round until review 59343. It
+// stood as `data fn_index_root_grain_law: String`, a module-scope String whose only purpose was
+// commentary and which nothing read -- exactly what DESIGN §4c forbids, and the reviewer was right
+// to name it. It arrived here by migration from v2.lens.live_read_classification g2_root_grain_law
+// during this cut, so moving it made it mine to classify.
+fn call_reachable_decls_from_root(
+  entry_module: String,
+  fn_name: String,
+  terminal_callee_symbols: List<String>,
+  closure_modules: List<String>,
+  decls: List<FnArrowDecl>
+) -> List<FnArrowDecl> {
+  call_reachable_decls_go(
+    seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
+    terminal_callee_symbols: terminal_callee_symbols,
+    closure_modules: closure_modules,
+    decls: decls,
+    reached: empty_fn_arrow_decl_list
+  )
+}
+
+

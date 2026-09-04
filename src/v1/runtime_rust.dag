@@ -1,5 +1,7 @@
 module v1.compiler.runtime_rust
 
+import extdeps.filesystem.rust_realization { rust_file_create_new_canonical_block }
+
 fn rt_header() -> String {
   concat(
     "//! Runtime shims for v2 compiler intrinsic operations.\n",
@@ -577,8 +579,19 @@ fn rt_rc_container_ops() -> String {
     "}\n\n")
 }
 
+// THE create-new REALIZATION IS PLACED IN THE RUNTIME MODULE, NOT INLINED AT THE CALL SITE.
+//
+// v1.compiler.emit_rust used to inline the whole staging-and-publish sequence into every
+// FileWriteCreateNew site as Rust source, which made it a SECOND authority beside the seed
+// interpreter's hand-written twin. The implementation now has one home,
+// extdeps.filesystem.rust_realization, and this row places its exact bytes where every emitted
+// module can already reach them: `emit_prelude` puts `use crate::v1_rt;` in each module, and the
+// runtime is mirrored into the partition's foundation crate, so `v1_rt::` resolves from a
+// partitioned crate as well as from the monolithic one. A crate-root definition would not: the
+// partition crates re-export only what stage0_crates names explicitly.
 fn rt_filesystem() -> String {
   concat(
+    rust_file_create_new_canonical_block(), "\n",
     "#[derive(Debug, Clone)]\n",
     "pub struct FilesystemReadResult {\n",
     "    pub content: String,\n",

@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 mod required_floor_runner;
+mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
@@ -201,6 +202,13 @@ mod partition_crate_boundary_host;
 
 #[path = "emitted_closure_compile_host.rs"]
 mod emitted_closure_compile_host;
+
+// TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
+// falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
+// it unconditionally would put a module nothing calls into every release build.
+#[cfg(test)]
+#[path = "evaluation_budget_consequence_falsifier_host.rs"]
+mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -1144,6 +1152,7 @@ mod roadmap_acceptance_history_projection_tests {
     };
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
     use im::HashMap;
     use std::rc::Rc;
@@ -1156,6 +1165,53 @@ mod roadmap_acceptance_history_projection_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // WHAT A REST BODY DOES WITH AN ABSENT OPTIONAL FIELD, ESTABLISHED BY EXECUTION RATHER THAN BY
+    // READING THE FUNCTION. `extdeps.github.rulesets` decodes one `parameters` key whose object
+    // differs per rule type as the union of the readable shapes, so a required_status_checks rule
+    // constructs the merge_queue fields as `none`. Whether those keys are OMITTED from the PUT body
+    // or sent as seven explicit nulls is a WIRE fact and decides whether a converge run's body is
+    // one GitHub accepts -- and it is an actuation prerequisite for the merge-queue sign-off, so it
+    // needed a receipt rather than a mechanism argument.
+    //
+    // The positive control is the same record with the field PRESENT: without it, a serializer that
+    // dropped every field would pass the absence assertion.
+    #[test]
+    fn wire_body_omits_absent_optional_record_fields() {
+        let ctx = empty_ctx();
+        let absent = v1_interpreter::Value::Record {
+            type_name: ctx.sym("RuleParameters"),
+            fields: Rc::new(vec![
+                (ctx.sym("strict"), v1_interpreter::Value::Bool(false)),
+                (ctx.sym("grouping_strategy"), v1_interpreter::Value::Null),
+            ]),
+        };
+        let json = super::value_to_wire_json(&absent, &ctx).expect("serialize absent");
+        let obj = json.as_object().expect("object body");
+        assert!(
+            !obj.contains_key("grouping_strategy"),
+            "an absent optional must not reach the wire at all, as a null or otherwise: {json}"
+        );
+        assert_eq!(obj.get("strict"), Some(&serde_json::Value::Bool(false)));
+        assert_eq!(obj.len(), 1, "only the present field is sent: {json}");
+
+        let present = v1_interpreter::Value::Record {
+            type_name: ctx.sym("RuleParameters"),
+            fields: Rc::new(vec![
+                (ctx.sym("strict"), v1_interpreter::Value::Bool(false)),
+                (
+                    ctx.sym("grouping_strategy"),
+                    v1_interpreter::str_value("ALLGREEN".to_string()),
+                ),
+            ]),
+        };
+        let json = super::value_to_wire_json(&present, &ctx).expect("serialize present");
+        assert_eq!(
+            json.get("grouping_strategy"),
+            Some(&serde_json::Value::String("ALLGREEN".to_string())),
+            "the control must send the field it carries: {json}"
+        );
     }
 
     #[test]
@@ -3423,23 +3479,6 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     SCAN_DIRS
         .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
-}
-
-/// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
-/// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
-pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
-    let roots = default_source_roots();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let index = build_module_path_index(&roots);
-    let expected = index
-        .iter()
-        .filter(|(module_path, rel_path)| {
-            !excludes
-                .iter()
-                .any(|sub| rel_path.contains(sub) || module_path.contains(sub))
-        })
-        .count();
-    loaded >= expected
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
@@ -10091,6 +10130,120 @@ pub fn safety_interrupt_reading(terminality: &ClaimTerminality) -> Option<Safety
             wall_safety_limit_ms: *wall_safety_limit_ms,
         }),
         ClaimTerminality::VerdictReached { .. } | ClaimTerminality::Unwound { .. } => None,
+    }
+}
+
+/// ONE CLAIM'S COST, WITH ITS CENSORING IN THE VALUE RATHER THAN BESIDE IT.
+///
+/// `ClaimTerminality` above already separates a completed reading from a preempted one, and
+/// names their fields for opposite facts (`observed_*_ms` against `elapsed_*_at_least_ms`). The
+/// per-claim cost RECEIPT then threw that away: `WitnessExecutionOccurrence` carried a flat
+/// `wall_nanos`/`cpu_nanos` pair with a separate `verdict_reached: bool`, so the artifact this
+/// repository's own ledger rows name as THE COMPLETE POPULATION re-created the writable erasure
+/// the `ClaimOutcome` split had just removed one surface over. A right-censored lower bound and
+/// an exact measurement sat in one column named for the latter, and a consumer projecting that
+/// column alone received a number that IS APPROXIMATELY THE CEILING THAT STOPPED THE ROW.
+///
+/// THE ADJACENT BOOLEAN IS NOT THE REPAIR AND THAT IS THE POINT. A discriminator a consumer must
+/// remember to join on is a warning; the merged 3x host calibration retracted by gunbc#10205
+/// (`1ea6a949e0`) is the receipt that review discipline is not a mechanism -- the row that
+/// authored it had the boolean available and did not consult it. So the two readings become two
+/// CONSTRUCTORS with disjoint field names, and there is no accessor that hands out a millisecond
+/// figure without a `match`: `exact_cost_ms` returns `None` on the censored arm rather than the
+/// bound.
+///
+/// WHY THIS IS NOT `verdict_reached` UNDER ANOTHER NAME, and the two axes must not be fused
+/// again: `ClaimTerminality::Unwound` -- a host panic -- reached no verdict and yet its clocks
+/// are EXACT, because the unwind ended the evaluation and the measured cost is the whole of what
+/// the claim spent. Censoring is a property of a DEADLINE PREEMPTING the subject, not of a
+/// verdict being absent, so an aborted claim reads `Exact` here and `verdict_reached: false`
+/// there. Collapsing the two would mint a bound for a row that has a measurement.
+///
+/// The censored arm carries `SafetyInterruptReading` rather than re-spelling its five fields:
+/// that type is already the authority for both clocks and both limits at the interrupt point,
+/// and a second spelling of it here would be the meaning fork DESIGN section 3 forbids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimCostReading {
+    /// The claim ran to its own end -- to a verdict, or to an unwind -- so both clocks measure
+    /// the whole of what it spent. These are occurrence facts and not a canonical cost of the
+    /// witness, which is why they keep `ClaimTerminality`'s `observed_` spelling rather than
+    /// gaining an `exact_` one that would invite the stronger reading.
+    Observed {
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
+    /// A safety deadline preempted the claim, so both clocks are LOWER BOUNDS on what reaching
+    /// an end would have cost, unbounded above. Every censored row reports approximately
+    /// whatever ceiling stopped it, so these figures are a property of the BUDGET before they
+    /// are a property of the row -- see `budget_figure_phrase`, which refuses to put any digit
+    /// in a cost field for this arm.
+    RightCensored(SafetyInterruptReading),
+}
+
+impl ClaimCostReading {
+    /// The reading one terminality produces. Total over `ClaimTerminality`'s three arms with no
+    /// wildcard, for the reason `claim_terminality` itself names: a `_` here is correct for every
+    /// arm on the day it is written and silently wrong for the first one added afterwards, and
+    /// the fact it would state falsely is whether a number is a measurement.
+    pub fn of(terminality: &ClaimTerminality) -> Self {
+        match terminality {
+            ClaimTerminality::VerdictReached {
+                observed_cpu_ms,
+                observed_wall_ms,
+                ..
+            }
+            | ClaimTerminality::Unwound {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => ClaimCostReading::Observed {
+                observed_cpu_ms: *observed_cpu_ms,
+                observed_wall_ms: *observed_wall_ms,
+            },
+            ClaimTerminality::SafetyInterrupted {
+                raised_by,
+                elapsed_cpu_at_least_ms,
+                elapsed_wall_at_least_ms,
+                cpu_safety_limit_ms,
+                wall_safety_limit_ms,
+            } => ClaimCostReading::RightCensored(SafetyInterruptReading {
+                raised_by: *raised_by,
+                elapsed_cpu_at_least_ms: *elapsed_cpu_at_least_ms,
+                elapsed_wall_at_least_ms: *elapsed_wall_at_least_ms,
+                cpu_safety_limit_ms: *cpu_safety_limit_ms,
+                wall_safety_limit_ms: *wall_safety_limit_ms,
+            }),
+        }
+    }
+
+    /// THE ONLY WAY TO OBTAIN A MILLISECOND FIGURE FOR ARITHMETIC, and it is an `Option` rather
+    /// than a number precisely so a censored row cannot be summed, ranked, averaged or compared
+    /// against a line without the caller writing the word `None` somewhere. There is deliberately
+    /// no `cpu_ms()` beside it: a total accessor is the shape that let the bound travel, because
+    /// every caller that wanted "the number" got one whether or not the row had one.
+    ///
+    /// A caller that receives `None` must EXCLUDE the row and say so in its own output, never
+    /// substitute the bound -- substituting it is the fabricated-plausible-output arm DESIGN
+    /// section 5 forbids, and it fails in one direction only, always low.
+    pub fn exact_cost_ms(&self, basis: RequiredFloorCostBasis) -> Option<u64> {
+        match self {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => Some(match basis {
+                RequiredFloorCostBasis::CpuCost => *observed_cpu_ms,
+                RequiredFloorCostBasis::WallCost => *observed_wall_ms,
+            }),
+            ClaimCostReading::RightCensored(_) => None,
+        }
+    }
+
+    /// The wire tag naming WHICH KIND of reading a receipt row carries, so a consumer joining on
+    /// the artifact reads the kind before it reads any figure.
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            ClaimCostReading::Observed { .. } => "observed",
+            ClaimCostReading::RightCensored(_) => "right_censored",
+        }
     }
 }
 
@@ -17297,6 +17450,25 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
+/// The exact source-path population the entry loader will hand to resolution.
+///
+/// This stops at the loader boundary: it runs the same import, qualified-reference, and bare-name
+/// fixpoint as `resolve_entry_with_index`, but does not parse, typecheck, reconcile, or evaluate the
+/// resulting modules. A caller deciding whether a changed path intersects an entry can therefore
+/// ask the real loader before paying for the downstream work it is trying to avoid.
+pub fn entry_closure_source_paths(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    let mut paths: Vec<String> = load_sources_for_entry_with_pool(index, entry)?
+        .iter()
+        .map(|source| workspace_relative_repo_path(&source.path))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
@@ -18905,24 +19077,6 @@ pub struct ServeEvaluationBudget {
     pub wall_limit_ms: Option<u64>,
 }
 
-/// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
-/// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
-/// consumer can tell a spin from a stall without parsing prose.
-fn serve_budget_refusal_body(
-    entry: &str,
-    clock_key: &str,
-    elapsed_nanos: u128,
-    limit_ms: u64,
-) -> String {
-    format!(
-        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
-        serve_json_string(entry),
-        clock_key,
-        elapsed_nanos,
-        limit_ms
-    )
-}
-
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
@@ -19021,18 +19175,35 @@ pub fn handle_serve(
     // The budget is announced at startup because "unset" is a policy state that must be visible.
     // A process serving with no bound and a process serving with a bound are different
     // operational facts, and the difference has to be readable without inspecting argv.
+    // ONE CONTRACT, BOUND ONCE, BEFORE THE LISTENER SERVES. Every later use of the evaluated
+    // function name and of the limits reads THIS value; `function` and `serve_budget` are not
+    // consulted again below.
+    let armed_contract = serve_budget_refusal::serve_armed_contract(function.clone(), serve_budget);
+    // THE ANNOUNCEMENT NAMES THE ADDRESS ACTUALLY BOUND, not the one requested. They differ exactly
+    // when the caller asked the OS to choose (`--port 0`), which is the only collision-free way to
+    // take a loopback port; announcing the request there would publish `:0` and leave no way to
+    // reach the server it just started. A reader of this line can now attribute a connection to
+    // THIS process rather than to whoever happened to hold the requested port.
+    let bound = match listener.local_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!(
+                "error: bound {}:{} but could not read its address: {}",
+                host, port, e
+            );
+            std::process::exit(1);
+        }
+    };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
-        host,
-        port,
-        function,
+        bound.ip(),
+        bound.port(),
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
         release_revision,
-        serve_budget
-            .cpu_limit_ms
+        serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
-        serve_budget
-            .wall_limit_ms
+        serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract)
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unset".to_string()),
     );
@@ -19073,56 +19244,80 @@ pub fn handle_serve(
                     // arms and restores — a leaked deadline would be worse than none here,
                     // since `ctx` outlives every request and a stale CPU baseline would refuse
                     // all subsequent requests for the life of the process.
+                    // BOTH DERIVE FROM ONE CONTRACT. The arming subject and the invoked function
+                    // are read from the same value, so the interface no longer permits a process
+                    // armed for one entry to evaluate another and report a refusal naming the
+                    // wrong subject.
                     let result = {
                         let _budget = ctx.enter_evaluation_budget(
-                            &function,
-                            serve_budget.cpu_limit_ms,
-                            serve_budget.wall_limit_ms,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            serve_budget_refusal::serve_contract_cpu_limit_ms(&armed_contract),
+                            serve_budget_refusal::serve_contract_wall_limit_ms(&armed_contract),
                         );
-                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                        v1_interpreter::run_in_context_with_args(
+                            &ctx,
+                            serve_budget_refusal::serve_contract_entry(&armed_contract),
+                            &args,
+                            true,
+                        )
                     };
                     match result {
-                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
-                            entry,
-                            clock,
-                            elapsed_nanos,
-                            limit_ms,
-                        }) => {
-                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
-                            // the evaluation that would have rendered it is the one that was
-                            // just aborted, so asking it to describe its own abort would put
-                            // recovery behind the evaluator that failed.
-                            //
-                            // 500, not 503: this request is deterministic against a fixed
-                            // policy, so it will cross again on retry. A status meaning
-                            // "temporary capacity" would assert something the model does not
-                            // know, and no `Retry-After` is attached for the same reason
-                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
-                            eprintln!(
-                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
-                                entry,
-                                clock.key(),
-                                elapsed_nanos,
-                                limit_ms
-                            );
-                            serve_write_response(
+                        // ONE CLASSIFICATION, NOT A GUARD PLUS A RE-ASK. The previous shape called
+                        // the producer once for `is_some()` and again under `expect`, so the arm's
+                        // correctness rested on the two calls agreeing rather than on there being
+                        // one decision. The `Option` IS the decision.
+                        Err(ref e) => match serve_budget_refusal::serve_budget_refusal_from_exceeded(e) {
+                            Some(refusal) => {
+                                // THE REFUSAL MUST BE ABOUT THE CONTRACT THIS PROCESS ARMED. The
+                                // interpreter reports the entry it was armed with; a mismatch here
+                                // would mean arming and evaluation had different subjects, which
+                                // the single contract value exists to make unreachable. It refuses
+                                // rather than rendering a diagnostic that names the wrong function.
+                                if !serve_budget_refusal::serve_refusal_names_contract(
+                                    &refusal,
+                                    &armed_contract,
+                                ) {
+                                    eprintln!(
+                                        "serve: refusing to render a budget refusal whose entry is not the armed contract's subject"
+                                    );
+                                    serve_write_response(
+                                        &mut stream,
+                                        500,
+                                        "text/plain; charset=utf-8",
+                                        "budget refusal did not name the armed contract\n",
+                                    )
+                                } else {
+                                // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                                // the evaluation that would have rendered it is the one that was
+                                // just aborted, so asking it to describe its own abort would put
+                                // recovery behind the evaluator that failed.
+                                //
+                                // 500, not 503: this request is deterministic against a fixed
+                                // policy, so it will cross again on retry. A status meaning
+                                // "temporary capacity" would assert something the model does not
+                                // know, and no `Retry-After` is attached for the same reason
+                                // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                                eprintln!(
+                                    "{}",
+                                    serve_budget_refusal::serve_budget_refusal_diagnostic_line(&refusal)
+                                );
+                                serve_write_response(
+                                    &mut stream,
+                                    500,
+                                    "application/json; charset=utf-8",
+                                    &serve_budget_refusal::serve_budget_refusal_machine_body(
+                                        &refusal,
+                                    ),
+                                )
+                                }
+                            }
+                            None => serve_write_response(
                                 &mut stream,
                                 500,
-                                "application/json; charset=utf-8",
-                                &serve_budget_refusal_body(
-                                    &entry,
-                                    clock.key(),
-                                    elapsed_nanos,
-                                    limit_ms,
-                                ),
-                            )
-                        }
-                        Err(e) => serve_write_response(
-                            &mut stream,
-                            500,
-                            "text/plain; charset=utf-8",
-                            &format!("handler error: {}\n", e),
-                        ),
+                                "text/plain; charset=utf-8",
+                                &format!("handler error: {}\n", e),
+                            ),
+                        },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
                             Some((status, content_type, resp_body)) => serve_write_response(
                                 &mut stream,
@@ -21797,6 +21992,37 @@ fn explicit_witness_admission_keys() -> &'static [String] {
             &content,
         )
     })
+}
+
+/// The `(entry, function)` pairs admitted with cadence `QuarantineProbeExpectRed` -- the rows whose
+/// admission says DO NOT SCHEDULE THIS PER-PR.
+///
+/// Keyed on the CADENCE, not on "carries a row in the admission authority": a witness admitted
+/// under `bin_wet`, `SubstrateLongLaneRow` or any other head is a different obligation and must
+/// still be planned, and still red the floor, when a diff touches it.
+pub(crate) fn quarantine_probe_admission_pairs() -> Vec<(String, String)> {
+    static PAIRS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    PAIRS
+        .get_or_init(|| {
+            let content = std::fs::read_to_string(
+                workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "quarantine probe admission: failed to read {}: {e}",
+                    EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
+                )
+            });
+            crate::cli_run::witness_gates::quarantine_probe_admission_keys_from_source(
+                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
+                &content,
+            )
+            .iter()
+            .filter_map(|key| key.split_once("::"))
+            .map(|(entry, function)| (entry.to_string(), function.to_string()))
+            .collect()
+        })
+        .clone()
 }
 
 /// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
@@ -25224,7 +25450,10 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         return;
     }
     let deferred = merged.deferred_rows.len() as u64;
-    let failed = merged.failures.len() as u64;
+    // This is not the required floor's narrower unexpected-claim-failure population:
+    // DiscoverySummary::failures also includes non-Bool, runtime-error, unresolved-tool,
+    // timeout, panic, and not-attempted rows. Its denominator is the discovery-row population.
+    let discovery_rows_failed = merged.failures.len() as u64;
     // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
     // six plan batches emits four of these, all carrying the same label, because merge time is
     // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
@@ -25239,7 +25468,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         merged.passed as u64,
         merged.skipped as u64,
         deferred,
-        failed,
+        discovery_rows_failed,
         merged.total_measured_nanos as u64,
     ) {
         Some(line) => eprintln!("{line}"),
@@ -25249,7 +25478,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
             "::error::observation render unavailable: could not render the batch summary through \
              gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
              folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
-             deferred={deferred} failed={failed})",
+             deferred={deferred} discovery_rows_failed={discovery_rows_failed})",
             merged.passed, merged.skipped
         ),
     }
@@ -29446,6 +29675,8 @@ mod discovery_summary_merge_tests {
             total_stage_nanos: ResolveStageNanos::default(),
             performance_receipts: vec![
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 1_000,
@@ -29455,6 +29686,8 @@ mod discovery_summary_merge_tests {
                     sample_count: 1,
                 },
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-b".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 50_000,
@@ -29464,6 +29697,8 @@ mod discovery_summary_merge_tests {
                     sample_count: 1,
                 },
                 PerformanceReceipt {
+                    opaque_host_call_reach:
+                        crate::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
                     subject_key: "subj-a".to_string(),
                     work_shape: "claim".to_string(),
                     wall_nanos: 5_000,
@@ -36891,6 +37126,33 @@ mod import_closure_equivalence_tests {
         );
     }
 
+    /// Executing parity control for the preflight projection: compare the loader-boundary answer
+    /// with the population that survives the complete typed resolve of one real routed entry.
+    /// This is deliberately live-corpus/ignored because the full-resolve side is the ~minute-scale
+    /// work the production preflight exists to avoid.
+    #[test]
+    #[ignore = "live-corpus: full typed resolve parity control for the cheap entry-closure route"]
+    fn entry_closure_source_paths_match_full_resolve_on_routed_entry() {
+        let roots = default_source_roots();
+        let index = build_multi_entry_index(&roots);
+        let entry = workspace_root().join("dag/test/claim/discovery_census_witness_test.dag");
+        let entry = entry.to_string_lossy().into_owned();
+        let cheap: BTreeSet<String> = super::entry_closure_source_paths(&index, &entry)
+            .expect("loader-boundary closure")
+            .into_iter()
+            .collect();
+        let (resolved, _) = resolve_entry_with_index(&index, &entry).expect("full typed resolve");
+        let full: BTreeSet<String> = resolved
+            .modules
+            .iter()
+            .map(|module| workspace_relative_repo_path(&module.module.span.file))
+            .collect();
+        assert_eq!(
+            cheap, full,
+            "cheap closure must equal full resolved population"
+        );
+    }
+
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn import_closure_live_matches_legacy_bfs_on_budget_roster_completeness() {
@@ -38470,13 +38732,13 @@ pub fn run_floor_prepared_toll_receipt() {
 
     let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         None,
     )
     .expect("disk parse");
     let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
         &pool_roots,
-        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
         Some(&inventory),
     )
     .expect("inventory parse");
@@ -39820,22 +40082,61 @@ pub struct WitnessExecutionOccurrence {
     pub identity: String,
     pub module_path: String,
     pub outcome: String,
-    pub wall_nanos: u128,
-    pub cpu_nanos: u128,
+    /// THIS CLAIM'S COST, WITH ITS CENSORING INSIDE THE VALUE. Formerly a flat
+    /// `wall_nanos`/`cpu_nanos` pair, which is the field shape that let a right-censored lower
+    /// bound occupy the slot a consumer reads as a completed measurement — see
+    /// `ClaimCostReading`'s own note for why the adjacent `verdict_reached` below is a warning
+    /// rather than the repair, and for the retracted calibration that is the receipt.
+    ///
+    /// Milliseconds, not nanoseconds, and that is a narrowing rather than a loss: every consumer
+    /// of the former field divided by 1_000_000 before doing anything with it, and
+    /// `claim_terminality` — the authority this reading is minted from — has already taken both
+    /// clocks at millisecond grain. Carrying nanos here would be a second, finer spelling of a
+    /// quantity whose authority is coarser, which is the fork DESIGN section 3 forbids.
+    pub reading: ClaimCostReading,
     /// Evaluator steps this claim took, marginal of stored shared-artifact fills — the
     /// deterministic work measure beside the two clocks, invariant across the execution
     /// envelope in a way neither clock is. Recorded, published, and compared against nothing:
     /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing, and this column is the
     /// evidence a step-denominated verdict would later be built on, not that verdict.
+    ///
+    /// UNLIKE THE CLOCKS, THIS IS NOT CENSORED BY THE DEADLINE IN THE SAME SENSE and is still a
+    /// bound on an interrupted row: the poll fires every 1024 steps, so an interrupted row's step
+    /// count is a quantised lower bound while a completed one is a true count. It stays a flat
+    /// field because nothing compares it against anything — the moment something does, it needs
+    /// the same treatment the clocks just received.
     pub eval_steps: u64,
-    /// Whether the claim reached a verdict rather than being safety-interrupted. Retained
-    /// because `exceeds_completed_cost_line` only judges COMPLETED claims: an interrupted
-    /// claim has no cost to be over, and inferring that from the duration would make a slow
-    /// claim and a killed one the same fact.
+    /// Whether the claim reached a verdict rather than being safety-interrupted or unwound.
+    /// SEPARATE FROM `reading` AND NOT DERIVABLE FROM IT, in both directions: a host panic
+    /// (`ClaimTerminality::Unwound`) reaches no verdict while its clocks are exact, so this is
+    /// `false` beside an `Observed` reading. Retained because `exceeds_completed_cost_line` only
+    /// judges COMPLETED claims, and because a run wants to count verdicts independently of
+    /// counting measurements.
     pub verdict_reached: bool,
     /// The policy line this claim was measured against -- an INPUT, not a derivation, and
     /// carried per row because a future per-claim line must not silently re-judge old rows.
     pub cost_line_ms: u64,
+    /// WHICH PREEMPTION POPULATION THIS CLAIM IS IN, OBSERVED AT THE DISPATCH THAT CAN SEE IT.
+    ///
+    /// `cooperatively_pollable` -- every stride point was reachable, so the CPU deadline had
+    /// each chance to fire. A claim in this population that nonetheless COMPLETED over the
+    /// ceiling overshot between two polls; nothing was missed, and what its crossing reports is
+    /// a charge, not a failed interrupt.
+    ///
+    /// `opaque_host_call_unbounded:<operations>` -- the claim's cost accrued inside one or more
+    /// arms of `gunbc.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
+    /// falls. Here completion over the ceiling means the deadline OBSERVED NOTHING, so the
+    /// crossing is a missed interrupt and blocking it is the enforcement the model intends.
+    ///
+    /// `surface_unarmed` -- the run never armed the surface, so reachability is UNKNOWN. It is
+    /// spelled distinctly rather than folded into `cooperatively_pollable` because the two would
+    /// otherwise be one bucket in the reassuring direction: an unarmed run would report every
+    /// crossing as a mere overshoot. The floor refuses rather than publishing this value.
+    ///
+    /// PUBLISHED AND COMPARED AGAINST NOTHING, exactly as `eval_steps` above: this column is the
+    /// evidence a reachability-aware verdict would later be built on, not that verdict.
+    /// `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` stays standing.
+    pub preemption_reachability: String,
 }
 
 /// One identity's `RequiredFloorDisposition`, keyed by the qualified `module.function` name so
@@ -40135,16 +40436,24 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
 /// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
 /// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
-/// `..._claim_forced`, via `install_pure_producer_share`). Every one is a closure seed of the
+/// `..._claim_forced`, via `install_pure_producer_share`), and the opaque-host-call surface
+/// (`opaque_host_call_surface`, via `floor_required_opaque_host_call_surface`, which arms the
+/// per-claim preemption-reachability recorder). Every one is a closure seed of the
 /// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 4] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
     "v2.workflow.floor_pure_producer_share",
+    // The grounded opaque-host-call surface (`opaque_host_call_surface`, qualified, from
+    // `floor_required_opaque_host_call_surface`). Enrolled here rather than read out of the
+    // policy module's frame because this list IS the declaration that a module is evaluated by
+    // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
+    // `v2.workflow.*` -- is what this comment's own rule refuses.
+    "gunbc.v1_interpreter_opaque_host_call",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -40464,12 +40773,8 @@ fn write_expected_red_roster_join_tsv(
 /// comparison; the other rides in the receipt beside it as a remedy discriminator (high wall
 /// with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O,
 /// subprocess or scheduling). It is not a second threshold.
-fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> u64 {
-    let exact = match basis {
-        RequiredFloorCostBasis::CpuCost => row.cpu_nanos,
-        RequiredFloorCostBasis::WallCost => row.wall_nanos,
-    };
-    (exact / 1_000_000) as u64
+fn exact_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBasis) -> Option<u64> {
+    row.reading.exact_cost_ms(basis)
 }
 
 /// The identity-grain cost receipt: one row for EVERY executed claim, not only the over-cost
@@ -40479,6 +40784,22 @@ fn observed_cost_ms(row: &WitnessExecutionOccurrence, basis: RequiredFloorCostBa
 ///
 /// There is no `over_cost` column. Membership is the policy predicate applied to these
 /// measurements, and a stored flag would be a second representation of it that can disagree.
+///
+/// THE COST COLUMNS ARE DISJOINT BY READING KIND, and this is the wire half of the pairing
+/// `ClaimCostReading` carries in the type. There is no `cpu_ms` column: a completed row populates
+/// `observed_cpu_ms`/`observed_wall_ms` and leaves the bound columns empty, an interrupted row
+/// populates `cpu_at_least_ms`/`wall_at_least_ms` and its two ceilings and leaves the observed
+/// columns empty. A consumer that projects `observed_cpu_ms` over the whole file therefore gets
+/// nothing at all for a censored row rather than a number that is approximately the ceiling — the
+/// empty cell is the refusal, and it is loud in exactly the arithmetic (sum, mean, max, ratio)
+/// that the old shared column made silently wrong.
+///
+/// A SHARED COLUMN PLUS A KIND FLAG WAS THE REJECTED DESIGN, stated here because it is the
+/// tempting one and it looks equivalent. It is not: it leaves the bound sitting in the field a
+/// reader scans for a cost, with the qualification one join away, which is precisely the shape
+/// `BudgetCompletion::elapsed_reading` was deleted for on the console path. `cost_reading` is
+/// carried anyway — as the row's own statement of which columns it filled, not as the thing that
+/// makes the figures safe.
 fn write_required_floor_claim_cost_tsv(
     path: &str,
     rows: &[WitnessExecutionOccurrence],
@@ -40500,21 +40821,64 @@ fn write_required_floor_claim_cost_tsv(
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     writeln!(
         file,
-        "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
+        "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
+         observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
+         censoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms\t\
+         preemption_reachability"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
+        // THE MATCH IS THE POINT. Rendering these columns requires naming which reading this row
+        // carries, so no future edit can fill a cost column from a bound without deleting an arm.
+        let (
+            observed_wall,
+            observed_cpu,
+            wall_at_least,
+            cpu_at_least,
+            wall_limit,
+            cpu_limit,
+            raised,
+        ) = match &row.reading {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => (
+                observed_wall_ms.to_string(),
+                observed_cpu_ms.to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
+            ClaimCostReading::RightCensored(reading) => (
+                String::new(),
+                String::new(),
+                reading.elapsed_wall_at_least_ms.to_string(),
+                reading.elapsed_cpu_at_least_ms.to_string(),
+                reading.wall_safety_limit_ms.to_string(),
+                reading.cpu_safety_limit_ms.to_string(),
+                reading.raised_by.label().to_string(),
+            ),
+        };
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
             row.verdict_reached,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            row.reading.kind_label(),
+            observed_wall,
+            observed_cpu,
+            wall_at_least,
+            cpu_at_least,
+            wall_limit,
+            cpu_limit,
+            raised,
             row.eval_steps,
-            row.cost_line_ms
+            row.cost_line_ms,
+            row.preemption_reachability.replace(['\t', '\n'], " ")
         )
         .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     }
@@ -40533,14 +40897,18 @@ fn write_required_floor_cross_claim_demand_tsv(
     path: &str,
     rows: &[v1_interpreter::CrossClaimDemandRow],
     disclosure: &v1_interpreter::CrossClaimDemandDisclosure,
-    claim_cpu_total_ms: u128,
+    // The ceiling any true total must sit under, over the MEASURED rows ONLY. Right-censored
+    // rows are excluded rather than contributing their lower bounds, and their count travels
+    // beside it, because a ceiling assembled from bounds is itself too low — see the caller.
+    claim_cpu_observed_total_ms: u128,
+    claim_cpu_censored_rows_excluded: usize,
 ) -> Result<(), String> {
     use std::io::Write;
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: create {path}: {e}"))?;
     writeln!(
         file,
-        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_total_ms={}\tcost_columns=inclusive_of_callees_do_not_sum",
+        "# summary\tclaims_absorbed={}\tretained_keys={}\tomitted_under_floor={}\tomitted_under_floor_ms={}\tkey_cap_overflow={}\tabsorb_ms={}\tabsorb_max_ms={}\trow_order=identity\tclaim_cpu_observed_total_ms={}\tclaim_cpu_censored_rows_excluded={}\tcost_columns=inclusive_of_callees_do_not_sum",
         disclosure.claims_absorbed,
         rows.len(),
         disclosure.omitted_keys,
@@ -40548,7 +40916,8 @@ fn write_required_floor_cross_claim_demand_tsv(
         disclosure.overflow_keys,
         disclosure.absorb_ns_total / 1_000_000,
         disclosure.absorb_ns_max / 1_000_000,
-        claim_cpu_total_ms
+        claim_cpu_observed_total_ms,
+        claim_cpu_censored_rows_excluded
     )
     .map_err(|e| format!("write_required_floor_cross_claim_demand_tsv: write {path}: {e}"))?;
     writeln!(
@@ -41262,6 +41631,25 @@ fn witness_eval_verdict_from_claim_outcome(
 }
 
 pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
+/// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
+///
+/// The predicate is here rather than in the test body because a test that pattern-matched the
+/// outcome itself would be a second adjudication of the same terminal: RefusedWithCleanupFailure
+/// is a refusal, and a reader writing `matches!(_, Passed(_) | ...)` by hand is one edit away from
+/// treating a cleanup failure as a pass.
+#[cfg(test)]
+pub(crate) use evaluation_budget_consequence_falsifier_host::run_evaluation_budget_consequence_falsifier;
+
+#[cfg(test)]
+pub(crate) fn evaluation_budget_consequence_falsifier_passed(
+    outcome: &evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome,
+) -> bool {
+    matches!(
+        outcome,
+        evaluation_budget_consequence_falsifier_host::EvaluationBudgetConsequenceFalsifierOutcome::Passed(_)
+    )
+}
 
 pub fn run_required_regen(
     candidate_dir_rel: &str,

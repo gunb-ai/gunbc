@@ -27,6 +27,8 @@ type GeneratedArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
+  | EvaluationBudgetConsequenceGeneratedRsArtifact
+  | FileTransportRealizationGeneratedRsArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
@@ -35,7 +37,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, CouponCadQueryProgramArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -52,6 +54,48 @@ type RepoConsumer
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
+
+// WHO REPAIRS A CONCURRENTLY-DIVERGED PROJECTION IS NOT ITS COMMIT POLICY. Both kinds below stay
+// committed, stay in the generated-artifact drift population, and stay protected by the refusing
+// merge driver. This axis answers only who pays to derive the merged authorities after that driver
+// has done its job.
+//
+// The design ledgers are the exceptional pair because their authority is the small, authored
+// roster append while their projection is unbounded (docs/design-failure-modes.md is 436 KiB at
+// this ruling). Requiring every lane to run the whole-tree regenerator before it can finish an
+// otherwise mechanical merge puts that large shared projection on every lane's critical path.
+// heal-generated-artifacts already checks out the pushed branch head, derives every committed
+// artifact from that head's authorities, commits the result, and dispatches a revalidation bound
+// to the healed SHA. Therefore a lane may commit the driver-left ours bytes PROVISIONALLY for only
+// this pair, after staging the explicit unmerged path, and let that one actuator replace them.
+// The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
+//
+// Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred
+// from ProjectDocumentation: DESIGN.md and ROADMAP.md do not share the ledger's append/content
+// asymmetry, and widening by consumer would silently move future documents onto a repair route
+// nobody judged for them.
+type ConcurrentDivergenceRepair
+  = AuthorRegeneratesBeforeMerge
+  | HealRegeneratesAfterProvisionalMerge
+
+fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
+  match a {
+    DesignFailureModesArtifact => HealRegeneratesAfterProvisionalMerge
+    DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
+    _ => AuthorRegeneratesBeforeMerge
+  }
+}
+
+fn heal_regenerated_after_provisional_merge_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => match concurrent_divergence_repair(a: a) {
+    AuthorRegeneratesBeforeMerge => false
+    HealRegeneratesAfterProvisionalMerge => true
+  })
+}
+
+fn heal_regenerated_after_provisional_merge_paths() -> List<String> {
+  map(heal_regenerated_after_provisional_merge_artifacts(), a => artifact_path(a: a))
+}
 
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
@@ -117,6 +161,8 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
+    EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
+    FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
     RunnerHostSudoersArtifact { host } =>
@@ -185,6 +231,8 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
   }
@@ -234,6 +282,8 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
+    EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
+    FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }

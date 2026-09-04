@@ -2,7 +2,7 @@ module gunbc.namespace_cut_landing_order
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable }
 
 // WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
 // ruling in the plan documents where its neighbours live. DESIGN section 4c

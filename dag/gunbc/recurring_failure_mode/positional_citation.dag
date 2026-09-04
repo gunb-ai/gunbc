@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.positional_citation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data positional_citation: RecurringFailureMode = RecurringFailureMode {
+  identity: "positional_citation" as NonEmptyStr,
+
+  receipts: [
+    "positional citation (a `file:line` pointer where a symbol was available — see §3). ",
+
+    "**THE EDIT FORM IS THE SAME CLASS AND IT ALSO WRITES.** An edit anchored on NEIGHBOURING TEXT -- sed on a surrounding line, a string replace keyed on the adjacent entry, an insert before a named sibling -- is a positional handle by another spelling, and it decays for the identical reason: anything that changes above or beside the anchor invalidates it. ",
+
+    "The difference is the consequence. ",
+
+    "A stale citation misleads a reader who can still see the text; a stale ANCHOR silently does NOTHING, because a replace that matches zero times reports success. ",
+
+    "**RECEIPT (sunny-gull-270, 2026-09-02, this carrier).** Appending the row `hedged_benefit_leaves_the_harm_axis_unexamined` needed two edits: the declaration and the roster-list entry. ",
+
+    "The roster append was anchored on `one_refusal_two_destinations,` followed by the closing bracket. ",
+
+    "Between reading the file and writing it, main gained `liveness_probe_read_as_currency` as the new last entry, so the anchor stopped matching, the declaration landed and the roster entry did not, and NOTHING FAILED -- the result would have been a declared-but-unrostered class, exactly the half-applied state a roster cannot detect about itself. ",
+
+    "**WHAT CAUGHT IT IS THE TRANSFERABLE PART, and it is not vigilance: `grep -c` returning 1 where 2 was owed.** The instruction is to CHECK THE RESULT RATHER THAN THE ACTION, because a no-op edit and a successful one are indistinguishable at the actuator -- the same discipline that catches a stale citation by reading `git show origin/main:<path>` rather than the working tree, which a manager on this same exchange used to avoid refuting a correct citation from a pinned checkout. ",
+
+    "Two instances, one root: a read and a write separated by someone else's push. ",
+
+    "**RECOGNITION RULE: any edit whose anchor is text the edit does not own. ",
+
+    "State the expected post-condition as a COUNT before applying it, and assert the count afterwards; if you cannot say what the count should become, the edit is not specified.**",
+  ],
+
+  evidence: [],
+}

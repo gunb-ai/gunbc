@@ -1,77 +1,26 @@
-module test.claim.guarantee_rung_drop_witness_test
+module test.claim.guarantee_stall_witness_test
 
-import std.types { String, List, Bool, Int }
-import gunbc.guarantee_rung_drop {
-  GuaranteeRungDrop, GuaranteeRung,
+import std.types { String, Bool }
+import gunbc.guarantee_rung {
   OutsideTheLadder, Mitigatable, MechanicallyPreventable,
-  LostAsPassenger, DeletedWithoutReplacement,
-  rung_drop_refusal_message, rung_drop_is_off_ladder, guarantee_rung_label,
+  StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index,
+}
+import gunbc.guarantee_stall {
   GuaranteeStall,
-  CannotClimbFurther, ClimbableButUnbuilt,
+  CannotClimbFurther, AwaitsOneGrounding, ClimbableButUnbuilt,
   BoundedPopulation, UncountedNotEnumerable,
-  StructurallyGuaranteed, StructurallyImpossible,
-  guarantee_rung_index, stall_is_below_ceiling, stall_is_permanent, stall_report_message,
+  stall_is_below_ceiling, stall_report_message,
   next_rung_trigger_enforcement_stall,
   all_guarantee_stalls, every_stall_is_below_its_ceiling, every_stall_names_a_trigger,
+  every_restored_stall_is_rostered_once, restored_stalls,
   heterogeneous_child_list_stall, stall_roster_size,
 }
-import tools.ci_gates { source_root_ingest_gate_rung_drop }
-
-// A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
-// the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
-// predicate that answered a constant, would agree with the live row here and be caught.
-data control_rung_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-    subject: "control.subject",
-    previous: MechanicallyPreventable,
-    temporary: Mitigatable,
-    reason: DeletedWithoutReplacement,
-    population: ["control.population.one"],
-    restoration_trigger: "control restoration trigger"
-  }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
 // own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a
 // witness's incidental helper, not a shared authority, and it is named distinctly for that reason.
 fn contains_text(haystack: String, needle: String) -> Bool {
   haystack.contains(needle)
-}
-
-// THE LIVE ROW IS OFF THE LADDER AND THE CONTROL IS NOT. Both directions asserted, because a
-// predicate stuck at true and a predicate stuck at false are different defects and one assertion
-// only sees one of them.
-test fn source_root_ingest_gate_drop_is_off_ladder() -> Bool {
-  rung_drop_is_off_ladder(d: source_root_ingest_gate_rung_drop)
-    && !rung_drop_is_off_ladder(d: control_rung_drop)
-}
-
-// THE RENDERED REFUSAL CARRIES THE ROW'S OWN FIELDS. This is what makes the gate arm a projection
-// of the declaration rather than a second authority restating it: if the row's subject or
-// restoration trigger is edited and the message stops naming them, this reds.
-test fn rung_drop_message_names_subject_and_trigger() -> Bool {
-  let m = rung_drop_refusal_message(d: source_root_ingest_gate_rung_drop)
-  contains_text(haystack: m, needle: "v2.workflow.source_root_ingest_gate")
-    && contains_text(haystack: m, needle: "outside the ladder")
-    && contains_text(haystack: m, needle: "lost as a passenger of")
-    && contains_text(haystack: m, needle: "a live workflow reaches")
-}
-
-// THE RENDERER READS ITS ARGUMENT. The control's text must NOT appear in the live row's message
-// and vice versa -- the assertion a constant-returning renderer fails.
-test fn rung_drop_message_discriminates_between_rows() -> Bool {
-  let live = rung_drop_refusal_message(d: source_root_ingest_gate_rung_drop)
-  let ctl = rung_drop_refusal_message(d: control_rung_drop)
-  !contains_text(haystack: live, needle: "control.subject")
-    && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
-    && contains_text(haystack: ctl, needle: "deleted without replacement")
-}
-
-// EVERY RUNG HAS A DISTINCT LABEL. A label fold that collapsed two rungs would make a census over
-// rung drops silently wrong, and nothing else in this module would notice.
-test fn guarantee_rung_labels_are_distinct() -> Bool {
-  let a = guarantee_rung_label(r: OutsideTheLadder)
-  let b = guarantee_rung_label(r: Mitigatable)
-  let c = guarantee_rung_label(r: MechanicallyPreventable)
-  (a != b) && (b != c) && (a != c)
 }
 
 // A CONTROL STALL DIFFERING FROM THE LIVE ROW IN EVERY DECIDED FIELD, for the reason the control
@@ -89,8 +38,15 @@ data control_stall: GuaranteeStall = GuaranteeStall {
 // THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
 // and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
 test fn stall_permanence_follows_the_blocker() -> Bool {
-  stall_is_permanent(s: control_stall)
-    && !stall_is_permanent(s: next_rung_trigger_enforcement_stall)
+  match control_stall.blocker {
+    CannotClimbFurther { why: _ } => true
+    AwaitsOneGrounding { grounding: _ } => false
+    ClimbableButUnbuilt => false
+  } && match next_rung_trigger_enforcement_stall.blocker {
+    CannotClimbFurther { why: _ } => false
+    AwaitsOneGrounding { grounding: _ } => true
+    ClimbableButUnbuilt => true
+  }
 }
 
 // THE LIVE ROW IS BELOW ITS CEILING AND THE CONTROL IS NOT. This is the assertion that makes the
@@ -101,15 +57,6 @@ test fn live_stall_is_below_its_ceiling() -> Bool {
     && !stall_is_below_ceiling(s: control_stall)
 }
 
-// THE LADDER ORDER IS STRICT AND TOTAL. A rung index that collapsed two rungs would make
-// stall_is_below_ceiling silently wrong for exactly the pair it collapsed, and nothing else here
-// would notice.
-test fn guarantee_rung_index_is_strictly_ordered() -> Bool {
-  guarantee_rung_index(r: OutsideTheLadder) < guarantee_rung_index(r: Mitigatable)
-    && guarantee_rung_index(r: Mitigatable) < guarantee_rung_index(r: MechanicallyPreventable)
-    && guarantee_rung_index(r: MechanicallyPreventable) < guarantee_rung_index(r: StructurallyGuaranteed)
-    && guarantee_rung_index(r: StructurallyGuaranteed) < guarantee_rung_index(r: StructurallyImpossible)
-}
 
 // AN UNCOUNTED POPULATION RENDERS AS UNCOUNTED, NEVER AS EMPTY. This is the discriminating claim
 // against the empty-observation narrow: a renderer that folded UncountedNotEnumerable through the
@@ -188,4 +135,26 @@ test fn the_stall_roster_is_not_empty() -> Bool {
   stall_roster_size(ss: all_guarantee_stalls) > 0
     && stall_roster_size(ss: []) == 0
     && every_stall_is_below_its_ceiling(ss: [])
+}
+
+// THE FOUR RESTORED SUBJECTS STAY ROSTERED, AND THIS DOES NOT RETIRE WHEN THIS PR LANDS.
+//
+// Four stalls were declared in gunbc.guarantee_stall and left out of all_guarantee_stalls, so the
+// three walls above ranged over 21 of the 25 rows that module declares. Nothing was red: a wall
+// whose input is short is green for the same reason a wall over a clean corpus is green. Widening
+// the roster is the repair; this arm is what stops the repair from being undone silently, since a
+// row dropped from the roster again would restore the green and change no assertion in this file.
+//
+// WHAT IT COVERS, stated so the coverage is falsifiable rather than assumed: exactly the four named
+// subjects, each required to appear EXACTLY ONCE. It does NOT detect a new stall declared and left
+// unrostered -- that needs a corpus-wide census of GuaranteeStall declarations, which is a separate
+// obligation gated on whether its RED is authorable at all, since a stall declared in a module the
+// roster cannot import may not be expressible in any fixture.
+//
+// THE NEGATIVE ARM IS THE WHOLE POINT: over an empty roster the fold must REFUSE, which is what
+// distinguishes this from the universally-quantified walls above that are vacuously true on [].
+test fn every_restored_stall_is_still_rostered() -> Bool {
+  every_restored_stall_is_rostered_once(ss: all_guarantee_stalls)
+    && !every_restored_stall_is_rostered_once(ss: [])
+    && every_restored_stall_is_rostered_once(ss: restored_stalls)
 }

@@ -26,7 +26,7 @@ data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
 fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
-    receipt: scenario_pr_x_receipt,
+    receipt: Present { value: scenario_pr_x_receipt },
     merge_target_tree_hash: scenario_base_b1,
     current_roster_hash: scenario_roster_r0,
   )
@@ -35,7 +35,7 @@ fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
 fn scenario_stale_roster_admits_policy(policy: AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
-    receipt: scenario_pr_x_receipt,
+    receipt: Present { value: scenario_pr_x_receipt },
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r1,
   )
@@ -86,4 +86,30 @@ test fn gunbc_repo_standard_is_squash_only() -> Bool {
     && length(gunbc_repo_standard.allowed_strategies) == 1
     && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
     && gunbc_repo_standard.require_up_to_date == false
+}
+
+// THE ABSENT-RECEIPT ARM, AT THE STATIC GRAIN. `gunbc.merge_lifecycle`'s interleaving witness
+// covers it temporally -- a MergePr with no preceding RunPrCi -- and this pair covers the
+// predicate directly, so a reader auditing `policy_admits` does not have to run a lifecycle to
+// find out what it answers on `Absent`. The two assertions take the SAME input and assert opposite
+// verdicts, which is what makes the pair discriminating: an arm answering one constant for every
+// policy greens exactly one of them.
+
+fn absent_receipt_admits_policy(policy: AdmissionPolicy) -> Bool {
+  policy_admits(
+    policy: policy,
+    receipt: Absent,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: scenario_roster_r0,
+  )
+}
+
+test fn the_live_policy_admits_an_absent_receipt() -> Bool {
+  absent_receipt_admits_policy(policy: ReportedContextsAtMergeInstant)
+}
+
+test fn the_three_receipt_derived_policies_refuse_an_absent_receipt() -> Bool {
+  !absent_receipt_admits_policy(policy: PerPrGateOnly)
+    && !absent_receipt_admits_policy(policy: RequireUpToDateBase)
+    && !absent_receipt_admits_policy(policy: KeyedReceipt)
 }

@@ -8,6 +8,7 @@ use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
+use self::PositiveShardCount::*;
 use self::PositiveSlotCount::*;
 use self::Quantity::*;
 use self::Scale::*;
@@ -388,6 +389,8 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
 pub type Watt = Rc<Measure<Power, One, i64>>;
@@ -610,6 +613,33 @@ pub fn events_per_minute(count: Nat) -> EventsPerMinute {
 
 pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
     measure_count(r.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum PositiveShardCount {
+    PositiveShardCountValue { count: Rc<PositiveMeasureCount> },
+}
+impl PositiveShardCount {
+    pub fn count(&self) -> Rc<PositiveMeasureCount> {
+        match self {
+            PositiveShardCount::PositiveShardCountValue { count: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn positive_shard_count(count: Rc<PositiveMeasureCount>) -> Rc<PositiveShardCount> {
+    Rc::new(PositiveShardCount::PositiveShardCountValue {
+        count: count.clone(),
+    })
+}
+
+pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
+    match (*shards.clone()).clone() {
+        PositiveShardCount::PositiveShardCountValue { count: count, .. } => {
+            positive_measure_count_value(count.clone())
+        }
+    }
 }
 
 pub fn watt(count: Nat) -> Watt {
@@ -986,6 +1016,17 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;

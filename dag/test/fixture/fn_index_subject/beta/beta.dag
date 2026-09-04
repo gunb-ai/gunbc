@@ -1,0 +1,8 @@
+module test.fixture.fn_index_subject.beta
+
+import v2.std.logic { Bool }
+
+// The BETA half of the two-root subject fixture; see the alpha sibling.
+fn fn_index_subject_beta_marker(seed: Bool) -> Bool {
+  seed
+}

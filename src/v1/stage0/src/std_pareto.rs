@@ -282,12 +282,18 @@ pub struct AxisReading {
     pub interval_micro: Rc<OrderedClosedInterval<i64>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AxisGap {
+    pub axis: Rc<DeclarationRef>,
+    pub cause: NonEmptyStr,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ParetoEntry {
     pub identity: Rc<DeclarationRef>,
     pub display_label: NonEmptyStr,
     pub readings: Rc<Vec<Rc<AxisReading>>>,
-    pub missing_inputs: Rc<Vec<NonEmptyStr>>,
+    pub missing_inputs: Rc<Vec<Rc<AxisGap>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -434,6 +440,40 @@ pub fn no_dominators() -> Rc<Vec<Rc<Domination>>> {
 
 pub fn one_name(name: String) -> Rc<Vec<String>> {
     Rc::new(vec![name.clone()])
+}
+
+pub fn no_gaps() -> Rc<Vec<Rc<AxisGap>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<AxisGap>>> = {
+            serde_json::from_value(serde_json::json!([]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<AxisGap>>>| c.clone())
+}
+
+pub fn gap_causes(gaps: Rc<Vec<Rc<AxisGap>>>) -> Rc<Vec<String>> {
+    gaps.iter()
+        .cloned()
+        .fold(no_names(), |acc: Rc<Vec<String>>, g: Rc<AxisGap>| {
+            v1_rt::concat(acc, one_name(g.cause.clone()))
+        })
+}
+
+pub fn gap_on_axis(gaps: Rc<Vec<Rc<AxisGap>>>, wanted: Rc<DeclarationRef>) -> bool {
+    gaps.iter()
+        .cloned()
+        .fold(false, |acc: bool, g: Rc<AxisGap>| {
+            (acc || crate::std_decl_ref::declaration_ref_eq(g.axis.clone(), wanted.clone()))
+        })
+}
+
+pub fn axis_is_funded(axes: Rc<Vec<Rc<SelectionAxis>>>, wanted: Rc<DeclarationRef>) -> bool {
+    axes.iter()
+        .cloned()
+        .fold(false, |acc: bool, ax: Rc<SelectionAxis>| {
+            (acc || crate::std_decl_ref::declaration_ref_eq(ax.identity.clone(), wanted.clone()))
+        })
 }
 
 pub fn one_axis_id(id: Rc<DeclarationRef>) -> Rc<Vec<Rc<DeclarationRef>>> {
@@ -602,7 +642,7 @@ pub fn declared_gap_cause(a: Rc<ParetoEntry>, b: Rc<ParetoEntry>) -> Rc<Vec<Stri
                     crate::std_decl_ref::declaration_ref_display_key(a.identity.clone()),
                     " declares missing inputs, so it is not eligible to be shown dominating: "
                         .to_string(),
-                    a.missing_inputs.clone().join(&" ; ".to_string()),
+                    gap_causes(a.missing_inputs.clone()).join(&" ; ".to_string()),
                 ])
                 .join(&"".to_string()),
             )
@@ -614,7 +654,7 @@ pub fn declared_gap_cause(a: Rc<ParetoEntry>, b: Rc<ParetoEntry>) -> Rc<Vec<Stri
                 Rc::new(vec![
                     crate::std_decl_ref::declaration_ref_display_key(b.identity.clone()),
                     " declares missing inputs, so it cannot be shown dominated: ".to_string(),
-                    b.missing_inputs.clone().join(&" ; ".to_string()),
+                    gap_causes(b.missing_inputs.clone()).join(&" ; ".to_string()),
                 ])
                 .join(&"".to_string()),
             )
@@ -740,16 +780,73 @@ pub fn entry_contradicts_its_declaration(
     axes: Rc<Vec<Rc<SelectionAxis>>>,
 ) -> Rc<Vec<String>> {
     {
-        let declares_its_gaps = ((e.missing_inputs.clone().len() as i64) > 0);
-        axes.iter().cloned().fold(no_names(), |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| match (*reading_for(e.clone(), ax.identity.clone())).clone() {
-    ReadingLookup::ReadingFound { interval_micro: interval_micro, .. } => acc.clone(),
-    ReadingLookup::ReadingAbsent { absent_axis: absent_axis, .. } => if declares_its_gaps.clone() {
+        let unfunded_gaps = e.missing_inputs.clone().iter().cloned().fold(no_names(), |acc: Rc<Vec<String>>, g: Rc<AxisGap>| if axis_is_funded(axes.clone(), g.axis.clone()) {
             acc.clone()
         } else {
-            v1_rt::concat(acc.clone(), one_name(Rc::new(vec![crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()), " declares complete inputs but has no reading on funded axis ".to_string(), crate::std_decl_ref::declaration_ref_display_key(absent_axis.clone())]).join(&"".to_string())))
-        },
-    ReadingLookup::ReadingDuplicated { duplicated_axis: duplicated_axis, .. } => v1_rt::concat(acc.clone(), one_name(Rc::new(vec![crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()), " has duplicate readings on funded axis ".to_string(), crate::std_decl_ref::declaration_ref_display_key(duplicated_axis.clone())]).join(&"".to_string()))),
-})
+            v1_rt::concat(acc.clone(), one_name(Rc::new(vec![crate::std_decl_ref::declaration_ref_display_key(e.identity.clone()), " declares a gap on ".to_string(), crate::std_decl_ref::declaration_ref_display_key(g.axis.clone()), ", which this selection does not fund - a gap must name a funded axis or it excuses and blocks nothing".to_string()]).join(&"".to_string())))
+        });
+        v1_rt::concat(
+            unfunded_gaps.clone(),
+            axes.iter()
+                .cloned()
+                .fold(
+                    no_names(),
+                    |acc: Rc<Vec<String>>, ax: Rc<SelectionAxis>| match (*reading_for(
+                        e.clone(),
+                        ax.identity.clone(),
+                    ))
+                    .clone()
+                    {
+                        ReadingLookup::ReadingFound {
+                            interval_micro: interval_micro,
+                            ..
+                        } => acc.clone(),
+                        ReadingLookup::ReadingAbsent {
+                            absent_axis: absent_axis,
+                            ..
+                        } => {
+                            if gap_on_axis(e.missing_inputs.clone(), absent_axis.clone()) {
+                                acc.clone()
+                            } else {
+                                v1_rt::concat(
+                                    acc.clone(),
+                                    one_name(
+                                        Rc::new(vec![
+                                            crate::std_decl_ref::declaration_ref_display_key(
+                                                e.identity.clone(),
+                                            ),
+                                            " has no reading on funded axis ".to_string(),
+                                            crate::std_decl_ref::declaration_ref_display_key(
+                                                absent_axis.clone(),
+                                            ),
+                                            " and declares no gap naming it".to_string(),
+                                        ])
+                                        .join(&"".to_string()),
+                                    ),
+                                )
+                            }
+                        }
+                        ReadingLookup::ReadingDuplicated {
+                            duplicated_axis: duplicated_axis,
+                            ..
+                        } => v1_rt::concat(
+                            acc.clone(),
+                            one_name(
+                                Rc::new(vec![
+                                    crate::std_decl_ref::declaration_ref_display_key(
+                                        e.identity.clone(),
+                                    ),
+                                    " has duplicate readings on funded axis ".to_string(),
+                                    crate::std_decl_ref::declaration_ref_display_key(
+                                        duplicated_axis.clone(),
+                                    ),
+                                ])
+                                .join(&"".to_string()),
+                            ),
+                        ),
+                    },
+                ),
+        )
     }
 }
 
@@ -885,7 +982,8 @@ pub fn entry_standing(
                     } else {
                         if ((subject.missing_inputs.clone().len() as i64) > 0) {
                             Rc::new(ParetoStanding::NotComputable {
-                                missing: subject.missing_inputs.clone().join(&" ; ".to_string()),
+                                missing: gap_causes(subject.missing_inputs.clone())
+                                    .join(&" ; ".to_string()),
                             })
                         } else {
                             standing_from_accum(

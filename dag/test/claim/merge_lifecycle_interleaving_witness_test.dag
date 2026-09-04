@@ -12,7 +12,7 @@ import gunbc.merge_lifecycle {
 }
 import gunbc.merge_admission {
   AdmissionPolicy,
-  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
+  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt, ReportedContextsAtMergeInstant,
 }
 import std.types { List, Bool, Int, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -133,9 +133,11 @@ test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
   count_unverified_admitting_sequences(policy: PerPrGateOnly, seqs: window_4_sequences()) > 0
 }
 
-// The three counts quantify gunbc.plans.branch_merge_admission_model section 4 over EVERY length-4
-// lifecycle, not authored scenarios: PerPrGateOnly (the live policy — GitHub strict flag false, no
-// queue) admits unverified tips; RequireUpToDateBase (GitHub's strict boolean, tree axis only)
+// The four counts quantify gunbc.plans.branch_merge_admission_model section 4 over EVERY length-4
+// lifecycle, not authored scenarios: ReportedContextsAtMergeInstant (the live policy, per
+// gunbc.merge_admission — GitHub strict flag false, no queue, and an unreported required context
+// reading as not-failing) admits unverified tips with no evidence at all; PerPrGateOnly (named the
+// live policy here until 2026-09-03, and stronger than the live one) admits unverified tips; RequireUpToDateBase (GitHub's strict boolean, tree axis only)
 // still admits a tree verified under a superseded gate roster; KeyedReceipt admits zero across the
 // window, including the same-PR healed-head transition — green-stays-green as a
 // bounded-exhaustive theorem. The positive PerPrGateOnly count proves the enumerator can see
@@ -144,4 +146,40 @@ test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
 
 test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool {
   count_unverified_admitting_sequences(policy: RequireUpToDateBase, seqs: window_4_sequences()) > 0
+}
+
+// THE ONE-EVENT PAIR IS THE DISCRIMINATOR FOR THE ABSENT-RECEIPT AXIS, and it is a PAIR rather
+// than a single assertion because the whole content of the finding is that two policies disagree
+// on exactly this input. A bare MergePr with no preceding RunPrCi is gunbc#10236 in this model's
+// vocabulary: the merge call arrives before any required context has reported. Under
+// ReportedContextsAtMergeInstant it lands an unverified tip; under PerPrGateOnly, whose admission
+// is derived from a receipt, the same sequence refuses. Asserting only the first would be green
+// under a policy_admits_absent_receipt that answered true for everything, which is exactly the
+// defect the fold seed used to hide in the opposite direction.
+
+test fn a_merge_before_any_run_lands_an_unverified_tip_under_the_live_policy() -> Bool {
+  lifecycle_admits_unverified_tip(
+    policy: ReportedContextsAtMergeInstant,
+    events: [MergePr { pr: pr_a }],
+  )
+}
+
+test fn a_merge_before_any_run_is_refused_under_per_pr_gate_only() -> Bool {
+  !lifecycle_admits_unverified_tip(policy: PerPrGateOnly, events: [MergePr { pr: pr_a }])
+}
+
+test fn a_merge_before_any_run_is_refused_under_keyed_receipt() -> Bool {
+  !lifecycle_admits_unverified_tip(policy: KeyedReceipt, events: [MergePr { pr: pr_a }])
+}
+
+// The window-4 count is asserted STRICTLY GREATER than PerPrGateOnly's rather than merely positive:
+// the live policy admits everything PerPrGateOnly admits and additionally every sequence whose
+// merges precede their runs, so an implementation that made the new arm behave like the old one
+// would keep both positive counts and fail here.
+
+test fn the_live_policy_admits_strictly_more_unverified_tips_than_per_pr_gate_only() -> Bool {
+  count_unverified_admitting_sequences(
+    policy: ReportedContextsAtMergeInstant,
+    seqs: window_4_sequences(),
+  ) > count_unverified_admitting_sequences(policy: PerPrGateOnly, seqs: window_4_sequences())
 }
