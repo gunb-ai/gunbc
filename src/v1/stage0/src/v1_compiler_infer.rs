@@ -3097,6 +3097,31 @@ pub fn match_arm_types_are_disjoint_coproducts(
     }
 }
 
+pub fn match_arm_types_are_proven_disjoint(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if match_arm_types_are_disjoint_coproducts(
+        unified_arm_type.clone(),
+        arm_type.clone(),
+        scope.clone(),
+    ) {
+        true
+    } else {
+        {
+            let source_indices = scope.type_env.clone().source_indices.clone();
+            ((conformance_ground_type(unified_arm_type.clone(), source_indices.clone())
+                && conformance_ground_type(arm_type.clone(), source_indices.clone()))
+                && (crate::v1_compiler_infer_types::node_type_compatible(
+                    unified_arm_type.clone(),
+                    arm_type.clone(),
+                    source_indices.clone(),
+                ) == false))
+        }
+    }
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -3105,7 +3130,7 @@ pub fn match_arm_join_diagnostics(
     if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
         Rc::new(vec![])
     } else {
-        if match_arm_types_are_disjoint_coproducts(
+        if match_arm_types_are_proven_disjoint(
             unified_arm_type.clone(),
             arm.body_type.clone(),
             scope.clone(),
@@ -3114,7 +3139,7 @@ pub fn match_arm_join_diagnostics(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "match arms produce disjoint declared coproducts: ".to_string(),
+                            "match arms produce proven-disjoint types: ".to_string(),
                             crate::v1_compiler_infer_types::node_type_shape(
                                 unified_arm_type.clone(),
                                 scope.type_env.clone().source_indices.clone(),
