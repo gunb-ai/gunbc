@@ -29,6 +29,22 @@ fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
     hr(),
     h2(text: "4. Hypothesis"),
     p(text: "**`reconcile_with_typed_cache` / `typecheck_module`** — fn-typed `List<LensSubjectComplexityBudgetRow>` roster rows pulling source-bridged `v2.compiler.*` modules. Not `resolve_modules` wiring (twins share 57-module closure at ~5.5s cold)."),
+    hr(),
+    h2(text: "5. Routed-entry work hidden behind resolve"),
+    TableBlock {
+      header: row(cells: [cell(text: "Observation"), cell(text: "Producer"), cell(text: "Subject"), cell(text: "Cost location"), cell(text: "What it foreclosed")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "One quiet-host, exit-zero end-to-end observation found pre-evaluation resolve dominating the query's own work. The historical figures are deliberately not copied into this row: no committed producer can re-derive them."),
+          cell(text: "A one-off timed run by session `quick-cat-355` of the routed query that enumerated its own work across the then-open pull-request population. The exact argv and timing carrier were not retained in git, and the session is no longer addressable; this is therefore historical evidence, not a presently runnable benchmark."),
+          cell(text: "One routed `.dag` entry whose query enumerated repository work across the live open-pull-request population. Resolve completed before any query evaluation, so the observation priced the fixed entry cost separately from the query's git/GitHub work."),
+          cell(text: "Pre-evaluation entry resolution. The replacement preflight shows the remaining loader floor lives in the bare/reference fixpoint's pool census; it deliberately does not substitute an import-only walk, because that is a narrower population."),
+          cell(text: "A lane could not economically ask whether a changed repository path intersected a routed entry's retained closure before landing. `claim_batch --print-entry-closure` is the surviving replacement producer: it emits the exact retained path population and a terminal `state=complete` receipt before typed resolution or evaluation."),
+        ])
+      ]
+    },
+    p(text: "**Next measurement rung:** a committed entry point that runs the full routed query and returns, in one receipt, total wall duration, pre-evaluation resolve duration, and query-own duration against a named subject revision and host condition. Until that exists, this row preserves only the measured obstruction and the replacement producer; it does not present the historical timing as re-derivable current performance."),
   ]
 }
 

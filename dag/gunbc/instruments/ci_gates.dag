@@ -15,7 +15,8 @@ import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
 import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
-import gunbc.rung_drop { rung_drop_declaration_message, source_root_ingest_gate_rung_drop }
+import gunbc.rung_drop { rung_drop_declaration_message }
+import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }

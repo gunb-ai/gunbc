@@ -975,104 +975,223 @@ pub struct TransitionAdmission {
 /// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
 /// event, one record: my entry is dropped in favour of main's, because a second narration of the
 /// same deletion is the double-record this ledger already refuses once above.
+/// TWENTY-FIFTH DISSOLUTION (2026-09-04), PAID ON THE SAME RULE AND READ THE SAME WAY. The
+/// `gunbc#10328 guarantee_stall split` rows arriving with this merge are CONSUMED: main's
+/// `dag/test/claim/guarantee_stall_witness_test.dag` imports `all_guarantee_stalls` from
+/// `gunbc.guarantee_stall.roster` by name, so the base already binds that spelling to that target
+/// and no run can produce those deltas. Deleted here rather than carried, because carrying them
+/// costs a required run to rediscover -- the history the rule above is written from, and which this
+/// branch paid once already by unioning an earlier merge instead of reading the tree.
+/// TWENTIETH TRANSITION (2026-09-04, gunbc#10254). Authored as SEVENTEENTH against a base whose
+/// highest ordinal was SIXTEENTH; main landed SEVENTEENTH, EIGHTEENTH and NINETEENTH while this
+/// branch was open, so the merge renumbers rather than minting a fourth duplicate -- the ordinal
+/// exists to make an entry citable by its own name. The DGX Spark first-boot wizard's INTERFACE
+/// vocabulary -- screen routes, headings, controls, advance gates, validation rules and the
+/// client's username admission -- moved from `gunbc.spark.oobe_screen_observation` to
+/// `extdeps.systems.nvidia_dgx_spark_setup`, which already owned the `OobeSetupField` roster for
+/// that same wizard. DESIGN §3 external upstream decomposition: what NVIDIA's product PRESENTS is
+/// NVIDIA's authority, and what this repository MEASURED stays a receipt in the observing layer.
+///
+/// EVERY ROW IS A PURE RELOCATION. No declaration below changes what it denotes; the observing
+/// module and its witness now bind the same spellings through the vendor authority, so the wall
+/// reports `TargetChanged` at each binding site. A binding whose MEANING had moved would refuse on
+/// its own row rather than be covered here, and the rows are enumerated by exact identity rather
+/// than matched by the module pair, because a pattern would admit a genuine rebind that happened to
+/// land in the same two modules.
+///
+/// TRIGGER: these rows go when #10254 merges. Once the consolidation is on main, merge commit and
+/// base both carry it, no run can produce these deltas, and all of them report stale -- which
+/// refuses every unrelated PR, the shape recorded for the 53 and the 314 above. The shrink is the
+/// fix, not housekeeping.
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04, gunbc#10197), PAID ON THE SAME RULE, READ THE SAME WAY,
+/// AND AT FULL IDENTITY GRAIN RATHER THAN ON THE TRIGGER SENTENCE. All 142
+/// `spark OOBE vendor-interface consolidation gunbc#10254` rows are deleted, and the
+/// SPARK_OOBE_VENDOR_INTERFACE_LABEL that named them goes with them, because a label with no rows
+/// is a second name for an empty set.
+///
+/// The entry directly above states the trigger -- "these rows go when #10254 merges" -- and #10254
+/// merged as deb3c86b96e, which is this branch's merge base. That sentence is NOT what authorized
+/// the deletion. Each of the 142 rows was joined against main's tree by its own (module, spelling,
+/// target) triple: for every row, the named module's source at deb3c86b96e already imports that
+/// spelling from `extdeps.systems.nvidia_dgx_spark_setup` -- 14 rows in
+/// gunbc.spark.oobe_screen_observation and 128 in
+/// test.claim.spark.spark_oobe_screen_observation_witness, zero rows unbound. Base and head
+/// therefore agree on all 142, no run can produce those deltas, and a surviving row could only be
+/// stale.
+///
+/// THE FIRST RUN OF THAT JOIN REPORTED 128 UNBOUND AND WAS WRONG, and it is recorded because the
+/// failure is silent by construction. The witness module's path was guessed from its module path as
+/// `.../spark_oobe_screen_observation_witness.dag`; the real file is
+/// `..._witness_test.dag`. Reading a path that does not exist returns empty, and empty reads exactly
+/// like "the import is absent" -- the answer that would have had me CARRY 128 consumed rows.
+/// The repair is that a source read asserts the file is non-empty before its absence is allowed to
+/// mean anything.
+///
+/// MY OWN TWENTY-FOURTH ENTRY IS DROPPED IN FAVOUR OF MAIN'S. Both sides deleted the one
+/// `gunbc#10218` row, independently and on the same base check, so the deletion is taken once and
+/// narrated once -- the rule main's TWENTY-FOURTH states for the six rows before it, applied to the
+/// entry that would otherwise double-record it.
+///
+const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_live_stall_is_below_its_ceiling::`all_guarantee_stalls`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "every_live_stall_is_below_its_ceiling",
-            spelling: "all_guarantee_stalls",
-            target: "gunbc.guarantee_stall.roster",
+            module: "gunbc.design_ledgers",
+            in_declaration: "rung_drop_blocks",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_live_stall_names_a_next_rung_trigger::`all_guarantee_stalls`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "every_live_stall_names_a_next_rung_trigger",
-            spelling: "all_guarantee_stalls",
-            target: "gunbc.guarantee_stall.roster",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "green_drop_on_dark_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`all_guarantee_stalls`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "every_restored_stall_is_still_rostered",
-            spelling: "all_guarantee_stalls",
-            target: "gunbc.guarantee_stall.roster",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "red_drop_on_live_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`every_restored_stall_is_rostered_once`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "every_restored_stall_is_still_rostered",
-            spelling: "every_restored_stall_is_rostered_once",
-            target: "gunbc.guarantee_stall.roster",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_refuses_the_off_ladder_question",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (every_restored_stall_is_still_rostered::`restored_stalls`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "every_restored_stall_is_still_rostered",
-            spelling: "restored_stalls",
-            target: "gunbc.guarantee_stall.roster",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_renders_as_its_paragraph",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the roster moves to its own module (the_stall_roster_is_not_empty::`all_guarantee_stalls`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "the_stall_roster_is_not_empty",
-            spelling: "all_guarantee_stalls",
-            target: "gunbc.guarantee_stall.roster",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_discriminates_between_rows",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (live_stall_is_below_its_ceiling::`next_rung_trigger_enforcement_stall`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "live_stall_is_below_its_ceiling",
-            spelling: "next_rung_trigger_enforcement_stall",
-            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_names_subject_and_trigger",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (stall_permanence_follows_the_blocker::`next_rung_trigger_enforcement_stall`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "stall_permanence_follows_the_blocker",
-            spelling: "next_rung_trigger_enforcement_stall",
-            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "source_root_ingest_gate_drop_is_off_ladder",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (stall_report_names_subject_and_trigger::`next_rung_trigger_enforcement_stall`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "stall_report_names_subject_and_trigger",
-            spelling: "next_rung_trigger_enforcement_stall",
-            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_consolidated_typed_row_is_still_rostered",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10328 guarantee_stall split: the row moves to its own module (uncounted_population_does_not_render_as_empty::`next_rung_trigger_enforcement_stall`)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.guarantee_stall_witness_test",
-            in_declaration: "uncounted_population_does_not_render_as_empty",
-            spelling: "next_rung_trigger_enforcement_stall",
-            target: "gunbc.guarantee_stall.next_rung_trigger_enforcement_stall",
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_prose_declaration_agrees_with_its_closed_arm",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "cited_symbol_census",
+            target: "gunbc.rung_drop.cited_symbol_census",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "standing_rung_drops",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "tools.ci_gates",
+            in_declaration: "run_spec_gate",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
