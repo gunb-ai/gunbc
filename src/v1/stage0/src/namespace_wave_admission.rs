@@ -1184,101 +1184,115 @@ pub struct TransitionAdmission {
 /// resolves the full subject through the re-export chain and requires an exact singleton, which no
 /// hand join reproduces. The wall's own run at the exact head is the proof.
 ///
-/// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10439): the Ollama launch vocabulary moves beside
-/// the engine axis that dispatches it.
+/// TWENTY-FIFTH TRANSITION (2026-09-04, gunbc#10459): the parsed item-kind coproduct moves to the
+/// module that declares the carrier it is stamped onto.
 ///
-/// `SparkServingOccurrence` carried `launch_profile: OllamaServingLaunchProfile` while exactly one
-/// runtime existed, which made "what is served" and "how it is launched" one fact. #10439 adds
-/// `ServingEngine = OllamaServing | VllmServing` and cuts the occurrence over to it in the same
-/// tree, because leaving the fused carrier alive would make the new axis a parallel representation
-/// -- DESIGN §3's attractor -- rather than a replacement.
+/// #10459 is the declared next-rung trigger for the resource-exclusion validator family: the emit
+/// side stopped INFERRING what an item is from its shape and started READING a positive kind the
+/// parse constructors stamp. The kind therefore has to sit on `Node`, and `Node` is declared in
+/// `v1.std.core`, which cannot import `v1.compiler.parse` -- acyclicity, the import graph's one
+/// structural law. So `ParsedModuleItemKind` and its seven variants MOVE from `v1.compiler.parse`
+/// into `v1.std.core`: a move, not a copy, so no second authority for "what kind of item is this"
+/// survives the change, which is the whole point of the trigger.
 ///
-/// THE MOVE IS WHAT KEEPS THE IMPORT GRAPH ACYCLIC, WHICH IS ITS ONE STRUCTURAL LAW. `serving_engine`
-/// cannot import `OllamaServingLaunchProfile` from `serving_release` while `serving_release` imports
-/// `ServingEngine` from `serving_engine`. So `SparkServingBindListen`, `OllamaServingLaunchProfile`
-/// and `spark_serving_bind_listen_wire` MOVE into `gunbc.spark.serving_engine` -- a move, not a
-/// copy, so no second authority survives the change. Six binding sites therefore bind the same
-/// spelling to a different declaring module, which is a `TargetChanged` delta by construction and
-/// exactly the motion this wall exists to make visible.
+/// SEVEN BINDING SITES IN `v1.compiler.parse` therefore bind the same spellings to a different
+/// declaring module -- six in `parsed_module_item_role`, one in `stamp_parsed_module_items` -- a
+/// `TargetChanged` delta by construction and exactly the motion this wall exists to make visible.
+/// `NotAModuleItem` is not among them: it is authored by this change and has no base binding to
+/// change.
 ///
-/// THE THREE MEMBERSHIP DELTAS ARE NOT ADMITTED HERE BECAUSE THEY DO NOT NEED TO BE: the wall
-/// reports them `ExplicitlyEvaluatedZeroDelta` -- `serving_engine` is a new module reached by a name
-/// each importer authors -- and admitting a row the wall already adjudicates would be a second
-/// authority for the same decision.
+/// THE THREE OTHER DELTAS ARE NOT ADMITTED HERE BECAUSE THE WALL ALREADY ADJUDICATES THEM: the two
+/// new `gunbc.recurring_failure_mode` roster rows report `ExplicitlyEvaluatedZeroDelta`, and the
+/// removed `v1.compiler.emit_core_support -> v1.compiler.parse` membership reports
+/// `SameDeclarationIdentityRebind` -- the emit side dropping the import it no longer needs once the
+/// shape predicates are deleted. Admitting a row the wall already decides would be a second
+/// authority for one decision.
 ///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10439 merges. The base then binds
-/// each spelling to `gunbc.spark.serving_engine`, no run can produce these deltas, and all six
-/// report CONSUMED rather than stale -- coming due on this roster's own next touch. Adjudicate that
-/// deletion by the declaring-module join, joining each row against main's tree by its own
-/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
-/// trigger sentence is not evidence that the trigger fired.
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10459 merges. The base then binds
+/// each spelling to `v1.std.core`, no run can produce these deltas, and all seven report CONSUMED
+/// rather than stale -- coming due on this roster's own next touch. Adjudicate that deletion by the
+/// declaring-module join, joining each row against main's tree by its own (module, in_declaration,
+/// spelling, target) tuple rather than trusting this sentence, because a trigger sentence is not
+/// evidence that the trigger fired.
 ///
-const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
-    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
+/// THE SIX gunbc#10439 ROWS ARE DELETED BY THIS CHANGE AND THAT IS THE OBLIGATION, NOT A COURTESY:
+/// #10439 merged, every one of its rows reported CONSUMED on this branch's own run, and the
+/// consumed receipt states the deletion is owed on the roster's next touch. This is that touch.
+const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
+    "parsed module item kind vocabulary move gunbc#10459 2026-09-04";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_host_port",
-            spelling: "spark_serving_bind_listen_wire",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemDataValue",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_listen",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemFunction",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_launch_profile",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemResource",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_base",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemService",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_other_window",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemTypeDeclaration",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "witness_bind",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemUnrecognized",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "stamp_parsed_module_items",
+            spelling: "ModuleItemUnrecognized",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
 ];
-
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
