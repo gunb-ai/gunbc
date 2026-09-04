@@ -130,12 +130,23 @@ test fn w_every_feature_lies_inside_the_body() -> Bool {
   total == 3 && inside == total
 }
 
-// THE DISCRIMINATING RED FOR THE CHECK ABOVE, which it did not have. A feature at y 0 lies inside
-// the FRAME and outside the BODY, so it separates the two readings: under the previous
-// frame-relative comparison this would have been reported as contained.
+// THE DISCRIMINATING RED FOR THE CHECK ABOVE, which it did not have. A feature straddling y 120
+// lies inside the FRAME and outside the BODY, so it separates the two readings: under the previous
+// frame-relative comparison it would have been reported as contained.
+//
+// ITS CENTRE IS 100 AND NOT 0, AND THAT IS NOT A COSMETIC CHOICE. The first version centred it at
+// y 0 with radius 96, so feature_min_y evaluated 0 - 96 on a Nat. Probing the substrate directly
+// shows that expression does NOT saturate to zero -- it yields a NEGATIVE value, so `Nat` is not a
+// runtime wall here. The witness then reported "not contained" because a negative is below the
+// body's lower bound, which is the right verdict reached through a meaningless intermediate: the
+// test would have kept passing if the containment rule were rewritten, and would have flipped if
+// the substrate ever made that subtraction refuse.
+//
+// At centre 100 radius 96 the extents are 4..196, computed without underflow, and 4 is genuinely
+// below the body's 120. The arm is exercised by arithmetic that means what it says.
 data mark_feature_above_the_body: MarkFeature = MarkCircle {
   center_x: frame_length(tenths: 600),
-  center_y: frame_length(tenths: 0),
+  center_y: frame_length(tenths: 100),
   radius: frame_length(tenths: 96),
 }
 
