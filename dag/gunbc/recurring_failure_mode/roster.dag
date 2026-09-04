@@ -55,6 +55,7 @@ import gunbc.recurring_failure_mode.undecided_fraction_read_as_denominator { und
 import gunbc.recurring_failure_mode.restoration_promise_names_a_route_that_does_not_exist { restoration_promise_names_a_route_that_does_not_exist }
 import gunbc.recurring_failure_mode.alias_resolution_collides_with_kernel_spelling { alias_resolution_collides_with_kernel_spelling }
 import gunbc.recurring_failure_mode.restored_bytes_reviewed_as_authorship { restored_bytes_reviewed_as_authorship }
+import gunbc.recurring_failure_mode.stale_buffer_write_reverts_outside_its_own_diff { stale_buffer_write_reverts_outside_its_own_diff }
 import gunbc.recurring_failure_mode.review_summary_inverts_roles_and_affirms_the_join { review_summary_inverts_roles_and_affirms_the_join }
 import gunbc.recurring_failure_mode.fabricated_debt { fabricated_debt }
 import gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content { yaml_inline_comment_ingested_as_scalar_content }
@@ -157,6 +158,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   restoration_promise_names_a_route_that_does_not_exist,
   alias_resolution_collides_with_kernel_spelling,
   restored_bytes_reviewed_as_authorship,
+  stale_buffer_write_reverts_outside_its_own_diff,
   review_summary_inverts_roles_and_affirms_the_join,
   fabricated_debt,
   yaml_inline_comment_ingested_as_scalar_content,
