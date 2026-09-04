@@ -106,7 +106,6 @@ test fn all_bundle_rows_match_emission_profile() -> Bool {
                     Accepted { value: emission_lex, diagnostics: _ } =>
                       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
                         Accepted { value: emission_bindings, diagnostics: _ } =>
-                          // All 12 lex rows
                           lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_struct)
                           && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_struct_copy)
                           && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_enum)
@@ -119,7 +118,6 @@ test fn all_bundle_rows_match_emission_profile() -> Bool {
                           && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_colon)
                           && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_comma)
                           && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_rbrace)
-                          // All 6 binding spellings
                           && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^rust_decl_derive_enum_copy_binding)
                           && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^Bool)
                           && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^True)
