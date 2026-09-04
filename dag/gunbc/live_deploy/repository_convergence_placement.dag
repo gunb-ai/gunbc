@@ -48,6 +48,7 @@ import extdeps.systemd.unit_file {
   ServiceType,
   ServiceUser,
   ServiceGroup,
+  ServiceSlice,
   WorkingDirectory,
   EnvironmentFile,
   ExecStart,
@@ -56,7 +57,8 @@ import extdeps.systemd.unit_file {
 }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  deployment_slice_unit_name, DeploymentSpec, deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
@@ -557,6 +559,7 @@ fn convergence_unit_doc(
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: user },
       ServiceGroup { name: user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: working_directory as NonEmptyStr },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
       ExecStart {

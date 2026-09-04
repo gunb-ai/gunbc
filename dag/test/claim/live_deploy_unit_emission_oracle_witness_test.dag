@@ -3,6 +3,7 @@ module test.claim.live_deploy_unit_emission_oracle_witness
 import std.types { Bool, String, CommitSha }
 import std.layout { render }
 import gunbc.live_deploy.emit {
+  emit_slice_unit_doc,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
   emit_belt_timer_unit_doc,
@@ -95,7 +96,7 @@ fn live_revision() -> ReleaseRevisionBinding {
 // when this unit is next applied.
 test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
+  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli\n"
 }
 
 // gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
@@ -113,23 +114,30 @@ test fn the_belt_timer_unit_matches_the_deployed_bytes() -> Bool {
 // deployment_credential_env_path carries the argument.
 test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nWorkingDirectory=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
+  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
 }
 
-// gunbc-tree-sync.service. Base transcription: srv1, 2026-08-19, like its siblings — but this
-// row is the ONE in the family whose expectation intentionally diverges from the bytes currently on the
-// host, so it is named for what it actually asserts rather than for the family it belongs to.
+// gunbc-tree-sync.service, AS EMITTED, and this row now asserts the emission rather than a
+// transcription. Its predecessor kept a 2026-08-19 transcription of the deployed bytes carrying a
+// SECOND ExecStart -- the `.git` rsync leg -- and named its one intended divergence, the widened
+// exclude run on the first leg. The `.git` leg was deleted from the emitter when Git-native
+// repository convergence replaced file transport of repository metadata (gunbc.live_deploy.
+// repository_convergence_placement), and the expectation was never moved, so this witness was red
+// on main against an emitter with one ExecStart and nothing rostered it. Measured 2026-09-04 while
+// wiring `gunbc converge --mode deploy`.
 //
-// THE DELTA IS EXACTLY THE FIRST ExecStart's EXCLUDE RUN, and it is derived, not transcribed:
-// deployed_tree_rsync_exclude_flags() renders one `--exclude /<p>` per deployed_tree_excluded_prefixes
-// entry, and that list widened from two prefixes to six. The deployed unit still carries the two-prefix
-// spelling and will carry the six-prefix one after the next deploy of this slot, at which point the
-// divergence closes and the transcription and the emission agree again.
-//
-// The second ExecStart is untouched on purpose: the .git leg carries its own include/exclude set and does
-// not read the exclusion list, so a change to that list must not move it. Its bytes staying byte-identical
-// here is the control that says the widening reached the leg it should and no other.
+// WHAT IS ASSERTED NOW: one ExecStart, the exclude run derived from deployed_tree_excluded_prefixes
+// (eight prefixes: the two bootstrap receipt channels joined it the same day), and the deployment
+// slice the unit joins. The deployed bytes on srv1 predate all three and converge on the next deploy.
 test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening() -> Bool {
   let emitted = render(doc: emit_tree_sync_unit_doc(spec: live_spec(), tree_path: live_spec().service.repo_root as String), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\nExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC}/.git/\" /opt/gunbc/gunbc/.git/\n"
+  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\n"
+}
+
+
+// THE SLICE UNIT, BYTE FOR BYTE. The bound is the runner slot's allowance rendered by the
+// resource-control authority; a change to either shows up here as the deployed bytes changing.
+test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
+  let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
 }

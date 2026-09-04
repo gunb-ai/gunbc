@@ -227,6 +227,13 @@ test fn the_unit_runs_inside_the_runner_checkout_it_reads() -> Bool {
   string_contains(s: srv1_unit_text(), pattern: concat("WorkingDirectory=", fixture_object_source))
 }
 
+// THE ONESHOT JOINS THE DEPLOYMENT'S SLICE. The admitted binary refuses to plan without a cgroup
+// memory bound on the process (HostBudgetUnreadable, measured on srv1 from this unit under
+// system.slice), so every unit that runs it names the slice the deployment owns.
+test fn the_unit_joins_the_deployment_slice() -> Bool {
+  string_contains(s: srv1_unit_text(), pattern: "Slice=gunbc-roadmap.slice")
+}
+
 // THE CORPUS COMES FROM THE RUNNER CHECKOUT AND THE BINARY FROM THE INSTALL, AND THIS IS THE WITNESS
 // FOR THE ACCEPTANCE CLAUSE ABOUT A STALE TARGET. The target's tree is 637 commits behind and its
 // corpus predates the convergence module, so a source root under the deployed repo root would make

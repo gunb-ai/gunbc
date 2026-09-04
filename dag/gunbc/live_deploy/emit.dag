@@ -41,8 +41,10 @@ import std.layout {
   doc_text,
   render
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, TimerUnitFile,
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  ServiceSlice, slice_memory_max, slice_memory_high,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
   SystemdServiceDirective, ServiceType, ExecStart, Restart,
@@ -53,6 +55,7 @@ import extdeps.systemd.unit_file {
   serialize_systemd_unit_file,
 }
 import gunbc.live_deploy.spec {
+  deployment_slice_unit_name, deployment_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -348,6 +351,29 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
 // directive list the emission serializes, rather than re-parsing the rendered text. The doc
 // producers below delegate here; behaviour is unchanged.
+// THE BOUND IS THE RUNNER SLOT'S, BY IDENTITY OF WORKLOAD RATHER THAN BY COINCIDENCE OF NUMBER. The
+// deployment's oneshots run `gunbc run` over the same corpus a CI job resolves, and the server is
+// the same binary; gunbc_runner_slot_desired is the fleet's one authored allowance for that
+// process, and a second literal here would be the section-3 fork. Measured on srv1 2026-09-04 for
+// scale: the serve process peaked at 3.46 GB and the belt at 0.97 GB, both well inside it.
+fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  let slot = gunbc_runner_slot_desired()
+  SliceUnitFile {
+    unit: [
+      Description { text: join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "") as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: slot.memory_max),
+      slice_memory_high(bytes: slot.memory_high),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn emit_slice_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_slice_unit_file(spec: spec)))
+}
+
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   let port = to_string(svc.listen.port)
@@ -362,6 +388,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       ServiceType { mode: "simple" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       ExecStart { command: join([
         svc.serve_binary as String,
@@ -398,6 +425,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
       Environment { assignment: join([
         belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
@@ -764,6 +792,7 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: user },
       ServiceGroup { name: user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
       ExecStart { command: join([
         "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
@@ -982,6 +1011,15 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: spec.names.tree_sync_env_path as String,
       )),
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: deployment_slice_unit_name(names: spec.names) as String,
+        content: render(doc: emit_slice_unit_doc(spec: spec), proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_slice_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: deployment_slice_unit_path(names: spec.names) as String,
+      )),
       apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.service",
@@ -1180,6 +1218,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
         tree_sync_unit_path(names: spec.names) as String,
         spec.names.tree_sync_env_path as String,
+        deployment_slice_unit_path(names: spec.names) as String,
       ])),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
