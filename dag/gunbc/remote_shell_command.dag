@@ -162,7 +162,7 @@ fn remote_exec_command_string(
 
 type RemoteExecCommandLiveConfirmation
   = RemoteExecCommandLiveConfirmationUnexecuted { trigger: NonEmptyStr }
-  | RemoteExecCommandLiveConfirmationObserved { target: NonEmptyStr, result: NonEmptyStr }
+  | RemoteExecCommandLiveConfirmationObserved { target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
 
 // DECLARED, UNEXECUTED, WITH A TRIGGER (DESIGN 4b: no untracked stall). The hermetic witnesses
 // below are green by execution and prove the emitter matches the cited encoding on fixtures. This

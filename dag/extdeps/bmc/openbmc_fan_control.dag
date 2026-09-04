@@ -1460,8 +1460,8 @@ type OpenBmcRemoteJqOutcome
 // and asserts the derived interpretation without ever touching the transport.
 fn openbmc_remote_jq_interpretation(confirmation: RemoteExecCommandLiveConfirmation) -> RemoteExecCommandInterpretation {
   match confirmation {
-    RemoteExecCommandLiveConfirmationObserved { target: _, result: _ } =>
-      openbmc_dropbear_interpretation
+    RemoteExecCommandLiveConfirmationObserved { target: _, interpretation: interp } =>
+      interp
     RemoteExecCommandLiveConfirmationUnexecuted { trigger: _ } =>
       Unknown
   }
@@ -1512,13 +1512,25 @@ fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
 // JqOutcome, never success/stdout/stderr.
 data openbmc_fan_stepwise_count_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length"
 
-// LOSSY REFUSAL CARRIER: OpenBmcIntegerResult carries a rendered String (reason), not a typed
-// cause. openbmc_remote_jq_refusal_text converts the typed OpenBmcRemoteJqRefusal to prose at
-// this boundary, so every consumer downstream of this function is cause-blind for refusals --
-// they can test the prose or nothing. The typed cause is preserved through the execute layer
-// (OpenBmcRemoteJqRefused carries OpenBmcRemoteJqRefusal) and can be matched there. If a
-// downstream consumer needs cause discrimination, carry the typed cause through rather than
-// rendering at the caller boundary -- follow-up: typed refusal carrier for OpenBmcIntegerResult.
+// LOSSY REFUSAL CARRIER — §4b(3) RUNG DROP: OpenBmcIntegerResult carries a rendered String
+// (reason), not a typed cause. openbmc_remote_jq_refusal_text converts the typed
+// OpenBmcRemoteJqRefusal to prose at this boundary, so every consumer downstream of this
+// function is cause-blind for refusals — they can test the prose or nothing.
+//
+//   Previous rung (4b-2):  mechanically preventable — the typed cause was preserved through
+//                           the execute layer (OpenBmcRemoteJqRefused), reachable to any
+//                           function that calls openbmc_remote_jq_execute before this one.
+//   This rung (4b-3):       structurally guaranteed — the typed cause survives up to this
+//                           boundary and is replaceable at the caller by inserting between.
+//   Reason:                  the consumer (openbmc_fan_config_observe, the only caller) calls
+//                           openbmc_fan_config_stepwise_count then decodes the Int from
+//                           OpenBmcIntegerObserved, and the only tool reading the refusal
+//                           is the operator-console error display which needs prose.
+//   Bounded population:      count=1 (openbmc_fan_config_observe, same module).
+//   Restoration trigger:     OpenBmcIntegerResult carries a typed OpenBmcRemoteJqRefusal cause
+//                           instead of String reason; the renderer moves to the presentation
+//                           edge. The typed-variant test at remote_jq_execute_gates_on_unknown_
+//                           interpretation must remain the canonical assertion until then.
 fn openbmc_fan_config_stepwise_count(
   session: PasswordSshSession,
   config_path: NonEmptyStr,

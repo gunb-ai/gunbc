@@ -197,7 +197,7 @@ test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
 test fn remote_jq_execute_opens_under_observed_confirmation() -> Bool {
   let observed: RemoteExecCommandLiveConfirmation = RemoteExecCommandLiveConfirmationObserved {
     target: "hermetic-test-bmc",
-    result: "POSIX shell interpretation confirmed",
+    interpretation: openbmc_dropbear_interpretation,
   }
   let unexecuted: RemoteExecCommandLiveConfirmation = RemoteExecCommandLiveConfirmationUnexecuted {
     trigger: "hermetic test trigger",
