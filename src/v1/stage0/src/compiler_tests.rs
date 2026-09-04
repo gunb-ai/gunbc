@@ -3140,6 +3140,139 @@ mod compiler_tests {
         );
     }
 
+    // THE KERNEL-IDENTITY FACT HAS ONE AUTHORITY, AND THIS IS THE ROW THAT SEPARATES IT FROM THE
+    // PREFIX TEST IT REPLACED. `resolved_node_is_kernel_identity_for_name` moved from
+    // v1.compiler.infer_env -- where it was declared, never called, and sat ABOVE the module whose
+    // kernel_span mints the span it tests -- down to v1.std.core beside that minter, and
+    // declaration_provenance_of's KernelMinted arm now READS it instead of re-deriving the same
+    // comparison. The old infer_env body inlined `concat("<kernel:", name, ">")`, reproducing
+    // kernel_span's output by hand, which made it a second authority for the span FORMAT too.
+    //
+    // WHAT EACH ROW HOLDS. The mismatch row is the discriminating one: a node whose ident_span is a
+    // kernel span for a DIFFERENT name is not the kernel identity for the queried name, so a
+    // substring or prefix test over "<kernel:" -- the weaker authority the notes on both
+    // declarations warn about -- answers KernelMinted here and goes red. The positive control stops
+    // that row being satisfied by a predicate that had simply stopped answering true. The agreement
+    // row asserts the recognizer and the provenance mint give the SAME verdict on one node, which
+    // is what makes them one authority rather than two that happen to agree today.
+    #[test]
+    fn kernel_identity_is_one_authority_shared_by_recognizer_and_provenance_mint() {
+        fn node_with_ident_file(
+            name: &str,
+            ident_file: String,
+        ) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let base = shaped_type_node(name, Vec::new());
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: ident_file,
+                    start: 0,
+                    end: 0,
+                })),
+                ..(*base).clone()
+            })
+        }
+
+        // POSITIVE CONTROL -- the minter's own output, recognized for its own name.
+        let int_kernel = node_with_ident_file(
+            "Int",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                int_kernel.clone(),
+                "Int".to_string()
+            ),
+            "the recognizer must accept the span its own minter built for that name"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(int_kernel.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { minted_name }
+                    if minted_name == "Int"
+            ),
+            "the provenance mint must reach KernelMinted through that same recognizer"
+        );
+
+        // THE DISCRIMINATOR -- exact equality against the minter, never a "<kernel:" prefix.
+        let mismatched = node_with_ident_file(
+            "Nat",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            !crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                mismatched.clone(),
+                "Nat".to_string()
+            ),
+            "a kernel span for a DIFFERENT name is not this name's kernel identity -- a prefix test over \"<kernel:\" answers true here"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(mismatched.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "<kernel:Int>"
+            ),
+            "the mint must not upgrade a non-matching kernel-shaped span to KernelMinted"
+        );
+
+        // AGREEMENT -- one verdict, read twice. These cannot diverge while one authority answers.
+        for (name, file) in [
+            (
+                "Int",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            (
+                "Nat",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            ("Widget", "dag/std/nat.dag".to_string()),
+        ] {
+            let n = node_with_ident_file(name, file);
+            let recognized = crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                n.clone(),
+                name.to_string(),
+            );
+            let minted = matches!(
+                &*crate::v1_std_core::declaration_provenance_of(n.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { .. }
+            );
+            assert_eq!(
+                recognized, minted,
+                "recognizer and provenance mint must give one verdict for `{name}`"
+            );
+        }
+
+        // THE TWO SURVIVING ARMS, unchanged by the relocation.
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "dag/std/nat.dag".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "dag/std/nat.dag"
+            ),
+            "a real declaring file must still mint CorpusDeclared"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent
+            ),
+            "an empty ident file must still mint DeclarationIdentityAbsent"
+        );
+    }
+
     fn shaped_type_node(
         name: &str,
         children: Vec<std::rc::Rc<crate::v1_std_core::Node>>,
