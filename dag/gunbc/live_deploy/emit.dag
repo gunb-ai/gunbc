@@ -405,7 +405,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli",
+        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
