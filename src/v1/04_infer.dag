@@ -1154,12 +1154,18 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // The judgment is deliberately ONE-DIRECTIONAL. Required-into-optional is widening and is fine:
 // an Optional<T> position accepting a T loses nothing. Optional-into-required is the narrowing that
 // drops the absent case on the floor, and it is the only case decided here.
-// The two sides are judged ASYMMETRICALLY and that is deliberate. The DECLARED side recognizes both
-// spellings, because failing to recognize one refuses a correct program -- the expensive direction.
-// The PRODUCED side tests cardinality only, which is the narrow case this repair is scoped to; an
-// explicitly-spelled Optional<T> VALUE flowing into a required position is a real defect too, and
-// widening to catch it would enlarge a population that has not been measured. Stated rather than
-// implied so the gap is inspectable.
+// BOTH SIDES NOW READ THE SAME AUTHORITY, and this paragraph used to say otherwise. It described a
+// deliberate asymmetry -- declared side recognizes both spellings, produced side tests cardinality
+// only -- and listed the explicitly-spelled Optional<T> VALUE reaching a required position as an
+// inspectable gap. That gap is CLOSED: both operands are read through node_carries_optional, which
+// recognizes the cardinality marker and the nominal Optional coproduct alike, so the asymmetry the
+// sentence defended no longer exists.
+//
+// The correction is recorded rather than silently deleted because of how it survived: the
+// implementation moved and this prose stayed byte-stable, so a reader consulting the comment would
+// have been told a real repair was absent. Nothing refused, because no Accepted program reads a
+// comment. The same sentence had been duplicated into std.core beside node_carries_optional and had
+// to be corrected there too -- one claim in two places, which is why it outlived its subject.
 // THREE ANSWERS, NOT TWO. node_carries_optional answers `false` for a declared position whose type
 // is still an UNSUBSTITUTED type parameter -- the same `false` it gives a genuinely required
 // position -- so a Bool result conflated "proved required" with "could not tell", and the
@@ -1173,7 +1179,33 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // emits the same variant for an instantiation fallback -- so one of the two consumers necessarily
 // received a false remedy. The cause is therefore carried, and the rendered message derives its
 // trigger from the cause instead of asserting one.
-type OptionalNarrowingCause = DeclaredFormalUnsubstituted | ProducedTypeUnsubstituted | RecordFieldInstantiationUnavailable
+// WHY THIS IS A COPRODUCT AND NOT THE String IT REPLACED. The cause used to be free-form text, and
+// record_lit_instantiation_undetermined_diags handed that text to OptionalNarrowingUndetermined's
+// `declared` field -- the field the renderer describes as HOW THE POSITION IS RENDERED. So a real
+// diagnostic told the reader that a position was rendered "declared generic arity does not match
+// the supplied type arguments". Two different facts had been packed into one String and then put in
+// the wrong field, which no amount of rewording fixes: the cause and the declared type are separate
+// facts and need separate carriers.
+//
+// Closing the coproduct also makes the arms countable. A String cause can be spelled three ways at
+// three sites and read as three causes, or spelled one way and read as one when it is not.
+type RecordLitUnavailableCause
+  = DeclarationLookupUnavailable
+  | GenericArityDisagreement
+  | FieldTemplateSelectionFailed
+
+fn record_lit_unavailable_cause_text(c: RecordLitUnavailableCause) -> String {
+  match c {
+    DeclarationLookupUnavailable =>
+      "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here"
+    GenericArityDisagreement =>
+      "the declared generic arity does not match the number of supplied type arguments"
+    FieldTemplateSelectionFailed =>
+      "the record-literal field template could not be selected for this type name"
+  }
+}
+
+type OptionalNarrowingCause = DeclaredFormalUnsubstituted | ProducedTypeUnsubstituted
 
 fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
   match c {
@@ -1181,8 +1213,6 @@ fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
       "the DECLARED type at this position is an unsubstituted type parameter. Dissolves when builtin generic formals are substituted at the argument seam."
     ProducedTypeUnsubstituted =>
       "the PRODUCED value's type is an unsubstituted type parameter, so its cardinality is not yet established. Dissolves when call-site instantiation reaches this position."
-    RecordFieldInstantiationUnavailable =>
-      "the record-literal field template could not be instantiated, so the declared field type is unavailable here. Dissolves when record instantiation reports a typed cause instead of an absent template."
   }
 }
 
@@ -1563,7 +1593,7 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 type RecordLitInstantiation =
   | InstantiationNotApplicable
   | Instantiated { fields: List<Node> }
-  | InstantiationUnavailable { cause: String }
+  | InstantiationUnavailable { cause: RecordLitUnavailableCause }
 
 // A record-literal type name that does not resolve on the TYPE axis is NOT
 // UNAVAILABLE, and the distinction cost 15 silent admissions. A record literal
@@ -1585,6 +1615,18 @@ type RecordLitInstantiation =
 // declined on 16 ordinary zero-field constructions (`NotAdmissionBearingReference {}`,
 // `EscapeProcessingRefused`, `CliProgramOperand`). The arity question is only
 // meaningful once the declaration actually declares parameters.
+// THE LOOKUP MISS IS NOT EVIDENCE OF A VARIANT, so it is no longer spelled like one. The type-axis
+// Absent arm below used to return NotApplicable for every lookup_type_for miss, justified by 15
+// measured cases that turned out to be coproduct variants. Those cases establish that SOME misses
+// are variants; they do not establish that every miss is. A miss also occurs when neither the node
+// identity nor the authored name resolves at all, which is the OPPOSITE disposition -- the question
+// arises and cannot be answered.
+//
+// Repairing the 15 by authorizing the fallback for every miss would have traded a MEASURED false
+// negative for an UNMEASURED silent fallback on a genuine miss: a known 15 for an unknown N, in the
+// direction that hides. So the variant is identified AFFIRMATIVELY through
+// record_lit_variant_from_expected -- the authority that already answers this question -- and only
+// a miss that is NOT a variant is reported as DeclarationLookupUnavailable.
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
@@ -1599,7 +1641,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                   InstantiationNotApplicable
                 }
                 else if (decl.params |> count) != (exp.children |> count) {
-                  InstantiationUnavailable { cause: "declared generic arity does not match the supplied type arguments" }
+                  InstantiationUnavailable { cause: GenericArityDisagreement }
                 } else {
                   let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                     let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
@@ -1609,7 +1651,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                     }
                   )
                   match record_lit_instantiation_template_fields(tn: tn, exp: exp, decl: decl, scope: scope) {
-                    Absent => InstantiationUnavailable { cause: "the record-literal field template could not be selected for this type name" }
+                    Absent => InstantiationUnavailable { cause: FieldTemplateSelectionFailed }
                     Present { value: template_fields } =>
                       Instantiated { fields: template_fields |> map(sf =>
                         Node {
@@ -1625,7 +1667,11 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       ) }
                   }
                 }
-              Absent => InstantiationNotApplicable
+              Absent =>
+                match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
+                  Present { value: _ } => InstantiationNotApplicable
+                  Absent => InstantiationUnavailable { cause: DeclarationLookupUnavailable }
+                }
             }
           }
         Absent => InstantiationNotApplicable
@@ -1651,7 +1697,12 @@ fn record_lit_instantiation_fields(v: RecordLitInstantiation) -> List<Node>? {
 // the repair for the silent admission: refusing to answer is only honest when the refusal is
 // OBSERVABLE. Unavailable now emits the undetermined disposition, carrying the instantiation's own
 // typed cause, at the record-field seam.
-fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged: Bool, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+// THE DECLARED TYPE AND THE CAUSE ARE TWO FACTS AND NOW SIT IN TWO FIELDS. This function used to
+// pass the unavailable cause STRING as `declared`, which the renderer describes as how the position
+// is rendered -- so a real diagnostic read "the position is rendered 'declared generic arity does
+// not match the supplied type arguments'". It is rendered through node_type_shape, the same
+// authority the direct-call seam uses, so both seams describe a position the same way.
+fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged: Bool, declared: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   match v {
     InstantiationNotApplicable => []
     Instantiated { fields: _ } => []
@@ -1660,8 +1711,8 @@ fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged
       else {
         [make_error_node(
           diagnostic: OptionalNarrowingUndetermined {
-            declared: c,
-            cause: optional_narrowing_cause_text(c: RecordFieldInstantiationUnavailable),
+            declared: node_type_shape(n: declared, source_indices: source_indices),
+            cause: record_lit_unavailable_cause_text(c: c),
             span: span
           },
           module_name: module_name
@@ -8069,7 +8120,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     InferResult {
       typed: texpr,
       diagnostics: concat(concat(fi_diags, alias_struct_diags),
-        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, span: span, module_name: scope.module_name))
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, declared: anon_node, span: span, module_name: scope.module_name, source_indices: scope.type_env.source_indices))
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
@@ -8145,7 +8196,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     InferResult {
       typed: texpr,
       diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags),
-        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, span: span, module_name: scope.module_name))
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, declared: resolved_node, span: span, module_name: scope.module_name, source_indices: scope.type_env.source_indices))
     }
   }
 }

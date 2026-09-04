@@ -3660,7 +3660,7 @@ mod compiler_tests {
     fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {
         use crate::v1_compiler_infer::RecordLitInstantiation as RLI;
         let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {
-            cause: "declared generic arity does not match the supplied type arguments".to_string(),
+            cause: crate::v1_compiler_infer::RecordLitUnavailableCause::GenericArityDisagreement,
         });
         assert!(
             !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),
@@ -3669,8 +3669,10 @@ mod compiler_tests {
         let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(
             unavailable.clone(),
             false,
+            named_type_node("Thing"),
             crate::v1_std_core::no_span(),
             "probe.module".to_string(),
+            std::rc::Rc::new(HashMap::new()),
         );
         assert_eq!(
             diags.len(),
@@ -3696,6 +3698,79 @@ mod compiler_tests {
             )),
             "POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer"
         );
+    }
+
+    fn narrowing_refusals_for(src: &str) -> usize {
+        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: "probe.dag".to_string(),
+            content: src.to_string(),
+        });
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![source]),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        result
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                matches!(
+                    &*d.diagnostic,
+                    crate::v1_std_core::CompilerDiagnostic::OptionalValueInRequiredPosition { .. }
+                )
+            })
+            .count()
+    }
+
+    #[test]
+    fn optional_into_required_refuses_through_direct_call_application() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\nfn needs_required(t: Thing) -> Int { t.n }\nfn opt_source() -> Thing? { none }\nfn call_with_optional() -> Int { needs_required(t: opt_source()) }\n"),
+                    1,
+                    "SEAM STOPPED CONSUMING THE JUDGMENT: authored source passing an optional-returning call into a REQUIRED formal produced no optional-into-required refusal. The helper answering correctly in isolation does not establish that direct-call application inference still asks it or still keeps the answer"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\nfn needs_required(t: Thing) -> Int { t.n }\nfn req_source() -> Thing { Thing { n: 1 } }\nfn call_with_required() -> Int { needs_required(t: req_source()) }\n"),
+                    0,
+                    "GREEN CONTROL FAILED: the same call shape with a REQUIRED-returning callee was refused, so the fixture above cannot distinguish a working wall from a path that refuses everything"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("optional_into_required_refuses_through_direct_call_application panicked");
+    }
+
+    #[test]
+    fn optional_into_required_refuses_through_record_literal_inference() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Holder { t: Thing }\nfn opt_source() -> Thing? { none }\nfn build() -> Holder { Holder { t: opt_source() } }\n"),
+                    1,
+                    "SEAM STOPPED CONSUMING THE JUDGMENT: an optional value in a REQUIRED record-literal field produced no refusal through record-literal structural inference"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Box<A> { held: A }\nfn opt_source() -> Thing? { none }\nfn build_generic() -> Box<Thing> { Box { held: opt_source() } }\n"),
+                    1,
+                    "GENERIC INSTANTIATION ROUTE LOST ITS JUDGMENT: the same defect inside a GENERIC record literal went unrefused, which is the instantiated path failing to hand the substituted field type to the narrowing check"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Holder { t: Thing }\nfn req_source() -> Thing { Thing { n: 1 } }\nfn build_ok() -> Holder { Holder { t: req_source() } }\n"),
+                    0,
+                    "GREEN CONTROL FAILED: a required value in the same required field was refused, so the two fixtures above cannot distinguish a working wall from a path that refuses everything"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Colour = | Red | Green { shade: Int }\nfn variant_lit() -> Colour { Green { shade: 3 } }\n"),
+                    0,
+                    "VARIANT ROUTE FALSE POSITIVE: a coproduct variant literal is NOT a generic instantiation, and accusing it is the regression that withdrawing the fallback from the ordinary variant route caused before"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("optional_into_required_refuses_through_record_literal_inference panicked");
     }
 
     #[test]

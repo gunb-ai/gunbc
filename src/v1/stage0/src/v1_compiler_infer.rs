@@ -11,6 +11,7 @@ use self::LiteralBoundary::*;
 use self::OptionalNarrowing::*;
 use self::OptionalNarrowingCause::*;
 use self::RecordLitInstantiation::*;
+use self::RecordLitUnavailableCause::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -1510,17 +1511,33 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
+pub enum RecordLitUnavailableCause {
+    DeclarationLookupUnavailable,
+    GenericArityDisagreement,
+    FieldTemplateSelectionFailed,
+}
+
+pub fn record_lit_unavailable_cause_text(c: RecordLitUnavailableCause) -> String {
+    match c.clone() {
+    RecordLitUnavailableCause::DeclarationLookupUnavailable => "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here".to_string(),
+    RecordLitUnavailableCause::GenericArityDisagreement => "the declared generic arity does not match the number of supplied type arguments".to_string(),
+    RecordLitUnavailableCause::FieldTemplateSelectionFailed => "the record-literal field template could not be selected for this type name".to_string(),
+}
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
 pub enum OptionalNarrowingCause {
     DeclaredFormalUnsubstituted,
     ProducedTypeUnsubstituted,
-    RecordFieldInstantiationUnavailable,
 }
 
 pub fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
     match c.clone() {
     OptionalNarrowingCause::DeclaredFormalUnsubstituted => "the DECLARED type at this position is an unsubstituted type parameter. Dissolves when builtin generic formals are substituted at the argument seam.".to_string(),
     OptionalNarrowingCause::ProducedTypeUnsubstituted => "the PRODUCED value's type is an unsubstituted type parameter, so its cardinality is not yet established. Dissolves when call-site instantiation reaches this position.".to_string(),
-    OptionalNarrowingCause::RecordFieldInstantiationUnavailable => "the record-literal field template could not be instantiated, so the declared field type is unavailable here. Dissolves when record instantiation reports a typed cause instead of an absent template.".to_string(),
 }
 }
 
@@ -2030,7 +2047,7 @@ pub fn field_substitution_carrier(
 pub enum RecordLitInstantiation {
     InstantiationNotApplicable,
     Instantiated { fields: Rc<Vec<Rc<Node>>> },
-    InstantiationUnavailable { cause: String },
+    InstantiationUnavailable { cause: RecordLitUnavailableCause },
 }
 
 pub fn record_lit_instantiated_fields(
@@ -2056,8 +2073,8 @@ pub fn record_lit_instantiated_fields(
                                     != (exp.children.clone().len() as i64))
                                 {
                                     Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-    cause: "declared generic arity does not match the supplied type arguments".to_string(),
-})
+                                        cause: RecordLitUnavailableCause::GenericArityDisagreement,
+                                    })
                                 } else {
                                     {
                                         let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
@@ -2069,7 +2086,7 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
 });
                                         match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
     std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-    cause: "the record-literal field template could not be selected for this type name".to_string(),
+    cause: RecordLitUnavailableCause::FieldTemplateSelectionFailed,
 }),
     Some(template_fields) => Rc::new(RecordLitInstantiation::Instantiated {
     fields: Rc::new({ let mut __result = Vec::new(); for sf in template_fields.iter().cloned() { __result.push(Rc::new(Node {
@@ -2101,9 +2118,18 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
                                 }
                             }
                         }
-                        std::option::Option::None => {
-                            Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-                        }
+                        std::option::Option::None => match record_lit_variant_from_expected(
+                            type_name.clone(),
+                            expected.clone(),
+                            scope.clone(),
+                        ) {
+                            Some(_) => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
+                            std::option::Option::None => {
+                                Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                    cause: RecordLitUnavailableCause::DeclarationLookupUnavailable,
+                                })
+                            }
+                        },
                     }
                 }
             }
@@ -2128,8 +2154,10 @@ pub fn record_lit_instantiation_fields(v: Rc<RecordLitInstantiation>) -> Option<
 pub fn record_lit_instantiation_undetermined_diags(
     v: Rc<RecordLitInstantiation>,
     judged: bool,
+    declared: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match (*v.clone()).clone() {
         RecordLitInstantiation::InstantiationNotApplicable => Rc::new(vec![]),
@@ -2140,10 +2168,11 @@ pub fn record_lit_instantiation_undetermined_diags(
             } else {
                 Rc::new(vec![crate::v1_std_core::make_error_node(
                     Rc::new(CompilerDiagnostic::OptionalNarrowingUndetermined {
-                        declared: c.clone(),
-                        cause: optional_narrowing_cause_text(
-                            OptionalNarrowingCause::RecordFieldInstantiationUnavailable,
+                        declared: crate::v1_compiler_infer_types::node_type_shape(
+                            declared.clone(),
+                            source_indices.clone(),
                         ),
+                        cause: record_lit_unavailable_cause_text(c.clone()),
                         span: span.clone(),
                     }),
                     module_name.clone(),
@@ -13188,8 +13217,10 @@ Rc::new(FieldInferResult {
                         record_lit_instantiation_undetermined_diags(
                             instantiation.clone(),
                             ((struct_fields.clone().len() as i64) > 0),
+                            anon_node.clone(),
                             span.clone(),
                             scope.module_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
                         ),
                     ),
                 })
@@ -13369,8 +13400,10 @@ Rc::new(FieldInferResult {
                         record_lit_instantiation_undetermined_diags(
                             instantiation.clone(),
                             ((struct_fields.clone().len() as i64) > 0),
+                            resolved_node.clone(),
                             span.clone(),
                             scope.module_name.clone(),
+                            scope.type_env.clone().source_indices.clone(),
                         ),
                     ),
                 })
@@ -25824,11 +25857,15 @@ pub fn reconcile_with_census_extra(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationLookupUnavailable;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GenericArityDisagreement;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FieldTemplateSelectionFailed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFormalUnsubstituted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProducedTypeUnsubstituted;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RecordFieldInstantiationUnavailable;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionRecordLiteralField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

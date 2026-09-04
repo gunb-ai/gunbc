@@ -1,0 +1,35 @@
+module gunbc.guarantee_stall.emitted_field_access_ignores_value_shape_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+// ONE FieldSummary, TWO CONSUMERS, AND ONLY ONE OF THEM READS BOTH HALVES. The reconciler produces
+// a FieldSummary carrying an access_style AND a value_shape; value_shape is the checker's decision
+// about whether the field access yields an Optional or a plain value. The interpreter's
+// eval_field_access now consumes both. v1.compiler.emit_rust emit_typed_field_access matches on
+// access_style alone and never reads value_shape at all.
+//
+// THE CONSEQUENCE IS A SEMANTIC DIVERGENCE, NOT A COSMETIC ONE: a field access the checker marked
+// OptionalValue emits byte-identical Rust to one marked PlainValue, so the interpreted and emitted
+// arms of the same program can disagree about whether a value is present. That is precisely the
+// self-host equivalence claim -- the emitted module must be behaviorally equivalent to the seed on
+// a discriminating corpus -- failing on a fact the model already carries.
+//
+// WHY THIS IS OutsideTheLadder RATHER THAN A LOW RUNG: there is no evidence either way. The emitted
+// arm has no discriminating test, so the divergence is neither refused, nor proven, nor measured.
+// A rung would claim an executed observation that does not exist, and the honest report of an
+// unobserved boundary is not the bottom of the ladder but off it.
+//
+// THIS IS A DIFFERENT SUBJECT FROM narrowing_arm_not_a_function_of_the_rendering_stall, which
+// concerns which optional-narrowing arm fired and what its diagnostic renders. That row names
+// neither emit_typed_field_access nor access_style/value_shape parity, and it must not be cited as
+// covering this.
+data emitted_field_access_ignores_value_shape_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1.compiler.emit_rust emit_typed_field_access branches on FieldSummary access_style and never reads value_shape, while the interpreter's eval_field_access consumes both, so one reconciled field-access fact has two consumers that can disagree -- an OptionalValue access emits identical Rust to a PlainValue one and the emitted program may differ from the interpreted one on whether a value is present",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1.compiler.emit_rust.emit_typed_field_access", tail: Empty {} } },
+  next_rung_trigger: "emit_typed_field_access CONSUMES value_shape from the same FieldSummary the interpreter reads, demonstrated by a discriminating emitted test carrying BOTH controls -- a field access the checker marked OptionalValue whose emitted program observes the value ABSENT, and one marked PlainValue whose emitted program observes it PRESENT -- with the pair red today and green once the emitted arm reads the fact. A test exercising only the present case does NOT retire this row, because the current emitter already renders that case correctly and such a test is green by construction. Nor does routing value_shape into emit_typed_field_access without a control, because an unread field and a read one are indistinguishable from the emitted bytes alone"
+}

@@ -2488,9 +2488,12 @@ fn module_path_segments(path: String) -> List<String> {
 //
 //   EXCLUDED -- required-into-optional. Widening loses nothing.
 //
-//   NOT COVERED -- an explicitly-spelled Optional<T> VALUE reaching a required position. The
-//   DECLARED side recognizes both spellings (below); the PRODUCED side tests cardinality only, which
-//   is a stated gap rather than a decision, because widening it enlarges an unmeasured population.
+//   COVERED, AND THIS ENTRY USED TO SAY IT WAS NOT -- an explicitly-spelled Optional<T> VALUE
+//   reaching a required position. Both operands are now read through node_carries_optional, so the
+//   nominal Optional coproduct and the cardinality marker are recognized on the produced side as
+//   well as the declared one. The prior text called this a stated gap; the gap is closed, and the
+//   correction is noted rather than deleted because the sentence outlived its subject by staying
+//   byte-stable while the implementation moved beneath it.
 fn node_carries_optional(n: Node) -> Bool {
   match n.return_cardinality {
     CardOptional => true
