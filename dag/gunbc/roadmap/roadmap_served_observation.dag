@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_authority_observed }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body }
+import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
 import gunbc.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page,
@@ -33,16 +33,21 @@ import gunbc.roadmap_belt_actuate {
 // load the first byte took seven seconds. Observation is a property of the HOST at a moment, not of
 // a request, so it belongs to the belt tick, which already walks the same worktrees once a minute
 // and already persists its own receipt beside this one. The tick observes once and writes the four
-// served surfaces as finished response bytes; serve reads one file per request and spawns nothing,
-// holds nothing, and can be replicated freely. A reader that finds no snapshot refuses with a typed
-// 503 — it never falls back to observing for itself, because that fallback would silently restore
-// the per-request cost the split exists to remove (the absorbing fallback, DESIGN 5).
+// served surfaces as finished response bytes; serve reads two small files per request and spawns
+// nothing, holds nothing, and can be replicated freely. A reader that finds no snapshot refuses with
+// a typed 503 — it never falls back to observing for itself, because that fallback would silently
+// restore the per-request cost the split exists to remove (the absorbing fallback, DESIGN 5).
 //
-// The surfaces are stored RENDERED rather than as typed observations because the rendered form is
-// the one every consumer wants and the one whose codec already exists (bytes), where a typed
-// snapshot would need a second JSON codec for WorkflowAttemptProgress beside the wire one the
-// endpoints already emit. Staleness is a first-class fact: observed_at is carried on the snapshot
-// and published on /observation.json so a reader can tell a live host from a stalled belt.
+// THE SURFACES ARE FILES, NOT JSON STRING MEMBERS. The first cut embedded the rendered bodies in one
+// JSON document, and the reader then paid the JSON string scanner once per character of a 300 KB
+// body: extdeps.languages.json.grammar json_text_parse_string_inner recurses per code point, which
+// crossed the interpreter's call-depth wall and cost 16 s per request — worse than the observation
+// it replaced. The rendered form is bytes, so it is stored as bytes: one body file per surface,
+// digested by the same authority the static site surface uses, and a small index carrying
+// observed_at, each surface's status and digest, and the index's own identity. The reader parses
+// only the index, reads exactly the one body it serves, and refuses on a digest mismatch — which
+// also makes the moment between a new index and an old body a typed refusal rather than a silently
+// mixed page.
 
 type ServedObservationKind
   = DailyPage
@@ -61,20 +66,42 @@ type ServedObservationSnapshot {
   surfaces: List<ServedObservationSurface>
 }
 
+// The index entry is what the reader learns about a surface before touching its body: what it is,
+// what status it carries, and the digest the body must hash to.
+type ServedObservationEntry {
+  kind: ServedObservationKind
+  status: Int
+  digest: String
+}
+
+type ServedObservationIndex {
+  observed_at: String
+  entries: List<ServedObservationEntry>
+}
+
 type ServedObservationRead
-  = ServedObservationPresent { snapshot: ServedObservationSnapshot }
+  = ServedObservationPresent { index: ServedObservationIndex }
   | ServedObservationAbsent
   | ServedObservationUnreadable { reason: String }
 
-data served_observation_schema: String = "roadmap-served-observation/v1"
+data served_observation_schema: String = "roadmap-served-observation/v2"
 
-data served_observation_file_name: String = "served-observation.json"
+data served_observation_index_file_name: String = "served-observation.json"
 
 fn served_observation_path_for_instance(instance: HostDashboardInstance) -> String {
   join([
     instance_receipts_dir(instance_root: instance.instance_root as String),
     "/",
-    served_observation_file_name,
+    served_observation_index_file_name,
+  ], "")
+}
+
+fn served_observation_body_path_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> String {
+  join([
+    instance_receipts_dir(instance_root: instance.instance_root as String),
+    "/served-observation-",
+    served_observation_kind_key(kind: kind),
+    ".body",
   ], "")
 }
 
@@ -118,7 +145,7 @@ fn served_observation_kind_of_key(key: String) -> ServedObservationKindDecode {
 }
 
 // The status set a surface can carry is closed: 200 observed, 503 observation refused, 500 the page
-// emitter refused. Stored as its decimal label and decoded by membership, so a snapshot carrying any
+// emitter refused. Stored as its decimal label and decoded by membership, so an index carrying any
 // other status is unreadable rather than served.
 type ServedObservationStatusDecode
   = ServedObservationStatusDecoded { status: Int }
@@ -178,101 +205,116 @@ fn served_observation_snapshot_observe_for_instance(instance: HostDashboardInsta
   }
 }
 
-fn served_observation_surface_identity_text(s: ServedObservationSurface) -> String {
-  join([served_observation_kind_key(kind: s.kind), "|", to_string(s.status), "|", to_string(string_length(s: s.body)), "|", s.body], "")
+fn served_observation_body_digest(body: String) -> String {
+  site_artifact_digest(body: body).digest as String
 }
 
-fn served_observation_identity_text(snapshot: ServedObservationSnapshot) -> String {
+fn served_observation_entry_of_surface(s: ServedObservationSurface) -> ServedObservationEntry {
+  ServedObservationEntry { kind: s.kind, status: s.status, digest: served_observation_body_digest(body: s.body) }
+}
+
+fn served_observation_index_of_snapshot(snapshot: ServedObservationSnapshot) -> ServedObservationIndex {
+  ServedObservationIndex {
+    observed_at: snapshot.observed_at,
+    entries: snapshot.surfaces |> map(s => served_observation_entry_of_surface(s: s)),
+  }
+}
+
+fn served_observation_entry_identity_text(e: ServedObservationEntry) -> String {
+  join([served_observation_kind_key(kind: e.kind), "|", to_string(e.status), "|", e.digest], "")
+}
+
+fn served_observation_identity_text(index: ServedObservationIndex) -> String {
   join([
-    snapshot.observed_at, "|",
-    join(snapshot.surfaces |> map(s => served_observation_surface_identity_text(s: s)), "\n"),
+    index.observed_at, "|",
+    join(index.entries |> map(e => served_observation_entry_identity_text(e: e)), "\n"),
   ], "")
 }
 
-fn served_observation_identity_hex(snapshot: ServedObservationSnapshot) -> String {
+fn served_observation_identity_hex(index: ServedObservationIndex) -> String {
   content_hash_tagged_structural(
-    tag: "roadmap-served-observation-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: served_observation_identity_text(snapshot: snapshot) as NonEmptyStr),
+    tag: "roadmap-served-observation-v2" as NonEmptyStr,
+    payload: content_hash_atom(value: served_observation_identity_text(index: index) as NonEmptyStr),
   ).digest as String
 }
 
-fn served_observation_surface_json_value(s: ServedObservationSurface) -> JsonValue {
+fn served_observation_entry_json_value(e: ServedObservationEntry) -> JsonValue {
   json_object(members: [
-    json_kv(key: "kind", value: json_string(s: served_observation_kind_key(kind: s.kind))),
-    json_kv(key: "status", value: json_string(s: to_string(s.status))),
-    json_kv(key: "body", value: json_string(s: s.body)),
+    json_kv(key: "kind", value: json_string(s: served_observation_kind_key(kind: e.kind))),
+    json_kv(key: "status", value: json_string(s: to_string(e.status))),
+    json_kv(key: "digest", value: json_string(s: e.digest)),
   ])
 }
 
-fn served_observation_json_value(snapshot: ServedObservationSnapshot) -> JsonValue {
+fn served_observation_index_json_value(index: ServedObservationIndex) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: served_observation_schema)),
-    json_kv(key: "observed_at", value: json_string(s: snapshot.observed_at)),
-    json_kv(key: "surfaces", value: json_array(elements: snapshot.surfaces |> map(s => served_observation_surface_json_value(s: s)))),
-    json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(snapshot: snapshot))),
+    json_kv(key: "observed_at", value: json_string(s: index.observed_at)),
+    json_kv(key: "surfaces", value: json_array(elements: index.entries |> map(e => served_observation_entry_json_value(e: e)))),
+    json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(index: index))),
   ])
 }
 
-fn served_observation_wire(snapshot: ServedObservationSnapshot) -> String {
-  serialize_json(v: served_observation_json_value(snapshot: snapshot))
+fn served_observation_index_wire(index: ServedObservationIndex) -> String {
+  serialize_json(v: served_observation_index_json_value(index: index))
 }
 
-type ServedObservationSurfaceDecode
-  = ServedObservationSurfaceDecoded { surface: ServedObservationSurface }
-  | ServedObservationSurfaceUnreadable { reason: String }
+type ServedObservationEntryDecode
+  = ServedObservationEntryDecoded { entry: ServedObservationEntry }
+  | ServedObservationEntryUnreadable { reason: String }
 
-fn served_observation_surface_of_json(doc: JsonValue) -> ServedObservationSurfaceDecode {
+fn served_observation_entry_of_json(doc: JsonValue) -> ServedObservationEntryDecode {
   match json_object_unique_member(v: doc, key: "kind") {
     JsonMemberFound { value: JsonString { value: kind_key } } =>
       match served_observation_kind_of_key(key: kind_key) {
         ServedObservationKindUnknown { key } =>
-          ServedObservationSurfaceUnreadable { reason: join(["served observation surface kind is unknown: ", key], "") }
+          ServedObservationEntryUnreadable { reason: join(["served observation surface kind is unknown: ", key], "") }
         ServedObservationKindDecoded { kind } =>
           match json_object_unique_member(v: doc, key: "status") {
             JsonMemberFound { value: JsonString { value: status_label } } =>
               match served_observation_status_of_label(label: status_label) {
                 ServedObservationStatusUnknown { label } =>
-                  ServedObservationSurfaceUnreadable { reason: join(["served observation surface status is outside the closed set: ", label], "") }
+                  ServedObservationEntryUnreadable { reason: join(["served observation surface status is outside the closed set: ", label], "") }
                 ServedObservationStatusDecoded { status } =>
-                  match json_object_unique_member(v: doc, key: "body") {
-                    JsonMemberFound { value: JsonString { value: body } } =>
-                      ServedObservationSurfaceDecoded { surface: ServedObservationSurface { kind: kind, status: status, body: body } }
-                    _ => ServedObservationSurfaceUnreadable { reason: "served observation surface body is missing" }
+                  match json_object_unique_member(v: doc, key: "digest") {
+                    JsonMemberFound { value: JsonString { value: digest } } =>
+                      ServedObservationEntryDecoded { entry: ServedObservationEntry { kind: kind, status: status, digest: digest } }
+                    _ => ServedObservationEntryUnreadable { reason: "served observation surface digest is missing" }
                   }
               }
-            _ => ServedObservationSurfaceUnreadable { reason: "served observation surface status is missing" }
+            _ => ServedObservationEntryUnreadable { reason: "served observation surface status is missing" }
           }
       }
-    _ => ServedObservationSurfaceUnreadable { reason: "served observation surface kind is missing" }
+    _ => ServedObservationEntryUnreadable { reason: "served observation surface kind is missing" }
   }
 }
 
-type ServedObservationSurfacesDecode
-  = ServedObservationSurfacesDecoded { surfaces: List<ServedObservationSurface> }
-  | ServedObservationSurfacesUnreadable { reason: String }
+type ServedObservationEntriesDecode
+  = ServedObservationEntriesDecoded { entries: List<ServedObservationEntry> }
+  | ServedObservationEntriesUnreadable { reason: String }
 
-fn served_observation_surfaces_from_member(doc: JsonValue) -> ServedObservationSurfacesDecode {
+fn served_observation_entries_from_member(doc: JsonValue) -> ServedObservationEntriesDecode {
   match json_object_unique_member(v: doc, key: "surfaces") {
     JsonMemberFound { value: JsonArray { elements } } =>
-      fold(elements, init: ServedObservationSurfacesDecoded { surfaces: [] }, f: (acc, e) => match acc {
-        ServedObservationSurfacesUnreadable { reason } => ServedObservationSurfacesUnreadable { reason: reason }
-        ServedObservationSurfacesDecoded { surfaces } =>
-          match served_observation_surface_of_json(doc: e) {
-            ServedObservationSurfaceUnreadable { reason } => ServedObservationSurfacesUnreadable { reason: reason }
-            ServedObservationSurfaceDecoded { surface } => ServedObservationSurfacesDecoded { surfaces: concat(surfaces, [surface]) }
+      fold(elements, init: ServedObservationEntriesDecoded { entries: [] }, f: (acc, e) => match acc {
+        ServedObservationEntriesUnreadable { reason } => ServedObservationEntriesUnreadable { reason: reason }
+        ServedObservationEntriesDecoded { entries } =>
+          match served_observation_entry_of_json(doc: e) {
+            ServedObservationEntryUnreadable { reason } => ServedObservationEntriesUnreadable { reason: reason }
+            ServedObservationEntryDecoded { entry } => ServedObservationEntriesDecoded { entries: concat(entries, [entry]) }
           }
       })
-    JsonMemberFound { value: _ } => ServedObservationSurfacesUnreadable { reason: "served observation surfaces is not an array" }
-    JsonMemberAbsent => ServedObservationSurfacesUnreadable { reason: "served observation surfaces is missing" }
-    JsonMemberDuplicated { count: _ } => ServedObservationSurfacesUnreadable { reason: "served observation surfaces is duplicated" }
-    JsonMemberNotAnObject => ServedObservationSurfacesUnreadable { reason: "served observation is not an object" }
+    JsonMemberFound { value: _ } => ServedObservationEntriesUnreadable { reason: "served observation surfaces is not an array" }
+    JsonMemberAbsent => ServedObservationEntriesUnreadable { reason: "served observation surfaces is missing" }
+    JsonMemberDuplicated { count: _ } => ServedObservationEntriesUnreadable { reason: "served observation surfaces is duplicated" }
+    JsonMemberNotAnObject => ServedObservationEntriesUnreadable { reason: "served observation is not an object" }
   }
 }
 
 fn served_observation_decode(raw: String) -> ServedObservationRead {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap } =>
-      ServedObservationUnreadable { reason: concat("the served observation is ", json_document_gap_text(gap: gap)) }
+      ServedObservationUnreadable { reason: concat("the served observation index is ", json_document_gap_text(gap: gap)) }
     JsonDocumentParsed { value: doc } =>
       match json_object_unique_member(v: doc, key: "schema") {
         JsonMemberFound { value: JsonString { value: schema } } =>
@@ -281,16 +323,16 @@ fn served_observation_decode(raw: String) -> ServedObservationRead {
           } else {
             match json_object_unique_member(v: doc, key: "observed_at") {
               JsonMemberFound { value: JsonString { value: observed_at } } =>
-                match served_observation_surfaces_from_member(doc: doc) {
-                  ServedObservationSurfacesUnreadable { reason } => ServedObservationUnreadable { reason: reason }
-                  ServedObservationSurfacesDecoded { surfaces } => {
-                    let snapshot = ServedObservationSnapshot { observed_at: observed_at, surfaces: surfaces }
+                match served_observation_entries_from_member(doc: doc) {
+                  ServedObservationEntriesUnreadable { reason } => ServedObservationUnreadable { reason: reason }
+                  ServedObservationEntriesDecoded { entries } => {
+                    let index = ServedObservationIndex { observed_at: observed_at, entries: entries }
                     match json_object_unique_member(v: doc, key: "snapshot_identity") {
                       JsonMemberFound { value: JsonString { value: claimed } } =>
-                        if claimed != served_observation_identity_hex(snapshot: snapshot) {
+                        if claimed != served_observation_identity_hex(index: index) {
                           ServedObservationUnreadable { reason: "served observation identity does not match its members" }
                         } else {
-                          ServedObservationPresent { snapshot: snapshot }
+                          ServedObservationPresent { index: index }
                         }
                       _ => ServedObservationUnreadable { reason: "served observation snapshot_identity is missing" }
                     }
@@ -310,7 +352,7 @@ fn served_observation_read_from_filesystem(success: Bool, content: String, error
   } else if string_contains(s: error, pattern: "No such file") || string_contains(s: error, pattern: "not found") {
     ServedObservationAbsent
   } else {
-    ServedObservationUnreadable { reason: join(["served observation could not be read: ", error], "") }
+    ServedObservationUnreadable { reason: join(["served observation index could not be read: ", error], "") }
   }
 }
 
@@ -319,15 +361,39 @@ fn served_observation_read_for_instance(instance: HostDashboardInstance) -> Serv
   served_observation_read_from_filesystem(success: read.success, content: read.content, error: read.error)
 }
 
+// Bodies first, index last: a reader that races the writer sees either the previous complete
+// snapshot or the new one, and a body that does not hash to its index entry is refused.
+fn served_observation_write_bodies_for_instance(instance: HostDashboardInstance, surfaces: List<ServedObservationSurface>) -> BeltPassOutcome {
+  fold(surfaces, init: BeltPassRecorded, f: (acc, s) => match acc {
+    BeltPassRecorded => {
+      let write = Filesystem.Write(
+        path: served_observation_body_path_for_instance(instance: instance, kind: s.kind),
+        content: s.body,
+      )
+      if write.success {
+        BeltPassRecorded
+      } else {
+        BeltPassFailed { reason: join(["the served observation ", served_observation_kind_key(kind: s.kind), " body could not be written: ", write.error], "") }
+      }
+    }
+    _ => acc
+  })
+}
+
 fn served_observation_write_for_instance(instance: HostDashboardInstance, snapshot: ServedObservationSnapshot) -> BeltPassOutcome {
-  let write = Filesystem.Write(
-    path: served_observation_path_for_instance(instance: instance),
-    content: served_observation_wire(snapshot: snapshot),
-  )
-  if write.success {
-    BeltPassRecorded
-  } else {
-    BeltPassFailed { reason: join(["the served observation could not be written: ", write.error], "") }
+  match served_observation_write_bodies_for_instance(instance: instance, surfaces: snapshot.surfaces) {
+    BeltPassRecorded => {
+      let write = Filesystem.Write(
+        path: served_observation_path_for_instance(instance: instance),
+        content: served_observation_index_wire(index: served_observation_index_of_snapshot(snapshot: snapshot)),
+      )
+      if write.success {
+        BeltPassRecorded
+      } else {
+        BeltPassFailed { reason: join(["the served observation index could not be written: ", write.error], "") }
+      }
+    }
+    other => other
   }
 }
 
@@ -338,17 +404,40 @@ fn served_observation_observe_and_write_for_instance(instance: HostDashboardInst
   )
 }
 
-type ServedObservationSurfaceLookup
-  = ServedObservationSurfaceFound { surface: ServedObservationSurface }
-  | ServedObservationSurfaceMissing
+type ServedObservationEntryLookup
+  = ServedObservationEntryFound { entry: ServedObservationEntry }
+  | ServedObservationEntryMissing
 
-fn served_observation_surface_lookup(snapshot: ServedObservationSnapshot, kind: ServedObservationKind) -> ServedObservationSurfaceLookup {
+fn served_observation_entry_lookup(index: ServedObservationIndex, kind: ServedObservationKind) -> ServedObservationEntryLookup {
   let key = served_observation_kind_key(kind: kind)
-  fold(snapshot.surfaces, init: ServedObservationSurfaceMissing, f: (acc, s) => match acc {
-    ServedObservationSurfaceFound { surface } => ServedObservationSurfaceFound { surface: surface }
-    ServedObservationSurfaceMissing =>
-      if served_observation_kind_key(kind: s.kind) == key { ServedObservationSurfaceFound { surface: s } } else { ServedObservationSurfaceMissing }
+  fold(index.entries, init: ServedObservationEntryMissing, f: (acc, e) => match acc {
+    ServedObservationEntryFound { entry } => ServedObservationEntryFound { entry: entry }
+    ServedObservationEntryMissing =>
+      if served_observation_kind_key(kind: e.kind) == key { ServedObservationEntryFound { entry: e } } else { ServedObservationEntryMissing }
   })
+}
+
+type ServedObservationBodyRead
+  = ServedObservationBodyPresent { body: String }
+  | ServedObservationBodyMissing { reason: String }
+  | ServedObservationBodyMismatch { expected: String, actual: String }
+
+fn served_observation_body_read_from_filesystem(entry: ServedObservationEntry, success: Bool, content: String, error: String) -> ServedObservationBodyRead {
+  if !success {
+    ServedObservationBodyMissing { reason: error }
+  } else {
+    let actual = served_observation_body_digest(body: content)
+    if actual == entry.digest {
+      ServedObservationBodyPresent { body: content }
+    } else {
+      ServedObservationBodyMismatch { expected: entry.digest, actual: actual }
+    }
+  }
+}
+
+fn served_observation_body_read_for_instance(instance: HostDashboardInstance, entry: ServedObservationEntry) -> ServedObservationBodyRead {
+  let read = Filesystem.Read(path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind))
+  served_observation_body_read_from_filesystem(entry: entry, success: read.success, content: read.content, error: read.error)
 }
 
 fn served_observation_refusal_body(refusal: String, detail: String) -> String {
@@ -359,47 +448,69 @@ fn served_observation_refusal_body(refusal: String, detail: String) -> String {
   ]))
 }
 
-// The reader's three refusals are distinct states with distinct owners: Absent means the belt has
-// not ticked since the receipts dir was created (or the timer is not running); Unreadable means a
-// producer and this reader disagree about the wire; Missing means the snapshot was written by a
-// producer that did not render this surface. None of them observes the host as a substitute.
-fn served_observation_surface_response(read: ServedObservationRead, kind: ServedObservationKind) -> ServeHttpResponse {
-  match read {
-    ServedObservationAbsent =>
+fn served_observation_refusal_response(refusal: String, detail: String) -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: 503,
+    content_type: application_json_utf8,
+    body: served_observation_refusal_body(refusal: refusal, detail: detail),
+  }
+}
+
+fn served_observation_body_response(entry: ServedObservationEntry, body: ServedObservationBodyRead) -> ServeHttpResponse {
+  match body {
+    ServedObservationBodyMissing { reason } =>
+      served_observation_refusal_response(
+        refusal: "ServedObservationBodyMissing",
+        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index could not be read: ", reason], ""),
+      )
+    ServedObservationBodyMismatch { expected, actual } =>
+      served_observation_refusal_response(
+        refusal: "ServedObservationBodyMismatch",
+        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body hashes to ", actual, " but the index names ", expected], ""),
+      )
+    ServedObservationBodyPresent { body: bytes } =>
       ServeHttpResponse {
-        status: 503,
-        content_type: application_json_utf8,
-        body: served_observation_refusal_body(refusal: "ServedObservationAbsent", detail: "no belt tick has published a served observation for this instance yet"),
-      }
-    ServedObservationUnreadable { reason } =>
-      ServeHttpResponse {
-        status: 503,
-        content_type: application_json_utf8,
-        body: served_observation_refusal_body(refusal: "ServedObservationUnreadable", detail: reason),
-      }
-    ServedObservationPresent { snapshot } =>
-      match served_observation_surface_lookup(snapshot: snapshot, kind: kind) {
-        ServedObservationSurfaceMissing =>
-          ServeHttpResponse {
-            status: 503,
-            content_type: application_json_utf8,
-            body: served_observation_refusal_body(
-              refusal: "ServedObservationSurfaceMissing",
-              detail: join(["the snapshot observed at ", snapshot.observed_at, " carries no ", served_observation_kind_key(kind: kind), " surface"], ""),
-            ),
-          }
-        ServedObservationSurfaceFound { surface } =>
-          ServeHttpResponse {
-            status: surface.status,
-            content_type: served_observation_kind_media_type(kind: surface.kind, status: surface.status),
-            body: surface.body,
-          }
+        status: entry.status,
+        content_type: served_observation_kind_media_type(kind: entry.kind, status: entry.status),
+        body: bytes,
       }
   }
 }
 
+// The reader's refusals are distinct states with distinct owners: Absent means the belt has not
+// ticked since the receipts dir was created (or the timer is not running); Unreadable means a
+// producer and this reader disagree about the index wire; Missing means the index was written by a
+// producer that did not render this surface; BodyMissing and BodyMismatch mean the body on disk is
+// not the one the index names. None of them observes the host as a substitute.
+fn served_observation_index_refusal(read: ServedObservationRead, kind: ServedObservationKind) -> ServeHttpResponse {
+  match read {
+    ServedObservationAbsent =>
+      served_observation_refusal_response(refusal: "ServedObservationAbsent", detail: "no belt tick has published a served observation for this instance yet")
+    ServedObservationUnreadable { reason } =>
+      served_observation_refusal_response(refusal: "ServedObservationUnreadable", detail: reason)
+    ServedObservationPresent { index } =>
+      served_observation_refusal_response(
+        refusal: "ServedObservationSurfaceMissing",
+        detail: join(["the snapshot observed at ", index.observed_at, " carries no ", served_observation_kind_key(kind: kind), " surface"], ""),
+      )
+  }
+}
+
+fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObservationKind) -> ServedObservationEntryLookup {
+  match read {
+    ServedObservationPresent { index } => served_observation_entry_lookup(index: index, kind: kind)
+    ServedObservationAbsent => ServedObservationEntryMissing
+    ServedObservationUnreadable { reason: _ } => ServedObservationEntryMissing
+  }
+}
+
 fn served_observation_surface_response_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> ServeHttpResponse {
-  served_observation_surface_response(read: served_observation_read_for_instance(instance: instance), kind: kind)
+  let read = served_observation_read_for_instance(instance: instance)
+  match served_observation_entry_for(read: read, kind: kind) {
+    ServedObservationEntryMissing => served_observation_index_refusal(read: read, kind: kind)
+    ServedObservationEntryFound { entry } =>
+      served_observation_body_response(entry: entry, body: served_observation_body_read_for_instance(instance: instance, entry: entry))
+  }
 }
 
 fn served_observation_standing_json_value(read: ServedObservationRead) -> JsonValue {
@@ -415,16 +526,16 @@ fn served_observation_standing_json_value(read: ServedObservationRead) -> JsonVa
         json_kv(key: "standing", value: json_string(s: "unreadable")),
         json_kv(key: "reason", value: json_string(s: reason)),
       ])
-    ServedObservationPresent { snapshot } =>
+    ServedObservationPresent { index } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: served_observation_schema)),
         json_kv(key: "standing", value: json_string(s: "present")),
-        json_kv(key: "observed_at", value: json_string(s: snapshot.observed_at)),
-        json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(snapshot: snapshot))),
-        json_kv(key: "surfaces", value: json_array(elements: snapshot.surfaces |> map(s => json_object(members: [
-          json_kv(key: "url_path", value: json_string(s: served_observation_kind_url_path(kind: s.kind))),
-          json_kv(key: "status", value: json_string(s: to_string(s.status))),
-          json_kv(key: "body_length", value: json_string(s: to_string(string_length(s: s.body)))),
+        json_kv(key: "observed_at", value: json_string(s: index.observed_at)),
+        json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(index: index))),
+        json_kv(key: "surfaces", value: json_array(elements: index.entries |> map(e => json_object(members: [
+          json_kv(key: "url_path", value: json_string(s: served_observation_kind_url_path(kind: e.kind))),
+          json_kv(key: "status", value: json_string(s: to_string(e.status))),
+          json_kv(key: "digest", value: json_string(s: e.digest)),
         ])))),
       ])
   }
@@ -432,7 +543,7 @@ fn served_observation_standing_json_value(read: ServedObservationRead) -> JsonVa
 
 fn served_observation_standing_http_status(read: ServedObservationRead) -> Int {
   match read {
-    ServedObservationPresent { snapshot: _ } => 200
+    ServedObservationPresent { index: _ } => 200
     ServedObservationAbsent => 503
     ServedObservationUnreadable { reason: _ } => 503
   }

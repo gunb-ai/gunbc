@@ -13,14 +13,24 @@ import gunbc.roadmap_served_observation {
   ServedObservationKind, DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   ServedObservationSurface,
   ServedObservationSnapshot,
+  ServedObservationEntry,
+  ServedObservationIndex,
   ServedObservationRead, ServedObservationPresent, ServedObservationAbsent, ServedObservationUnreadable,
+  ServedObservationBodyRead, ServedObservationBodyPresent, ServedObservationBodyMissing, ServedObservationBodyMismatch,
+  ServedObservationEntryLookup, ServedObservationEntryFound, ServedObservationEntryMissing,
   served_observation_schema,
   served_observation_path_for_instance,
-  served_observation_wire,
+  served_observation_body_path_for_instance,
+  served_observation_index_of_snapshot,
+  served_observation_index_wire,
   served_observation_decode,
   served_observation_read_from_filesystem,
   served_observation_identity_hex,
-  served_observation_surface_response,
+  served_observation_body_digest,
+  served_observation_body_read_from_filesystem,
+  served_observation_body_response,
+  served_observation_index_refusal,
+  served_observation_entry_for,
   served_observation_standing_json_value,
   served_observation_standing_http_status,
 }
@@ -29,11 +39,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data fixture_daily_body: String = "<!doctype html><html><body>daily</body></html>"
+
 fn fixture_snapshot() -> ServedObservationSnapshot {
   ServedObservationSnapshot {
     observed_at: "2026-09-04T18:00:00Z",
     surfaces: [
-      ServedObservationSurface { kind: DailyPage, status: 200, body: "<!doctype html><html><body>daily</body></html>" },
+      ServedObservationSurface { kind: DailyPage, status: 200, body: fixture_daily_body },
       ServedObservationSurface { kind: AttemptsJson, status: 200, body: "{\"attempts\":[]}" },
       ServedObservationSurface { kind: WorkflowJson, status: 503, body: "{\"refused\":\"tmux unavailable\"}" },
       ServedObservationSurface { kind: SessionsJson, status: 200, body: "{\"live\":[]}" },
@@ -41,36 +53,56 @@ fn fixture_snapshot() -> ServedObservationSnapshot {
   }
 }
 
-fn fixture_read() -> ServedObservationRead {
-  ServedObservationPresent { snapshot: fixture_snapshot() }
+fn fixture_index() -> ServedObservationIndex {
+  served_observation_index_of_snapshot(snapshot: fixture_snapshot())
 }
 
-// Round trip through the wire is the codec's positive control: the producer's bytes decode to a
-// snapshot the reader accepts, with the same identity and every surface intact.
-test fn wire_round_trip_decodes_to_the_same_snapshot() -> Bool {
-  let snap = fixture_snapshot()
-  match served_observation_decode(raw: served_observation_wire(snapshot: snap)) {
-    ServedObservationPresent { snapshot } =>
-      snapshot.observed_at == snap.observed_at
-        && count(snapshot.surfaces) == 4
-        && served_observation_identity_hex(snapshot: snapshot) == served_observation_identity_hex(snapshot: snap)
+fn fixture_read() -> ServedObservationRead {
+  ServedObservationPresent { index: fixture_index() }
+}
+
+fn fixture_entry(kind: ServedObservationKind) -> ServedObservationEntry {
+  match served_observation_entry_for(read: fixture_read(), kind: kind) {
+    ServedObservationEntryFound { entry } => entry
+    ServedObservationEntryMissing => ServedObservationEntry { kind: kind, status: 500, digest: "" }
+  }
+}
+
+fn entry_is_missing(lookup: ServedObservationEntryLookup) -> Bool {
+  match lookup {
+    ServedObservationEntryMissing => true
+    ServedObservationEntryFound { entry: _ } => false
+  }
+}
+
+// Round trip through the index wire is the codec's positive control: the producer's bytes decode to
+// an index the reader accepts, with the same identity and every entry intact, and each entry's
+// digest is the digest of the body the producer wrote.
+test fn index_wire_round_trip_decodes_to_the_same_index() -> Bool {
+  let index = fixture_index()
+  match served_observation_decode(raw: served_observation_index_wire(index: index)) {
+    ServedObservationPresent { index: decoded } =>
+      decoded.observed_at == index.observed_at
+        && count(decoded.entries) == 4
+        && served_observation_identity_hex(index: decoded) == served_observation_identity_hex(index: index)
+        && fixture_entry(kind: DailyPage).digest == served_observation_body_digest(body: fixture_daily_body)
     ServedObservationAbsent => false
     ServedObservationUnreadable { reason: _ } => false
   }
 }
 
-// RED control: a body edited after the identity was taken is refused, never served.
-test fn red_control_tampered_body_is_unreadable() -> Bool {
-  let identity = served_observation_identity_hex(snapshot: fixture_snapshot())
+// RED control: an entry edited after the identity was taken is refused, never served.
+test fn red_control_tampered_index_is_unreadable() -> Bool {
+  let identity = served_observation_identity_hex(index: fixture_index())
   let tampered = join([
     "{\"schema\":\"", served_observation_schema, "\",",
     "\"observed_at\":\"2026-09-04T18:00:00Z\",",
-    "\"surfaces\":[{\"kind\":\"daily_page\",\"status\":\"200\",\"body\":\"forged\"}],",
+    "\"surfaces\":[{\"kind\":\"daily_page\",\"status\":\"200\",\"digest\":\"forged\"}],",
     "\"snapshot_identity\":\"", identity, "\"}",
   ], "")
   match served_observation_decode(raw: tampered) {
     ServedObservationUnreadable { reason } => string_contains(s: reason, pattern: "identity does not match")
-    ServedObservationPresent { snapshot: _ } => false
+    ServedObservationPresent { index: _ } => false
     ServedObservationAbsent => false
   }
 }
@@ -79,25 +111,25 @@ test fn red_control_status_outside_the_closed_set_is_unreadable() -> Bool {
   let widened = join([
     "{\"schema\":\"", served_observation_schema, "\",",
     "\"observed_at\":\"2026-09-04T18:00:00Z\",",
-    "\"surfaces\":[{\"kind\":\"daily_page\",\"status\":\"418\",\"body\":\"x\"}],",
+    "\"surfaces\":[{\"kind\":\"daily_page\",\"status\":\"418\",\"digest\":\"x\"}],",
     "\"snapshot_identity\":\"unused\"}",
   ], "")
   match served_observation_decode(raw: widened) {
     ServedObservationUnreadable { reason } => string_contains(s: reason, pattern: "outside the closed set")
-    ServedObservationPresent { snapshot: _ } => false
+    ServedObservationPresent { index: _ } => false
     ServedObservationAbsent => false
   }
 }
 
 test fn red_control_unknown_schema_is_unreadable() -> Bool {
-  match served_observation_decode(raw: "{\"schema\":\"roadmap-served-observation/v0\",\"observed_at\":\"x\",\"surfaces\":[]}") {
+  match served_observation_decode(raw: "{\"schema\":\"roadmap-served-observation/v1\",\"observed_at\":\"x\",\"surfaces\":[]}") {
     ServedObservationUnreadable { reason } => string_contains(s: reason, pattern: "schema is unknown")
-    ServedObservationPresent { snapshot: _ } => false
+    ServedObservationPresent { index: _ } => false
     ServedObservationAbsent => false
   }
 }
 
-test fn a_missing_file_reads_as_absent_not_unreadable() -> Bool {
+test fn a_missing_index_reads_as_absent_not_unreadable() -> Bool {
   let absent = served_observation_read_from_filesystem(success: false, content: "", error: "No such file or directory")
   let broken = served_observation_read_from_filesystem(success: false, content: "", error: "Permission denied")
   (match absent { ServedObservationAbsent => true  _ => false })
@@ -107,38 +139,69 @@ test fn a_missing_file_reads_as_absent_not_unreadable() -> Bool {
 // The reader never observes the host for itself: an absent snapshot is a typed 503, and the body
 // names the refusal so an operator can tell a stalled belt from a broken reader.
 test fn absent_snapshot_refuses_with_a_typed_503_and_never_observes() -> Bool {
-  let r = served_observation_surface_response(read: ServedObservationAbsent, kind: DailyPage)
+  let r = served_observation_index_refusal(read: ServedObservationAbsent, kind: DailyPage)
   r.status == 503
     && r.content_type == application_json_utf8
     && string_contains(s: r.body, pattern: "ServedObservationAbsent")
     && string_contains(s: r.body, pattern: served_observation_schema)
 }
 
-test fn present_snapshot_serves_the_stored_bytes_status_and_media_type() -> Bool {
-  let daily = served_observation_surface_response(read: fixture_read(), kind: DailyPage)
-  let attempts = served_observation_surface_response(read: fixture_read(), kind: AttemptsJson)
-  let workflow = served_observation_surface_response(read: fixture_read(), kind: WorkflowJson)
-  daily.status == 200 && daily.content_type == text_html_utf8 && string_contains(s: daily.body, pattern: "daily")
-    && attempts.status == 200 && attempts.content_type == application_json_utf8 && attempts.body == "{\"attempts\":[]}"
-    && workflow.status == 503 && workflow.content_type == application_json_utf8 && string_contains(s: workflow.body, pattern: "tmux unavailable")
+// The body the reader serves is the one the index names: same digest, stored status, media type
+// by kind.
+test fn a_body_matching_its_entry_is_served_with_stored_status_and_media_type() -> Bool {
+  let daily = fixture_entry(kind: DailyPage)
+  let workflow = fixture_entry(kind: WorkflowJson)
+  let daily_r = served_observation_body_response(
+    entry: daily,
+    body: served_observation_body_read_from_filesystem(entry: daily, success: true, content: fixture_daily_body, error: ""),
+  )
+  let workflow_r = served_observation_body_response(
+    entry: workflow,
+    body: served_observation_body_read_from_filesystem(entry: workflow, success: true, content: "{\"refused\":\"tmux unavailable\"}", error: ""),
+  )
+  daily_r.status == 200 && daily_r.content_type == text_html_utf8 && daily_r.body == fixture_daily_body
+    && workflow_r.status == 503 && workflow_r.content_type == application_json_utf8 && string_contains(s: workflow_r.body, pattern: "tmux unavailable")
+}
+
+// RED control: a body that hashes elsewhere than its entry is a typed 503, never served as current.
+test fn red_control_a_body_that_does_not_hash_to_its_entry_is_refused() -> Bool {
+  let daily = fixture_entry(kind: DailyPage)
+  let r = served_observation_body_response(
+    entry: daily,
+    body: served_observation_body_read_from_filesystem(entry: daily, success: true, content: "<html>stale</html>", error: ""),
+  )
+  r.status == 503
+    && string_contains(s: r.body, pattern: "ServedObservationBodyMismatch")
+    && !string_contains(s: r.body, pattern: "stale")
+}
+
+test fn a_body_the_index_names_but_disk_lacks_is_a_typed_503() -> Bool {
+  let daily = fixture_entry(kind: DailyPage)
+  let r = served_observation_body_response(
+    entry: daily,
+    body: served_observation_body_read_from_filesystem(entry: daily, success: false, content: "", error: "No such file or directory"),
+  )
+  r.status == 503 && string_contains(s: r.body, pattern: "ServedObservationBodyMissing")
 }
 
 test fn a_refused_daily_render_is_served_as_plain_text_not_html() -> Bool {
-  let snap = ServedObservationSnapshot {
-    observed_at: "2026-09-04T18:00:00Z",
-    surfaces: [ServedObservationSurface { kind: DailyPage, status: 500, body: "page render refused" }],
-  }
-  let r = served_observation_surface_response(read: ServedObservationPresent { snapshot: snap }, kind: DailyPage)
+  let entry = ServedObservationEntry { kind: DailyPage, status: 500, digest: served_observation_body_digest(body: "page render refused") }
+  let r = served_observation_body_response(
+    entry: entry,
+    body: served_observation_body_read_from_filesystem(entry: entry, success: true, content: "page render refused", error: ""),
+  )
   r.status == 500 && r.content_type == text_plain_utf8
 }
 
 test fn a_surface_the_producer_did_not_render_is_a_typed_503() -> Bool {
-  let snap = ServedObservationSnapshot {
+  let index = ServedObservationIndex {
     observed_at: "2026-09-04T18:00:00Z",
-    surfaces: [ServedObservationSurface { kind: DailyPage, status: 200, body: "<html></html>" }],
+    entries: [ServedObservationEntry { kind: DailyPage, status: 200, digest: "d" }],
   }
-  let r = served_observation_surface_response(read: ServedObservationPresent { snapshot: snap }, kind: SessionsJson)
-  r.status == 503
+  let read = ServedObservationPresent { index: index }
+  let r = served_observation_index_refusal(read: read, kind: SessionsJson)
+  entry_is_missing(lookup: served_observation_entry_for(read: read, kind: SessionsJson))
+    && r.status == 503
     && string_contains(s: r.body, pattern: "ServedObservationSurfaceMissing")
     && string_contains(s: r.body, pattern: "sessions_json")
 }
@@ -147,20 +210,26 @@ test fn standing_publishes_observed_at_and_identity_when_present() -> Bool {
   let body = serialize_json(v: served_observation_standing_json_value(read: fixture_read()))
   served_observation_standing_http_status(read: fixture_read()) == 200
     && string_contains(s: body, pattern: "\"observed_at\": \"2026-09-04T18:00:00Z\"")
-    && string_contains(s: body, pattern: served_observation_identity_hex(snapshot: fixture_snapshot()))
+    && string_contains(s: body, pattern: served_observation_identity_hex(index: fixture_index()))
     && string_contains(s: body, pattern: "\"url_path\": \"/workflow.json\"")
     && served_observation_standing_http_status(read: ServedObservationAbsent) == 503
 }
 
-// Same law as the belt tick receipt's home: the snapshot is per-instance, under the instance's own
-// receipts dir, never under the host-shared attempt-state root.
-test fn the_snapshot_is_homed_in_the_instance_receipts_dir_not_the_shared_root() -> Bool {
+// Same law as the belt tick receipt's home: the index and every body are per-instance, under the
+// instance's own receipts dir, never under the host-shared attempt-state root, and no two kinds
+// share a body path.
+test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared_root() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let shared = dashboard_instance_dispatch_attempt_state_root(instance: instance)
-  let path = served_observation_path_for_instance(instance: instance)
   let receipts = instance_receipts_dir(instance_root: instance.instance_root as String)
-  starts_with(s: path, prefix: receipts)
-    && !dashboard_path_is_under(path: path as FilePath, root: shared)
+  let index_path = served_observation_path_for_instance(instance: instance)
+  let daily = served_observation_body_path_for_instance(instance: instance, kind: DailyPage)
+  let sessions = served_observation_body_path_for_instance(instance: instance, kind: SessionsJson)
+  starts_with(s: index_path, prefix: receipts)
+    && starts_with(s: daily, prefix: receipts)
+    && !dashboard_path_is_under(path: index_path as FilePath, root: shared)
+    && !dashboard_path_is_under(path: daily as FilePath, root: shared)
+    && daily != sessions && daily != index_path
 }
 
 test fn the_standing_route_is_served() -> Bool {
