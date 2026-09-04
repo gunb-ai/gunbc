@@ -33,6 +33,7 @@ docs/plans/compute-envelope-model.md merge=generated-artifact
 docs/plans/dag-v2-defork-audit.md merge=generated-artifact
 docs/plans/deploy-convergence-observed-side.md merge=generated-artifact
 docs/plans/discrete-cost-derivation.md merge=generated-artifact
+docs/plans/floor-claim-cost-distribution.md merge=generated-artifact
 docs/plans/host-effect-orchestration.md merge=generated-artifact
 docs/plans/inert-layer-lens.md merge=generated-artifact
 docs/plans/input-envelope-roadmap.md merge=generated-artifact

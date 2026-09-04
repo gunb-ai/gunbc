@@ -329,11 +329,19 @@ type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
 
+type CpuCoreCount = Measure<Count, One, Nat>
+
 // A count of entries in a merge queue. It sits with its Count siblings rather than in the module
 // that decodes GitHub's merge_queue rule, for the reason those siblings are here: the axis is
 // "count of things at unit scale", and an extdeps module minting its own alias for it would fork
 // that axis once per upstream that happens to count something.
 type MergeQueueEntryCount = Measure<Count, One, Nat>
+
+// A count of included power cords or other basic physical accessories. On the Count axis alongside
+// its siblings (HardwareThreadCount, CpuCoreCount, MergeQueueEntryCount), typed here so a product
+// module (extdeps.network.mikrotik_crs812) consumes it rather than re-minting a local alias for the
+// same axis. Added 2026-09-04.
+type PowerCordCount = Measure<Count, One, Nat>
 
 type Millicore = Measure<Count, Milli, Nat>
 
@@ -804,6 +812,21 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
+// at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
+// and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
+// in std prevents the fork DESIGN §3 names and the SEC module can import from here rather than
+// defining its own copy. Added 2026-09-03.
+type UsdWholeDollars = MoneyAmount<One>
+
+fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+  UsdWholeDollars { count: count }
+}
+
+fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
+  measure_count(m)
+}
+
 // Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers —
 // never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a
 // derived projection at read time, never a stored catalog field.
@@ -1010,11 +1033,31 @@ fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
 }
 
+// A discrete CPU core count, on the Count axis alongside HardwareThreadCount and CharacterCount.
+// Distinguished from HardwareThreadCount because a core is not a thread; on SMT parts they differ
+// and the type would assert something false if conflated. Added 2026-09-03 for the MikroTik
+// CRS812 and future network-switch platform models.
+fn cpu_core_count(count: Nat) -> CpuCoreCount {
+  Measure { count: count }
+}
+
+fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+  measure_count(c)
+}
+
 fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
   Measure { count: count }
 }
 
 fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+  measure_count(c)
+}
+
+fn power_cord_count(count: Nat) -> PowerCordCount {
+  Measure { count: count }
+}
+
+fn power_cord_count_value(c: PowerCordCount) -> Nat {
   measure_count(c)
 }
 
@@ -1025,7 +1068,7 @@ fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
 // so the type cannot separate them -- the FIELD NAME must, and a consumer carrying only one of them
 // is under-specified rather than merely terse.
 //
-// First consumer: gunbc.model.choice, where prefill rate is a serving-admission floor. It is a rate
+// First consumer: gunbc.model.ollama_choice, where prefill rate is a serving-admission floor. It is a rate
 // and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
 // one to the other is the class this family exists to make unwritable.
 type TokensPerSecond = Measure<Frequency, One, Nat>
@@ -1054,6 +1097,21 @@ fn bandwidth(count: Nat) -> Bandwidth {
 
 fn bandwidth_count(b: Bandwidth) -> Nat {
   measure_count(b)
+}
+
+// A rate of discrete packets or events per second, on the same Frequency axis as
+// MegatransfersPerSecond and EventsPerMinute but at One (per-second) scale so no conversion is
+// required. Sibling of TokensPerSecond (which would be the same Measure<Frequency, One, Nat> on
+// its own line, syntactically distinct only by name). Added 2026-09-03 for the Arista 7050S-52
+// throughput fact (780 Mpps).
+type PacketRate = Measure<Frequency, One, Nat>
+
+fn packet_rate(count: Nat) -> PacketRate {
+  Measure { count: count }
+}
+
+fn packet_rate_count(r: PacketRate) -> Nat {
+  measure_count(r)
 }
 
 type Nanosecond = Measure<Time, Nano, Nat>
