@@ -1,0 +1,154 @@
+module test.claim.claim_cost_observation_type_wall_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXECUTING EVIDENCE FOR `v2.workflow.claim_cost_observation`'S TYPE WALL, and the reason it
+// is a COMPILER FIXTURE rather than an ordinary call.
+//
+// The wall's claim is that a right-censored bound CANNOT reach remedy sizing. If that holds, the
+// forbidden state has no constructor in accepted source -- so there is nothing in the corpus for a
+// witness to point at, and an assertion written against the corpus would be permanently green by
+// construction, carrying no information and worse than absent because it would be cited as
+// coverage. DESIGN section 4b names that trap and also names its resolution: a state unrepresentable
+// in the ACCEPTED corpus may still be perfectly representable as SOURCE HANDED TO THE COMPILER BY
+// A FIXTURE, and a compiler is precisely a thing whose regression probes are invalid programs.
+// The refusal is authorable there, so the evidence is enrollable there.
+//
+// WITHOUT THIS FILE THE MODULE WOULD BE SPECIFICATION WITHOUT EXECUTION. A typecheck is not a
+// consumer (DESIGN section 5), and an authority module whose only reader is a comment is the
+// experimental-residue tell DESIGN section 6 presumes to be a scaffold. That is precisely what
+// left draft gunbc#9029 -- from which this model is revived -- sitting unlanded: the model was
+// authored, nothing executed it, and it aged out. The two arms below are what make the revival a
+// landed wall rather than a second copy of that draft.
+
+// THE EMITTED FILE PATH IS DERIVED FROM THE MODULE NAME AND IS NOT FREE TO CHOOSE. `compile_dag_
+// rust_emit_check` looks the path up in the emitted file set and answers FALSE when nothing
+// matches, so an invented path makes BOTH arms answer false -- the negative one "correctly", for
+// the wrong reason. `module fixture.cost_exact` emits `src/fixture_cost_exact.rs`.
+//
+// That is how draft gunbc#9029 authored this probe: with invented paths, never executed, so its
+// refusal arm was green on a lookup miss rather than on the wall. Inheriting it unverified is what
+// the positive control below caught.
+
+// THE WALL ARM. It hands `remedy_partition` a list of the CENSORED type where the exact type is
+// required, and that program must NOT compile.
+//
+// THIS ARM WAS INVERTED UNTIL gunbc#10226 LANDED, AND ITS FLIP IS THE RECEIPT. It used to assert
+// that the forbidden program was ADMITTED -- a discriminating red with its sign reversed, written
+// that way because DESIGN section 4b(1) makes a class's rung the MINIMUM across its in-scope
+// paths, and asserting a refusal that did not exist would have been rung inflation in the change
+// whose whole subject is rung inflation. The `.dag` path genuinely did not judge this position:
+// `v1.compiler.infer` `DeclaredTypePosition` declared twelve positions and stated as a COUNT that
+// only two were wired, and a mismatch at the ELEMENT of a generic container is
+// `PositionGenericTypeArgument`, which had no obligation producer.
+//
+// gunbc#10226 WIRED THAT PRODUCER AND NAMED THIS EXACT SPECIMEN AS THE CASE IT CLOSES. The arm
+// went red on the integrated head, which is what it was built to do, and it is TIGHTENED here
+// rather than deleted -- section 4b(4): a probe that greens when its wall lands becomes the
+// permanent regression control that the wall stays real. Observed on integration, before this
+// edit: `probe_censored_arm_only` FAILED while BOTH calibration arms and the exact-population
+// control stayed green, so the refusal is this wall firing and not the probe breaking.
+fn censored_population_refuses_to_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.cost_censored\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { RightCensoredCost, RemedyPartition, remedy_partition }\nfn size(xs: List<RightCensoredCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
+    "src/fixture_cost_censored.rs",
+    [],
+    []
+  )
+}
+
+
+// THE POSITIVE CONTROL, AND IT IS LOAD-BEARING RATHER THAN CEREMONIAL. A refusal arm alone cannot
+// distinguish "the wall rejected the censored type" from "this fixture does not compile for some
+// unrelated reason" -- a typo in the module path, a renamed symbol, or a compiler that refuses
+// everything would all satisfy the negative arm. The two fixtures differ in ONE TOKEN, the element
+// type of the list, so anything that breaks both is a defect in the probe rather than evidence
+// about the wall.
+fn exact_population_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.cost_exact\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { ExactCompletionCost, RemedyPartition, remedy_partition }\nfn size(xs: List<ExactCompletionCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
+    "src/fixture_cost_exact.rs",
+    [],
+    []
+  )
+}
+
+// THE CALIBRATION ARM. Before either result above means anything, the probe must be shown to
+// REFUSE SOMETHING NOBODY DISPUTES, through the same call, the same module shape and the same
+// emitted-path derivation. An undefined name is the least arguable refusal available.
+//
+// WHY THIS IS NOT PARANOIA: `compile_dag_rust_emit_check` collapses THREE distinct outcomes into
+// one Bool -- hard diagnostics exist, no emitted file matches the path, and a content assertion
+// failed -- so a false has three readings and only one of them is "refused". This probe has
+// already produced a false for the WRONG reason once tonight (an invented emitted path), and that
+// false read as a wall holding.
+//
+// IT ALSO BOUNDS WHAT THE PROBE CAN SPEAK ABOUT AT ALL. This is an EMISSION oracle, and emission
+// is not typechecking: modules in this repository are known to emit and then be rejected by rustc.
+// So a program that "compiles" here has EMITTED, and a wall enforced in a later phase would be
+// invisible to it. A green calibration arm establishes only that refusals of THIS kind reach the
+// Bool -- it does not license reading silence about types as absence of a type wall.
+fn undefined_name_refuses_to_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.cost_calibration
+import v2.workflow.claim_cost_observation { RemedyPartition }
+fn size() -> RemedyPartition { this_name_does_not_exist_anywhere }
+",
+    "src/fixture_cost_calibration.rs",
+    [],
+    []
+  )
+}
+
+test fn probe_calibration_undefined_name_only() -> Bool { undefined_name_refuses_to_compile() }
+
+// THE SECOND CALIBRATION, AND IT IS THE ONE THAT DECIDES WHAT THE CENSORED RESULT MEANS.
+//
+// `gunbc.rung_drop` `direct_call_arg_seam_v2_exemption` declares that `v1.compiler.infer`
+// `module_skips_direct_call_arg_check` returns true for every module whose DECLARED NAME begins
+// with `v2.`, suppressing the argument-position type-COMPAT arm at direct calls inside such a
+// module. The inhabitance arm beside it is ungated and still runs. That row's own measurement
+// names the shape that refuses OUTSIDE the exemption: a parameter declared `Int` receiving a
+// kernel `String` produces BOTH a `type mismatch` and an inhabitance diagnostic.
+//
+// THE FIXTURES HERE DECLARE `module fixture.*`, WHICH IS NOT `v2.`, so by that row's own statement
+// the compat arm SHOULD run at these call sites -- and the row says a discriminating red for the
+// suppressed arm is only authorable in a non-`v2.` module, which is exactly what this is.
+//
+// So this arm asserts the drop's own known-refusing shape THROUGH THIS PROBE. If it refuses, the
+// compat arm is demonstrably live here, and the censored-list result cannot be explained by the
+// exemption. If it is ADMITTED, then the compat arm is not reaching these fixtures at all and the
+// censored result says nothing about the wall -- the same lookup-miss lesson one level up.
+fn wrong_scalar_argument_refuses_to_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.cost_scalar_calibration
+import v2.std.integer { Int }
+import v2.std.text { String }
+fn takes_int(n: Int) -> Int { n }
+fn passes_string(s: String) -> Int { takes_int(n: s) }
+",
+    "src/fixture_cost_scalar_calibration.rs",
+    [],
+    []
+  )
+}
+
+test fn probe_calibration_wrong_scalar_only() -> Bool { wrong_scalar_argument_refuses_to_compile() }
+
+// THE COMPOSITE, ASSERTING THE FULL STATE OF THE `.dag` PATH IN ONE PLACE: the probe refuses what
+// nobody disputes, it refuses the drop's own known-refusing scalar shape, the exact population is
+// ADMITTED, and the censored population is REFUSED. The last of those four flipped when
+// gunbc#10226 wired `PositionGenericTypeArgument`; the other three are unchanged and are what
+// establish that the flip was the wall arriving rather than the probe breaking.
+test fn remedy_sizing_admits_exact_completions_and_refuses_censored_bounds() -> Bool {
+  undefined_name_refuses_to_compile()
+    && wrong_scalar_argument_refuses_to_compile()
+    && exact_population_compiles()
+    && censored_population_refuses_to_compile()
+}
+
+test fn probe_exact_arm_only() -> Bool { exact_population_compiles() }
+test fn probe_censored_arm_only() -> Bool { censored_population_refuses_to_compile() }
