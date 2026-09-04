@@ -46,6 +46,8 @@ data selection_view_read_as_population: RecurringFailureMode = RecurringFailureM
     "Monotonicity of the bound says nothing about stability of the set. ",
 
     "**RECOGNITION RULE: when a set is produced by comparing a MEASURED value against a threshold, ask what the set would contain if the measurement were taken again under different conditions -- and ask it hardest when the predicate was just written to satisfy a reviewer, because that is the moment the answer feels settled.**)",
+
+    "THE INHERITED-VIEW FORM: when a consumer takes its population from a structure someone else produced, ask whether that structure is the POPULATION or a SELECTION over it -- and treat a name like `references` or `declarations` beside an `entries` as the tell, since a filtered view and its source are usually siblings in one carrier.** THE REPAIR IS NOT TO SWITCH VIEWS: a consumer must declare its OWN total eligibility disposition over the source population, every member either in the subject or excluded by a NAMED cause, because silence from a view someone else built is exactly how a family disappears with nobody deciding it should -- and that holds even where the two agree today. RUNG FOUND AT: below the ladder, since the census reported a complete-looking population. EXECUTED EVIDENCE: the calibration witness's perturbation control -- deleting every appearance of one variant moves the observed count by zero, with both counts nonzero -- which is what makes the absence a control rather than an observation.",
   ],
 
   evidence: [],
