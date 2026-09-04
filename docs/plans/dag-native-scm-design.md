@@ -27,7 +27,7 @@ DESIGN §3's interface/realization split applied to naming.
 | **object** | immutable language content, content-addressed |
 | **proposal** | requested obligations — what an author asks the program to contain |
 | **branch** | a line of proposals and commits; a grouping label, contributing nothing to identity |
-| **merge** | combine proposals |
+| **role-requirement integration** | combine proposals into one target commit. Named `merge` until 2026-09-04; renamed because two-commit merge is a materially different contract and one spelling cannot carry both |
 | **commit** | the exact frozen program |
 | **acceptance** | agreement to use a commit — the one new term |
 | **deploy** | make an accepted commit active |
@@ -36,20 +36,23 @@ DESIGN §3's interface/realization split applied to naming.
 valid?*, *have we agreed to use it?*, and *is it what is running?* Merging them back into one word
 would re-create the fusion this model exists to remove.
 
-**Terms deliberately refused** — every one names a *mechanism* rather than something a person wants,
-and each exists to repair a model that loses information:
+**Git terms and their disposition.** Almost every row is *refused*: it names a *mechanism* rather
+than something a person wants, and exists to repair a model that loses information. One row is a
+*withdrawal* — a term this note refused on reasoning that turned out to be wrong — carried here and
+marked rather than deleted, so the correction stays attached to the claim it corrects. Each term's
+standing is stated by its `disposition` cell; membership in this table no longer asserts refusal.
 
-| refused | why |
-|---|---|
-| `rebase` | "rewrite my work as though it started elsewhere" is a procedure, not a goal; the goal — make my work apply to the current state — happens without it |
-| merge base / common ancestor | requires a total order that need not exist |
-| `HEAD~3`, `HEAD^` | parent arithmetic assumes a single line |
-| force push | acceptances only append; there is nothing to force |
-| index / staging area | an artifact of the working-copy model |
-| `reset --hard` | mutating a pointer |
-| `cherry-pick` | patch transport, which this model does not do |
-| conflict markers | a textual representation of an unresolved choice |
-| `squash` | merge already produces one exact commit; squash is a git-export description |
+| term | disposition | why |
+|---|---|---|
+| `rebase` | refused | "rewrite my work as though it started elsewhere" is a procedure, not a goal; the goal — make my work apply to the current state — happens without it |
+| merge base / common ancestor | **withdrawn 2026-09-04** | It read "requires a total order that need not exist", which is false: a commit DAG supplies a PARTIAL ancestry order, common ancestors are the intersection of two ancestor closures, and best common ancestors are the maximal elements of that intersection. No total order is involved. The concept is a prerequisite of two-commit merge, which this note does not yet model |
+| `HEAD~3`, `HEAD^` | refused | parent arithmetic assumes a single line |
+| force push | refused | acceptances only append; there is nothing to force |
+| index / staging area | refused | an artifact of the working-copy model |
+| `reset --hard` | refused | mutating a pointer |
+| `cherry-pick` | refused | patch transport, which this model does not do |
+| conflict markers | refused | a textual representation of an unresolved choice |
+| `squash` | refused | role-requirement integration already produces one exact commit; squash is a git-export description |
 
 ## 2. Comments, formatting, and everything that is not the program
 
@@ -107,7 +110,7 @@ content.** No parent list, author, timestamp, message, or branch — those are f
 and acceptances, not the program.
 
 **Selection must not stay live after a commit.** A program re-querying the store at use time would
-let later additions retroactively change its meaning. Merge outputs an immutable exact graph, which
+let later additions retroactively change its meaning. Integration outputs an immutable exact graph, which
 is why the unit of agreement is a commit root rather than a choice function.
 
 Five facts, kept apart:
@@ -126,7 +129,8 @@ one graph-scoped allocator and forbids filename, span, authored name, structural
 content hash as identity inputs. *Derived:* cross-revision identity could therefore only be minted
 at authoring time and carried in the source — and DESIGN §3's fleet ruling says inferring it from
 content similarity is the heuristic §4 forbids. **It is also unnecessary:** identity's only job in a
-merge is transporting a patch to the right place, and combining proposals transports nothing.
+line-based merge is transporting a patch to the right place, and combining proposals transports
+nothing.
 
 **A name identifies a binding role in a context, not a thing.** Renaming changes a binding; the
 value is untouched. So content equality does not imply one program occurrence — one object may sit
@@ -139,7 +143,10 @@ diff.* Pinning a moving reference is no contradiction: resolve it to an exact id
 that it came from a channel. `Pin<Subject>` is already that shape, subject-generic by operator
 ruling, and `Pin<NodeName>` is an instantiation, not a new concept.
 
-## 4. What merge is
+## 4. What role-requirement integration is
+
+This section is about combining PROPOSALS into one target commit. It is not about two-commit merge,
+which this note does not model; see the vocabulary table in section 1.
 
 Two proposals combine by taking both. A conflict exists only where one binding is required to hold
 two different objects — a genuine disagreement about what the code should be, never a collision of
@@ -147,7 +154,7 @@ positions.
 
 Where the substrate says an edge is `Named`, recursion is keyed by that name; where `Positional`,
 **order carries meaning** — list elements, match-arm order — and the region is compared whole.
-Refusing there is the safety half of the design: merging positional edits by identity would
+Refusing there is the safety half of the design: combining positional edits by identity would
 fabricate a sequence nobody wrote, which is precisely what line-based merge does and calls success.
 *Verified:* `v2.std.node` carries `EdgeLabel = Named { name } | Positional` per-edge at every depth,
 and named edges reach deep — `match_arm_pattern`, `binding`, `field`, and a function attaching to
@@ -158,15 +165,15 @@ identity is by name versus by order.
 
 ## 5. What this model does not claim
 
-**Merges are not "always safe."** Deep semantic understanding makes conflicts rarer and better
+**Integrations are not "always safe."** Deep semantic understanding makes conflicts rarer and better
 explained, not absent. Two changes can each be valid alone and interact — a new call to `foo` plus a
 narrowing of `foo`'s contract. Structural combination and **validity** are separate, and the second
 genuinely refuses: a structurally clean rename plus a stale reference is a broken program. The
 honest claim is *far fewer conflicts, each a real question in the user's own vocabulary.*
 
 **The hard part is not removed, only the accidental part.** Two proposals may admit no common
-program, or several materially distinct ones — the same compatibility problem merge always
-addressed. Gone is everything around it: mutable files, patch transport, branch topology, global
+program, or several materially distinct ones — the same compatibility problem that combining
+independently authored work has always addressed. Gone is everything around it: mutable files, patch transport, branch topology, global
 history, working-tree alignment, rebasing, and cloning.
 
 **Identity is currently weaker than the model needs.** *Verified:* `v2.std.node` `Hash` is
@@ -216,10 +223,10 @@ the secret manager disabling a version: the service may still accept the leaked 
 invalidation needs a subject-specific negative authentication probe. And a rewrite lacking a
 complete sanitization receipt is `PrivateHistoryReanchored`, **not** erased.
 
-**Where the wall sits.** Merge-time or CI-time checking is structurally incapable of confidentiality
+**Where the wall sits.** Integration-time or CI-time checking is structurally incapable of confidentiality
 — the deleted Stage-0 placement gate established exactly this: a required check could refuse `main`,
 but pushed objects had already reached public storage. The chronology must be private capture →
-private merge and admission → derive an audience-authorized projection → serialize → write public
+private integration and admission → derive an audience-authorized projection → serialize → write public
 storage. The public writer accepts only a projection minted by the authoritative private context,
 never an arbitrary `Node`, blob or patch. **Corollary:** a public PR branch cannot safely carry
 secret bytes on the theory that squash-landing removes them. The surface is wider than file content:
@@ -273,22 +280,23 @@ realms — cross-audience content-address equality is an oracle.**
 ## 7. `NATIVE-COMMIT-0` — the first executable slice
 
 **Honest feasibility ruling first.** An executable slice exists without the parked authoring-capture
-surface, but it **cannot honestly merge arbitrary concurrent edits to existing `.dag` files**.
+surface, but it **cannot honestly integrate arbitrary concurrent edits to existing `.dag` files**.
 Without capture, nothing can tell from two file endpoints which proposal, deletion, rename or frame
 the author intended; claiming otherwise reconstructs patch inference under new vocabulary. So the
-first slice merges **explicitly authored proposals**, and says so.
+first slice integrates **explicitly authored proposals**, and says so.
 
 Three operations. No base, ancestor, parent, branch pointer, working copy, or patch. **This is the
-shipped signature, corrected 2026-08-21 against `dag/gunbc/scm/merge.dag` as merged in #8719** — the
+shipped signature, corrected 2026-08-21 against the operation then at `dag/gunbc/scm/merge.dag` as
+merged in #8719, now `gunbc.scm.role_requirement_integration`** — the
 draft below it specified a two-proposal call and a `ChoiceRequired` arm, neither of which exists,
 and a stale authority describing an operation nobody can invoke is the premise contamination DESIGN
 documents against its own CI paragraph:
 
 ```
-merge(store, target, target_dependencies, proposals)
-  -> Merged { store, commit, roles }
-   | MergeRolesContested { role, alternatives }
-   | MergeRefused { cause }
+integrate_role_requirements(store, target, target_dependencies, proposals)
+  -> RoleRequirementsIntegrated { store, commit, roles }
+   | RoleRequirementsContested { role, alternatives }
+   | RoleRequirementIntegrationRefused { cause }
 accept(store, commit, authority, contract) -> appended; never changes the commit
 checkout(store, commit) -> CheckedOut { program } | CheckoutRefused { cause }
 ```
@@ -300,13 +308,13 @@ deleted node when one proposal adds `k` depending on `f` while the other deletes
 supplies every fact outside the implication frontier, and **silence means preserve it**. Proposals
 became a list because a contest is a property of the whole population, not a pair.
 
-**Why the outcome arms are named for less than they conclude.** `MergeRefused` rather than
+**Why the outcome arms are named for less than they conclude.** `RoleRequirementIntegrationRefused` rather than
 `CouldNotLand`: the engine cannot establish terminality — an unsupported dependency kind may be
-unmodelled implementation, a missing target root an incomplete fetch. `MergeRolesContested` rather
+unmodelled implementation, a missing target root an incomplete fetch. `RoleRequirementsContested` rather
 than `ChoiceRequired`: this layer establishes that distinct alternatives exist; that a *user* must
 choose requires proving they survive the admitted equivalence quotient, that the candidate
 population is closed, and that no further machine work resolves them — none of which lives here.
-**`MergeRolesContested` is complete over the proposal population supplied to that call and proves
+**`RoleRequirementsContested` is complete over the proposal population supplied to that call and proves
 nothing about global candidate-space closure.** That boundary is held by this paragraph and the type
 name, not structurally; the landing seam is where it becomes structural.
 
@@ -317,7 +325,7 @@ silence already means preserve: a delete by omission would read as "leave it alo
 of the request. Both sides normalize to a requested state (`DesiredRoleValue`) before any contest is
 decided, so identical authorings are **agreement**, not a question with identical alternatives.
 Distinct bindings combine by construction; two different requested states at one binding produce
-`MergeRolesContested` carrying **every** distinct alternative — accumulated over the whole
+`RoleRequirementsContested` carrying **every** distinct alternative — accumulated over the whole
 population so arrival order cannot decide which evidence survives, and never latest-wins,
 first-wins, or branch-priority-wins.
 
@@ -336,14 +344,14 @@ deliberately kept out of the semantic slice.
 | a later object cannot change an agreed program | commit, accept, add a second object at the same name, re-checkout | a checkout that queries live names |
 | a commit rebuilds from its own closure | discard proposals, branches, acceptances and indexes; checkout from the root alone | — |
 | a missing object refuses | remove one reachable object, re-checkout | any fallback substitution |
-| proposals combine without node identity | remint every occurrence id, re-merge | a merge requiring matching occurrence ids |
+| proposals combine without node identity | remint every occurrence id, re-integrate | an integration requiring matching occurrence ids |
 | conflicting bindings ask rather than guess | same name, different objects | any winner rule |
-| arrival order is not authority | merge (a,b) and (b,a) | — |
-| merge does not imply agreement | merge without accept | — |
+| arrival order is not authority | integrate (a,b) and (b,a) | — |
+| integration does not imply agreement | integrate without accept | — |
 
 **Deliberate non-goals:** no proposal inference from file edits, no capture, no diffing, no
 deletion/rename/move, no repository-wide candidate search, no general constraint solving, no
-positional-sequence merge, no git import or export, no `GIT-PLUMBING-0` dependency, no refs, no
+positional-sequence integration, no git import or export, no `GIT-PLUMBING-0` dependency, no refs, no
 compare-and-swap, no cross-process persistence, no deploy, no confidentiality, and **no merging of
 this repository's live concurrent edits.**
 
@@ -360,13 +368,14 @@ the first consumer would fuse a model proof with unrelated frontend and performa
 **Direction after `NATIVE-COMMIT-0`, operator ruling 2026-08-21: a CLI vertical before the depth
 recursion**, reversing the "headline win is the next slice" ordering above. The reason is DESIGN
 §5's specification-without-execution trap, not a changed view of which slice is more valuable.
-Nothing has ever *consumed* this kernel: the 15 claims in `test.claim.scm_merge_witness` are
+Nothing has ever *consumed* this kernel: the claims declared in `test.claim.scm_role_requirement_integration_witness` are
 assertions **about** it, authored alongside it, and a witness suite is not a consumer. A CLI is the
-first artifact that uses the store, checkout, identity and merge together under conditions nobody
+first artifact that uses the store, checkout, identity and role-requirement integration together under conditions nobody
 authored to make them pass.
 
-The ordering is safe because **depth changes how `merge` combines, not how `add` authors**. A user
-adds a module either way; whether merge recurses into it is orthogonal, so the command surface built
+The ordering is safe because **depth changes how `integrate_role_requirements` combines, not how
+`add` authors**. A user
+adds a module either way; whether integration recurses into it is orthogonal, so the command surface built
 now survives the recursion landing later.
 
 The known cost, designed for rather than discovered: a CLI makes the top-level-binding limitation
@@ -376,12 +385,16 @@ rather than reading as a defect.
 
 ## 8. Scenario corpus (retained)
 
-No merge kernel should be built without these. Each is a RED unless marked otherwise.
+No role-requirement integration kernel should be built without these. Each is a RED unless marked
+otherwise.
 
-**Structural merge — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus opens "no
-merge kernel should be built without these", and a kernel was built, so this states which rows it
-actually answers. **4 of 13 are covered.** The `witness` column names the claim in
-`test.claim.scm_merge_witness`; the `blocked on` column says what would close each gap, because
+**Structural integration — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus
+opens "no integration kernel should be built without these", and a kernel was built, so this states
+which rows it
+actually answers. **4 of 13 were covered when that join was run on 2026-08-21**; see the
+measurement note below the table for why that figure has not been re-derived since. The `witness`
+column names the claim, which now resolves in
+`test.claim.scm_role_requirement_integration_witness`; the `blocked on` column says what would close each gap, because
 "uncovered" collapses three situations — a gap the current grain could close today, a gap needing
 the sub-node recursion, and a gap needing vocabulary the model does not yet have.
 
@@ -397,20 +410,29 @@ the sub-node recursion, and a gap needing vocabulary the model does not yet have
 | rename versus edit under the old name | conflict; the edit is not lost | no | **no rename vocabulary** |
 | two sides move one subtree to different parents | conflict, never duplicated | no | **no move vocabulary** |
 | duplicate named siblings in any input | input refusal | no | **closable at the current grain.** Measured 2026-08-21: nothing in `gunbc.scm.*` or `v2.std.node` refuses a node carrying two children with one name. The nearest live behaviour is content-hash canonicalization *sorting* named edges, which orders duplicates rather than refusing them. This is the one structural gap that needs no new grain and no new vocabulary |
-| two different positional appends | conflict or explicit order choice | no | **positional merge**, an explicit §7 non-goal for this slice |
-| distinct positional ordinals edited without shape change | both preserved | no | **positional merge** |
+| two different positional appends | conflict or explicit order choice | no | **positional-sequence integration**, an explicit §7 non-goal for this slice |
+| distinct positional ordinals edited without shape change | both preserved | no | **positional-sequence integration** |
 | only one side changed a node | **preserved — the §6 asymmetry regression control** | **yes** | `an_independent_sibling_is_preserved_exactly` |
 
 **What the partition says about the next slice.** Four gaps are one job — the sub-node recursion of
 §4's named-edge rule. Three are a second job needing rename/move vocabulary the model lacks. Two are
-the positional-merge non-goal. **One — duplicate named siblings — is closable now**: the only
+the positional-sequence-integration non-goal. **One — duplicate named siblings — is closable now**: the only
 structural scenario waiting on neither depth nor new vocabulary, hence the cheapest real coverage
 available.
 
-**Coverage claims about this table must be measured, not recalled.** The number above came from
-joining the 15 claims in `test.claim.scm_merge_witness` against these rows one at a time. An earlier
-estimate from reading was "roughly five" — close enough to feel safe, wrong enough to mis-scope the
-next slice.
+**Coverage claims about this table must be measured, not recalled.** The `4 of 13` above was
+measured on 2026-08-21 by joining, one row at a time, the claims that the witness module declared
+ON THAT DATE — when it was `test.claim.scm_merge_witness` and held a different population. An
+earlier estimate from reading was "roughly five" — close enough to feel safe, wrong enough to
+mis-scope the next slice.
+
+**That number is a historical result and is NOT a current-completeness claim.** Naming today's
+module does not re-run an August join, so this paragraph deliberately does not cite the renamed
+module as the measurement's source: a citation that silently re-points at a changed population
+would make a dated receipt look re-derived when nothing re-derived it. The 13-row table below is
+the current authority on WHICH scenarios exist; what is missing is an executable instrument that
+re-joins today's claims against those rows, and until one exists no row here may be described as
+covered on the strength of the August figure.
 
 **Admission and capture**
 
@@ -462,9 +484,9 @@ was destroyed before it was seen. It also inherits a base, and through the base 
 by `occurrence_identity_scope_law` and, more importantly, unnecessary: identity exists to transport
 patches.
 
-**`std.change` `keyed_three_way_fold` as the merge kernel.** *Verified:* its leaf verdict returns
+**`std.change` `keyed_three_way_fold` as the integration kernel.** *Verified:* its leaf verdict returns
 `KeyedConflict` when only one side changed a value — correct for reconciliation, where `desired` is
-authority, and wrong for merge, where the sides are peers. The traversal is shared with the
+authority, and wrong for integration, where the sides are peers. The traversal is shared with the
 fleet-reconcile spine; the verdict is not.
 
 **The seven inherited assumptions.** Text as storage, commit-as-whole-tree-snapshot, one global
@@ -494,7 +516,8 @@ operator decision, not this note's.
 
 ## Dissolution trigger (DESIGN §6)
 
-This note dissolves into the carriers it names when a merge kernel and a confidentiality lifecycle
+This note dissolves into the carriers it names when an integration kernel and a confidentiality
+lifecycle
 land. Until then it is evidence about a model, never authority over one. The §8 corpus outlives it:
 those rows re-enroll against whatever kernel lands, per DESIGN §4b's rule that discriminating
 evidence survives the machinery that prompted it.
