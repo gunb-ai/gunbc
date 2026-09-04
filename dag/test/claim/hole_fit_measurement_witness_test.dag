@@ -14,12 +14,12 @@ import product.printed_chassis.hole_fit_measurement {
   FreePassSelection, FreePassNominalSelected, FreePassUnobserved, FreePassLadderUnavailable,
   select_free_pass_nominal, m3_free_pass_selection,
   ThresholdObservationOutOfLadder, ThresholdObservationsHeterogeneous,
-  FitPolicyScope, FitPolicyRequest, ScopeAdmission, ScopeCovers, ScopeFastenerDiffers,
-  ScopeOrientationDiffers, ScopeWallDepthOutsideEvidence, ScopeOrientationUnstated,
+  FitPolicyScope, FitPolicyRequest, FitScopeAdmission, FitScopeCovers, FitScopeFastenerDiffers,
+  FitScopeOrientationDiffers, FitScopeWallDepthOutsideEvidence, FitScopeOrientationUnstated,
   BoreOrientation, VerticalThroughHole, HorizontalBore, BoreOrientationUnstated,
   PrinterAttribution, AttributedToPrinter, PrinterUnattributed,
   BedPositionCoverage, SinglePositionPerDiameter, MultiplePositionsSampled,
-  scope_admits, m3_free_pass_scope,
+  fit_scope_admits, m3_free_pass_scope,
   FreePassObservationOutOfLadder, FreePassObservationsHeterogeneous,
 }
 
@@ -365,43 +365,43 @@ test fn w_the_free_pass_selection_carries_the_same_two_gates() -> Bool {
 
 // The evidenced conditions are admitted: M3, vertical through-hole, 4 mm plate.
 test fn w_the_scope_admits_the_conditions_that_produced_it() -> Bool {
-  match scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
+  match fit_scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
     fastener: m3_fastener, orientation: VerticalThroughHole, wall_depth: micrometer(count: 4000),
   }) {
-    ScopeCovers => true
-    ScopeFastenerDiffers => false
-    ScopeOrientationDiffers => false
-    ScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
-    ScopeOrientationUnstated => false
+    FitScopeCovers => true
+    FitScopeFastenerDiffers => false
+    FitScopeOrientationDiffers => false
+    FitScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
+    FitScopeOrientationUnstated => false
   }
 }
 
 // A DIFFERENT FASTENER IS OUTSIDE THE EVIDENCE. One M3 ladder says nothing about M4: the whole
 // question is how a printed hole of a given nominal behaves, and nothing here sampled M4 at all.
 test fn w_the_scope_refuses_a_different_fastener() -> Bool {
-  match scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
+  match fit_scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
     fastener: MetricCoarseThread { designation: "M4" },
     orientation: VerticalThroughHole, wall_depth: micrometer(count: 4000),
   }) {
-    ScopeFastenerDiffers => true
-    ScopeCovers => false
-    ScopeOrientationDiffers => false
-    ScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
-    ScopeOrientationUnstated => false
+    FitScopeFastenerDiffers => true
+    FitScopeCovers => false
+    FitScopeOrientationDiffers => false
+    FitScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
+    FitScopeOrientationUnstated => false
   }
 }
 
 // A HORIZONTAL BORE IS A DIFFERENT PROCESS. It is printed as a bridged arch rather than a stack of
 // concentric perimeters, sags where a vertical hole does not, and has no reason to share a constant.
 test fn w_the_scope_refuses_a_horizontal_bore() -> Bool {
-  match scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
+  match fit_scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
     fastener: m3_fastener, orientation: HorizontalBore, wall_depth: micrometer(count: 4000),
   }) {
-    ScopeOrientationDiffers => true
-    ScopeCovers => false
-    ScopeFastenerDiffers => false
-    ScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
-    ScopeOrientationUnstated => false
+    FitScopeOrientationDiffers => true
+    FitScopeCovers => false
+    FitScopeFastenerDiffers => false
+    FitScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => false
+    FitScopeOrientationUnstated => false
   }
 }
 
@@ -410,15 +410,15 @@ test fn w_the_scope_refuses_a_horizontal_bore() -> Bool {
 // shallower one opens from elephant's foot -- and nothing measured here says which, so an "at least"
 // comparison would be an unevidenced monotonicity assumption wearing the shape of a bound.
 test fn w_the_scope_refuses_a_wall_depth_it_never_sampled() -> Bool {
-  match scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
+  match fit_scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
     fastener: m3_fastener, orientation: VerticalThroughHole, wall_depth: micrometer(count: 10000),
   }) {
-    ScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } =>
+    FitScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } =>
       micrometer_count(m: rq) == 10000 && micrometer_count(m: ev) == 4000
-    ScopeCovers => false
-    ScopeFastenerDiffers => false
-    ScopeOrientationDiffers => false
-    ScopeOrientationUnstated => false
+    FitScopeCovers => false
+    FitScopeFastenerDiffers => false
+    FitScopeOrientationDiffers => false
+    FitScopeOrientationUnstated => false
   }
 }
 
@@ -426,14 +426,14 @@ test fn w_the_scope_refuses_a_wall_depth_it_never_sampled() -> Bool {
 // comparison were "at least the evidenced depth", 2 mm would pass on the theory that less material
 // can only help -- an assumption nothing here measured.
 test fn w_the_scope_refuses_a_thinner_plate_too_not_only_a_thicker_one() -> Bool {
-  match scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
+  match fit_scope_admits(scope: m3_free_pass_scope, request: FitPolicyRequest {
     fastener: m3_fastener, orientation: VerticalThroughHole, wall_depth: micrometer(count: 2000),
   }) {
-    ScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => micrometer_count(m: rq) == 2000
-    ScopeCovers => false
-    ScopeFastenerDiffers => false
-    ScopeOrientationDiffers => false
-    ScopeOrientationUnstated => false
+    FitScopeWallDepthOutsideEvidence { requested: rq, evidenced: ev } => micrometer_count(m: rq) == 2000
+    FitScopeCovers => false
+    FitScopeFastenerDiffers => false
+    FitScopeOrientationDiffers => false
+    FitScopeOrientationUnstated => false
   }
 }
 

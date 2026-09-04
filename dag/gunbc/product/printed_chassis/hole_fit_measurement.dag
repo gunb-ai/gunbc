@@ -295,7 +295,7 @@ data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
 // dimensions were flattened into one opaque value.
 //
 // They are now separate typed fields, and -- this is the part that makes the difference rather than
-// the typing alone -- there is a CONSUMPTION GATE. scope_admits answers whether a request lies inside
+// the typing alone -- there is a CONSUMPTION GATE. fit_scope_admits answers whether a request lies inside
 // the evidence, so spending the selection outside its conditions is a typed refusal rather than a
 // paragraph nobody executes. Typing the fields without the gate would have replaced anemic prose with
 // anemic structure.
@@ -341,22 +341,22 @@ type FitPolicyRequest {
   wall_depth: Micrometer
 }
 
-type ScopeAdmission
-  = ScopeCovers
-  | ScopeFastenerDiffers
-  | ScopeOrientationDiffers
-  | ScopeWallDepthOutsideEvidence { requested: Micrometer, evidenced: Micrometer }
-  | ScopeOrientationUnstated
+type FitScopeAdmission
+  = FitScopeCovers
+  | FitScopeFastenerDiffers
+  | FitScopeOrientationDiffers
+  | FitScopeWallDepthOutsideEvidence { requested: Micrometer, evidenced: Micrometer }
+  | FitScopeOrientationUnstated
 
-fn scope_admits(scope: FitPolicyScope, request: FitPolicyRequest) -> ScopeAdmission {
+fn fit_scope_admits(scope: FitPolicyScope, request: FitPolicyRequest) -> FitScopeAdmission {
   if scope.fastener == request.fastener {
     match scope.orientation {
-      BoreOrientationUnstated => ScopeOrientationUnstated
-      VerticalThroughHole => scope_admits_geometry(scope: scope, request: request)
-      HorizontalBore => scope_admits_geometry(scope: scope, request: request)
+      BoreOrientationUnstated => FitScopeOrientationUnstated
+      VerticalThroughHole => fit_scope_admits_geometry(scope: scope, request: request)
+      HorizontalBore => fit_scope_admits_geometry(scope: scope, request: request)
     }
   } else {
-    ScopeFastenerDiffers
+    FitScopeFastenerDiffers
   }
 }
 
@@ -364,15 +364,15 @@ fn scope_admits(scope: FitPolicyScope, request: FitPolicyRequest) -> ScopeAdmiss
 // not monotone in depth: a deeper bore can close up from over-extrusion while a shallower one opens
 // from elephant's foot. Nothing measured here says which, so anything but the evidenced depth is
 // outside the evidence.
-fn scope_admits_geometry(scope: FitPolicyScope, request: FitPolicyRequest) -> ScopeAdmission {
+fn fit_scope_admits_geometry(scope: FitPolicyScope, request: FitPolicyRequest) -> FitScopeAdmission {
   if scope.orientation == request.orientation {
     if micrometer_count(m: scope.wall_depth) == micrometer_count(m: request.wall_depth) {
-      ScopeCovers
+      FitScopeCovers
     } else {
-      ScopeWallDepthOutsideEvidence { requested: request.wall_depth, evidenced: scope.wall_depth }
+      FitScopeWallDepthOutsideEvidence { requested: request.wall_depth, evidenced: scope.wall_depth }
     }
   } else {
-    ScopeOrientationDiffers
+    FitScopeOrientationDiffers
   }
 }
 
