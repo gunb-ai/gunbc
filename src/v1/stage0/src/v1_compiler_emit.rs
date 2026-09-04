@@ -46,7 +46,8 @@ pub use crate::v1_compiler_coercion::{
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
     apply_type_template3, capitalize_first, escape_json_string, escape_string_literal_body,
-    extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
+    extract_test_projections, has_mock_prefix, is_data_def_item, is_function_item,
+    is_resource_def_item, is_service_def_item, is_service_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
     to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
@@ -102,6 +103,7 @@ pub use crate::v1_compiler_languages::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -116,10 +118,6 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
-};
-use crate::v1_std_core::ParsedModuleItemKind::{
-    ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
-    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::TransportKind::{
@@ -146,9 +144,9 @@ pub use crate::v1_std_core::{
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
+    CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -825,6 +823,43 @@ pub fn order_typed_call_args(
                 }
             }
         }
+    }
+}
+
+pub fn order_typed_call_args_from_semantics(
+    args: Rc<Vec<Rc<Node>>>,
+    func: String,
+    call_semantics: Option<Rc<CallSemantics>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<Node>>> {
+    match call_semantics.clone().as_deref().cloned() {
+        Some(CallSemantics::ResolvedDirectCallSemantics {
+            application_plan: plan,
+            ..
+        }) => Rc::new({
+            let mut __result = Vec::new();
+            for app in plan.iter().cloned() {
+                __result.extend(
+                    (*match app.matched_argument_index.clone() {
+                        Some(argument_index) => match args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(argument_index.clone() as usize)
+                            .next()
+                        {
+                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+        _ => order_typed_call_args(args.clone(), func.clone(), scope.clone()),
     }
 }
 
@@ -2172,7 +2207,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
             if {
                 let mut __found = false;
                 for item in tm.items.clone().iter().cloned() {
-                    if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService) {
+                    if crate::v1_compiler_emit_core_support::is_service_item(item.clone()) {
                         __found = true;
                         break;
                     }
@@ -3829,6 +3864,7 @@ pub fn emit_unified_tco_expr(
                         emit_typed_call_unified(
                             f.clone(),
                             args.clone(),
+                            std::option::Option::None,
                             target.clone(),
                             registry.clone(),
                             scope.clone(),
@@ -5412,9 +5448,9 @@ pub fn unmodeled_shell_transport_diagnostics(
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in tm.items.clone().iter().cloned() {
-                                if (item.module_item_kind.clone()
-                                    == ParsedModuleItemKind::ModuleItemService)
-                                {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
                                     __result.push(item);
                                 }
                             }
@@ -5459,9 +5495,9 @@ pub fn unmodeled_file_transport_diagnostics(
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in tm.items.clone().iter().cloned() {
-                                if (item.module_item_kind.clone()
-                                    == ParsedModuleItemKind::ModuleItemService)
-                                {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
                                     __result.push(item);
                                 }
                             }
@@ -6866,6 +6902,7 @@ pub fn emit_go_v2rt_free_call(func: String, arg_strs: Rc<Vec<String>>) -> String
 pub fn emit_typed_call_unified(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
@@ -6873,7 +6910,12 @@ pub fn emit_typed_call_unified(
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
-        let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
+        let ordered_args = order_typed_call_args_from_semantics(
+            args.clone(),
+            func.clone(),
+            call_semantics.clone(),
+            scope.clone(),
+        );
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for a in ordered_args.iter().cloned() {
@@ -7688,6 +7730,12 @@ pub fn emit_unified_typed_expr(
                 emit_typed_call_unified(
                     crate::v1_std_core::expr_call_func_at(expr.clone(), si.clone()),
                     expr.children.clone(),
+                    match (*expr.expr_data.clone()).clone() {
+                        ExprData::ExprCall {
+                            call_semantics: cs, ..
+                        } => cs.clone(),
+                        _ => std::option::Option::None,
+                    },
                     target.clone(),
                     registry.clone(),
                     scope.clone(),

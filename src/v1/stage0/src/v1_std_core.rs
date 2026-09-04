@@ -18,7 +18,6 @@ use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
 use self::OperationModifier::*;
-use self::ParsedModuleItemKind::*;
 use self::ServiceConfigField::*;
 use self::StringPart::*;
 use self::TokenShape::*;
@@ -214,7 +213,6 @@ pub fn divergent_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -286,18 +284,42 @@ pub enum CallTargetIdentity {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
-    PlainCallSemantics { target: Rc<CallTargetIdentity> },
-    LookupCallSemantics { target: Rc<CallTargetIdentity> },
+    PlainCallSemantics {
+        target: Rc<CallTargetIdentity>,
+    },
+    ResolvedDirectCallSemantics {
+        target: Rc<CallTargetIdentity>,
+        application_plan: Rc<Vec<Rc<ResolvedCallFormal>>>,
+    },
+    LookupCallSemantics {
+        target: Rc<CallTargetIdentity>,
+    },
     FunctionValueCallSemantics,
 }
 impl CallSemantics {
     pub fn target(&self) -> Rc<CallTargetIdentity> {
         match self {
             CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::ResolvedDirectCallSemantics { target: __val, .. } => __val.clone(),
             CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
             CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedFormal {
+    pub parameter_identity: String,
+    pub declared_type: Rc<Node>,
+    pub declaration_bound_conformance: Rc<Node>,
+    pub substitution_basis: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedCallFormal {
+    pub formal_index: i64,
+    pub formal: Rc<ResolvedFormal>,
+    pub matched_argument_index: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -944,6 +966,15 @@ pub fn compiler_diagnostic_seed_projection_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compiler_diagnostic_partition_totality_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CORRECTION (2026-09-03, direct-call formal-authority carrier): the historical clause in compiler_diagnostic_seed_projection_note saying compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST no longer describes the current classifier. That allowlist admitted a third Boolean state: a rendered diagnostic could be neither hard nor advisory, so both aggregates stayed healthy-looking while their sum was smaller than the complete diagnostic population. The classifier now takes ONE complete population -- the diagnostics vector consumed by compile-clean -- and projects it into an exhaustive binary partition: hard is compile_clean_diagnostic_is_hard and advisory is its exact complement. No diagnostic can enter neither bucket, and no separately classified population can drift. This is a climb that deletes the invisible state, not a lowered rung: blocking classification is unchanged, every non-hard diagnostic becomes counted and observable, and the remaining accepting direct-call boundary is declared independently by gunbc.rung_drop direct_call_unbound_carried_generic_compat with its histogram-derived population and restoration trigger. The hand-Rust predicate still dissolves with the seed at ROADMAP v1-zero-hand-maintained-rust; what changed is that adding a diagnostic no longer requires an allowlist edit that can be forgotten silently.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontierOccurrenceKey {
     pub method: String,
@@ -1066,20 +1097,6 @@ pub struct DeclaredFuncEnv {
     pub signatures: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum ParsedModuleItemKind {
-    ModuleItemTypeDeclaration,
-    ModuleItemFunction,
-    ModuleItemDataValue,
-    ModuleItemService,
-    ModuleItemResource,
-    ModuleItemUnrecognized,
-    NotAModuleItem,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
@@ -1100,7 +1117,6 @@ pub struct Node {
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
-    pub module_item_kind: ParsedModuleItemKind,
     pub expr_data: Rc<ExprData>,
 }
 
@@ -1148,7 +1164,6 @@ pub fn make_expr_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1181,7 +1196,6 @@ pub fn make_named_expr_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1230,7 +1244,6 @@ pub fn make_expr_error_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprError {
             kind: kind.clone(),
             message: message.clone(),
@@ -1269,7 +1282,6 @@ pub fn make_arg_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1306,7 +1318,6 @@ pub fn make_arm_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1338,7 +1349,6 @@ pub fn make_resource_use_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1388,7 +1398,6 @@ pub fn make_field_init_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1419,7 +1428,6 @@ pub fn make_field_binding_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1462,7 +1470,6 @@ pub fn make_text_part_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitStr {
                 value: text.clone(),
@@ -1495,7 +1502,6 @@ pub fn make_interp_part_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1532,7 +1538,6 @@ pub fn make_param_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1573,7 +1578,6 @@ pub fn make_resolved_param_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1722,7 +1726,6 @@ pub fn make_field_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1812,7 +1815,6 @@ pub fn make_variant_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2709,7 +2711,6 @@ pub fn make_transport_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2857,7 +2858,6 @@ pub fn shell_transport_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -2891,7 +2891,6 @@ pub fn shell_transport_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -3395,7 +3394,6 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         is_self_recursive: node.is_self_recursive.clone(),
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
-        module_item_kind: node.module_item_kind.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -3911,7 +3909,6 @@ pub fn module_node(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -3945,7 +3942,6 @@ pub fn import_node(
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
-                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }))
@@ -3970,7 +3966,6 @@ pub fn import_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4025,7 +4020,6 @@ pub fn leaf_node_with_span(
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4108,7 +4102,6 @@ pub fn unit_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4138,7 +4131,6 @@ pub fn bool_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4168,7 +4160,6 @@ pub fn string_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4198,7 +4189,6 @@ pub fn hash_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4228,7 +4218,6 @@ pub fn int_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4258,7 +4247,6 @@ pub fn float_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4288,7 +4276,6 @@ pub fn none_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4330,7 +4317,6 @@ pub fn error_type() -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprError {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
@@ -4634,7 +4620,6 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -4659,7 +4644,6 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -4928,20 +4912,6 @@ pub struct ShellTransport;
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LocalTransport;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemTypeDeclaration;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemFunction;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemDataValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemService;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemResource;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleItemUnrecognized;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NotAModuleItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChildrenListField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

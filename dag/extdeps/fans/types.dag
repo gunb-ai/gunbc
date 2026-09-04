@@ -1,7 +1,7 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Millimeter, Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
+import std.measure { Micrometer, Millimeter, Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
 import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
@@ -247,5 +247,73 @@ fn fan_evidence_is_anchored(evidence: FanAcousticEvidence) -> Bool {
     FanAcousticLawFittable { published_level_count } => true
     FanAcousticTwoPointLawAssumed { published_level_count } => true
     FanAcousticUnderdetermined { published_level_count } => false
+  }
+}
+
+// THE FAN'S MECHANICAL INTERFACE, WHICH THIS MODULE DID NOT MODEL AND A CHASSIS CANNOT DO WITHOUT.
+//
+// Everything above is acoustic and electrical -- speed, noise, bearing, duty points. That was the
+// right scope while the only consumer was a cooling-qualification verdict. A printed chassis has to
+// bolt a fan to a plate, and the facts that decides are the frame footprint, the square mounting
+// pattern, and the screw clearance. None of them were declared: the Arctic P8 row records its
+// 80 x 80 x 25 mm frame only inside an annotation, which DESIGN section 4c names as program data in
+// the wrong place -- a measurement stated in prose, mechanically indistinguishable from commentary
+// and unreadable by any consumer.
+//
+// THE PATTERN IS A SQUARE AND IS MODELLED AS ONE. Axial fan mounting holes sit on the corners of a
+// square centred on the bore, so ONE pitch fixes all four positions. Carrying four independent
+// centres would be four chances to disagree about a fact that has one degree of freedom, and the
+// first typo would be a plate whose holes do not line up with anything.
+// MICROMETRES, NOT MILLIMETRES, and the first draft of this row proved why. It was written as
+// Millimeter with a pitch of 71, because millimeter(count:) takes a whole number -- and the real
+// 80 mm axial pitch is 71.5. Rounding it put every one of the four holes half a millimetre out of
+// position while the row still read like a derived fact. Micrometer is the unit the coupon geometry
+// already uses for exactly this reason.
+type FanMountingPattern sole_constructor {
+  frame_edge: Micrometer
+  hole_pitch: Micrometer
+  hole_clearance_diameter: Micrometer
+  evidence: FanMechanicalEvidence
+}
+
+// WHERE A MECHANICAL FIGURE CAME FROM, KEPT BESIDE IT RATHER THAN ASSUMED.
+//
+// The 80 mm axial pattern is an industry de-facto convention rather than a standard this repository
+// holds a copy of, and no vendor drawing has been read first-hand here. That is a real difference in
+// grade from the acoustic rows above, which are relayed from a product listing, and from the
+// micro-ATX coordinates, which are relayed from a named specification. Recording it as convention
+// says the number is expected to be right and has not been verified against this operator's fan.
+//
+// THE RETIREMENT TRIGGER IS A CALIPER, NOT A DOCUMENT. The operator holds the fans. A measured pitch
+// promotes the row to MeasuredFromHeldPart and needs no other evidence, and a printed mount that
+// bolts up is itself the discriminating test -- which is why the first fan mount is worth printing
+// before anything is designed around it.
+type FanMechanicalEvidence
+  = ConventionUnverified { convention: NonEmptyStr }
+  | RelayedFromVendorDocument { document: NonEmptyStr }
+  | MeasuredFromHeldPart { measured_by: NonEmptyStr }
+
+// THE CONSTRUCTOR BESIDE THE SEALED TYPE, which is the shape extdeps.standards.micro_atx already
+// uses for mounting_location. The seal keeps a pattern from being assembled by a caller that skipped
+// the evidence field; the constructor is what lets a product module declare its own row.
+fn fan_mounting_pattern(
+  frame_edge: Micrometer,
+  hole_pitch: Micrometer,
+  hole_clearance_diameter: Micrometer,
+  evidence: FanMechanicalEvidence,
+) -> FanMountingPattern {
+  FanMountingPattern {
+    frame_edge: frame_edge,
+    hole_pitch: hole_pitch,
+    hole_clearance_diameter: hole_clearance_diameter,
+    evidence: evidence,
+  }
+}
+
+fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
+  match p.evidence {
+    MeasuredFromHeldPart { measured_by: _ } => true
+    RelayedFromVendorDocument { document: _ } => false
+    ConventionUnverified { convention: _ } => false
   }
 }

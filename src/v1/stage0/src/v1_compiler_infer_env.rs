@@ -33,8 +33,6 @@ use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType}
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
@@ -1523,7 +1521,6 @@ pub fn qualify_borrowed_type_names(
                             is_self_recursive: n.is_self_recursive.clone(),
                             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                             match_pattern: n.match_pattern.clone(),
-                            module_item_kind: n.module_item_kind.clone(),
                             expr_data: n.expr_data.clone(),
                             ident: None,
                         })
@@ -1555,7 +1552,6 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1580,7 +1576,6 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1766,6 +1761,52 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
         },
         std::option::Option::None => std::option::Option::None,
     }
+}
+
+pub fn declaration_substitution_basis(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    generic_names: Rc<Vec<String>>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let children = Rc::new({
+            let mut __result = Vec::new();
+            for ch in n.children.clone().iter().cloned() {
+                __result.push(declaration_substitution_basis(
+                    ch.clone(),
+                    env.clone(),
+                    generic_names.clone(),
+                ));
+            }
+            __result
+        });
+        let with_children = node_with_children(n.clone(), children.clone());
+        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && (name.clone() != "".to_string()))
+            && ({
+                let mut __found = false;
+                for g in generic_names.iter().cloned() {
+                    if (g.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } || ((!v1_rt::contains(name.clone(), ".".to_string())
+                && !crate::std_types::is_kernel_type(name.clone()))
+                && (lookup_binding_by_name_local(env.clone(), name.clone())
+                    == std::option::Option::None))));
+        if generic_leaf.clone() {
+            node_with_inferred(
+                with_children.clone(),
+                Some(Rc::new(InferredNode::TypeVariable { id: name.clone() })),
+            )
+        } else {
+            with_children.clone()
+        }
+    })
 }
 
 pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
@@ -2132,7 +2173,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -2181,6 +2221,37 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
             })
         })
+}
+
+pub fn census_declaration_type_env(
+    census: Rc<SymbolIndex>,
+    module_path: String,
+    tp_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeEnv> {
+    {
+        let base = Rc::new(TypeEnv {
+            module_path: module_path.clone(),
+            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            parents: Rc::new(vec![]),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            source_indices: source_indices.clone(),
+            intern_table: crate::v1_std_core::empty_intern_table(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
+            symbol_index: census.clone(),
+            unit_variant_index: v1_rt::rc_empty_map::<
+                String,
+                Rc<HashMap<String, Rc<UnitVariantContribution>>>,
+            >(),
+            unit_variant_index_observed: false,
+        });
+        env_with_type_variable_bindings(base.clone(), tp_names.clone())
+    }
 }
 
 pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {

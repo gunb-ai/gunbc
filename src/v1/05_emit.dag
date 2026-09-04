@@ -18,6 +18,7 @@ import v1.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError,
   ExprReturn, StringPart, Text, Interpolation, TextFile, SourceSpan, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig, MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  CallSemantics, ResolvedDirectCallSemantics,
   ServiceMethodSemantics, MatchPattern, Wildcard, Bind, LitPattern, VariantPattern,
   field_binding_name_at, field_binding_pattern, FieldSummary, TupleFirst, TupleSecond,
   expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
@@ -367,6 +368,20 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
         concat(ordered, leftovers)
       }
     }
+  }
+}
+
+fn order_typed_call_args_from_semantics(args: List<Node>, func: String, call_semantics: CallSemantics?, scope: InferScope) -> List<Node> {
+  match call_semantics {
+    Present { value: ResolvedDirectCallSemantics { target: _, application_plan: plan } } =>
+      plan |> flat_map(app => match app.matched_argument_index {
+        Present { value: argument_index } => match args |> skip(argument_index) |> first {
+          Present { value: arg } => [arg]
+          Absent => []
+        }
+        Absent => []
+      })
+    _ => order_typed_call_args(args: args, func: func, scope: scope)
   }
 }
 
@@ -1892,7 +1907,7 @@ fn emit_unified_tco_expr(
     emit_non_self_call: frame => shared_tco_non_self_call(
       frame: frame, target: target, spec: spec,
       recurse_call: (f, args, scope, depth) => emit_typed_call_unified(
-        func: f, args: args, target: target, registry: registry, scope: scope,
+        func: f, args: args, call_semantics: none, target: target, registry: registry, scope: scope,
         recurse: n => recurse_expr(n, scope, depth))),
     emit_if: frame => shared_tco_if(
       frame: frame, fn_name: fn_name, params: params, target: target, spec: spec,
@@ -3336,9 +3351,9 @@ fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
   concat("v2rt.", emit_export_ident(name: bridge_method_name_unified(method_name: func, target: Go), target: Go), "(", arg_strs |> join(separator: ", "), ")")
 }
 
-fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
+fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
-  let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
+  let ordered_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
   let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
@@ -3588,7 +3603,7 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
       }
     },
     emit_call: expr =>
-      emit_typed_call_unified(func: expr_call_func_at(texpr: expr, source_indices: si), args: expr.children, target: target, registry: registry, scope: scope,
+      emit_typed_call_unified(func: expr_call_func_at(texpr: expr, source_indices: si), args: expr.children, call_semantics: match expr.expr_data { ExprCall { call_semantics: cs, descent_evidence: _ } => cs  _ => none }, target: target, registry: registry, scope: scope,
         recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
     emit_method_call: expr =>
       emit_typed_method_call_unified(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_indices: si), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), target: target, registry: registry, scope: scope, depth: depth,
