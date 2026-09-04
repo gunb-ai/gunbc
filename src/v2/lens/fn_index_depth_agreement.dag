@@ -344,6 +344,19 @@ fn fn_index_depth_agreement_tally() -> DepthAgreementTally {
   )
 }
 
+// THE VERDICT ENFORCES EVERY CLAIM THIS MODULE ADVERTISES, which review 60220 correctly found it
+// did not. It previously read `decls` and `disagreeing_with_legacy` only, so claims two and three
+// were computed, printed and enforced by nothing -- specification without execution (DESIGN section
+// 5) sitting inside the very instrument built to answer that charge.
+//
+// THE TWO ADDED ARMS ARE DISCRIMINATING, NOT DECORATIVE, and it matters which direction each runs.
+// `root_callees_lost_to_depth_one` and `param_collisions` are refused at ZERO rather than above a
+// threshold, because each is the population that MAKES its claim true: if no live declaration hid a
+// callee below depth one, then #10156's reader was adequate and the change this PR makes to
+// `callees_from_node` was unnecessary; if no live declaration references its own parameter by a
+// lexeme that also names a declaration, then the parameter exclusion excludes nothing and is dead
+// code defended by prose. Either zero falsifies the PR rather than the corpus, which is exactly the
+// direction a claim's own instrument should be able to fail in.
 fn fn_index_depth_agreement() -> ProcessExit {
   let tally = fn_index_depth_agreement_tally()
   if tally.decls == 0 {
@@ -353,6 +366,14 @@ fn fn_index_depth_agreement() -> ProcessExit {
   } else if tally.disagreeing_with_legacy > 0 {
     exit_failure(
       reason: "atom_identities_in_node no longer agrees with the fold_node reader #10156 replaced"
+    )
+  } else if tally.root_callees_lost_to_depth_one == 0 {
+    exit_failure(
+      reason: "no live declaration hides a callee below depth one, so claim two is false and the move off atom_identities_in_node bought nothing"
+    )
+  } else if tally.param_collisions == 0 {
+    exit_failure(
+      reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_node excludes nothing"
     )
   } else {
     ExitSuccess
