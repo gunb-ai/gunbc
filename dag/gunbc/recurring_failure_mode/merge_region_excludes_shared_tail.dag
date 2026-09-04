@@ -31,7 +31,25 @@ data merge_region_excludes_shared_tail: RecurringFailureMode = RecurringFailureM
 
     "THE TRANSFERABLE PART IS THAT THE MISREPORT IS THE DEFAULT AND NOT A LAPSE: a reader who resolves the conflict, sees both rows present and no markers, and does not compile, will conclude 'parses fine' every time, because every visible signal available WITHOUT executing agrees with that conclusion. ",
 
-    "The audit that finds the fusion and the execution that establishes its cost are two different steps, and doing only the first is what produces a confident wrong report about severity.)",
+    "The audit that finds the fusion and the execution that establishes its cost are two different steps, and doing only the first is what produces a confident wrong report about severity.",
+
+    " **THE ONE-LINE REPAIR IS HALF A REPAIR, AND THE OTHER HALF ARRIVED AS ITS OWN NIGHT OF CONFLICTS** (2026-09-03, `gunbc.rung_drop`, three lanes). Collapsing a row to one line removes the shared SUFFIX and with it the append hazard, and it converts the row into a multi-kilobyte single line -- so two lanes making LOGICALLY DISJOINT edits to ONE row, a `standing` flip and an `authored` extension, now collide on that line with certainty and with a diff no reviewer can read. Neither shape is safer than the other. They are the two halves of ONE deficit: the arbiter of a structured roster is text-level three-way merge, which sees lines and not declarations, so every line a carrier makes shared is a hazard and the only question is whether the sharing falls on appends or on edits. ",
+
+    "**CORRECTED RECOGNITION RULE: ask what LINE two independent authoring acts are forced to share, for BOTH acts a growth surface admits -- adding a unit and amending one.** ",
+
+    "THE REPAIR IS STILL THE UNIT AND STILL NOT A CHECK, but the unit is the FILE: one row per file makes both acts share nothing, and reduces the shared text to a roster of bare identifiers, one line each, where an append has no tail to lose and an amendment touches no roster line at all. ",
+
+    "**AND ONE FIELD PER LINE IS NOT ENOUGH, WHICH IS THE PART ONLY MEASUREMENT FOUND.** A three-way merge needs an UNCHANGED line between two changed regions to keep them apart, so two lanes editing ADJACENT fields conflict exactly as they did on one line. ",
+
+    "Measured with `git merge-file` on `floor_cut_heal`, a `standing` flip against an `authored` extension: one-line row, 1 conflict; one field per line with `standing` and `authored` adjacent, 1 conflict; the same fields separated by a blank line, 0 conflicts with both edits present. ",
+
+    "So the carrier unit is a line AND ITS SEPARATION, and a representation that merges is one where every independently amendable field is separated from its neighbours by a line no amendment touches. ",
+
+    "The roster still conflicts on a two-lane append -- measured, 2 regions -- but each region is a whole line on both sides with no shared suffix, so the additive resolution is correct and total, which is the property the one-line row bought and this shape keeps. ",
+
+    "Worked repair: `gunbc.rung_drop`, whose 30 rows are 30 files under `dag/gunbc/rung_drop/` enumerated by `gunbc.rung_drop.roster`. THE SHARED TEXT IS NOT ZERO AND THE HONEST COUNT IS THE ENUMERATIONS: a new drop still touches the roster line, and a new PROSE drop touches three further lists that exist only to keep the prose arm closed. Each is a whole line with no shared suffix, so each resolves additively -- which is the claim, and it is weaker than `disjoint edits no longer conflict`. ",
+
+    "What this does NOT establish is enforcement -- nothing refuses a second row added to one of those files, so the default is safe and the shape is not walled.)",
   ],
 
   evidence: [],

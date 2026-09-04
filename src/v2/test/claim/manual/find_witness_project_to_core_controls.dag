@@ -246,7 +246,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
 }
 
 fn i32_value_set() -> Node {
-  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec()))
+  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int32_interval_spec))
 }
 
 fn i32_value_set_interval_first() -> Node {
@@ -255,7 +255,7 @@ fn i32_value_set_interval_first() -> Node {
     children: [
       Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_interval },
-        target: integer_interval_spec_node(spec: int32_interval_spec())
+        target: integer_interval_spec_node(spec: int32_interval_spec)
       },
       Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_kind },
@@ -271,11 +271,11 @@ fn i32_value_set_interval_first() -> Node {
 }
 
 fn i16_value_set() -> Node {
-  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int16_interval_spec()))
+  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: int16_interval_spec))
 }
 
 fn u8_value_set() -> Node {
-  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: uint8_interval_spec()))
+  integer_interval_value_set_node(interval: integer_interval_spec_node(spec: uint8_interval_spec))
 }
 
 fn python_int_value_set() -> Node {
@@ -379,12 +379,12 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
       right: integer_concrete_zero()
     ) == Equal
     && !integer_interval_spec_contains(
-      container: uint_platform_interval_spec(),
-      contained: uint8_interval_spec()
+      container: uint_platform_interval_spec,
+      contained: uint8_interval_spec
     )
     && !integer_interval_spec_contains(
-      container: int_platform_interval_spec(),
-      contained: int8_interval_spec()
+      container: int_platform_interval_spec,
+      contained: int8_interval_spec
     )
 
 data unified_claim_project_to_core_accepts_sibling: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
