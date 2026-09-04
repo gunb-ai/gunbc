@@ -8,7 +8,7 @@ import std.witness_admission {
   DiscoverySelection,
   OfflineLocalRecipe,
 }
-import gunbc.rung_drop { deleted_cadence_reference_drop }
+import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
 import gunbc.deleted_cadence_reference_census {
   DeletedCadenceReference,
   ExecutingConsumerReceipt,
