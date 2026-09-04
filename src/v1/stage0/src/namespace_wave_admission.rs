@@ -1213,9 +1213,6 @@ pub struct TransitionAdmission {
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
 ///
-const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
-    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
-
 /// TWENTY-FIFTH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
@@ -1270,67 +1267,38 @@ const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
 
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE ROSTER.
+/// All six `serving engine launch vocabulary move gunbc#10439` rows are deleted, and
+/// SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL with them. gunbc#10439 merged, so its rows were consumed
+/// by their own merge and their deletion falls to this roster's next touch, which is this change.
+///
+/// THE WALL REPORTED IT, NOT A SENTENCE PREDICTING IT: the floor refused with `6 consumed
+/// admission(s) due for deletion on this roster-touching change`, naming each row and its binding.
+/// Six reported, six carrying that label, six deleted, and the two gunbc#10324 rows are the whole
+/// remainder.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE. All three spellings the
+/// rows name -- `spark_serving_bind_listen_wire`, `SparkServingBindListen`,
+/// `OllamaServingLaunchProfile` -- are declared in `gunbc.spark.serving_engine` on main, so base and
+/// head bind them to the same declaring module and no run can produce these TargetChanged deltas.
+/// Calibrated rather than trusted: a fabricated name answers NOT DECLARED against that same module,
+/// so a uniform "found" was not available to the join.
+///
+/// THIS IS THE THIRD TIME THIS BRANCH HAS PAID THIS OBLIGATION IN ONE EVENING -- the 30
+/// gunbc#10355 proposal-vocabulary rows, both gunbc#10350 kernel-identity rows, and now these six --
+/// and the branch authored none of them. Each arrived the same way: another PR merged, ITS rows
+/// became consumed, and the debt attached to whoever next touched this file. TWO OF THE THREE WERE
+/// ALSO PAID INDEPENDENTLY BY THE OTHER BRANCH, which is why two dissolution entries this branch
+/// wrote are dropped rather than renumbered. The cost is not authorship and no author action avoids
+/// it; it is a queue artifact, recorded here because the roster is where it lands.
+///
+/// The deletion pass asserted `examined == kept + deleted` against a brace-depth parse rather than a
+/// grep, and reported 8 = 2 + 6. That assertion is carried because an earlier pass on this branch
+/// anchored on `&[`, matched the TYPE ANNOTATION `&[TransitionAdmission]`, examined a 19-character
+/// body, found zero rows, and would have reported the obligation paid with an empty diff -- the
+/// class now filed as `edit_pass_that_matched_nothing_reports_success`.
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_host_port",
-            spelling: "spark_serving_bind_listen_wire",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_listen",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_launch_profile",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_base",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_other_window",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "witness_bind",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
                 its type (converge_cli_codex_runtime_knob_registered_for_host)",
