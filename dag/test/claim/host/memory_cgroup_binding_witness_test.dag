@@ -55,7 +55,7 @@ fn ci_slice_observation() -> HostBudgetObservation {
 test fn an_unbounded_action_on_a_sized_machine_binds() -> Bool {
   match cgroup_bind_decision(
     request: Present { value: ten_gib() },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 26448039936) },
     memory_controller_available: true,
     cgroup_tree_writable: true
@@ -75,7 +75,7 @@ test fn an_unbounded_action_on_a_sized_machine_binds() -> Bool {
 test fn RED_a_bound_not_below_machine_memory_refuses_and_names_both_quantities() -> Bool {
   let decision = cgroup_bind_decision(
     request: Present { value: ten_gib() },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 7838253056) },
     memory_controller_available: true,
     cgroup_tree_writable: true
@@ -96,14 +96,14 @@ test fn RED_a_bound_not_below_machine_memory_refuses_and_names_both_quantities()
 test fn the_machine_boundary_is_strict_on_both_sides() -> Bool {
   let equal = cgroup_bind_decision(
     request: Present { value: CgroupBindRequested { bound: byte_size(count: 7838253056) } },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 7838253056) },
     memory_controller_available: true,
     cgroup_tree_writable: true
   )
   let below = cgroup_bind_decision(
     request: Present { value: CgroupBindRequested { bound: byte_size(count: 7838253055) } },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 7838253056) },
     memory_controller_available: true,
     cgroup_tree_writable: true
@@ -116,14 +116,14 @@ test fn the_machine_boundary_is_strict_on_both_sides() -> Bool {
 test fn RED_an_unwritable_or_uncontrolled_tree_refuses_rather_than_proceeding_unbounded() -> Bool {
   let no_controller = cgroup_bind_decision(
     request: Present { value: ten_gib() },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 26448039936) },
     memory_controller_available: false,
     cgroup_tree_writable: true
   )
   let not_writable = cgroup_bind_decision(
     request: Present { value: ten_gib() },
-    existing: none,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 26448039936) },
     memory_controller_available: true,
     cgroup_tree_writable: false
@@ -142,8 +142,8 @@ test fn RED_an_unwritable_or_uncontrolled_tree_refuses_rather_than_proceeding_un
 test fn RED_an_unreadable_machine_refuses_rather_than_assuming_the_request_fits() -> Bool {
   let decision = cgroup_bind_decision(
     request: Present { value: ten_gib() },
-    existing: none,
-    machine_memory: none,
+    existing: Absent,
+    machine_memory: Absent,
     memory_controller_available: true,
     cgroup_tree_writable: true
   )
@@ -173,8 +173,8 @@ test fn a_machine_already_bound_is_not_written_to_and_is_not_a_failure() -> Bool
 // opt-in: nothing acquires a limit it did not ask for, and no existing caller changes behaviour.
 test fn no_request_is_a_no_op_even_where_a_request_would_have_refused() -> Bool {
   let decision = cgroup_bind_decision(
-    request: none,
-    existing: none,
+    request: Absent,
+    existing: Absent,
     machine_memory: Present { value: byte_size(count: 7838253056) },
     memory_controller_available: false,
     cgroup_tree_writable: false
