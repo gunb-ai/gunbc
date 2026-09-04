@@ -163,6 +163,11 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused,
 }
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.repository { gunbc_repository }
+import gunbc.running_release_identity { release_revision_text_valid }
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
@@ -1208,5 +1213,123 @@ func fleet_converge_apply_spark_rows_wet(
         FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
           exit_failure(reason: "fleet_converge_apply: SparkRowsOnNonSparkRequest — routed scope was spark-serving but the observed request is not; refusing")
       }
+  }
+}
+
+
+// ── The operator-local route ─────────────────────────────────────────────────────────────────────
+//
+// WHY `gunbc converge` REFUSED, AND WHAT THIS IS INSTEAD. PR #8286 deleted the cli_run driver's verb
+// handlers; converge's handler was resolve-a-.dag-entry plus an interpreter context, and the ruling
+// was that the frozen v1 engine must not become load-bearing for a capability by being re-homed.
+// The verb was left refusing with `successor: gunbc.fleet_converge_apply`, the knob-grain spine
+// behind the per-host timer -- and that timer was retired 2026-08-13, so the named successor is a
+// route nothing invokes. Meanwhile the spine that IS live -- plan, hashed bundle, lease, apply,
+// receipts -- was reachable only from inside a GitHub Actions run, because its entries admit
+// themselves through observe_actions_run_binding and refuse ActionsRunUnbound.
+//
+// The two entries below are the same spine with a different RUN BINDING, not a second spine. A
+// binding is four facts -- repository, workflow ref, run id, revision -- and an operator at a shell
+// on the host can supply all four honestly: the repository from gunbc.repository, the revision from
+// HEAD of the checkout being executed, a workflow ref that names THIS route rather than a workflow
+// file, and a clock-derived run id. Nothing here spells GITHUB_* into the environment; a local run
+// is distinguishable from an Actions run by its workflow_ref forever, and
+// run_bindings_share_transaction never admits one into an RLM launch transaction, because that
+// predicate requires the ref to name the workflow file.
+//
+// EVERYTHING DOWNSTREAM IS SHARED: fleet_converge_plan_scoped_bound_wet and
+// fleet_converge_apply_bound_wet take the binding as a value, so the hostname gate, the scope
+// observers, the lease, the bundle digest, the subject compare-and-swap, the plan/apply binding
+// admission and the receipts are the same code the workflow runs. What the operator loses is only
+// what the workflow added around the binary: the artifact upload, and the bash EXPECTED_HASH
+// compare -- which fleet_converge_local_apply_wet performs itself before reading the receipt.
+//
+// INVOCATION (the run seam, which is how every other operation is invoked):
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag \
+//     --function fleet_converge_local_plan_wet --arg scope=scope:full-host
+//   gunbc run ... --function fleet_converge_local_apply_wet --arg plan_run_id=<id> --arg plan_hash=<hex>
+// scope:spark-serving additionally reads SPARK_CONVERGE_TARGET and needs the fleet key in an agent.
+data fleet_converge_operator_local_workflow_ref: String = "operator-local:gunbc.fleet_converge_plan_cli"
+
+type OperatorLocalRunBinding
+  = OperatorLocalRunBound { binding: ActionsRunBinding }
+  | OperatorLocalRunUnbound { reason: String }
+
+func observe_operator_local_run_binding() -> OperatorLocalRunBinding
+  uses net: Network
+{
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success {
+    OperatorLocalRunUnbound { reason: "HEAD commit could not be read from the checkout being executed" }
+  } else if !release_revision_text_valid(text: head.sha as String) {
+    OperatorLocalRunUnbound { reason: join(["HEAD is not a 40-digit lower-hex revision: ", head.sha as String], "") }
+  } else {
+    match clock_now_probed_at() {
+      Absent => OperatorLocalRunUnbound { reason: "the clock could not be read, so no run id can be minted" }
+      Present { value: now } =>
+        OperatorLocalRunBound {
+          binding: ActionsRunBinding {
+            repository: gunbc_repository.full_name,
+            workflow_ref: fleet_converge_operator_local_workflow_ref,
+            run_id: join(["local-", now as String], ""),
+            run_revision: head.sha as String,
+          },
+        }
+    }
+  }
+}
+
+func fleet_converge_local_plan_wet(scope: String) -> ProcessExit
+  uses net: Network
+{
+  match fleet_converge_scope_of_wire(wire: scope) {
+    ScopeUndecodable { cause: why } =>
+      exit_failure(reason: concat("fleet_converge_local_plan: ScopeUndecodable — ", why))
+    ScopeDecoded { scope: decoded } =>
+      match observe_operator_local_run_binding() {
+        OperatorLocalRunUnbound { reason: why } =>
+          exit_failure(reason: concat("fleet_converge_local_plan: RunUnbound — ", why))
+        OperatorLocalRunBound { binding: run } =>
+          match observe_host_short_wet() {
+            Absent =>
+              exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
+            Present { value: host } =>
+              fleet_converge_plan_scoped_bound_wet(run: run, expected_host: host as String, scope: decoded)
+          }
+      }
+  }
+}
+
+func fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
+  uses net: Network
+{
+  match observe_operator_local_run_binding() {
+    OperatorLocalRunUnbound { reason: why } =>
+      exit_failure(reason: concat("fleet_converge_local_apply: RunUnbound — ", why))
+    OperatorLocalRunBound { binding: run } => {
+      let on_disk = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+      if !on_disk.success {
+        exit_failure(reason: "fleet_converge_local_apply: plan artifact missing — run fleet_converge_local_plan_wet first")
+      } else if trim(s: plan_hash) == "" || trim(s: on_disk.content) != trim(s: plan_hash) {
+        exit_failure(
+          reason: join([
+            "fleet_converge_local_apply: PlanArtifactHashMismatch expected=", trim(s: plan_hash),
+            " actual=", trim(s: on_disk.content),
+          ], ""),
+        )
+      } else {
+        match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+          FleetConvergePlanReceiptUnreadable { reason: why } =>
+            exit_failure(reason: concat("fleet_converge_local_apply: PlanReceiptUnreadable — ", why))
+          FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+            fleet_converge_apply_bound_wet(
+              run: run,
+              plan_run_id: plan_run_id,
+              plan_receipt: plan_receipt,
+              expected_revision_admitted: run.run_revision,
+            )
+        }
+      }
+    }
   }
 }
