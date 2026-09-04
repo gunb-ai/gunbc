@@ -2,6 +2,7 @@ module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
+import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -267,7 +268,7 @@ data harness_worker_system_prompt: String = harness_guidance_prose(rows: harness
 // with two files complete and two untouched -- every write correct, none wasted. A budget that ends
 // a correct run mid-task is a cost with no safety behind it; the per-round deadline still bounds
 // each step, so the total wall bound grows with the count rather than being replaced by it.
-data harness_worker_step_budget: Int = 40
+data harness_worker_step_budget: Int = harness_round_budget_steps
 
 // EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK

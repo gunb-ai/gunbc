@@ -6,7 +6,7 @@ import gunbc.harness.harness_throughput {
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
   harness_round_ledger_from_events, round_segments, round_segment_kind_word, RoundSegment,
-  round_playback, round_playback_floor_ms, RoundPlayback, WriteRound, ReadRound,
+  round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
 
@@ -145,4 +145,15 @@ test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool {
     Absent => false
     Present { value: seg } => round_segment_kind_word(k: seg.kind) == "unmeasured"
   }
+}
+
+test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool {
+  let ledger = RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 1, output_tokens: 1, epoch_ms: 0, files_changed: Present { value: 0 } },
+    RoundObservation { step: 2, input_tokens: 1, output_tokens: 1, epoch_ms: 1000, files_changed: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 1, output_tokens: 1, epoch_ms: 4000, files_changed: Present { value: 0 } },
+  ] }
+  round_remaining_flex(ledger: ledger, budget_steps: 5) == 4000
+    && round_remaining_flex(ledger: ledger, budget_steps: 3) == 0
+    && harness_round_budget_steps == 40
 }

@@ -275,6 +275,31 @@ fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
   }
 }
 
+// THE WORKER'S STEP BUDGET IS THE STRIP'S TRACK. A live attempt occupies the share of the track its
+// completed rounds have spent and leaves the rest empty; the empty remainder is projected at the
+// mean pace so far, so a slow run shows as a long unspent tail and the track is full only when the
+// budget is spent or the attempt ends. The CLI reads this row for its own budget, one authority.
+data harness_round_budget_steps: Int = 40
+
+fn round_remaining_flex(ledger: HarnessRoundLedger, budget_steps: Int) -> Int {
+  match ledger {
+    RoundsUnobserved { reason: _ } => 0
+    RoundsObserved { rounds } => {
+      let segs = round_segments(ledger: ledger)
+      let n = list_length(items: segs)
+      let spent_rounds = list_length(items: rounds)
+      let remaining_rounds = if spent_rounds >= budget_steps { 0 } else { budget_steps - spent_rounds }
+      if n == 0 || remaining_rounds == 0 {
+        0
+      } else {
+        let total = fold(segs, init: 0, f: (acc, s) => acc + s.duration_ms)
+        let mean = if total / n < 1 { 1 } else { total / n }
+        remaining_rounds * mean
+      }
+    }
+  }
+}
+
 type RoundPlayback {
   segment: RoundSegment
   delay_ms: Int
