@@ -195,6 +195,19 @@ fn ray_implied_enforcers(
   }
 }
 
+// `enforcers` IS THE DECLARED POPULATION, AND A FUTURE PRODUCER MUST KEEP IT THAT WAY. The implied
+// monitor is added HERE, so a caller that also observes the running Ray monitor and lists it would
+// supply one physical enforcer twice and get `MoreThanOneEnforcer { count: 2 }` for a host that has
+// one. The rule is therefore that this parameter carries what was DECLARED and never what was
+// observed to be running: an observation of Ray's monitor is evidence that the backend is Ray, which
+// this function already implies from, not a second member. Recorded here rather than left to the
+// first producer to rediscover, because the shape admits the mistake silently.
+//
+// THE IMPLICATION BELONGS INSIDE THIS FUNCTION AND NOT AT ITS CALLERS. Pushing it outward makes
+// every caller responsible for remembering that a live Ray backend brings a monitor, which is
+// exactly how the `NoEnforcerDeclared` misdiagnosis this function used to give becomes representable
+// again -- one caller forgets, and the refusal names the declaration instead of the host.
+//
 // ONE POPULATION, THREE RULES, IN ORDER. None, more than one, and -- on a unified pool only -- an
 // enforcer that counts the device reservation. The third is a refusal rather than a warning because
 // trading KV pool for headroom underneath a mis-calibrated counter spends the resource the
