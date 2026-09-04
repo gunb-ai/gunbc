@@ -59,7 +59,8 @@ fn gitignore_header_doc() -> Doc {
 }
 
 fn footprints_doc(footprints: List<WorkspaceFootprint>) -> Doc {
-  doc_concat(parts: fold(footprints, init: [], f: fn(acc, f) {
+  let empty_docs: List<Doc> = []
+  doc_concat(parts: fold(footprints, init: empty_docs, f: fn(acc, f) {
     let fd = footprint_doc(f: f)
     if count(acc) == 0 { [fd] } else { append(acc, items: [doc_blank(), fd]) }
   }))
