@@ -389,7 +389,11 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
+
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
+pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
@@ -825,6 +829,19 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
 }
 
+pub type UsdWholeDollars = MoneyAmount<One>;
+
+pub fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
+    measure_count(m.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerSecond(pub std::marker::PhantomData<()>);
 
@@ -1018,6 +1035,17 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+    measure_count(c.clone())
+}
+
 pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1026,6 +1054,17 @@ pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
 }
 
 pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn power_cord_count(count: Nat) -> PowerCordCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn power_cord_count_value(c: PowerCordCount) -> Nat {
     measure_count(c.clone())
 }
 
@@ -1064,6 +1103,19 @@ pub fn bandwidth(count: Nat) -> Bandwidth {
 
 pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
+}
+
+pub type PacketRate = Rc<Measure<Frequency, One, i64>>;
+
+pub fn packet_rate(count: Nat) -> PacketRate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn packet_rate_count(r: PacketRate) -> Nat {
+    measure_count(r.clone())
 }
 
 pub type Nanosecond = Rc<Measure<Time, Nano, i64>>;
