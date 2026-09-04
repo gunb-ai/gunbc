@@ -267,3 +267,60 @@ test fn w_nonempty_unattached_capture_still_refuses() -> Bool {
   row_count(graph: annotation_attachment_result_graph(result: result)) == 0
     && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 1
 }
+
+// THE MODULE-HEADER ARM HAD NO EXECUTING EVIDENCE UNTIL THESE TWO ROWS. `module_header_gap_subject`
+// is CALLED on every attachment -- `attach_annotations` reaches it through `annotation_attach_step`
+// for each capture -- but the fixtures above declare `module_root: false` on every subject, so
+// `module_root_subject` answers Absent and the function's Present branch never fires. The arm was
+// reached and never exercised, which reads as covered on a call-graph census and establishes
+// nothing. It is the arm that decides whether a block at the top of a file names the MODULE or the
+// first declaration after it, so a wrong answer silently rebinds prose to an unrelated symbol.
+fn hdr_subject_module() -> AnnotationSubject {
+  AnnotationSubject { occurrence: OccurrenceId { value: 1 }, span: probe_span(start: 0, end: 50), module_root: true }
+}
+
+fn hdr_subject_following() -> AnnotationSubject {
+  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
+}
+
+fn hdr_subjects() -> List<AnnotationSubject> {
+  [hdr_subject_module(), hdr_subject_following()]
+}
+
+// Both captures occupy the SAME span, 60..80, which lies in the gap between the module declaration
+// and the first member. The two witnesses differ in exactly one bit, so the pair is discriminating:
+// nothing but `preceded_by_blank_line` can account for a divergence in their verdicts.
+fn hdr_gap_capture() -> NormalizedAnnotationCapture {
+  leading(text: "header", start: 60, end: 80)
+}
+
+fn hdr_gap_capture_after_blank() -> NormalizedAnnotationCapture {
+  leading_after_blank(text: "header", start: 60, end: 80)
+}
+
+fn hdr_attached_graph(capture: NormalizedAnnotationCapture) -> SourceAnnotationGraph {
+  annotation_attachment_result_graph(
+    result: attach_annotations(captures: [capture], subjects: hdr_subjects())
+  )
+}
+
+// Returns -1 rather than 0 when no row is present. Zero is a real OccurrenceId, so a zero sentinel
+// would be indistinguishable from a genuine attachment to occurrence 0 -- the reading and the
+// vacancy would share a value and the witness would pass on an empty graph.
+fn hdr_only_row_subject(capture: NormalizedAnnotationCapture) -> Int {
+  fold(
+    source_annotation_graph_rows(graph: hdr_attached_graph(capture: capture)),
+    init: 0 - 1,
+    f: (acc, row) => row.subject.value
+  )
+}
+
+test fn w_a_header_gap_annotation_attaches_to_the_module_root() -> Bool {
+  row_count(graph: hdr_attached_graph(capture: hdr_gap_capture())) == 1
+    && hdr_only_row_subject(capture: hdr_gap_capture()) == 1
+}
+
+test fn w_a_blank_line_before_a_header_gap_annotation_moves_it_to_the_following_declaration() -> Bool {
+  row_count(graph: hdr_attached_graph(capture: hdr_gap_capture_after_blank())) == 1
+    && hdr_only_row_subject(capture: hdr_gap_capture_after_blank()) == 7
+}
