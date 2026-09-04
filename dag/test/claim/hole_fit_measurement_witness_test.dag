@@ -1,0 +1,157 @@
+module test.claim.hole_fit_measurement_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import product.printed_chassis.coupon { HoleDiameterLadderR1, hole_ladder_spec }
+import product.printed_chassis.hole_fit_measurement {
+  FastenerFitGrade, FitFree, FitTight, FitRefused,
+  HoleFitObservation, HoleCompensationStanding,
+  CompensationBracketed, CompensationLowerBoundUnestablished, CompensationUpperBoundUnestablished,
+  CompensationUnobserved, CompensationObservationsNonMonotone, CompensationLadderUnavailable,
+  compensation_from_observations, m3_fastener, operator_ladder_reading_2026_09_04,
+}
+
+fn obs(rung: Nat, g: FastenerFitGrade) -> HoleFitObservation {
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: rung,
+    fastener: m3_fastener,
+    grade: g,
+    observer: "fixture",
+  }
+}
+
+// THE LOAD-BEARING WITNESS. The operator's real reading -- rungs 2 and 3 both admit an M3 -- must
+// return LOWER BOUND UNESTABLISHED, not a compensation. Every observation in that population is a
+// pass, so nothing bounds the loss from below, and the rung-1 reading was never taken. A derivation
+// that answered anyway would be stating a constant that goes into every fastener hole on the chassis
+// on the strength of an assumption nobody made.
+fn w_the_operators_reading_refuses_to_state_a_compensation() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec,
+                                       observations: operator_ladder_reading_2026_09_04) {
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => r == 2
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// THE POSITIVE CONTROL, AND THE EXACT OBSERVATION THAT WOULD CLOSE IT. Adding the one missing
+// reading -- rung 1 refuses -- brackets the compensation between the rung-1 and rung-2 shortfalls.
+// Rung 1 is 3000 um modelled against a 3000 um fastener, so its shortfall is 0; rung 2 is 3100, so
+// 100. The answer is "at least 0 and less than 100 um", which is a real bracket and not a midpoint.
+fn w_one_more_reading_brackets_the_compensation() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 1, g: FitRefused),
+    obs(rung: 2, g: FitTight),
+    obs(rung: 3, g: FitFree),
+  ]) {
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } =>
+      micrometer_count(m: a) == 0 && micrometer_count(m: l) == 100 && n == 3
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// A DIFFERENT WORLD GIVES A DIFFERENT BRACKET, which proves the bracket is derived from the ladder
+// and the ordinals rather than being a constant. Rungs 1-3 refuse and rung 4 passes: at least the
+// rung-3 shortfall (200) and less than the rung-4 shortfall (300).
+fn w_the_bracket_follows_the_observations() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 1, g: FitRefused),
+    obs(rung: 2, g: FitRefused),
+    obs(rung: 3, g: FitRefused),
+    obs(rung: 4, g: FitFree),
+  ]) {
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } =>
+      micrometer_count(m: a) == 200 && micrometer_count(m: l) == 300
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// A TIGHT FIT IS A PASS, NOT A HALF-REFUSAL. The fastener went through; the bound it establishes is
+// an upper one. Treating tight as refused would move the bracket a whole rung and silently oversize
+// every hole. This population differs from the previous one ONLY in that rung 3 is tight rather than
+// free, and must give the identical bracket.
+fn w_tight_is_a_pass_and_does_not_move_the_bracket() -> Bool {
+  let free = compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused), obs(rung: 3, g: FitFree),
+  ])
+  let tight = compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused), obs(rung: 3, g: FitTight),
+  ])
+  match free {
+    CompensationBracketed { at_least: a1, less_than: l1, from_observations: n1 } => match tight {
+      CompensationBracketed { at_least: a2, less_than: l2, from_observations: n2 } =>
+        micrometer_count(m: a1) == micrometer_count(m: a2) &&
+        micrometer_count(m: l1) == micrometer_count(m: l2)
+      CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+      CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+      CompensationUnobserved => false
+      CompensationLadderUnavailable => false
+      CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+    }
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// NOTHING PASSING GIVES NO UPPER BOUND, and this is a DIFFERENT missing reading from the operator's
+// case -- there the ladder was too small at the bottom, here too small at the top. Two arms because
+// they send the observer to opposite ends of the coupon.
+fn w_all_refusing_leaves_the_upper_bound_open() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 1, g: FitRefused), obs(rung: 2, g: FitRefused),
+  ]) {
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => r == 2
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } => false
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// AN EMPTY POPULATION IS UNOBSERVED, not a zero compensation. A zero would be the absorbing value
+// that clears every downstream check by asserting the printer is perfect.
+fn w_no_observations_is_unobserved_not_zero() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec, observations: []) {
+    CompensationUnobserved => true
+    CompensationLadderUnavailable => false
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } => false
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => false
+  }
+}
+
+// FIT IS MONOTONE IN DIAMETER. A larger hole refusing what a smaller one admitted is a bad reading,
+// and the tempting arm is to take the extreme and carry on -- which converts a known-bad population
+// into a confident number. It refuses and names both rungs.
+fn w_a_non_monotone_population_refuses_rather_than_averaging() -> Bool {
+  match compensation_from_observations(construction: hole_ladder_spec, observations: [
+    obs(rung: 2, g: FitFree),
+    obs(rung: 5, g: FitRefused),
+  ]) {
+    CompensationObservationsNonMonotone { passing_rung: p, refusing_rung: q } => p == 2 && q == 5
+    CompensationBracketed { at_least: a, less_than: l, from_observations: n } => false
+    CompensationLowerBoundUnestablished { smallest_passing_rung: r, missing: m } => false
+    CompensationUpperBoundUnestablished { largest_refusing_rung: r, missing: m } => false
+    CompensationUnobserved => false
+    CompensationLadderUnavailable => false
+  }
+}

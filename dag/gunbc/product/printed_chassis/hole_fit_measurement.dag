@@ -1,0 +1,193 @@
+module product.printed_chassis.hole_fit_measurement
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+import product.printed_chassis.coupon {
+  CouponSpecimenIdentity, LengthLadder, LadderConstruction, LadderReady, LadderStepIsZero,
+  LadderTooFewRungs, ladder_base, ladder_step, ladder_rung_count,
+  hole_ladder_spec, HoleDiameterLadderR1,
+}
+
+// WHAT A PERSON WITH A SCREW AND A COUPON CAN ACTUALLY REPORT.
+//
+// The coupon exists to measure how much smaller a printed hole comes out than the hole that was
+// modelled, and the reading is taken by trying a real fastener in each rung. That reading is
+// ORDINAL AND QUALITATIVE -- "the second one is tight, the third is fine" -- and this module is
+// careful to keep it that way, because the tempting move is to convert it immediately into a
+// Micrometer compensation and store that.
+//
+// Storing a Micrometer would be laundering. The observer did not measure a distance; they observed a
+// fastener passing or not passing, and the distance is DERIVED from a population of such
+// observations, with a derivation that can fail. A Micrometer field would present a derived and
+// possibly underdetermined quantity in the same shape as a caliper reading, and nothing downstream
+// could tell them apart.
+type FastenerFitGrade
+  = FitFree
+  | FitTight
+  | FitRefused
+
+// The rung is named by its ORDINAL, one-based, exactly as a person counts holes along the coupon:
+// "the second smallest". Its DIAMETER is looked up in the ladder that generated the part, so an
+// observation cannot disagree with the geometry it was taken from.
+type HoleFitObservation {
+  specimen: CouponSpecimenIdentity
+  rung_ordinal: Nat
+  fastener: FastenerThread
+  grade: FastenerFitGrade
+  observer: NonEmptyStr
+}
+
+// THE DERIVED QUANTITY, AND EVERY WAY THE DERIVATION CAN FAIL TO PRODUCE ONE.
+//
+// A compensation is BRACKETED, never a point: the ladder samples diameters 0.10 mm apart, so the
+// most any population of fit observations can say is that the true value lies between two rungs.
+// Reporting a midpoint would state a precision the instrument does not have.
+//
+// The two unestablished arms are the ones that matter, and they are separate because they name
+// different missing observations. An upper bound needs a rung the fastener PASSES; a lower bound
+// needs a rung it REFUSES. A population of nothing but passes -- which is exactly what "the second
+// and third both fit" is -- has an upper bound and no lower bound, and the honest answer is to say
+// which end is missing rather than to assume the rung below the smallest pass would have refused.
+// CompensationLadderUnavailable exists because the ordinals in an observation are indexes INTO a
+// ladder. If the ladder that generated the coupon is degenerate, "the second smallest hole" names
+// nothing and the observations cannot be converted to diameters at all. It is carried here rather
+// than unwrapped at each call site so there is ONE refusal set: three callers unwrapping would each
+// decide separately what a zero-step ladder means.
+type HoleCompensationStanding
+  = CompensationBracketed {
+      at_least: Micrometer
+      less_than: Micrometer
+      from_observations: Nat
+    }
+  | CompensationLowerBoundUnestablished {
+      smallest_passing_rung: Nat
+      missing: NonEmptyStr
+    }
+  | CompensationUpperBoundUnestablished {
+      largest_refusing_rung: Nat
+      missing: NonEmptyStr
+    }
+  | CompensationUnobserved
+  | CompensationObservationsNonMonotone {
+      passing_rung: Nat
+      refusing_rung: Nat
+    }
+  | CompensationLadderUnavailable
+
+// FIT IS MONOTONE IN DIAMETER, AND A POPULATION THAT SAYS OTHERWISE IS NOT AVERAGED.
+//
+// A larger hole cannot admit a fastener that a smaller hole refused. If the observations say it did,
+// something is wrong with the coupon, the fastener, or the reading -- a rung mismeasured, two
+// specimens confused, a burr on one hole. The tempting arm is to take the majority or the extreme and
+// carry on; that converts a known-bad population into a confident number. It refuses and names both
+// offending rungs so the observer can go back to the part.
+fn compensation_from_observations(
+  construction: LadderConstruction,
+  observations: List<HoleFitObservation>,
+) -> HoleCompensationStanding {
+  match construction {
+    LadderStepIsZero => CompensationLadderUnavailable
+    LadderTooFewRungs { supplied: n } => CompensationLadderUnavailable
+    LadderReady { ladder: ladder } => compensation_against_ladder(ladder: ladder, observations: observations)
+  }
+}
+
+fn compensation_against_ladder(
+  ladder: LengthLadder,
+  observations: List<HoleFitObservation>,
+) -> HoleCompensationStanding {
+  let scan = fold(observations, init: FitScan { count: 0, smallest_pass: 0, largest_refuse: 0 },
+    f: fn(acc, o) {
+      match o.grade {
+        FitRefused => FitScan {
+          count: acc.count + 1,
+          smallest_pass: acc.smallest_pass,
+          largest_refuse: if o.rung_ordinal > acc.largest_refuse { o.rung_ordinal } else { acc.largest_refuse },
+        }
+        FitTight => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+        FitFree => FitScan {
+          count: acc.count + 1,
+          smallest_pass: if acc.smallest_pass == 0 || o.rung_ordinal < acc.smallest_pass { o.rung_ordinal } else { acc.smallest_pass },
+          largest_refuse: acc.largest_refuse,
+        }
+      }
+    })
+  if scan.count == 0 {
+    CompensationUnobserved
+  } else {
+    if scan.smallest_pass == 0 {
+      CompensationUpperBoundUnestablished {
+        largest_refusing_rung: scan.largest_refuse,
+        missing: "no rung admitted the fastener, so no upper bound on the compensation exists; print or measure larger rungs",
+      }
+    } else {
+      if scan.largest_refuse == 0 {
+        CompensationLowerBoundUnestablished {
+          smallest_passing_rung: scan.smallest_pass,
+          missing: "every observed rung admitted the fastener, so nothing bounds the compensation from below; read the rungs below the smallest passing one",
+        }
+      } else {
+        if scan.largest_refuse >= scan.smallest_pass {
+          CompensationObservationsNonMonotone {
+            passing_rung: scan.smallest_pass,
+            refusing_rung: scan.largest_refuse,
+          }
+        } else {
+          CompensationBracketed {
+            at_least: rung_shortfall(ladder: ladder, ordinal: scan.largest_refuse),
+            less_than: rung_shortfall(ladder: ladder, ordinal: scan.smallest_pass),
+            from_observations: scan.count,
+          }
+        }
+      }
+    }
+  }
+}
+
+type FitScan sole_constructor { count: Nat, smallest_pass: Nat, largest_refuse: Nat }
+
+// The compensation at a rung is how much bigger that rung was MODELLED than the fastener it was
+// tried with. A rung the fastener refuses proves the printed hole lost at least that much; a rung it
+// passes proves the loss was less. The fastener's own diameter is the reference, and for a metric
+// coarse designation it is the nominal in micrometres.
+fn rung_diameter(ladder: LengthLadder, ordinal: Nat) -> Micrometer {
+  micrometer(count: micrometer_count(m: ladder_base(l: ladder))
+                    + ((ordinal - 1) * micrometer_count(m: ladder_step(l: ladder))))
+}
+
+fn rung_shortfall(ladder: LengthLadder, ordinal: Nat) -> Micrometer {
+  micrometer(count: micrometer_count(m: rung_diameter(ladder: ladder, ordinal: ordinal)) - 3000)
+}
+
+// THE OPERATOR'S READING, RECORDED AS GIVEN.
+//
+// Reported 2026-09-04: the second and third smallest holes both admit an M3, the second is tight.
+// The first rung was NOT reported either way, and this population deliberately does not invent it --
+// which is why the derivation below returns CompensationLowerBoundUnestablished rather than a
+// number. The machine was also not named; when it is, this population splits per printer, because
+// whether the constant is shared or per-machine is the question the two coupons were printed to
+// answer.
+data m3_fastener: FastenerThread = MetricCoarseThread { designation: "M3" }
+
+data operator_ladder_reading_2026_09_04: List<HoleFitObservation> = [
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 2,
+    fastener: m3_fastener,
+    grade: FitTight,
+    observer: "operator, coupon in hand",
+  },
+  HoleFitObservation {
+    specimen: HoleDiameterLadderR1 {},
+    rung_ordinal: 3,
+    fastener: m3_fastener,
+    grade: FitFree,
+    observer: "operator, coupon in hand",
+  },
+]
