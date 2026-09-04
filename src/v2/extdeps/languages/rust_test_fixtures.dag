@@ -4424,8 +4424,8 @@ data rust_binop_source_text: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
 
 fn rust_binop_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
-  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
-  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m1 = map_insert(m0, ^dag_binding_param_x, "x")
+  let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   map_insert(m2, ^dag_binding_type_int, "i32")
 }
 
@@ -4454,8 +4454,8 @@ data rust_body_add_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y 
 
 fn rust_body_add_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
-  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
-  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m1 = map_insert(m0, ^dag_binding_param_x, "x")
+  let m2 = map_insert(m1, ^dag_binding_param_y, "y")
   map_insert(m2, ^dag_binding_type_int, "i32")
 }
 
