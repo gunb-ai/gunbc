@@ -48,7 +48,9 @@ import gunbc.worker_lifecycle {
   WorkerProcessRunning, WorkerProcessExited,
   worker_process_evidence_label,
 }
-import gunbc.harness.harness_throughput { HarnessThroughput, throughput_cell_text }
+import gunbc.harness.harness_throughput {
+  HarnessThroughput, HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger,
+}
 
 // THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
 // docs/plans/roadmap-presentation-seam-design.md). One projection layer between the
@@ -396,6 +398,7 @@ type WorkRowView {
   action: ActionView
   supporting_facts: List<SupportingFact>
   disclosure: DisclosureView
+  rounds: HarnessRoundLedger
 }
 
 fn intricacy_code(i: Intricacy) -> String {
@@ -789,14 +792,14 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
           summary: legacy_attempt_supersedable_label,
           located_reason: detail,
           attempt_key: attempt_key_short_form(key: progress.attempt_key),
-          evidence: activity_evidence_rows(process: progress.process, throughput: progress.throughput),
+          evidence: activity_evidence_rows(process: progress.process, throughput: harness_throughput_from_ledger(ledger: progress.rounds)),
         }
       } else {
         activity_view_from_parts(
           segments: progress.segments,
           remaining: progress.reconciliation.remaining_count,
           process: progress.process,
-          throughput: progress.throughput,
+          throughput: harness_throughput_from_ledger(ledger: progress.rounds),
           current_activity: provider_execution_activity(state: progress.provider),
         )
       }
@@ -805,7 +808,7 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,
         process: progress.process,
-        throughput: progress.throughput,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
         current_activity: provider_execution_activity(state: progress.provider),
       )
   }
@@ -819,12 +822,27 @@ fn activity_view_of(facts: WorkAttemptFacts) -> ActivityView {
   }
 }
 
+// THE ROUND LEDGER RIDES BESIDE THE ACTIVITY VIEW, NOT INSIDE IT. Both project from the same facts,
+// but ActivityView answers "what is happening to this work" and is matched by name in dozens of
+// arms; the ledger is the raw round-by-round record the strip paints from. Putting it on the view
+// would make every consumer that matches a view arm name a field it never reads. Reading it off
+// the same facts at the same seam keeps the fork unwritable -- there is one progress carrier and
+// two projections of it -- without widening the view's contract.
+fn rounds_of(facts: WorkAttemptFacts) -> HarnessRoundLedger {
+  match facts {
+    NoActiveAttempt => RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }
+    AttemptUnobservable { reason: _ } => RoundsUnobserved { reason: "attempt unobservable" as NonEmptyStr }
+    ActiveAttempt { progress } => progress.rounds
+  }
+}
+
 fn work_row_view(
   rn: RoadmapNode,
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
   merged: List<Int>,
   activity: ActivityView,
+  rounds: HarnessRoundLedger,
   launch: LaunchRowContext,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
@@ -840,6 +858,7 @@ fn work_row_view(
     action: action_view(lifecycle: lifecycle, admission: row_launch_admission(ctx: launch, node_id: rn.node as String)),
     supporting_facts: row_supporting_facts(rn: rn),
     disclosure: row_disclosure(line: rn.line),
+    rounds: rounds,
   }
 }
 
@@ -1201,6 +1220,7 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     action: row.action,
     supporting_facts: row.supporting_facts,
     disclosure: row.disclosure,
+    rounds: row.rounds,
   }
 }
 

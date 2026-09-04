@@ -1,7 +1,8 @@
 module gunbc.roadmap_sandbox
 
 import std.types { Int, String, Bool, List, NonEmptyStr }
-import gunbc.harness.harness_throughput { HarnessThroughput, ThroughputUnobserved }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul }
@@ -321,7 +322,20 @@ fn fixture_specimen_segments() -> List<WorkflowSegment> {
   ]
 }
 
-fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView {
+// A LEDGER WITH THE SHAPE THE STRIP EXISTS TO SHOW: two long read rounds and one short write, so the
+// specimen paints as most of a bar of dim time ending in a bright sliver. The numbers are a fixture,
+// not a transcription of any run; the shape is the one measured on 2026-09-04, where a worker spent
+// twenty-one rounds reading and wrote at round twenty-two.
+fn fixture_moseying_ledger() -> HarnessRoundLedger {
+  RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 900, output_tokens: 120, epoch_ms: 1000000, files_changed: Present { value: 0 } },
+    RoundObservation { step: 2, input_tokens: 9000, output_tokens: 260, epoch_ms: 1120000, files_changed: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 14000, output_tokens: 180, epoch_ms: 1210000, files_changed: Present { value: 0 } },
+    RoundObservation { step: 4, input_tokens: 16000, output_tokens: 2100, epoch_ms: 1225000, files_changed: Present { value: 1 } },
+  ] }
+}
+
+fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: HarnessRoundLedger) -> WorkRowView {
   WorkRowView {
     node_id: node_id,
     headline: "Record which generator actually produced each result",
@@ -333,11 +347,12 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView
     action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
+    rounds: rounds,
   }
 }
 
 fn fixture_active_view() -> WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-active", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-active", rounds: fixture_moseying_ledger(), activity: activity_view_from_parts(
     segments: fixture_specimen_segments(),
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
@@ -346,7 +361,7 @@ fn fixture_active_view() -> WorkRowView {
 }
 
 fn fixture_refused_view() -> WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-refused", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-refused", rounds: RoundsUnobserved { reason: "refused specimen has no rounds" as NonEmptyStr }, activity: activity_view_from_parts(
     segments: [
       WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
       WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
@@ -408,6 +423,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
   }
 }
 

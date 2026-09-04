@@ -1,7 +1,8 @@
 module test.claim.long.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.harness.harness_throughput { HarnessThroughput, ThroughputUnobserved }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import std.markup { Fragment, Element, FragmentText, attr }
@@ -591,6 +592,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
       admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "parity-specimen", cause: Operator, mode: ManualReady) }),
     supporting_facts: [],
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
   }
 }
 

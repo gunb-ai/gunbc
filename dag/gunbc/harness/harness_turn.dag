@@ -8,6 +8,7 @@ import extdeps.languages.json.emit {
 }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
+import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io
 import gunbc.harness.harness_guidance {
   HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
@@ -137,8 +138,9 @@ fn harness_event_round_usage(
   input_tokens: Int,
   output_tokens: Int,
   clock: ClockUnixMillisRead,
+  files_changed: Int?,
 ) -> String {
-  serialize_json(v: json_object([
+  serialize_json(v: json_object(concat([
     json_kv(key: "type", value: json_string(s: "round.usage")),
     json_kv(key: "step", value: json_int(n: step)),
     json_kv(key: "input_tokens", value: json_int(n: input_tokens)),
@@ -148,7 +150,28 @@ fn harness_event_round_usage(
       ClockUnixMillisRefused { detail: d } =>
         json_kv(key: "clock_refused", value: json_string(s: d))
     },
-  ]))
+  ], match files_changed {
+    Present { value: n } => [json_kv(key: "files_changed", value: json_int(n: n))]
+    Absent => []
+  })))
+}
+
+// HOW MANY PATHS THE WORKTREE REPORTS AS CHANGED, READ AFTER THE ROUND'S TOOLS RAN. This is the
+// fact the dashboard strip paints a write round with, and it is an OBSERVATION of the tree rather
+// than a classification of the command that ran -- parsing a shell string for a redirect or a
+// heredoc would be a heuristic where a fact is available. The git op is repository-addressed and
+// pointed at the attempt worktree explicitly; the ambient form would have counted the harness's
+// own checkout, which is the wrong tree and would have reported a clean run on every round.
+//
+// A FAILED READ IS ABSENT, NOT ZERO. "git did not answer" and "git answered zero" have opposite
+// meanings for the strip, and the ledger's files_changed is optional for exactly this case.
+fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
+  let status = git.Inspect.WorkingTreeStatus(repository_path: environment.working_directory as String)
+  if !status.success {
+    none
+  } else {
+    Present { value: list_length(items: split(s: status.entries_nul, delimiter: from_code_point(0)) |> filter(e => e != "")) }
+  }
 }
 
 fn harness_event_turn_failed(message: String) -> String {
@@ -589,11 +612,13 @@ fn harness_turn_loop(
         }
       }
       HarnessResponseParsed { blocks, stop_reason, input_tokens, output_tokens } => {
+        let clock = clock_unix_millis_read()
         let usage = harness_event_round_usage(
           step: steps_taken + 1,
           input_tokens: input_tokens,
           output_tokens: output_tokens,
-          clock: clock_unix_millis_read(),
+          clock: clock,
+          files_changed: none,
         )
         let uses = harness_tool_use_blocks(blocks: blocks)
         if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
@@ -664,7 +689,14 @@ fn harness_turn_loop(
             environment: config.environment,
             block: u,
           ))
-          let stepped = concat(concat(events, [usage]), harness_tool_round_events(uses: uses))
+          let usage_after_tools = harness_event_round_usage(
+            step: steps_taken + 1,
+            input_tokens: input_tokens,
+            output_tokens: output_tokens,
+            clock: clock,
+            files_changed: harness_worktree_files_changed(environment: config.environment),
+          )
+          let stepped = concat(concat(events, [usage_after_tools]), harness_tool_round_events(uses: uses))
           match harness_write_events(config: config, events: stepped) {
             HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
             HarnessEventsWritten =>

@@ -22,6 +22,25 @@ type HarnessThroughput
   = ThroughputObserved { output_tokens: Int, elapsed_ms: Int, rounds: Int }
   | ThroughputUnobserved { reason: NonEmptyStr }
 
+// ONE ROUND AS OBSERVED, NOT AS SUMMARISED. The strip on the dashboard and the throughput cell are
+// two projections of the same rows, so the rows are carried once and both are derived -- carrying
+// a rate beside the rounds it is computed from would be two representations of one fact.
+// files_changed is optional because the harness that wrote older streams did not observe it; an
+// absent count is "not measured", which must stay distinct from "measured zero", since the strip
+// paints a write round differently from a read round and must never paint an unmeasured one as
+// either.
+type RoundObservation {
+  step: Int
+  input_tokens: Int
+  output_tokens: Int
+  epoch_ms: Int
+  files_changed: Int?
+}
+
+type HarnessRoundLedger
+  = RoundsObserved { rounds: List<RoundObservation> }
+  | RoundsUnobserved { reason: NonEmptyStr }
+
 // THE FIRST ROUND'S TOKENS ARE EXCLUDED FROM THE NUMERATOR ON PURPOSE, and the reason is that they
 // were produced BEFORE the first timestamp exists. A usage row is written when a response has
 // already arrived, so the earliest clock reading marks the END of round 1's generation, not its
@@ -123,6 +142,153 @@ fn harness_throughput_from_events(body: String) -> HarnessThroughput {
       elapsed_ms: acc.last_ms - acc.first_ms,
       rounds: acc.rounds,
     }
+  }
+}
+
+
+fn round_observation_of(doc: JsonValue) -> RoundObservation? {
+  match throughput_member_int(doc: doc, key: "epoch_ms") {
+    Absent => none
+    Present { value: ms } =>
+      Present { value: RoundObservation {
+        step: match throughput_member_int(doc: doc, key: "step") { Present { value: n } => n  Absent => 0 },
+        input_tokens: match throughput_member_int(doc: doc, key: "input_tokens") { Present { value: n } => n  Absent => 0 },
+        output_tokens: match throughput_member_int(doc: doc, key: "output_tokens") { Present { value: n } => n  Absent => 0 },
+        epoch_ms: ms,
+        files_changed: throughput_member_int(doc: doc, key: "files_changed"),
+      } }
+  }
+}
+
+fn ledger_absorb_line(acc: List<RoundObservation>, line: String) -> List<RoundObservation> {
+  if trim(line) == "" {
+    acc
+  } else {
+    match parse_json_document(s: line) {
+      JsonDocumentUnreadable { gap: _ } => acc
+      JsonDocumentParsed { value: doc } =>
+        if throughput_is_usage_row(doc: doc) {
+          match round_observation_of(doc: doc) {
+            Present { value: r } => concat(acc, [r])
+            Absent => acc
+          }
+        } else {
+          acc
+        }
+    }
+  }
+}
+
+fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
+  let rounds = fold(split(s: body, delimiter: "\n"), init: [], f: (a, line) => ledger_absorb_line(acc: a, line: line))
+  if list_length(items: rounds) == 0 {
+    RoundsUnobserved { reason: "no clocked round.usage row in the event stream" as NonEmptyStr }
+  } else {
+    RoundsObserved { rounds: rounds }
+  }
+}
+
+// THE RATE IS A FOLD OVER THE LEDGER. This is the same derivation the accumulator below performs
+// over the raw stream, re-based on the decoded rows so the two cannot disagree; the stream-based
+// form is kept as the entry point existing witnesses pin.
+fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughput {
+  match ledger {
+    RoundsUnobserved { reason: r } => ThroughputUnobserved { reason: r }
+    RoundsObserved { rounds: rs } =>
+      if list_length(items: rs) < 2 {
+        ThroughputUnobserved { reason: "one clocked round so far; an interval needs two" as NonEmptyStr }
+      } else {
+        let first = rs.first()
+        let last = rs.last()
+        match first {
+          Absent => ThroughputUnobserved { reason: "ledger reported rounds but yielded none" as NonEmptyStr }
+          Present { value: f } =>
+            match last {
+              Absent => ThroughputUnobserved { reason: "ledger reported rounds but yielded none" as NonEmptyStr }
+              Present { value: l } =>
+                if l.epoch_ms <= f.epoch_ms {
+                  ThroughputUnobserved { reason: "clock did not advance between the first and last round" as NonEmptyStr }
+                } else {
+                  ThroughputObserved {
+                    output_tokens: fold(rs.skip(n: 1), init: 0, f: (a, r) => a + r.output_tokens),
+                    elapsed_ms: l.epoch_ms - f.epoch_ms,
+                    rounds: list_length(items: rs),
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+
+// ONE PAINTED SEGMENT OF THE ROUND STRIP, DERIVED HERE AND ONLY PAINTED BY THE PAGE. The strip is
+// time-proportional: a segment's width is the wall interval that ended at its round, so a long
+// round is a wide segment rather than one averaged away. The first clocked round is the strip's
+// origin and has no interval of its own -- its timestamp marks the END of its generation, exactly
+// as the throughput fold treats it -- so a ledger of N rounds paints N-1 segments, rounds 2..N.
+//
+// KIND IS A DELTA, NOT A LEVEL. files_changed is the worktree's cumulative changed-path count when
+// the round's tools finished, so a round WROTE when that count rose over the previous measured
+// value. A level test would paint every round after the first write as a write.
+type RoundSegmentKind = ReadRound | WriteRound | UnmeasuredRound
+
+type RoundSegment {
+  step: Int
+  duration_ms: Int
+  output_tokens: Int
+  kind: RoundSegmentKind
+}
+
+type SegmentFold {
+  previous: RoundObservation?
+  last_measured: Int?
+  segments: List<RoundSegment>
+}
+
+fn round_segment_kind(now: Int?, last_measured: Int?) -> RoundSegmentKind {
+  match now {
+    Absent => UnmeasuredRound
+    Present { value: n } =>
+      match last_measured {
+        Absent => if n > 0 { WriteRound } else { ReadRound }
+        Present { value: m } => if n > m { WriteRound } else { ReadRound }
+      }
+  }
+}
+
+fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
+  match acc.previous {
+    Absent =>
+      SegmentFold { previous: Present { value: r }, last_measured: r.files_changed, segments: acc.segments }
+    Present { value: p } =>
+      SegmentFold {
+        previous: Present { value: r },
+        last_measured: match r.files_changed { Present { value: n } => Present { value: n }  Absent => acc.last_measured },
+        segments: concat(acc.segments, [RoundSegment {
+          step: r.step,
+          duration_ms: r.epoch_ms - p.epoch_ms,
+          output_tokens: r.output_tokens,
+          kind: round_segment_kind(now: r.files_changed, last_measured: acc.last_measured),
+        }]),
+      }
+  }
+}
+
+fn round_segments(ledger: HarnessRoundLedger) -> List<RoundSegment> {
+  match ledger {
+    RoundsUnobserved { reason: _ } => []
+    RoundsObserved { rounds: rs } =>
+      (fold(rs, init: SegmentFold { previous: none, last_measured: none, segments: [] },
+            f: (a, r) => segment_fold_step(acc: a, r: r))).segments
+  }
+}
+
+fn round_segment_kind_word(k: RoundSegmentKind) -> String {
+  match k {
+    ReadRound => "read"
+    WriteRound => "write"
+    UnmeasuredRound => "unmeasured"
   }
 }
 

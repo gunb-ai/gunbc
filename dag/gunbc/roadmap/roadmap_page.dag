@@ -1,6 +1,10 @@
 module gunbc.roadmap_page
 
 import std.types { list_length }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
+  RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word,
+}
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
@@ -36,6 +40,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class,
 }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
@@ -624,15 +629,49 @@ fn activity_container(a: ActivityView, attention: String, children: List<Fragmen
     concat([ el_class("span", activity_summary_class, [ txt(activity_summary_line(a: a)) ]) ], children))
 }
 
-fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
+
+// THE ROUND STRIP: one span per segment, width by flex-grow so a long round is a wide segment. The
+// widths are the segments' millisecond intervals used directly as flex weights -- proportional by
+// construction, with no percentage arithmetic to round. The strip is absent, not empty, when the
+// ledger has fewer than two clocked rounds: a zero-width strip would read as "nothing happened".
+fn round_segment_class(k: RoundSegmentKind) -> String {
+  match k {
+    ReadRound => activity_round_read_class
+    WriteRound => activity_round_write_class
+    UnmeasuredRound => activity_round_unmeasured_class
+  }
+}
+
+fn round_segment_node(seg: RoundSegment) -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: round_segment_class(k: seg.kind)),
+    attr(name: "style", value: join(["flex-grow: ", to_string(value: if seg.duration_ms < 1 { 1 } else { seg.duration_ms })], "")),
+    attr(name: "title", value: join([
+      "round ", to_string(value: seg.step), " · ", round_segment_kind_word(k: seg.kind), " · ",
+      to_string(value: seg.duration_ms / 1000), "s · ", to_string(value: seg.output_tokens), " tok",
+    ], "")),
+  ], [])
+}
+
+fn round_strip_nodes(ledger: HarnessRoundLedger) -> List<Fragment> {
+  let segs = round_segments(ledger: ledger)
+  if list_length(items: segs) == 0 {
+    []
+  } else {
+    [ el_class("div", activity_round_strip_class, map(segs, seg => round_segment_node(seg: seg))) ]
+  }
+}
+
+fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger) -> List<Fragment> {
   match a {
     NoActiveWork => []
     ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
       let key = activity_attention_key(a: attention)
-      [ activity_container(a: a, attention: key, children: [
-          activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous"),
-        ]) ]
+      [ activity_container(a: a, attention: key, children: concat(
+          round_strip_nodes(ledger: rounds),
+          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous") ],
+        )) ]
     }
     ActiveWorkRefused { summary: _, located_reason, evidence } =>
       [ activity_container(a: a, attention: "", children: [
@@ -682,7 +721,7 @@ fn render_work_row_head(view: WorkRowView) -> Fragment {
 fn render_work_row(view: WorkRowView) -> List<Fragment> {
   concat(
     [ render_work_row_head(view: view) ],
-    concat(activity_region_nodes(a: view.activity), view_detail_block(view: view)))
+    concat(activity_region_nodes(a: view.activity, rounds: view.rounds), view_detail_block(view: view)))
 }
 
 fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
@@ -694,7 +733,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, launch: launch)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, launch: launch)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -920,6 +959,21 @@ fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptPro
   })
 }
 
+// THE STRIP'S LEDGER IS READ OFF THE SAME PROGRESS THE ACTIVITY VIEW IS, at the same seam, so the
+// two cannot describe different attempts. It is a sibling projection rather than a field on the view
+// for the reason given at rounds_of: the view is matched by name everywhere, the ledger is read in
+// one place.
+fn daily_row_rounds(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> HarnessRoundLedger {
+  match attempts_refused {
+    Present { value: _ } => RoundsUnobserved { reason: "attempts refused" as NonEmptyStr }
+    Absent =>
+      match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
+        Present { value: p } => p.rounds
+        Absent => RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }
+      }
+  }
+}
+
 fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> ActivityView {
   match attempts_refused {
     Present { value: reason } => ActivityUnobservable { reason: reason }
@@ -965,6 +1019,7 @@ fn daily_workspace_view_of_for_accepted(
   let rows = map(nodes, rn => work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     launch: ctx))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))

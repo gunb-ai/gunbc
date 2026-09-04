@@ -5,6 +5,7 @@ import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
+  harness_round_ledger_from_events, round_segments, round_segment_kind_word, RoundSegment,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
 
@@ -81,5 +82,49 @@ test fn a_fast_rate_lands_in_the_top_band() -> Bool {
   match throughput_band(t: harness_throughput_from_events(body: three_clocked_rounds())) {
     Present { value: b } => throughput_band_word(band: b) == "sprinting"
     Absent => false
+  }
+}
+
+
+// THE STRIP FOLD OVER A LEDGER WHOSE ANSWER IS COMPUTED BY HAND. Three clocked rounds at t=1000,
+// 3000, 5000 with cumulative files_changed 0, 0, 2: two segments (rounds 2 and 3), widths 2000 and
+// 2000, the first a READ (0 -> 0) and the second a WRITE (0 -> 2).
+fn three_rounds_one_write() -> String {
+  join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000,\"files_changed\":0}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000,\"files_changed\":0}",
+    "{\"type\":\"round.usage\",\"step\":3,\"input_tokens\":30,\"output_tokens\":300,\"epoch_ms\":5000,\"files_changed\":2}",
+  ], "\n")
+}
+
+test fn n_rounds_paint_n_minus_one_segments() -> Bool {
+  list_length(items: round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))) == 2
+}
+
+test fn segment_width_is_the_interval_that_ended_at_its_round() -> Bool {
+  fold(round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write())),
+       init: true, f: (ok, seg) => ok && seg.duration_ms == 2000)
+}
+
+// DISCRIMINATING: a rise in the cumulative count is a write; an unchanged count is a read. A level
+// test would call round 3 a write for the wrong reason and would call every later round a write.
+test fn a_round_that_raised_files_changed_is_a_write_and_the_prior_is_a_read() -> Bool {
+  let segs = round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))
+  match segs.first() {
+    Absent => false
+    Present { value: a } =>
+      match segs.last() {
+        Absent => false
+        Present { value: b } =>
+          round_segment_kind_word(k: a.kind) == "read" && round_segment_kind_word(k: b.kind) == "write"
+      }
+  }
+}
+
+// An older stream with no files_changed paints unmeasured, never read -- the two are different claims.
+test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool {
+  match round_segments(ledger: harness_round_ledger_from_events(body: three_clocked_rounds())).first() {
+    Absent => false
+    Present { value: seg } => round_segment_kind_word(k: seg.kind) == "unmeasured"
   }
 }

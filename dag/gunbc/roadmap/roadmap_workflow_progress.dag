@@ -165,7 +165,7 @@ type WorkflowAttemptProgress {
   validation_summary: String
   segments: List<WorkflowSegment>
   reconciliation: WorkflowReconcileReport
-  throughput: HarnessThroughput
+  rounds: HarnessRoundLedger
 }
 
 // The row progress bar is a pure projection over independent evidence, never a stored workflow
@@ -920,7 +920,7 @@ fn workflow_attempt_progress(
       evidence: evidence,
       segments: segments,
     ),
-    throughput: harness_throughput_from_events(body: evidence.provider_events),
+    rounds: harness_round_ledger_from_events(body: evidence.provider_events),
   }
 }
 

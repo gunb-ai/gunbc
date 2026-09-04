@@ -47,6 +47,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class,
   activity_located_reason_class, session_facts_class,
   dashboard_instance_class,
 }
@@ -307,9 +308,42 @@ fn band_root_css() -> String {
   )
 }
 
+
+// The round strip: a flex row of time-weighted segments. Read rounds take the dim text material so
+// they recede; a write round takes the figure material so it reads at a glance as the event it is;
+// an unmeasured round is outlined rather than filled, so "not observed" never paints as either.
+fn activity_round_strip_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: "1px"),
+      decl(prop: Height, value: "6px"),
+      decl(prop: MarginTop, value: "4px"),
+      decl(prop: MarginBottom, value: "4px"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: [
+      decl(prop: MinWidth, value: "2px"),
+      role_decl(prop: Background, r: TextDimRole),
+      decl(prop: Opacity, value: "0.45"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: [
+      decl(prop: MinWidth, value: "3px"),
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: [
+      decl(prop: MinWidth, value: "2px"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
+      decl(prop: Opacity, value: "0.35"),
+    ] },
+  ]
+}
+
 fn roadmap_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules(),
-    concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
+    concat(figure_rules(), concat(activity_round_strip_rules(), roadmap_behavior_rules(rows: roadmap_behaviors))))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
