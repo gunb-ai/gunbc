@@ -144,6 +144,63 @@ fn host_item_matches(item: RustItemIdentity, path: String, name: String) -> Bool
   (item.repo_path as String) == path && rust_item_identity_qualified_name(item: item) == name
 }
 
+// THE PRE-CUT INVARIANT THIS ARM CREATES, and the reason it is worth more than the two rows that
+// forced it: BEFORE THE CUT, NO PROBE SHOULD BE ABSENT. Every identity on the roster is a root
+// authority the cut has not yet deleted, so the whole report should read PRESENT. That makes ABSENT
+// carry information it could not carry this morning -- an ABSENT row before the cut is either a real
+// deletion nobody declared or a stale citation, and those two were previously indistinguishable
+// because a moved item folded into the same verdict as a deleted one. With the stale-citation arm
+// in place the report goes from ZERO ABSENT to exactly the cut set, and any unexpected ABSENT is a
+// defect by construction rather than a number someone has to interpret.
+//
+// WHAT THIS REPORT STILL DOES NOT ESTABLISH, stated here so a reader does not take a clean tally for
+// completeness: the report is complete AS FAR AS THE ROSTER GOES, and the roster has no external
+// denominator. Nothing outside it states how many identities a subject should carry, so a subject
+// short of rows renders as a whole answer. That is the class filed as
+// gunbc.recurring_failure_mode.roster_is_its_own_denominator, and it applies to THIS report --
+// including any run of it cited as evidence that the arm below works. The verdict-level diff of the
+// whole artifact is what carries that evidence; a row tally is not, and must not be read as one.
+
+// EVERY PATH IN THE SCANNED POPULATION HOLDING AN ITEM OF THIS NAME, rendered as one string so the
+// refusal can NAME where the item actually is. Built with fold rather than a filter/length pair
+// because those are the operations this module already uses, and a citation defect is a poor
+// occasion to widen an import list.
+fn host_paths_holding_name(items: List<RustItemIdentity>, name: String) -> String {
+  fold(items, init: "", f: (acc, i) =>
+    if rust_item_identity_qualified_name(item: i) == name {
+      if acc == "" { i.repo_path as String } else { concat(acc, concat(", ", i.repo_path as String)) }
+    } else {
+      acc
+    }
+  )
+}
+
+// FOUR ARMS, AND THE THIRD ONE IS WHY THIS FUNCTION WAS WRONG.
+//
+// The MOVED case used to be unreachable. A probe citing a file that still exists, for an item that
+// has since moved into a submodule, matched no item at the cited path, hit the "some item came from
+// this path" test -- which passes, because the file is still populated -- and folded to ABSENT.
+//
+// ABSENT IS THE SUCCESS VERDICT OF THIS INSTRUMENT. The namespace cut's exit criterion is this
+// report testifying that the import authorities are gone, so a stale citation FABRICATED THE
+// ACCEPTING ANSWER for code that is still running and still called. Measured specimen, 2026-09-04:
+// build_import_adjacency and import_closure_from_adjacency were reported ABSENT from
+// src/v1/stage0/src/cli_run.rs while live at src/v1/stage0/src/cli_run/entry_resolve.rs with five
+// call sites, one of them from cli_run.rs itself. In the same subject and the same run,
+// compile_entry_on_declared_import_closure_only cited the same file and was correctly PRESENT --
+// which is what proves the join works and isolates the defect to relocation alone.
+//
+// WHY THE OBVIOUS GUARD DOES NOT CATCH IT, and this is the whole reason the arm must search the
+// scope rather than test the citation: cli_run.rs STILL EXISTS. A file-exists check passes. Only a
+// search of the entire scanned population distinguishes a MOVED item from a DELETED one, because
+// the two differ nowhere except in where the item now is.
+//
+// The arm REFUSES rather than answering, and that is deliberate under DESIGN section 5: an
+// instrument that has just discovered its own citation is stale has no sound verdict to give, and
+// silently correcting itself to PRESENT would be equally wrong -- it would repair the reading while
+// leaving the roster carrying a citation that will rot again on the next move, with no record that
+// the instrument was ever misinformed. Refusing stops the line and names both paths, so the roster
+// gets fixed rather than the symptom.
 fn host_probe_over_items(
   p: NamespaceCutSubjectProbe,
   path: String,
@@ -153,6 +210,17 @@ fn host_probe_over_items(
   if any(items, i => host_item_matches(item: i, path: path, name: name)) {
     SubjectProbePresent { probe: p }
   } else {
+    let found_at = host_paths_holding_name(items: items, name: name)
+    if found_at != "" {
+      SubjectProbeUnobservable {
+        probe: p,
+        why: concat(
+          concat(concat("host Rust item: STALE CITATION -- this probe cites ", path),
+                 concat(", where no item of this name exists, but the scanned population holds it at ", found_at)),
+          ". The item MOVED; it was not deleted. Refusing rather than answering, because the cited file still exists and the file-scoped question would otherwise fold a relocation into ABSENT -- and ABSENT is this instrument's success verdict, so answering would report an authority deleted while it is still live. Repair the citation in gunbc.namespace_cut_subject_roster subject_probes; do not repoint the reading."
+        ),
+      }
+    } else {
     if any(items, i => (i.repo_path as String) == path) {
       SubjectProbeAbsent { probe: p }
     } else {
@@ -163,6 +231,7 @@ fn host_probe_over_items(
           ", so this probe cannot distinguish a deleted item from an unread file. gunbc.rust_item_host_observation observe_live_hand_rust drops a path that is generated, untracked at HEAD, outside the namespace-claimed trees, or scan-refused, and returns only surviving items -- the missing join is that scoped-out population with its per-path disposition."
         ),
       }
+    }
     }
   }
 }

@@ -123,8 +123,33 @@ fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "merge_scope_from_imports" },
       rest: [
         DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "overlay_direct_import_exports" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "func_env_views_for_import" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "selective_func_env_view" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "rewire_func_env_parent_links" },
       ],
     }
+    // THESE TWO HOST CITATIONS ARE DELIBERATELY STALE. DO NOT "FIX" THEM.
+    //
+    // build_import_adjacency here and import_closure_from_adjacency in the subject below both cite
+    // src/v1/stage0/src/cli_run.rs. Neither item is there any more: both moved to
+    // src/v1/stage0/src/cli_run/entry_resolve.rs and are live, with call sites including one from
+    // cli_run.rs itself. Measured 2026-09-04.
+    //
+    // They are retained as the DISCRIMINATING RED for the stale-citation refusal arm in
+    // gunbc.namespace_cut_subject_observation host_probe_over_items. Before that arm existed these
+    // two rows reported ABSENT -- and ABSENT is this instrument's SUCCESS verdict, so a stale
+    // citation fabricated the accepting answer for code that is still running. They now produce a
+    // typed refusal naming both the cited and the found path.
+    //
+    // THE OBLIGATION, under DESIGN section 4b(4): a climb dissolves the redundant production
+    // machinery it obsoletes, but the discriminating RED and its positive control STAY ENROLLED as
+    // the executing evidence that the higher rung is still real. Repointing these two citations to
+    // entry_resolve.rs turns them PRESENT and leaves the arm with NOTHING that exercises it -- the
+    // wall would still be written and nothing would prove it stands. So that repair is admissible
+    // only together with a replacement red that reaches the same arm: another genuinely relocated
+    // item, or a fixture probe citing a path the item does not occupy. The positive control that
+    // must keep passing beside them is compile_entry_on_declared_import_closure_only, which cites
+    // this same file and is genuinely still in it.
     ImportDerivedModuleAdjacency => NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "topological_sort" },
       rest: [

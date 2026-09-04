@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.instrument_answers_outside_its_domain
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data instrument_answers_outside_its_domain: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_answers_outside_its_domain" as NonEmptyStr,
+
+  receipts: [
+    "**an instrument is asked about a subject outside its domain and ANSWERS ANYWAY** (INVALID STATE: a query ranges over a domain narrower than the subject it is being read as covering, and a subject falling outside that domain does not come back as UNKNOWN or as a refusal -- it comes back as a confident, well-formed, WRONG answer, whose direction is set by which way the domain gap happens to point. Deletion, modification, or silence, depending on the gap rather than on the subject. ",
+
+    "HARM: the wrong answer is manufactured work or a manufactured accusation. It is not a missed defect -- it is a defect that does not exist, reported with the authority of a command that ran successfully and exited zero. Downstream, someone debugs a branch nobody tested, reverts a change nobody made, or re-derives a figure that was already correct. ",
+
+    "TWO RECEIPTS, ONE TREE, ONE DAY, AND EACH INSTRUMENT WAS CORRECT EXACTLY WHERE THE OTHER FAILED (2026-09-04, import-cut lane). ",
+
+    "FIRST: `git diff --name-only <commit>` was used to derive which paths had changed since a backup ref. It ranges over TRACKED content, so an untracked file -- present in the ref, absent from the index -- rendered as `deleted file mode 100644`, 38 deletions, for a file that was on disk and byte-identical to the ref. The report would have been that a ledger row had been deleted. ",
+
+    "SECOND: a per-path content comparison was built specifically to escape that tracked-content blindness, hashing every worktree path against the ref. It followed SYMLINKS. Git stores a symlink as mode 120000 whose blob content is the TARGET STRING, so `CLAUDE.md` and `README.md` -- both the literal string `DESIGN.md`, both the same blob -- compared unequal against the hash of DESIGN.md's contents. The report would have been that the design document had been modified, under a hold that forbade tree changes. ",
+
+    "THE PAIR IS THE FINDING, NOT EITHER HALF. The second instrument was built to fix the first, and it acquired its own blind spot at precisely the place the first was correct: git diff was wrong about untracked files and right about symlinks; the hash loop was right about untracked files and wrong about symlinks. THERE IS NO SAFE INSTRUMENT TO SWITCH TO. Replacing a tool that has a known domain gap with one that does not share it exchanges the gap for a different gap, and the new one is unmapped precisely because it is new. ",
+
+    "THIRD SPECIMEN, AND THE ONLY ONE WHERE THE INSTRUMENT WAS A PROCEDURE RATHER THAN A TOOL. A reviewer specified a registration check for a newly minted ledger row: confirm `grep -c <identity>` returns 2 in the roster, confirm the row file exists, confirm the projection join is clean. Every one of those checks passed. The merge that satisfied them was a roster conflict in which two lanes had appended to the same list, and a resolution taking only the author's side would have passed ALL THREE while silently deleting two rows the other lane filed that day. ",
+
+    "The check's domain was THE AUTHOR'S OWN ROWS. Asked about the roster -- a shared, append-only carrier -- it answered confidently and wrongly, because a procedure that verifies your additions cannot see another party's deletions. The repair is the same shape as the tool cases: the union resolution was verified in BOTH directions, the other lane's identities as well as the author's. Worth carrying because a hand-written procedure feels domain-free in a way a tool does not, and it is not: every check ranges over something, and the thing it ranges over is usually what its author was thinking about. ",
+
+    "THE CONSEQUENCE THAT MAKES THIS THE SHARPEST OF THE THREE: a domain gap in a hand-written verification procedure is INDISTINGUISHABLE FROM CORRECTNESS BY ANY CHECK INSIDE THAT PROCEDURE. A tool's gap can at least be found by reading its documentation; a procedure's gap is bounded by what its author had in mind, and the procedure contains no record of what that was. ",
+
+    "WHY IT IS NOT `empty_capture_read_as_clean_result`: that class is an EMPTY capture consumed as a finding of nothing -- zero bytes on a redirect, a log that reads zero with no refusal. Every instance on it is about reading NOTHING. Both instruments here returned rich, plausible, specific content. Nothing was empty; the content was about the wrong subject. ",
+
+    "WHY IT IS NOT `check_subject_narrower_than_its_declared_claim`: there the harm is a false GREEN -- coverage smaller than the claim it is cited for, so a real defect passes unseen. Here the harm is a false FINDING, a defect reported where none exists. Opposite direction, opposite consequence, and the repairs do not transfer: widening coverage does not stop a narrow instrument from confidently answering outside itself. ",
+
+    "RUNG: outside the ladder. Neither near-miss was caught by a mechanism. Both were caught because a human found ONE ROW SURPRISING and investigated it -- and in both cases the fallback defence was the reader already knowing the answer, which this ledger criticises elsewhere and which is therefore not a defence that may be cited here. There is currently no executed evidence that would discriminate a domain-gap answer from a true one. ",
+
+    "CEILING: mechanically preventable, and stated as rung 2 rather than reaching for higher, because the domain of an ad-hoc query is not in general decidable from the query. What IS decidable is whether the subject population and the instrument population agree, so the honest ceiling is a gate that compares them and refuses on any subject the instrument cannot range over. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT THE TWO SPECIMENS: the class closes when an instrument CANNOT ANSWER AT ALL until it has established a DECLARED DOMAIN -- its admitted subject kinds, its acquisition population, and its identity semantics -- and the requested subject carries a TYPED RELATION to that domain: SubjectWithinDomain, or InstrumentOutOfDomain { uncovered_subjects }. From the second, NO count, delta, deletion, modification, absence or zero is constructible. Fixing git diff and making a hash loop symlink-aware would discharge nothing: those are the two gaps we happen to have met, and the pair above is the receipt that the next instrument has the next gap. ",
+
+    "WHAT THE DOMAIN MUST SPEAK ABOUT, for the file-population instruments this repository actually uses: tracked, untracked, deleted, renamed, regular file, SYMLINK-AS-LINK-IDENTITY, symlink target, and generated or ignored where relevant. A census need not ADMIT every one of those kinds -- it must REFUSE when asked about a kind it does not admit. ",
+
+    "A TWO-WAY IDENTITY JOIN IS NECESSARY AND NOT SUFFICIENT, which is the subtlest part of this class and was found only by pushing on it. A two-way join closes substitution and unilateral omission. It does NOT close a shared domain gap: if the real subject contains X, the acquisition omits X because X is untracked, and the EXPECTED side is derived through that same acquisition, then expected omits X, observed omits X, and the two-way join reports EQUAL while the class survives untouched. So an expected-identity authority must be independent in TWO dimensions -- at IDENTITY grain and at ACQUISITION grain. An expected set projected from the same scan that produces the observation is not independent; it is the same blindness counted twice. ",
+
+    "SCOPE, STATED SO THIS ROW CANNOT BECOME AN ABSORBING BLOCKER: the obligation is NOT that every instrument in the repository proves its domain. It is that every instrument whose answer is CONSUMED by a program relying on this class must establish its domain before its verdict is admitted, and that population is derivable from the consumers. The honest immediate climb for those routes is OutsideTheLadder to MechanicallyPreventable; structural impossibility across the repository is not being claimed. ",
+
+    "THE COROLLARY FOR ANY DELETION CENSUS, which is where this class does the most damage: a corpus-deletion census has an IMPLICIT DENOMINATOR -- every source entity capable of belonging to the subject. If its acquisition is git-tracked files, then an untracked source is NOT ABSENT, it is NOT OBSERVED, and the census reports the deletion as complete. Where symlinks occur in the population, the census must decide WHICH FACT it claims: repository object identity, repository path identity, link target bytes, or resolved contents. Those are four different subjects, and a verification that had to be made symlink-aware after the fact is the evidence that 'same contents' was ambiguous until link semantics were fixed. ",
+
+    "WHY THIS ROW EXISTS BEFORE ITS CENSUS RUNS: the namespace cut's own machinery is delta instruments end to end -- a corpus delta, a census worked to zero, an exit criterion joining two populations. Each is a place a domain gap returns a confident wrong COUNT rather than a refusal, and today's two receipts are the evidence that reading the output does not reveal it. Filed before the census, this is a class the census can be designed against; filed after, it is a postmortem. ",
+
+    "RECOGNITION RULE: when an instrument reports a change you did not make, do not reconcile around it and do not reach for a different tool -- ask what population the query actually ranged over, and whether the surprising subject is inside it. A surprising row is the only signal this class emits, and it emits it exactly once, before the wrong answer becomes a report.)",
+  ],
+
+  evidence: [],
+}

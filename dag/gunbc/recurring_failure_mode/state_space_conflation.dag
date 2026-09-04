@@ -156,6 +156,14 @@ data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
     "The guard's state space has no cell for content divergence, so its count is the same either way. ",
 
     "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent.",
+    "CI CHECK-RENDERING INSTANCE, 2026-09-04, import-cut lane, AND ITS RECEIPT IS THAT ONE COLLAPSED SYMBOL PRODUCED ERRORS IN BOTH DIRECTIONS. `gh pr checks` renders cancelled, failure and timed_out into a single `fail` glyph, and the dashboard digest inherits that rendering. Measured on gunbc run 33875856188: the jobs API reports required-witnesses-build, heal-generated-artifacts and required-witnesses-floor as conclusion=cancelled with a ZERO-LENGTH steps array, and the aggregating witnesses job as conclusion=failure with 3 steps -- while the rollup showed four identical fails and the digest reported the PR as failing. ",
+
+    "THE TWO STATES HAVE OPPOSITE OWNERS AND OPPOSITE REPAIRS, which is this row's recurring form: a real red means the branch is broken and its author must fix it; a cancellation means NOTHING ABOUT THE BRANCH WAS OBSERVED and there is no signal to act on. Collapsed into one glyph, the second is indistinguishable from the first. ",
+
+    "THE RECEIPT, and it is why this instance is worth carrying rather than being one more example: the SAME collapse has already produced the opposite error. Cancelled-read-as-PASSED merged gunbc PR 8059. Cancelled-read-as-FAILED, here, manufactures a defect in a branch nobody tested and sends an author to debug against no signal. One symbol, one rendering layer, errors in both directions -- which demonstrates that the harm is not a mis-set threshold but the conflation itself, since no reading of a symbol that means two things can be right in both cases. ",
+
+    "REPAIR: take the verdict from the jobs API `conclusion` field, never from `gh pr checks` or a digest, and treat an EMPTY steps array or an empty log as UNOBSERVED rather than as a result. The tell that the rendering is lying is shape rather than content -- several independent jobs ending at an identical short duration, because real work does not fail identically.)",
+
   ],
 
   evidence: [],
