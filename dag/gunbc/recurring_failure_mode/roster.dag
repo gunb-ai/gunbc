@@ -120,6 +120,10 @@ import gunbc.recurring_failure_mode.dispatch_correctness_resting_on_arm_order { 
 import gunbc.recurring_failure_mode.refusal_reabsorbed_by_intermediate_default { refusal_reabsorbed_by_intermediate_default }
 import gunbc.recurring_failure_mode.upstream_carrier_substituted_for_the_consumer_selected_subject { upstream_carrier_substituted_for_the_consumer_selected_subject }
 import gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled { discriminating_arm_built_but_never_enrolled }
+import gunbc.recurring_failure_mode.head_landed_by_hand_before_its_own_verification_reported { head_landed_by_hand_before_its_own_verification_reported }
+import gunbc.recurring_failure_mode.duplicate_declaration_arrives_through_a_clean_merge { duplicate_declaration_arrives_through_a_clean_merge }
+import gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant { verdict_stale_at_the_merge_instant }
+import gunbc.recurring_failure_mode.container_status_read_as_a_claim_about_its_members { container_status_read_as_a_claim_about_its_members }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -231,4 +235,8 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   refusal_reabsorbed_by_intermediate_default,
   upstream_carrier_substituted_for_the_consumer_selected_subject,
   discriminating_arm_built_but_never_enrolled,
+  head_landed_by_hand_before_its_own_verification_reported,
+  duplicate_declaration_arrives_through_a_clean_merge,
+  verdict_stale_at_the_merge_instant,
+  container_status_read_as_a_claim_about_its_members,
 ]

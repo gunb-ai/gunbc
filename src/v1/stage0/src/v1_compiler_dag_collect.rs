@@ -10,11 +10,15 @@ pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::import_is_all;
+use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::Connective::NoConnective;
-use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::ExprData::ExprCall;
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
+pub use crate::v1_std_core::ResolvedCallFormal;
+pub use crate::v1_std_core::{
+    CallSemantics, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -176,6 +180,50 @@ pub fn dag_collect_match_pattern(
     }
 }
 
+pub fn dag_collect_call_formals(
+    expr_data: Rc<ExprData>,
+    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    match (*expr_data.clone()).clone() {
+        ExprData::ExprCall { call_semantics, .. } => match call_semantics.clone() {
+            Some(semantics) => match (*semantics.clone()).clone() {
+                CallSemantics::ResolvedDirectCallSemantics {
+                    application_plan: plan,
+                    ..
+                } => plan.iter().cloned().fold(
+                    slots.clone(),
+                    |acc: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+                     application: Rc<ResolvedCallFormal>| {
+                        let acc = dag_collect_insert_slots(
+                            application.formal.clone().declared_type.clone(),
+                            acc.clone(),
+                            collision_errors.clone(),
+                        );
+                        let acc = dag_collect_insert_slots(
+                            application
+                                .formal
+                                .clone()
+                                .declaration_bound_conformance
+                                .clone(),
+                            acc.clone(),
+                            collision_errors.clone(),
+                        );
+                        dag_collect_insert_slots(
+                            application.formal.clone().substitution_basis.clone(),
+                            acc.clone(),
+                            collision_errors.clone(),
+                        )
+                    },
+                ),
+                _ => slots.clone(),
+            },
+            std::option::Option::None => slots.clone(),
+        },
+        _ => slots.clone(),
+    }
+}
+
 pub fn dag_collect_node_tree(
     node: Rc<Node>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
@@ -213,6 +261,11 @@ pub fn dag_collect_node_tree(
         );
         let slots = dag_collect_match_pattern(
             node.match_pattern.clone(),
+            slots.clone(),
+            collision_errors.clone(),
+        );
+        let slots = dag_collect_call_formals(
+            node.expr_data.clone(),
             slots.clone(),
             collision_errors.clone(),
         );

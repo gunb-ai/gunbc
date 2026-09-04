@@ -38,11 +38,12 @@ import extdeps.ollama.capability {
 import gunbc.spark.serving_release {
   SparkServingRelease,
   SparkServingOccurrence,
-  OllamaServingLaunchProfile,
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
-  SparkServingBindListen,
-  spark_serving_bind_listen_wire,
+}
+import gunbc.spark.serving_engine {
+  ServingEngine, OllamaServing, OllamaServingLaunchProfile,
+  SparkServingBindListen, spark_serving_bind_listen_wire,
 }
 import gunbc.spark.serving_realization {
   SparkServingIntent,
@@ -265,7 +266,7 @@ fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRel
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: serving_release),
-    launch_profile: spark_serving_desired_launch_profile(),
+    engine: spark_serving_desired_engine(),
   }
 }
 
@@ -284,6 +285,13 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
 }
 
 data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
+
+// THE DESIRED ENGINE. The desired row selects a runtime, not merely a launch window; today it
+// selects Ollama and carries that engine's profile as the arm's payload. When the fleet's desired
+// engine becomes vLLM this function changes arm and nothing downstream of the occurrence does.
+fn spark_serving_desired_engine() -> ServingEngine {
+  OllamaServing { profile: spark_serving_desired_launch_profile() }
+}
 
 fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
