@@ -586,6 +586,47 @@ pub(crate) fn witness_admission_entry_function_keys_from_source(
     source_label: &str,
     content: &str,
 ) -> Vec<String> {
+    // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
+    // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
+    // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
+    let heads: [(&str, &str); 7] = [
+        ("bin_wet(", "entry: String"),
+        ("known_red_probe(", "entry: NonEmptyStr"),
+        (
+            "source_root_ingest_gate_admitted_witness(",
+            "entry: NonEmptyStr",
+        ),
+        ("self_host_wet_entry(", "entry: String"),
+        ("SelfHostWetReceiptBinding {", ""),
+        ("RehomedBinWetRow {", ""),
+        ("SubstrateLongLaneRow {", ""),
+    ];
+    witness_admission_keys_for_heads(source_label, content, &heads)
+}
+
+/// THE HEADS A QUARANTINE-PROBE ADMISSION IS AUTHORED UNDER, and only those.
+///
+/// `gunbc.explicit_witness_admission` `known_red_probe` and `known_red_probe_expecting` are the
+/// two constructors that set `cadence: QuarantineProbeExpectRed`; every other head in the
+/// authority sets a different cadence. Reading the cadence by the constructor that writes it is
+/// what keeps this keyed on the ADMISSION rather than on "has a row here" -- a witness admitted
+/// under `bin_wet` or `SubstrateLongLaneRow` is a different obligation and must not be returned.
+///
+/// `known_red_probe_expecting(` is listed in its own right: the head match is a literal, so
+/// `known_red_probe(` does not match it, and leaving it off would silently under-report the three
+/// rows authored in that form.
+pub(crate) fn quarantine_probe_admission_heads() -> [(&'static str, &'static str); 2] {
+    [
+        ("known_red_probe(", "entry: NonEmptyStr"),
+        ("known_red_probe_expecting(", "entry: NonEmptyStr"),
+    ]
+}
+
+fn witness_admission_keys_for_heads(
+    source_label: &str,
+    content: &str,
+    heads: &[(&str, &str)],
+) -> Vec<String> {
     const WINDOW: usize = 400;
     let mut keys: Vec<String> = Vec::new();
     fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
@@ -616,22 +657,7 @@ pub(crate) fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
-    // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
-    // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 7] = [
-        ("bin_wet(", "entry: String"),
-        ("known_red_probe(", "entry: NonEmptyStr"),
-        (
-            "source_root_ingest_gate_admitted_witness(",
-            "entry: NonEmptyStr",
-        ),
-        ("self_host_wet_entry(", "entry: String"),
-        ("SelfHostWetReceiptBinding {", ""),
-        ("RehomedBinWetRow {", ""),
-        ("SubstrateLongLaneRow {", ""),
-    ];
-    for (head, def_sig) in heads {
+    for &(head, def_sig) in heads {
         let mut search_from = 0;
         while let Some(rel) = content[search_from..].find(head) {
             let occ = search_from + rel;
@@ -710,6 +736,24 @@ pub(crate) fn witness_admission_entry_function_keys_from_source(
     }
     keys.sort();
     keys
+}
+
+/// The `entry::function` keys admitted with cadence `QuarantineProbeExpectRed`, read from the one
+/// function-grain authority through the same scanner as its siblings.
+///
+/// WHY THIS EXISTS SEPARATELY FROM `explicit_witness_admission_keys`, which reads the same file:
+/// "known red" is a HOMONYM across two carriers that feed OPPOSITE consumers, and collapsing them
+/// is a §3 meaning fork rather than a consolidation. `v2.workflow.floor_expected_red`
+/// `floor_expected_red_roster` means RUN THIS EVERY PR AND HOLD ITS RED. A
+/// `QuarantineProbeExpectRed` admission means DO NOT SCHEDULE THIS PER-PR at all -- it shrinks the
+/// discovery roster, as `floor_discovery_exact_admission_note` states. Teaching either consumer to
+/// read the other's carrier would make one name carry two materially different obligations, after
+/// which no reader could tell which a given row asserts.
+pub(crate) fn quarantine_probe_admission_keys_from_source(
+    source_label: &str,
+    content: &str,
+) -> Vec<String> {
+    witness_admission_keys_for_heads(source_label, content, &quarantine_probe_admission_heads())
 }
 
 pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
