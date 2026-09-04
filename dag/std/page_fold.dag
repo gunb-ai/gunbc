@@ -1,7 +1,7 @@
 module std.page_fold
 
 import std.types { NonEmptyStr, Int, Bool, List, String }
-import std.integer { PositiveInt }
+import std.integer { PositiveInt, NonNegativeInt }
 import extdeps.uri { Uri, uri_wire }
 
 // THREE CLAIMS, NOT ONE, AND CONFLATING THEM IS WHY THIS MODULE DID NOT EXIST FOR SO LONG.
@@ -148,7 +148,7 @@ type PageFoldRefusal
   = PageBudgetExhausted {
       subject: PageFoldSubject
       max_pages: PositiveInt
-      pages_read: Int
+      pages_read: NonNegativeInt
       stopped_at: PageCursor
     }
   | CursorDidNotAdvance {
@@ -164,12 +164,12 @@ type PageFoldRefusal
     }
   | ContinuationNotObserved {
       subject: PageFoldSubject
-      pages_read: Int
+      pages_read: NonNegativeInt
       awaiting: PageCursor
     }
   | PageObservedAfterFoldEnded {
       subject: PageFoldSubject
-      pages_read: Int
+      pages_read: NonNegativeInt
     }
 
 fn page_fold_refusal_subject(r: PageFoldRefusal) -> PageFoldSubject {
@@ -258,7 +258,7 @@ type ContinuationShapeSeen
 type PageFoldState<I> sole_constructor {
   subject: PageFoldSubject
   bound: PageBound
-  pages_read: Int
+  pages_read: NonNegativeInt
   items: List<I>
   shape: ContinuationShapeSeen
   demanded: List<PageCursor>
@@ -431,7 +431,7 @@ fn page_fold_observe<I>(state: PageFoldState<I>, page: PageObservation<I>) -> Pa
 type PageFoldOutcome<I>
   = PagesClosed {
       subject: PageFoldSubject
-      pages_read: Int
+      pages_read: NonNegativeInt
       items: List<I>
     }
   | PagesRefused { refusal: PageFoldRefusal }
