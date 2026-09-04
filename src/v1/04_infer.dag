@@ -25,6 +25,7 @@ import v1.compiler.type_head_exposure {
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
+  resolved_node_is_kernel_identity_for_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
@@ -113,7 +114,6 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
-  resolved_node_is_kernel_identity_for_name,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -1147,6 +1147,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
     && conformance_ground_type(n: produced, source_indices: si)
   if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if nominal_product_inhabitance_refusal(
+      declared: declared, produced: produced, scope: scope) != none {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -3296,6 +3305,19 @@ fn declared_realizes_as_kernel_numeric(
 // an anonymous record, an unresolvable name -- each answers "not judgeable" and the pair is
 // admitted, never refused. The arm can therefore only convert silence into a refusal for a pair
 // whose two identities are both established.
+//
+// THAT ADMISSION IS A DECLARED LIMIT, NOT CONFORMANCE. Empty, StuckTypeHead and
+// MalformedApplicationHead identities are legitimate abstentions when resolution or arity checking
+// already owns the error (refusing again would cascade). Kernel scalars, collections and coproducts
+// are excluded because their dedicated judgments run before this arm. Optional values, callables,
+// anonymous records and zero-field products are REAL SHAPES but UNHANDLED HERE: respectively,
+// `fn f() -> A? { B{..} }`, `fn f() -> fn(Int) -> Int { B{..} }`,
+// `fn f() -> A { { y: 1 } }`, and `fn f() -> EmptyA { EmptyB{} }` can still pass this relation
+// silently. Generic applications are likewise a separate, filed half of the inhabitance defect. An OpaqueTypeHead is
+// not automatically unhandled: transparent aliases expose that view, so the declaration is peeled
+// through the existing alias authority and admitted to this arm only when the peel positively lands
+// on a nonempty product. This change closes concrete named products and their transparent aliases;
+// it does not claim the unhandled shapes climbed with them.
 fn nominal_product_inhabitance_refusal(
   declared: Node,
   produced: Node,
@@ -3342,15 +3364,21 @@ fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
         nominal_product_head_name_if_declared_product(name: name, scope: scope)
       ExposedTypeHead { view: ProductHead { type_identity: _ } } =>
         nominal_product_head_name_if_declared_product(name: name, scope: scope)
+      OpaqueTypeHead { type_identity: _ } =>
+        nominal_product_head_name_if_declared_product(name: name, scope: scope)
       _ => ""
     }
   }
 }
 
 fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
-  match lookup_type_by_name(env: scope.type_env, name: name) {
+  let representative = transparent_alias_representative(
+    index: scope.type_env.symbol_index, name: name)
+  match lookup_type_by_name(env: scope.type_env, name: representative) {
     Present { value: decl } =>
-      if decl.connective == Conj && (decl.children |> count) > 0 { name } else { "" }
+      let peeled = peel_nominal_alias_identity(
+        n: decl, env: scope.type_env, module_name: scope.module_name)
+      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
   }
 }

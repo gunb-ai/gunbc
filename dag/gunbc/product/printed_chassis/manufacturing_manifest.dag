@@ -2,6 +2,7 @@ module product.printed_chassis.manufacturing_manifest
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.fleet_physical_inventory { printer_01_asset, printer_02_asset }
 import product.placement_supply {
   PhysicalAsset,
   PhysicalAssetIdentity,
@@ -138,10 +139,16 @@ fn admit_printer_asset(inventory: List<PhysicalAsset>, requested: PhysicalAssetI
   }
 }
 
-// THE OWNED PRINTER INVENTORY, EMPTY UNTIL THE MACHINES ARE PHYSICALLY IN HAND. This roster is the
-// authority admit_printer_asset joins against, and it is deliberately not pre-populated: authoring
-// rows for hardware nobody has received would be a fabricated fact, and every attribution built on
-// it would inherit that.
+// THE OWNED PRINTER INVENTORY, CARRYING THE MACHINES PHYSICALLY IN HAND. This roster is the
+// authority admit_printer_asset joins against, and a row is authored only on receipt: authoring rows
+// for hardware nobody has received would be a fabricated fact, and every attribution built on it
+// would inherit that. The roster stood empty until the first machine arrived, which made the
+// live-row witness vacuous; printer_01 is the first row and that witness now discriminates.
+//
+// THE ROW IS IMPORTED, NOT RESTATED. printer_01_asset is declared once in fleet_physical_inventory
+// beside switch_01 and pdu_01, because a printer is a physical asset on the operator floor before it
+// is anything this module cares about. Re-authoring its identity, catalog, or serial here would be a
+// second authority for one machine.
 //
 // WHAT FILLS IT IS RECEIPT AND DURABLE INDIVIDUATION, NOT A SERIAL READING. An earlier wording here
 // said the roster is filled by reading the serial off each machine, which conflated two states the
@@ -154,4 +161,4 @@ fn admit_printer_asset(inventory: List<PhysicalAsset>, requested: PhysicalAssetI
 // required before a coupon may be attributed, that is a condition this module states in ADMISSION as
 // its own refusal arm, where it is visible and countable, never by withholding the row and letting
 // absence stand in for it.
-data owned_printer_inventory: List<PhysicalAsset> = []
+data owned_printer_inventory: List<PhysicalAsset> = [printer_01_asset, printer_02_asset]

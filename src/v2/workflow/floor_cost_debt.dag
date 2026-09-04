@@ -19,8 +19,8 @@ import v2.std.collection { List }
 //
 // WHY IT IS NOT THE EXPECTED-RED ROSTER, stated first because the two are easy to fuse.
 //
-// Any identity enrolled here is withheld FOR COST, and in neither evidence class is it a known
-// red. The PROVEN class passes and its measured marginal CPU exceeds
+// Any identity enrolled here is withheld FOR COST, and in none of the three evidence classes is it
+// a known red. The PROVEN class passes and its measured marginal CPU exceeds
 // `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`; the CENSORED class was
 // preempted before a verdict, so it asserts only that the row did not finish inside the ceiling
 // on the charged clock. NEITHER is a failure, which is the distinction that matters here.
@@ -722,6 +722,83 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
   Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
+// THE THIRD EVIDENCE CLASS: STRADDLING (2026-09-04, gunbc#10366-era main).
+//
+// A STRADDLING ROW REACHES A VERDICT AND PASSES, ITS DETERMINISTIC WORK MEASURE IS INVARIANT
+// ACROSS RUNS, AND ITS CHARGED CPU CROSSES THE 500ms CEILING ON SOME RUNNERS AND NOT OTHERS. It
+// is neither of the two classes above and must not be filed as either: PROVEN asserts a measured
+// marginal cost that EXCEEDS the ceiling, which is false of these rows on half their observations,
+// and CENSORED asserts the row did not finish inside the ceiling on the charged clock, which is
+// false of them on all of them -- they finish, every time. Filing a straddler as proven would put
+// a universal over-ceiling claim on a row measured under the ceiling three runs out of five,
+// which is the exact defect review 57258 refused when this file was one flat list.
+//
+// WHAT IS ENROLLED, AND WHY IT IS THE WHOLE OF WHAT IS ENROLLED. Two identities in
+// `v2.test.emit.produced_decl_two_target`. Their third sibling,
+// `produced_decl_unwired_target_still_refuses`, STAYS ON THE FLOOR and is not touched: it is the
+// same module, the same emission subject and the same shape of work, so it remains as the
+// executing control that this module still runs, still refuses an unwired target, and is still
+// measured every floor. A withhold that took the module is a module going dark; this one leaves a
+// witness behind that fails loudly if the emission path breaks.
+//
+// THE DISCRIMINATING EVIDENCE IS `eval_steps`, NOT A CLOCK, and that column is the whole reason
+// this class is separable from the two above rather than a softer wording of PROVEN. Three main
+// floor jobs, read from their own `[over-cost]` lines:
+//
+//   run 33840229008 job 100920850069 (FloorRefused)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=568  over
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=502  over
+//   run 33841016028 job 100923146660 (FloorClean)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=447  under
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=456  under
+//   run 33840785132 job 100922476884 (FloorClean)
+//     produced_decl_module_folds_declarations_in_order  eval_steps=170746  cpu=411  under
+//     produced_decl_two_targets_render_own_order        eval_steps=197227  cpu=419  under
+//
+// The step counts are IDENTICAL to the unit across all three runs and the CPU figures move by up
+// to 38%. The work the claim does is a stable property of the claim; the charge is not. That is
+// `gunbc.rung_drop floor_cost_claim_qualification_unavailable` observed at identity grain, and
+// this class is that row's population arriving in the one carrier that can act on it.
+//
+// WHAT WAS REFUSED, AND WHY, BECAUSE THE TWO EASY MOVES ARE BOTH WRONG HERE.
+// RAISING THE CEILING is refused: 500 -> 600 tunes a literal so a check passes on a basis the
+// declared drop says is unstable at ANY threshold, and buys nothing the next runner slot cannot
+// take back at 602ms. It is also the tree-copied oracle DESIGN section 5 forbids -- the number
+// would come from this same tree's current measurement.
+// THE EXPECTED-RED ROSTER is refused, and the floor's own diagnostic refuses it for us in the
+// sentence it prints beside these two rows: "This is a cost debt only -- it is not a defect and
+// it does not belong on the expected-red roster, which asserts an expected FAILURE this row does
+// not exhibit." Enrolling a passing row there would encode a false claim to buy a green.
+//
+// WHAT IS GIVEN UP, STATED SO NOBODY HAS TO INFER IT. Two passing emission witnesses stop running
+// on ordinary required floors: that a two-target produced declaration renders in each target's own
+// order, and that a produced-decl module folds its declarations in order. That coverage is GONE in
+// steady state, not deferred. It is recovered on any change that TOUCHES these identities, which
+// executes them under `ChangedCostDebtVerdictOnly` -- they must PASS, and the 500ms line is
+// observed and published rather than gating -- so debt cannot smuggle an unverified edit to the
+// witnesses it withholds.
+//
+// THE ADDITION IS DECLARED AGAINST THE SHRINK-ONLY DIRECTION RATHER THAN QUIETLY MADE. This
+// contract's stated forward hole is that a NEW or REGRESSED row over 500ms simply refuses. These
+// two are neither new nor regressed: `eval_steps` is unchanged run to run, so nothing about the
+// witnesses moved. What moved is which runner the job landed on. An addition on that ground is
+// the one the direction was never meant to forbid -- the alternative it leaves is a required lane
+// whose verdict is decided by hardware -- and it is enrolled here, at identity grain, counted every
+// run, and rostered as a DESIGN section 4b(3) drop at
+// `gunbc.rung_drop.floor_cost_debt_straddling_produced_decl` rather than resolved by silence.
+//
+// TRIGGER, A CAPABILITY AND NOT A ROSTER ERASURE, AND EITHER ARM RETIRES THE ROW. (a) The
+// produced-decl consumers stop paying to rebuild the rust `TargetModel` per claim -- the measured
+// serve-below-recompute ON THOSE CONSUMERS SPECIFICALLY that `v2.workflow.floor_pure_producer_share`
+// names as its own next trigger -- so the row's own work, not its luck, puts it under the line.
+// (b) The floor qualifies a claim's cost on a measure that IS a stable property of the claim, at
+// which point `floor_cost_claim_qualification_unavailable` retires and these rows are decided by
+// their work rather than their slot. Deleting these two lines, emptying the roster, or shrinking
+// the emission subject the witnesses assert over satisfies NEITHER arm.
+fn floor_cost_debt_straddling_chunk_00() -> List<String> {
+  Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_module_folds_declarations_in_order", tail: Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order", tail: Empty {} } }
+}
+
 // THIS ROW WITHHOLDS REAL COVERAGE IN STEADY STATE. The claim remains authored, with two
 // reversed-order controls and a missing-marker control, but is withheld from ordinary required
 // floors while enrolled here. A change that touches the identity OVERRIDES that withhold: the
@@ -745,10 +822,12 @@ fn floor_cost_debt_proven_chunk_13() -> List<String> {
   Cons { head: "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback", tail: Empty {} }
 }
 
-// THE TWO EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT.
+// THE EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT. Two are
+// described here; the third, STRADDLING, is defined at `floor_cost_debt_straddling_chunk_00`
+// above, beside the rows it holds and the runs it was read from.
 //
-// Both are withheld and both take `DeclinedCostDebt`, because the DISPOSITION answers why a site
-// is not planned and the answer is the same for both: it costs too much to run. What differs is
+// All are withheld and all take `DeclinedCostDebt`, because the DISPOSITION answers why a site
+// is not planned and the answer is the same for each: it costs too much to run. What differs is
 // the EVIDENCE, and review 57258 was right that a single flat roster let a universal claim about
 // proven marginal cost stand over rows where no such cost was ever measured.
 //
@@ -843,8 +922,36 @@ fn floor_cost_debt_proven_chunk_12() -> List<String> {
   Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_no_unrostered_or_stale", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.manual.kotlin_grammar_claim.kotlin_grammar_parse_accepted", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } } } } } } } } } } }}
 }
 
+fn floor_cost_debt_proven_chunk_14() -> List<String> {
+  Cons { head: "v2.test.claim.dag_acceptance.acceptance_accounts_for_a_stage_the_contract_never_asked_for", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds", tail: Cons { head: "v2.test.claim.self_host.direct_rust_door_fixture_containment_witness_test.fixture_cargo_green_advance_is_not_behaviorally_equivalent", tail: Cons { head: "v2.test.claim.self_host.direct_rust_door_fixture_containment_witness_test.fixture_synthetic_mint_is_fixture_source_produced_only", tail: Cons { head: "v2.test.claim.translate_underived_refusal.cross_language_compile_refuses_canonical_underived_holds", tail: Cons { head: "v2.test.claim.translate_underived_refusal.translate_derived_emit_byte_identical_to_before_holds", tail: Cons { head: "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green", tail: Cons { head: "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green", tail: Cons { head: "v2.test.emit.produced_decl_two_target.produced_decl_unwired_target_still_refuses", tail: Empty {} } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_15() -> List<String> {
+  Cons { head: "v2.test.emit.rust_bind_let_emit.rust_bind_let_emit_holds", tail: Cons { head: "v2.test.emit.rust_bind_let_emit.rust_bind_let_emit_wrong_value_discriminates", tail: Cons { head: "v2.test.emit.rust_binop_emit.rust_binop_producer_emit_eq_holds", tail: Cons { head: "v2.test.emit.rust_binop_emit.rust_binop_producer_emit_mul_holds", tail: Cons { head: "v2.test.emit.rust_binop_emit.rust_binop_producer_emit_sub_discriminates_from_add", tail: Cons { head: "v2.test.emit.rust_binop_emit.rust_binop_producer_emit_sub_holds", tail: Cons { head: "v2.test.emit.rust_body_add_emit.rust_body_add_emit_add_fn_accepts_holds", tail: Cons { head: "v2.test.emit.rust_body_add_emit.rust_body_add_emit_catalog_minus_discriminates", tail: Cons { head: "v2.test.emit.rust_body_add_emit.rust_body_add_emit_missing_catalog_rejects", tail: Cons { head: "v2.test.emit.rust_body_add_emit.rust_body_add_emit_operand_swap_discriminates", tail: Cons { head: "v2.test.emit.rust_call_emit.rust_call_fold_closure_emit_holds", tail: Cons { head: "v2.test.emit.rust_call_emit.rust_call_fold_closure_swap_discriminates", tail: Cons { head: "v2.test.emit.rust_call_emit.rust_call_helper_emit_holds", tail: Cons { head: "v2.test.emit.rust_field_access_emit.rust_field_access_emit_get_accepts", tail: Cons { head: "v2.test.emit.rust_field_access_emit.rust_field_access_emit_wrong_field_discriminates", tail: Cons { head: "v2.test.emit.rust_fold_call_closure_emit.rust_fold_call_emit_canonical_accepts", tail: Cons { head: "v2.test.emit.rust_fold_call_closure_emit.rust_fold_call_emit_swap_discriminates", tail: Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_bool_emit_accepts", tail: Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_bool_wrong_value_discriminates", tail: Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_char_emit_accepts", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_16() -> List<String> {
+  Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_char_wrong_value_discriminates", tail: Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_int_emit_accepts", tail: Cons { head: "v2.test.emit.rust_literal_bind_emit.rust_literal_bind_int_wrong_value_discriminates", tail: Cons { head: "v2.test.emit.rust_logic_complement_emit.rust_logic_complement_emit_accepts", tail: Cons { head: "v2.test.emit.rust_logic_complement_emit.rust_logic_complement_emit_swapped_discriminates", tail: Cons { head: "v2.test.emit.rust_logic_meet_join_emit.rust_logic_join_emit_holds", tail: Cons { head: "v2.test.emit.rust_logic_meet_join_emit.rust_logic_meet_emit_holds", tail: Cons { head: "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_emits_named_add", tail: Cons { head: "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_emits_named_add2", tail: Cons { head: "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates", tail: Cons { head: "v2.test.emit.semantic_decl_all_lex_parity.all_lex_rows_match", tail: Cons { head: "v2.test.emit.semantic_decl_binding_keys_parity.all_bool_emit_bindings_match", tail: Cons { head: "v2.test.emit.semantic_decl_emit_substrings_test.emit_eq_golden", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.binding_bool_ident_fallback_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.binding_enum_copy_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.lex_comma_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.lex_derive_enum_copy_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.lex_lbrace_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lex_binding_parity.lex_rbrace_matches", tail: Cons { head: "v2.test.emit.semantic_decl_lookup_receipt_test.map_lookup_returns_derive_spelling", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_17() -> List<String> {
+  Cons { head: "v2.test.emit.semantic_decl_lookup_receipt_test.row_lookup_returns_derive_spelling", tail: Cons { head: "v2.test.emit.semantic_decl_profile_path_parity.bundle_node_profile_matches_target_emission_profile", tail: Cons { head: "v2.test.emit.semantic_decl_profile_path_parity.target_emission_lex_matches_live_for_kw_enum", tail: Cons { head: "v2.test.emit.semantic_decl_routing.semantic_bool_coproduct_routes_to_enum_emit", tail: Cons { head: "v2.test.emit.semantic_decl_routing.semantic_record_routes_to_struct_emit", tail: Cons { head: "v2.test.emit.semantic_decl_routing_generic.semantic_generic_enum_routes_to_enum_emit", tail: Cons { head: "v2.test.emit.semantic_decl_routing_generic.semantic_generic_struct_routes_to_struct_emit", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.decoded_lex_live_bindings_match_live_target", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.decoded_row_profile_matches_golden", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.generic_row_profile_matches_golden", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.live_rebuilt_target_matches_golden", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.live_via_bool_serialize_target_matches_golden", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.same_tokens_decoded_bindings_match_live_bindings", tail: Cons { head: "v2.test.emit.semantic_decl_serialize_parity.same_tokens_decoded_lex_matches_live_lex", tail: Cons { head: "v2.test.execution.emit_host_add_equals_eval.emit_host_add_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_add_equals_eval.emit_host_add_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_complement_equals_eval.emit_host_complement_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_complement_equals_eval.emit_host_complement_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_field_access_equals_eval.emit_host_field_access_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_field_access_equals_eval.emit_host_field_access_wrong_fixture_refuses_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_18() -> List<String> {
+  Cons { head: "v2.test.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_filesystem_read_equals_eval.emit_host_filesystem_read_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_fold_closure_equals_eval.emit_host_fold_closure_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_loop_equals_eval.emit_host_loop_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_match_equals_eval.emit_host_match_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_match_equals_eval.emit_host_match_run_reaches_semantics_holds", tail: Cons { head: "v2.test.execution.emit_host_match_equals_eval.emit_host_match_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_join_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_join_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_meet_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_meet_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_module_equals_eval.emit_host_module_add_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_module_equals_eval.emit_host_module_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_module_equals_eval.emit_module_join_concatenates_two_decls", tail: Cons { head: "v2.test.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_shell_exec_run_equals_eval.emit_host_shell_exec_run_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.emit_ingest_python_same_language_round_trip_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_19() -> List<String> {
+  Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_parse_bridge_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_source_emit_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.emit_ingest_typescript_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_parse_bridge_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_kernel_witness.emit_on_demand_kernel_native_one_build_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.emit_on_demand_match_loop_fold_family_one_build_holds", tail: Cons { head: "v2.test.execution.rust_emit_host_call_equals_eval.rust_emit_host_call_equals_eval_holds", tail: Cons { head: "v2.test.execution.rust_emit_host_call_equals_eval.rust_emit_host_call_wrong_oracle_refuses_holds", tail: Cons { head: "v2.test.execution.rust_record_construct_emit_host_equals_eval.rust_record_construct_emit_host_equals_eval_holds", tail: Cons { head: "v2.test.execution.rust_record_construct_emit_host_equals_eval.rust_record_construct_emit_host_wrong_field_refuses_holds", tail: Cons { head: "v2.test.grounding_typescript.sg_claims.ts_g2_g14_fact_registry_accepts", tail: Cons { head: "v2.test.host_language_transport_script.corpus.wall_residue_live.residue_host_effect_realize_clean", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.live_populations_are_nonempty", tail: Cons { head: "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds", tail: Cons { head: "v2.test.lens_testgen.shadow_ci_receipt.lens_testgen_shadow_ci_run_receipt_holds", tail: Cons { head: "v2.test.manual.cross_language_add_python_to_typescript.cross_language_add_python_to_typescript_chain_status_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_20() -> List<String> {
+  Cons { head: "v2.test.manual.emit_source_store.emit_source_store_cold_then_warm_holds", tail: Cons { head: "v2.test.manual.emit_source_store.emit_source_store_mutated_emitter_misses_holds", tail: Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: Cons { head: "v2.test.manual.int_cross_target_coercion.witness_cross_target_python_to_rust_i32_rejects", tail: Cons { head: "v2.test.manual.kotlin_grammar_claim.kotlin_grammar_validates_fixture", tail: Cons { head: "v2.test.manual.python_grammar_claim.python_grammar_parse_accepts", tail: Cons { head: "v2.test.manual.rust_add_emit_translate.rust_add_compile_inferred_receipt_holds", tail: Cons { head: "v2.test.manual.rust_add_emit_translate.rust_add_emit_add_fn_accepts_holds", tail: Cons { head: "v2.test.manual.sg2_mode2_non_grammar_emit.sg2_mode2_translate_matches_golden", tail: Cons { head: "v2.test.manual.sg_collection_projection.sg_collection_free_monoid_vec_rc_projection_holds", tail: Cons { head: "v2.test.manual.sg_rc_layering.sg_rc_outcome_inner_sg2_args_preserved", tail: Cons { head: "v2.test.manual.target_carriers_fidelity.target_carriers_declared_loss_fidelity_holds", tail: Empty {} } } } } } } } } } } } }
+}
+
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Empty {} } }}}}}}}}}}}}}
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Empty {} } } } } } } } } }}}}}}}}}}}}}
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
@@ -859,9 +966,17 @@ fn floor_cost_debt_censored_roster() -> List<String> {
   list_flat_map(xs: floor_cost_debt_censored_chunks(), f: fn(c) { c })
 }
 
+fn floor_cost_debt_straddling_chunks() -> List<List<String>> {
+  Cons { head: floor_cost_debt_straddling_chunk_00(), tail: Empty {} }
+}
+
+fn floor_cost_debt_straddling_roster() -> List<String> {
+  list_flat_map(xs: floor_cost_debt_straddling_chunks(), f: fn(c) { c })
+}
+
 fn floor_cost_debt_roster() -> List<String> {
   list_flat_map(
-    xs: Cons { head: floor_cost_debt_proven_roster(), tail: Cons { head: floor_cost_debt_censored_roster(), tail: Empty {} } },
+    xs: Cons { head: floor_cost_debt_proven_roster(), tail: Cons { head: floor_cost_debt_censored_roster(), tail: Cons { head: floor_cost_debt_straddling_roster(), tail: Empty {} } } },
     f: fn(c) { c }
   )
 }
@@ -910,6 +1025,10 @@ fn floor_cost_debt_censored_population() -> Int {
   list_length(items: floor_cost_debt_censored_roster())
 }
 
+fn floor_cost_debt_straddling_population() -> Int {
+  list_length(items: floor_cost_debt_straddling_roster())
+}
+
 fn floor_cost_debt_population_report() -> String {
   join(
     [
@@ -917,6 +1036,8 @@ fn floor_cost_debt_population_report() -> String {
       to_string(floor_cost_debt_proven_population()),
       " censored=",
       to_string(floor_cost_debt_censored_population()),
+      " straddling=",
+      to_string(floor_cost_debt_straddling_population()),
       " total=",
       to_string(list_length(items: floor_cost_debt_roster())),
     ],

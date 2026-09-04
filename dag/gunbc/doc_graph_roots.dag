@@ -239,7 +239,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "required-floor-in-flight-shared-fill-findings",
     primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "changed_witness_cpu_deadline", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "gunbc.rung_drop", decl_name: "floor_cost_claim_qualification_unavailable", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.rung_drop.floor_cost_claim_qualification_unavailable", decl_name: "floor_cost_claim_qualification_unavailable", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the required floor's in-flight shared-fill ownership and deadline accounting are changed so this characterization no longer describes the shipped mechanism; the row deletes with the superseded findings document. Registered at subject grain: changed_witness_cpu_deadline is the modeled CPU enforcement decision whose bootstrap realization this document characterizes.") },
   },

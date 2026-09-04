@@ -421,9 +421,17 @@ pub(crate) fn floor_required_opaque_host_call_surface(
              unpollable is unreadable and no claim's preemption reachability can be observed. \
              The floor refuses rather than arming an empty surface, which would report every \
              completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
-             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?}",
+             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
+             wrong_dispatch_site={:?}",
             floor_value_shape(ctx.field(fields, "unresolved")),
             floor_value_shape(ctx.field(fields, "not_free_call")),
+            // THE THIRD POPULATION, AND IT HAS ITS OWN REPAIR. `unresolved` is a roster row
+            // pointing at nothing and `not_free_call` is an arm whose dispatch shape the
+            // criterion does not admit; `wrong_dispatch_site` is an arm that IS a free call but
+            // is dispatched somewhere other than `eval_builtin_inner`, so the recorder installed
+            // there can never observe it. Reporting it as either of the other two would send a
+            // repairer to the wrong authority.
+            floor_value_shape(ctx.field(fields, "wrong_dispatch_site")),
         )),
         other => Err(format!(
             "{qualified}: unknown OpaqueHostCallSurface arm {other:?}"
