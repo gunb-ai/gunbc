@@ -1770,11 +1770,67 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    with_execution(active_small(
+      identity: "rn_7K3QH2M9XWP4NVB8RD6TSCA5EJ",
+      id: "harness-thinking-and-write-briefs",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_cli.dag",
+      t: fields(
+        headline: "Run the worker on DeepSeek V4 Flash with thinking on, straight at the engines, from briefs it can finish",
+        boundary: "The harness posts to the Spark vLLM engines directly on the chat-completions shape with Think Max as the request switch, decodes inline reasoning client-side, replays it, and derives its deadline from the engine's own decode rate. A write brief names files small enough to hold whole and the decisions already made.",
+        displaced_cost: "A day of runs with 0 files changed: briefs naming one file when the change spans its importers, a co-tenanted router killing every long step, a deadline that could not cover max_tokens, and agents deliberating modeling decisions a brief should have made.",
+        first_slice: "Engine roster and replica pick, Think Max kwargs, client decode and replay, engine-derived floor; witnesses on each; one mechanical brief green first try (roadmap_belt_commit).",
+        red_control: "A worker whose request goes through any process other than an engine refuses; a deadline shorter than max_tokens at the declared floor is a witness failure; a brief that makes the agent decide a modeling question is a research brief, not a write brief.",
+        out_of_scope: "No research phase in the workflow yet, no transport retry, no per-round source recording.",
+        handback: "The harness config rows, the engine roster, the brief-sizing rule recorded in memory, and the measured runs t08a/t09a1/t09b2 as receipts."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/harness_chat_shape_test.dag" as FilePath,
+      function: "the_replica_pick_is_deterministic_and_covers_the_roster" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
+      identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
+      id: "roadmap-verify-to-publish-phase",
+      owner: "roadmap",
+      path: "dag/gunbc/roadmap/roadmap_publish_admission.dag",
+      t: fields(
+        headline: "The roadmap commits, verifies, and opens the pull request itself once verification passes",
+        boundary: "After the provider completes, the belt commits the attempt worktree, verifies the committed head in a detached checkout, admits publication only on a ValidationPassed receipt for that exact head, and the token-holding helper pushes the branch and opens the pull request, then answers with what GitHub shows.",
+        displaced_cost: "Verification was checking out an uncommitted worktree's head, publication never consulted the verdict, and no operation existed to push or create a pull request, so every attempt stalled in the Agent segment and a human harvested by hand.",
+        first_slice: "One real attempt through the belt on the srv2 instance that ends with a bound pull request receipt.",
+        red_control: "A head whose verification receipt is absent, unreadable, failed, or legacy is deferred with a named reason and never pushed; a rejected push is a typed refusal and never forced; the helper never composes a bound receipt from the create call without observing GitHub again.",
+        out_of_scope: "No research/write/verify/diagnose phase iteration yet; the side measurement harness is not yet retired into dispatch.",
+        handback: "The commit pass, admission module, actuation module and helper wiring on srv2-deploy, each witnessed, and the first bound receipt."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/roadmap/roadmap_publish_admission_witness_test.dag" as FilePath,
+      function: "a_passed_verdict_admits_publication" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
+      identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",
+      id: "roadmap-round-strip-percolator",
+      owner: "dashboard",
+      path: "dag/gunbc/harness/harness_throughput.dag",
+      t: fields(
+        headline: "Show an attempt's rounds filling in like a commit graph, at a fixed playback length however long the run",
+        boundary: "Each attempt row carries a strip of time-proportional round segments (read, write, unmeasured) that replays in 2.4 seconds regardless of round count, with the live segment pulsing; the design material gains keyframed ambient motion as a modeled rule, silenced under reduced motion.",
+        displaced_cost: "The dashboard showed no sign that a worker was alive or how it spent its time, so a stalled attempt and a working one looked the same.",
+        first_slice: "AmbientRule in the design material, the playback schedule with its floor, the sandbox lab with replay and slow controls; next, per-round sources read and the connection arcs.",
+        red_control: "A 40ms write round stays visible at the floor; a 300-round run does not overflow the strip; the last segment pulses only for an active row.",
+        out_of_scope: "No live re-render without reload; no per-file read diversity yet.",
+        handback: "The strip on every active row, the lab on /sandbox, and the playback witness."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/harness_throughput_test.dag" as FilePath,
+      function: "playback_compresses_the_run_into_a_fixed_window_with_a_floor" as NonEmptyStr,
+    )),
+
+    ticket_row(
       identity: "rn_0PJXVP9KNDXZFHXMDM9XQ7TTSX",
       id: "commit-writer-admission",
-      owner: "generated-artifact",
-      path: "docs/plans/generated-file-conflict-policy.md",
+      done: false,
       t: fields(
         headline: "One admission predicate that every commit writer must pass before it may write",
         boundary: "Admission consumes a complete staged-index observation whose population must equal the exact staged index, never a caller-selected list, with two independent refusal arms: any unmerged index stage refuses typed and located with the affected path, and the staged blobs are inspected for the complete conflict-marker grammar, so a file collapsed to stage zero with markers inside refuses. Text classification is observed, never caller-declared; a fixture exemption is a provenance receipt bound to the same staged path and blob, never a path allowlist. The pre-commit hook stays fast local feedback; the predicate at the writer's boundary is the enforcement.",
@@ -2509,11 +2565,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
-      owner: "confidence",
-      path: "src/v2/lens/module_graph.dag",
+      done: false,
       t: fields(
         headline: "Ask what depends on this exact thing, and get an explained, honest answer",
         boundary: "Given an exact graph subject and one or more semantic node identities, return direct and transitive dependencies or dependents, explanation paths, production and test consumers, and an explicit completeness standing. Git diffs, paths, line and column coordinates, and natural-language questions are adapters into this semantic query — they are not its identity grain. The reading consumes the existing single edge authority as data and never grows a second edge producer; where the finest grain is unavailable, the standing says so with its trigger rather than answering coarser and calling it fine.",
