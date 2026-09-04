@@ -4544,7 +4544,9 @@ pub fn run_required_floor(
     // report a population it never observed and the deficit would stop being visible at the
     // moment the join broke. So a broken join stops the line here, typed and located, and the
     // remedy is named rather than left to the reader.
-    let opaque_surface = floor_required_opaque_host_call_surface(&hermetic)?;
+    let opaque_surface_frame =
+        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+    let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
     v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
         &hermetic,
