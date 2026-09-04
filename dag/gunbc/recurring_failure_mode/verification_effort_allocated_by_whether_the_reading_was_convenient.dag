@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.verification_effort_allocated_by_whether_the_reading_was_convenient
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data verification_effort_allocated_by_whether_the_reading_was_convenient: RecurringFailureMode = RecurringFailureMode {
+  identity: "verification_effort_allocated_by_whether_the_reading_was_convenient" as NonEmptyStr,
+
+  receipts: [
+    "**verification effort allocated by whether the reading CONFIRMED WHAT THE READER WAS ALREADY ARGUING, rather than by what the reading was worth.** INVALID STATE: one ambiguous instrument reading is consumed twice by two readers, or twice by one reader in two arguments, and is CHECKED FURTHER in the case where it is inconvenient and TAKEN AS A RESULT in the case where it supports the position being advanced. The reading is identical in both cases; only its convenience differs. ",
+
+    "DISTINCT FROM THE TWO ROWS IT SITS BETWEEN, and it must be read against both or it is a nickname for either. `empty_capture_read_as_clean_result` owns the INSTRUMENT: a refusal and a clean result producing the same bytes in the channel the reader kept, and its remedies interrogate the instrument and the artifact. `required_evidence_absent_reads_as_evidence_of_pass` owns the GATE: an admission arm quantified over the evidence that ARRIVED rather than the evidence REQUIRED, so the empty enumeration admits and a merge lands on uncertified content. THIS row owns neither the instrument nor the arm. It owns the READER, and its subject is not what the reading meant but HOW HARD ANYONE LOOKED. Two readers can hold both other rows, quote both recognition rules, and still split on the same string. ",
+
+    "HARM, AND WHY IT IS NOT VISIBLE ANYWHERE IN THE ARTIFACT: the effort function leaves no trace. A reading taken as a result and a reading verified to the same conclusion are byte-identical in every record that survives -- the message, the commit, the review. So a reader auditing the decision afterwards finds a correct-looking citation of a correct-looking reading, and there is no field in which the difference could have been recorded. The defect is in an act that was NOT performed, and an omission has no artifact. ",
+
+    "DISTINGUISHING FACT, AND IT IS THE PAIR RATHER THAN EITHER READING: the class is only visible when the SAME ambiguous string is read twice with opposite convenience, which is why it survives in a single lane and surfaces across lanes. A reader who only ever meets the reading in the convenient direction has no discriminating case and experiences their own habit as diligence. ",
+
+    "SPECIMEN, 2026-09-04, gunbc#10317 and gunbc#10303, one hour, one string, both directions. The string is `gh pr checks <n>` returning `no checks reported on the '<branch>' branch`, which covers NEVER RAN and RAN BUT HAS NOT REGISTERED ITS CHECK RUNS YET -- two states meaning opposite things, rendered as one absence. `gh run list --branch <ref> --json headSha,status,createdAt` separates them and supplies the age the verdict needs. ",
+
+    "READING ONE, CONVENIENT, NOT CHECKED: a manager reading #10317 -- a pull request whose head had been pushed FOUR MINUTES EARLIER -- took the empty answer as `no checks of any kind, that path is unproven`, used it as corroboration for a recommendation already being argued, and reported it upward as fact. #10317 in fact carried two runs, one `in_progress`. ",
+
+    "READING TWO, INCONVENIENT, CHECKED IMMEDIATELY: the identical string on #10303, sixty seconds after that author pushed the head themselves. Because the author independently knew the head had just been pushed, the exonerating explanation was available BEFORE the convenient one, `gh run list` was consulted without deliberation, and the run was found queued. ",
+
+    "THIRD READING, SAME NIGHT, SAME READER AS THE FIRST: `action_required` on a head carrying both a gated run and an active one, reported as a stall because the classifier's arms tested for the GATED state before the ACTIVE one -- an ordered partition standing in for a joint one, whose ORDER is load-bearing and invisible. Checked only because the reader was about to escalate on it. THE COMMON SIGNATURE ACROSS ALL THREE, and it is the reader's own words: the labels fail toward the DECISIVE answer rather than the uncertain one. ",
+
+    "RECOGNITION RULE, and it is asked of the READER rather than of the artifact: for a reading you are about to act on, ask WHICH READING WOULD HAVE MADE YOU LOOK FURTHER. If the answer is the opposite one, you have measured your own position and not the subject. The tell in review is a reading that ARRIVED AS A RESULT -- it settled a question that was open, it confirmed the shape being argued, and no second instrument was consulted. ",
+
+    "RUNG FOUND AT: mitigatable, and only by habit. ",
+
+    "CEILING: MITIGATABLE, and this row states that as its ceiling rather than as a stall, because no check can observe WHY a reader stopped looking. The omission is not representable: there is no artifact in which not-having-looked differs from having-looked-and-agreed. Climbing would require the decision procedure to be the machine's rather than the reader's, at which point the class dissolves into whichever row owns that machine and stops being this one. This is a `ratchet forever` in the sense of DESIGN.md section 5, not a wall awaiting its authority. ",
+
+    "REMEDY, STATED AS A REMEDY AND NOT AS A HOPE, because it is the move that actually worked in reading two: TAKE THE READING ON A SUBJECT WHOSE STATE YOU INDEPENDENTLY KNOW. A reading whose correct answer you already hold makes the exonerating explanation available before the convenient one, which is the same construction as a positive control and works for the same reason -- it is the only form of this that does not depend on the reader being suspicious at the right moment. Where no such subject is available, the fallback is the discriminating comparison named by `empty_capture_read_as_clean_result`: read the same subject by a second route, because either reading alone is not a measurement of anything. ",
+
+    "NEXT TRIGGER: none, and the row says so deliberately. A trigger here would name a capability that cannot exist, and DESIGN.md section 4b(2) separates CANNOT CLIMB FURTHER from CAN CLIMB AFTER ONE GROUNDING; this is the first. What the row is for is recognition, not enforcement, and claiming otherwise would make it an instance of the inflation it describes. ",
+  ],
+
+  evidence: [],
+}
