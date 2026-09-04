@@ -492,7 +492,7 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // A SINGLE ARGV, NOT TWO. Two hand-built invocations would be two spellings of the binary path,
 // mode flag and source roots, free to drift as #8629 removed once already; the lane is a
 // parameter of one command.
-fn required_ci_lane_command(lane: String) -> ArgvCommand {
+fn required_ci_lane_command(lane: String, measurement_receipt: String) -> ArgvCommand {
   claim_executor_command(
     mode_flag: "--required-ci",
     operands: append(
@@ -501,7 +501,11 @@ fn required_ci_lane_command(lane: String) -> ArgvCommand {
         init: [],
         f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
       ),
-      items: ["--required-lane", lane],
+      if measurement_receipt == "" {
+        ["--required-lane", lane]
+      } else {
+        ["--required-lane", lane, "--measurement-receipt", measurement_receipt]
+      },
     ),
   )
 }
@@ -517,12 +521,16 @@ data required_ci_lane_witnesses: String = required_ci_lane_name(l: WitnessesLane
 // rather than for the floor alone, because the parse phase rides here too and a name that
 // said `floor` would be a second, narrower account of what this command runs.
 fn witnesses_lane_run_command() -> ArgvCommand {
-  required_ci_lane_command(lane: required_ci_lane_witnesses)
+  required_ci_lane_command(lane: required_ci_lane_witnesses, measurement_receipt: "")
+}
+
+fn witnesses_lane_measurement_command(measurement_receipt: String) -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_witnesses, measurement_receipt: measurement_receipt)
 }
 
 // The build lane: regen's first-generation comparison and the v2 emission compile.
 fn build_lane_run_command() -> ArgvCommand {
-  required_ci_lane_command(lane: required_ci_lane_build)
+  required_ci_lane_command(lane: required_ci_lane_build, measurement_receipt: "")
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
