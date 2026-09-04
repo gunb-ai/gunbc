@@ -1089,7 +1089,7 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
                   }
                 resolved =>
                   PendingEdgeAcc {
-                    edges: concat(acc.edges, [PendingEdge { label: label, target: resolved }]),
+                    edges: concat([PendingEdge { label: label, target: resolved }], acc.edges),
                     refusal: acc.refusal,
                   }
               }
@@ -1370,7 +1370,7 @@ fn manifest_entry_with(
   source: AuthoredSourceTarget
 ) -> ManifestEntryAcc {
   ManifestEntryAcc {
-    entries: concat(acc.entries, [CorpusManifestEntry { path: path, source: source }]),
+    entries: concat([CorpusManifestEntry { path: path, source: source }], acc.entries),
     refusal: acc.refusal,
   }
 }
@@ -1492,11 +1492,11 @@ fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> Deco
       decode_manifest_entry(positions: acc.positions, acc: inner, entry_value: entry_value)
     }
   ) {
-    ManifestEntryAcc { entries: entries, refusal: refusal } =>
+    ManifestEntryAcc { entries: reversed_entries, refusal: refusal } =>
       match refusal {
         Present { value: c } => decode_acc_refused(acc: acc, cause: c)
         Absent =>
-          match store_corpus_manifest(store: acc.store, entries: entries) {
+          match store_corpus_manifest(store: acc.store, entries: reverse(reversed_entries)) {
             CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
               decode_acc_refused(
                 acc: acc,
@@ -1577,10 +1577,11 @@ fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
                   decode_pending_edge(acc: edge_acc, edge_value: edge_value)
                 }
               ) {
-                PendingEdgeAcc { edges: edges, refusal: refusal } =>
+                PendingEdgeAcc { edges: reversed_edges, refusal: refusal } =>
                   match refusal {
                     Present { value: c } => NodeEntryShapeRefused { cause: c }
-                    Absent => NodeEntryShapeDecoded { kind: kind, edges: edges }
+                    Absent =>
+                      NodeEntryShapeDecoded { kind: kind, edges: reverse(reversed_edges) }
                   }
               }
             _ =>

@@ -97,6 +97,8 @@ import gunbc.scm.commit_closure {
   table_unresolved_identities,
   table_source_occupied_identities,
   table_manifest_occupied_identities,
+  table_manifest_source_node_occupied_identities,
+  table_manifest_source_manifest_occupied_identities,
 }
 // THE TABLE MACHINERY NOW COMES FROM THE TABLE'S OWN MODULE, which is what this import used to
 // contradict: a repository read its accumulators, positions and codec upward out of the commit
@@ -289,6 +291,8 @@ type RepositoryEncodeRefusal
   | RepositoryEncodeTargetIsCorpusManifest { target: ObjectId }
   | RepositoryEncodeCommitRootIsAuthoredSource { root: ObjectId }
   | RepositoryEncodeCommitRootIsCorpusManifest { root: ObjectId }
+  | RepositoryEncodeManifestSourceIsSemanticNode { source: ObjectId }
+  | RepositoryEncodeManifestSourceIsCorpusManifest { source: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
@@ -637,6 +641,34 @@ fn a_manifest_occupied_target(store: ObjectStore) -> ObjectId? {
   })
 }
 
+// A MANIFEST'S SOURCE REQUIREMENT IS ADJUDICATED HERE TOO, AND IT WAS THE LAST WRONG-KIND STATE
+// THIS WRITER COULD PUBLISH. encode_source_target asks the source-only index, so a locator occupied
+// by a node or another manifest is simply missing from it and the writer spelled the target
+// `uncontained` -- a fetchable absence for an occupied locator. The index made the contained
+// spelling of a wrong kind unwritable; these two refusals are what stop the uncontained spelling
+// from becoming its replacement.
+//
+// GENUINE ABSENCE IS NOT REFUSED, because a manifest naming a source this repository does not carry
+// is a legitimate partial corpus -- the same standing an absent semantic child has. What the census
+// prevents is a wrong kind arriving in that absent population.
+fn a_manifest_source_at_a_node(store: ObjectStore) -> ObjectId? {
+  fold(table_manifest_source_node_occupied_identities(store: store), init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: id }
+    }
+  })
+}
+
+fn a_manifest_source_at_a_manifest(store: ObjectStore) -> ObjectId? {
+  fold(table_manifest_source_manifest_occupied_identities(store: store), init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: id }
+    }
+  })
+}
+
 fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
   fold(table_unresolved_identities(store: store), init: none, f: fn(acc, id) {
     match acc {
@@ -655,6 +687,14 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
   match a_manifest_occupied_target(store: repo.store) {
     Present { value: target } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeTargetIsCorpusManifest { target: target } }
+    Absent =>
+  match a_manifest_source_at_a_node(store: repo.store) {
+    Present { value: source } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeManifestSourceIsSemanticNode { source: source } }
+    Absent =>
+  match a_manifest_source_at_a_manifest(store: repo.store) {
+    Present { value: source } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeManifestSourceIsCorpusManifest { source: source } }
     Absent =>
   match an_uncontained_target(store: repo.store) {
     Present { value: target } =>
@@ -691,6 +731,8 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
               }
           }
       }
+  }
+  }
   }
   }
   }

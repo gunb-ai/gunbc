@@ -8,7 +8,7 @@ module test.claim.scm_repository_envelope_witness
 // identity, re-derived from structure on load -- so the round-trip claims assert on the derived
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -30,6 +30,12 @@ import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   SourceStored, SourceLocatorCollision,
   SemanticNodeTarget, node_target_locator,
+  AuthoredSourceTarget,
+  CorpusManifestEntry,
+  CorpusManifestStored,
+  CorpusManifestDuplicatePath,
+  CorpusManifestLocatorCollision,
+  store_corpus_manifest,
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
   store_authored_source,
@@ -53,6 +59,8 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeCommitRootIsAuthoredSource,
   RepositoryEncodeTargetIsCorpusManifest,
   RepositoryEncodeCommitRootIsCorpusManifest,
+  RepositoryEncodeManifestSourceIsSemanticNode,
+  RepositoryEncodeManifestSourceIsCorpusManifest,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
@@ -542,6 +550,8 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryEncodeTargetIsCorpusManifest { target: _ } => "target_is_corpus_manifest"
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => "commit_root_is_authored_source"
         RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => "commit_root_is_corpus_manifest"
+        RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => "manifest_source_is_node"
+        RepositoryEncodeManifestSourceIsCorpusManifest { source: _ } => "manifest_source_is_manifest"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
@@ -549,6 +559,52 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
   }
+}
+
+// A MANIFEST WHOSE SOURCE LOCATOR IS OCCUPIED BY A PROGRAM, and the refusal is what keeps the
+// writer from spelling it `uncontained`. AuthoredSourceTarget is a plain record -- stating a
+// requirement forges nothing -- so a fixture can name a node's locator as a manifest's source, and
+// this is exactly the state the source-only position index turns into a MISS rather than a hit. A
+// miss becomes the uncontained arm, which claims the object is simply not carried here; it is, and
+// no fetch repairs an occupied locator.
+fn scm_env_manifest_over(store: ObjectStore, locator: ObjectId) -> ObjectStore {
+  match store_corpus_manifest(
+    store: store,
+    entries: [
+      CorpusManifestEntry {
+        path: "witness/manifested.dag" as NonEmptyStr,
+        source: AuthoredSourceTarget { locator: locator },
+      },
+    ],
+  ) {
+    CorpusManifestStored { store: with_manifest, manifest: _ } => with_manifest
+    CorpusManifestDuplicatePath { path: _ } => store
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => store
+  }
+}
+
+test fn scm_env_a_manifest_source_at_a_program_refuses_rather_than_going_uncontained() -> Bool {
+  let put = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let store = scm_env_manifest_over(
+    store: put.store,
+    locator: node_target_locator(target: put.identity),
+  )
+  scm_env_encode_cause_tag(
+    outcome: encode_repository_checked(repo: scm_env_repository_with_store(store: store)),
+  ) == "manifest_source_is_node"
+}
+
+// THE CONTROL, AND IT IS THE ONE THAT KEEPS THE REFUSAL FROM BEING "ANY MANIFEST REFUSES". A
+// manifest naming a source this repository genuinely does not carry is a legitimate partial corpus,
+// with the same standing an absent semantic child has, so it must encode.
+test fn scm_env_a_manifest_source_this_store_lacks_is_not_a_refusal() -> Bool {
+  let store = scm_env_manifest_over(
+    store: empty_store(),
+    locator: node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_two()).identity),
+  )
+  scm_env_encode_cause_tag(
+    outcome: encode_repository_checked(repo: scm_env_repository_with_store(store: store)),
+  ) == "encoded"
 }
 
 // A commit whose root is not in the store at all.
@@ -695,6 +751,8 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryEncodeTargetIsCorpusManifest { target: _ } => false
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
         RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => false
+        RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => false
+        RepositoryEncodeManifestSourceIsCorpusManifest { source: _ } => false
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false

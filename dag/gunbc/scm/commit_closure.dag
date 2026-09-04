@@ -92,6 +92,15 @@ import gunbc.scm.object_store {
   NodeRecordFound,
   NodeRecordAbsent,
   NodeRecordIsAuthoredSource,
+  CorpusManifestRecord,
+  CorpusManifestEntry,
+  AuthoredSourceLookup,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
+  authored_source_target_locator,
+  find_authored_source_record,
   object_id_eq,
   resolve_node_target,
   node_target_locator,
@@ -473,9 +482,15 @@ fn walk_visited(acc: ClosureWalk, identity: ObjectId) -> Bool {
 
 // CHILDREN BEFORE THE PARENT THAT NAMES THEM, appended in that order for the same reason
 // emit_in_dependency_order appends: a decoder assigning positions as it reads must have seen every
-// referenced object before the reference. Cost has the same shape and the same bound as the store's
-// own walk -- visited is a linear scan, so this is quadratic in the reachable count, and a keyed
-// collection retires both at once rather than leaving one of them indexed and the other not.
+// referenced object before the reference. BOTH LISTS PREPEND AND THE NODES ARE REVERSED ONCE at the
+// derivation, the corpus idiom -- appending copied the whole accumulator on every step, which bought
+// the emitted order with a quadratic that one linear reverse gets for free. `visited` is never
+// reversed because nothing reads its order; it answers a membership question only.
+//
+// WHAT REMAINS QUADRATIC IS THE MEMBERSHIP TEST, not the list construction, and the two are separate
+// defects that were previously stated as one. `walk_visited` is a linear scan, so the walk is still
+// quadratic in the reachable count; that one is retired by a keyed collection and not by an
+// accumulator idiom.
 fn walk_target(store: ObjectStore, acc: ClosureWalk, target: SemanticNodeTarget) -> ClosureWalk {
   let locator = node_target_locator(target: target)
   if walk_visited(acc: acc, identity: locator) {
@@ -483,7 +498,7 @@ fn walk_target(store: ObjectStore, acc: ClosureWalk, target: SemanticNodeTarget)
   } else {
     let seen = ClosureWalk {
       nodes: acc.nodes,
-      visited: concat(acc.visited, [locator]),
+      visited: concat([locator], acc.visited),
       census: acc.census,
     }
     match resolve_node_target(store: store, target: target) {
@@ -495,7 +510,7 @@ fn walk_target(store: ObjectStore, acc: ClosureWalk, target: SemanticNodeTarget)
         ) {
           after =>
             ClosureWalk {
-              nodes: concat(after.nodes, [record]),
+              nodes: concat([record], after.nodes),
               visited: after.visited,
               census: after.census,
             }
@@ -550,7 +565,7 @@ fn derive_semantic_closure(
   ) {
     walk =>
       SemanticClosureDerivation {
-        nodes: walk.nodes,
+        nodes: reverse(walk.nodes),
         census: ClosureCensus {
           absent: reverse(walk.census.absent),
           source_occupied: reverse(walk.census.source_occupied),
@@ -613,6 +628,101 @@ fn closure_census(closure: CommitClosure) -> ClosureCensus {
 // for the same reason unresolved_identities does: a locator occupied by the wrong kind is not
 // something the repository can fetch, and reporting it here would put it back into the population
 // whose whole meaning is "get these and the table completes".
+// ── THE OTHER REQUIREMENT A STORE CARRIES, AND IT IS NOT A SEMANTIC ONE ──
+//
+// ClosureCensus answers "does a semantic child requirement resolve to a node". A MANIFEST ENTRY
+// states a different requirement about a different kind: an authored source must sit at this
+// locator. Nothing censused it, and the consequence was a false absence rather than a loud refusal:
+// encode_source_target asks the source index, and a locator occupied by a NODE is simply missing
+// from that index, so the writer emitted `uncontained` -- a fetchable absence for a locator that is
+// occupied and can never be repaired by fetching. The per-kind index made the CONTAINED half
+// unwritable; this census is what makes the UNCONTAINED half honest.
+//
+// THREE POPULATIONS, AND ABSENCE IS DELIBERATELY NOT ONE OF THE REFUSALS. A manifest naming a source
+// this store does not carry is a legitimate partial corpus, exactly as an absent semantic child is a
+// legitimate partial closure. What may not happen is a WRONG KIND arriving in that absent
+// population, which is the conflation this separates.
+type ManifestSourceCensus {
+  absent: List<ObjectId>
+  node_occupied: List<ObjectId>
+  manifest_occupied: List<ObjectId>
+}
+
+fn empty_manifest_source_census() -> ManifestSourceCensus {
+  ManifestSourceCensus { absent: [], node_occupied: [], manifest_occupied: [] }
+}
+
+fn manifest_source_census_of_entry(
+  store: ObjectStore,
+  acc: ManifestSourceCensus,
+  entry: CorpusManifestEntry
+) -> ManifestSourceCensus {
+  let identity = authored_source_target_locator(target: entry.source)
+  match find_authored_source_record(store: store, identity: identity) {
+    AuthoredSourceFound(_) => acc
+    AuthoredSourceAbsent { identity: absent_identity } =>
+      ManifestSourceCensus {
+        absent: concat([absent_identity], acc.absent),
+        node_occupied: acc.node_occupied,
+        manifest_occupied: acc.manifest_occupied,
+      }
+    AuthoredSourceIsSemanticNode { identity: occupied } =>
+      ManifestSourceCensus {
+        absent: acc.absent,
+        node_occupied: concat([occupied], acc.node_occupied),
+        manifest_occupied: acc.manifest_occupied,
+      }
+    AuthoredSourceIsCorpusManifest { identity: occupied } =>
+      ManifestSourceCensus {
+        absent: acc.absent,
+        node_occupied: acc.node_occupied,
+        manifest_occupied: concat([occupied], acc.manifest_occupied),
+      }
+  }
+}
+
+fn manifest_source_census_in_object(
+  store: ObjectStore,
+  acc: ManifestSourceCensus,
+  object: ScmObject
+) -> ManifestSourceCensus {
+  match object {
+    SemanticNodeObject(_) => acc
+    AuthoredSourceObject(_) => acc
+    CorpusManifestObject(record) =>
+      fold(
+        record.entries,
+        init: acc,
+        f: fn(inner, entry) {
+          manifest_source_census_of_entry(store: store, acc: inner, entry: entry)
+        }
+      )
+  }
+}
+
+fn manifest_source_census(store: ObjectStore) -> ManifestSourceCensus {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: empty_manifest_source_census(),
+    f: fn(acc, object) { manifest_source_census_in_object(store: store, acc: acc, object: object) }
+  ) {
+    ManifestSourceCensus { absent: a, node_occupied: n, manifest_occupied: m } =>
+      ManifestSourceCensus {
+        absent: reverse(a),
+        node_occupied: reverse(n),
+        manifest_occupied: reverse(m),
+      }
+  }
+}
+
+fn table_manifest_source_node_occupied_identities(store: ObjectStore) -> List<ObjectId> {
+  manifest_source_census(store: store).node_occupied
+}
+
+fn table_manifest_source_manifest_occupied_identities(store: ObjectStore) -> List<ObjectId> {
+  manifest_source_census(store: store).manifest_occupied
+}
+
 fn table_unresolved_identities(store: ObjectStore) -> List<ObjectId> {
   store_census(store: store).absent
 }

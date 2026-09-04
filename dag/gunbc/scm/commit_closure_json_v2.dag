@@ -30,7 +30,6 @@ import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {
   CommitClosure,
   AdmittedPartialCommitClosure,
-  unresolved_identities,
   closure_is_complete,
   closure_census,
   ClosureCensus,
@@ -425,6 +424,11 @@ type ClosureDocEncodeOutcome
 // returned bytes -- the wrong-kind state was publishable through the front door while partial
 // admission refused it at the side door. Kind is judged first because it is not a degree of
 // incompleteness: no supply step repairs it.
+//
+// AND IT NOW TAKES BOTH FACTS OFF THE SAME ADMISSION. It called unresolved_identities beside the
+// admission, walking the closure a second time to re-derive a population the admitted arm already
+// carries -- one semantic fact produced twice, which DESIGN section 2 prices as redundant work and
+// section 3 as a second authority free to drift from the first.
 fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
   match admit_well_kinded_closure(closure: closure) {
     NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
@@ -434,18 +438,15 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
           manifest_occupied: manifests,
         }
       }
-    WellKinded { admitted: image, unresolved: _ } =>
-      match unresolved_identities(closure: closure) {
-        missing =>
-          if list_length(items: missing) == 0 {
-            ClosureDocEncoded { value: encode_closure_document(image: image) }
-          } else {
-            ClosureDocEncodeRefused {
-              cause: ClosureDocIncompleteWithoutAdmission {
-                identity: an_uncontained_key(missing: missing)
-              }
-            }
+    WellKinded { admitted: image, unresolved: missing } =>
+      if list_length(items: missing) == 0 {
+        ClosureDocEncoded { value: encode_closure_document(image: image) }
+      } else {
+        ClosureDocEncodeRefused {
+          cause: ClosureDocIncompleteWithoutAdmission {
+            identity: an_uncontained_key(missing: missing)
           }
+        }
       }
   }
 }
