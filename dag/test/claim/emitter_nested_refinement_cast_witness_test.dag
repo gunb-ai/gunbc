@@ -70,6 +70,21 @@ fn w_intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool {
 // here. If cast_representation_identical ever widens to answer true on absence of evidence -- a
 // synthetic occurrence read as a match, a string-like predicate, a name comparison -- this pole is
 // what goes red.
+// THE BRAND PREDICATE, EXERCISED RATHER THAN ASSERTED (codex review 59800). gunbc#10266 was
+// reported against `type PathSegment = NonEmptyStr where brand("PathSegment")`, and a brand is the
+// refinement an emitter could most plausibly treat as a NOMINAL distinction rather than a
+// transparent one -- so a fixture whose every refinement carries an ordinary predicate leaves the
+// named behaviour untested while staying green. This pole brands the outer refinement and nothing
+// else changes, which is what makes it evidence about the brand rather than about nesting.
+fn w_brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
+  compile_dag_rust_emit_check(
+    "module emitnested_brand\n\nimport std.types { Bool, String }\n\nfn encoded_ok(value: String) -> Bool {\n  !(value == \"\")\n}\n\ntype SingleCarrier = String where encoded_ok\n\ntype BrandedCarrier = SingleCarrier where brand(\"BrandedCarrier\")\n\nfn brand_widen(v: SingleCarrier) -> BrandedCarrier {\n  v as BrandedCarrier\n}\n\nfn brand_project(c: BrandedCarrier) -> String {\n  c as String\n}\n",
+    "src/emitnested_brand.rs",
+    ["fn brand_widen"],
+    ["unsupported cast"]
+  )
+}
+
 fn w_unrelated_carriers_still_refuse_the_cast() -> Bool {
   compile_dag_rust_emit_check(
     "module emitnested_unrelated\n\nimport std.types { Int, String }\n\nfn coerce(raw: String) -> Int {\n  raw as Int\n}\n",
@@ -101,6 +116,10 @@ test fn nested_refinement_carrier_emits_no_unsupported_cast() -> Bool {
 
 test fn intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool {
   w_intermediate_refinement_casts_emit_no_unsupported_cast()
+}
+
+test fn brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
+  w_brand_refinement_casts_emit_no_unsupported_cast()
 }
 
 test fn unrelated_carriers_still_refuse_the_cast() -> Bool {

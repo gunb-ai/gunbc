@@ -15,12 +15,20 @@ import std.types { Bool, String, Int, Float }
 // and a repair handling only the widening leaves every projection still fabricating a panic.
 // int_to_float is here as the CONTRAST, not as filler -- a genuine host conversion, which must
 // still go through the target's own cast syntax rather than be erased to the operand.
+//
+// THE TWO REFINEMENTS OVER FlatSegment ARE DELIBERATELY DIFFERENT PREDICATES, and the difference is
+// the subject rather than variety (codex review 59800). BrandedSegment carries brand(..), which is
+// the shape gunbc#10266 was actually reported against and the one an emitter could plausibly treat
+// as a nominal distinction rather than a transparent one; NestedPredicateSegment carries an
+// ordinary predicate over the same base, so the pair says the decision is about the CARRIER and not
+// about which predicate the refinement happens to hold. A fixture branding neither would leave the
+// named behaviour untested while staying green.
 fn segment_non_empty(value: String) -> Bool {
   !(value == "")
 }
 
 type FlatSegment = String where segment_non_empty
-type BrandedSegment = FlatSegment where segment_non_empty
+type BrandedSegment = FlatSegment where brand("BrandedSegment")
 type NestedPredicateSegment = FlatSegment where segment_non_empty
 
 fn widen_flat(raw: String) -> FlatSegment { raw as FlatSegment }
