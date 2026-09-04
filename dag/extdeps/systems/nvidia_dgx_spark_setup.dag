@@ -435,7 +435,7 @@ type ObservedOobeScreen {
 // language selector is one screen early. That off-by-one is exactly the kind of defect a
 // guessed flow produces and a measured one cannot.
 // ------------------------------------------------------------------------------------------
-// THE INTERFACE REVISION IS IMMUTABLE AND IS WHAT A RECEIPT CITES.
+// THE INTERFACE REVISION IS WHAT A RECEIPT CITES, AND ITS IMMUTABILITY IS CONVENTIONAL TODAY.
 //
 // Consolidating these screens here created a hazard the split itself introduced: a run receipt in
 // gunbc that points at "the canonical screen rows" points at whatever they say TODAY, so a future
@@ -445,6 +445,21 @@ type ObservedOobeScreen {
 // So a revision is APPENDED, never edited. dgx_spark_oobe_revision_2026_09_03 names the exact
 // interface this repository drove on that date; when NVIDIA ships a different wizard, a new
 // revision row joins it and the old one stays byte-stable with its receipts still pointing at it.
+//
+// TWO DIFFERENT RUNGS, AND CONFLATING THEM WOULD BE THE INFLATION §4b NAMES. Which subject a
+// receipt cites is STRUCTURAL: a run carries an OobeInterfaceRevision, so it cannot cite "whatever
+// the canonical rows say today" -- that sentence has no constructor. Whether the cited row still
+// holds the bytes it held when the run was recorded is MITIGATABLE ONLY: nothing stops an author
+// editing these screens in place, and no witness can catch it, because a witness comparing the row
+// to itself is green by construction and one comparing it to a transcribed copy is a second
+// authority for the same fact.
+//
+// NEXT-RUNG TRIGGER: a compiler-computed content hash over a DECLARATION SUBTREE, exposed to the
+// model, so the revision's identity is derived from its screens rather than asserted beside them
+// and a receipt binds the digest. std.content_hash today hashes a NonEmptyStr through
+// content_hash_of_value; it has no fold over a data declaration, so the capability is absent rather
+// than unused. Until it exists this is authoring discipline, and it is named as such here rather
+// than described in a way that would let a reader mistake it for a wall.
 type OobeInterfaceRevision {
   revision: NonEmptyStr
   screens: List<ObservedOobeScreen>
