@@ -378,6 +378,78 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
+/// Read the grounded opaque-host-call surface, or refuse.
+///
+/// RETURNS THE OPERATIONS, NEVER AN EMPTY VEC ON FAILURE. `opaque_host_call_surface()` answers a
+/// coproduct whose ungrounded arm carries WHY the join broke (`unresolved` / `not_free_call`),
+/// and both of those are reported here rather than collapsed into one sentence, because they
+/// have different repairs: an unresolved identity is a roster row pointing at nothing, while a
+/// not-free-call arm is an identity whose dispatch shape the criterion does not admit.
+pub(crate) fn floor_required_opaque_host_call_surface(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<String>, String> {
+    let qualified = "gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface";
+    let value = v1_interpreter::run_in_context(ctx, qualified, false)
+        .map_err(|e| format!("{qualified}: {e}"))?;
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(format!(
+            "{qualified}: expected an OpaqueHostCallSurface variant, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "OpaqueHostCallSurfaceGrounded" => {
+            let operations = floor_decode_list(ctx, ctx.field(fields, "operations"))?;
+            operations
+                .into_iter()
+                .map(|v| match v {
+                    v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "{qualified}: operations carries a non-string member: {}",
+                        floor_value_shape(Some(other))
+                    )),
+                })
+                .collect()
+        }
+        "OpaqueHostCallSurfaceUngrounded" => Err(format!(
+            "{qualified}: the opaque-host-call surface is UNGROUNDED, so which arms are \
+             unpollable is unreadable and no claim's preemption reachability can be observed. \
+             The floor refuses rather than arming an empty surface, which would report every \
+             completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
+             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?}",
+            floor_value_shape(ctx.field(fields, "unresolved")),
+            floor_value_shape(ctx.field(fields, "not_free_call")),
+        )),
+        other => Err(format!(
+            "{qualified}: unknown OpaqueHostCallSurface arm {other:?}"
+        )),
+    }
+}
+
+/// The published spelling of a claim's observed `ClaimPreemptionReachability`.
+///
+/// THE OPERATIONS ARE CARRIED, NOT JUST THE ARM. A reader asking "why could the deadline not
+/// fire here" needs the operation name to act, and re-deriving it from the claim body is the
+/// positional citation DESIGN §3 forbids. They are joined with `+` because a claim may reach
+/// more than one opaque arm and reporting only the first would under-state the surface a repair
+/// has to cover.
+pub(crate) fn preemption_reachability_label(reach: &v1_interpreter::OpaqueHostCallReach) -> String {
+    match reach {
+        v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed => "surface_unarmed".to_string(),
+        v1_interpreter::OpaqueHostCallReach::CooperativelyPollable => {
+            "cooperatively_pollable".to_string()
+        }
+        v1_interpreter::OpaqueHostCallReach::OpaqueHostCallUnbounded { operations } => {
+            format!("opaque_host_call_unbounded:{}", operations.join("+"))
+        }
+    }
+}
+
 pub fn run_claim_measured(
     ctx: &v1_interpreter::InterpContext,
     closure_subject_digest: &str,
@@ -387,6 +459,10 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    // PER-CLAIM, NOT PER-RUN: reach is a fact about THIS claim's evaluation, so it is cleared
+    // here beside the profile and the subject rather than at floor start. The armed surface
+    // survives the reset -- disarming per claim would make every claim report `SurfaceUnarmed`.
+    v1_interpreter::reset_opaque_host_call_reach();
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
@@ -462,6 +538,29 @@ pub fn run_claim_measured(
             eval_steps,
             fill_eval_steps,
             measured_eval_steps,
+        );
+        // THE DISCRIMINATOR FOR THE PREEMPTION-REACHABILITY COLUMN, PRINTED OVER THE POPULATION
+        // THAT MAKES IT DECIDABLE. A shared fill is opaque host work by construction — that is
+        // what the fill IS — so any claim reaching this line provably ran a host call, and its
+        // reach record is therefore FALSIFIABLE here and nowhere else in the corpus.
+        //
+        // WHY THE DENOMINATOR IS PRINTED BESIDE THE REACH RATHER THAN THE REACH ALONE. On run
+        // 33832137832 the column read `cooperatively_pollable` for 3602 of 3602 claims,
+        // INCLUDING a witness authored to enter a listed arm, and an empty reach cannot say
+        // which of its two causes produced it: the claim called no listed arm, or the hook was
+        // never on the path the call took. `dispatches` separates them. Zero dispatches under a
+        // claim that just paid a multi-hundred-millisecond fill is the decoration reading, and
+        // it is a statement about the INSTRUMENT; a positive count with an empty reach is a
+        // statement about the IDENTITY TEST, and the last name observed says which spelling to
+        // compare against. Both readings are actionable and neither is available from the
+        // published column.
+        let (dispatches, last_name) = v1_interpreter::builtin_dispatches_observed();
+        eprintln!(
+            "[floor-reach-probe] claim={function} fill_cpu_ms={} reach={} dispatches={}              last_builtin={}",
+            fill_cpu_nanos / 1_000_000,
+            preemption_reachability_label(&v1_interpreter::opaque_host_call_reach()),
+            dispatches,
+            last_name.unwrap_or_else(|| "<none>".to_string()),
         );
     }
     ctx.clear_eval_deadline();
@@ -4455,6 +4554,23 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
+    // ARM THE OPAQUE-HOST-CALL SURFACE FROM ITS ONE AUTHORITY, AND REFUSE IF IT IS UNGROUNDED.
+    //
+    // The roster is NOT restated in Rust: it is read out of
+    // `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
+    // §4b drop's bounded population is derived from, so the seed and the model cannot drift into
+    // two answers about which arms are unpollable.
+    //
+    // THE UNGROUNDED ARM REFUSES RATHER THAN ARMING AN EMPTY SURFACE. An empty roster would
+    // classify every crossing as `cooperatively_pollable` -- a mere overshoot -- which is the
+    // reassuring direction and precisely the absorbing fallback DESIGN §5 forbids: the run would
+    // report a population it never observed and the deficit would stop being visible at the
+    // moment the join broke. So a broken join stops the line here, typed and located, and the
+    // remedy is named rather than left to the reader.
+    let opaque_surface_frame =
+        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+    let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
+    v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
@@ -6073,6 +6189,7 @@ pub fn run_required_floor(
             eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
+            preemption_reachability: preemption_reachability_label(&receipt.opaque_host_call_reach),
         });
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the
@@ -6605,12 +6722,54 @@ pub fn run_required_floor(
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
+                // WHICH POPULATION THIS CROSSING IS IN, NAMED IN THE SENTENCE THAT BLOCKS.
+                //
+                // The two are different facts with different remedies and they were arriving
+                // here as one bucket. For a `cooperatively_pollable` claim the deadline had
+                // every stride point available and the claim finished anyway, so the crossing is
+                // an overshoot between two polls -- a charge. For an
+                // `opaque_host_call_unbounded` claim no stride point falls inside the operation,
+                // so the deadline OBSERVED NOTHING and the crossing is a missed interrupt, which
+                // is the case `claim_safety_outcome_blocks` exists for.
+                //
+                // BOTH STILL BLOCK, IDENTICALLY. This names the population; it does not decide
+                // admission, and no arm below returns early or skips the push. Whether the
+                // pollable population should keep blocking is the open question this column
+                // exists to make answerable with counts instead of argument -- it stays with the
+                // operator, and `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable`
+                // stays standing until then.
+                let reachability = outcome
+                    .claim_cost
+                    .iter()
+                    .find(|row| row.identity == claim.qualified)
+                    .map(|row| row.preemption_reachability.clone())
+                    .unwrap_or_else(|| "surface_unarmed".to_string());
+                let population = if reachability.starts_with("opaque_host_call_unbounded") {
+                    format!(
+                        "MISSED INTERRUPT: the deadline could not fire — this claim's cost \
+                         accrued inside {}, where no stride poll lands, so completing under the \
+                         ceiling was never something the limit could enforce",
+                        reachability
+                            .strip_prefix("opaque_host_call_unbounded:")
+                            .unwrap_or(&reachability)
+                    )
+                } else if reachability == "cooperatively_pollable" {
+                    "OVERSHOOT: every stride poll was reachable and the claim completed anyway, \
+                     so the deadline missed nothing — what this crossing reports is a charge, \
+                     not a failed interrupt"
+                        .to_string()
+                } else {
+                    "REACHABILITY UNOBSERVED: the opaque-host-call surface was not armed for \
+                     this run, so which population this crossing belongs to is unknown and is \
+                     NOT assumed to be the benign one"
+                        .to_string()
+                };
                 outcome.completed_over_cost_requirement.push(format!(
-                    "{} reached its verdict and then exceeded its budget. {}. The cost is \
+                    "{} reached its verdict and then exceeded its budget. {}. {}. The cost is \
                      therefore known and actionable. This is a cost debt only — it is not a \
                      defect and it does not belong on the expected-red roster, which asserts an \
                      expected FAILURE this row does not exhibit.",
-                    claim.qualified, figure
+                    claim.qualified, figure, population
                 ))
             }
             // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic

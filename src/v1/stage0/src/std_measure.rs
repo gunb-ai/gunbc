@@ -389,6 +389,8 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
 pub type Watt = Rc<Measure<Power, One, i64>>;
@@ -1014,6 +1016,17 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub type TokensPerSecond = Rc<Measure<Frequency, One, i64>>;

@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.produced_operand_substitution_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+
+data produced_operand_substitution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a call site whose PRODUCED type should have been substituted and was not is admitted silently at the optional-into-required seam, because the produced operand is read pre-substitution and a bare type variable carries no optionality either way",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "a SUBSTITUTING read on the produced operand at both seams -- the produced side is resolved_type, which returns the node inferred Resolved payload and substitutes nothing, while the declared side already reads formal_subst" },
+  population: UncountedNotEnumerable { reason: "the subject is a call site whose produced type should have been substituted and was not. The 219 sites where produced.inferred is a TypeVariable are NOT this population: most are a T inside a generic BODY where the value genuinely is a T. Separating the two requires the substituting read that does not exist, so the population is not enumerable until the grounding lands -- the same missing capability the blocker names, which is why no count is offered rather than a count being offered with a caveat" },
+  next_rung_trigger: "a substituting read on the produced operand EXISTS and is CONSUMED BY BOTH SEAMS -- the direct-call argument seam and the record-field seam -- sufficient for a produced type that instantiates to an optional at a required destination to refuse, demonstrated by a red on a fixture whose callee returns a type parameter instantiated to an optional at a required destination and a green on the same path instantiated to a required type; a helper that lands unconsumed by either seam does NOT retire this row, because the wall stays dead while the artifact exists"
+}
