@@ -409,11 +409,16 @@ test fn the_calibration_standing_reports_blindness_rather_than_coverage() -> Boo
   }
 }
 
-// THE PERTURBATION CONTROL. Removing every appearance of one variant -- its declaration, its
-// import-list entry and its match arm -- changes the observed occurrence count by ZERO. A variant in
-// pattern position and a name in an import list therefore produce no occurrence, established by a
-// change that HAD to move the number if they did, rather than by not finding them in one listing.
-// Both counts are nonzero, so this is not two silences agreeing.
+// THE PERTURBATION CONTROL, AND ITS SCOPE IS NARROWER THAN THE FIRST VERSION OF THIS COMMENT SAID.
+// Removing every appearance of one variant -- its declaration, its import-list entry and its match
+// arm -- changes the observed occurrence COUNT by zero. What that discriminates is the variant in
+// PATTERN position: if it produced an occurrence, this deletion had to move the number.
+//
+// IT SAYS NOTHING ABOUT THE IMPORT LIST, and an earlier revision claimed it did. A count is blind to
+// substitution: deleting a name from the list hands the fabricated head row to whichever name is now
+// first, so the number holds while the population changes. The import list is discriminated by
+// `only_the_head_of_an_import_list_is_emitted_as_a_reference` and by invariant A, which compare
+// POPULATIONS and not sizes. Both counts here are nonzero, so this is not two silences agreeing.
 test fn removing_a_variant_entirely_does_not_change_the_occurrence_count() -> Bool {
   match cal_subject() {
     CalSubjectRefused { cause: _ } => false
@@ -521,7 +526,7 @@ test fn only_the_head_of_an_import_list_is_emitted_as_a_reference() -> Bool {
 // needs an oracle, because a semantics-preserving transformation supplies its own.
 
 // INVARIANT A -- AND IT DOES NOT HOLD, WHICH IS WHY IT IS ASSERTED IN ITS BROKEN FORM. Reordering an
-// import list is meaning-preserving, so the identity set must not move. It moves -- and the SIZE
+// import list is meaning-preserving, so the observed key multiset must not move. It moves -- and the SIZE
 // does not, which is exactly why the cardinality version of this invariant would have passed clean
 // over the fabrication it exists to catch. What changes is WHICH NAME HOLDS THE ROW: the head of the
 // list is emitted as a reference and the rest are not, so putting a different name first hands the
@@ -545,7 +550,7 @@ test fn reordering_an_import_list_moves_which_name_holds_the_row_which_is_the_de
   )
 }
 
-// INVARIANT B, OVER IDENTITIES. Renaming a binder consistently -- the parameter and every use of it
+// INVARIANT B, OVER THE KEY MULTISET. Renaming a binder consistently -- the parameter and every use of it
 // -- is meaning-preserving, so the key multiset must map bijectively with only the renamed keys
 // differing: the two runs agree on every key mentioning neither name, and the total is unchanged.
 test fn renaming_a_binder_consistently_disturbs_only_the_renamed_keys() -> Bool {
@@ -562,7 +567,7 @@ test fn renaming_a_binder_consistently_disturbs_only_the_renamed_keys() -> Bool 
   )
 }
 
-// INVARIANT C, OVER IDENTITIES. Swapping two independent declarations is meaning-preserving, so the
+// INVARIANT C, OVER THE KEY MULTISET. Swapping two independent declarations is meaning-preserving, so the
 // key multiset must be unchanged -- not merely the same size. This is the one that catches an
 // ordinal or a running counter leaking into what gets admitted, which is invariant A's defect shape.
 test fn reordering_independent_declarations_does_not_change_the_observed_population() -> Bool {
