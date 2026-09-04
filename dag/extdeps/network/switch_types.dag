@@ -45,6 +45,19 @@ type SwitchPortGroup {
 // does not state a switching capacity for the CRS812 on its product page or datasheet; carrying a
 // derived figure there would be a fabricated fact, and carrying `Absent` is the honest row. A
 // vendor that does publish it (Arista's 1.04 Tbps for the 7050S-52) carries `Present { value }`.
+
+// A tracked modelling gap whose dissolution condition is machine-readable and feature-tagged.
+// Designed for gaps that gate release readiness — the feature tag, dissolution trigger and
+// the note about what carries the facts in the meantime. Informational gaps that document known
+// modelling limitations without a dissolution trigger remain as prose String in the consuming
+// module's open-gaps list; this typed carrier is for gaps that need to be JOINED against rather
+// than merely read. DESIGN §4c: a dissolution condition belongs in a typed carrier.
+type TrackedGap {
+  feature_tag: NonEmptyStr
+  dissolves_on: NonEmptyStr
+  note: NonEmptyStr
+}
+
 type NetworkSwitchCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>

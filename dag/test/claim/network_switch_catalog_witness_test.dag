@@ -10,7 +10,7 @@ import std.measure {
   gigabyte_count, mebibyte_count, volt_count,
   millimeter_count, celsius_count, nanosecond_count, percent_count,
 }
-import extdeps.network.switch_types { SwitchPortGroup }
+import extdeps.network.switch_types { SwitchPortGroup, TrackedGap }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.network.mikrotik_crs812 {
   crs812_catalog,
@@ -24,6 +24,7 @@ import extdeps.network.mikrotik_crs812 {
   crs812_suggested_price,
   crs812_included_parts,
   crs812_gap_count,
+  crs812_tracked_gap_count,
 }
 import extdeps.network.arista_7050s_52 {
   arista_7050s_52_catalog,
@@ -34,7 +35,7 @@ import extdeps.network.arista_7050s_52 {
   arista_7050s_52_chassis,
   arista_7050s_52_management,
   arista_7050s_52_scale,
-  arista_7050s_52_gap_count,
+  arista_7050s_52_gap_count, arista_7050s_52_tracked_gap_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -169,7 +170,8 @@ test fn crs812_suggested_price_and_included_parts_are_carried() -> Bool {
 }
 
 test fn crs812_open_gaps_are_declared_and_counted() -> Bool {
-  crs812_gap_count() == 4
+  crs812_gap_count() == 3
+    && crs812_tracked_gap_count() == 1
 }
 
 // ---------------- Arista DCS-7050S-52 ----------------
@@ -247,7 +249,8 @@ test fn arista_management_facts_are_carried() -> Bool {
 }
 
 test fn arista_open_gaps_are_declared_and_counted() -> Bool {
-  arista_7050s_52_gap_count() == 4
+  arista_7050s_52_gap_count() == 3
+    && arista_7050s_52_tracked_gap_count() == 1
 }
 
 // ---------------- the shared shape, populated by three rows ----------------

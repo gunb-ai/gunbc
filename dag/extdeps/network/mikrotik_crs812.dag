@@ -17,7 +17,7 @@ import std.measure {
   Mebibyte, mebibyte,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup }
+import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup, TrackedGap }
 import extdeps.vendor.mikrotik { mikrotik }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -329,17 +329,26 @@ data crs812_switching_capacity_gap: String = "No first-party MikroTik document r
 
 data crs812_depth_gap: String = "The manual and the datasheet disagree on the chassis depth: 156 mm vs 268 mm. Both readings are carried with their sources; neither is promoted. A measurement of the delivered unit would settle it."
 
-data crs812_mtbf_gap: String = "🟡 feature:extdeps-hour-scale — dissolves when std.measure adds a Scale arm for the hour (Sixty × Sixty, or a dedicated Hour marker in time_scale_factor_seconds). Until then, carry mtbf_hours as bare Int with the unit in the field name. Same gate class as feature:extdeps-foot-length-scale in extdeps.network.arista_7050s_52."
+data crs812_tracked_gaps: List<TrackedGap> = [
+  TrackedGap {
+    feature_tag: "extdeps-hour-scale",
+    dissolves_on: "std.measure adds a Scale arm for hour (Sixty × Sixty, or a dedicated Hour marker in time_scale_factor_seconds)",
+    note: "mtbf_hours as bare Int with unit in field name. Same gate class as extdeps-foot-length-scale in extdeps.network.arista_7050s_52.",
+  },
+]
 
 data crs812_open_gaps: List<String> = [
   crs812_ethernet_heading_gap,
   crs812_switching_capacity_gap,
   crs812_depth_gap,
-  crs812_mtbf_gap,
 ]
 
 fn crs812_gap_count() -> Int {
   count(crs812_open_gaps)
+}
+
+fn crs812_tracked_gap_count() -> Int {
+  count(crs812_tracked_gaps)
 }
 
 // ================= MODEL SCOPE =================

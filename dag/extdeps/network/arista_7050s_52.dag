@@ -16,7 +16,7 @@ import std.measure {
   Nanosecond, nanosecond,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup }
+import extdeps.network.switch_types { NetworkSwitchCatalogRow, SwitchPortGroup, TrackedGap }
 import extdeps.vendor.arista { arista }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -245,11 +245,22 @@ data arista_7050s_52_open_gaps: List<String> = [
   "The datasheet gives throughput in the model-comparison table only; no separate switching-capacity figure is published, so the two are the same number and that is stated, not derived.",
   "Weight (17 lb / 7.71 kg) is published in the datasheet's physical-characteristics section but no Weight measure exists in std.measure; the figure is deliberately not modelled as a bare Int to avoid an untyped number, and a consumer that needs it should extend std.measure first.",
   "The 7050S-52-F (front-to-rear) and 7050S-52-R (rear-to-front) airflow variants share this chassis row; the operator's order is for the base DCS-7050S-52 and the variant suffix, if any, will be read off the delivered unit.",
-  "🟡 feature:extdeps-foot-length-scale — dissolves when std.measure adds a Scale arm for the international foot on the Length axis (a non-decimal, non-SI scale analogous to Minute's Sixty on Time). Until then, carry operating_altitude_ft as bare Int with the unit in the field name. Same gate class as feature:extdeps-hour-scale in extdeps.network.mikrotik_crs812.",
+]
+
+data arista_7050s_52_tracked_gaps: List<TrackedGap> = [
+  TrackedGap {
+    feature_tag: "extdeps-foot-length-scale",
+    dissolves_on: "std.measure adds a Scale arm for the international foot on the Length axis (a non-decimal, non-SI scale analogous to Minute's Sixty on Time)",
+    note: "operating_altitude_ft as bare Int with unit in field name. Same gate class as extdeps-hour-scale in extdeps.network.mikrotik_crs812.",
+  },
 ]
 
 fn arista_7050s_52_gap_count() -> Int {
   count(arista_7050s_52_open_gaps)
+}
+
+fn arista_7050s_52_tracked_gap_count() -> Int {
+  count(arista_7050s_52_tracked_gaps)
 }
 
 // ================= MODEL SCOPE =================
