@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.stale_buffer_write_reverts_outside_its_own_diff
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data stale_buffer_write_reverts_outside_its_own_diff: RecurringFailureMode = RecurringFailureMode {
+  identity: "stale_buffer_write_reverts_outside_its_own_diff" as NonEmptyStr,
+
+  receipts: [
+    "**a stale-buffer write reverts another author's landed change, and the reversion is invisible in the reverting diff** (a whole-file write derived from a buffer that no longer matches the ref it is committed against silently drops whatever landed in between). ",
+
+    "**THE HARM IS THAT THE REVERSION IS UNREVIEWABLE BY CONSTRUCTION, not merely unnoticed:** a diff is computed against the state already lost, and the clobber is not part of the change, so the diff a careful author reviews looks EXACTLY like the change they intended. Specimen, and it ran in BOTH directions on one file inside one hour: on gunbc#10114, eae0ccae carried a new truncation section and zero of three corrections landed at b561d7c4; the repairing 9bdd91c3 carried all three corrections and zero of the truncation section. No commit on that branch carried both until afb2dd37. Two reviewers each read their own diff carefully and each missed the other's loss. ",
+
+    "**TWO DIFFERENT MECHANISMS, ONE CLASS**, which is why the row is about the buffer and not about scripting: one side was a script reading a stale working tree; the other was a hand edit from a REUSED worktree whose `git log` line printed the correct SHA while the file on disk did not match it -- so a correct-looking provenance check passed while the bytes were wrong. ",
+
+    "**RECOGNITION RULE, and it is the observable tell rather than a judgement:** a later diff shows a THIRD party's earlier hunk as a NEW change, which is impossible if that hunk survived. It is found by reading a diff for what it implies about the OTHER side, not for what it says about yours. ",
+
+    "**THE FLEET CONDITION THAT MAKES THIS LIKELIER HERE:** shared worktrees plus a shared git identity, so neither authorship nor a log line tells a reader whether the bytes in front of them are current -- `gunbc-ci-auto-heal` authors commits for many sessions, and a surprise commit on your own branch is not evidence of a stranger. ",
+
+    "Adjacent but NOT the same class as `restored_bytes_reviewed_as_authorship`: that row is about a clobber REPAIR being misread as authorship at REVIEW time; this is about the clobber being invisible in the clobberer's own diff at AUTHORING time -- different mechanism, different detection point, different repair. ",
+
+    "**Rung: mitigatable** -- caught after the fact, by inference, and only because someone read a diff against the wrong expectation. ",
+
+    "**Ceiling: mechanically preventable, and no higher, with the reason:** the invalid state stays writable because nothing structurally prevents a process from holding a stale buffer, and a write tool cannot know which content a caller MEANT to preserve. ",
+
+    "**Next-rung trigger, at capability grain: a file write asserts on the RESULT before committing it** -- every claim the artifact must carry is present in the buffer, so a missing marker fails closed rather than reverting. Deliberately NOT phrased as any lane adding such an assertion by hand: both lanes on the specimen built one AFTER the fact, and a trigger satisfied by one session's discipline retires the row while every other session stays exposed. The capability is the assertion being the DEFAULT in whatever writes files on this fleet.)",
+  ],
+
+  evidence: [],
+}

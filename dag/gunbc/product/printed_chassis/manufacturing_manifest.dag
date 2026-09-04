@@ -2,7 +2,7 @@ module product.printed_chassis.manufacturing_manifest
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.fleet_physical_inventory { printer_01_asset }
+import gunbc.fleet_physical_inventory { printer_01_asset, printer_02_asset }
 import product.placement_supply {
   PhysicalAsset,
   PhysicalAssetIdentity,
@@ -161,4 +161,4 @@ fn admit_printer_asset(inventory: List<PhysicalAsset>, requested: PhysicalAssetI
 // required before a coupon may be attributed, that is a condition this module states in ADMISSION as
 // its own refusal arm, where it is visible and countable, never by withholding the row and letting
 // absence stand in for it.
-data owned_printer_inventory: List<PhysicalAsset> = [printer_01_asset]
+data owned_printer_inventory: List<PhysicalAsset> = [printer_01_asset, printer_02_asset]
