@@ -227,9 +227,15 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // EXPIRY (2026-09-04): the lane was deleted for that contention, so there is no suite on any CI
 // path to un-ignore into. The answer is still NO, now for the stronger reason that un-ignoring
 // would buy nothing -- and restoring the lane to make it buy something is not this row's to do,
-// it needs the operator sign-off `witness_floor_lane_jobs` requires. The aggregate WAITS FOR THE SLOWEST of the
-// three required lanes, so what decides the cost of un-ignoring is not the suite's own growth but
-// where that growth lands it against `required-witnesses-floor`. Re-derive with `gh api
+// it needs the operator sign-off `witness_floor_lane_jobs` requires.
+//
+// THE 2026-09-03 REASONING THAT PRODUCED THAT VERDICT IS PRESERVED WHOLE BELOW, IN ITS OWN TENSE,
+// and every count in it is of that tree rather than this one -- there were three required lanes
+// then and there are two now. It is not corrected in place: the measurement is what makes the
+// verdict re-derivable, and a number edited to match a later roster is no longer the number
+// anything was decided on. The aggregate WAITED FOR THE SLOWEST of the three required lanes, so
+// what decided the cost of un-ignoring was not the suite's own growth but
+// where that growth landed it against `required-witnesses-floor`. Re-derive with `gh api
 // repos/OWNER/REPO/actions/workflows/witnesses.yml/runs?status=completed` then
 // `/actions/runs/<id>/jobs`, successful jobs only, and compare the two lanes at the SAME quantile.
 // As dated evidence for the RELATION and nothing more -- the figures belong to the tree and the
