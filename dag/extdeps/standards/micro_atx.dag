@@ -163,6 +163,36 @@ fn mounting_location(id: MountingLocationId, along_rear_edge: Micrometer, depth_
 }
 
 // The micro-ATX population the specification names: B, C, F, H, J, L, M, R, S.
+// IDENTITY OVER THE LOCATION IDS, LIVING WITH THE TYPE THAT DEFINES THEM.
+//
+// It is written here rather than in the first consumer that needed it because the discrimination is a
+// fact about MountingLocationId, and a consumer-local copy would be rewritten by the second consumer
+// -- one concept, two authorities, differing the moment this standard's population changes. The
+// exhaustive nested match is deliberate over any shorthand: adding a tenth location fails to compile
+// here, which is where the omission should surface.
+fn mounting_location_id_eq(a: MountingLocationId, b: MountingLocationId) -> Bool {
+  match a {
+    LocB => match b { LocB => true, LocC => false, LocF => false, LocH => false, LocJ => false,
+                      LocL => false, LocM => false, LocR => false, LocS => false }
+    LocC => match b { LocC => true, LocB => false, LocF => false, LocH => false, LocJ => false,
+                      LocL => false, LocM => false, LocR => false, LocS => false }
+    LocF => match b { LocF => true, LocB => false, LocC => false, LocH => false, LocJ => false,
+                      LocL => false, LocM => false, LocR => false, LocS => false }
+    LocH => match b { LocH => true, LocB => false, LocC => false, LocF => false, LocJ => false,
+                      LocL => false, LocM => false, LocR => false, LocS => false }
+    LocJ => match b { LocJ => true, LocB => false, LocC => false, LocF => false, LocH => false,
+                      LocL => false, LocM => false, LocR => false, LocS => false }
+    LocL => match b { LocL => true, LocB => false, LocC => false, LocF => false, LocH => false,
+                      LocJ => false, LocM => false, LocR => false, LocS => false }
+    LocM => match b { LocM => true, LocB => false, LocC => false, LocF => false, LocH => false,
+                      LocJ => false, LocL => false, LocR => false, LocS => false }
+    LocR => match b { LocR => true, LocB => false, LocC => false, LocF => false, LocH => false,
+                      LocJ => false, LocL => false, LocM => false, LocS => false }
+    LocS => match b { LocS => true, LocB => false, LocC => false, LocF => false, LocH => false,
+                      LocJ => false, LocL => false, LocM => false, LocR => false }
+  }
+}
+
 data micro_atx_mounting_locations: List<MountingLocation> = [
   mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),
   mounting_location(id: LocJ, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100)),
