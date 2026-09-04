@@ -5,10 +5,14 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE HAND-ITEM DELTA IS ENUMERATED RATHER THAN COUNTED FROM WHAT WAS TOUCHED, by the method
-// gunbc.whole_corpus_compile_admission records having got wrong twice. Eight declarations:
-// the two constants naming the request variable and the leaf, the refusal-cause and decision
-// coproducts, the pure decision, its two renderings, the machine-memory reader, and the one
-// impure function that performs the write. The claim_executor call site adds no declaration --
+// gunbc.whole_corpus_compile_admission records having got wrong twice. Fifteen declarations:
+// the two constants naming the request variable and the leaf, the refusal-cause, request and
+// decision coproducts, the pure decision, its two renderings, the machine-memory and
+// resident-size readers, the leaf probe and its unwind, and the one impure function that
+// performs the write. The request coproduct and the resident-size reader arrived with review
+// 5117628699: the first so that an unreadable request is a refusal rather than silence, the
+// second so that a bound at or below what the process already holds is refused before it can be
+// fatal. The claim_executor call site adds no declaration --
 // it is statements at the head of an existing fn, so its disposition is
 // ExistingSeedItemModified and listing it would net a modification into an addition.
 data memory_cgroup_binding_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
@@ -16,12 +20,17 @@ data memory_cgroup_binding_seed_growth_justification: SeedGrowthJustification = 
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "BIND_MEMORY_CGROUP_ENV", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "BIND_MEMORY_CGROUP_LEAF", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "CgroupBindRefusalCause", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "CgroupBindRequest", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "CgroupBindDecision", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_bind_decision", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_bind_refusal_cause_text", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_bind_refusal_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_bind_note", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "machine_memory_total_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "self_resident_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_leaf_create", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_leaf_remove_if_created", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "cgroup_memory_controller_available", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "apply_memory_cgroup_bind", field: WholeDeclaration }
   ],
   reason: "WHY RUST IS STILL NEEDED, and it is the same bootstrap constraint the three sibling host-budget mirrors give rather than ordinary seed-shrink debt: this runs BEFORE any .dag value could exist, because it decides the memory limit the resolve of the corpus will run under. A limit obtained by resolving the corpus would be acquired after the allocations it was meant to bound. gunbc.memory_cgroup_binding is the authority and this is its realization; the pure decision is a parameter-for-parameter mirror so every discriminating case stays reachable from a test on a machine that has none of those states.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing admits a change by PURPOSE. The instrument this restores is the generated-artifact adjudication over both declared populations -- a self-host instrument -- which on the remote-execution route could not execute at all, because that action runs in the cgroup2 root where no memory.max exists and gunbc.host_budget_source correctly refuses. This is defect repair on the self-host path, not growth of the seed for its own sake.",

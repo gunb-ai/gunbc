@@ -8,6 +8,7 @@ import gunbc.host_budget_source {
   HostBudgetObservation,
   HostBudgetObserved,
   host_budget_source_label,
+  host_budget_source_bounds_this_process,
 }
 
 data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
@@ -40,6 +41,18 @@ data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
 // and the other half is that the machine must be sized larger than the bound by whoever
 // dispatches the action.
 
+// WHY A BOUND MUST ALSO EXCEED WHAT THE PROCESS ALREADY HOLDS, added after review 5117628699
+// observed that the only size relation was `bound < machine`, which admits zero. A memory.max of
+// zero -- or of anything below the current resident set -- is enforced the instant it is written,
+// so the run dies before reaching gunbc.whole_corpus_compile_admission or any other arm that
+// would have reported the bound as too small. The claim that an undersized bound is caught later
+// and reported loudly is therefore false at the bottom of the range, and the honest repair is a
+// boundary that is MEASURED rather than chosen: the process's own resident size at the moment of
+// binding. That number is grounded, it is not a policy threshold anybody has to maintain, and it
+// makes exactly the claim it can support -- not that the bound is sufficient for the work, only
+// that it is not instantly fatal. Sufficiency remains the admission arms' question, and they can
+// only ask it if the process survives long enough to be asked.
+
 // A BIND REQUEST IS NOT A PLANNING REQUEST, and keeping them separate is the whole reason this
 // is its own coproduct rather than another arm of the budget resolution. GUNBC_MEMORY_BUDGET_BYTES
 // asks a consumer to PLAN against a smaller number and constrains nothing the kernel enforces
@@ -47,26 +60,32 @@ data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
 // request asks the KERNEL for a limit, and once granted the limit is enforced against every
 // allocation whether or not any consumer consults it. So the two may never be spelled the same
 // way and may never be read from the same variable: one of them is a wish and the other is a wall.
-type CgroupBindRequest = CgroupBindRequested { bound: ByteSize }
+type CgroupBindRequest
+  = CgroupBindRequested { bound: ByteSize }
+  | CgroupBindRequestUnreadable { raw: String }
 
-// WHY A REQUEST AT OR ABOVE MACHINE MEMORY IS REFUSED RATHER THAN CLAMPED. A memory.max no
-// smaller than the machine is a decoration in the DESIGN section 4b sense pointed at a resource
-// limit: it is permanently unreachable, so it can never fire, and its existence would be cited
-// as the reason the run is bounded while the run thrashes exactly as it did before. Clamping it
-// down to something that fits would be worse still -- that is the absorbing arm, substituting a
-// number the operator did not ask for and reporting success. The line stops instead.
-//
-// MACHINE MEMORY APPEARS HERE AND IS STILL NOT A BUDGET SOURCE. gunbc.host_budget_source deleted
-// its /proc/meminfo arms deliberately, because a host-shared reading standing in for a
-// process-scoped bound is the substitution that got main_wet SIGKILLed. Nothing here reverses
-// that: MemTotal is read ONLY to decide whether a requested bound could bind at all, it never
-// becomes anybody's budget, and when it is unreadable this module refuses rather than assuming
-// the request fits.
+// ABSENT AND UNREADABLE ARE DIFFERENT ANSWERS AND THE FIRST REVISION CONFLATED THEM, which is a
+// fail-open of exactly the kind this module exists to close (review 5117628699). Reading the
+// request through a parse that maps every failure to "no request" means an operator who ASKED to
+// be bounded, with an empty, nonnumeric or overflowing value, proceeds unbounded and is told
+// nothing. Silence is the correct answer to a question nobody asked; it is never the correct
+// answer to a question asked badly. So an unreadable request is carried as its own arm and
+// refuses, while only a genuinely absent variable is a no-op.
+fn cgroup_bind_request_is_unreadable(r: CgroupBindRequest) -> Bool {
+  match r {
+    CgroupBindRequested { bound: _ } => false
+    CgroupBindRequestUnreadable { raw: _ } => true
+  }
+}
+
 type CgroupBindRefusalCause
   = MemoryControllerUnavailable
   | CgroupTreeNotWritable
   | RequestNotBelowMachineMemory { requested: ByteSize, machine: ByteSize }
   | MachineMemoryUnreadable
+  | RequestUnreadable { raw: String }
+  | RequestNotAboveCurrentUsage { requested: ByteSize, current: ByteSize }
+  | CurrentUsageUnreadable
 
 // FOUR OUTCOMES, AND ONLY ONE OF THEM ACTS. Not-requested and already-bound are both ordinary
 // no-ops that must stay distinguishable: the CI runners bind memory.high on their own slice, so
@@ -89,42 +108,90 @@ fn cgroup_bind_decision(
   request: CgroupBindRequest?,
   existing: HostBudgetObservation?,
   machine_memory: ByteSize?,
+  current_usage: ByteSize?,
   memory_controller_available: Bool,
   cgroup_tree_writable: Bool
 ) -> CgroupBindDecision {
   match request {
     Absent => BindNotRequested
     Present { value: requested } =>
-      match existing {
-        Present { value: observed } =>
-          match observed {
-            HostBudgetObserved { source: source, bytes: _ } =>
-              BindUnnecessaryLimitAlreadyBinds { source: source }
-          }
-        Absent =>
-          match requested {
-            CgroupBindRequested { bound: bound } =>
-              if !memory_controller_available {
-                BindRefused { cause: MemoryControllerUnavailable }
-              } else {
-                if !cgroup_tree_writable {
-                  BindRefused { cause: CgroupTreeNotWritable }
-                } else {
-                  match machine_memory {
-                    Absent => BindRefused { cause: MachineMemoryUnreadable }
-                    Present { value: machine } =>
-                      if byte_size_count(b: bound) < byte_size_count(b: machine) {
-                        BindApplicable { bound: bound }
-                      } else {
-                        BindRefused {
-                          cause: RequestNotBelowMachineMemory { requested: bound, machine: machine }
-                        }
-                      }
+      match requested {
+        CgroupBindRequestUnreadable { raw: raw } =>
+          BindRefused { cause: RequestUnreadable { raw: raw } }
+        CgroupBindRequested { bound: bound } =>
+          match existing {
+            Present { value: observed } =>
+              match observed {
+                HostBudgetObserved { source: source, bytes: _ } =>
+                  if host_budget_source_bounds_this_process(s: source) {
+                    BindUnnecessaryLimitAlreadyBinds { source: source }
+                  } else {
+                    cgroup_bind_mechanism_decision(
+                      bound: bound,
+                      machine_memory: machine_memory,
+                      current_usage: current_usage,
+                      memory_controller_available: memory_controller_available,
+                      cgroup_tree_writable: cgroup_tree_writable
+                    )
                   }
-                }
               }
+            Absent =>
+              cgroup_bind_mechanism_decision(
+                bound: bound,
+                machine_memory: machine_memory,
+                current_usage: current_usage,
+                memory_controller_available: memory_controller_available,
+                cgroup_tree_writable: cgroup_tree_writable
+              )
           }
       }
+  }
+}
+
+// THE NO-OP ARM MUST PROVE THE SUBJECT IT CLAIMS, and the first revision proved a different one
+// (review 5117628699). It treated ANY HostBudgetResolved observation as "a limit already binds
+// this process" -- but gunbc.host_budget_source itself says otherwise:
+// host_budget_source_bounds_this_process is TRUE only for memory.max, and FALSE for memory.high
+// (a reclaim throttle allocations may cross) and for Darwin physical memory (a fact about the
+// machine). So a run under a memory.high slice, or on a Mac, had its requested KERNEL bind
+// suppressed and was told a limit already bound it, when nothing hard-bounded it at all. That is
+// a fail-open wearing a no-op's clothes, and the repair is to ask the authority that already
+// models the distinction rather than to re-decide it here.
+fn cgroup_bind_mechanism_decision(
+  bound: ByteSize,
+  machine_memory: ByteSize?,
+  current_usage: ByteSize?,
+  memory_controller_available: Bool,
+  cgroup_tree_writable: Bool
+) -> CgroupBindDecision {
+  if !memory_controller_available {
+    BindRefused { cause: MemoryControllerUnavailable }
+  } else {
+    if !cgroup_tree_writable {
+      BindRefused { cause: CgroupTreeNotWritable }
+    } else {
+      match machine_memory {
+        Absent => BindRefused { cause: MachineMemoryUnreadable }
+        Present { value: machine } =>
+          if byte_size_count(b: bound) < byte_size_count(b: machine) {
+            match current_usage {
+              Absent => BindRefused { cause: CurrentUsageUnreadable }
+              Present { value: current } =>
+                if byte_size_count(b: bound) > byte_size_count(b: current) {
+                  BindApplicable { bound: bound }
+                } else {
+                  BindRefused {
+                    cause: RequestNotAboveCurrentUsage { requested: bound, current: current }
+                  }
+                }
+            }
+          } else {
+            BindRefused {
+              cause: RequestNotBelowMachineMemory { requested: bound, machine: machine }
+            }
+          }
+      }
+    }
   }
 }
 
@@ -168,6 +235,30 @@ fn cgroup_bind_refusal_cause_text(c: CgroupBindRefusalCause) -> NonEmptyStr {
       ) as NonEmptyStr
     MachineMemoryUnreadable =>
       "this machine's memory is unreadable, so whether the requested bound could bind at all is UNKNOWN; refuse rather than write a limit that may be a decoration"
+    RequestUnreadable { raw: raw } =>
+      concat(
+        "a memory bound was REQUESTED and cannot be read as a byte count (",
+        concat(
+          raw,
+          "); a request that cannot be understood is refused rather than treated as no request, because proceeding unbounded is precisely what the operator asked not to happen"
+        )
+      ) as NonEmptyStr
+    RequestNotAboveCurrentUsage { requested: requested, current: current } =>
+      concat(
+        "the requested memory bound is not above what this process ALREADY holds (requested ",
+        concat(
+          to_string(byte_size_count(b: requested)),
+          concat(
+            " bytes, currently resident ",
+            concat(
+              to_string(byte_size_count(b: current)),
+              " bytes), so writing it would kill the run at the moment it takes effect, before any later admission check could report anything; this says nothing about whether the bound is large enough for the work, only that it is not instantly fatal"
+            )
+          )
+        )
+      ) as NonEmptyStr
+    CurrentUsageUnreadable =>
+      "this process's own resident size is unreadable, so whether the requested bound would be instantly fatal is UNKNOWN; refuse rather than write a limit that may kill the run before it can diagnose anything"
   }
 }
 
