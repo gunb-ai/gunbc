@@ -48,6 +48,7 @@ import extdeps.systemd.unit_file {
   ServiceType,
   ServiceUser,
   ServiceGroup,
+  WorkingDirectory,
   EnvironmentFile,
   ExecStart,
   NotInstallable,
@@ -547,6 +548,7 @@ fn convergence_unit_doc(
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: user },
       ServiceGroup { name: user },
+      WorkingDirectory { path: spec.service.repo_root },
       EnvironmentFile { path: spec.names.tree_sync_env_path },
       ExecStart {
         command: convergence_exec_start(

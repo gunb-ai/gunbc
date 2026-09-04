@@ -215,6 +215,17 @@ test fn the_unit_runs_as_the_service_user_in_a_oneshot() -> Bool {
     && !string_contains(s: unit, pattern: "User=root")
 }
 
+// THE ONESHOT RUNS INSIDE A GIT CHECKOUT. A systemd unit's cwd is `/` unless told otherwise, and the
+// admitted binary discovers its workspace root by walking cwd's ancestors for `.git`, refusing
+// otherwise. The first `gunbc converge --mode deploy` on srv1 got exactly that refusal from this
+// unit -- `workspace_root: / is not inside a git checkout` -- after the binary had been installed
+// and before the service was restarted. The deployed repository root is the checkout the unit
+// converges, so it is the working directory; the ExecStart's own source roots are absolute and do
+// not depend on it.
+test fn the_unit_runs_inside_the_deployed_repository_checkout() -> Bool {
+  string_contains(s: srv1_unit_text(), pattern: "WorkingDirectory=/opt/gunbc/gunbc")
+}
+
 // THE CORPUS COMES FROM THE RUNNER CHECKOUT AND THE BINARY FROM THE INSTALL, AND THIS IS THE WITNESS
 // FOR THE ACCEPTANCE CLAUSE ABOUT A STALE TARGET. The target's tree is 637 commits behind and its
 // corpus predates the convergence module, so a source root under the deployed repo root would make
