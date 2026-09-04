@@ -26,6 +26,7 @@ pub struct TypeCheckpoint {
 #[serde(tag = "_variant")]
 pub enum TypeDeclarationProvenance {
     CorpusDeclared { decl_file: String },
+    ReferenceFileFallback { reference_file: String },
     KernelMinted { minted_name: String },
     DeclarationIdentityAbsent,
 }

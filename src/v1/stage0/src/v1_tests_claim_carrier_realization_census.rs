@@ -4,7 +4,9 @@
 use self::CensusOutcome::*;
 use self::DeclarationIdentityObservation::*;
 use self::LegacyKeyObservation::*;
-use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted, ReferenceFileFallback,
+};
 use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 use crate::std_types::Bool::*;
@@ -58,6 +60,7 @@ pub enum DeclarationIdentityObservation {
 pub enum LegacyKeyObservation {
     LegacyFallbackUsed { reference_file: String },
     LegacyKeyResolved { decl_file: String },
+    LegacyKeyNotALocation { provenance_label: String },
 }
 
 #[derive(
@@ -138,15 +141,28 @@ pub fn environment_identity_provenance(
     }
 }
 
-pub fn legacy_observation(had_inference: bool, key: String) -> Rc<LegacyKeyObservation> {
-    if had_inference.clone() {
-        Rc::new(LegacyKeyObservation::LegacyKeyResolved {
-            decl_file: key.clone(),
-        })
-    } else {
-        Rc::new(LegacyKeyObservation::LegacyFallbackUsed {
-            reference_file: key.clone(),
-        })
+pub fn legacy_observation(p: Rc<TypeDeclarationProvenance>) -> Rc<LegacyKeyObservation> {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => Rc::new(LegacyKeyObservation::LegacyFallbackUsed {
+            reference_file: f.clone(),
+        }),
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: d, .. } => {
+            Rc::new(LegacyKeyObservation::LegacyKeyResolved {
+                decl_file: d.clone(),
+            })
+        }
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => Rc::new(LegacyKeyObservation::LegacyKeyNotALocation {
+            provenance_label: v1_rt::concat("kernel:".to_string(), nm.clone()),
+        }),
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => {
+            Rc::new(LegacyKeyObservation::LegacyKeyNotALocation {
+                provenance_label: "identity-absent".to_string(),
+            })
+        }
     }
 }
 
@@ -229,9 +245,7 @@ pub fn typed_decision_row(
     {
         let inferred = inferred_identity_provenance(n.clone());
         let environment = environment_identity_provenance(env.clone(), n.clone());
-        let legacy_key = crate::v1_std_core::provenance_reported_file(
-            crate::v1_std_core::type_reference_provenance(n.clone()),
-        );
+        let legacy_provenance = crate::v1_std_core::type_reference_provenance(n.clone());
         let identity = identity_observation(inferred.clone(), environment.clone());
         let query_provenance = identity_query_provenance(identity.clone());
         let query_file = crate::v1_std_core::provenance_reported_file(query_provenance.clone());
@@ -243,10 +257,7 @@ pub fn typed_decision_row(
             position_kind: position_kind.clone(),
             authored_name: name.clone(),
             identity: identity.clone(),
-            legacy: legacy_observation(
-                (crate::v1_std_core::provenance_reported_file(inferred.clone()) != "".to_string()),
-                legacy_key.clone(),
-            ),
+            legacy: legacy_observation(legacy_provenance.clone()),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
             outcome: outcome_of(
@@ -473,6 +484,10 @@ pub fn legacy_label(l: Rc<LegacyKeyObservation>) -> String {
         LegacyKeyObservation::LegacyKeyResolved { decl_file: d, .. } => {
             v1_rt::concat("resolved:".to_string(), d.clone())
         }
+        LegacyKeyObservation::LegacyKeyNotALocation {
+            provenance_label: pl,
+            ..
+        } => v1_rt::concat("not-a-location:".to_string(), pl.clone()),
     }
 }
 

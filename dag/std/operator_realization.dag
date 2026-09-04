@@ -1,6 +1,6 @@
 module std.operator_realization
 
-import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.coercion { TypeDeclarationProvenance, CorpusDeclared, ReferenceFileFallback, KernelMinted, DeclarationIdentityAbsent }
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
@@ -96,12 +96,20 @@ type HostRealizationReason
 // exactly the case DESIGN section 3 allows a position for, since no symbol exists to name. It
 // carries the provenance rather than a bare path so that `no declaration exists` and `a kernel mint`
 // read as themselves in the diagnostic instead of as an empty string and a pseudo-path.
-// The provenance rendered for a human reading the refusal. Three states, three renderings: an
-// absent identity says so instead of printing an empty backtick pair, and a kernel mint names the
-// minted type instead of printing a pseudo-path that looks like a file.
+// The provenance rendered for a human reading the refusal. Four states, four renderings: an absent
+// identity says so instead of printing an empty backtick pair, and a kernel mint names the minted
+// type instead of printing a pseudo-path that looks like a file.
+//
+// THE FALLBACK RENDERING IS THE ONE THAT MUST NOT BORROW ANOTHER'S WORDS, and this arm is why the
+// split reached this file at all. A ReferenceFileFallback carries a path, so the cheap arm is to
+// render it exactly as CorpusDeclared -- at which point a diagnostic tells its reader a type is
+// `declared in <file>` when nothing looked that up, and the reader debugs the wrong file. It says
+// `referenced in` instead, which is what the path actually names, so a refusal that stands on a
+// substituted location cannot be read as one that stands on a declaration.
 fn provenance_label(p: TypeDeclarationProvenance) -> String {
   match p {
     CorpusDeclared { decl_file: f } => concat("declared in `", f, "`")
+    ReferenceFileFallback { reference_file: f } => concat("no declaration identity; referenced in `", f, "`")
     KernelMinted { minted_name: nm } => concat("kernel-minted `", nm, "`")
     DeclarationIdentityAbsent => "no declaration identity"
   }

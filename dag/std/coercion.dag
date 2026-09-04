@@ -106,8 +106,31 @@ type TypeCheckpoint {
 // is honest residue with a named successor rather than a resting place -- the declared module path
 // is the containment tree's key, and re-keying this arm on it is a separate change with its own
 // prerequisite.
+// REFERENCEFILEFALLBACK IS THE FOURTH INHABITANT, AND IT IS THE ONE THE THREE ABOVE COULD NOT SAY.
+// A reference-site projection answers from the resolved declaration when inference bound one, and
+// otherwise reads the reference node's own span. That second arm has always produced
+// CorpusDeclared -- the file the REFERENCE SITS IN, wearing the constructor that means the file the
+// type is DECLARED in. Two states with different remedies (this node IS its declaration / this
+// reference was not resolved here) collapsed into one, which is DESIGN section 5 state-space
+// conflation, and the collapse is the absorbing arm rather than the merely-lossy one: the honest
+// failure answer is `identity unknown`, and substituting a wrong NON-EMPTY path instead makes the
+// deficit undetectable rather than absent, so its observed frequency is zero by construction.
+//
+// SO THE ARM IS NAMED, NOT REMOVED, AND NO ANSWER CHANGES BY NAMING IT. Every consumer below reads
+// it exactly as it read CorpusDeclared before, in its own visible arm; the divergence between the
+// two is a population to be measured, and deleting the arm before measuring it would change
+// thousands of realization answers on the strength of an argument rather than a count. What changes
+// is that the state is now countable AT THE POINT IT IS PRODUCED rather than reconstructible only
+// by an instrument that re-derives whether inference fired -- which is what
+// v1.tests.claim.carrier_realization_census had to do, and what it now reads directly.
+//
+// THE RUNG THIS BUYS IS 4b(2)->(4) FOR ONE THING ONLY: a consumer can no longer treat a fallback as
+// a declaration identity BY ACCIDENT, because the coproduct is closed and an unhandled arm does not
+// compile. It buys nothing about whether the fallback's ANSWER is right; that is the measurement,
+// and it is not discharged here.
 type TypeDeclarationProvenance
   = CorpusDeclared { decl_file: String }
+  | ReferenceFileFallback { reference_file: String }
   | KernelMinted { minted_name: String }
   | DeclarationIdentityAbsent
 

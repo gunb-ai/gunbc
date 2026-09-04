@@ -29,7 +29,7 @@ use crate::std_coercion::RealizationRefusalCause::{
     ExactSourceIdentityAbsent,
 };
 use crate::std_coercion::TypeDeclarationProvenance::{
-    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted, ReferenceFileFallback,
 };
 use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
 pub use crate::std_coercion::{
@@ -197,6 +197,21 @@ pub fn provenance_declares_structurally(
             }
             __found
         }
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => {
+            let mut __found = false;
+            for m in structural_declaration_modules_for(dag_name.clone())
+                .iter()
+                .cloned()
+            {
+                if v1_rt::contains(f.clone(), m.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
         TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => false,
         TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
     }
@@ -230,6 +245,18 @@ pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
 pub fn provenance_realizes_natively(p: Rc<TypeDeclarationProvenance>) -> bool {
     match (*p.clone()).clone() {
         TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+            let mut __found = false;
+            for m in numeric_realization_declaring_modules().iter().cloned() {
+                if v1_rt::contains(f.clone(), m.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => {
             let mut __found = false;
             for m in numeric_realization_declaring_modules().iter().cloned() {
                 if v1_rt::contains(f.clone(), m.clone()) {

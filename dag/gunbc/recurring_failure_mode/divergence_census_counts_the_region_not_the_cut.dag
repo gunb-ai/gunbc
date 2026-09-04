@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.divergence_census_counts_the_region_not_the_cut
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data divergence_census_counts_the_region_not_the_cut: RecurringFailureMode = RecurringFailureMode {
+  identity: "divergence_census_counts_the_region_not_the_cut" as NonEmptyStr,
+
+  receipts: [
+    "**a divergence census counts the minority REGION while the harm is the CUT between two agreeing regions** (INVALID STATE: two authorities answer one question; an instrument counts the occurrences where they DISAGREE and that count is then read as the size of the defect. ",
+
+    "It is not, whenever each authority is internally consistent over its own region and the observable harm arises at the BOUNDARY between them. ",
+
+    "A per-occurrence disagreement count sizes a REGION; the errors are proportional to the CUT, and the two are unrelated quantities -- a one-occurrence region touched everywhere yields an enormous cut, and a huge region touched nowhere yields none. ",
+
+    "SPECIMEN, measured 2026-09-04 by royal-bee-363 on the EntryScope closure of src/v2/compiler/00_compile.dag under --source-root dag --source-root src/v2 (160 modules, 8964 type-reference occurrences, v1.tests.claim.carrier_realization_census): the spelling String appears at 423 occurrences. ",
+
+    "At 409 of them the spelling-keyed short-circuit (v1.compiler.emit_rust is_host_text_carrier_type) and the identity-keyed authority (v1.compiler.coercion type_realization_decision) AGREE on the host realization, because the environment resolves the spelling there to the kernel node rather than to any corpus declaration. ",
+
+    "They diverge at 14, every one of them inside src/v2/std/text.dag, the module that declares type String = FreeMonoid<Char>. ",
+
+    "So the divergence population is 14 and the emitted crate's realization errors are dozens: the errors sit on the seam between the 14 structural occurrences and the 409 host ones, and NEITHER authority is wrong at any single occurrence. ",
+
+    "HARM, and it is a wrong plan rather than a wrong answer: the census invites the repair `route the short-circuits to the authority`, whose measured effect is to flip 14 occurrences and MOVE the seam from inside v2.std.text to every foreign call into it. ",
+
+    "A repair sized from the region can therefore leave the cut unchanged or enlarge it while every acceptance condition stated per-occurrence passes, which is worse than an unrepaired fork because the receipt reports convergence. ",
+
+    "DISTINGUISHING FACT that tells this apart from an instrument defect: the census is CORRECT. Its 14 rows are right, its 409 rows are right, its arm split is right. What is wrong is the inference from a per-occurrence disagreement count to a boundary-shaped harm, so re-running the instrument, widening its population, or auditing its joins finds nothing -- the class survives every check aimed at the measurement. ",
+
+    "RECOGNITION RULE, decidable before the data: ask whether the two authorities partition the population into regions each of which is internally consistent. If they do, the divergence count is a region size and the quantity that predicts harm is the number of VALUE FLOWS crossing between regions -- calls, field assignments, returns -- which no per-occurrence walk observes, because a crossing is a relation between two occurrences and not a property of either. ",
+
+    "The tell in a receipt is a divergence count and a diagnostic count of different orders of magnitude with no stated relation between them; the correct response is to measure the crossings, not to reconcile the counts. ",
+
+    "RUNG FOUND AT: mitigatable -- the census is loud, typed and re-derivable in one dispatch, and the misreading was caught by comparing its 14 against a diagnostic population measured independently rather than by anything the census itself refuses. ",
+
+    "CEILING, WITH ITS REASON: mechanically preventable, and NOT higher. Whether two realization authorities partition a population into internally-consistent regions is decidable from their two answers over that population, and the crossings between regions are derivable from the call and field graph the compiler already holds -- so an instrument CAN refuse to publish a divergence count for a partitioned population without also publishing its crossing count. ",
+
+    "It cannot reach structural guarantee, because nothing prevents an author from reading a correct region count as a defect size in prose the compiler never sees; the wall lives in the instrument's report, not in the program. ",
+
+    "NEXT-RUNG TRIGGER, named as the capability: a crossing count in the realization census -- for each pair of regions the two authorities induce, the number of value flows whose producer sits in one region and whose consumer sits in the other, joined by source declaration and enclosing declaration rather than by line. ",
+
+    "Sufficient only when the same run reports both quantities and REFUSES to report the divergence count alone for a population its own answers partition, so that a receipt cannot again carry the region size with the cut size absent.)",
+  ],
+
+  evidence: [],
+}

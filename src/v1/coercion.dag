@@ -10,7 +10,7 @@ import std.coercion {
   ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow,
   ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow,
   GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, TypeDeclarationProvenance,
-  CorpusDeclared, KernelMinted, DeclarationIdentityAbsent
+  CorpusDeclared, ReferenceFileFallback, KernelMinted, DeclarationIdentityAbsent
 }
 
 import std.decl_ref { DeclarationRef }
@@ -174,9 +174,19 @@ data structural_declaration_gate_note: String = "Companion to checkpoint_table_b
 // cite structural_declaration_modules_for BY NAME as the mechanism gating their second declaration.
 // The roster is load-bearing for two standing proofs, so a vacuous row inside it is a finding to
 // file, not a line to cut in a change about how the roster is asked.
+// THE FALLBACK ARM ANSWERS EXACTLY AS THE DECLARED ARM DOES, AND THAT IS THE POINT OF SPLITTING IT
+// RATHER THAN DELETING IT. A ReferenceFileFallback carries the file the REFERENCE sits in, so this
+// roster match asks `does the module I am WRITTEN IN declare this name structurally` -- which is
+// true by coincidence for a reference inside its own declaring module and false everywhere else.
+// That is the wrong question, and answering it here preserves today's behaviour byte for byte while
+// making the population that depends on the coincidence countable for the first time. Measured on
+// the v2.compiler.compile closure (160 modules, 8964 type-reference occurrences), the arm carries
+// 7834 of them; whether its answer diverges from an identity-keyed one is what decides its
+// deletion, and that is the census's question, not this predicate's.
 fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenance) -> Bool {
   match p {
     CorpusDeclared { decl_file: f } => structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(f, m))
+    ReferenceFileFallback { reference_file: f } => structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(f, m))
     KernelMinted { minted_name: _ } => false
     DeclarationIdentityAbsent => false
   }
@@ -232,9 +242,13 @@ fn numeric_realization_declaring_modules() -> List<String> {
 // roster to DeclarationRefs BY ITSELF is not that trigger and does not satisfy it: provenance_host_numeric_alias
 // below holds a provenance and no DeclarationRef, so a re-key alone would leave a path-keyed twin,
 // which is the dual authority this whole construction exists to remove.
+// Same split, same reason, same preserved answer as provenance_declares_structurally above: the
+// fallback's file is matched against the roster exactly as before, and the arm exists so that a
+// later reader can see WHICH rows reached the roster without a looked-up declaration.
 fn provenance_realizes_natively(p: TypeDeclarationProvenance) -> Bool {
   match p {
     CorpusDeclared { decl_file: f } => numeric_realization_declaring_modules() |> any(m => contains(f, m))
+    ReferenceFileFallback { reference_file: f } => numeric_realization_declaring_modules() |> any(m => contains(f, m))
     KernelMinted { minted_name: _ } => true
     DeclarationIdentityAbsent => false
   }

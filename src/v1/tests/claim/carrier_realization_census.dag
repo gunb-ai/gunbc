@@ -9,7 +9,7 @@ import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
 import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file }
-import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, CorpusDeclared, ReferenceFileFallback, KernelMinted, DeclarationIdentityAbsent }
 import std.types { List, String, Map, Bool }
 
 // THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
@@ -61,8 +61,15 @@ type DeclarationIdentityObservation
 // The raw reference-file value is an OBSERVATION OF CURRENT BEHAVIOUR and never an
 // identity. It is carried in its own field under its own name so that no reader, and no
 // later fold over these rows, can mistake it for one.
+// THE THIRD CONSTRUCTOR IS NOT TIDINESS. With two, a kernel-minted reference and an identity-less
+// one had to be spelled as one of the other two, and either spelling is a lie: they are not a
+// substituted location and they are not a looked-up declaration file. Folding them into
+// LegacyKeyResolved is the state-space conflation this instrument exists to measure, rebuilt one
+// level up inside the instrument -- and an earlier revision of this file did exactly that while its
+// own annotation said those states were neither arm.
 type LegacyKeyObservation = LegacyFallbackUsed { reference_file: String }
                           | LegacyKeyResolved { decl_file: String }
+                          | LegacyKeyNotALocation { provenance_label: String }
 
 type CensusOutcome
   = Agrees
@@ -117,10 +124,25 @@ fn environment_identity_provenance(env: TypeEnv, n: Node) -> TypeDeclarationProv
   }
 }
 
-// The legacy key is LegacyFallbackUsed exactly when the production helper had no resolved
-// node to read -- the arm that returns the reference's own file.
-fn legacy_observation(had_inference: Bool, key: String) -> LegacyKeyObservation {
-  if had_inference { LegacyKeyResolved { decl_file: key } } else { LegacyFallbackUsed { reference_file: key } }
+// THE ARM IS NOW READ FROM PRODUCTION, NOT RECONSTRUCTED HERE. This function used to take a
+// had_inference boolean the census computed itself and use it to GUESS which arm the production
+// helper had taken -- an instrument re-deriving the very discrimination it exists to observe, so a
+// change in the helper's arm selection would have been invisible to it. type_reference_provenance
+// now carries ReferenceFileFallback as its own constructor, so the arm is a fact in the value and
+// this reads it. That is what makes the split countable AT THE POINT IT IS PRODUCED rather than
+// only wherever an instrument happens to re-derive it.
+//
+// KernelMinted and DeclarationIdentityAbsent are neither arm of the location question: they are
+// answers the reference node genuinely carries about itself, not a substituted location and not a
+// looked-up declaration file, so they get the third constructor rather than being spelled as one of
+// the other two. Their label is carried so the two stay distinguishable in the receipt.
+fn legacy_observation(p: TypeDeclarationProvenance) -> LegacyKeyObservation {
+  match p {
+    ReferenceFileFallback { reference_file: f } => LegacyFallbackUsed { reference_file: f }
+    CorpusDeclared { decl_file: d } => LegacyKeyResolved { decl_file: d }
+    KernelMinted { minted_name: nm } => LegacyKeyNotALocation { provenance_label: concat("kernel:", nm) }
+    DeclarationIdentityAbsent => LegacyKeyNotALocation { provenance_label: "identity-absent" }
+  }
 }
 
 fn identity_query_provenance(o: DeclarationIdentityObservation) -> TypeDeclarationProvenance {
@@ -183,7 +205,7 @@ fn typed_decision_row(
 ) -> TypedCarrierRow {
   let inferred = inferred_identity_provenance(n: n)
   let environment = environment_identity_provenance(env: env, n: n)
-  let legacy_key = provenance_reported_file(p: type_reference_provenance(n: n))
+  let legacy_provenance = type_reference_provenance(n: n)
   let identity = identity_observation(inferred: inferred, environment: environment)
   let query_provenance = identity_query_provenance(o: identity)
   let query_file = provenance_reported_file(p: query_provenance)
@@ -195,7 +217,7 @@ fn typed_decision_row(
     position_kind: position_kind,
     authored_name: name,
     identity: identity,
-    legacy: legacy_observation(had_inference: provenance_reported_file(p: inferred) != "", key: legacy_key),
+    legacy: legacy_observation(p: legacy_provenance),
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
@@ -328,6 +350,7 @@ fn legacy_label(l: LegacyKeyObservation) -> String {
   match l {
     LegacyFallbackUsed { reference_file: f } => concat("FALLBACK:", f)
     LegacyKeyResolved { decl_file: d } => concat("resolved:", d)
+    LegacyKeyNotALocation { provenance_label: pl } => concat("not-a-location:", pl)
   }
 }
 

@@ -644,3 +644,89 @@ The **production routing edit** is blocked; the lane is not. Proceeding: refresh
 population against the current 399-error board, map each site to its type/value rendering consumer,
 separate T2 from T3, and prepare the counterfactual comparison. **The six shortcuts are not deleted
 until the identity census has a trustworthy key.**
+
+## THE CENSUS RAN — outcome D fired, and the divergence count is the wrong size (2026-09-04)
+
+**Session:** `royal-bee-363`. **Work item:** `node://adhoc-61436c00-aa6`.
+**Subject, and it is not "the emitted crate":** the EntryScope closure of `src/v2/compiler/00_compile.dag`
+under `--source-root dag --source-root src/v2` — 160 modules, 8964 type-reference occurrences.
+**Instrument:** `v1.tests.claim.carrier_realization_census`, which this document specified and which
+had never been run on this subject. Re-derivable in one dispatch; no emission and no cargo over the
+emitted crate.
+
+### The arm split this document asked for
+
+|  | Agrees | DivergesWithExactIdentity | IdentityUnavailable |
+|---|---:|---:|---:|
+| `LegacyFallbackUsed` | 7816 | 4 | 14 |
+| `LegacyKeyResolved` | 182 | 10 | 938 |
+
+**The fallback IS dominated by the location conflation**, so the sequencing above does not compress:
+6084 of the 7834 fallback rows (77.7%) return the row's own module file. Almost all of the rest are
+kernel mints (`<kernel:Int>` 176, `<kernel:String>` 175, `<kernel:Bool>` 81, `<kernel:T>` 61), which
+are `KernelMinted` — a legitimately identified state and not a conflation.
+
+*(That arm column is measured against the classification in force when the row was taken, which
+asked "did the production helper consult a resolved declaration". The split landed with this work
+re-poses it as "is this answer a substituted location", which reclassifies kernel-minted reference
+nodes from fallback to resolved. The table above is on the old classification; the new one is
+narrower and the difference is exactly the kernel mints named in the previous paragraph.)*
+
+### Outcome D fired
+
+938 rows (10.5%) come back with inference and the `TypeEnv` resolving **different declarations** for
+one reference. This document pre-registered outcome D as *"two resolution authorities disagreeing
+inside the production typed tree. Realization work stops and that fork closes first."* It is a stop
+condition written before the data, and it fired: **step 3 does not run.**
+
+**Score it D, read the mechanism as B, and keep both** — because a reader who rounds this to "outcome
+D" stops the lane, and a reader who rounds it to B skips the stop. The population's shape is uniform:
+inference names the **referencing** module, the environment names the **declaring** one — `List` in
+`v2.std.compilers.target_model` gives inference `src/v2/std/compilers/target_model.dag` against
+environment `dag/std/types.dag` (109 rows), `v2.compiler.parse` 82, `v2.std.grammar` 43. That is
+outcome B's mechanism (`type_reference_decl_file` reads the wrong carrier; `lookup_type_for` is
+right), whose prescribed repair is to consume the `TypeEnv` and explicitly **not** to modify global
+inference.
+
+**The claim that the environment is the correct one is a SAMPLE, not a population result, and step 2
+rests on it.** Stated here rather than absorbed into a confident sentence: the rule applied was
+reading individual rows and checking which file declares the named type. It was not applied to all
+938. If the environment is wrong even in a minority, step 2 moves the fork rather than closing it —
+the same failure this section catches in step 3 — so the whole-population check is a precondition of
+step 2's acceptance, not a nicety.
+
+### Why step 3 would not have converged the fork anyway
+
+Restricting to the spelling `String` across all 160 modules:
+
+- **409 occurrences: the short-circuit and the authority AGREE** on the host realization, because the
+  environment resolves the spelling there to the **kernel node**, not to any corpus declaration.
+- **14 occurrences diverge, every one inside `src/v2/std/text.dag`** — the module declaring
+  `type String = FreeMonoid<Char>`. There is not one diverging `String` row anywhere else.
+
+So routing the six short-circuits to the authority flips **14 occurrences in one module** and leaves
+409 foreign references host. It does not converge the fork; it **relocates the seam** from inside
+`v2.std.text` to every foreign call into it. The 52-site population this document pins is a
+**boundary**, and a per-occurrence divergence census sizes a **region** — two unrelated quantities.
+That inference error is filed as its own class,
+`gunbc.recurring_failure_mode` `divergence_census_counts_the_region_not_the_cut`, with the crossing
+count as its next-rung trigger.
+
+### What this measures that was previously only inferred
+
+`docs/design-rung-drops.md` `text_boundary_identity_wall` carries a CORRECTION NOTICE recording that
+an earlier revision asserted kernel precedence beats **locals**, that `v2.std.text` does not get its
+own spelling back, and that this was inferred from a single foreign-scope observation rather than
+measured. **It is now measured, and the correction holds:** `v2.std.text` does get its own spelling
+back, at 14 occurrences, and at no occurrence anywhere else in a 160-module closure.
+
+### So the fork is one level up from where this document places it
+
+Not two realization authorities for one modelled type — the identity-keyed authority's answers are
+defensible at all 423 rows. The spelling `String` **binds to two different declarations**: the kernel
+type at 409 occurrences and `v2.std.text`'s `FreeMonoid<Char>` at 14, and the resolver holds both
+correct. That is DESIGN §3's meaning fork sitting in **name resolution**, with the realization layer
+faithfully reporting it. It is already a rostered class
+(`alias_resolution_collides_with_kernel_spelling`) and an active program (#9813, uniform kernel
+precedence); this measurement is that program's premise as a population rather than as a sentence,
+and it is handed there rather than carried here.

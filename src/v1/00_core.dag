@@ -8,7 +8,7 @@ import std.syntax {
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
-import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.coercion { TypeDeclarationProvenance, CorpusDeclared, ReferenceFileFallback, KernelMinted, DeclarationIdentityAbsent }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -2218,16 +2218,50 @@ fn declaration_provenance_of(item: Node) -> TypeDeclarationProvenance {
   }
 }
 
-// The reference-site counterpart: project the resolved node bound to the reference, and fall back
-// to the node's own ident_span when the reference IS the declaration. The shape defect this
-// projection has always had is unchanged and is NOT repaired here -- it cannot tell `this node is
-// its own declaration` from `this reference was not resolved here`, and in the second case answers
-// about the file the REFERENCE sits in. What changes is that its answer is no longer a String a
-// consumer may re-interpret: it is a provenance, and the only thing downstream of it is a decision.
+// The reference-site counterpart: project the resolved node bound to the reference, and otherwise
+// read the reference node's own span. THE SECOND ARM NOW SAYS WHAT IT IS. It used to answer
+// CorpusDeclared -- the constructor meaning `the file this type is DECLARED in` -- carrying the
+// file the REFERENCE SITS IN, so `this node is its own declaration` and `this reference was not
+// resolved here` were one state with one remedy. They are two, and the second is not a declaration
+// identity at all. It is ReferenceFileFallback, which no gate below reads as an identity and which
+// std.coercion's own annotation records as the DESIGN section 5 conflation this splits.
+//
+// NO REALIZATION ANSWER CHANGES HERE, DELIBERATELY. Every consumer reads the new arm exactly as it
+// read CorpusDeclared, in a visible arm of its own. The two arms' divergence is a population, and
+// the population is what decides whether the fallback may be deleted; changing thousands of answers
+// first and measuring after is the order that makes the measurement unadjudicable.
+//
+// WHAT IS STILL NOT DECIDED HERE, so the split is not read as more than it is: whether a reference
+// that genuinely IS its own declaration should keep answering from its own span. That case is real
+// and is currently inside this arm together with the unresolved one; separating THOSE two needs a
+// node-identity comparison against the resolved declaration, and the census that would size it is
+// the consumer landing beside this change.
 fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
   match n.inferred {
     Present { value: Resolved { node: rt } } => declaration_provenance_of(item: rt)
-    _ => declaration_provenance_of(item: n)
+    _ => reference_fallback_provenance(n: n)
+  }
+}
+
+// The fallback arm, split out so it is one named thing rather than a second call to the
+// declaration-site projection wearing its meaning. A kernel-minted reference node and a node with
+// no span are NOT fallbacks -- those are answers the reference node genuinely carries about itself,
+// and they keep their own constructors. Only the corpus-path answer is demoted, because only it was
+// the one claiming to name a declaration file it had not looked up.
+//
+// THE ReferenceFileFallback ARM BELOW IS UNREACHABLE BY CONSTRUCTION AND IS NOT DEAD WEIGHT, which
+// is worth saying because it reads as a copy of its own input. declaration_provenance_of reads a
+// node's ident_span and mints one of three constructors; it has no way to produce the fourth. The
+// arm exists because the coproduct is CLOSED and the match must be exhaustive, and writing it as
+// the identity is the only answer that stays correct if that ever changes. The alternative -- a
+// wildcard -- would silently absorb any constructor added later, which is the arm this whole change
+// exists to stop being written.
+fn reference_fallback_provenance(n: Node) -> TypeDeclarationProvenance {
+  match declaration_provenance_of(item: n) {
+    CorpusDeclared { decl_file: f } => ReferenceFileFallback { reference_file: f }
+    ReferenceFileFallback { reference_file: f } => ReferenceFileFallback { reference_file: f }
+    KernelMinted { minted_name: nm } => KernelMinted { minted_name: nm }
+    DeclarationIdentityAbsent => DeclarationIdentityAbsent
   }
 }
 
@@ -2238,6 +2272,7 @@ fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
 fn provenance_reported_file(p: TypeDeclarationProvenance) -> String {
   match p {
     CorpusDeclared { decl_file: f } => f
+    ReferenceFileFallback { reference_file: f } => f
     KernelMinted { minted_name: nm } => kernel_span(name: nm).file
     DeclarationIdentityAbsent => ""
   }

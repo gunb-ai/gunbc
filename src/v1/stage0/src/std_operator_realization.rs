@@ -10,7 +10,7 @@ use self::StructuralConnectiveLookup::*;
 use self::StructuralOrderingLookup::*;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
-    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted, ReferenceFileFallback,
 };
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
@@ -57,6 +57,15 @@ pub fn provenance_label(p: Rc<TypeDeclarationProvenance>) -> String {
     match (*p.clone()).clone() {
         TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => v1_rt::concat(
             v1_rt::concat("declared in `".to_string(), f.clone()),
+            "`".to_string(),
+        ),
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                "no declaration identity; referenced in `".to_string(),
+                f.clone(),
+            ),
             "`".to_string(),
         ),
         TypeDeclarationProvenance::KernelMinted {

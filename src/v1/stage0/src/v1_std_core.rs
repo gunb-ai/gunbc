@@ -29,7 +29,7 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
-    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted, ReferenceFileFallback,
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
@@ -4027,13 +4027,39 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
 pub fn type_reference_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => declaration_provenance_of(rt.clone()),
-        _ => declaration_provenance_of(n.clone()),
+        _ => reference_fallback_provenance(n.clone()),
+    }
+}
+
+pub fn reference_fallback_provenance(n: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
+    match (*declaration_provenance_of(n.clone())).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+            Rc::new(TypeDeclarationProvenance::ReferenceFileFallback {
+                reference_file: f.clone(),
+            })
+        }
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => Rc::new(TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f.clone(),
+        }),
+        TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm, ..
+        } => Rc::new(TypeDeclarationProvenance::KernelMinted {
+            minted_name: nm.clone(),
+        }),
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => {
+            Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+        }
     }
 }
 
 pub fn provenance_reported_file(p: Rc<TypeDeclarationProvenance>) -> String {
     match (*p.clone()).clone() {
         TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => f.clone(),
+        TypeDeclarationProvenance::ReferenceFileFallback {
+            reference_file: f, ..
+        } => f.clone(),
         TypeDeclarationProvenance::KernelMinted {
             minted_name: nm, ..
         } => kernel_span(nm.clone()).file.clone(),
