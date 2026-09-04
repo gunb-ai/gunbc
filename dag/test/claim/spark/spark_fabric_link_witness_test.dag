@@ -118,6 +118,38 @@ fn w_links_share_a_host(x: FabricLink, y: FabricLink) -> Bool {
     || host_identity_eq(a: x.endpoint_b.host, b: y.endpoint_b.host)
 }
 
+// FIRST, THE PREMISE THE CLAUSE BELOW SILENTLY DEPENDS ON: LINK NAMES ARE UNIQUE.
+//
+// The collision clause iterates pairs and uses a NAME INEQUALITY to mean "two different rails". That
+// reading is only sound while no two rows share a name. If two links ever did, the pair would be
+// read as one rail and SKIPPED -- the check would go quiet on exactly the duplicate that introduced
+// the ambiguity, which is a failure arm that widens instead of refusing (DESIGN section 5).
+//
+// It is also the identity claim this module was rewritten around. Fleet link identity is PAIR PLUS
+// RAIL, carried in the name; if the name does not single out a row, the rename that closed the
+// cx7-rail0/1 meaning-fork bought a spelling and not an identity. So this is not defensive padding
+// around the clause below -- it is the clause that makes the module's own thesis true, and it is
+// stated first because everything after it reads a name as a key.
+//
+// Written as a count rather than a pairwise scan so it fails on the DUPLICATE rather than on a
+// sampled pair: every row must be the sole bearer of its own name.
+test fn w_each_link_name_singles_out_one_row() -> Bool {
+  length(spark_fabric_links()) == 4
+    && all(spark_fabric_links(), x =>
+      length(filter(spark_fabric_links(), y =>
+        (y.name as String) == (x.name as String))) == 1)
+}
+
+// AND THE NAMES ARE THE PAIR-QUALIFIED ONES, not the two-row spelling they replaced. Without this the
+// uniqueness claim above is satisfied by any four distinct strings, including a re-introduction of
+// bare cx7-rail0/1 alongside a differently-spelled pair.
+test fn w_the_roster_carries_both_pairs_rails_under_pair_qualified_names() -> Bool {
+  length(filter(spark_fabric_links(), l => (l.name as String) == "srv7-srv8-rail0")) == 1
+    && length(filter(spark_fabric_links(), l => (l.name as String) == "srv7-srv8-rail1")) == 1
+    && length(filter(spark_fabric_links(), l => (l.name as String) == "srv5-srv6-rail0")) == 1
+    && length(filter(spark_fabric_links(), l => (l.name as String) == "srv5-srv6-rail1")) == 1
+}
+
 test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
   length(spark_fabric_links()) == 4
     && all(spark_fabric_links(), l =>
@@ -167,6 +199,8 @@ test fn w_all_spark_fabric_claims_hold() -> Bool {
     && w_a_rail_that_could_not_carry_collective_traffic_has_no_constructor()
     && w_the_two_rails_are_not_one_network()
     && w_a_prefix_the_comparison_cannot_answer_refuses()
+    && w_each_link_name_singles_out_one_row()
+    && w_the_roster_carries_both_pairs_rails_under_pair_qualified_names()
     && w_each_rail_names_one_interface_at_both_ends()
     && w_two_pairs_may_share_a_nic_name_on_different_machines()
     && w_each_fabric_host_owns_one_endpoint_per_link()
