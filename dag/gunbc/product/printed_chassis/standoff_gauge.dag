@@ -48,9 +48,18 @@ type StandoffGaugeGeometry sole_constructor {
 // (0,0). Either would emit a printable part carrying a fabricated coordinate -- a physical object
 // that asserts something no document says, which is the fabricated-plausible-output failure with a
 // 30-gram mass. It refuses and names what it was asked for.
+//
+// GaugeLocationDuplicated IS A SEPARATE ARM BECAUSE IT IS THE OPPOSITE FAULT. An earlier revision
+// folded a duplicated row into NotEnumerated: the refusal still fired, so the population was never
+// resolved by last-match-wins, but the diagnostic said the standard does not define the location
+// when in fact it defines it TWICE. That sends a reader to look for a missing row instead of a
+// conflicting pair -- the typed cause erased at the consumer, where two distinct faults arrive
+// wearing one name and the arm that refuses correctly still misinforms. The count is carried so the
+// reader knows how many rows are fighting.
 type StandoffGaugeAdmission
   = GaugeAdmitted { geometry: StandoffGaugeGeometry }
   | GaugeLocationNotEnumerated { requested: MountingLocationId }
+  | GaugeLocationDuplicated { requested: MountingLocationId, count: Nat }
   | GaugeLocationsCoincide { requested: MountingLocationId }
   | GaugeExceedsBuildEnvelope { fit: EnvelopeFit }
 
@@ -92,10 +101,10 @@ fn admit_standoff_gauge(
 ) -> StandoffGaugeAdmission {
   match location_scan(rows: rows, id: a) {
     LocationAbsent => GaugeLocationNotEnumerated { requested: a }
-    LocationDuplicated { count: n } => GaugeLocationNotEnumerated { requested: a }
+    LocationDuplicated { count: n } => GaugeLocationDuplicated { requested: a, count: n }
     LocationFound { location: la } => match location_scan(rows: rows, id: b) {
       LocationAbsent => GaugeLocationNotEnumerated { requested: b }
-      LocationDuplicated { count: n } => GaugeLocationNotEnumerated { requested: b }
+      LocationDuplicated { count: n } => GaugeLocationDuplicated { requested: b, count: n }
       LocationFound { location: lb } => {
         let span_x = abs_diff(a: micrometer_count(m: la.along_rear_edge),
                               b: micrometer_count(m: lb.along_rear_edge))

@@ -11,7 +11,7 @@ import extdeps.standards.micro_atx {
 import product.printed_chassis.coupon { OpThroughHole }
 import product.printed_chassis.standoff_gauge {
   StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationsCoincide,
-  GaugeExceedsBuildEnvelope, admit_standoff_gauge, gauge_edge_margin, gauge_thickness,
+  GaugeExceedsBuildEnvelope, GaugeLocationDuplicated, admit_standoff_gauge, gauge_edge_margin, gauge_thickness,
   altrad8ud_standoff_gauge,
 }
 
@@ -25,6 +25,7 @@ test fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool {
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
@@ -43,6 +44,7 @@ test fn w_the_span_is_the_standards_own_separation() -> Bool {
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
@@ -63,6 +65,7 @@ test fn w_a_foreign_population_moves_the_gauge() -> Bool {
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
@@ -80,6 +83,7 @@ test fn w_a_location_the_standard_does_not_enumerate_refuses() -> Bool {
     GaugeAdmitted { geometry: g } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
@@ -92,11 +96,18 @@ test fn w_an_empty_population_refuses() -> Bool {
     GaugeAdmitted { geometry: g } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
 // A DUPLICATED ROW IS A POPULATION DISAGREEING WITH ITSELF, and resolving it by taking either row
-// would be exactly the last-match-wins class. It refuses.
+// would be exactly the last-match-wins class. It refuses -- and it refuses ON ITS OWN ARM, naming
+// the location and how many rows claim it.
+//
+// This witness previously asserted GaugeLocationNotEnumerated and was green, which is the part worth
+// keeping in view: it ratified a diagnostic that told the reader the standard does not define LocF
+// while the fixture defines it twice. A witness that checks only THAT a refusal fired will happily
+// hold a refusal that misnames its own cause.
 test fn w_a_duplicated_location_refuses_rather_than_picking_one() -> Bool {
   let dup = [
     mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350),
@@ -108,7 +119,8 @@ test fn w_a_duplicated_location_refuses_rather_than_picking_one() -> Bool {
   ]
   match admit_standoff_gauge(rows: dup, envelope: a1_mini_build_envelope, a: LocF, b: LocC,
                              margin: margin(), thickness: thickness()) {
-    GaugeLocationNotEnumerated { requested: r } => true
+    GaugeLocationDuplicated { requested: dr, count: dc } => dr == LocF && dc == 2
+    GaugeLocationNotEnumerated { requested: r } => false
     GaugeAdmitted { geometry: g } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
@@ -124,6 +136,7 @@ test fn w_one_location_asked_for_twice_refuses() -> Bool {
     GaugeAdmitted { geometry: g } => false
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
 
@@ -142,6 +155,7 @@ test fn w_a_gauge_too_long_for_the_bed_refuses() -> Bool {
     }
     GaugeAdmitted { geometry: g } => false
     GaugeLocationNotEnumerated { requested: r } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
     GaugeLocationsCoincide { requested: r } => false
   }
 }
@@ -166,5 +180,6 @@ test fn w_the_holes_carry_the_standards_diameter() -> Bool {
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
+    GaugeLocationDuplicated { requested: dr, count: dc } => false
   }
 }
