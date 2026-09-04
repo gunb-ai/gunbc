@@ -36,37 +36,56 @@ data step0_census_denominator_law: NonEmptyStr = "the census denominator is the 
 // families it must distinguish were named before the numbers existed; naming them afterwards lets
 // the roster be shaped by what the run happened to produce.
 //
-// SameSpellingInTwoModules IS THE LOAD-BEARING ROW. A census that records only "the spelling still
-// resolves" greens while binding the WRONG DECLARATION, which is the most harmful form of this
-// class: nothing errors, the program compiles, and the meaning moved. Every other family can fail
-// loudly; this one fails silently by construction, so a census that cannot discriminate it has not
-// measured Step 0 at all.
+// THE ROSTER IS ONE AXIS AND ONLY ONE: HOW THE REFERENCE WAS WRITTEN. An earlier cut carried
+// SameSpellingInTwoModules beside TypeReference and OrdinaryFunctionCall, and that row is not a way
+// of WRITING a reference at all -- it is a shape of the NAME POOL the reference resolves against.
+// Holding both on one axis made the roster unable to say the true and more alarming thing, which is
+// that a homonym can occur under ANY family. It now lives on the binding-topology axis in
+// gunbc.namespace_step0_census_calibration, where it composes with all ten rows below rather than
+// standing beside six of them.
+//
+// AND THE ROSTER IS NEVER INFERRED FROM OBSERVED ROWS. A roster derived from what the diagnostics
+// produced can only contain what the instrument already sees, so it can never name the family the
+// instrument is BLIND to -- which is the one a census exists to find. It is authored ahead of the
+// run for that reason, and the instrument is measured against it rather than the other way round.
 type Step0ReferenceFamily
-  = TypeReference
-  | OrdinaryFunctionCall
-  | ConstructorOrRecordConstruction
-  | BareCoproductVariant
+  = TypeAnnotationReference
+  | GenericTypeArgumentReference
+  | TopLevelValueReference
+  | FunctionValueReference
+  | OrdinaryCallReference
+  | NullaryConstructorReference
+  | PayloadConstructorReference
+  | VariantExpressionReference
+  | VariantPatternReference
   | QualifiedContainmentReference
-  | SameSpellingInTwoModules
 
 fn step0_reference_family_label(family: Step0ReferenceFamily) -> NonEmptyStr {
   match family {
-    TypeReference => "a type named in a declaration or signature" as NonEmptyStr
-    OrdinaryFunctionCall => "an ordinary call to a function declared in another module" as NonEmptyStr
-    ConstructorOrRecordConstruction => "a record construction or constructor application" as NonEmptyStr
-    BareCoproductVariant => "a coproduct variant named bare, with no qualifier" as NonEmptyStr
+    TypeAnnotationReference => "a type named in a declaration, a field, a parameter or a return position" as NonEmptyStr
+    GenericTypeArgumentReference => "a type named as an argument of a generic container" as NonEmptyStr
+    TopLevelValueReference => "a module-scope data declaration named as a value" as NonEmptyStr
+    FunctionValueReference => "a function named WITHOUT applying it, so the value is the function itself" as NonEmptyStr
+    OrdinaryCallReference => "a function named in call-head position and applied" as NonEmptyStr
+    NullaryConstructorReference => "a constructor with no payload, named as a value" as NonEmptyStr
+    PayloadConstructorReference => "a constructor applied to a payload, in record-construction form" as NonEmptyStr
+    VariantExpressionReference => "a coproduct variant named bare in expression position" as NonEmptyStr
+    VariantPatternReference => "a coproduct variant named bare in a match pattern, where a binder of the same spelling could shadow it" as NonEmptyStr
     QualifiedContainmentReference => "a container.member reference resolved through containment" as NonEmptyStr
-    SameSpellingInTwoModules => "one spelling declared in two modules, where resolution may bind the wrong declaration without any diagnostic" as NonEmptyStr
   }
 }
 
 data step0_reference_family_roster: List<Step0ReferenceFamily> = [
-  TypeReference,
-  OrdinaryFunctionCall,
-  ConstructorOrRecordConstruction,
-  BareCoproductVariant,
-  QualifiedContainmentReference,
-  SameSpellingInTwoModules
+  TypeAnnotationReference,
+  GenericTypeArgumentReference,
+  TopLevelValueReference,
+  FunctionValueReference,
+  OrdinaryCallReference,
+  NullaryConstructorReference,
+  PayloadConstructorReference,
+  VariantExpressionReference,
+  VariantPatternReference,
+  QualifiedContainmentReference
 ]
 
 // THE DISCRIMINATOR IS PAIRED, BEFORE AND AFTER THE STRIP, per family. An after-only reading cannot
@@ -174,12 +193,30 @@ data step0_census_receipt_fields: List<Step0CensusReceiptField> = [
 // substitute for the attribution; it is not a reason to skip the attribution.
 data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may not promote UnlistedImportUse from advisory to enforced in order to observe its own subject; the acceptance path may not be changed by the change that measures it" as NonEmptyStr
 
-// AND THE EXISTING CENSUS IS A CANDIDATE PRODUCER, NOT AN ESTABLISHED ONE. compile_clean_unlisted_import_census
-// iterates DIAGNOSTICS and selects only UnlistedImportUse rows, and that emission is attached to a
-// masked type-name path -- so its coverage of bare call targets, constructors, bare variants and
-// dispatch is UNESTABLISHED. It returning the right arm for one planted call is not coverage of the
-// roster above, and treating it as complete would inherit an unmeasured blind spot as a baseline.
-data step0_census_candidate_producer_standing: NonEmptyStr = "compile_clean_unlisted_import_census is a CANDIDATE producer whose coverage of the reference-family roster is unestablished; it selects UnlistedImportUse diagnostic rows from a masked type-name emission path and has not been shown to discriminate bare call targets, constructors, bare variants or dispatch" as NonEmptyStr
+// AND THE EXISTING CENSUS'S COVERAGE IS NOT UNPROVEN -- IT IS REFUTED. This row was written as a
+// caution: compile_clean_unlisted_import_census selects UnlistedImportUse rows from a masked
+// type-name emission path, so its coverage of the family roster was UNESTABLISHED. That standing has
+// been discharged in the harder direction. A calibration run over a hand-authored subject shows the
+// reference-occurrence producer emitting no denominator row at all for several families of the roster
+// -- the roster and the count are owned by namespace_step0_census_calibration, not restated here --
+// and emitting one for a named-argument label and one for the head of an import list, neither of
+// which refers to any declaration. The population is
+// therefore short real occurrences and long invented ones at the same time, and the two errors are
+// over different populations and cannot cancel.
+//
+// WHY EVERY LAW ABOVE STAYS SATISFIED WHILE THAT IS TRUE, which is the part worth carrying forward:
+// the denominator and the observations come from ONE walk. So the conservation laws balance BY
+// CONSTRUCTION over whatever that walk produced, and a family it never emits is invisible to all of
+// them. The anti-join cannot reach it either -- an anti-join needs a population to join against, and
+// those occurrences were never in one. The unobserved-derivation law was written against a
+// denominator derived from the DIAGNOSTIC; the same disease was sitting one layer above it, in a
+// denominator derived from the observation walk.
+//
+// THE STANDING IS CITED AND NOT TRANSCRIBED. The verdict, the per-family observation table and the
+// defect roster live in gunbc.namespace_step0_census_calibration, and the executing instrument that
+// re-derives them is step0_calibration_probe in that module's witness. Copying its numbers here
+// would put a second authority beside the one that measures them.
+data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict" as NonEmptyStr
 
 // A STATEMENT COUNT IS NOT AN EDGE COUNT, AND THE DIFFERENCE IS NOT ROUNDING. The strip reports
 // removed STATEMENTS, and a braced list binds several names in one statement -- so an edge or
