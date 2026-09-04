@@ -740,15 +740,29 @@ fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> Non
 
 // STANDING, RECORDED SO THE NEXT READER DOES NOT MISTAKE THIS FOR THE ACTUATION GATE: no production
 // path calls this any more. Its consumer was the whole-ruleset actuate root, which world
-// convergence replaced, and repo_ruleset_actuation_admission now reads the two halves separately
-// because it must name WHICH fact holds actuation rather than only THAT one does. What is retained
-// here is the located refusal PROSE for the combined question -- may converge actuate at all --
-// and the enrolled claims that exercise it. It is kept rather than deleted because deleting it
-// would destroy that authored refusal text and its two executing claims to buy tidiness, which is
-// the wrong trade; it is recorded rather than left silent because an uncalled production function
-// that reads as a gate is how a reader concludes a gate exists where none runs.
-// dissolve-on: the admission constructing its own located causes, at which point this prose has a
-// consumer again or has nothing left to say and goes with the claims that read it.
+// convergence replaced, and repo_ruleset_actuation_admission deliberately does NOT route through
+// it -- folding two facts into one Present is what inverted two causes, and the admission must name
+// WHICH fact holds actuation rather than only THAT one does.
+//
+// AN EARLIER VERSION OF THIS NOTE CARRIED A TRIGGER THAT HAS SINCE FIRED WITHOUT RETIRING ANYTHING,
+// which is recorded rather than quietly replaced, because a trigger nobody re-reads after the event
+// that fires it is the failure this repository keeps paying for -- usually as a trigger naming less
+// than the capability it governs and being satisfied while that capability stays dead, and here as
+// its mirror. It read: dissolve-on the admission constructing its own located causes, at which
+// point this prose either has a consumer again or has nothing left to say. The admission now does
+// construct its own located causes, and NEITHER arm is what happened. The helper did not get a
+// consumer back, by design. But it does not have nothing left to say either: it answers a coarser
+// question -- may converge actuate AT ALL -- for which one refusal genuinely suffices, and it says
+// so in prose no cause carries, that applying desired would DELETE what the projection omits.
+//
+// SO THE HONEST STANDING IS THE THIRD ONE: a correct answer to a question no production path
+// currently asks, kept alive by the two claims that execute over it and by nothing else. That is
+// admissible only while it cannot be mistaken for the gate, which is what this note is for.
+// dissolve-on, named as a capability rather than an event this time: an executing claim asserting
+// the DELETE-hazard prose through repo_ruleset_actuation_admission's own located causes. At that
+// point the last thing this helper says uniquely is said on the production path, and the helper
+// goes with the two claims that read it. Nothing smaller retires it -- in particular, the admission
+// merely HAVING located causes does not, which is exactly the mistake the fired trigger made.
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
   let unexpected = rule_unexpected_divergences(observed: rule_types)
   if length(unexpected) == 0 {
