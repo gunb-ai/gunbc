@@ -1,0 +1,79 @@
+module gunbc.recurring_failure_mode.incidental_denominator_as_wall
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data incidental_denominator_as_wall: RecurringFailureMode = RecurringFailureMode {
+  identity: "incidental_denominator_as_wall" as NonEmptyStr,
+
+  receipts: [
+    "**incidental denominator as a wall** (a destructive operation is safe only because an upstream filter written to answer a DIFFERENT question happens never to hand it the dangerous input. ",
+
+    "Nothing is wrong today and nothing declares why, so the safety is a coincidence with no authority, no diagnostic and no test — and it dissolves silently the moment the upstream question changes, which is a change nobody reads as touching safety. ",
+
+    "Distinct from `authority_substitution`, where PROSE invents an A-to-B arrow: here the CODE leans on an arrow that genuinely holds and that neither carrier claims, so grepping the guarded operation finds no guard to have gotten wrong. ",
+
+    "Receipt (2026-09-01): `v1_compiler.required_regen_host` `install_convergence_stage_with_backend` copies `candidate_src/<basename>` over `stage0_src/<basename>` for whatever roster it is handed, asking nothing about the artifact. ",
+
+    "The emitter really produces a bare `Cargo.toml` (`v1.compiler.emit_rust`); `write_emitted_tree` writes it into the candidate tree verbatim because it is not rustfmt-normalizable; `produce_candidate_manifest` rows it as a `GeneratedSurface` declared by that emitter. ",
+
+    "Every stage between the emitter and the copy admits it. ",
+
+    "The sole reason it never became an install target was `is_compared_generated_basename`, whose job is to denominate the DRIFT COMPARISON. ",
+
+    "**THE HARM CLAIM IS THE PART THIS ROW GOT WRONG FIRST, and the correction is the instructive half.** The finding was briefed, amplified through a manager and written into a work-item title as a destructive overwrite of the 172-line hand-maintained `src/v1/stage0/Cargo.toml`. ",
+
+    "It is not: the installer joins destinations under `stage0_src = workspace/src/v1/stage0/src`, so a bare `Cargo.toml` basename resolves one directory BELOW the manifest, to a path that does not exist. ",
+
+    "Widening the population alone writes debris rather than destruction ONLY IF the join is the whole story, and THAT CLAIM WAS ITSELF AN UNDER-ENUMERATION, caught in review of the repair: `fs::copy` follows the DESTINATION link, git tracks symlinks, so a committed stage0 entry that is a symlink reaches any path in the tree with the join untouched. ",
+
+    "The lesson generalizes past this row: a harm correction that names ONE mechanism and treats it as the requirement is the same coincidence-as-wall shape turned on the analysis -- the honest form enumerates the ROUTES to the destination and says which are closed, since `resolves outside X` is a property of the filesystem and not of the path expression. ",
+
+    "Two readers reached the destructive reading independently and agreement read as confirmation, which is why the deciding observation is a JOIN EXPRESSION and not a semantic comparison of the two files — the artifacts genuinely differ, and that true fact was fused with a destination claim it never established. ",
+
+    "**The surviving harm is exemption, not destruction, and it is the one worth naming:** a declared `GeneratedSurface` that the comparison filter hides is invisible to the fixed point (`first_generation_equal`, `changed_paths`) and unreachable by the one authority that would force its gap to be counted — `v2.compiler.self_host.stage0_crate_layout` `emitter_produced_divergent_registrations`, which already enforces in three directions and holds `main.rs` for exactly this relation. ",
+
+    "So the filter did not accidentally PROTECT the artifact; it accidentally EXEMPTED it. ",
+
+    "Beside it sat a second, CALLER-LESS installer, `install_candidate_paths`, equally unguarded and invisible to review because a crate-wide dead-code allow kept it compiling: an unguarded operation with no consumer still reads as sanctioned precedent for the next author. ",
+
+
+    "**SECOND RECEIPT (2026-09-04), AND IT GENERALIZES THE ROW PAST MUTATING OPERATIONS TO IDENTITY KEYS.** gunbc#10337 keys brand declaration identity on `span.file` plus the authored name. Reviewed as a section 3 violation -- a String nickname beside `std.decl_ref.DeclarationRef` -- and offered as a bounded disposition on the ground that the key is FILE-keyed where the authority is MODULE-keyed. Measured before admitting the debt: across dag/ and src/v2, 4754 `.dag` files carry ZERO files declaring more than one module, with a control confirming the regex matches. File to module is therefore INJECTIVE and `span.file` IS identity-equivalent to a module path, so the offered gap does not exist and the drop row was refused rather than written. ",
+
+    "**But the equivalence is a CORPUS PROPERTY, not a structural guarantee, and that is this row's shape rather than a fact about modules.** Nothing makes a two-module file unwritable; no authority declares the one-module-per-file relation; no diagnostic fires if it is broken. So an identity key is correct today because of an invariant whose owner does not know it is load-bearing, and it would dissolve silently the first time a file declares two modules -- a change nobody would read as touching brand identity. The generalization: the row is not about DESTRUCTION, it is about CORRECTNESS RESTING ON A COINCIDENCE, and the mutating-bytes framing of the first receipt is one instance of it. ",
+
+    "Recognition rule extended to this form: when a key, join or identity comparison is sound, ask WHICH UNSTATED INVARIANT makes it sound, then name the authority that enforces that invariant. If the answer is 'nothing does, it just happens to hold', the soundness is a coincidence with no authority, no diagnostic and no test -- exactly the state this row names. The next-rung trigger for THIS instance is a wall refusing a second module declaration in one file, which would convert the coincidence into a structural guarantee. ",
+
+    "**Recognition rule: for every operation that mutates authoritative bytes, ask what it would do if handed the worst member of the population its input is DRAWN FROM — not the population it is called with today — then name the function that forbids that member and the question that function was written to answer. ",
+
+    "If those two questions differ, the wall is incidental and the operation has none.** The remedy is an admission at the mutation boundary itself, over the whole roster before the first byte moves and refusing rather than skipping, since a per-item skip re-exports the same silence one layer in; and it is honestly a mechanically-preventable rung, whose ceiling is structural impossibility once the plan projects a typed surface identity instead of a `List<String>`. ",
+
+    "**THE REMEDY HAS ITS OWN TRAP, AND THIS ROW WALKED INTO IT BEFORE CATCHING IT: restating the incidental denominator as the guard's own rule.** The first repair refused every non-`.rs` install target, which reads as a wall and is the SAME defect dualised — the accidental denominator promoted from coincidence to policy, in a second location, now refusing the correct end state by construction, since the emitted manifest is stage0's own and is supposed to converge. ",
+
+    "**Recognition rule for the repair: state the arm's reason, and check whether it forbids the state the system is trying to REACH.** If it does, the guard has ratified the coincidence instead of replacing it, and the honest arms are the ones the boundary can answer from its own facts — here a path that cannot address its own destination, and a hand-authored mirror — while the artifact-kind question goes back to the authority that owns dispositions. ",
+
+    "**SECOND RECEIPT, AND IT IS FILED HERE RATHER THAN AS A NEW CLASS BECAUSE THE MECHANISM IS IDENTICAL WHILE THE POLARITY IS INVERTED (measured 2026-09-02 at dc878756107b).** The receipt above is an upstream filter that accidentally KEEPS a destructive operation safe. ",
+
+    "This one is an upstream filter that accidentally KILLS a declared wall. ",
+
+    "gunbc#9824 moved the namespace transition-admission roster's cleanup bill off bystanders by making a provably consumed row an inert typed receipt, and put the deletion obligation in one arm: a consumed row refuses on the first change whose diff touches the roster's own source file. ",
+
+    "v1_compiler.cli_run.namespace_wave_admission.run_required_wave_admission computes that arm's predicate as roster_touched over the head side returned by diff_sides -- whose final act retains only paths satisfying in_sweep_scope, a predicate that opens by requiring a .dag suffix, while ADMISSION_ROSTER_REL_PATH names a .rs file. ",
+
+    "A .rs path cannot survive a .dag filter, so roster_touched is false on every production run and consumed_due in claim_executor.report_wave_admission_outcome can never be true. ",
+
+    "in_sweep_scope was written to answer WHICH FILES THE PARSER RE-READS to reconstruct the baseline; nothing joins it to the deletion obligation it silently decides, and that is this row's mechanism unchanged. ",
+
+    "**THE RECOGNITION RULE ABOVE CATCHES BOTH POLARITIES WITHOUT AMENDMENT and this receipt exists so the next holder of a dead arm recognises themselves in a row whose other specimen is accidentally safe:** naming the function that decides the operation and the question that function was written to answer is polarity-free, and the two questions differ here exactly as they differ there. ",
+
+    "**WHAT THE INVERTED POLARITY COSTS THAT THE SAFE ONE DOES NOT, and it is the reason the inversion is worth carrying:** an accidentally-safe operation still behaves correctly today, so the debt is latent. ",
+
+    "An accidentally-dead wall is cited as coverage while it is dead -- in a merged pull-request body, in the arm's own doc comment, and to every reader who greps for the arm and finds it present, gated on, and reached. ",
+
+    "Every reachability-based tell reports health, because the arm IS reached; what never happens is that its predicate is true. ",
+
+    "The declared window it guarded (roster-use bounded) is therefore unbounded in execution, which gunbc.rung_drop namespace_admission_consumed_row_deletion now declares.)",
+  ],
+
+  evidence: [],
+}

@@ -93,29 +93,75 @@ fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<S
   ]
 }
 
+// STEP 1 USED TO SAY "stage the driver-left bytes", AND THAT INSTRUCTION DELETED ROWS. The
+// worktree bytes this driver leaves are the OURS side, so staging them commits this branch's
+// rows OVER the base's and drops every row the base added since the merge base, adding none of
+// this branch's own. The common diagnostic above already says so -- "Taking either side drops
+// the other side's authority-derived content" -- and the route then instructed taking one.
+// Measured 2026-09-04 across five heads that hit this driver on docs/design-failure-modes.md:
+// the four that followed step 1 as written each committed a 97-row projection against a base of
+// 98 and an authority of 99, silently dropping the same two rows; the one head that did not
+// follow it was the only clean one. THE ROUTE INSTRUCTED THE ACTION THAT DISARMS THE GUARD --
+// committing the provisional bytes MOVES THE MERGE BASE, after which this driver has nothing
+// left to refuse, merge-tree reports clean, GitHub admits, and every instrument is green over a
+// head that deletes rows. That is gunbc.recurring_failure_mode.guard_precondition_discharged_by
+// _the_route_that_uses_it with the route itself as the discharging agent.
+//
+// TAKING THE BASE SIDE IS NOT A RESOLUTION AND IS NOT CLAIMED AS ONE. It leaves the tree
+// authority-ahead-of-artifact by exactly this branch's own rows, which is the state heal exists
+// to repair and which the generated-artifact gate can still see. What it removes is the DELETION,
+// which nothing downstream can see at all.
+fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
+  [
+    "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base",
+    "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count: comm -23 <(git show <base-ref>:$merged_path | sed -n 's/^- `\\([a-z0-9_]*\\)`.*/\\1/p' | sort) <(git show HEAD:$merged_path | sed -n 's/^- `\\([a-z0-9_]*\\)`.*/\\1/p' | sort) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
+    "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
+    "4. finish the authority merge and push the branch; do not regenerate this projection locally",
+    "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",
+  ]
+}
+
 fn generated_artifact_merge_driver_diagnostic_lines(regen_command: String) -> List<String> {
   concat(
-    [
-      "[generated-artifact] GeneratedArtifactConcurrentDivergence: $merged_path",
-      "  Both sides changed this generated projection since the merge base, so neither side's bytes are the projection of the MERGED authorities. Taking either side drops the other side's authority-derived content, and the tree is then authority-ahead-of-artifact with nothing to say so.",
-      "  Git resolved nothing here. The path is left UNMERGED and the worktree file carries the ours side verbatim — no conflict markers — so the regenerators run against it as-is.",
-      "  Do NOT resolve these bytes by hand or by picking a side. Regenerate them:",
-    ],
+    ["  This path requires author regeneration before the merge can finish:"],
     generated_artifact_merge_driver_repair_steps(regen_command: regen_command)
   )
+}
+
+fn generated_artifact_merge_driver_common_diagnostic_lines() -> List<String> {
+  [
+    "[generated-artifact] GeneratedArtifactConcurrentDivergence: $merged_path",
+    "  Both sides changed this generated projection since the merge base, so neither side's bytes are the projection of the MERGED authorities. Taking either side drops the other side's authority-derived content, and the tree is then authority-ahead-of-artifact with nothing to say so.",
+    "  Git resolved nothing here. The path is left UNMERGED and the worktree file carries the ours side verbatim — no conflict markers.",
+    "  Do NOT resolve these bytes by hand or pretend the provisional bytes are derived. Follow this path's declared repair route:",
+  ]
+}
+
+fn emit_heal_path_case_pattern(paths: List<String>) -> String {
+  join(paths, "|")
 }
 
 fn emit_driver_stderr_echo(line: String) -> String {
   concat(concat("echo \"", line), "\" >&2\n")
 }
 
-fn emit_driver_diagnostic(regen_command: String) -> String {
-  fold(generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command), init: "", f: fn(acc, line) {
-    concat(acc, emit_driver_stderr_echo(line: line))
+fn emit_driver_lines(lines: List<String>, indent: String) -> String {
+  fold(lines, init: "", f: fn(acc, line) {
+    concat(acc, concat(indent, emit_driver_stderr_echo(line: line)))
   })
 }
 
-fn expected_generated_artifact_merge_driver_sh(regen_command: String) -> String {
+fn emit_author_regeneration_repair(regen_command: String, indent: String) -> String {
+  concat(
+    emit_driver_lines(
+      lines: generated_artifact_merge_driver_diagnostic_lines(regen_command: regen_command),
+      indent: indent
+    ),
+    concat(indent, emit_driver_stderr_echo(line: "4. git add -- $merged_path"))
+  )
+}
+
+fn expected_generated_artifact_merge_driver_sh(regen_command: String, heal_regenerated_paths: List<String>) -> String {
   concat(
     concat(
       "#!/usr/bin/env bash\n# GENERATED by dag/gunbc/generated_artifact_merge_driver.dag — DO NOT HAND-EDIT.\n",
@@ -125,8 +171,27 @@ fn expected_generated_artifact_merge_driver_sh(regen_command: String) -> String 
       )
     ),
     concat(
-      emit_driver_diagnostic(regen_command: regen_command),
-      concat(emit_driver_stderr_echo(line: "4. git add -- $merged_path"), "exit 1\n")
+      emit_driver_lines(lines: generated_artifact_merge_driver_common_diagnostic_lines(), indent: ""),
+      if count(heal_regenerated_paths) == 0 {
+        concat(
+          emit_author_regeneration_repair(regen_command: regen_command, indent: ""),
+          "exit 1\n"
+        )
+      } else {
+        concat(
+          concat(
+            concat("case \"$merged_path\" in\n  ", concat(emit_heal_path_case_pattern(paths: heal_regenerated_paths), ")\n")),
+            concat(
+              emit_driver_lines(lines: generated_artifact_merge_driver_heal_repair_steps(), indent: "    "),
+              "    ;;\n  *)\n"
+            )
+          ),
+          concat(
+            emit_author_regeneration_repair(regen_command: regen_command, indent: "    "),
+            "    ;;\nesac\nexit 1\n"
+          )
+        )
+      }
     )
   )
 }

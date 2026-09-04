@@ -4,7 +4,7 @@ import std.hermetic_replay { PublishedMockCase }
 import extdeps.ssh.mock_corpus {
   ssh_session_mock_case_exec,
   ssh_session_mock_case_exec_script,
-  ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_exec_portable_words,
   ssh_session_mock_case_exec_portable_words_with_stdin,
   ssh_session_mock_case_reachability,
 }
@@ -21,7 +21,7 @@ import extdeps.bmc.mock_corpus {
 data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
   ssh_session_mock_case_exec,
   ssh_session_mock_case_exec_script,
-  ssh_session_mock_case_exec_argv,
+  ssh_session_mock_case_exec_portable_words,
   ssh_session_mock_case_exec_portable_words_with_stdin,
   ssh_session_mock_case_reachability,
   redfish_http_mock_case_get_chassis_sensors,

@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.parallel_representation_debt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data parallel_representation_debt: RecurringFailureMode = RecurringFailureMode {
+  identity: "parallel_representation_debt" as NonEmptyStr,
+
+  receipts: [
+    "parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is still a violation. ",
+
+    "RECEIPT (gunbc#10396): hand-authored equality beside a native relation -- a `*_eq` or `is_*` predicate folding over a closed coproduct the substrate already compares with `==`. `mounting_location_id_eq` was authored as an 81-arm nested match over a 9-variant id, AND a second instance was re-minted in the same PR's witness file; both were deleted after a probe established that `==` returns true for like variants, false for unlike ones, and compares payloads on payload-carrying arms. ",
+
+    "The authoring pressure is worth naming because the exhaustive match has a REAL VIRTUE -- a tenth variant fails to compile -- which reads as justification for a fold that need not exist at all. That is how the shape reproduces: the defence is sound and answers a question nobody needed asked. ",
+
+    "A discovery grep for hand-authored `*_eq` declarations returns a population in the low hundreds. That is a CANDIDATE CENSUS whose members are not dispositioned, NOT a defect count: members over payload coproducts may differ from `==` in ways a bulk rewrite would silently change, which would convert a legibility problem into a correctness one. The next step is a typed report-only census, not a sweep.)",
+  ],
+
+  evidence: [],
+}

@@ -9,13 +9,26 @@ import v2.lens.application {
   LensEnforcement,
   apply_lens_enforce
 }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic {
+  Accepted,
+  CorrectionNotModeled,
+  Outcome,
+  Rejected,
+  Unavailable,
+  outcome_accepted,
+  outcome_rejected,
+  textual_whole_file_diagnostic,
+}
 import v2.std.logic { Bool }
 import v2.std.node {
+  Arrow,
   Atom,
+  Cardinality,
   ComputationNode,
   Conj,
+  Disj,
   Edge,
+  Instantiation,
   Named,
   Node,
   Path,
@@ -40,10 +53,30 @@ data projection_test_root: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
+// WHY THE FOUR REMAINING CONNECTIVES REFUSE RATHER THAN ANSWER. This fixture builds exactly
+// two shapes -- an Atom section and a Conj root -- and its claim is that `apply_lens_enforce`
+// routes the lens output through `project` before `violates`. `Disj`, `Arrow`, `Cardinality`
+// and `Instantiation` carry no meaning THIS fixture has defined, so any Symbol returned for
+// them would be a fabricated plausible output: the test would keep passing over a tree it was
+// never written to describe. A refusal is the only answer the site establishes.
+fn projection_test_unmodeled_connective() -> Outcome<Symbol> {
+  outcome_rejected(
+    textual_whole_file_diagnostic(
+      reason: ^projection_test_connective_not_modeled,
+      module_file: ^apply_lens_enforce_uses_projection_test,
+      correction: Unavailable { reason: CorrectionNotModeled }
+    )
+  )
+}
+
 fn projection_test_read(root: Node) -> Outcome<Symbol> {
   match root.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
     TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
+    TypeNode { connective: Disj } => projection_test_unmodeled_connective()
+    TypeNode { connective: Arrow } => projection_test_unmodeled_connective()
+    TypeNode { connective: Cardinality } => projection_test_unmodeled_connective()
+    TypeNode { connective: Instantiation } => projection_test_unmodeled_connective()
     ComputationNode { behavior: _ } => outcome_accepted(value: ^projection_test_symbol)
   }
 }

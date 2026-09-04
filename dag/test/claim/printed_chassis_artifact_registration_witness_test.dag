@@ -1,0 +1,90 @@
+module test.claim.printed_chassis_artifact_registration_witness_test
+
+import gunbc.generated_artifact {
+  GeneratedArtifact, CouponCadQueryProgramArtifact,
+  generated_artifact_registry, artifact_eq, artifact_path,
+  artifact_commit_policy, CommitPolicy, CommitRequired, NotCommitted,
+  artifact_is_committed, committed_generated_artifacts
+}
+import gunbc.generated_artifact_emit {
+  ArtifactGenerationOutcome, ArtifactGenerated, ArtifactGenerationRefused,
+  artifact_generate
+}
+import product.printed_chassis.cadquery_realization {
+  CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused,
+  expected_coupon_cadquery_program
+}
+import std.types { Bool, Int, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// REGISTRATION IS ONLY REAL IF SOMETHING EXECUTES IT, which is the condition this file answers.
+//
+// Adding a variant to gunbc.generated_artifact for a materializer that does not exist yet would be
+// speculative residue: a row in a load-bearing roster whose only justification is future work. What
+// makes it a completed pure integration instead is that the central dispatch actually produces this
+// artifact's content TODAY, by execution, and that its commit policy is observed rather than
+// asserted in prose. Three facts, each read from the authority rather than restated:
+//
+//   1. the registry contains the artifact
+//   2. its commit policy is NotCommitted, so it is absent from the committed drift population
+//   3. the CENTRAL dispatch, artifact_generate, answers with the judged handler's own content
+//
+// Fact 3 is the one that matters. A variant can be registered and located and still be wired to
+// nothing; joining artifact_generate's answer to expected_coupon_cadquery_program's is what says the
+// dispatch reaches the handler, so a future edit that unhooked the arm would go red here rather than
+// silently producing an artifact with no producer.
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  fold(generated_artifact_registry, init: false, f: fn(acc, r) { acc || artifact_eq(a: r, b: a) })
+}
+
+test fn w_the_coupon_program_artifact_is_registered() -> Bool {
+  registry_contains(a: CouponCadQueryProgramArtifact)
+}
+
+// NotCommitted read from the policy function, and the same fact confirmed from the derived
+// population: a policy row that said NotCommitted while the artifact still appeared among the
+// committed artifacts would be a disagreement between the authority and what is derived from it.
+test fn w_the_coupon_program_artifact_is_not_committed() -> Bool {
+  let policy_says = match artifact_commit_policy(a: CouponCadQueryProgramArtifact) {
+    NotCommitted => true
+    CommitRequired { consumer: _ } => false
+  }
+  let derived_says = fold(committed_generated_artifacts(), init: true, f: fn(acc, r) {
+    acc && !artifact_eq(a: r, b: CouponCadQueryProgramArtifact)
+  })
+  policy_says && derived_says && !artifact_is_committed(a: CouponCadQueryProgramArtifact)
+}
+
+// THE JOIN: the central dispatch and the handler answer with the SAME bytes.
+test fn w_the_central_dispatch_produces_the_judged_handler_content() -> Bool {
+  match artifact_generate(a: CouponCadQueryProgramArtifact) {
+    ArtifactGenerationRefused { reason: _ } => false
+    ArtifactGenerated { content: dispatched } =>
+      match expected_coupon_cadquery_program() {
+        CouponProgramRefused { reason: _ } => false
+        CouponProgramGenerated { content: handled } => dispatched == handled
+      }
+  }
+}
+
+// A NON-VACUITY CONTROL on the join above. If the generated content were empty, or were the
+// preamble alone, the equality would still hold and would establish nothing -- an equality between
+// two absent things. The emitted program must carry the plate line and at least one cut.
+test fn w_the_generated_content_is_a_real_program() -> Bool {
+  match artifact_generate(a: CouponCadQueryProgramArtifact) {
+    ArtifactGenerationRefused { reason: _ } => false
+    ArtifactGenerated { content: c } =>
+      c.contains("import cadquery as cq")
+        && c.contains("result = cq.Workplane(\"XY\").box(")
+        && c.contains("result = result.cut(")
+        && !c.contains("cq.exporters.export")
+  }
+}
+
+// THE LOCATION IS DECLARED AND IS NOT THE FILENAME THE EMITTER USED TO CHOOSE. The export line this
+// handler no longer emits named its own output file, which would have made the Python literal a
+// second path authority beside artifact_location. This asserts the repository's answer exists.
+test fn w_the_artifact_has_one_declared_location() -> Bool {
+  artifact_path(a: CouponCadQueryProgramArtifact) == "manufacturing/hole_diameter_ladder_r1.py"
+}

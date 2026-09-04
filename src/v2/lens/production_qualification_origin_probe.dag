@@ -22,7 +22,11 @@ import v2.std.collection {
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index {
+  FnArrowDecl,
+  atom_identities_in_node,
+  fn_arrow_decl_facts_live
+}
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query {
   call_callee_target,
@@ -36,23 +40,25 @@ import v2.std.node {
   Node,
   NodeFold,
   Positional,
-  Symbol,
   TypeNode,
   fold_node,
 }
 import v2.std.text { String }
 
 // Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a
-// repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide
-// frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
+// repository-wide census. fn_arrow_decl_facts_live(pool_roots:) now answers over the roots its
+// caller names, so this carrier's scope is exactly the subject each entry point declares and no
+// longer whatever closure happened to be resolved; repository-wide frequency is still unknown
+// because naming the corpus roots is a per-caller choice, not this carrier's claim. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL
 // skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker
 // only — never target-model proxy, never declaration-name recognition). Origin vocabulary:
 // ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only —
 // ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may
 // also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live
 // scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; zero today per
-// production_qualification_live_scope_fixture_origin_policy_note while G2 marshal prunes callee
-// atoms). Classifier proof uses planted_fixture_origin_mint_site_count() against
+// production_qualification_live_scope_fixture_origin_policy_note; the reason it reads zero is the
+// MARKER read, not the callee read — see the annotation on derived_sites_for_decl). Classifier proof
+// uses planted_fixture_origin_mint_site_count() against
 // production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown.
 // Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a
 // production qualification (effect_reach / call-occurrence substrate), classify origins with
@@ -60,9 +66,12 @@ import v2.std.text { String }
 // pins.
 
 // SCAFFOLD frontier (wise-ram-22 required recut): population is NOT derived from resolved call
-// occurrences yet — only fn-arrow skeleton callee/marker projection inside the witness entry's
-// import closure. Ingest-inline surfaces whose mint callee is pruned by G2 marshal, indirect
-// consumer reachability, and repository-wide mint sites outside the closure are invisible. No
+// occurrences yet — only fn-arrow skeleton callee/marker projection over the subject the caller
+// declares. What is invisible is INTER-DECLARATION: a mint reached through one or more intervening
+// declarations is attributed to none of them, and mint sites outside the declared subject are not in
+// the population at all. Intra-declaration callee pruning by the G2 marshal is NO LONGER on that
+// list, and it came off by execution rather than by reading the marshal: at gunbc#10282 the probe
+// discovers a row for a mint call nested in a match/let body. No
 // admitted RED witness keys on a manually flippable boolean — repository-wide closure waits for a
 // queryable call-occurrence population authority. Dissolve-on when call-reachable
 // production-qualification classification shares the effect_reach skeleton authority.
@@ -111,7 +120,6 @@ type DerivedProductionQualificationMintSiteRow {
 }
 
 data empty_string_list: List<String> = []
-data empty_symbol_list: List<Symbol> = []
 data empty_site_list: List<DerivedProductionQualificationMintSiteRow> = []
 
 data mint_written_callee: String = "mint_written_provenanced_rust_artifact"
@@ -119,19 +127,21 @@ data mint_provenanced_callee: String = "mint_provenanced_rust_artifact"
 data advance_cargo_green_callee: String = "advance_written_provenanced_rust_artifact_cargo_green"
 data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tree"
 
-// Ingest entry skeleton grain (review 47980): generate_provenanced_rust_candidate_from_ingest calls
-// mint_provenanced_rust_artifact directly. Callee identity alone does not prove compiler origin —
-// mint_provenanced accepts raw InferredTree — so skeleton discovery without fixture marker or
-// call/dataflow evidence stays UnknownOrigin until call-occurrence derivation lands.
+// INGEST ENTRY, CORRECTED AGAINST THE SOURCE. Review 47980 recorded that
+// generate_provenanced_rust_candidate_from_ingest "calls mint_provenanced_rust_artifact directly".
+// It does not: it calls provenanced_rust_emission_observation_outcome over
+// observe_provenanced_rust_emission_from_ingest, and the mint is at least two declarations further
+// in. So ingest_mint_surface_discovered_in_live_scope is red on inter-declaration reachability and
+// not on anything this file reads about that one declaration.
+//
+// The observation beside it still stands and is independent of the miscount: callee identity alone
+// does not prove compiler origin — mint_provenanced accepts a raw InferredTree — so skeleton
+// discovery without a fixture marker or call/dataflow evidence stays UnknownOrigin.
 
 // CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission.
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
 fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
@@ -195,34 +205,6 @@ fn maybe_snoc_site_row(
         evidence_origin: origin
       }
     )
-  }
-}
-
-// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
-// children — the fold_node it once ran recursed the whole subtree while its step discarded
-// every child's collected atoms, so the descent computed results nothing consumed
-// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
-  let from_children = fold(node.children, init: empty_symbol_list, f: fn(acc, e) {
-    match node_atom_identity_optional(node: e.target) {
-      Present { value: sym } =>
-        if contains(xs: acc, item: sym, eq: symbol_eq) {
-          acc
-        } else {
-          list_snoc_item(xs: acc, item: sym)
-        }
-      Absent => acc
-    }
-  })
-  match node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
-      if contains(xs: from_children, item: sym, eq: symbol_eq) {
-        from_children
-      } else {
-        list_snoc_item(xs: from_children, item: sym)
-      }
-    Absent => from_children
   }
 }
 
@@ -304,7 +286,7 @@ fn callees_from_atom_scan(node: Node) -> List<String> {
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn origin_probe_callees_from_node(node: Node) -> List<String> {
   let from_call_walk = callee_collect_merge(
     left: fold_node(n: node, algebra: callee_collect_algebra()).callees,
     right: callee_text_from_call_node(node: node)
@@ -313,7 +295,7 @@ fn callees_from_node(node: Node) -> List<String> {
 }
 
 fn decl_contains_callee(decl: FnArrowDecl, callee: String) -> Bool {
-  contains(xs: callees_from_node(node: decl.output), item: callee, eq: string_eq)
+  contains(xs: origin_probe_callees_from_node(node: decl.output), item: callee, eq: string_eq)
 }
 
 fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
@@ -346,6 +328,25 @@ fn decl_origin_from_structure(decl: FnArrowDecl) -> ProductionQualificationOrigi
   }
 }
 
+// THIS FUNCTION EMITS A MATCH LIST AND ITS RESULT IS READ AS A POPULATION. The else-arm returns
+// `sites` unchanged, so a declaration that fails decl_has_qualifying_mint_callee is not recorded as
+// "no mint here" — it is DROPPED. Absence of a row and absence of a mint site are then the same
+// observation and nothing downstream can separate them, which is what makes every zero this file
+// reports weaker than it looks: an instrument emitting only matches establishes presence and can
+// never establish absence.
+//
+// THREE CLAIMS, KEPT APART ON PURPOSE, because closing the first reads like closing all three:
+//   1. no qualifying callee is hidden by the reachability horizon WITHIN one declaration — true
+//      today, established by execution at gunbc#10282 rather than by reading the marshal;
+//   2. every DISCOVERED declaration carries an explicit verdict — NOT true today, and the word
+//      discovered is load-bearing, since such a verdict inherits whatever coverage
+//      fn_arrow_decl_facts_live has and this file does not establish that list is closed;
+//   3. this output is THE population of mint sites — not admissible from either, and not a claim any
+//      repair to this function can earn on its own.
+// Claim 2 needs no new discovery authority: derived_production_qualification_mint_sites_from_facts
+// already folds over the whole `decls` list, so the members are in hand at the fold and the change is
+// to the row type and this else-arm. Dissolve-on for claim 2 is that change; dissolve-on for claim 3
+// is an authority that enumerates the population independently.
 fn derived_sites_for_decl(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   decl: FnArrowDecl
@@ -388,9 +389,12 @@ fn derived_production_qualification_mint_sites_from_facts(
   )
 }
 
-fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQualificationMintSiteRow> {
+fn derived_production_qualification_mint_sites_live(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> List<DerivedProductionQualificationMintSiteRow> {
   derived_production_qualification_mint_sites_from_facts(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
   )
 }
 
@@ -438,15 +442,27 @@ fn planted_fixture_origin_mint_site_count() -> Int {
   )
 }
 
-fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
+fn known_fixture_origin_mint_surface_count_in_scope(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Int {
   count_derived_fixture_origin_mint_sites(
-    sites: derived_production_qualification_mint_sites_live()
+    sites: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    )
   )
 }
 
-fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
+fn ingest_mint_surface_discovered_in_live_scope(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    ),
     predicate: fn(row) {
       string_contains(s: row.qualified_name, pattern: ingest_mint_entry_name_suffix)
         && emission_qualification_eq(
@@ -582,10 +598,15 @@ fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
 }
 
 fn structural_red_control_live_fixture_mint_site_discovered(
+  pool_roots: List<String>,
+  pool_files: List<String>,
   live_qualified_name: String
 ) -> Bool {
   any(
-    xs: derived_production_qualification_mint_sites_live(),
+    xs: derived_production_qualification_mint_sites_live(
+      pool_roots: pool_roots,
+      pool_files: pool_files
+    ),
     predicate: fn(row) {
       string_eq(a: row.qualified_name, b: live_qualified_name)
         && production_qualification_origin_eq(
@@ -600,8 +621,11 @@ fn structural_red_control_live_fixture_mint_site_discovered(
   )
 }
 
-fn production_qualification_origin_probe_admission_holds() -> Bool {
+fn production_qualification_origin_probe_admission_holds(
+  pool_roots: List<String>,
+  pool_files: List<String>
+) -> Bool {
   production_qualification_origin_probe_admission_holds_for_decls(
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: pool_files)
   )
 }

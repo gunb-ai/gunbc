@@ -3,6 +3,7 @@ module v2.test.claim.compiler.compile_eval_thesis_proof
 import v2.compiler.compile {
   Eval,
   EvalResult,
+  TranslateResult,
   compile,
   compile_inferred
 }
@@ -89,6 +90,7 @@ test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
       compile_eval_thesis_medium_matches_expected(medium: actual)
+    Accepted { value: TranslateResult { source: _ }, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
 }

@@ -1,0 +1,64 @@
+module gunbc.recurring_failure_mode.join_answers_with_one_arm_others_unjudged
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "join_answers_with_one_arm_others_unjudged" as NonEmptyStr,
+
+  receipts: [
+    "**a join answers with ONE of its inputs, so the inputs it did not answer with are judged nowhere** (a reduction over several producers -- match arms, branch arms, any fold that collapses N types to one -- picks its answer by a tie-break and every downstream check then reads only that answer. ",
+
+    "An input the fold did not select is compared with NOTHING: not with the join's answer, not with the consumer's declared type. ",
+
+    "**THE TELL IS THAT THE VERDICT IS A FUNCTION OF INPUT ORDER**, and that is also the falsifier: permute the arms and re-run. ",
+
+    "SPECIMEN, measured 2026-09-02 on gunbc, two modules identical except for arm order: v1.compiler.infer folded match arm body types through v1.compiler.infer_types prefer_specific_type, whose tie-break for two disjoint coproducts is the LEFT operand, so `match fl \{ FYes => FResA  FNo => FOthA \}` passed to a formal declared FRes was ACCEPTED, while the same module with those two arms swapped was REFUSED at the direct-call argument seam with `declared 'Coproduct(FRes)', produced 'Coproduct(FOth)'`. ",
+
+    "One of those is wrong and it is the ACCEPTED one -- values inhabit their declared types is the ordinary compiler floor, which DESIGN section 4b puts BELOW the ladder rather than on a rung of it. ",
+
+    "DISTINGUISHING FACT FOR THE KERNEL-SCALAR SPECIMEN: the identical Int-versus-String mismatch in a plain function body IS refused with a located `type mismatch: expected 'Primitive(Int)', got 'Primitive(String)'` diagnostic. The checker therefore exists and holds outside the join; the match fold walks around it by selecting the conforming Int arm, after which the declared-return seam compares Int with Int. ",
+
+    "WHY THE KERNEL-SCALAR SPECIMEN SURVIVED REVIEW AND CI: the malformed arm was unreachable from its only caller, so every executing control passed. Only the typechecker could have seen it, and a join wall that existed, ran on every arm, but recognized only coproduct disjointness was cited as though it covered the whole join. That is rung inflation rather than a missing check. ",
+
+    "**RECOGNITION RULE: wherever a reduction answers with one of its inputs rather than with a judgment ABOUT them, ask what judges the inputs it discarded -- and if the answer is 'the consumer, which sees only the winner', the discarded inputs are unjudged by construction.** The shape hides because the seam that WOULD refuse demonstrably works: it refuses the other order, so every probe that happens to order the arms unluckily reports the compiler healthy. ",
+
+    "BOUNDED AGAINST TWO NEIGHBOURS. ",
+
+    "It is not `absorbing_fallback`: nothing failed and nothing widened, the fold answered confidently and correctly for its own purpose -- selecting the more specific of two types is what it is for. ",
+
+    "It is not `selection_view_read_as_population` either, though it is that class's compiler-internal cousin: there a measured subset is read as the population, here a SELECTED REPRESENTATIVE is read as a judgment about the whole set. ",
+
+    "RUNG FOUND AT: below the ladder (silent wrongness). ",
+
+    "RUNG AFTER THE REPAIR: mechanically preventable -- v1.compiler.infer match_arm_join_diagnostics asks match_arm_types_are_proven_disjoint once per arm; that relation preserves the concrete-coproduct judgment and consumes the declared-conformance path's existing ground-type discipline for Int beside String and List<Int> beside List<String>. The order-sensitive coproduct RED, the conforming-first scalar and collection REDs, and their controls are enrolled at test.claim.match_arm_join_disjoint_coproduct_witness_test; the invalid state stays writable and safety depends on that check executing. ",
+
+    "CEILING: structurally guaranteed -- a join that produces a JUDGED type carrying every arm's verdict, rather than a representative selected from the arms, makes an unjudged arm unconstructible. ",
+
+    "NEXT-RUNG TRIGGER, a capability and not an artifact: one join relation that every N-ary join in the stage consumes, sufficient that no arm can reach a consumer without having been compared to the join's answer -- the ExprIf and ExprMatch joins in v1.compiler.infer are today two carriers asking two different questions of the same fold, which is what let one of them judge nothing at all.)\n\n**TWO FURTHER SPECIMENS, 2026-09-02 (quick-crab-396), BOTH FOUND WHILE MEASURING SOMETHING ELSE.** (1) v1.compiler.emit_rust `module_name_from_filename` reads `map_get(module_index.by_filename, mod_filename)` and resolves the resulting `List<TypedModule>` with `|> first`. ",
+
+    "What makes it this class rather than an unlucky lookup is that the BUILDER KNOWS: `build_module_index` explicitly `list_push`es on collision, so the multiplicity is constructed deliberately and discarded silently by the reader, and the verdict is a function of fold order exactly as this row's recognition rule states. ",
+
+    "The map compounds it by being keyed on `module_to_filename(module_NAME)` -- a filename DERIVED from the module name rather than the source path a declaration sits in -- so it answers the inverse question to the one its name suggests. ",
+
+    "(2) v1.compiler.coercion `type_realization_decision` selects its checkpoint with `target_checkpoints(target) |> filter(cp => cp.dag_name == dag_name) |> first` -- a BARE-NAME filter resolved by first, standing inside the very function whose exact-identity rows (gunbc.rust_source_type_bindings) exist to remove that ambiguity. ",
+
+    "The second specimen is the more valuable of the pair because it sits in the mechanism under repair rather than beside it. ",
+
+    "**THE RUNG CLAIMED ABOVE IS INFLATED, AND THIS ROW IS WHERE THAT IS RECORDED (2026-09-04, fierce-ant-136).** The repair line says mechanically preventable because match_arm_join_diagnostics asks match_arm_types_are_disjoint_coproducts once per arm. It does -- and that relation is the WHOLE of what it refuses on, so kernel scalars and ground element collections never enter it. ",
+
+    "TWO REPROS, EXECUTED RATHER THAN REASONED. (1) `fn f(x: Shape) -> Int \{ match x \{ A \{ n \} => n  B \{ s \} => s \} \}` with `s: String` is ACCEPTED, and forcing the B arm RETURNS the string. (2) the immediate sibling one level up: the same shape declared `-> List<Int>` with a `List<String>` arm is ACCEPTED and RETURNS `[not an int]`. The second matters because the declared-return discipline's established domain is conformance_ground_type -- a required ground kernel scalar OR a required non-keyed element collection whose element is one -- so a repair scoped to scalars alone would leave the collection case writable. ",
+
+    "THE MECHANISM, AND IT IS THE JOIN AND NOT THE RETURN CHECK. Each arm is inferred with the surrounding expected type, but the generic expected-type wrapper adds only where-refinement diagnostics, so a String arm under an Int expectation stays diagnostic-free. The match then reduces all non-diverging arm body types through prefer_specific_type, whose final fallback is the LEFT operand, so two unrelated resolved scalars leave the first arm's type as the representative. The match node is constructed with that representative as result_type, and the declared-return conformance post-pass compares the declaration against it -- by which point the losing arm is no longer in the population it sees. THE FAILING ARM IS ERASED BY A REPRESENTATIVE-PRODUCING JOIN BEFORE THE DECLARED-RETURN WALL RUNS. That is this row's own recognition rule, applied to this row's own repair. ",
+
+    "WHAT THE INFLATION IS, STATED PRECISELY BECAUSE THE FIRST TRY GOT IT WRONG. match_arm_types_are_disjoint_coproducts is HONESTLY NAMED: it says exactly what it does, its diagnostic says disjoint declared coproducts, and the source note bounds the wall to that subject. The inflation is not a check scoped narrower than its name claims -- it is a narrow, honestly named per-arm check whose EXISTENCE was read as evidence that the join judged every arm-type relationship. The misleading authority was the coverage inference, not the predicate. ",
+
+    "REVISED RUNG: below the ladder for the conformance_ground_type population, mechanically preventable for the disjoint-coproduct population. The minimum across in-scope paths is the class's rung, so the class sits below the ladder. ",
+
+    "TRIGGER, AND THE SHAPE IS LOAD-BEARING: ONE broader match-arm join verdict under which the existing coproduct relation becomes one typed refusal reason and an established-ground-type relation becomes another -- one join authority with two reasons, not two joins, and NOT a widening of the coproduct predicate in place. Widening that function while keeping its identity would make its name false, which is the 3 meaning fork this roster exists to catch, committed while repairing a row about unjudged inputs. The join must also refuse incompatible arms where there is NO external expected type, so the declared-return pass must not walk match syntax to compensate: that would fix only matches observed through a declared-return boundary and leave an incompatible match in a local, a data initializer or a call argument decided by whichever representative won. And the join must not call the declared-versus-produced relation directly, because unified_arm_type is a SELECTED REPRESENTATIVE and not an authored type authority -- reusing the ground-domain relation is sound, reusing the directional framing at a peer join is not. ",
+
+    "FOUND FROM THE OTHER END, which is worth recording because it is how the population gets discovered: a review of gunbc-private #35 flagged a helper declaring -> Int and returning a String from one arm. The instance was unreachable from its only caller, so every executing control passed and only the typechecker could have seen it. An unreachable arm is exactly where this class hides -- reachable ones are caught by their values.",
+  ],
+
+  evidence: [],
+}

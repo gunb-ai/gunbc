@@ -4,16 +4,23 @@
 use self::AdvanceResult::*;
 use self::EatResult::*;
 use self::ExpectedToken::*;
+use self::ParsedModuleItemKind::*;
 use self::ParsedOccurrenceRole::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_import::ImportStatementParseCause::{
+    ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
+    SourceHasNoModuleDeclaration,
+};
 use crate::std_import::ParsedImportStatements::{
     ImportStatementParseRefused, ImportStatementsParsed,
 };
-pub use crate::std_import::{ParsedImportStatement, ParsedImportStatements};
+pub use crate::std_import::{
+    ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -3115,6 +3122,114 @@ pub fn stamp_parsed_node_list_with_head_role(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ParsedModuleItemKind {
+    ModuleItemTypeDeclaration,
+    ModuleItemFunction,
+    ModuleItemDataValue,
+    ModuleItemService,
+    ModuleItemResource,
+    ModuleItemUnrecognized,
+}
+
+pub fn parsed_item_carries_resource_entries(node: Rc<Node>) -> bool {
+    node.properties
+        .clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, property: Rc<Node>| {
+            if found {
+                true
+            } else {
+                (property.name.clone() != "sole_constructor".to_string())
+            }
+        })
+}
+
+pub fn parsed_module_item_kind(node: Rc<Node>) -> ParsedModuleItemKind {
+    if (node.transport.clone() != std::option::Option::None) {
+        ParsedModuleItemKind::ModuleItemService
+    } else {
+        if ((node.body.clone() != std::option::Option::None)
+            && (node.type_annotation.clone() != std::option::Option::None))
+        {
+            ParsedModuleItemKind::ModuleItemDataValue
+        } else {
+            if (node.body.clone() != std::option::Option::None) {
+                ParsedModuleItemKind::ModuleItemFunction
+            } else {
+                if parsed_item_carries_resource_entries(node.clone()) {
+                    ParsedModuleItemKind::ModuleItemResource
+                } else {
+                    if (node.type_annotation.clone() == std::option::Option::None) {
+                        ParsedModuleItemKind::ModuleItemTypeDeclaration
+                    } else {
+                        ParsedModuleItemKind::ModuleItemUnrecognized
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
+    match parsed_module_item_kind(node.clone()) {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::TypeOccurrence,
+            })
+        }
+        ParsedModuleItemKind::ModuleItemFunction => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemDataValue => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemService => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemResource => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+        ParsedModuleItemKind::ModuleItemUnrecognized => {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
+    }
+}
+
+pub fn stamp_parsed_module_items(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedNodeListStampResult> {
+    nodes.iter().cloned().fold(Rc::new(ParsedNodeListStampResult {
+    nodes: Rc::new(vec![]),
+    ctx: ctx.clone(),
+    err: std::option::Option::None,
+}), |acc: _, node: Rc<Node>| if has_err(acc.err.clone()) {
+        acc.clone()
+    } else {
+        match parsed_module_item_kind(node.clone()) {
+    ParsedModuleItemKind::ModuleItemUnrecognized => Rc::new(ParsedNodeListStampResult {
+    nodes: acc.nodes.clone(),
+    ctx: acc.ctx.clone(),
+    err: Some(parse_error("module item shape is not a recognised declaration kind, so its occurrence category cannot be decided; the type bucket is not a default".to_string(), node.span.clone())),
+}),
+    _ => {
+            let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx.clone(), parsed_module_item_role(node.clone()));
+Rc::new(ParsedNodeListStampResult {
+    nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
+    ctx: stamped.ctx.clone(),
+    err: stamped.err.clone(),
+})
+},
+}
+    })
+}
+
 pub fn stamp_parsed_node_children(
     node: Rc<Node>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -3159,6 +3274,10 @@ pub fn stamp_parsed_node_children(
                 }),
                 Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
             ),
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::NamespaceSegmentOccurrence,
+                ..
+            } => stamp_parsed_module_items(node.children.clone(), ancestors.clone(), ctx.clone()),
             _ => stamp_parsed_node_list(
                 node.children.clone(),
                 ancestors.clone(),
@@ -3712,13 +3831,15 @@ pub fn parse_import_statement_extents_acc(
             let r = parse_import(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                    cause: "an import statement did not parse".to_string(),
+                    cause: Rc::new(ImportStatementParseCause::ImportStatementMalformed),
                 });
             }
             match token_stream_first(tokens.clone()) {
                 std::option::Option::None => {
                     break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                        cause: "an import statement parsed from no token".to_string(),
+                        cause: Rc::new(ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                            detail: "an import statement parsed from no token".to_string(),
+                        }),
                     });
                 }
                 Some(first) => {
@@ -3730,8 +3851,13 @@ pub fn parse_import_statement_extents_acc(
                     ) {
                         std::option::Option::None => {
                             break Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                                cause: "an import statement parsed without consuming a token"
-                                    .to_string(),
+                                cause: Rc::new(
+                                    ImportStatementParseCause::ImportParseInstrumentAnomaly {
+                                        detail:
+                                            "an import statement parsed without consuming a token"
+                                                .to_string(),
+                                    },
+                                ),
                             });
                         }
                         Some(end) => {
@@ -3786,13 +3912,13 @@ pub fn parse_import_statement_extents(
         );
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "source does not open with a module declaration".to_string(),
+                cause: Rc::new(ImportStatementParseCause::SourceHasNoModuleDeclaration),
             });
         }
         let r = parse_dotted_ident(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParsedImportStatements::ImportStatementParseRefused {
-                cause: "module declaration does not name a dotted module path".to_string(),
+                cause: Rc::new(ImportStatementParseCause::ModuleDeclarationPathMalformed),
             });
         }
         parse_import_statement_extents_acc(
@@ -11651,7 +11777,11 @@ pub fn parse_data_after_kw(
                 err: r.err.clone(),
             });
         }
-        let r = parse_expr(r.tokens.clone(), ctx.clone());
+        let r = if ctx.heads_only.clone() {
+            parse_data_value_heads_only(r.tokens.clone(), ctx.clone())
+        } else {
+            parse_expr(r.tokens.clone(), ctx.clone())
+        };
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -11901,6 +12031,161 @@ pub struct HeadsBlockSkipResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HeadsDataValueSkipResult {
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
+    (((((((((tok_is_keyword(tok.clone(), "alias".to_string())
+        || tok_is_keyword(tok.clone(), "type".to_string()))
+        || tok_is_keyword(tok.clone(), "fn".to_string()))
+        || tok_is_keyword(tok.clone(), "func".to_string()))
+        || tok_is_keyword(tok.clone(), "service".to_string()))
+        || tok_is_keyword(tok.clone(), "resource".to_string()))
+        || tok_is_keyword(tok.clone(), "data".to_string()))
+        || tok_is_keyword(tok.clone(), "extern".to_string()))
+        || tok_is_keyword(tok.clone(), "pattern".to_string()))
+        || tok_is_keyword(tok.clone(), "interface".to_string()))
+}
+
+pub fn heads_skip_data_value_tokens_at(
+    mut tokens: Rc<TokenStream>,
+    mut offset: i64,
+    mut braces: i64,
+    mut parens: i64,
+    mut brackets: i64,
+    mut seen: bool,
+) -> Rc<HeadsDataValueSkipResult> {
+    loop {
+        let tok = token_stream_peek(tokens.clone(), offset.clone());
+        if tok_is_eof(tok.clone()) {
+            if (((seen.clone() && (braces.clone() == 0)) && (parens.clone() == 0))
+                && (brackets.clone() == 0))
+            {
+                break Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                    err: std::option::Option::None,
+                });
+            } else {
+                break Rc::new(HeadsDataValueSkipResult {
+                    tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                    err: Some(parse_error(
+                        "heads-only parse: unterminated data value".to_string(),
+                        token_span(tok.clone()),
+                    )),
+                });
+            }
+        } else {
+            if ((((tok_is_newline(tok.clone()) && (braces.clone() == 0)) && (parens.clone() == 0))
+                && (brackets.clone() == 0))
+                && (tok_is_eof(token_stream_first(skip_newlines(token_stream_advance(
+                    tokens.clone(),
+                    offset.clone(),
+                )))) || heads_token_starts_item(token_stream_first(skip_newlines(
+                    token_stream_advance(tokens.clone(), offset.clone()),
+                )))))
+            {
+                if seen.clone() {
+                    break Rc::new(HeadsDataValueSkipResult {
+                        tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                        err: std::option::Option::None,
+                    });
+                } else {
+                    break Rc::new(HeadsDataValueSkipResult {
+                        tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                        err: Some(parse_error(
+                            "heads-only parse: empty data value".to_string(),
+                            token_span(tok.clone()),
+                        )),
+                    });
+                }
+            } else {
+                match tok.clone() {
+                    std::option::Option::None => {
+                        break Rc::new(HeadsDataValueSkipResult {
+                            tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                            err: Some(parse_error(
+                                "heads-only parse: unterminated data value".to_string(),
+                                crate::v1_std_core::no_span(),
+                            )),
+                        });
+                    }
+                    Some(t) => {
+                        let b = if is_lbrace_shape(t.shape.clone()) {
+                            (braces.clone() + 1)
+                        } else {
+                            if is_rbrace_shape(t.shape.clone()) {
+                                (braces.clone() - 1)
+                            } else {
+                                braces.clone()
+                            }
+                        };
+                        let p = if is_lparen_shape(t.shape.clone()) {
+                            (parens.clone() + 1)
+                        } else {
+                            if is_rparen_shape(t.shape.clone()) {
+                                (parens.clone() - 1)
+                            } else {
+                                parens.clone()
+                            }
+                        };
+                        let s = if is_lbracket_shape(t.shape.clone()) {
+                            (brackets.clone() + 1)
+                        } else {
+                            if is_rbracket_shape(t.shape.clone()) {
+                                (brackets.clone() - 1)
+                            } else {
+                                brackets.clone()
+                            }
+                        };
+                        if (((b.clone() < 0) || (p.clone() < 0)) || (s.clone() < 0)) {
+                            break Rc::new(HeadsDataValueSkipResult {
+                                tokens: token_stream_advance(tokens.clone(), offset.clone()),
+                                err: Some(parse_error(
+                                    "heads-only parse: unmatched delimiter in data value"
+                                        .to_string(),
+                                    t.span.clone(),
+                                )),
+                            });
+                        } else {
+                            {
+                                let __tco_0 = (offset + 1);
+                                let __tco_1 = b.clone();
+                                let __tco_2 = p.clone();
+                                let __tco_3 = s.clone();
+                                let __tco_4 = true;
+                                offset = __tco_0;
+                                braces = __tco_1;
+                                parens = __tco_2;
+                                brackets = __tco_3;
+                                seen = __tco_4;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn parse_data_value_heads_only(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    {
+        let skipped = heads_skip_data_value_tokens_at(tokens.clone(), 0, 0, 0, 0, false);
+        Rc::new(ExprResult {
+            expr: census_heads_body_stand_in(),
+            tokens: skipped.tokens.clone(),
+            ctx: ctx.clone(),
+            err: skipped.err.clone(),
+        })
+    }
+}
+
 pub fn heads_skip_block_tokens(
     mut tokens: Rc<TokenStream>,
     mut depth: i64,
@@ -11967,7 +12252,7 @@ pub fn heads_skip_block_tokens(
 pub fn census_heads_body_stand_in_message() -> String {
     thread_local! {
         static CACHED: String = {
-            "pool census heads-only: function body stripped -- refuse to interpret".to_string()
+            "pool census heads-only: declaration body/value stripped -- refuse to interpret".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -16858,3 +17143,15 @@ pub struct ParserHelperSkipNewlines;
 pub struct ParserHelperSkipContinuationNewlines;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParserHelperWith;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemTypeDeclaration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemFunction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemDataValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemService;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemResource;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleItemUnrecognized;

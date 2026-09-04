@@ -5,6 +5,100 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use v1_compiler::cli_run::PhaseProfile;
 
+// HAND-RUST GATE explicit deferral. Lane: required-ci-measurement-host-realization. The authority
+// is `v2.workflow.required_ci_measurement`; this seed code realizes its filesystem write, JSON
+// transport, process exit and existing required-phase host diagnostics because required CI runs
+// the bootstrapped `claim_executor` before a generated replacement owns those effects. This adds
+// no competing domain model: the coproduct, blocker fields and build-unreached JSON originate in
+// `.dag`. It dissolves at the concrete ROADMAP row `v1-zero-hand-maintained-rust`, whose boundary
+// requires every tracked Rust file to be generated or deleted; at that row this realization is
+// generated from the measurement model or removed with the v1 seed. Until then this is counted
+// hand-maintained bootstrap surface, not a terminal Rust authority.
+const REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION: u8 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(tag = "standing", rename_all = "snake_case")]
+enum RequiredCiMeasurementReceipt {
+    MeasurementCompleted { blockers: Vec<RequiredCiBlocker> },
+    MeasurementUnreached { cause: String },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+struct RequiredCiBlocker {
+    phase: String,
+    identity: String,
+    cause: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct VersionedRequiredCiMeasurementReceipt {
+    version: u8,
+    receipt: RequiredCiMeasurementReceipt,
+}
+
+fn completed_required_ci_measurement_receipt(
+    blockers: Vec<RequiredCiBlocker>,
+) -> RequiredCiMeasurementReceipt {
+    RequiredCiMeasurementReceipt::MeasurementCompleted { blockers }
+}
+
+fn write_required_ci_measurement_receipt(
+    path: &str,
+    receipt: RequiredCiMeasurementReceipt,
+) -> Result<(), String> {
+    let encoded = serde_json::to_vec_pretty(&VersionedRequiredCiMeasurementReceipt {
+        version: REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION,
+        receipt,
+    })
+    .map_err(|e| format!("encode required CI measurement receipt: {e}"))?;
+    std::fs::write(path, encoded)
+        .map_err(|e| format!("write required CI measurement receipt {path}: {e}"))
+}
+
+fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
+    let body = std::fs::read(path).map_err(|e| {
+        eprintln!("required-ci: adjudication REFUSED receipt unreadable path={path} cause={e}");
+        ExitCode::from(1)
+    })?;
+    let versioned: VersionedRequiredCiMeasurementReceipt =
+        serde_json::from_slice(&body).map_err(|e| {
+            eprintln!("required-ci: adjudication REFUSED receipt malformed path={path} cause={e}");
+            ExitCode::from(1)
+        })?;
+    if versioned.version != REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION {
+        eprintln!(
+            "required-ci: adjudication REFUSED receipt version={} expected={}",
+            versioned.version, REQUIRED_CI_MEASUREMENT_RECEIPT_VERSION
+        );
+        return Err(ExitCode::from(1));
+    }
+    match versioned.receipt {
+        RequiredCiMeasurementReceipt::MeasurementUnreached { cause } => {
+            eprintln!(
+                "required-ci: adjudication REFUSED standing=measurement_unreached cause={cause}"
+            );
+            Err(ExitCode::from(1))
+        }
+        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } if blockers.is_empty() => {
+            eprintln!("required-ci: adjudication PASSED standing=measurement_completed blockers=0");
+            Ok(ExitCode::SUCCESS)
+        }
+        RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } => {
+            for blocker in &blockers {
+                eprintln!(
+                    "required-ci: adjudication BLOCKING phase={} identity={} cause={}",
+                    blocker.phase, blocker.identity, blocker.cause
+                );
+            }
+            eprintln!(
+                "required-ci: adjudication REFUSED standing=measurement_completed blockers={}",
+                blockers.len()
+            );
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
         Some(v) => Ok(v.clone()),
@@ -149,12 +243,30 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
+    // BEFORE ANY WORK, AND BEFORE ARGUMENTS, because a limit acquired after the first large
+    // allocation bounds nothing that already happened. On a machine that already binds this
+    // process — every self-hosted CI runner — this is a no-op that says so; on an executor with
+    // no limit at all it creates one, so the whole-corpus adjudication can run somewhere the
+    // kernel is enforcing a ceiling instead of thrashing against a machine.
+    // A refused bind STOPS THE LINE: the run asked to be bounded, it is not bounded, and
+    // proceeding would be exactly the escape hatch the request existed to close.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return Err(ExitCode::FAILURE);
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_ci_measurement_receipt: Option<String> = None;
+    let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut required_ci_unreached_receipt: Option<String> = None;
+    let mut required_ci_unreached_cause: Option<String> = None;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
@@ -190,6 +302,26 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--measurement-receipt" => {
+                i += 1;
+                required_ci_measurement_receipt =
+                    Some(require_value(&args, i, "--measurement-receipt")?);
+            }
+            "--adjudicate-measurement-receipt" => {
+                i += 1;
+                required_ci_adjudicate_receipt =
+                    Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            "--measurement-unreached-receipt" => {
+                i += 1;
+                required_ci_unreached_receipt =
+                    Some(require_value(&args, i, "--measurement-unreached-receipt")?);
+            }
+            "--measurement-unreached-cause" => {
+                i += 1;
+                required_ci_unreached_cause =
+                    Some(require_value(&args, i, "--measurement-unreached-cause")?);
             }
             // NAMES A JOB, NOT A PHASE SET. The workflow asks for a lane and this binary decides
             // which phases that lane owns, so widening or re-routing the roster is a change here
@@ -277,6 +409,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
+    if let Some(path) = required_ci_adjudicate_receipt {
+        return adjudicate_required_ci_measurement_receipt(&path);
+    }
+    if let Some(path) = required_ci_unreached_receipt {
+        let cause = required_ci_unreached_cause
+            .unwrap_or_else(|| "measurement process exited before producing a receipt".to_string());
+        return write_required_ci_measurement_receipt(
+            &path,
+            RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
+        )
+        .map(|_| ExitCode::SUCCESS)
+        .map_err(|e| {
+            eprintln!("required-ci: measurement-unreached receipt REFUSED {e}");
+            ExitCode::from(1)
+        });
+    }
+
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
     // is: this mode takes NO roots. It renders from the emitted
     // authority carrier and reads only the files it is adjudicating, so the generic guard below
@@ -341,8 +490,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
     // THE COMPOSED CI RUN — one process per LANE. The roster is five phases: the .dag parse
-    // sweep, namespace wave admission, the regen first-generation comparison,
-    // generated-artifact drift and the witness floor. `--required-lane` selects which of them
+    // sweep, namespace wave admission, one generated-artifact comparison over registry
+    // projections and stage0 mirrors, its fixed-point comparison, and the witness floor.
+    // `--required-lane` selects which of them
     // this process owns; with no lane, it owns all five, which is what a local run wants.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
@@ -385,6 +535,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // is the stopped-line AUDIT DESIGN §5 sanctions: it reports, it never greens.
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
+        let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
         // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
         // the index the parse phase built rather than acquiring the corpus again; holding it
@@ -576,16 +727,26 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("namespace-wave-admission");
         }
 
-        // PHASE 2 — regen first generation: the emitted mirrors against what is committed.
-        if required_ci_phase_selected(RequiredCiPhase::Regen, required_ci_lane) {
-            eprintln!("required-ci: phase regen (first generation vs committed)");
+        // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
+        // emitted stage0 mirror, and every committed registry projection. Neither half can report
+        // a terminal green: the phase records its one verdict only after both adjudicators ran.
+        // This closes the disjoint-denominator failure where registry=38/38 printed green while a
+        // stale v1_compiler_infer.rs made the sibling regen phase red. The registry boundary is
+        // read-only, so it cannot manufacture its own green by installing generated bytes.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase generated-artifact (registry projections + stage0 mirrors)"
+            );
+            let failures_before = phase_failures.len();
+
+            // MIRROR HALF. Production still precedes adjudication so a missing/stale mirror leaves
+            // the candidate needed to repair it. A refusal remains distinct from a mismatch, but
+            // both are failures of this one generated-artifact phase.
             match v1_compiler::cli_run::run_required_regen(
                 &regen_candidate_dir,
                 &regen_receipt_path,
             ) {
                 Ok(outcome) => {
-                    // Read through accessors, and print `unmeasured` rather than a plausible
-                    // default when the pass built the wrong variant (#8650's shape).
                     let fge = outcome
                         .receipt
                         .first_generation_equal()
@@ -593,38 +754,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                         .unwrap_or_else(|| "unmeasured".to_string());
                     let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
                     eprintln!(
-                        "required-ci: regen first_generation_equal={fge} candidate={candidate}"
+                        "required-ci: generated-artifact population=stage0-mirrors \
+                         first_generation_equal={fge} candidate={candidate}"
                     );
                     for failure in &outcome.failures {
-                        eprintln!("required-ci: regen FAIL {failure}");
+                        eprintln!(
+                            "required-ci: generated-artifact population=stage0-mirrors FAIL {failure}"
+                        );
                     }
                     if !outcome.failures.is_empty() {
-                        phase_failures
-                            .push(format!("regen ({} failure(s))", outcome.failures.len()));
+                        phase_failures.push(format!(
+                            "generated-artifact stage0-mirrors ({} failure(s))",
+                            outcome.failures.len()
+                        ));
                     }
                 }
                 Err(e) => {
-                    // A REFUSAL IS NOT A MISMATCH: nothing was emitted, so there is no comparison
-                    // to report, and the refusal is named rather than folded into a drift verdict.
-                    eprintln!("required-ci: regen refused: {e}");
-                    phase_failures.push(format!("regen refused: {e}"));
+                    eprintln!(
+                        "required-ci: generated-artifact population=stage0-mirrors REFUSED {e}"
+                    );
+                    phase_failures.push(format!("generated-artifact stage0-mirrors refused: {e}"));
                 }
             }
-            ran.push("regen");
-        }
 
-        // PHASE — every committed generated projection against the bytes derived from its .dag
-        // authority. This is deliberately not `--required-regen`: that phase's subject is the
-        // stage0 mirror population, while this boundary asks the generated-artifact registry for
-        // its whole roster, including DESIGN.md, docs/design-failure-modes.md and
-        // docs/design-rung-drops.md. The boundary is read-only, so it cannot manufacture
-        // its own green by installing generated bytes.
-        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
-            eprintln!(
-                "required-ci: phase generated-artifact (every committed projection vs its authority)"
-            );
+            // REGISTRY HALF. Run even after a mirror refusal so the one outcome names the complete
+            // population rather than allowing the first failure to hide the second.
+            let registry_failures_before = phase_failures.len();
             let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
-            let failures_before = phase_failures.len();
             match &outcome {
                 v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
                     cause,
@@ -641,7 +797,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 } => {
                     let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
                     eprintln!(
-                        "required-ci: generated-artifact rostered={} adjudicated={} matches={} \
+                        "required-ci: generated-artifact population=registry-projections \
+                         rostered={} adjudicated={} matches={} \
                          drifted={} absent={} unadjudicated={}",
                         artifacts.len() + unadjudicated.len(),
                         artifacts.len(),
@@ -693,7 +850,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             if !v1_compiler::cli_run::boundary_is_clean(&outcome)
-                && phase_failures.len() == failures_before
+                && phase_failures.len() == registry_failures_before
             {
                 eprintln!(
                     "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
@@ -701,7 +858,70 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
             }
+            if phase_failures.len() == failures_before {
+                eprintln!(
+                    "required-ci: generated-artifact OK populations=registry-projections,stage0-mirrors"
+                );
+            } else {
+                eprintln!(
+                    "required-ci: generated-artifact FAIL populations=registry-projections,stage0-mirrors"
+                );
+            }
             ran.push("generated-artifact");
+        }
+
+        // PHASE 2b — regen SECOND generation: does the emit reproduce itself.
+        //
+        // WHAT THIS PHASE CAN AND CANNOT SEE, stated here because the honest claim is much
+        // narrower than "the fixed point is now checked". When the first generation EQUALS the
+        // committed mirrors, this pass is green by construction: the tree it re-emits from is the
+        // one that produced the first generation, so only a NONDETERMINISTIC emit can separate
+        // them. It therefore catches emit nondeterminism and nothing else. In particular it
+        // cannot see a self-consistently wrong seed -- a producer built from a wrong mirror emits
+        // that same wrong mirror and every generation agrees -- and enrolling it must not be read
+        // as closing that gap. `gunbc.rung_drop` `floor_cut_regen_second_generation_agreement`
+        // states the same bound: a repeatability comparison sees a GENERATION DISAGREEMENT, never
+        // deterministic wrongness.
+        //
+        // IT IS ENROLLED ANYWAY BECAUSE IT IS NEARLY FREE AND ITS RED IS REAL. One extra emit, no
+        // install and no rebuild -- the expensive variant that installs the generation and
+        // rebuilds the producer buys only BUILD nondeterminism on top, at the price of a crate
+        // build per required run, and is deliberately not what this enrols.
+        if required_ci_phase_selected(RequiredCiPhase::RegenFixedPoint, required_ci_lane) {
+            eprintln!("required-ci: phase regen-fixed-point (second generation vs first)");
+            match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None) {
+                Ok(outcome) => {
+                    // `unmeasured` rather than a plausible default: a None here means the pass
+                    // built the wrong receipt variant, which is a defect to report and not a
+                    // verdict to substitute.
+                    let fpe = outcome
+                        .receipt
+                        .fixed_point_equal()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unmeasured".to_string());
+                    eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
+                    for failure in &outcome.failures {
+                        eprintln!("required-ci: regen-fixed-point FAIL {failure}");
+                    }
+                    if !outcome.failures.is_empty() {
+                        phase_failures.push("regen-fixed-point".to_string());
+                    } else if outcome.receipt.fixed_point_equal() != Some(true) {
+                        eprintln!(
+                            "required-ci: regen-fixed-point REFUSED — no fixed_point_equal was                              measured, so this run has no second-generation verdict to report"
+                        );
+                        phase_failures.push("regen-fixed-point (unmeasured)".to_string());
+                    }
+                }
+                // A PASS THAT CANNOT RUN REFUSES RATHER THAN SKIPS. The reachable causes are an
+                // absent or unparseable prior receipt and a prior measured at a different commit,
+                // and every one of them means this run holds NO second-generation evidence.
+                // Treating "could not check" as "checked" is the absorbing fallback exactly.
+                Err(e) => {
+                    eprintln!("required-ci: regen-fixed-point REFUSED {e}");
+                    phase_failures.push(format!("regen-fixed-point ({e})"));
+                }
+            }
+            ran.push("regen-fixed-point");
         }
 
         // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
@@ -711,7 +931,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
         //
         // IT NO LONGER SHARES A JOB WITH THE FLOOR AT ALL (operator ruling, 2026-08-25).
-        // The phase sits in the `build` lane beside regen; the floor is the other job, and
+        // The phase sits in the `build` lane beside generated-artifact, whose mirror half writes
+        // its receipt; the floor is the other job, and
         // the two run in parallel. The old paragraph here weighed whether to make this an
         // early PREREQUISITE of the floor -- an exit before it -- and that question is now
         // moot rather than answered: a phase in another job cannot precondition this one,
@@ -740,6 +961,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     report_required_floor_outcome(&outcome);
                     if !required_floor_outcome_is_clean(&outcome) {
                         phase_failures.push("floor".to_string());
+                        measurement_blockers.extend(required_floor_measurement_blockers(&outcome));
                     }
                 }
                 Err(e) => {
@@ -750,8 +972,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("floor");
         }
 
+        // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
+        // phase population. The required-floor aggregate below counts claim outcomes, so the
+        // formerly shared `failed` key gave one spelling two meanings in one process's output.
         eprintln!(
-            "required-ci: lane={} phases_run={} failed={}",
+            "required-ci: lane={} phases_run={} phases_failed={}",
             required_ci_lane
                 .map(|l| l.name())
                 .unwrap_or("all (no --required-lane given)"),
@@ -789,6 +1014,40 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         for failure in &phase_failures {
             eprintln!("required-ci: FAILED PHASE {failure}");
+        }
+        if let Some(path) = required_ci_measurement_receipt {
+            // Dissolve this compatibility boundary when every required phase returns its own
+            // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
+            // blocker's phase and identity.
+            for failure in &phase_failures {
+                if !measurement_blockers
+                    .iter()
+                    .any(|b| b.phase == failure.as_str())
+                    && failure != "floor"
+                {
+                    measurement_blockers.push(RequiredCiBlocker {
+                        phase: failure
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        identity: "<phase>".to_string(),
+                        cause: failure.clone(),
+                    });
+                }
+            }
+            // Reaching this branch means the measurement process returned after running every
+            // selected phase. A phase refusal is therefore a completed measurement carrying
+            // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
+            // outer finalizer only when this process cannot return a receipt at all (for example,
+            // a failed instrument build or a killed process).
+            let receipt = completed_required_ci_measurement_receipt(measurement_blockers);
+            if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
+                eprintln!("required-ci: measurement REFUSED {e}");
+                return Err(ExitCode::from(1));
+            }
+            eprintln!("required-ci: measurement completed receipt={path}");
+            return Ok(ExitCode::SUCCESS);
         }
         return if phase_failures.is_empty() {
             Ok(ExitCode::SUCCESS)
@@ -1236,8 +1495,8 @@ impl RequiredCiLane {
 enum RequiredCiPhase {
     Parse,
     NamespaceWaveAdmission,
-    Regen,
     GeneratedArtifact,
+    RegenFixedPoint,
     Floor,
 }
 
@@ -1246,7 +1505,7 @@ impl RequiredCiPhase {
         match self {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
-            RequiredCiPhase::Regen => "regen",
+            RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
         }
@@ -1266,8 +1525,13 @@ impl RequiredCiPhase {
             // lane boundary between them would mean parsing the corpus twice to answer a
             // question one parse already reached.
             RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
-            RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
+            // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
+            // the receipt that phase's stage0-mirror adjudicator wrote at
+            // `target/stage0-regen-receipt.json`, and target/ does not
+            // survive checkout, so a lane boundary between them would leave it with no prior
+            // measurement to reference and nothing to compare.
+            RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
@@ -1275,12 +1539,14 @@ impl RequiredCiPhase {
 
 // THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
-// main. The other three removed phases remain outside required CI and inside the declared drop.
+// main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
+// identities would preserve the independently-green outcomes this composition removes. The other
+// three removed phases remain outside required CI and inside the declared drop.
 const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
-    RequiredCiPhase::Regen,
     RequiredCiPhase::GeneratedArtifact,
+    RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
 ];
 
@@ -1296,8 +1562,8 @@ const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
     "NamespaceWaveAdmissionPhase",
-    "RegenPhase",
     "GeneratedArtifactPhase",
+    "RegenFixedPointPhase",
     "FloorPhase",
 ];
 
@@ -1501,7 +1767,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         v1_compiler::cli_run::interrupted_cause_census(&outcome.interrupted_before_verdict);
     eprintln!(
         "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
-         known_red_held={} failed={} stale_quarantine={} \
+         known_red_held={} claims_failed={} stale_quarantine={} \
          interrupted_before_verdict={} interrupted_cpu_deadline={} \
          interrupted_wall_deadline={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
@@ -1736,6 +2002,53 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         && outcome.changed_witness_blocking.is_empty()
 }
 
+fn required_floor_measurement_blockers(
+    outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
+) -> Vec<RequiredCiBlocker> {
+    let mut blockers = Vec::new();
+    let mut add = |identity: &str, cause: &str| {
+        blockers.push(RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: identity.to_string(),
+            cause: cause.to_string(),
+        })
+    };
+    for identity in &outcome.failures {
+        add(identity, "claim_failed");
+    }
+    for identity in &outcome.non_verdict_unenrolled {
+        add(identity, "non_verdict_unenrolled");
+    }
+    for identity in &outcome.stale_non_verdict {
+        add(identity, "stale_non_verdict");
+    }
+    for identity in &outcome.stale_quarantine {
+        add(identity, "stale_quarantine");
+    }
+    for row in &outcome.interrupted_before_verdict {
+        add(&row.qualified, "interrupted_before_verdict");
+    }
+    for identity in &outcome.completed_over_cost_requirement {
+        add(identity, "completed_over_cost_requirement");
+    }
+    for identity in &outcome.host_tool_unresolved {
+        add(identity, "host_tool_unresolved");
+    }
+    for identity in &outcome.route_gap {
+        add(identity, "route_gap");
+    }
+    for identity in &outcome.stale_route_gap {
+        add(identity, "stale_route_gap");
+    }
+    for identity in &outcome.stale_cost_debt {
+        add(identity, "stale_cost_debt");
+    }
+    for identity in &outcome.changed_witness_blocking {
+        add(identity, "changed_witness_blocking");
+    }
+    blockers
+}
+
 fn main() -> ExitCode {
     // NO SECOND ARGV READER. What stood here read std::env::args() directly and dispatched the
     // floor coordinator BEFORE run() parsed anything, so deleting --plan-function from run()'s
@@ -1763,6 +2076,67 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_returned_subject_refusal_is_a_completed_measurement() {
+        let blocker = RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: "fixture.subject_refusal".to_string(),
+            cause: "type mismatch".to_string(),
+        };
+        assert_eq!(
+            completed_required_ci_measurement_receipt(vec![blocker]),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: "fixture.subject_refusal".to_string(),
+                    cause: "type mismatch".to_string(),
+                }],
+            }
+        );
+    }
+
+    #[test]
+    fn blocking_measurement_round_trips_with_the_planted_identity_and_refuses() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-blocking-{}.json", std::process::id()));
+        let identity = "fixture.planted_blocking_diagnostic";
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: identity.to_string(),
+                    cause: "claim_failed".to_string(),
+                }],
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(
+            body.contains(identity),
+            "receipt must retain the blocking identity"
+        );
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn measurement_unreached_is_a_present_distinct_refusal() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-unreached-{}.json", std::process::id()));
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementUnreached {
+                cause: "instrument exited".to_string(),
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(body.contains("measurement_unreached"));
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
 
     fn repo_root_from_manifest() -> PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

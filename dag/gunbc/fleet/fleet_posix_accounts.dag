@@ -82,11 +82,28 @@ data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrinci
 // they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
 // comment and never was a username. What a principal IS lives here; what it is CALLED on a given
 // host is an allocation, and the two are joined only by an executed observation.
+//
+// FleetAccountHostAdministrator was spelled FleetAccountSrv3Host until a second host needed the
+// same principal. The old spelling named the FIRST PLACE the role was observed, not the role, so
+// every later host that has this account had to either mis-cite srv3 or fork a second key for one
+// concept. The role is: the primary human-facing administrator account the host image provisions,
+// distinct from root, from the CI runner, and from the key-only automation identity. srv3 is still
+// named where it is a receipt -- the observed user row, the declared probe, the grant set, the
+// accessor that composes them, the allocation rows -- because a receipt is about a place and this
+// key is not.
+//
+// Generalizing the key therefore FORCED a second change, and reviewing the rename without it
+// would have shipped the defect the rename created: this key can no longer be answered by
+// fleet_posix_principal at all. That accessor takes no host, and the account it names is
+// per-host, so the honest outcome is PrincipalRequiresHostScope -- the same answer the automation
+// and service identities already get, for the same reason. Under the old place-name spelling a
+// caller could read srv3 off the key and know which receipt it was getting; under a role name
+// they cannot, so the host-free arm had to stop answering rather than start lying.
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
-  | FleetAccountSrv3Host
+  | FleetAccountHostAdministrator
   | FleetAccountAutomation
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
@@ -112,7 +129,7 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   shell: LoginShellUnobserved,
 }
 
-data fleet_posix_srv3_host_user: PosixUser = PosixUser {
+data fleet_posix_srv3_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
@@ -137,7 +154,7 @@ data fleet_posix_ci_runner_declared_probe: PosixAccountDeclaredProbe = PosixAcco
   host: "srv1",
 }
 
-data fleet_posix_srv3_host_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+data fleet_posix_srv3_host_administrator_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
   probed_at: "2026-07-21",
   probe_command: "id ubuntu",
   host: "srv3",
@@ -225,6 +242,7 @@ type CiRunnerSudoBinary
   | SudoSystemctl
   | SudoTailscale
   | SudoRm
+  | SudoUseradd
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -234,6 +252,7 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoSystemctl => fleet_systemctl_binary_path
     SudoTailscale => fleet_tailscale_binary_path
     SudoRm => fleet_rm_binary_path
+    SudoUseradd => fleet_useradd_binary_path
   }
 }
 
@@ -245,10 +264,24 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoSystemctl => NopasswdExecuteCheck { check_argv: "--version" }
     SudoTailscale => NopasswdGrantListCheck
     SudoRm => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoUseradd => NopasswdExecuteCheck { check_argv: "-D" }
   }
 }
 
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm]
+// useradd JOINED THE ROSTER 2026-09-04 WITH THE PUBLICATION HELPER'S REALIZATION. The helper runs
+// under its own principal (bb0451bbc87) and the deploy installs its spool directories owned by that
+// principal, so the account has to exist before the first install -o names it; the first deploy
+// through `gunbc converge --mode deploy` on srv1 refused `install: invalid user 'gunbc-publication'`
+// at exactly that step. The grant is the whole binary, like its six siblings, probed with -D
+// (print defaults, exit 0). What it may create is decided by the one operation that renders it,
+// gunbc.executor_privileged_operation EnsureSystemAccount: a --system account with the nologin
+// shell and no home, never a login user.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd]
+
+data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
+
+data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
+
 
 data gunbc_deploy_privileged_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
 
@@ -268,7 +301,26 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   )
 }
 
-fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
+// TWO GRANT SETS, ONE VALUE, TWO AUTHORITIES -- and the coincidence is why this is easy to get
+// wrong. The srv3 set is an OCCURRENCE FACT: what the probe found on that host. The role set is a
+// POLICY CLAIM: what the fleet grants this role anywhere, which is what fleet_principal_intent
+// asks for and what a srv4 or Spark occurrence is measured AGAINST. Collapsing them because both
+// read [] today would make a future srv3-only privilege change silently become policy for every
+// other host administrator -- the same role-versus-occurrence leak the receipt family was renamed
+// to close, one field upstream (review 58941).
+//
+// NO WITNESS GUARDS THIS SPLIT TODAY, DELIBERATELY. Both sets are empty, so a check that the
+// intent reads the role set and not srv3's is green under either wiring -- permanently green by
+// construction, which §4b says is worse than absent because it would be cited as coverage. The
+// separation is carried by construction instead: two declarations, each consumed at exactly one
+// grain. The trigger for an executing check is the first host-administrator occurrence whose
+// OBSERVED grants are non-empty; at that moment the two sets can differ, the RED becomes
+// authorable, and the witness lands with it.
+fn fleet_posix_srv3_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+fn fleet_posix_host_administrator_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -460,12 +512,12 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: legacy_name_requirements,
         sudo_grants: fleet_posix_ci_runner_sudo_grants(),
       }
-    FleetAccountSrv3Host =>
+    FleetAccountHostAdministrator =>
       FleetPrincipalIntent {
         principal: key,
         login_policy: LegacyHostAccount,
         name_requirements: legacy_name_requirements,
-        sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+        sudo_grants: fleet_posix_host_administrator_sudo_grants(),
       }
     FleetAccountAutomation =>
       FleetPrincipalIntent {
@@ -768,11 +820,34 @@ fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalR
   ServicePrincipalRealizationUnselected
 }
 
-// TOTAL PER-ACCOUNT ACCESSORS for the four legacy principals. These exist because their accounts
-// WERE observed on srv1/srv3, so the question "what is this account" has an answer that needs no
-// host parameter and no optional. Callers asking about a legacy srv1 account use these; callers
+// THE PUBLICATION HELPER'S REALIZATION IS SELECTED: A PERSISTENT SYSTEM ACCOUNT (operator ruling,
+// 2026-09-04, choosing it over a supervisor-managed dynamic identity). The member already installs
+// its spool directories owned by the principal with `install -o`, which a dynamic identity cannot
+// satisfy without rewriting the member around systemd-managed ownership. The name is the modeled
+// one; the uid is host-assigned by useradd --system at first deploy, so the allocation standing is
+// AccountUnallocated until the six-state grounding observes what the host chose -- the account is
+// persistent by policy and its number is a fact the host owns, exactly as for every other observed
+// principal here.
+fn publication_helper_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  PersistentServiceAccount {
+    allocation: AccountUnallocated {
+      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountPublicationHelper },
+    },
+  }
+}
+
+// TOTAL PER-ACCOUNT ACCESSORS for the principals whose accounts WERE observed, so the question
+// "what is this account" has an answer that needs no host parameter and no optional. Callers
 // asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
 // The split is what lets the fabricated placeholder be deleted instead of relocated.
+//
+// Each accessor's NAME carries the occurrence its receipt came from. That is why the host
+// administrator's is fleet_posix_srv3_host_administrator_principal and not the bare role name:
+// the KEY is the role (srv3, srv4 and a Spark all have this account), but the probe, uid and
+// grant set inside are one host's observation. A role-spelled accessor handing out srv3's
+// receipt is the meaning fork §3 forbids -- one name, two materially different answers -- and
+// it is the exact shape a Spark consumer would have reached for. srv4 and the Sparks get their
+// own observation rows, or they get ground_posix_principal; they do not get srv3's.
 fn fleet_posix_root_principal() -> GroundedPosixPrincipal {
   GroundedPosixPrincipal {
     posix: fleet_posix_root_user,
@@ -797,17 +872,17 @@ fn fleet_posix_ci_runner_principal() -> GroundedPosixPrincipal {
   }
 }
 
-fn fleet_posix_srv3_host_principal() -> GroundedPosixPrincipal {
+fn fleet_posix_srv3_host_administrator_principal() -> GroundedPosixPrincipal {
   GroundedPosixPrincipal {
-    posix: fleet_posix_srv3_host_user,
-    sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-    declared_probe: fleet_posix_srv3_host_declared_probe,
+    posix: fleet_posix_srv3_host_administrator_user,
+    sudo_grants: fleet_posix_srv3_host_administrator_sudo_grants(),
+    declared_probe: fleet_posix_srv3_host_administrator_declared_probe,
   }
 }
 
-// The legacy call sites all ask about an srv1/srv3 account that WAS observed. This keeps them total
-// without reintroducing a fabricated value: the four legacy keys are grounded, and the two
-// host-scoped principals REFUSE here rather than returning an inventable placeholder. A caller that
+// The legacy call sites all ask about an srv1 account that WAS observed. This keeps them total
+// without reintroducing a fabricated value: the three srv1-observed keys are grounded, and every
+// host-scoped principal REFUSES here rather than returning an inventable placeholder. A caller that
 // wants those must go through ground_posix_principal with an occurrence.
 fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal? {
   match fleet_posix_principal(key: key) {
@@ -820,11 +895,11 @@ fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrinc
   }
 }
 
-// THE LEGACY ACCESSOR, now returning an OUTCOME. Its four legacy keys resolve to accounts observed
-// on srv1/srv3 and keep working. Its two new keys cannot be answered here at all -- not because the
+// THE LEGACY ACCESSOR, now returning an OUTCOME. Its three srv1-observed keys resolve and keep
+// working. Its four host-scoped keys cannot be answered here at all -- not because the
 // accounts are missing, but because this function takes no host and an account is per-host. That is
 // PrincipalRequiresHostScope, and it is the honest answer a fabricated principal was standing in
-// for. Dissolve-on: the legacy four migrate to receipt-backed allocation+observation rows and this
+// for. Dissolve-on: the legacy three migrate to receipt-backed allocation+observation rows and this
 // accessor is deleted in favour of ground_posix_principal.
 fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOutcome {
   match key {
@@ -852,14 +927,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
           declared_probe: fleet_posix_ci_runner_declared_probe,
         },
       }
-    FleetAccountSrv3Host =>
-      PrincipalGrounded {
-        principal: GroundedPosixPrincipal {
-          posix: fleet_posix_srv3_host_user,
-          sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-          declared_probe: fleet_posix_srv3_host_declared_probe,
-        },
-      }
+    FleetAccountHostAdministrator => PrincipalRequiresHostScope { principal: key }
     FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
@@ -888,11 +956,7 @@ fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
         false =>
           match name == fleet_posix_ci_runner_user.name {
             true => Present { value: fleet_posix_ci_runner_principal() }
-            false =>
-              match name == fleet_posix_srv3_host_user.name {
-                true => Present { value: fleet_posix_srv3_host_principal() }
-                false => Absent
-              }
+            false => Absent
           }
       }
   }

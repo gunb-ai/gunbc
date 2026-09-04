@@ -1,0 +1,82 @@
+module gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data predicate_vacuously_true_on_an_empty_domain: RecurringFailureMode = RecurringFailureMode {
+  identity: "predicate_vacuously_true_on_an_empty_domain" as NonEmptyStr,
+
+  receipts: [
+    "**a predicate vacuously true on an empty domain** (a universally-quantified check -- `all`, `every`, `iter().all(..)`, a for-loop that only ever narrows a flag, a SQL NOT EXISTS -- is satisfied by the IDENTITY ELEMENT when its domain is empty, so the check answers TRUE about a population it never examined. ",
+
+    "INVALID STATE: a guard whose verdict is read as evidence while its domain is empty, with nothing establishing that the domain was non-empty. ",
+
+    "WHY IT SURVIVES REVIEW, and this is what separates it from an ordinary off-by-one: the code READS as a check, it EXECUTES, it is REACHED, and on every input a reviewer imagines the domain is non-empty and the predicate genuinely discriminates. ",
+
+    "The vacuous case is not a value in the data -- IT IS PRODUCED BY A BOUNDARY, so it appears only at the end of a line, the end of a buffer, a remainder shorter than the window, an empty selection, the last chunk. ",
+
+    "Those are exactly the inputs a hand-written fixture omits, and exactly the inputs a real corpus eventually contains. ",
+
+    "SPECIMEN (PR #10033, measured): a raw-string scanner tested its closing delimiter with `chars[i+1..].iter().take(hashes).all(|h| *h == '#')`. ",
+
+    "Over a remainder shorter than `hashes` that iterator yields fewer items and `all` is vacuously TRUE, so a quote near end-of-line closes a hash-delimited raw string that is still open, and the rest of the fixture is handed back to the code scanner -- reintroducing the very brace-depth skew the raw-string handling existed to prevent, silently and in the UNDER-approximating direction. ",
+
+    "The repair is a length bound, not a different predicate: `i + 1 + hashes <= len` conjoined with the same `all`, which leaves the zero-hash case (a raw string with no hashes) trivially satisfied as it must be. ",
+
+    "RECOGNITION RULE, and it generalises past scanners: A PREDICATE THAT IS TRUE ON THE EMPTY CASE IS NOT A CHECK UNTIL ITS DOMAIN IS PROVEN NON-EMPTY. ",
+
+    "Ask of every universal: what does this return when the collection is empty, and can the boundary produce empty? If the answer is TRUE and YES, the domain bound is part of the predicate and its absence is the defect. ",
+
+    "BOUNDED AGAINST THREE NEIGHBOURS, none of whose recognition rules find it. ",
+
+    "`executed_conjunct_discriminates_nothing` is about a CORPUS that never constructs the falsifying population, so its remedy is a fixture; here the falsifying population is unconstructable at the boundary by the shape of the quantifier itself, and the remedy is a bound on the domain. ",
+
+    "`empty_observation_narrow` is an OBSERVATION that could not express what changed being rendered as a verdict -- one layer up, about evidence rather than about a predicate's truth value. ",
+
+    "`incidental_denominator_as_wall` is a guard that holds by a coincidence upstream that genuinely holds; here nothing holds at all, the guard simply returns TRUE. ",
+
+    "RUNG: found OUTSIDE the ladder, because the wrong answer is silent and well-formed -- the check reports satisfaction. ",
+
+    "CEILING 4 and decidable per-site: a windowed comparison whose window length is carried in its type cannot be asked about a short remainder. ",
+
+    "The intermediate rung is an executed control that exercises the BOUNDARY case specifically, asserted on a synthetic input rather than on the live corpus, so it keeps discriminating power when the corpus changes. ",
+
+    "**RECEIPT 2026-09-03 (jolly-ferret-412, gunbc#10141), AND THE EMPTINESS CAME FROM A PARSE DEFECT RATHER THAN AN EMPTY POPULATION.** Building the required floor's refused-carrier overlap wall, I joined every admitted cross-claim share key's observed consumer modules against each refused row's carriers to prove the wall would not red main, and reported all six keys clean against all four refused rows. ",
+
+    "The join captured nothing. ",
+
+    "The regex was `cache=... ",
+
+    "key=(\\S+).*modules=(\\S+)` and the ledger line carries `consumer_modules=53` BEFORE it carries `modules=a,b,c` -- `consumer_modules=` ends in `modules=`, so the non-greedy match took the COUNT and every intersection was against a set holding the single token `53`. ",
+
+    "Every key read clean because nothing was ever compared. ",
+
+    "The floor then refused on a real overlap standing in that same ledger, and in the main-vintage run I had also declared clean. ",
+
+    "**WHY THIS VARIANT MATTERS SEPARATELY: the domain was NOT empty.** The population existed, the stream was right, and the instrument took the wrong token out of it -- so every review question about whether the population might be empty answers reassuringly, and the emptiness is one field name away rather than anywhere a reader would look. ",
+
+    "Every ledger-joining instrument in this repository parses a field out of a rendered line, so the recurrence surface is the whole class of them. ",
+
+    "**RECOGNITION RULE FOR THIS VARIANT: anchor a field capture on its delimiter (` modules=`, never `modules=`), because any field name can be a SUFFIX of another; and before citing a join that found nothing, plant a positive -- intersect against a value you know is in the data and confirm it comes back.** A join whose only output is `clean` has not been shown to compare anything. ",
+
+    "**STRUCTURAL FIX, LANDED WITH THE SPECIMEN rather than only written down:** the wall now refuses `PureProducerShareObservedCarriersVacuous` when fills were recorded and not one carries a consuming module, so an empty observed domain is a typed refusal instead of a clean verdict, and its RED is enrolled beside the wall's own. ",
+
+    "The refused side of the same join was already asserted at decode -- a refused row with an empty carrier set refuses there, because it could never fire.",
+
+    "**RECEIPT 2026-09-04 (vivid-ibex-751, gunbc#10311), THE `.is_empty()` FORM: A COMPLETION PREDICATE WHOSE EMPTINESS IS INDISTINGUISHABLE FROM ITS SATISFACTION.** This variant was first written as a separate row, `completion_predicate_satisfied_by_the_empty_population`, and that was a re-invention refused at review: `nothing outstanding` over a population of nothing is the SAME identity-element coincidence as a universal quantifier over an empty domain, and it has the same recognition rule and the same remedy. It is recorded here as a variant because the QUANTIFIER IS INVISIBLE IN IT -- there is no `all`, no `every`, no loop for a reader to interrogate, only a conjunction of `.is_empty()` terms, so the question this row tells you to ask has nothing syntactic to attach to. ",
+
+    "WHAT MAKES THE `.is_empty()` FORM WORSE THAN THE `all` FORM is that it fails toward DONE at exactly the moment someone is waiting: the population is empty precisely when work has just started or a head has just been pushed. ",
+
+    "SPECIMEN: `claim_executor` `required_floor_outcome_is_clean` is a conjunction of ELEVEN `.is_empty()` terms with no denominator anywhere in it, and zero planned claims satisfies all eleven and returns clean. THE ADJACENT SITE ALREADY REFUSES THE CLASS IN WRITING, which is what makes the pair the argument: `required_floor_runner`'s expected-red roster decode refuses `ExpectedRedRosterEmpty` at zero identities, stating that an empty roster makes the partition-sum and did-not-execute checks vacuous, and naming the shape as `a read failure quietly wearing the same face as success`. ",
+
+    "**THE PROTECTION CITED IN THE CODE IS TRUE AND VACUOUS IN EXACTLY THE CASE IT NAMES.** `run_required_floor` is documented as refusing when planned, executed and terminal identity counts disagree, `so a silently short roster cannot report as a pass`. At zero that invariant reads `0 == 0 + 0`: it holds, it is advertised as the cover for a short roster, and it is satisfied by the roster being absent entirely. STRUCTURAL VACUITY IS ESTABLISHED; REACHABILITY IS NOT -- whether any route drives the floor to a zero planned population is untraced, and a `FloorDiscoveryRefused` arm may close every one of them. ",
+
+    "THREE FURTHER RECEIPTS FROM LANE TOOLING IN ONE EVENING, ALL FAILING TOWARD DONE: a `case` partition over a check conclusion where running checks rendered EMPTY and the catch-all arm was TERMINAL, reporting SETTLED with five checks in progress; a monitor printing `pending=0 failing=[]` for a pull request whose rollup was empty, written an HOUR AFTER that first instance was written up and using the corrected predicate; and a watch whose condition was `no pending checks`, satisfied by NO CHECKS AT ALL on a just-force-pushed head, reporting CONCLUDED forty minutes early. ",
+
+    "**TWO OF THE THREE WERE WRITTEN AFTER THIS ROW EXISTED, WHICH IS WHAT DECIDES THE REMEDY.** Knowing the class did not protect the next instrument either author wrote, so the remedy does not belong in anyone's attention -- it belongs in the predicate. ",
+
+    "**NEXT TRIGGER FOR THIS VARIANT, NAMED AS THE CAPABILITY AND WITH WHAT IT MUST BE SUFFICIENT FOR:** every completion or coverage predicate on the required floor requires a POSITIVE DENOMINATOR, so a zero-size population refuses as NOT-YET-STARTED rather than passing as settled -- sufficient for no `FloorClean` verdict being derivable from an empty planned population. Adding one guard at `claims_planned` is the artifact-grained version and discharges nothing: it leaves the class alive at every predicate nobody has enumerated.",
+  ],
+
+  evidence: [],
+}

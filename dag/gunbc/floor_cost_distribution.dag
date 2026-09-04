@@ -1,0 +1,1776 @@
+module gunbc.floor_cost_distribution
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.measure { Millisecond, millisecond, millisecond_count }
+
+// THE DERIVATIONS BEHIND docs/plans/floor-cost-distribution-near-the-ceiling.md, SO THAT DOCUMENT
+// CITES A PRODUCER INSTEAD OF CARRYING COPIED FIGURES.
+//
+// DESIGN section 6: name the instrument, never transcribe its output -- and if a measurement is
+// worth re-deriving it is worth an entry point. The first version of that memo named
+// `gunbc.witness_floor_workflow`, which produces the RAW ROWS and performs none of the analysis
+// below; the ten-run intersection, the band histogram, the counterfactual replay and the inflation
+// percentiles existed only as prose plus numbers. Review 58983 refused it on exactly that ground
+// and was right to: a reader could check the arithmetic of nothing.
+//
+// EVERY FUNCTION HERE IS PURE AND TAKES ITS ROWS AS AN ARGUMENT. Reading the artifacts off disk is
+// a separate fact and lives in `tools.floor_cost_distribution_instrument`, which is the §3 split
+// between the interface (what the analysis IS) and the realization (where the bytes come from).
+// The consequence that matters for evidence: every derivation below is witnessable on a hand-built
+// fixture with no run artifacts present, which is what
+// `test.claim.floor_cost_distribution_witness` does.
+//
+// THE INPUT IS THE `required-floor-claim-cost` ARTIFACT that every required-floor run uploads --
+// the COMPLETE executed population, not the 25-row `[over-cost]` preview the job log prints.
+
+// `eval_steps` IS THE ONE COLUMN THIS ANALYSIS NEEDS THAT IS NOT A CLOCK. Evaluator steps are
+// counted by the interpreter and netted by the same shared-fill rule the CPU figure is, so a row's
+// step count is a property of what it evaluated and carries no term for the machine it evaluated
+// on. It is what lets `identity_inflation_permille_at_equal_work` below separate "this row got
+// more expensive" from "this row got inflated" without choosing a control population at all.
+//
+// IT IS NOT A WAY AROUND THE CENSORING, and reaching for it as one is the tempting move once the
+// clocks below become a coproduct. An interrupted row's step count is QUANTISED BY THE DEADLINE
+// POLL -- the poll fires every 1024 steps, so the recorded figure is itself a lower bound rounded
+// to a poll boundary, while a completed row's is a true count. So steps are censored on exactly
+// the same rows the clocks are, by the same mechanism, and a step-denominated statistic over a
+// mixed population has the same defect in a less visible field.
+
+// THE COST IS A COPRODUCT, NOT A NUMBER, AND THIS MODULE IS WHY THE CLASS WAS FILED.
+//
+// This row used to carry `cpu_ms: Millisecond` for every artifact row. The artifact's population
+// includes claims a SAFETY DEADLINE PREEMPTED, whose recorded figure is a LOWER BOUND on what
+// completing would have cost -- unbounded above, and approximately equal to whatever ceiling
+// stopped it. Every derivation below then consumed those bounds as costs: the band histogram
+// counted them, `run_worst_cpu` folded them as maxima, and `identity_inflation_permille` divided
+// one by another to produce a contention ratio.
+//
+// THE DISCRIMINATOR WAS PRESENT AND UNREAD, WHICH IS THE WHOLE SHAPE OF THE CLASS. The artifact
+// has always carried a `verdict_reached` column; `claim_cost_columns` below resolved `identity`,
+// `module`, `cpu_ms` and `eval_steps` by name, refused correctly on a MISSING column, and never
+// asked for it. A discriminator a consumer must remember to join on is a warning, not a wall.
+//
+// SO THE ARMS ARE THE SCHEMA NOW. The producing artifact emits disjoint columns per reading kind
+// (`observed_cpu_ms` against `cpu_at_least_ms`), so an old-vintage artifact whose header carries
+// the shared `cpu_ms` column REFUSES with a positively recognised cause -- the correct fail-closed
+// answer, because reading those rows as costs is the defect. The vintage is UNSUPPORTED rather than
+// unreadable: it is identified exactly, and this reader declines to reconstruct the split.
+//
+// THE ARM NAMES CARRY `CpuReading` BECAUSE THIS IS A DIFFERENT CONTRACT FROM THE MODELLED FACT,
+// AND AN EARLIER DRAFT OF THIS FILE PROVED WHY THAT MATTERS. The authority for the modelled
+// observation is `v2.workflow.claim_cost_observation`, whose `RightCensoredCost` carries a witness
+// identity, BOTH clock axes, and the ceiling. This type is the artifact-side reading of one TSV
+// row restricted to the CPU axis: `ClaimCostColumns` indexes no wall column at all, so this reader
+// structurally CANNOT fill `wall_lower_bound_ms` -- and a projection that cannot carry the
+// authority's fields is not that authority's type.
+//
+// THE EARLIER DRAFT SPELLED THESE ARMS `ObservedCost` AND `RightCensoredCost`, which gave one
+// spelling two materially different declarations in one change -- DESIGN section 3's meaning fork,
+// and section 2's failed decomposition, since net concepts had grown by re-invention. The comment
+// naming the single authority sat two lines above the re-minting of that authority's concept.
+// IT WAS ALSO THE CAUSE OF A DIAGNOSTIC THAT LOOKED LIKE A COMPILER BUG: this module does not
+// import the authority, but with that module merely PRESENT IN THE RESOLVED POOL the bare name
+// bound to the FOREIGN product ambiently and silently, so one arm widened to this coproduct and
+// its sibling stayed the foreign bare product -- `Coproduct(ClaimCostReading) vs
+// Product(RightCensoredCost)`. The asymmetry between the two arms was never arbitrary; it was the
+// collision. `ObservedCost` had no pool competitor and so widened correctly BY LUCK, which is why
+// BOTH arms are renamed here rather than only the one that broke.
+//
+// So the rule this type is obeying: a module that names another as the authority for a concept may
+// not declare a type whose SPELLING already belongs to that authority. Either consume it, or carry
+// a different name because it is a different contract. This is the second.
+type ClaimCostReading
+  = ObservedCpuReading { cpu_ms: Millisecond }
+  | RightCensoredCpuReading { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
+
+// The cost figure a derivation is ENTITLED to treat as a POINT, and `Absent` for a censored row.
+// Every consumer asking a POINT question goes through this, so a bound cannot reach a site that
+// treats it as an exact cost without the caller writing an `Absent` arm -- the same discipline the
+// seed's `exact_cost_ms` enforces on the producing side.
+//
+// THE QUANTIFIER IS OVER POINT QUESTIONS AND NOT OVER ARITHMETIC, which is narrower than it first
+// reads and deliberately so. `row_crossing` matches `RightCensoredCpuReading` directly and does compare
+// its bound, because a CROSSING is a lower-bound question that a bound can legitimately answer.
+// That is not a bypass of this accessor; it is the case split this module exists to force, and it
+// carries a third `RowCrossingUndecidable` arm for the bounds that cannot answer. Writing the
+// quantifier over every arithmetic site would have been the wider claim that this file's own
+// crossing guard falsifies.
+fn observed_cpu_ms(reading: ClaimCostReading) -> Millisecond? {
+  match reading {
+    ObservedCpuReading { cpu_ms: c } => Present { value: c }
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => none
+  }
+}
+
+// The LOWER BOUND a row is known to be at or above, on either arm. An observed row's bound is its
+// own cost. This is the one question a censored row CAN answer, and it is the only direction that
+// is sound: "this row cost at least N" is true on both arms, "this row cost N" is true on one.
+fn cpu_at_least_ms(reading: ClaimCostReading) -> Millisecond {
+  match reading {
+    ObservedCpuReading { cpu_ms: c } => c
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } => b
+  }
+}
+
+fn reading_is_censored(reading: ClaimCostReading) -> Bool {
+  match reading {
+    ObservedCpuReading { cpu_ms: _ } => false
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
+  }
+}
+
+// BOTH AXES ARE CARRIED ON THIS ROW, AND NEITHER DERIVES THE OTHER. `verdict_reached`
+// (gunbc#10209) says whether the claim ANSWERED; `cost` says whether its clocks are a MEASUREMENT
+// or a right-censored LOWER BOUND. They come apart in both directions: a host panic reaches no
+// verdict while its clocks are exact, because the unwind ended the evaluation. Collapsing them
+// would mint a bound for a row that has a measurement, or a verdict for one that never answered.
+// WHY THE DEADLINE COULD OR COULD NOT HAVE FIRED FOR THIS ROW, PARSED AT THE BOUNDARY RATHER THAN
+// CARRIED AS THE ARTIFACT'S STRING. The `preemption_reachability` column is the producer's own
+// statement of whether every stride poll was available to this claim's evaluation. It is the axis
+// that separates two crossings that are IDENTICAL in the cost column and opposite in meaning:
+// a claim the deadline could have stopped and did not is an OVERSHOOT between two polls -- a
+// charge -- while a claim whose cost accrued inside one opaque host call is a MISSED INTERRUPT,
+// where completing under the ceiling was never something the limit could enforce.
+//
+// AN UNRECOGNISED LABEL REFUSES THE ROW rather than becoming a fourth population, and a row that
+// refuses refuses its whole artifact (`claim_cost_line_refuses`). The producer's vocabulary is
+// closed -- `preemption_reachability_label` in the seed's `required_floor_runner` has exactly
+// three spellings -- so a fourth one reaching this reader means the producer changed and this
+// analysis is reading a schema it does not understand. Absorbing it into "unobserved" would make a
+// producer change indistinguishable from an unarmed surface, which is this module's own
+// incidental-denominator failure applied to a new column.
+type PreemptionReachability
+  = ReachabilitySurfaceUnarmed
+  | ReachabilityCooperativelyPollable
+  | ReachabilityOpaqueHostCallUnbounded { operations: String }
+
+fn parse_preemption_reachability(value: String) -> PreemptionReachability? {
+  if value == "surface_unarmed" {
+    Present { value: ReachabilitySurfaceUnarmed }
+  } else if value == "cooperatively_pollable" {
+    Present { value: ReachabilityCooperativelyPollable }
+  } else if starts_with(s: value, prefix: "opaque_host_call_unbounded:") {
+    Present {
+      value: ReachabilityOpaqueHostCallUnbounded {
+        operations: join(split(s: value, delimiter: ":") |> skip(n: 1), ":")
+      }
+    }
+  } else {
+    none
+  }
+}
+
+// `reachability` IS OPTIONAL AND ITS `Absent` IS A FACT ABOUT THE ARTIFACT, NEVER A POPULATION.
+// The column was added to the producer after the vintages this module already samples, so an older
+// artifact carries none. That absence is propagated as `Absent` and reaches the census as its own
+// disposition -- it is not an unarmed surface, and it is not a zero. A census whose absence and
+// whose zero are the same value is quoted as coverage.
+type FloorCostRow {
+  identity: String
+  module: String
+  verdict_reached: Bool
+  cost: ClaimCostReading
+  eval_steps: Int
+  reachability: PreemptionReachability?
+}
+
+// One run's population, named by its run id so a finding can cite which runs it rests on.
+type RunCost {
+  run: NonEmptyStr
+  rows: List<FloorCostRow>
+}
+
+// COLUMNS ARE LOCATED BY NAME, NOT BY POSITION, AND THIS IS NOT STYLE.
+//
+// DESIGN section 3's standing rule -- cite the symbol, never the position -- applies to a TSV
+// exactly as it applies to a source file, and for the same reason: any insertion ABOVE the cited
+// index silently invalidates it. That is not hypothetical here. The `eval_steps` column was
+// INSERTED into this artifact between vintages: run 33661252708's header is
+// `identity module outcome verdict_reached wall_ms cpu_ms cost_line_ms` and run 33699540412's is
+// the same with `eval_steps` before `cost_line_ms`. A parser keyed on index 6 reads the older
+// artifact's `cost_line_ms` -- the constant 100 -- as a step count, which is not an error, it is a
+// PLAUSIBLE NUMBER: the resulting microseconds-per-step figures came out near 2500 instead of near
+// 2, off by three orders of magnitude and still perfectly well-formed. Measured, not imagined:
+// three of eleven sampled runs produced exactly that before the header was consulted.
+//
+// So the header IS the schema and a missing column REFUSES. `Absent` here means "this artifact
+// does not carry the column this analysis needs", which is a fact about the artifact and must
+// reach the caller as one, rather than being defaulted into a zero or a constant that flows into
+// every downstream percentile.
+//
+// AND THE COLUMN SET IS NOW PER READING KIND. `cpu_ms` no longer exists in the artifact: a
+// completed row fills `observed_cpu_ms` and a preempted one fills `cpu_at_least_ms` beside its
+// `censoring_cpu_limit_ms`. Resolving all three by name means an OLD-VINTAGE artifact -- one whose
+// header still carries the shared `cpu_ms` -- refuses wholesale rather than being read as if every
+// row were a completion. That refusal is the point and not a regression, because the previous
+// behaviour of reading them all as costs is the defect this module was the live specimen of -- and
+// the honest reason is that this reader DECLINES the legacy encoding, not that the bytes are
+// silent. They carry `outcome` and `verdict_reached`, so a separating signal exists; reconstructing
+// it is simply not work this version does.
+// `preemption_reachability` IS THE ONE OPTIONAL INDEX HERE, and it is optional for a reason the
+// required columns are not: every column above is load-bearing for the COST reading, so an
+// artifact lacking one cannot be read as a cost population at all. Reachability answers a
+// different question -- WHICH population a crossing is in -- so an artifact without it is still a
+// perfectly sound cost artifact and only the crossing-population census is unavailable over it.
+// Making it required would retire the twelve sampled vintages the envelope derivation rests on,
+// which is a strictly larger loss than the one it would prevent.
+type ClaimCostColumns {
+  identity: Int
+  module: Int
+  verdict_reached: Int
+  cost_reading: Int
+  observed_cpu_ms: Int
+  cpu_at_least_ms: Int
+  censoring_cpu_limit_ms: Int
+  eval_steps: Int
+  preemption_reachability: Int?
+}
+
+fn claim_cost_column_index(header_fields: List<String>, name: String) -> Int? {
+  header_fields
+    |> enumerate
+    |> filter(e => e.second == name)
+    |> map(e => e.first)
+    |> first
+}
+
+fn parse_verdict_reached(value: String) -> Bool? {
+  if value == "true" { Present { value: true } }
+  else if value == "false" { Present { value: false } }
+  else { none }
+}
+
+// THE HEADER LINE IS THE ONE THAT NAMES `identity` FIRST. The artifact's `#`-prefixed summary
+// precedes it, and a data row can never be mistaken for it because no claim identity is the
+// literal string "identity".
+fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
+  let fields = split(s: header_line, delimiter: "\t")
+  match claim_cost_column_index(header_fields: fields, name: "identity") {
+    Absent => none
+    Present { value: id } => match claim_cost_column_index(header_fields: fields, name: "module") {
+      Absent => none
+      Present { value: md } => match claim_cost_column_index(header_fields: fields, name: "verdict_reached") {
+        Absent => none
+        Present { value: verdict } => match claim_cost_column_index(header_fields: fields, name: "cost_reading") {
+          Absent => none
+          Present { value: kind } => match claim_cost_column_index(header_fields: fields, name: "observed_cpu_ms") {
+            Absent => none
+            Present { value: obs } => match claim_cost_column_index(header_fields: fields, name: "cpu_at_least_ms") {
+              Absent => none
+              Present { value: bound } => match claim_cost_column_index(header_fields: fields, name: "censoring_cpu_limit_ms") {
+                Absent => none
+                Present { value: ceil } => match claim_cost_column_index(header_fields: fields, name: "eval_steps") {
+                  Absent => none
+                  Present { value: steps } => Present {
+                    value: ClaimCostColumns {
+                      identity: id,
+                      module: md,
+                      verdict_reached: verdict,
+                      cost_reading: kind,
+                      observed_cpu_ms: obs,
+                      cpu_at_least_ms: bound,
+                      censoring_cpu_limit_ms: ceil,
+                      eval_steps: steps,
+                      preemption_reachability: claim_cost_column_index(header_fields: fields, name: "preemption_reachability")
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A TSV LINE IS EITHER A ROW OR IT IS NOT, AND "NOT" IS NEVER A FABRICATED ROW. The artifact
+// carries a `#`-prefixed summary line and a header line before the data, and a short or
+// unparseable line is refused rather than defaulted to zero -- a zero would sit silently at the
+// bottom of every band and inflate the safe population.
+// THE READING KIND SELECTS WHICH COLUMNS ARE READ, and a row whose named kind does not match the
+// columns it actually filled is REFUSED rather than repaired. A `right_censored` row with an empty
+// bound column, or an `observed` row with an empty cost column, is an artifact defect: recovering
+// a figure from the other arm's column would be exactly the promotion this module exists to stop.
+// ONE FUNCTION PER READING KIND, EACH DECLARING `ClaimCostReading?` AS ITS OWN CONTRACT. The kind
+// named in the row selects which columns are read, so the reading of those columns is the thing
+// that differs and it is what earns a name -- `parse_claim_cost_reading` below is then a pure
+// selection over the kind, with no column knowledge of its own.
+//
+// THIS ALSO REMOVES A DEPENDENCE ON BRANCH-JOIN INFERENCE, and that is worth stating rather than
+// leaving as a silent consequence. When both arms were spelled inline, the whole-corpus strict
+// path refused the join -- `if branches resolve to incompatible types: Coproduct(ClaimCostReading)
+// vs Product(RightCensoredCpuReading)` -- while the entry-scoped path accepted the same bytes and ran
+// them green. Each arm now widens against a DECLARED return type at a function boundary instead of
+// against its sibling, which is a contract the checker is given rather than one it must infer.
+// The acceptance-path disagreement itself is NOT diagnosed by this edit and is reported separately;
+// re-spelling until the checker stops complaining would have been the authoring-time workaround
+// DESIGN section 5 names, so this is a decomposition that stands on its own terms.
+fn observed_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  match parse_int(s: fields[columns.observed_cpu_ms]) {
+    Absent => none
+    Present { value: cpu } => Present { value: ObservedCpuReading { cpu_ms: millisecond(count: cpu) } }
+  }
+}
+
+// BOTH COLUMNS OR NEITHER. A censored row without its ceiling cannot say what stopped it, and a
+// bound whose ceiling is unknown is not a reading this module can carry -- so a missing ceiling
+// refuses the row rather than yielding a bound with a fabricated limit.
+fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  match parse_int(s: fields[columns.cpu_at_least_ms]) {
+    Absent => none
+    Present { value: bound } => match parse_int(s: fields[columns.censoring_cpu_limit_ms]) {
+      Absent => none
+      Present { value: ceiling } => Present {
+        value: RightCensoredCpuReading {
+          cpu_lower_bound_ms: millisecond(count: bound),
+          censoring_ceiling_ms: millisecond(count: ceiling)
+        }
+      }
+    }
+  }
+}
+
+fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
+  if fields[columns.cost_reading] == "observed" {
+    observed_cost_reading(fields: fields, columns: columns)
+  } else if fields[columns.cost_reading] == "right_censored" {
+    right_censored_cost_reading(fields: fields, columns: columns)
+  } else {
+    none
+  }
+}
+
+// THREE OUTCOMES, NOT TWO, AND THE THIRD IS WHY THIS IS NOT A `PreemptionReachability?`.
+// A missing COLUMN and an unreadable VALUE are opposite facts: the first says this artifact
+// predates the producer's reachability column and the census simply cannot ask; the second says
+// the column is there and carries a spelling this reader does not know, which is a schema
+// disagreement that must refuse the row and therefore the artifact. An option type has one empty
+// arm and would have to spend it on one of them, and whichever it spent it on the other would be
+// silently promoted into it.
+type RowReachabilityReading
+  = ReachabilityColumnUnrecorded
+  | ReachabilityColumnUnreadable
+  | ReachabilityColumnRead { value: PreemptionReachability }
+
+fn parse_row_reachability(fields: List<String>, columns: ClaimCostColumns) -> RowReachabilityReading {
+  match columns.preemption_reachability {
+    Absent => ReachabilityColumnUnrecorded
+    Present { value: idx } => match parse_preemption_reachability(value: fields[idx]) {
+      Absent => ReachabilityColumnUnreadable
+      Present { value: reach } => ReachabilityColumnRead { value: reach }
+    }
+  }
+}
+
+// THE OPTIONAL REACHABILITY INDEX WIDENS THE ROW REQUIREMENT WHEN THE HEADER DECLARED IT. A header
+// that names `preemption_reachability` and a data row too short to carry it is a TORN row, not a
+// vintage without the column, and the two must not render the same: the vintage question is decided
+// by the HEADER and the tear by the ROW. Leaving the index out of the width guard below would let a
+// short row parse with `Absent` reachability and be counted as a pre-column artifact.
+fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRow? {
+  if starts_with(s: line, prefix: "#") {
+    none
+  } else {
+    let fields = split(s: line, delimiter: "\t")
+    let widest = max_int(
+      a: max_int(
+        a: max_int(
+          a: max_int(a: max_int(a: columns.identity, b: columns.module), b: columns.verdict_reached),
+          b: max_int(a: columns.cost_reading, b: columns.eval_steps)
+        ),
+        b: max_int(a: max_int(a: columns.observed_cpu_ms, b: columns.cpu_at_least_ms), b: columns.censoring_cpu_limit_ms)
+      ),
+      b: match columns.preemption_reachability { Absent => 0 Present { value: r } => r }
+    )
+    if count(fields) <= widest {
+      none
+    } else if fields[columns.identity] == "identity" {
+      none
+    } else {
+      match parse_claim_cost_reading(fields: fields, columns: columns) {
+        Absent => none
+        Present { value: reading } => match parse_int(s: fields[columns.eval_steps]) {
+          Absent => none
+          Present { value: steps } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
+            Absent => none
+            Present { value: reached } => match parse_row_reachability(fields: fields, columns: columns) {
+              ReachabilityColumnUnreadable => none
+              ReachabilityColumnUnrecorded => Present {
+                value: FloorCostRow {
+                  identity: fields[columns.identity],
+                  module: fields[columns.module],
+                  verdict_reached: reached,
+                  cost: reading,
+                  eval_steps: steps,
+                  reachability: none
+                }
+              }
+              ReachabilityColumnRead { value: reach } => Present {
+                value: FloorCostRow {
+                  identity: fields[columns.identity],
+                  module: fields[columns.module],
+                  verdict_reached: reached,
+                  cost: reading,
+                  eval_steps: steps,
+                  reachability: Present { value: reach }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn max_int(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+// AN ARTIFACT WHOSE HEADER LACKS A NEEDED COLUMN REFUSES, NAMING THE COLUMNS IT LACKED. The
+// sentence that stood here said it YIELDS NO ROWS and told the caller to re-read
+// `claim_cost_columns` if they wanted to tell an old vintage from an empty run -- both true of the
+// partial-population version and both false now. A stale comment on a repaired implementation
+// tells the next reader the old behaviour was intended, which is this change's own finding applied
+// one turn later.
+// A DATA LINE IS DECIDED BEFORE IT IS PARSED, SO THAT FAILING TO PARSE ONE IS A REFUSAL RATHER
+// THAN AN ABSENCE. The artifact carries a `#`-prefixed summary line, a header, and possibly blank
+// lines; none of those is a row and none of them is malformed. Everything else IS a declared row,
+// and a declared row that does not parse is an artifact defect.
+fn is_claim_cost_data_line(line: String) -> Bool {
+  line != ""
+    && !starts_with(s: line, prefix: "#")
+    && !starts_with(s: line, prefix: "identity\t")
+}
+
+fn claim_cost_line_refuses(line: String, columns: ClaimCostColumns) -> Bool {
+  match parse_claim_cost_line(line: line, columns: columns) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// WHY THE CAUSE IS CARRIED AND LOCATED RATHER THAN COUNTED. A reader who is told only that N rows
+// were dropped cannot act; a reader handed the offending line can. Each arm names a DIFFERENT
+// artifact defect, and none of them is "the artifact was empty".
+// THE CAUSE MUST NAME THE STATE ACCURATELY, NOT MERELY BE TYPED. An earlier revision called this
+// arm `HeaderNotReadable`, which is a false diagnosis: the historical header is perfectly READABLE
+// and is a KNOWN schema this version declines to support. A cause that misnames the state is the
+// same defect as a name that misnames a behaviour -- the thing this change found in its own
+// witness names -- and it is worse in a diagnostic, because the reader acts on it.
+//
+// `UnsupportedSharedCpuMsVintage` is separated from the generic arm because that vintage is
+// RECOGNISED rather than merely unparsed: a header carrying `cpu_ms` and no `cost_reading` is the
+// pre-split artifact, whose defining property is that one column held both populations. Naming it
+// tells the operator to re-point the sample at a newer run; the generic arm cannot say that.
+type ArtifactRefusalCause
+  = NoHeaderLine
+  | UnsupportedSharedCpuMsVintage { header_line: String }
+  | UnsupportedArtifactSchema { header_line: String, missing_columns: List<String> }
+  | MalformedDataRow { line: String }
+
+// THE COLUMNS THIS READER REQUIRES, DECLARED ONCE so the refusal can name what was absent rather
+// than reporting that something was.
+data claim_cost_required_columns: List<String> = [
+  "identity", "module", "verdict_reached", "cost_reading",
+  "observed_cpu_ms", "cpu_at_least_ms", "censoring_cpu_limit_ms", "eval_steps"
+]
+
+fn missing_claim_cost_columns(header_line: String) -> List<String> {
+  let fields = split(s: header_line, delimiter: "\t")
+  claim_cost_required_columns |> filter(n =>
+    match claim_cost_column_index(header_fields: fields, name: n) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// THE PRE-SPLIT VINTAGE IS IDENTIFIED POSITIVELY, not inferred from failure: it carries `cpu_ms`
+// and no `cost_reading`, which is exactly the shape in which a bound and a completion shared one
+// column. This is also why the claim that the old bytes carry NO identifying signal is wrong --
+// they carry this one, and they carry `outcome` and `verdict_reached` besides.
+fn is_shared_cpu_ms_vintage(header_line: String) -> Bool {
+  let fields = split(s: header_line, delimiter: "\t")
+  match claim_cost_column_index(header_fields: fields, name: "cpu_ms") {
+    Absent => false
+    Present { value: _ } => match claim_cost_column_index(header_fields: fields, name: "cost_reading") {
+      Absent => true
+      Present { value: _ } => false
+    }
+  }
+}
+
+// THE PARSE IS TOTAL: ROWS, OR A LOCATED REFUSAL. NEVER A SHORTER LIST.
+//
+// THIS TYPE EXISTS BECAUSE THE EARLIER VERSION OF THIS FUNCTION COMMITTED THIS PR'S OWN CLASS IN
+// THE OPPOSITE DIRECTION. It returned `List<FloorCostRow>` and answered `[]` for a missing header,
+// `[]` for an unreadable header, and silently DROPPED any line that failed to parse. Every derived
+// figure downstream then stayed internally consistent over the rows that happened to survive, and
+// nothing anywhere was countable as having gone wrong.
+//
+// That is DESIGN section 5's absorbing fallback wearing the opposite costume. The named form
+// WIDENS when it cannot compute precisely -- rerun everything, scan all keys. This one NARROWS:
+// the population silently shrinks and the analysis proceeds confidently over the survivors. Both
+// substitute an answer for an admission of ignorance, and this direction is the harder one to see
+// because a shrunken population produces no error, no warning, and no anomalous number.
+//
+// IT IS ALSO THE EXACT DEFECT THIS MODULE EXISTS TO PREVENT, ONE STAGE EARLIER. The coproduct
+// above makes it unwritable to read a right-censored bound as an exact cost -- but a row that
+// vanishes before it is judged never reaches the coproduct at all. A guarantee about how rows are
+// classified is worth nothing without a guarantee that every declared row WAS classified.
+//
+// THE OBLIGATION, STATED SO A LATER EDIT CANNOT QUIETLY DROP IT: every line the artifact declares
+// as a row receives a disposition -- parsed, or refused with its cause. A figure whose denominator
+// is "the rows that parsed" is the bug.
+type ClaimCostArtifact
+  = ArtifactRows { rows: List<FloorCostRow> }
+  | ArtifactRefused { cause: ArtifactRefusalCause }
+
+fn parse_claim_cost_tsv(text: String) -> ClaimCostArtifact {
+  let lines = split(s: text, delimiter: "\n")
+  match lines |> filter(l => starts_with(s: l, prefix: "identity\t")) |> first {
+    Absent => ArtifactRefused { cause: NoHeaderLine }
+    Present { value: header } => match claim_cost_columns(header_line: header) {
+      Absent =>
+        if is_shared_cpu_ms_vintage(header_line: header) {
+          ArtifactRefused { cause: UnsupportedSharedCpuMsVintage { header_line: header } }
+        } else {
+          ArtifactRefused {
+            cause: UnsupportedArtifactSchema {
+              header_line: header,
+              missing_columns: missing_claim_cost_columns(header_line: header)
+            }
+          }
+        }
+      Present { value: columns } => {
+        let data_lines = lines |> filter(l => is_claim_cost_data_line(line: l))
+        match data_lines |> filter(l => claim_cost_line_refuses(line: l, columns: columns)) |> first {
+          Present { value: bad } => ArtifactRefused { cause: MalformedDataRow { line: bad } }
+          Absent => ArtifactRows {
+            rows: data_lines |> flat_map(line => match parse_claim_cost_line(line: line, columns: columns) {
+              Absent => []
+              Present { value: row } => [row]
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
+
+// THE BAND HISTOGRAM (question 1: is the population near the ceiling dense).
+// `censored_rows` IS NOT DECORATION AND IT IS NOT A BAND. A right-censored row has no cost to
+// place, and placing it by its bound would put every one of them in whichever band contains the
+// ceiling -- manufacturing exactly the "population dense near the ceiling" shape this histogram
+// exists to test for. So they are excluded from every band and counted once beside the whole
+// histogram, because a histogram that silently drops rows is a selection view read as a
+// population.
+type CostBand {
+  lower_ms: Millisecond
+  upper_ms: Millisecond
+  rows: Int
+}
+
+// COMPARISON GOES THROUGH `millisecond_count` RATHER THAN OVER THE CARRIER, because the carrier is
+// what stops a figure read from one clock being compared against a figure read from another; the
+// count is the projection a comparison is entitled to.
+fn rows_in_band(rows: List<FloorCostRow>, lower_ms: Millisecond, upper_ms: Millisecond) -> Int {
+  count(rows |> flat_map(r => match observed_cpu_ms(reading: r.cost) {
+    Absent => []
+    Present { value: c } =>
+      if millisecond_count(m: c) >= millisecond_count(m: lower_ms)
+        && millisecond_count(m: c) < millisecond_count(m: upper_ms) { [r] } else { [] }
+  }))
+}
+
+// THE CENSORED POPULATION, so that a caller rendering the histogram states what it left out. A
+// band histogram whose bands sum to less than the population is only honest if the difference is
+// reported, which is what this is for.
+fn censored_rows(rows: List<FloorCostRow>) -> Int {
+  count(rows |> filter(r => reading_is_censored(reading: r.cost)))
+}
+
+// ROWS KNOWN TO BE AT OR ABOVE A LINE, AND THIS ONE ADMITS BOTH ARMS ON PURPOSE. It asks a
+// LOWER-BOUND question -- "is this row known to have cost at least N" -- which is exactly the
+// question a censored row can answer soundly: it was stopped at its ceiling, so it is known to be
+// at or above that ceiling. Including them here is not the promotion this module forbids; it is
+// the one direction the bound supports. Contrast `worst_observed_cpu` below, which asks how much a
+// row cost and therefore cannot admit them.
+fn rows_at_or_above(rows: List<FloorCostRow>, ms: Millisecond) -> Int {
+  count(rows |> filter(r => millisecond_count(m: cpu_at_least_ms(reading: r.cost)) >= millisecond_count(m: ms)))
+}
+
+fn cost_bands(rows: List<FloorCostRow>, edges: List<Millisecond>) -> List<CostBand> {
+  enumerate(edges)
+    |> flat_map(e =>
+         if e.first + 1 < count(edges) {
+           [CostBand {
+              lower_ms: e.second,
+              upper_ms: edges[e.first + 1],
+              rows: rows_in_band(rows: rows, lower_ms: e.second, upper_ms: edges[e.first + 1])
+            }]
+         } else { [] })
+}
+
+// CROSSINGS AND THE COUNTERFACTUAL REPLAY.
+//
+// `excluded_modules` is what makes the replay possible: it answers "what would this run have done
+// if these modules had been repaired", which is the only way to separate a repair's effect from
+// the ambient contention of the run it landed on. It is NOT a claim that excluded rows cost zero;
+// it is a claim about which rows could have crossed.
+fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
+  any(excluded_modules, m => m == row.module)
+}
+
+// A CROSSING IS A LOWER-BOUND QUESTION, so a censored row CAN answer it -- but only when its own
+// bound clears the line being asked about, and that is a per-row fact rather than a standing one.
+//
+// "Did this row reach the line" is the one inference a bound supports, and excluding censored rows
+// outright would under-count crossings and make the floor read healthier than it is -- the single
+// direction this figure must never err in, since `runs_refused` is built on it. So they are
+// admitted. What is NOT admitted is the assumption that admitting them is always sound.
+//
+// THE SOUNDNESS RESTS ON AN ORDERING BETWEEN TWO INDEPENDENTLY OWNED CONSTANTS, AND NOTHING
+// ASSERTS IT. A censored row is known only to have cost at least its own bound. Whether that
+// settles the question depends on how the bound compares to the line, and today it always does --
+// the CPU safety ceiling (`v2.workflow.required_floor`
+// `required_floor_claim_cpu_safety_limit_ms`) sits well above the cost line the artifact records,
+// so every censored row genuinely did cross. That is a COINCIDENCE OF TWO CONSTANTS IN DIFFERENT
+// MODULES, not a property of the question: raise the cost line above the safety ceiling, or lower
+// the ceiling, and every censored row would be silently counted as a crossing it never made, with
+// `runs_refused` moving and nothing saying why.
+//
+// SO THERE ARE THREE ARMS AND THE THIRD IS COUNTED, NOT DEFAULTED. A censored row whose bound does
+// NOT clear the line is UNDECIDABLE for this question, and it is refused and reported rather than
+// resolved either way. Defaulting it to "crossed" is the tempting arm because it errs
+// pessimistically -- and it is still the absorbing fallback DESIGN section 5 forbids: it conflates
+// "the safe answer" with "no answer", destroys the signal that the ordering has broken, and
+// fabricates a fact about a row. That is the same argument this module already makes for refusing
+// an inflation pair rather than dropping its censored member, applied to its own admission.
+//
+// TODAY THE THIRD ARM IS PROVABLY EMPTY, WHICH IS EXACTLY WHY IT IS WORTH HAVING: it is a
+// discriminating red that cannot currently fire, costs nothing while the ordering holds, and fires
+// the moment it stops.
+type RowCrossing
+  = RowCrossed
+  | RowBelowLine
+  | RowCrossingUndecidable
+
+// THE TWO CENSORED ARMS, SO THE BRANCH BELOW CAN BE READ WITHOUT RE-DERIVING THEM. When the bound
+// CLEARS the line the row is known to be above it whatever its true cost was, which is a sound
+// crossing. When the bound sits BELOW the line, the row is known only to be above the bound, the
+// true cost may be on either side, and this module cannot tell -- so it refuses rather than
+// guessing in either direction.
+fn row_crossing(row: FloorCostRow, ceiling_ms: Millisecond) -> RowCrossing {
+  match row.cost {
+    ObservedCpuReading { cpu_ms: c } =>
+      if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) { RowCrossed } else { RowBelowLine }
+    RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: _ } =>
+      if millisecond_count(m: b) >= millisecond_count(m: ceiling_ms) {
+        RowCrossed
+      } else {
+        RowCrossingUndecidable
+      }
+  }
+}
+
+// The crossing verdict over one run, with the undecidable population carried BESIDE the crossers
+// rather than folded into or out of them. Both lists are identities, so a caller can name the rows
+// it could not decide instead of reporting a count it cannot act on.
+type RunCrossingCensus {
+  crossed: List<String>
+  undecidable: List<String>
+}
+
+fn run_crossing_census(run: RunCost, ceiling_ms: Millisecond, excluded_modules: List<String>) -> RunCrossingCensus {
+  let kept = run.rows |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+  RunCrossingCensus {
+    crossed: kept |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+      RowCrossed => [r.identity]
+      RowBelowLine => []
+      RowCrossingUndecidable => []
+    }),
+    undecidable: kept |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+      RowCrossed => []
+      RowBelowLine => []
+      RowCrossingUndecidable => [r.identity]
+    })
+  }
+}
+
+fn run_crossings(run: RunCost, ceiling_ms: Millisecond, excluded_modules: List<String>) -> List<String> {
+  run_crossing_census(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules).crossed
+}
+
+// THE UNDECIDABLE POPULATION ACROSS A SAMPLE, so a caller reporting `runs_refused` can state what
+// that verdict could not see. A refusal that is counted but never surfaced is the same silence as
+// no refusal at all.
+fn runs_crossing_undecidable(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> List<String> {
+  runs |> flat_map(run => run_crossing_census(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules).undecidable)
+}
+
+// THE WORST COST IS A POINT QUESTION AND CANNOT ADMIT A BOUND, which is the opposite ruling from
+// `run_crossings` directly above, over the same rows, for a reason worth stating rather than
+// leaving to be re-derived: "how much did the worst row cost" has an ANSWER that a censored row
+// does not carry, while "did any row reach the line" has a THRESHOLD that it does.
+//
+// So the result is typed. Folding bounds in with costs would return a number that is a maximum of
+// two different quantities and reads as a cost; folding them out silently would report a maximum
+// over the rows that COMPLETED, which is `censored_estimator_drops_its_own_tail` exactly -- a
+// statistic over the survivors of a threshold on the very variable being estimated, biased low,
+// and biased low precisely where the analysis is looking. Neither is available, so the arm names
+// which one it is returning and how many rows it could not see.
+type WorstCost
+  = WorstObserved { cpu_ms: Millisecond }
+  | WorstIsLowerBound { at_least_ms: Millisecond, censored_rows: Int }
+
+fn worst_cost_at_least_ms(w: WorstCost) -> Millisecond {
+  match w {
+    WorstObserved { cpu_ms: c } => c
+    WorstIsLowerBound { at_least_ms: b, censored_rows: _ } => b
+  }
+}
+
+fn run_worst_cpu(run: RunCost, excluded_modules: List<String>) -> WorstCost {
+  let kept = run.rows |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+  let censored = censored_rows(rows: kept)
+  let bound = fold(
+    kept,
+    init: millisecond(count: 0),
+    f: (worst, r) =>
+      if millisecond_count(m: cpu_at_least_ms(reading: r.cost)) > millisecond_count(m: worst) {
+        cpu_at_least_ms(reading: r.cost)
+      } else { worst }
+  )
+  if censored > 0 {
+    WorstIsLowerBound { at_least_ms: bound, censored_rows: censored }
+  } else {
+    WorstObserved { cpu_ms: bound }
+  }
+}
+
+// A FLOOR RUN REFUSES IF ANY ONE ROW CROSSES, so the run-level verdict is existential over rows
+// and the fleet-level figure is a COUNT OF RUNS, never a count of rows: fifteen crossings in one
+// run and one crossing in another are the same number of refused merges.
+fn runs_refused(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> Int {
+  count(runs |> filter(run => count(run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules)) > 0))
+}
+
+// THE CENSORING IS UNION-PROPAGATED ACROSS RUNS, not decided by whichever run happened to hold the
+// maximum: if ANY sampled run contains a censored row, the fleet-wide worst is a lower bound, even
+// when the largest figure came from a run that had none. A maximum is only exact when every member
+// it ranged over was.
+fn worst_over_runs(runs: List<RunCost>, excluded_modules: List<String>) -> WorstCost {
+  let per_run = runs |> map(run => run_worst_cpu(run: run, excluded_modules: excluded_modules))
+  let censored = fold(per_run, init: 0, f: (n, w) => match w {
+    WorstObserved { cpu_ms: _ } => n
+    WorstIsLowerBound { at_least_ms: _, censored_rows: c } => n + c
+  })
+  let bound = fold(per_run, init: millisecond(count: 0), f: (worst, w) => {
+    let v = worst_cost_at_least_ms(w: w)
+    if millisecond_count(m: v) > millisecond_count(m: worst) { v } else { worst }
+  })
+  if censored > 0 {
+    WorstIsLowerBound { at_least_ms: bound, censored_rows: censored }
+  } else {
+    WorstObserved { cpu_ms: bound }
+  }
+}
+
+// MAX-OVER-RUNS, the contention-independent ranking. Membership of any single run's crossing set is
+// a function of that run's load as much as of the row, so a candidate population must be ranked on
+// the worst each row has been observed to cost, never on one run's sample.
+// BOTH MAXIMA CARRY THEIR CENSORING FOR THE SAME REASON `worst_over_runs` does, and it bites
+// HARDEST here: this is the contention-independent RANKING that decides which producers become
+// repair candidates, and a censored row's bound is approximately the ceiling -- the largest figure
+// in the artifact. Reading those as costs ranks the rows the deadline stopped above the rows that
+// are genuinely expensive, which inverts the candidate order the ladder is built from.
+fn rows_max_cost(rows: List<FloorCostRow>) -> WorstCost {
+  let censored = censored_rows(rows: rows)
+  let bound = fold(rows, init: millisecond(count: 0), f: (w, r) =>
+    if millisecond_count(m: cpu_at_least_ms(reading: r.cost)) > millisecond_count(m: w) {
+      cpu_at_least_ms(reading: r.cost)
+    } else { w })
+  if censored > 0 {
+    WorstIsLowerBound { at_least_ms: bound, censored_rows: censored }
+  } else {
+    WorstObserved { cpu_ms: bound }
+  }
+}
+
+fn identity_max_cpu(runs: List<RunCost>, identity: String) -> WorstCost {
+  rows_max_cost(rows: runs |> flat_map(run => run.rows |> filter(r => r.identity == identity)))
+}
+
+fn module_max_cpu(runs: List<RunCost>, module: String) -> WorstCost {
+  rows_max_cost(rows: runs |> flat_map(run => run.rows |> filter(r => r.module == module)))
+}
+
+// THE REPAIR LADDER: what removing one more module actually buys, which is the quantity that
+// decides whether per-producer repair is the right unit of work.
+type LadderStep {
+  removed: String
+  worst: WorstCost
+  runs_refused: Int
+}
+
+fn repair_ladder(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  already_excluded: List<String>,
+  order: List<String>
+) -> List<LadderStep> {
+  enumerate(order)
+    |> map(e => {
+         let excluded = concat(already_excluded, order |> take(n: e.first + 1))
+         LadderStep {
+           removed: e.second,
+           worst: worst_over_runs(runs: runs, excluded_modules: excluded),
+           runs_refused: runs_refused(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded)
+         }
+       })
+}
+
+// RUN-TO-RUN INFLATION, PAIRED ON IDENTITY.
+//
+// CARRIED IN PERMILLE AS AN Int RATHER THAN AS A RATIO, deliberately. The quantity is a ratio, but
+// an exact integer permille is comparable and orderable without a float, and the percentile below
+// is an ORDER STATISTIC -- it selects an observed value and never interpolates between two, so no
+// figure it returns is one this repository did not measure.
+//
+// `min_base_ms` exists because the artifact records whole milliseconds: at a 2ms baseline a
+// one-millisecond scheduling difference is a 50% "inflation" that says nothing about contention.
+// Rows below the floor are dropped rather than smoothed.
+// A RATIO NEEDS TWO COSTS AND A CENSORED ROW HAS NONE, SO THE PAIR REFUSES. This is the
+// derivation the class was caught on: a bound divided by a cost, or a cost by a bound, produces a
+// perfectly well-formed permille figure whose value is decided by WHERE THE CEILING SITS. It then
+// flows into `permille_percentile` and `implied_clean_run_budget`, so one promoted bound moves a
+// derived budget. Receipt: gunbc#9629 measured one rendered 502ms figure denoting a completed cost
+// of 2,902ms and another of 355ms -- a ratio built on either is wrong by a factor no coefficient
+// recovers, which is why this refuses the PAIR rather than correcting it.
+//
+// THE REFUSAL IS PER PAIR AND THE DROPPED COUNT IS RETURNED, not silently filtered. Dropping
+// censored pairs and reporting the percentile over the rest is the neighbouring failure exactly --
+// the excluded rows are the expensive ones, so the survivors' statistic is biased low with no
+// bound. A caller MUST report `censored_pairs` beside any percentile it quotes; that is what makes
+// this an honest exclusion rather than a censored estimator.
+// The two rows one identity contributes to a pairing. A named carrier rather than the builtin
+// tuple `enumerate` yields, because that tuple has no constructor available here.
+type InflationPair {
+  base_row: FloorCostRow
+  other_row: FloorCostRow
+}
+
+type InflationObservations {
+  permille: List<Int>
+  paired: Int
+  censored_pairs: Int
+}
+
+fn inflation_pair_permille(b: FloorCostRow, o: FloorCostRow) -> Int? {
+  match observed_cpu_ms(reading: b.cost) {
+    Absent => none
+    Present { value: base_ms } => match observed_cpu_ms(reading: o.cost) {
+      Absent => none
+      Present { value: other_ms } =>
+        Present { value: (millisecond_count(m: other_ms) * 1000) / millisecond_count(m: base_ms) }
+    }
+  }
+}
+
+// THE FLOOR IS APPLIED TO THE OBSERVED BASE ONLY. A censored base row has no figure to compare
+// against `min_base_ms` at all, so it is not "below the floor" -- it is unpairable, and it is
+// counted as such rather than disappearing into the same bucket as a cheap row.
+fn identity_inflation(base: RunCost, other: RunCost, min_base_ms: Millisecond) -> InflationObservations {
+  let candidates = base.rows
+    |> flat_map(b => match other.rows |> filter(o => o.identity == b.identity) |> first {
+         Absent => []
+         Present { value: o } => [InflationPair { base_row: b, other_row: o }]
+       })
+    |> filter(p => millisecond_count(m: cpu_at_least_ms(reading: p.base_row.cost)) >= millisecond_count(m: min_base_ms))
+  let permille = candidates |> flat_map(p => match inflation_pair_permille(b: p.base_row, o: p.other_row) {
+    Absent => []
+    Present { value: v } => [v]
+  })
+  InflationObservations {
+    permille: permille,
+    paired: count(candidates),
+    censored_pairs: count(candidates) - count(permille)
+  }
+}
+
+// The bare permille list, for a caller that has already read `identity_inflation`'s counts and is
+// stating them. It exists so the percentile helpers keep a plain list to sort; it is deliberately
+// NOT the entry point, because obtaining it without the counts is how the exclusion goes unstated.
+fn identity_inflation_permille(base: RunCost, other: RunCost, min_base_ms: Millisecond) -> List<Int> {
+  identity_inflation(base: base, other: other, min_base_ms: min_base_ms).permille
+}
+
+// An order statistic over the observed values: `percent` is 0-100 and the result is always a
+// member of the input, so it is a measurement and not an interpolation.
+fn permille_percentile(values: List<Int>, percent: Int) -> Int? {
+  let sorted = values |> sort_by(v => v)
+  let n = count(sorted)
+  if n == 0 {
+    none
+  } else {
+    let idx = (percent * n) / 100
+    if idx >= n { Present { value: sorted[n - 1] } } else { Present { value: sorted[idx] } }
+  }
+}
+
+// THE MARGIN THE MEASURED INFLATION IMPLIES: the largest clean-run cost that still lands under the
+// ceiling after inflation. Integer division floors, which rounds the budget DOWN -- the safe
+// direction for a limit.
+fn implied_clean_run_budget(ceiling_ms: Millisecond, inflation_permille: Int) -> Millisecond {
+  if inflation_permille <= 0 {
+    ceiling_ms
+  } else {
+    millisecond(count: (millisecond_count(m: ceiling_ms) * 1000) / inflation_permille)
+  }
+}
+
+// INFLATION WITH THE WORK CONFOUND REMOVED BY CONSTRUCTION, WHICH IS WHY IT NEEDS NO CONTROL.
+//
+// `identity_inflation_permille` above pairs a row against itself across two runs, which is already
+// the right pairing -- but a row whose cost moved because the TREE changed is inflation and cost
+// change mixed, and separating them normally means choosing a control population and defending
+// the choice. Every such choice made in gunbc#10094 had to be defended and two were withdrawn.
+//
+// Restricting the pairing to rows whose `eval_steps` are EQUAL removes the confound instead of
+// modelling it: the evaluator executed the same number of steps in both runs, so the only thing
+// that could have changed did not, and any remaining cpu movement is inflation. Reach is not
+// assumed -- `count` the result against `identity_inflation_permille`'s to see what fraction of
+// the population the discriminator covers, because a clean instrument over three rows is not a
+// measurement of a corpus.
+//
+// TWO ROWS CAN SHARE A STEP COUNT WITHOUT SHARING WORK, and the honest statement of what this
+// establishes accounts for it: equal steps means equal EVALUATOR work, not equal host work. A row
+// that spends its time inside one opaque host call reports few steps in both runs and is admitted
+// here while its real variation lives outside the evaluator. `v2.workflow.required_floor` already
+// carries a declared rung drop for exactly that region, so the population this instrument is
+// cleanest over is the one that is CPU-bound in the evaluator.
+fn identity_inflation_permille_at_equal_work(
+  base: RunCost,
+  other: RunCost,
+  min_base_ms: Millisecond
+) -> List<Int> {
+  base.rows
+    |> flat_map(b => match other.rows |> filter(o => o.identity == b.identity && o.eval_steps == b.eval_steps) |> first {
+         Absent => []
+         Present { value: o } => [InflationPair { base_row: b, other_row: o }]
+       })
+    |> filter(p => millisecond_count(m: cpu_at_least_ms(reading: p.base_row.cost)) >= millisecond_count(m: min_base_ms))
+    |> flat_map(p => match inflation_pair_permille(b: p.base_row, o: p.other_row) {
+         Absent => []
+         Present { value: v } => [v]
+       })
+}
+
+// AND THE EQUAL-WORK PAIRING HAS ITS OWN REASON TO REFUSE A CENSORED MEMBER, beyond the shared
+// one: an interrupted row's `eval_steps` is itself quantised by the deadline poll rather than a
+// true count, so equality of step counts across a censored and a completed row does not mean the
+// evaluator did the same work. The discriminator this function rests on is not available on that
+// arm, so admitting one would defeat the very confound removal it exists for.
+
+// HOW MANY RUNS ONE IDENTITY CROSSED IN, which is the question that separates a property of the
+// ROW from a property of the RUN.
+type CrossingRecurrence {
+  identity: String
+  runs_crossed: Int
+}
+
+// THE RECURRENCE JOIN. A ceiling that refuses the whole run makes "which rows crossed" a per-run
+// set, and reading one such set says nothing about cause: a row crosses because it is expensive,
+// because the run was slow, or both. Joining the sets across runs decides it. An identity that
+// crosses in many runs is expensive and tightening the line reaches it; identities that each cross
+// once and never again are being selected by the run, and the line is adjudicating something the
+// tree does not control.
+//
+// IT DOES NOT DECIDE THE QUESTION ON ITS OWN, and the confound is not hypothetical. Runs sampled
+// across different tree vintages have had crossing families REPAIRED between them, so an identity
+// that stops recurring may have been fixed rather than never re-selected. A recurrence census is
+// evidence about cause only over runs whose relevant population did not change, and a caller
+// spanning vintages owes that qualification with the result.
+// SORTED-SCAN GROUPING, NOT A NESTED FILTER. The first version folded the crossing ids and
+// re-filtered the whole list for every unseen one, which is quadratic in the number of crossings,
+// and appended to an accumulator with `concat`, which copies. Both are named in DESIGN section 6's
+// bare-minimum-cost rule, whose whole point is that "n is small here" is not a time-stable fact:
+// the population is per-run crossers today because the floor is healthy, and a bad week is exactly
+// when this function gets called on a large one.
+//
+// So the ids are sorted once and scanned once, runs of equal ids are counted in a single pass, and
+// the accumulator is built by prepending and reversed at the end. The output order becomes
+// identity order rather than first-appearance order, which is a stronger property than the one it
+// replaces -- a census whose order depends on which run happened to be sampled first is not a
+// census anyone can diff.
+type RecurrenceScan {
+  started: Bool
+  current: String
+  seen: Int
+  done: List<CrossingRecurrence>
+}
+
+fn crossing_recurrence(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> List<CrossingRecurrence> {
+  let crossers = runs
+    |> flat_map(run => run_crossings(run: run, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
+    |> sort_by(id => id)
+  let scanned = fold(
+    crossers,
+    init: RecurrenceScan { started: false, current: "", seen: 0, done: [] },
+    f: (acc, id) =>
+      if acc.started && acc.current == id {
+        RecurrenceScan { started: true, current: acc.current, seen: acc.seen + 1, done: acc.done }
+      } else if acc.started {
+        RecurrenceScan {
+          started: true,
+          current: id,
+          seen: 1,
+          done: concat([CrossingRecurrence { identity: acc.current, runs_crossed: acc.seen }], acc.done)
+        }
+      } else {
+        RecurrenceScan { started: true, current: id, seen: 1, done: [] }
+      }
+  )
+  if scanned.started {
+    reverse(concat([CrossingRecurrence { identity: scanned.current, runs_crossed: scanned.seen }], scanned.done))
+  } else {
+    []
+  }
+}
+
+// THE POPULATION THAT DECIDES WHETHER A CEILING IS ADJUDICATING THE TREE OR THE RUN: identities
+// observed crossing in more than one of the sampled runs. Empty means every crossing was
+// single-run, which is the shape a run-level cause produces.
+fn recurring_crossers(recurrence: List<CrossingRecurrence>) -> List<CrossingRecurrence> {
+  recurrence |> filter(r => r.runs_crossed > 1)
+}
+
+// EVALUATOR-STEP DETERMINISM IS A DIFFERENT QUESTION FROM COST DISTRIBUTION. CPU may move between
+// attempts; completed work on one byte-identical head may not. Both observed heads are carried:
+// artifact acquisition supplies them, and the comparison refuses before looking at rows when they
+// differ. A caller therefore cannot turn two different trees into a plausible determinism result.
+type SameHeadAttemptPair {
+  left_head: NonEmptyStr
+  left_attempt: NonEmptyStr
+  left_rows: List<FloorCostRow>
+  right_head: NonEmptyStr
+  right_attempt: NonEmptyStr
+  right_rows: List<FloorCostRow>
+}
+
+// CAUSE IS OPEN. The measured 15-row drift does not travel through map_keys or map_values in the
+// affected v2 witness paths, and std.primitive_identity already classifies both as
+// HostUnspecifiedOrder behind the determinism gate. That eliminates one tempting attribution; it
+// does not establish another. The existing cache-purity oracle was also run on
+// rust_crate_partition_witness.witness_partition_fold_unit_count_holds, one of the 15: cold and
+// resolved-graph-cache-warm executions returned byte-identical 88-byte PASS output. That rules out
+// semantic cache impurity for the specimen; it does NOT rule out a cache hit changing only the
+// instrumentation count by itself. The two retained same-head artifacts disfavor that explanation
+// independently: attempt 3 is LOWER for five drifting identities and HIGHER for ten, whereas a warm
+// cache skipping work predicts one direction. The cross-attempt sum is nearly, but not exactly,
+// conserved, so attribution movement remains live beside genuine work drift. CAUSE IS NOT
+// ESTABLISHED. THE FIXED-COMPONENT OWNERSHIP FORK IS OPEN: it may be work each claim must genuinely
+// perform, in which case a declared per-claim complexity envelope is the next question; or the same
+// setup may be recomputed per claim, in which case the remedy is compute-once rather than a budget.
+// `v2.workflow.floor_pure_producer_share` makes the second arm non-obvious rather than hypothetical:
+// the Rust target-model producers were measured and WITHDRAWN because serving them made the
+// produced-declaration consumers worse. That arithmetic predates this fixed-component observation
+// and is a load-bearing prior to re-derive, not permission to re-enrol them by inference.
+// This detector names the first divergent
+// ROW available in the cost artifact (identity, module, attempts and both counts). The artifact carries no expression trace,
+// so claiming a first divergent evaluator point here would fabricate precision the producer does
+// not expose.
+type EvalStepDeterminismViolation
+  = AttemptHeadsDiffer {
+      left_head: NonEmptyStr
+      left_attempt: NonEmptyStr
+      right_head: NonEmptyStr
+      right_attempt: NonEmptyStr
+    }
+  | CompletedIdentityAbsent {
+      identity: String
+      module: String
+      completed_attempt: NonEmptyStr
+      absent_attempt: NonEmptyStr
+    }
+  | CompletedIdentityUnavailable {
+      identity: String
+      module: String
+      completed_attempt: NonEmptyStr
+      unavailable_attempt: NonEmptyStr
+    }
+  | CompletedIdentityStepsDiffer {
+      identity: String
+      module: String
+      left_attempt: NonEmptyStr
+      left_steps: Int
+      right_attempt: NonEmptyStr
+      right_steps: Int
+    }
+
+fn completed_left_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  pair.left_rows
+    |> filter(row => row.verdict_reached)
+    |> flat_map(left => match pair.right_rows |> filter(right => right.identity == left.identity) |> first {
+         Absent => [CompletedIdentityAbsent {
+           identity: left.identity,
+           module: left.module,
+           completed_attempt: pair.left_attempt,
+           absent_attempt: pair.right_attempt
+         }]
+         Present { value: right } =>
+           if !right.verdict_reached {
+             [CompletedIdentityUnavailable {
+               identity: left.identity,
+               module: left.module,
+               completed_attempt: pair.left_attempt,
+               unavailable_attempt: pair.right_attempt
+             }]
+           } else if left.eval_steps != right.eval_steps {
+             [CompletedIdentityStepsDiffer {
+               identity: left.identity,
+               module: left.module,
+               left_attempt: pair.left_attempt,
+               left_steps: left.eval_steps,
+               right_attempt: pair.right_attempt,
+               right_steps: right.eval_steps
+             }]
+           } else { [] }
+       })
+}
+
+// The reverse pass contributes only identities wholly absent on the left. A right-completed row
+// paired with a left interruption was already emitted by the left-to-right pass only when the
+// left completed, so handle that asymmetric case here without duplicating two completed rows.
+fn completed_right_only_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  pair.right_rows
+    |> filter(row => row.verdict_reached)
+    |> flat_map(right => match pair.left_rows |> filter(left => left.identity == right.identity) |> first {
+         Absent => [CompletedIdentityAbsent {
+           identity: right.identity,
+           module: right.module,
+           completed_attempt: pair.right_attempt,
+           absent_attempt: pair.left_attempt
+         }]
+         Present { value: left } => if !left.verdict_reached {
+           [CompletedIdentityUnavailable {
+             identity: right.identity,
+             module: right.module,
+             completed_attempt: pair.right_attempt,
+             unavailable_attempt: pair.left_attempt
+           }]
+         } else { [] }
+       })
+}
+
+fn same_head_eval_step_violations(pair: SameHeadAttemptPair) -> List<EvalStepDeterminismViolation> {
+  if pair.left_head != pair.right_head {
+    [AttemptHeadsDiffer {
+      left_head: pair.left_head,
+      left_attempt: pair.left_attempt,
+      right_head: pair.right_head,
+      right_attempt: pair.right_attempt
+    }]
+  } else {
+    concat(completed_left_violations(pair: pair), completed_right_only_violations(pair: pair))
+  }
+}
+
+fn same_head_eval_steps_are_deterministic(pair: SameHeadAttemptPair) -> Bool {
+  count(same_head_eval_step_violations(pair: pair)) == 0
+}
+
+// THE BETWEEN-RUN ENVELOPE: THE QUANTITY A BUDGET MAY BE SET FROM, AND THE ONE THE PAIRWISE
+// INFLATION ABOVE IS NOT.
+//
+// `identity_inflation_permille` pairs ONE run against ONE other. Its percentiles are computed
+// across ROWS inside a single pair, so they describe how unevenly one host-pair ratio lands over
+// different rows -- they say nothing about how that ratio varies from run to run. Two runs are ONE
+// SAMPLE of the between-run quantity and one sample has no spread at all, so a pairwise median is a
+// POINT ESTIMATE dressed as a distribution. Reading it as fleet variance indexes the distribution
+// over the wrong thing, and a budget set from it moves the cliff rather than closing it: if the
+// admitted envelope set is wider than the two hosts sampled, the pairwise figure is a LOWER BOUND
+// and the margin is WORSE than stated. The error direction is safe for a claim that the spread
+// exists and UNSAFE for anyone using the number as a budget input.
+//
+// This family indexes over RUNS instead. One row's envelope is its max over N runs against its min
+// over the same N, so N runs contribute N-1 degrees of freedom rather than one, and the percentile
+// is taken over rows whose figure is already a between-run quantity.
+//
+// COMPLETENESS IS CHECKED AT IDENTITY GRAIN AND NEVER ASSUMED. `runs_observed` is carried on every
+// envelope so a row missing from some run -- interrupted, or not in that vintage's plan -- is
+// EXCLUDED by a predicate the caller can see rather than silently contributing a narrower envelope
+// computed over however many runs happened to carry it. A row present in three of twelve runs would
+// otherwise report a smaller spread than one present in all twelve and be indistinguishable from a
+// genuinely stable row.
+//
+// A CENSORED ROW IS NEVER A COST. `verdict_reached == false` means the deadline fired and the figure
+// is a lower bound describing when, not what the row costs; `v2.workflow.floor_cost_debt` measured
+// that the bound and the true cost are essentially uncorrelated in that population. Such rows are
+// dropped from the scan, which lowers `runs_observed` and therefore removes the identity through the
+// completeness predicate rather than through a silent filter.
+//
+// `hottest_run` AND `coolest_run` NAME WHICH RUN ACHIEVED EACH EXTREME, and that pair is the whole
+// reason this type is not just a min and a max. A spread is compatible with two different worlds:
+// per-row jitter that lands on a different run every time, and a systematically hot or cold run
+// that lands on the same one. A median run factor cannot separate them -- it is robust exactly
+// where the envelope is driven -- so `run_extreme_census` below counts argmax and argmin instead.
+// Under per-row jitter each run is hottest for about one Nth of the population; a run that is
+// coolest for most of the corpus is a property of the machine and not of the tree.
+//
+// `work_invariant` IS TRUE when every observation of this identity reported the same `eval_steps`.
+// Equal evaluator steps means the evaluator executed the same work in every run, so the remaining
+// cpu movement is inflation rather than a tree change -- the same confound removal
+// `identity_inflation_permille_at_equal_work` performs, carried per row so one scan serves both the
+// raw and the controlled population instead of two near-identical folds. It means equal EVALUATOR
+// work and not equal HOST work: a row that spends its time inside one opaque host call reports few
+// steps in every run and is admitted here while its real variation lives outside the evaluator,
+// which is the region `v2.workflow.required_floor` already carries a rung drop for.
+type IdentityEnvelope {
+  identity: String
+  runs_observed: Int
+  min_ms: Millisecond
+  max_ms: Millisecond
+  hottest_run: NonEmptyStr
+  coolest_run: NonEmptyStr
+  work_invariant: Bool
+}
+
+// THE TAGGED ROW CARRIES ITS OWN EXACT COST, WHICH IS WHAT MAKES THE ENVELOPE UNABLE TO SEE A
+// BOUND. This type was authored against the flat `FloorCostRow.cpu_ms` field that this change
+// replaced with the `ClaimCostReading` coproduct, and the envelope is a POINT question -- a
+// min/max over runs -- so a right-censored lower bound has no answer to give it. Projecting the
+// cost at TAGGING time means the fold below receives only rows that have an exact cost, rather
+// than receiving every row and being trusted to ask.
+//
+// THE `verdict_reached` FILTER IS NOT A SUBSTITUTE AND MUST NOT BE READ AS ONE. It very nearly
+// excludes the censored population today, because a claim a safety deadline preempted also reaches
+// no verdict -- but those are two independent axes by construction (a host panic reaches no verdict
+// and its clocks are EXACT), and a guard that holds by an upstream coincidence is the incidental
+// denominator this ledger already names. The exclusion is done on the axis it is about.
+type RunTaggedRow {
+  run: NonEmptyStr
+  row: FloorCostRow
+  cpu: Millisecond
+}
+
+// THE SCAN STATE IS A COPRODUCT AND NOT A `started: Bool`, WHICH IS THE ONE PLACE THIS FAMILY
+// DIFFERS FROM `crossing_recurrence`'S IDIOM ABOVE, DELIBERATELY. A flag-plus-fields accumulator
+// needs a value for every field before the first row, and two of these fields are `NonEmptyStr`.
+// The only sentinel available is `"" as NonEmptyStr`, which TYPECHECKS AND REFUSES AT RUNTIME --
+// the cast is the sole constructor and carries no total unwrap -- so the unstarted state would be
+// spelled with a value that cannot exist. Splitting the state removes the question: the empty scan
+// has no run fields to invent. DESIGN section 4b(4): the invalid state has no constructor.
+type EnvelopeScan
+  = EnvelopeScanEmpty
+  | EnvelopeScanOpen {
+      current: String
+      seen: Int
+      lo: Millisecond
+      hi: Millisecond
+      lo_run: NonEmptyStr
+      hi_run: NonEmptyStr
+      steps: Int
+      steps_equal: Bool
+      done: List<IdentityEnvelope>
+    }
+
+// SORTED-SCAN GROUPING, for the reason `crossing_recurrence` above states: a fold that re-filters
+// the whole population per identity is quadratic in the corpus, and the corpus here is every
+// executed claim in every sampled run. The rows are sorted once and scanned once, and the
+// accumulator is built by prepending and reversed at the end rather than by `concat`, which copies.
+fn envelope_scan_close(current: String, seen: Int, lo: Millisecond, hi: Millisecond, lo_run: NonEmptyStr, hi_run: NonEmptyStr, steps_equal: Bool) -> IdentityEnvelope {
+  IdentityEnvelope {
+    identity: current,
+    runs_observed: seen,
+    min_ms: lo,
+    max_ms: hi,
+    hottest_run: hi_run,
+    coolest_run: lo_run,
+    work_invariant: steps_equal
+  }
+}
+
+fn envelope_scan_open(t: RunTaggedRow, carry: List<IdentityEnvelope>) -> EnvelopeScan {
+  EnvelopeScanOpen {
+    current: t.row.identity,
+    seen: 1,
+    lo: t.cpu,
+    hi: t.cpu,
+    lo_run: t.run,
+    hi_run: t.run,
+    steps: t.row.eval_steps,
+    steps_equal: true,
+    done: carry
+  }
+}
+
+fn identity_envelopes(runs: List<RunCost>) -> List<IdentityEnvelope> {
+  let tagged = runs
+    |> flat_map(run => run.rows
+         |> filter(r => r.verdict_reached)
+         |> flat_map(r => match observed_cpu_ms(reading: r.cost) {
+              Absent => []
+              Present { value: c } => [RunTaggedRow { run: run.run, row: r, cpu: c }]
+            }))
+    |> sort_by(t => t.row.identity)
+  let scanned = fold(
+    tagged,
+    init: EnvelopeScanEmpty {},
+    f: (acc, t) => match acc {
+      EnvelopeScanEmpty => envelope_scan_open(t: t, carry: [])
+      EnvelopeScanOpen { current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps: st, steps_equal: same_work, done: prior } =>
+        if cur == t.row.identity {
+          let cpu = millisecond_count(m: t.cpu)
+          let colder = cpu < millisecond_count(m: lo)
+          let hotter = cpu > millisecond_count(m: hi)
+          EnvelopeScanOpen {
+            current: cur,
+            seen: n + 1,
+            lo: if colder { t.cpu } else { lo },
+            hi: if hotter { t.cpu } else { hi },
+            lo_run: if colder { t.run } else { cool },
+            hi_run: if hotter { t.run } else { hot },
+            steps: st,
+            steps_equal: same_work && st == t.row.eval_steps,
+            done: prior
+          }
+        } else {
+          envelope_scan_open(
+            t: t,
+            carry: concat([envelope_scan_close(current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps_equal: same_work)], prior)
+          )
+        }
+    }
+  )
+  match scanned {
+    EnvelopeScanEmpty => []
+    EnvelopeScanOpen { current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps: _, steps_equal: same_work, done: prior } =>
+      reverse(concat([envelope_scan_close(current: cur, seen: n, lo: lo, hi: hi, lo_run: cool, hi_run: hot, steps_equal: same_work)], prior))
+  }
+}
+
+// THE ADMISSIBLE POPULATION, STATED AS A PREDICATE RATHER THAN APPLIED INSIDE THE SCAN.
+//
+// `runs_expected` is the caller's own count of sampled runs, so an identity absent from any one of
+// them is excluded by an identity-grain join and not by a count that could be satisfied by the
+// wrong twelve observations. `min_ms` exists because the artifact records whole milliseconds: at a
+// 2ms baseline a one-millisecond scheduling difference is a 50% "inflation" that says nothing about
+// contention, so rows below the floor are dropped rather than smoothed.
+fn complete_envelopes(
+  envelopes: List<IdentityEnvelope>,
+  runs_expected: Int,
+  min_ms: Millisecond
+) -> List<IdentityEnvelope> {
+  envelopes |> filter(e =>
+    e.runs_observed == runs_expected
+      && millisecond_count(m: e.min_ms) >= millisecond_count(m: min_ms))
+}
+
+fn work_invariant_envelopes(envelopes: List<IdentityEnvelope>) -> List<IdentityEnvelope> {
+  envelopes |> filter(e => e.work_invariant)
+}
+
+// Carried in permille as an Int for the reason `identity_inflation_permille` states: an exact
+// integer permille is comparable and orderable without a float, and `permille_percentile` selects
+// an observed member rather than interpolating, so no figure it returns is one this repository did
+// not measure.
+//
+// A ZERO BASELINE HAS NO RATIO AND IS REFUSED RATHER THAN DEFAULTED. The artifact records whole
+// milliseconds and a cheap row genuinely reports 0, for which max-over-min is undefined; returning
+// 0 or 1000 there would place an unmeasurable row at the bottom of every percentile and silently
+// enlarge the safe population, which is the absorbing fallback DESIGN section 5 forbids. `Absent`
+// reaches the caller as the fact it is. `complete_envelopes`' `min_ms` floor already excludes these
+// from any admitted population, so on the analysis path this arm is unreachable and the refusal is
+// the guarantee that it stays so.
+fn envelope_permille(e: IdentityEnvelope) -> Int? {
+  if millisecond_count(m: e.min_ms) <= 0 {
+    none
+  } else {
+    Present { value: (millisecond_count(m: e.max_ms) * 1000) / millisecond_count(m: e.min_ms) }
+  }
+}
+
+fn envelope_permilles(envelopes: List<IdentityEnvelope>) -> List<Int> {
+  envelopes |> flat_map(e => match envelope_permille(e: e) {
+    Absent => []
+    Present { value: v } => [v]
+  })
+}
+
+// THE DISCRIMINATOR BETWEEN A PROPERTY OF THE ROW AND A PROPERTY OF THE RUN.
+//
+// Under per-row jitter every run is hottest for roughly one Nth of the population and coolest for
+// roughly one Nth; a run that carries the extreme for most of the corpus is systematically hot or
+// cold, and the verdict a ceiling returns is then a property of WHICH RUNNER PICKED UP THE JOB
+// rather than of the tree. This is a CENSUS and not a test: it reports the concentration and names
+// no threshold, because how much concentration disqualifies a cost verdict is an operator question
+// and `v2.workflow.required_floor` is where that ruling lives.
+type RunExtremeCount {
+  run: NonEmptyStr
+  hottest_for: Int
+  coolest_for: Int
+}
+
+fn run_extreme_census(runs: List<RunCost>, envelopes: List<IdentityEnvelope>) -> List<RunExtremeCount> {
+  runs |> map(run => RunExtremeCount {
+    run: run.run,
+    hottest_for: count(envelopes |> filter(e => e.hottest_run == run.run)),
+    coolest_for: count(envelopes |> filter(e => e.coolest_run == run.run))
+  })
+}
+
+// THE WORST BETWEEN-RUN INFLATION OBSERVED, which is the input the attention constant in
+// `docs/design-rung-drops.md` is derived from. That row states its own revision condition -- the
+// constant MUST be re-derived the moment a larger inflation floor is measured -- so this is the
+// producer that decides whether it has been, and a caller re-runs it rather than trusting the
+// digits in that prose.
+//
+// IT IS A FLOOR AND NOT THE INFLATION. The sampled runs are a subset of the admitted execution
+// envelopes, so a wider sample can only find a larger value; the figure can never be read as a
+// bound on what the fleet can do.
+fn worst_envelope_permille(envelopes: List<IdentityEnvelope>) -> Int {
+  fold(envelope_permilles(envelopes: envelopes), init: 0, f: (worst, v) => if v > worst { v } else { worst })
+}
+
+// THE CROSSING-POPULATION CENSUS: WHICH POPULATION A COMPLETED CROSSING IS IN, COUNTED.
+//
+// WHY THIS EXISTS AND WHOSE QUESTION IT ANSWERS. The seed's `required_floor_runner`, in the
+// `ClaimOutcome::CompletedOverBudget` arm, records that whether the pollable population should keep
+// blocking "is the open question this column exists to make answerable with counts instead of
+// argument -- it stays with the operator". The `preemption_reachability` column was added for that
+// purpose and no consumer has ever counted it. This family is that consumer. It decides NOTHING:
+// it names no threshold, gates no lane, and returns no verdict, because the ruling is the
+// operator's and a producer that pre-empted it would be answering a question the tree reserved.
+//
+// WHY THE EXISTING ENVELOPE SAMPLE CANNOT SERVE. `floor_cost_envelope_sampled_runs` is twelve GREEN
+// `main` runs, chosen so the population is one the floor admitted. A run that a crossing REFUSED is
+// by construction not green, so that sample cannot contain a single blocking crossing -- it is
+// structurally blind to the exact population this census is about. The sample this census is driven
+// over must therefore include refused runs, and a caller that points it at green runs alone will
+// measure zero and have measured nothing.
+//
+// TWO CROSSINGS THAT ARE IDENTICAL IN THE COST COLUMN AND OPPOSITE IN MEANING, which is the whole
+// content of the split:
+//   OVERSHOOT   -- every stride poll was reachable and the claim completed anyway. The deadline
+//                  missed nothing; what the crossing reports is a CHARGE.
+//   MISSED      -- the cost accrued inside an opaque host call where no stride poll lands, so
+//                  completing under the ceiling was never something the limit could enforce. The
+//                  deadline OBSERVED NOTHING. `std.evaluation_budget` records that this is the
+//                  mechanism rather than a corner case.
+// A single count over both would be a count of two different facts with two different remedies.
+type CrossingPopulation
+  = OvershootCharge
+  | MissedInterrupt { operations: String }
+  | CrossingSurfaceUnarmed
+  | CrossingReachabilityUnrecorded
+
+// ABSENCE AND ZERO ARE DIFFERENT VALUES HERE, DELIBERATELY AND IN BOTH DIRECTIONS.
+// `CrossingSurfaceUnarmed` means the run did not arm the opaque-host-call surface, so which
+// population this crossing belongs to is UNKNOWN and is not assumed to be the benign one -- the
+// same ruling the seed's renderer already states for that label. `CrossingReachabilityUnrecorded`
+// means the ARTIFACT predates the column, which is a fact about the vintage and not about the run.
+// Folding either into `overshoot_charge` would let a census that measured nothing render exactly
+// like one that measured a benign population, and it would be quoted as coverage.
+type CrossingPopulationRow {
+  run: NonEmptyStr
+  identity: String
+  module: String
+  cpu_ms: Millisecond
+  population: CrossingPopulation
+}
+
+fn completed_crossing_population(row: FloorCostRow) -> CrossingPopulation {
+  match row.reachability {
+    Absent => CrossingReachabilityUnrecorded
+    Present { value: reach } => match reach {
+      ReachabilitySurfaceUnarmed => CrossingSurfaceUnarmed
+      ReachabilityCooperativelyPollable => OvershootCharge
+      ReachabilityOpaqueHostCallUnbounded { operations: ops } => MissedInterrupt { operations: ops }
+    }
+  }
+}
+
+// ONLY A COMPLETED CROSSING ENTERS THIS FAMILY, AND THAT IS THE OPPOSITE ADMISSION FROM
+// `run_crossing_census` DIRECTLY ABOVE, OVER THE SAME ROWS, ON PURPOSE. That census asks a
+// LOWER-BOUND question -- did any row reach the line -- which a right-censored bound can answer
+// soundly. This one asks which population a row that REACHED ITS VERDICT AND WAS THEN RECLASSIFIED
+// ON COST belongs to, and a censored row never reached a verdict at all: it is the OTHER terminal
+// arm (`SafetyInterrupted`), whose remedy and whose standing are different. Admitting it here would
+// merge the two arms this split exists to separate.
+//
+// `verdict_reached` IS ASSERTED BESIDE THE EXACT READING RATHER THAN INFERRED FROM IT, for the
+// reason `FloorCostRow` states where it carries both: a host panic reaches no verdict while its
+// clocks are exact, so the reading arm does not imply the verdict arm.
+fn completed_crossing_rows(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> List<CrossingPopulationRow> {
+  runs |> flat_map(run => run.rows
+    |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+    |> filter(r => r.verdict_reached)
+    |> flat_map(r => match observed_cpu_ms(reading: r.cost) {
+         Absent => []
+         Present { value: c } =>
+           if millisecond_count(m: c) >= millisecond_count(m: ceiling_ms) {
+             [CrossingPopulationRow {
+               run: run.run,
+               identity: r.identity,
+               module: r.module,
+               cpu_ms: c,
+               population: completed_crossing_population(row: r)
+             }]
+           } else { [] }
+       }))
+}
+
+// THE DENOMINATOR IS CARRIED WITH THE NUMERATORS AND CLOSES BY CONSTRUCTION. `completed_crossings`
+// is the size of the population the four arms partition, so a reader can check the addition rather
+// than trust it; `censored_crossings` and `undecidable_crossings` sit BESIDE that sum and never
+// inside it, because they are the interrupt arm and the arm no bound can decide. A census that
+// reported only its numerators would be a selection view read as a population.
+type CrossingPopulationCensus {
+  runs_scanned: Int
+  completed_crossings: Int
+  overshoot_charge: Int
+  missed_interrupt: Int
+  surface_unarmed: Int
+  reachability_unrecorded: Int
+  censored_crossings: Int
+  undecidable_crossings: Int
+}
+
+// THE SPLIT IS ONE TOTAL MATCH IN ONE PASS, AND THERE IS NO POPULATION-EQUALITY PREDICATE.
+// The obvious shape -- `filter(r => r.population == want)` -- has no honest spelling here, because
+// `MissedInterrupt` carries its operations and a caller asking "how many missed interrupts" would
+// have to construct one with a sentinel payload to ask. A sentinel is a value standing where no
+// value exists, and every arm of this coproduct is reachable, so the question is answered by
+// DESCENDING the arms once rather than by manufacturing a comparand.
+//
+// PREPEND-AND-REVERSE RATHER THAN `concat` IN THE FOLD, for the reason `identity_envelopes` states:
+// appending inside a fold copies the accumulator on every element.
+type CrossingPopulationSplit {
+  overshoot_charge: List<CrossingPopulationRow>
+  missed_interrupt: List<CrossingPopulationRow>
+  surface_unarmed: List<CrossingPopulationRow>
+  reachability_unrecorded: List<CrossingPopulationRow>
+}
+
+data empty_crossing_split: CrossingPopulationSplit = CrossingPopulationSplit {
+  overshoot_charge: [],
+  missed_interrupt: [],
+  surface_unarmed: [],
+  reachability_unrecorded: []
+}
+
+fn split_crossing_rows(rows: List<CrossingPopulationRow>) -> CrossingPopulationSplit {
+  let scanned = fold(
+    rows,
+    init: empty_crossing_split,
+    f: (acc, r) => match r.population {
+      OvershootCharge => CrossingPopulationSplit {
+        overshoot_charge: concat([r], acc.overshoot_charge),
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      MissedInterrupt { operations: _ } => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: concat([r], acc.missed_interrupt),
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      CrossingSurfaceUnarmed => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: concat([r], acc.surface_unarmed),
+        reachability_unrecorded: acc.reachability_unrecorded
+      }
+      CrossingReachabilityUnrecorded => CrossingPopulationSplit {
+        overshoot_charge: acc.overshoot_charge,
+        missed_interrupt: acc.missed_interrupt,
+        surface_unarmed: acc.surface_unarmed,
+        reachability_unrecorded: concat([r], acc.reachability_unrecorded)
+      }
+    }
+  )
+  CrossingPopulationSplit {
+    overshoot_charge: reverse(scanned.overshoot_charge),
+    missed_interrupt: reverse(scanned.missed_interrupt),
+    surface_unarmed: reverse(scanned.surface_unarmed),
+    reachability_unrecorded: reverse(scanned.reachability_unrecorded)
+  }
+}
+
+// A CENSORED ROW WHOSE BOUND ALREADY CLEARS THE LINE IS A CROSSING ON THE INTERRUPT ARM, and one
+// whose bound sits below it is undecidable -- exactly the three-way split `row_crossing` declares.
+// Counting them here rather than re-deriving the predicate keeps one authority for what a crossing
+// is; this family only differs in which arms it ADMITS.
+fn censored_crossing_count(runs: List<RunCost>, ceiling_ms: Millisecond, excluded_modules: List<String>) -> Int {
+  count(runs |> flat_map(run => run.rows
+    |> filter(r => !row_is_excluded(row: r, excluded_modules: excluded_modules))
+    |> filter(r => reading_is_censored(reading: r.cost))
+    |> flat_map(r => match row_crossing(row: r, ceiling_ms: ceiling_ms) {
+         RowCrossed => [r]
+         RowBelowLine => []
+         RowCrossingUndecidable => []
+       })))
+}
+
+// THE POPULATION IS COUNTED BEFORE IT IS SPLIT, WHICH IS WHAT MAKES
+// `crossing_census_partition_closes` A CHECK RATHER THAN A TAUTOLOGY. Deriving
+// `completed_crossings` from the four arms would collapse that assertion to `measure() ==
+// measure()` -- the change detector DESIGN section 5 names -- and it would then stay green through
+// exactly the defect it exists to catch: an arm the split drops on the floor.
+fn crossing_population_census(
+  runs: List<RunCost>,
+  ceiling_ms: Millisecond,
+  excluded_modules: List<String>
+) -> CrossingPopulationCensus {
+  let rows = completed_crossing_rows(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules)
+  let split = split_crossing_rows(rows: rows)
+  CrossingPopulationCensus {
+    runs_scanned: count(runs),
+    completed_crossings: count(rows),
+    overshoot_charge: count(split.overshoot_charge),
+    missed_interrupt: count(split.missed_interrupt),
+    surface_unarmed: count(split.surface_unarmed),
+    reachability_unrecorded: count(split.reachability_unrecorded),
+    censored_crossings: censored_crossing_count(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules),
+    undecidable_crossings: count(runs_crossing_undecidable(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: excluded_modules))
+  }
+}
+
+// THE CENSUS'S OWN CLOSURE, ASSERTED RATHER THAN DESCRIBED. The four population arms partition the
+// completed-crossing population, so their sum is the population's size. This is not a tautology
+// over the implementation: a fifth arm added to `CrossingPopulation` without a counter would break
+// it, which is the state the arithmetic exists to refuse.
+fn crossing_census_partition_closes(census: CrossingPopulationCensus) -> Bool {
+  census.overshoot_charge
+    + census.missed_interrupt
+    + census.surface_unarmed
+    + census.reachability_unrecorded
+    == census.completed_crossings
+}
+
+// THE IDENTITIES, DISTINCT, BECAUSE THE COUNT AND THE POPULATION ARE DIFFERENT FINDINGS. Six
+// crossings over three identities and six over six are the same number and opposite conclusions:
+// the first is a small set of rows sitting on the line in every run, the second is a corpus-wide
+// effect. A count alone cannot separate them.
+//
+// SORTED SCAN RATHER THAN A MEMBERSHIP FOLD, for the reason `identity_envelopes` states: a fold
+// that re-scans its own accumulator per element is quadratic in the population, and "the population
+// is small here" is not a time-stable fact -- the sample this runs over is a caller's choice and
+// grows with the roster.
+fn distinct_sorted_identities(identities: List<String>) -> List<String> {
+  fold(
+    identities |> sort_by(i => i),
+    init: [],
+    f: (acc, i) => match acc |> first {
+      Absent => [i]
+      Present { value: head } => if head == i { acc } else { concat([i], acc) }
+    }
+  ) |> reverse
+}
+
+fn crossing_population_identities(rows: List<CrossingPopulationRow>) -> List<String> {
+  distinct_sorted_identities(identities: rows |> map(r => r.identity))
+}
+
+// ONE IDENTITY ON BOTH SIDES OF THE LINE: THE JOIN THAT ASKS WHETHER THE INTERRUPT ARM IS ALSO
+// MEASURING THE HOST.
+//
+// THE OBSERVATION THAT COMMISSIONED IT. `v2.test.execution.emit_host_complement_equals_eval` was
+// observed on two runs of ONE branch landing in two DIFFERENT dispositions: completed and
+// reclassified on cost once, and preempted before any verdict the other time. A census keyed on
+// DISPOSITION splits that row across two buckets and reports one witness as two problems, so the
+// join below is keyed on IDENTITY and carries the disposition as a count.
+//
+// WHAT A NON-EMPTY RESULT MEANS, AND WHAT IT DOES NOT. An identity that COMPLETED on one run and
+// was PREEMPTED on another is a row whose disposition is not determined by the row: the same work
+// reached a verdict once and did not the other time. That is the interrupt arm's version of the
+// question `IdentityEnvelope.work_invariant` asks on the cost axis, and it is why the two are
+// carried together rather than in separate analyses. It does NOT establish that the interrupt is
+// unnecessary: a preempted claim genuinely produced no verdict, and the executor-protection
+// argument for stopping it does not depend on the charge being intrinsic. This family reports the
+// population; the ruling is `v2.workflow.required_floor`'s and the operator's.
+//
+// THE AXIS IS THE COST READING AND NOT `verdict_reached`, for the reason `FloorCostRow` states
+// where it carries both: a host panic reaches no verdict while its clocks stay EXACT, so keying
+// this join on the verdict would count a panic as a deadline preemption. A right-censored reading
+// is the deadline arm by construction.
+type IdentityDisposition {
+  identity: String
+  completed_runs: Int
+  preempted_runs: Int
+}
+
+fn identity_disposition_is_split(d: IdentityDisposition) -> Bool {
+  d.completed_runs > 0 && d.preempted_runs > 0
+}
+
+type DispositionScan
+  = DispositionScanEmpty
+  | DispositionScanOpen {
+      current: String
+      completed: Int
+      preempted: Int
+      done: List<IdentityDisposition>
+    }
+
+fn disposition_scan_close(current: String, completed: Int, preempted: Int) -> IdentityDisposition {
+  IdentityDisposition { identity: current, completed_runs: completed, preempted_runs: preempted }
+}
+
+// SORTED SCAN, one pass over the sample's rows, for the reason `identity_envelopes` states: a fold
+// that re-filters the whole population per identity is quadratic in the corpus.
+fn identity_dispositions(runs: List<RunCost>) -> List<IdentityDisposition> {
+  let rows = runs
+    |> flat_map(run => run.rows)
+    |> sort_by(r => r.identity)
+  let scanned = fold(
+    rows,
+    init: DispositionScanEmpty {},
+    f: (acc, r) => match acc {
+      DispositionScanEmpty => DispositionScanOpen {
+        current: r.identity,
+        completed: if reading_is_censored(reading: r.cost) { 0 } else { 1 },
+        preempted: if reading_is_censored(reading: r.cost) { 1 } else { 0 },
+        done: []
+      }
+      DispositionScanOpen { current: cur, completed: c, preempted: p, done: prior } =>
+        if cur == r.identity {
+          DispositionScanOpen {
+            current: cur,
+            completed: if reading_is_censored(reading: r.cost) { c } else { c + 1 },
+            preempted: if reading_is_censored(reading: r.cost) { p + 1 } else { p },
+            done: prior
+          }
+        } else {
+          DispositionScanOpen {
+            current: r.identity,
+            completed: if reading_is_censored(reading: r.cost) { 0 } else { 1 },
+            preempted: if reading_is_censored(reading: r.cost) { 1 } else { 0 },
+            done: concat([disposition_scan_close(current: cur, completed: c, preempted: p)], prior)
+          }
+        }
+    }
+  )
+  match scanned {
+    DispositionScanEmpty => []
+    DispositionScanOpen { current: cur, completed: c, preempted: p, done: prior } =>
+      reverse(concat([disposition_scan_close(current: cur, completed: c, preempted: p)], prior))
+  }
+}
+
+fn split_disposition_identities(runs: List<RunCost>) -> List<IdentityDisposition> {
+  identity_dispositions(runs: runs) |> filter(d => identity_disposition_is_split(d: d))
+}

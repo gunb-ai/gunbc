@@ -1,0 +1,373 @@
+module test.claim.heal_revalidation_binding_witness
+
+import extdeps.github.actions {
+  Step, RunStep, UsesStep, Job,
+  WorkflowTrigger, WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall,
+  WorkflowRunCompleted, MergeGroup,
+  PermRead, PermWrite, PermNone
+}
+import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
+}
+import gunbc.witness_floor_workflow {
+  heal_revalidation_preflight_step,
+  heal_revalidation_preflight_step_name,
+  ci_heal_expected_healed_sha_input_name,
+  ci_heal_checkout_ref_expression,
+  heal_generated_artifacts_job,
+  witness_floor_lane_jobs,
+  witness_floor_triggers
+}
+import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
+import gunbc.ci_heal_credential { ci_heal_job_permissions }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
+import tools.ci_heal_dispatch { ci_heal_dispatch_workflow_id }
+
+// THE SUBJECT IS THE BINDING, NOT THE FEATURE AROUND IT. A heal that repairs a branch pushes a new
+// head and dispatches a revalidation of it; a dispatched run that cannot say WHICH head it got
+// would report a verdict about a tree it cannot identify. Every row here is one half of making
+// that unwritable: the input exists, the checkout selects it, the comparison runs before any
+// witness in every witness-bearing lane, and the dispatcher names the workflow that carries them.
+//
+// WHAT THESE CANNOT SAY, stated so the green is not over-read: these read the MODELED workflow and
+// the EMITTED script text. They establish the shape CI is asked to run. Whether a real dispatched
+// run then refuses on a mismatched sha is a live-execution fact and is evidenced by an executed
+// dispatch, not from here.
+
+fn step_name_or_empty(s: Step) -> String {
+  match s {
+    RunStep {
+      name, id: _, run: _, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match name { Present { value } => value  Absent => "" }
+    UsesStep {
+      name, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match name { Present { value } => value  Absent => "" }
+  }
+}
+
+fn job_step_names(j: Job) -> List<String> {
+  map(j.steps, s => step_name_or_empty(s: s))
+}
+
+// The order fact is expressed as an ADJACENT PAIR over the step-name list rather than as two
+// membership checks, because "the preflight is present" and "the preflight runs before the first
+// witness" are different claims and only the second is the one that matters: a comparison that
+// runs after a witness has reported cannot unreport it.
+type AdjacencyScan { after_checkout: Bool, found: Bool }
+
+fn preflight_immediately_follows_checkout(j: Job) -> Bool {
+  fold(job_step_names(j: j), init: AdjacencyScan { after_checkout: false, found: false },
+    f: fn(acc, n) {
+      AdjacencyScan {
+        after_checkout: n == "Checkout",
+        found: acc.found
+          || (acc.after_checkout && n == heal_revalidation_preflight_step_name)
+      }
+    }).found
+}
+
+fn job_has_checkout(j: Job) -> Bool {
+  any(job_step_names(j: j), n => n == "Checkout")
+}
+
+// EVERY witness-bearing lane, derived from the workflow's own lane list rather than from a roster
+// retyped here: a job that checks out the ordinary subject is a job whose steps can report on it,
+// so the population is "carries a `Checkout` step", and adding a sixth such lane without the
+// preflight reds this row instead of slipping past a hand-listed five.
+//
+// THE SUBJECT IS `witness_floor_lane_jobs`, NOT THE ASSEMBLED WORKFLOW, AND THAT IS A COST FACT
+// WITH A RECEIPT. Reading the record forced `required_lanes_aggregate_job`, whose serialized gate
+// script was about seven eighths of the assembled workflow's cost -- a subject no row in this file
+// says anything about, and the reason three of them exceeded the floor's per-claim ceiling on check
+// 100530537497. `gunbc.witness_floor_workflow` `witness_floor_triggers` carries the measurement, the
+// instrument, why splitting the rows was the wrong repair, and this row's own standing margin --
+// 392ms of a 500ms ceiling on check 100560747021, irreducible because the six lanes ARE the subject,
+// with the declared-ceiling lane named as its trigger.
+test fn every_ordinary_checkout_lane_preflights_before_its_first_witness() -> Bool {
+  let lanes = filter(witness_floor_lane_jobs(), j => job_has_checkout(j: j))
+  lanes.length() >= 5
+    && all(lanes, j => preflight_immediately_follows_checkout(j: j))
+}
+
+// The heal job is the one lane that must NOT bind its checkout to an expected healed head: it
+// checks out the triggering branch head in order to PRODUCE one. Binding it would refuse the job
+// that creates the subject every other lane is being asked to verify.
+//
+// IT ASKS THE JOB DIRECTLY RATHER THAN SEARCHING THE LANE LIST FOR IT, and the reason is the same
+// defect this file already fixed once, in miniature. The first cut folded
+// `witness_floor_lane_jobs` looking for the id, which MATERIALIZES ALL SIX LANES -- and every lane
+// carries its steps' emitted bash -- to answer a question about ONE of them. Measured on the
+// required floor at check 100560747021: 392ms of a 500ms ceiling, for a row whose subject is a
+// single job. A search over a population is not the shape of a claim about a named member; naming
+// the producer is, and it also removes the `Absent` arm, which existed only because a search can
+// miss and could never fire against a list the workflow is assembled from.
+test fn the_heal_job_carries_no_revalidation_preflight() -> Bool {
+  let heal = heal_generated_artifacts_job()
+  !any(job_step_names(j: heal), n => n == heal_revalidation_preflight_step_name)
+    && !job_has_checkout(j: heal)
+}
+
+// ONE ACCESSOR, USED THREE TIMES, INSTEAD OF THREE NESTED HAND-ROLLED WALKS. The first cut of this
+// predicate folded a mapping's entries, matched every YamlValue variant, and did it again one level
+// down and again below that -- forty lines whose subject was "descend three keys". `yaml_key` is
+// that descent named once: it is the mapping-lookup extdeps.languages.yaml.types does not export,
+// which today offers constructors and `yaml_value_kind` and no query at all.
+//
+// IT IS LOCAL, AND THAT IS A DELIBERATE SCOPE CHOICE RATHER THAN THE RIGHT FINAL HOME. Its proper
+// home under DESIGN section 3 is beside the type it reads, in extdeps.languages.yaml.types, so
+// every reader of a YamlValue shares one descent. Landing it there is a shared-module change that
+// reaches lanes with no stake in this PR, so it is authored here and DISSOLVES INTO that accessor
+// the moment one exists -- at which point this row and its twin in
+// test.claim.workflow_dispatch_input_witness, which still carries the older triple-nested form for
+// the same question, both collapse onto it.
+//
+// THE LEAF STILL MATCHES EXHAUSTIVELY AND MUST. `Optional<YamlValue>` at each step is the honest
+// shape of a lookup that can miss; the terminal type check is an exhaustive match over a CLOSED
+// coproduct, which is DESIGN section 4's own idiom. A wildcard arm there would be cheaper to read
+// and strictly worse: adding a YamlValue variant would silently answer `false` instead of failing
+// to compile, which is the absorbing fallback section 5 forbids.
+fn yaml_key(v: YamlValue, key: String) -> YamlValue? {
+  match v {
+    YamlMapping { entries } =>
+      fold(entries, init: none, f: fn(acc, entry) {
+        match acc {
+          Present { value: found } => Present { value: found }
+          Absent => if entry.key == key { Present { value: entry.value } } else { none }
+        }
+      })
+    YamlNull => none
+    YamlBool { value: _ } => none
+    YamlInt { lexeme: _ } => none
+    YamlFloat { lexeme: _ } => none
+    YamlString { value: _ } => none
+    YamlSequence { elements: _ } => none
+  }
+}
+
+fn yaml_is_string(v: YamlValue?, expected: String) -> Bool {
+  match v {
+    Absent => false
+    Present { value: inner } =>
+      match inner {
+        YamlString { value } => value == expected
+        YamlNull => false
+        YamlBool { value: _ } => false
+        YamlInt { lexeme: _ } => false
+        YamlFloat { lexeme: _ } => false
+        YamlSequence { elements: _ } => false
+        YamlMapping { entries: _ } => false
+      }
+  }
+}
+
+fn yaml_key_of(v: YamlValue?, key: String) -> YamlValue? {
+  match v {
+    Absent => none
+    Present { value: inner } => yaml_key(v: inner, key: key)
+  }
+}
+
+fn dispatch_input_is_declared_string(v: YamlValue) -> Bool {
+  yaml_is_string(
+    v: yaml_key_of(
+      v: yaml_key_of(
+        v: yaml_key(v: v, key: "inputs"),
+        key: ci_heal_expected_healed_sha_input_name
+      ),
+      key: "type"
+    ),
+    expected: "string"
+  )
+}
+
+fn dispatch_trigger_value() -> YamlValue {
+  fold(witness_floor_triggers(), init: YamlNull, f: fn(acc, t) {
+    match t {
+      WorkflowDispatch { inputs: _ } => workflow_trigger_entry(trigger: t).value
+      Push { branches: _, paths: _ } => acc
+      PullRequest { branches: _, types: _ } => acc
+      Schedule { cron: _ } => acc
+      WorkflowCall { inputs: _ } => acc
+      WorkflowRunCompleted { workflows: _, branches: _ } => acc
+      MergeGroup => acc
+    }
+  })
+}
+
+// This reads the PROJECTED yaml value rather than the DispatchInput row it came from: the
+// serializer discarded the whole inputs list for a stretch while the model carried it, so a
+// witness over the model alone would have been green across exactly that defect.
+test fn the_required_workflow_declares_the_healed_sha_dispatch_input() -> Bool {
+  dispatch_input_is_declared_string(v: dispatch_trigger_value())
+}
+
+// SELECTION AND COMPARISON ARE BOTH REQUIRED AND ARE DIFFERENT CLAIMS. `ref:` closes the window in
+// which the branch advances between dispatch and checkout; the github.sha comparison closes the
+// earlier one, in which the branch advanced before GitHub resolved the ref into the run subject --
+// which would leave a run whose tree is H1 and whose CHECK is attached to H2.
+test fn the_ordinary_checkout_selects_the_expected_head_when_one_is_named() -> Bool {
+  ci_heal_checkout_ref_expression
+    == "$\{\{ inputs.expected_healed_sha || github.sha \}\}"
+}
+
+// THE DISPATCH IS INSIDE THE PRODUCED-A-HEAL ARM AND BEFORE THE NONZERO EXIT, asserted as ORDERED
+// ADJACENCY rather than as two `contains` calls. Membership alone would stay green with the
+// invocation after the exit, where it can never run.
+//
+// THE ROOT STAMP ARM IS HERE BECAUSE IT ALREADY FAILED ONCE, in this cut, on the first emission:
+// $ROOT is a per-step variable and this step never stamped it, so the composed invocation resolved
+// to `/target/release/gunbc` -- a path that exists nowhere. The emitted yaml looked entirely
+// plausible, which is exactly the shape a witness is for.
+test fn the_heal_terminal_dispatches_the_healed_head_before_it_exits_nonzero() -> Bool {
+  let script = gunbc_ci_heal_commit_push_script()
+  string_contains(
+    s: script,
+    pattern: concat(
+      gunbc_ci_heal_dispatch_invoke(),
+      "\n  echo \"SupersededByHealedHead"
+    )
+  )
+    && string_contains(s: script, pattern: "  exit 1\nfi\n")
+    && string_contains(s: script, pattern: concat(gunbc_invoke_root_stamp_script(), "git config user.name"))
+}
+
+// The dispatch carries the immutable subject and the moving ref as SEPARATE inputs. One of them
+// standing in for the other is the fabricated revalidation this whole cut exists to prevent.
+test fn the_heal_dispatch_binds_the_healed_head_and_the_branch_ref_separately() -> Bool {
+  let invoke = gunbc_ci_heal_dispatch_invoke()
+  string_contains(s: invoke, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
+    && string_contains(s: invoke, pattern: "GUNBC_HEAL_BRANCH_REF=")
+    && string_contains(
+      s: invoke,
+      pattern: "--entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main"
+    )
+}
+
+// THE WORKFLOW IS NAMED BY ITS ARTIFACT VARIANT. The literal this replaces read "ci.yml" for a
+// fortnight after that workflow was deleted, because a string cannot go stale loudly. The negative
+// clause carries the content: an equality against the variant would also hold if someone re-typed
+// the same spelling as a literal, so the row that a DELETED name has not come back is asserted too.
+test fn the_dispatcher_names_the_emission_that_carries_the_heal_job() -> Bool {
+  ci_heal_dispatch_workflow_id == artifact_name(a: WitnessFloorYamlArtifact)
+    && ci_heal_dispatch_workflow_id == "witnesses.yml"
+    && ci_heal_dispatch_workflow_id != "ci.yml"
+}
+
+// The grant is spent, not held. `actions: write` is what GitHub authorizes the workflow-dispatches
+// POST on, and it landed with the invocation above rather than in anticipation of one.
+test fn the_heal_job_grant_admits_the_dispatch_and_widens_nothing_else() -> Bool {
+  match ci_heal_job_permissions.actions {
+    Present { value: level } =>
+      match level { PermWrite => true  PermRead => false  PermNone => false }
+    Absent => false
+  }
+    && match ci_heal_job_permissions.contents {
+      Present { value: level } =>
+        match level { PermWrite => true  PermRead => false  PermNone => false }
+      Absent => false
+    }
+    && match ci_heal_job_permissions.pull_requests { Absent => true  Present { value: _ } => false }
+    && match ci_heal_job_permissions.issues { Absent => true  Present { value: _ } => false }
+    && match ci_heal_job_permissions.id_token { Absent => true  Present { value: _ } => false }
+}
+
+fn preflight_step_script() -> String {
+  match heal_revalidation_preflight_step() {
+    RunStep {
+      name: _, id: _, run, shell: _, env: _, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => run
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => ""
+  }
+}
+
+// THE TWO RACES ARE SEPARATELY ASSERTED, because they have different causes and only one of them
+// is visible from a comparison against github.sha. `expected != github.sha` is the branch advancing
+// BEFORE GitHub resolved the dispatch ref into a run subject: the check would be attached to a
+// commit the operator never named. `expected == github.sha` while `git rev-parse HEAD` differs is
+// the checkout diverging AFTERWARDS: the right subject, the wrong tree. A preflight carrying only
+// the first passes the second while the job builds the wrong tree, which is why both
+// `[ "$RUN_SUBJECT_HEAD" = ... ]` and `[ "$ACTUAL_HEAD" = ... ]` are named here.
+//
+// THE SUBJECT IS THE STEP THE WORKFLOW CARRIES, AND THE JOIN TO THE WORKFLOW IS THE ADJACENCY ROW
+// ABOVE, NOT A SECOND WHOLE-FILE FOLD. The first cut of these two rows read
+// expected_witness_floor_yml(), which generates and serializes every job; both BUDGET-REFUSED on
+// the required floor at 503ms and 506ms against its 500ms CPU ceiling and went UNDECIDED -- and an
+// undecided row is not a weaker green, it is no verdict at all. Composing two cheap rows reaches
+// the same conclusion: this exact Step value is in every ordinary lane's job list (adjacency), and
+// this Step's own `run` carries both arms (here). The serializer copies that string verbatim into
+// the block scalar, so what is one step removed is the INDENTATION, not the content.
+//
+// WHAT THE COMPOSED PAIR CANNOT CATCH, NAMED RATHER THAN LEFT FOR A READER TO DISCOVER, because
+// replacing a whole-file fold with two cheaper rows is from the outside indistinguishable from
+// collapsing a check to fit its transport. BOTH rows read the MODEL -- the job list and the Step
+// value -- so a serializer that DROPPED this step, emitted its `run` under the wrong key, or
+// produced a block scalar whose indentation makes the shell parse differently would leave both
+// green. That blind spot is not hypothetical: extdeps.languages.yaml.gha_workflow
+// workflow_dispatch_yaml discarded the ENTIRE inputs list while the model carried it, which is the
+// same class one field over. It is bounded here by the_required_workflow_declares_the_healed_sha_
+// dispatch_input, which reads the PROJECTED YamlValue rather than the DispatchInput row -- but
+// that covers the trigger, NOT the steps, and this file does not claim otherwise.
+//
+// THE NARROWING WAS BOUNDED BY MEASUREMENT, NOT BY TRIMMING UNTIL GREEN: the two rows cost 192ms
+// and 200ms against a 500ms ceiling, four-fold under rather than shaved to fit, so a later reader
+// can tell a deliberate decomposition from a check whittled down to pass.
+//
+// THE CHECKOUT-MISMATCH ARM IS UNREACHABLE FROM THE PRODUCTION SURFACE, NOT UNTESTED, AND THE
+// DISTINCTION IS WRITTEN HERE SO THE NEXT READER DOES NOT HAVE TO REDERIVE IT. Both mismatch arms
+// are emitted and both are asserted, but only the RUN-SUBJECT one has a live receipt, and the
+// reason is the fix itself rather than a gap in diligence: the checkout is bound to the input
+// (ci_heal_checkout_ref_expression). If expected != github.sha the run-subject arm trips first; if
+// expected == github.sha then the checkout ref IS expected, so HEAD cannot differ. Inducing the
+// checkout arm live means winning a force-push race against the runner's checkout, and making it
+// dispatchable on demand would mean decoupling `ref:` from the input -- weakening the very
+// selection that closes that race. A test runnable only by removing the protection is not a test
+// worth having.
+//
+// SO ITS DISPOSITION IS DEFENSE-IN-DEPTH BEHIND ref: SELECTION, with the discriminating RED at the
+// fixture boundary, where the state IS authorable and IS authored: test.claim.heal_revalidation_
+// witness expected_sha_preflight_binds_run_subject_and_checkout_exactly feeds
+// classify_workflow_dispatch_preflight a checkout head that differs from a matching run subject
+// and requires HealWorkflowDispatchCheckoutMismatch. This file's contribution is the other half --
+// that the comparison reached the step the workflow carries rather than stopping at the model.
+// Neither is a live receipt and neither is described as one.
+//
+// LIVE RECEIPTS THAT DO EXIST, named by their producer rather than transcribed: a workflow_dispatch
+// of gunbc.witness_floor_workflow carrying a stale sha refuses at this step in every ordinary
+// checkout lane with every adjudicating step skipped, and one carrying the correct head passes the
+// same step in the same lanes and proceeds into the machinery. The second is not decoration: a
+// preflight that refused everything would satisfy the first arm permanently.
+test fn the_preflight_step_carries_both_mismatch_arms_and_the_pass_arm() -> Bool {
+  let script = preflight_step_script()
+  string_contains(s: script, pattern: "[ \"$RUN_SUBJECT_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
+    && string_contains(s: script, pattern: "heal revalidation refused: workflow run subject")
+    && string_contains(s: script, pattern: "[ \"$ACTUAL_HEAD\" = \"$EXPECTED_HEALED_SHA\" ]")
+    && string_contains(s: script, pattern: "heal revalidation refused: checkout head")
+    && string_contains(
+      s: script,
+      pattern: "heal revalidation preflight: checkout names expected healed head"
+    )
+}
+
+// ABSENCE MEANS ORDINARY MANUAL DISPATCH, AND A HAND-TRIGGERED RUN THEREFORE DISCHARGES NO HEAL
+// OBLIGATION. The guard is what keeps that true in the emitted script; without it an ordinary
+// dispatch would compare "" against github.sha and refuse every manual run, and the fix for THAT
+// would be to delete the comparison -- which is how a wall becomes a decoration in two steps.
+// The model half is witnessed separately, at the arm that returns OrdinaryWorkflowDispatch
+// (test.claim.heal_revalidation_witness
+// manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation).
+test fn an_absent_input_is_an_ordinary_manual_dispatch_in_the_preflight_step() -> Bool {
+  string_contains(
+    s: preflight_step_script(),
+    pattern: "if [ -n \"$EXPECTED_HEALED_SHA\" ]; then"
+  )
+}

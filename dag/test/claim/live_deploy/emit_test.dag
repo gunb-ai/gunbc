@@ -542,6 +542,8 @@ test fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_
       m == "gunbc.live_deploy.emit"
         && n == "live_deploy_emit_shell_dissolution_trigger"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -560,6 +562,8 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -893,4 +897,20 @@ fn tailscale_off_command(endpoint: TailscaleServeEndpoint) -> String {
   shell_privileged_command_text_of_argv(
     argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: endpoint)),
   )
+}
+
+
+// THE PUBLICATION PRINCIPAL IS ENSURED IN THE PREAMBLE, IDEMPOTENTLY, AS A SYSTEM ACCOUNT. The first
+// deploy through `gunbc converge --mode deploy` on srv1 refused `install: invalid user
+// 'gunbc-publication'` because the member installed spool directories for a principal nobody had
+// created. The id-guard is what makes the second deploy a no-op; --system and nologin are what keep
+// it a service identity rather than a login.
+test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
+  let apply = witness_apply_script()
+  string_contains(s: apply, pattern: "id -u gunbc-publication >/dev/null 2>&1 || ")
+    && string_contains(s: apply, pattern: "useradd")
+    && string_contains(s: apply, pattern: "--system")
+    && string_contains(s: apply, pattern: "--no-create-home")
+    && string_contains(s: apply, pattern: "/usr/sbin/nologin")
+    && string_contains(s: apply, pattern: "gunbc-publication")
 }

@@ -1,0 +1,1074 @@
+module tools.floor_cost_distribution_instrument
+
+import extdeps.filesystem.filesystem_io
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import std.types { Bool, Int, String, NonEmptyStr }
+import gunbc.floor_cost_distribution {
+  FloorCostRow,
+  IdentityEnvelope,
+  RunCost,
+  RunExtremeCount,
+  CostBand,
+  LadderStep,
+  parse_claim_cost_tsv,
+  cost_bands,
+  rows_at_or_above,
+  runs_refused,
+  worst_over_runs,
+  module_max_cpu,
+  repair_ladder,
+  identity_inflation,
+  permille_percentile,
+  implied_clean_run_budget,
+  WorstCost,
+  WorstObserved,
+  WorstIsLowerBound,
+  censored_rows,
+  runs_crossing_undecidable,
+  ClaimCostArtifact,
+  ArtifactRows,
+  ArtifactRefused,
+  ArtifactRefusalCause,
+  NoHeaderLine,
+  UnsupportedSharedCpuMsVintage,
+  UnsupportedArtifactSchema,
+  MalformedDataRow,
+  identity_envelopes,
+  complete_envelopes,
+  work_invariant_envelopes,
+  envelope_permille,
+  envelope_permilles,
+  worst_envelope_permille,
+  run_extreme_census,
+  CrossingPopulationCensus,
+  CrossingPopulationRow,
+  CrossingPopulationSplit,
+  crossing_population_census,
+  crossing_census_partition_closes,
+  completed_crossing_rows,
+  split_crossing_rows,
+  crossing_population_identities,
+  IdentityDisposition,
+  split_disposition_identities,
+  SameHeadAttemptPair,
+  EvalStepDeterminismViolation,
+  AttemptHeadsDiffer,
+  CompletedIdentityAbsent,
+  CompletedIdentityUnavailable,
+  CompletedIdentityStepsDiffer,
+  same_head_eval_step_violations
+}
+
+// THE ENTRY POINT FOR docs/plans/floor-cost-distribution-near-the-ceiling.md.
+//
+// Recipe, and it needs no floor run -- the inputs are artifacts the required floor already
+// uploads on every run:
+//
+//   gh run download <run-id> -n required-floor-claim-cost -D <dir>/<run-id>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function floor_cost_distribution_report
+//
+// WHY THIS IS A SEPARATE MODULE FROM `gunbc.floor_cost_distribution`: reading bytes off disk is a
+// realization and the analysis is an interface (DESIGN section 3). The split is what lets the
+// witness exercise every derivation on a hand-built fixture with no artifacts present, so the
+// evidence does not depend on which runs happen to be downloaded.
+//
+// AN ABSENT OR UNREADABLE FILE REFUSES AND IS NAMED. It does not contribute an empty population:
+// an empty artifact silently emptied a ten-way identity intersection during the original analysis,
+// and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
+// the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
+
+// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`
+// is the authority for the value; this row is the analysis-side reading of it, and it is a
+// Millisecond rather than a bare Int so it cannot be compared against a figure read from another
+// clock -- the exact confusion `std.measure` exists to make unwritable.
+data floor_cost_ceiling: Millisecond = millisecond(count: 500)
+
+// The default clean-run/contended pair the memo's inflation figures rest on, and the default
+// download root. Both are arguments to the functions below; these rows only name the defaults so
+// the recipe above is runnable as written.
+data floor_cost_artifact_root: String = "/tmp/floor-cost"
+data floor_cost_artifact_file: String = "required_floor_claim_cost.tsv"
+
+// `RunRefused` IS NOT `RunEmpty`, AND CONFLATING THEM WAS THE DEFECT. An artifact whose header is
+// an old vintage, or which carries a malformed row, is not a run that measured nothing -- it is a
+// run whose measurements could not be read. Reporting it as empty makes an unreadable artifact
+// indistinguishable from a clean one with no rows, which is the silent narrow the parse now
+// refuses to perform.
+type RunLoad
+  = RunLoaded { run: RunCost }
+  | RunUnreadable { run: NonEmptyStr, path: String }
+  | RunEmpty { run: NonEmptyStr, path: String }
+  | RunRefused { run: NonEmptyStr, path: String, cause: ArtifactRefusalCause }
+
+fn run_cost_path(root: String, run: NonEmptyStr) -> String {
+  concat(concat(root, concat("/", run as String)), concat("/", floor_cost_artifact_file))
+}
+
+// THE READ IS PARAMETERISED BY PATH AND LABEL, AND `load_run_cost` IS ONE CALLER OF IT. A second
+// caller arrived with the attempt-pair sample below, whose members are addressed at a FINER GRAIN
+// than a run: two attempts of one run share a run id, so a path built from the run id alone cannot
+// name either of them. Copying this body to vary the path would have made the refusal vocabulary --
+// unreadable, empty, refused-with-cause -- a second time, and the two copies would drift on the
+// next cause added.
+fn load_cost_at(path: String, label: NonEmptyStr) -> RunLoad {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    RunUnreadable { run: label, path: path }
+  } else {
+    match parse_claim_cost_tsv(text: read.content) {
+      ArtifactRefused { cause: c } => RunRefused { run: label, path: path, cause: c }
+      ArtifactRows { rows: rows } =>
+        if count(rows) == 0 {
+          RunEmpty { run: label, path: path }
+        } else {
+          RunLoaded { run: RunCost { run: label, rows: rows } }
+        }
+    }
+  }
+}
+
+fn load_run_cost(root: String, run: NonEmptyStr) -> RunLoad {
+  load_cost_at(path: run_cost_path(root: root, run: run), label: run)
+}
+
+fn loaded_runs(loads: List<RunLoad>) -> List<RunCost> {
+  loads |> flat_map(l => match l {
+    RunLoaded { run: r } => [r]
+    RunUnreadable { run: _, path: _ } => []
+    RunEmpty { run: _, path: _ } => []
+    RunRefused { run: _, path: _, cause: _ } => []
+  })
+}
+
+fn refused_load_lines(loads: List<RunLoad>) -> List<String> {
+  loads |> flat_map(l => match l {
+    RunLoaded { run: _ } => []
+    RunUnreadable { run: r, path: p } => [concat(concat("REFUSED unreadable run=", r as String), concat(" path=", p))]
+    RunEmpty { run: r, path: p } => [concat(concat("REFUSED empty run=", r as String), concat(" path=", p))]
+    RunRefused { run: r, path: p, cause: c } =>
+      [concat(concat(concat("REFUSED unsupported-artifact run=", r as String), concat(" path=", p)),
+              concat(" cause=", artifact_refusal_phrase(cause: c)))]
+  })
+}
+
+// THE CAUSE IS RENDERED, NOT COUNTED. A reader told only that an artifact was refused cannot act;
+// one handed the offending header or line can go and look at it.
+fn artifact_refusal_phrase(cause: ArtifactRefusalCause) -> String {
+  match cause {
+    NoHeaderLine => "no header line"
+    UnsupportedSharedCpuMsVintage { header_line: _ } =>
+      "pre-split artifact vintage, positively recognized and DELIBERATELY UNSUPPORTED: one `cpu_ms` column held both completions and bounds, and this instrument declines to reconstruct that legacy encoding rather than being unable to read it -- re-point the sample at a newer run"
+    UnsupportedArtifactSchema { header_line: _, missing_columns: m } =>
+      concat("unsupported artifact schema, missing columns: ", join(m, ", "))
+    MalformedDataRow { line: l } => concat("malformed data row: ", l)
+  }
+}
+
+fn band_line(b: CostBand) -> String {
+  concat(
+    concat(to_string(millisecond_count(m: b.lower_ms)), concat("-", to_string(millisecond_count(m: b.upper_ms)))),
+    concat("\t", to_string(b.rows))
+  )
+}
+
+// THE WORST FIGURE RENDERS ITS OWN CENSORING, and the `>=` is not decoration: on the censored arm
+// the number is a LOWER BOUND, so printing it bare would put a bound in the field a reader scans
+// for a cost -- the class this instrument's own input was the specimen of. The censored row count
+// travels with it so a reader can see how much of the population the bound stands for.
+fn worst_phrase(w: WorstCost) -> String {
+  match w {
+    WorstObserved { cpu_ms: c } => concat(to_string(millisecond_count(m: c)), "ms")
+    WorstIsLowerBound { at_least_ms: b, censored_rows: n } => concat(
+      concat(">=", concat(to_string(millisecond_count(m: b)), "ms")),
+      concat(" (LOWER BOUND, unbounded above; ", concat(to_string(n), " censored row(s) carry no cost)"))
+    )
+  }
+}
+
+fn ladder_line(s: LadderStep) -> String {
+  concat(
+    s.removed,
+    concat(concat("\tworst=", worst_phrase(w: s.worst)), concat("\trefused=", to_string(s.runs_refused)))
+  )
+}
+
+fn percentile_line(values: List<Int>, percent: Int) -> String {
+  concat(
+    concat("p", to_string(percent)),
+    match permille_percentile(values: values, percent: percent) {
+      Absent => "\tno-observation"
+      Present { value: v } => concat(
+        concat("\t", concat(to_string(v), " permille")),
+        concat("\tclean-run budget ", concat(to_string(millisecond_count(m: implied_clean_run_budget(ceiling_ms: floor_cost_ceiling, inflation_permille: v))), "ms"))
+      )
+    }
+  )
+}
+
+// The whole analysis over one loaded set of runs. `baseline` and `contended` name the pair the
+// inflation percentiles are paired over; `repaired` is the counterfactual exclusion set; `order`
+// is the ladder's removal order.
+// THREE DISCLOSURES TRAVEL WITH THE FIGURES THEY QUALIFY, and each exists because the figure
+// beside it is incomplete in a way a reader cannot see:
+//
+// `rows excluded from the bands as right-censored` -- the band histogram's bands sum to the
+// OBSERVED rows only. Censored rows have no cost to place, so the difference between the band
+// total and the population is stated rather than left silent.
+//
+// `rows undecidable for crossing` -- what the refusal verdict COULD NOT DECIDE. A censored row
+// whose bound does not clear the ceiling is neither a crosser nor a non-crosser. Empty is the
+// expected reading while the CPU safety ceiling sits above the cost line; a non-empty list means
+// that ordering has broken and every crossing figure on this report is qualified by it.
+//
+// `pairs available` and `pairs refused as right-censored` -- the denominator and the exclusion
+// beside the percentiles. A ratio needs two costs, so a pair with a censored member yields none,
+// and those are systematically the EXPENSIVE pairs -- which is what makes an unstated exclusion
+// here biased low rather than merely incomplete.
+// THE SAMPLE IS ADMITTED OR IT IS REFUSED, AND THE FIGURES CANNOT SEE THE DIFFERENCE BECAUSE THEY
+// NEVER RECEIVE IT. `floor_cost_distribution_check` was already fail-closed and that refutation
+// stands -- but the entry point the module header and the plan tell a reader to RUN is the REPORT,
+// and it rendered refusal lines and then computed bands, crossings, worst cost, the ladder and the
+// percentiles over whatever loaded. Baseline loaded, contended loaded, a third required run
+// refused: the report emitted one refusal line AND a full set of figures, a partial sample wearing
+// the ten-run measurement's name.
+//
+// THAT IS THE SAME ABSORBING FALLBACK AT A SECOND DOOR, and it is why proving the property of the
+// ACTUATOR was correct and insufficient -- DESIGN section 4b reads a rung as the MINIMUM across a
+// subject's in-scope paths, and this sibling entry point is one of them. The repair is not another
+// check: `floor_cost_distribution_figures` takes `List<RunCost>`, so a refused load has NO
+// REPRESENTATION in its input and the partial-sample report is unwritable rather than guarded.
+type RunSampleAdmission
+  = RunSampleAdmitted { runs: List<RunCost> }
+  | RunSampleRefused { failures: List<String> }
+
+fn run_sample_admission(loads: List<RunLoad>) -> RunSampleAdmission {
+  let failures = refused_load_lines(loads: loads)
+  if count(failures) > 0 {
+    RunSampleRefused { failures: failures }
+  } else {
+    RunSampleAdmitted { runs: loaded_runs(loads: loads) }
+  }
+}
+
+fn floor_cost_distribution_lines(
+  loads: List<RunLoad>,
+  baseline: NonEmptyStr,
+  contended: NonEmptyStr,
+  repaired: List<String>,
+  order: List<String>,
+  band_edges: List<Millisecond>,
+  min_base_ms: Millisecond
+) -> List<String> {
+  match run_sample_admission(loads: loads) {
+    RunSampleRefused { failures: f } =>
+      concat(["floor cost distribution: REFUSING an incomplete sample -- no figures follow"], f)
+    RunSampleAdmitted { runs: r } => floor_cost_distribution_figures(
+      runs: r,
+      baseline: baseline,
+      contended: contended,
+      repaired: repaired,
+      order: order,
+      band_edges: band_edges,
+      min_base_ms: min_base_ms
+    )
+  }
+}
+
+fn floor_cost_distribution_figures(
+  runs: List<RunCost>,
+  baseline: NonEmptyStr,
+  contended: NonEmptyStr,
+  repaired: List<String>,
+  order: List<String>,
+  band_edges: List<Millisecond>,
+  min_base_ms: Millisecond
+) -> List<String> {
+  let latest = runs |> filter(r => (r.run as String) == (contended as String)) |> first
+  concat(
+    concat(
+      concat(
+        [concat("runs loaded\t", to_string(count(runs)))],
+        []
+      ),
+      match latest {
+        Absent => [concat("REFUSED no population for contended run ", contended as String)]
+        Present { value: c } => concat(
+          concat(
+            [
+              concat("band histogram for run ", c.run as String),
+              concat("rows excluded from the bands as right-censored\t", to_string(censored_rows(rows: c.rows)))
+            ],
+            cost_bands(rows: c.rows, edges: band_edges) |> map(b => band_line(b: b))
+          ),
+          [
+            concat("rows at or above 300ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 300)))),
+            concat("rows at or above 400ms\t", to_string(rows_at_or_above(rows: c.rows, ms: millisecond(count: 400))))
+          ]
+        )
+      }
+    ),
+    concat(
+      [
+        concat("runs refused as observed\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: []))),
+        concat("rows undecidable for crossing\t", to_string(count(runs_crossing_undecidable(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: [])))),
+        concat("runs refused with the repaired modules excluded\t", to_string(runs_refused(runs: runs, ceiling_ms: floor_cost_ceiling, excluded_modules: repaired))),
+        concat("worst row over all runs, repaired excluded\t", worst_phrase(w: worst_over_runs(runs: runs, excluded_modules: repaired)))
+      ],
+      concat(
+        repair_ladder(runs: runs, ceiling_ms: floor_cost_ceiling, already_excluded: repaired, order: order)
+          |> map(s => ladder_line(s: s)),
+        match runs |> filter(r => (r.run as String) == (baseline as String)) |> first {
+          Absent => [concat("REFUSED no population for baseline run ", baseline as String)]
+          Present { value: b } => match latest {
+            Absent => []
+            Present { value: c } => {
+              let obs = identity_inflation(base: b, other: c, min_base_ms: min_base_ms)
+              concat(
+                [
+                  concat("paired inflation observations\t", to_string(count(obs.permille))),
+                  concat("pairs available\t", to_string(obs.paired)),
+                  concat("pairs refused as right-censored\t", to_string(obs.censored_pairs))
+                ],
+                [50, 90, 95, 99] |> map(p => percentile_line(values: obs.permille, percent: p))
+              )
+            }
+          }
+        }
+      )
+    )
+  )
+}
+
+fn floor_cost_distribution_report_for(
+  root: String,
+  run_ids: List<NonEmptyStr>,
+  baseline: NonEmptyStr,
+  contended: NonEmptyStr,
+  repaired: List<String>,
+  order: List<String>
+) -> String {
+  join(
+    floor_cost_distribution_lines(
+      loads: run_ids |> map(r => load_run_cost(root: root, run: r)),
+      baseline: baseline,
+      contended: contended,
+      repaired: repaired,
+      order: order,
+      band_edges: [0, 10, 50, 100, 200, 300, 400, 500, 1000000] |> map(e => millisecond(count: e)),
+      min_base_ms: millisecond(count: 50)
+    ),
+    "\n"
+  )
+}
+
+// THE ZERO-ARGUMENT ENTRY POINT, so the recipe at the top of this module is runnable as written and
+// the memo can cite a producer rather than carry figures.
+//
+// THE RUN IDS ARE DATA HERE BECAUSE THE FINDING IS ABOUT THESE RUNS. A measurement over "whatever
+// happened to be downloaded" is not re-derivable -- a second reader would get different numbers and
+// have no way to tell a real change from a different sample. Naming them is the citation.
+// EVERY RUN NAMED BELOW PREDATES THE DISJOINT COST COLUMNS AND THEREFORE REFUSES TODAY. Stated
+// here rather than left to be discovered, because a refusing instrument that does not say why
+// reads as broken.
+//
+// These artifacts carry the old shared `cpu_ms` header, in which a completed cost and a
+// right-censored bound occupy one column. Each run loads as `RunRefused` -- NOT `RunEmpty`, which
+// this comment claimed until the causes were typed -- carrying the positively recognised cause
+// `UnsupportedSharedCpuMsVintage`, and `floor_cost_distribution_check` refuses the sample naming
+// all ten. That is the correct answer and not a regression, since the previous behaviour, reading
+// every row as a completed cost, is the defect this module was the live specimen of.
+//
+// THE VINTAGE IS UNSUPPORTED, NOT UNREADABLE, and the distinction is load-bearing enough that
+// three separate sentences here used to get it wrong. The old bytes are readable enough to
+// CLASSIFY EXACTLY -- `cpu_ms` present and `cost_reading` absent identifies the vintage positively,
+// and the rows carry `outcome` and `verdict_reached` besides, which this instrument already reads
+// as an interruption signal. So "the two populations are not separable in those bytes" was
+// OVERSTATED. What is true is narrower: this instrument DELIBERATELY DECLINES to reconstruct the
+// legacy encoding, rather than being unable to detect that a reconstruction would be needed. That
+// obligates no legacy migration; it only forbids calling the bytes silent when they are not.
+//
+// WHAT RESTORES IT, and it is one line of data rather than any code: re-point this list at
+// required-floor runs at or after the artifact change, whose `required-floor-claim-cost` carries
+// `cost_reading` and the per-kind columns. The analysis itself is unchanged and its witness runs
+// on a hand-built fixture, so nothing here is waiting on the re-sample except the live figures.
+data floor_cost_sampled_runs: List<NonEmptyStr> = [
+  "33668368846" as NonEmptyStr,
+  "33670164259" as NonEmptyStr,
+  "33673806092" as NonEmptyStr,
+  "33680659583" as NonEmptyStr,
+  "33681059548" as NonEmptyStr,
+  "33682522296" as NonEmptyStr,
+  "33683651328" as NonEmptyStr,
+  "33688140761" as NonEmptyStr,
+  "33690512169" as NonEmptyStr,
+  "33691893294" as NonEmptyStr
+]
+
+// The clean/contended pair the inflation percentiles are paired over. `33690512169` is the last
+// FloorClean run before gunbc#10133 landed; `33691893294` is the merge commit of #10133 and the
+// most contended run in the sample, which is why it is the one the band histogram is read from.
+data floor_cost_baseline_run: NonEmptyStr = "33690512169" as NonEmptyStr
+data floor_cost_contended_run: NonEmptyStr = "33691893294" as NonEmptyStr
+
+// The modules gunbc#10133 repaired. Excluding them replays every run as if the repair had already
+// landed, which is what separates the repair's effect from the contention of the run it landed on.
+data floor_cost_repaired_modules: List<String> = [
+  "test.claim.self_host_compile_phase_live_gate_witness",
+  "test.claim.self_host_compile_phase_frontier_witness",
+  "test.claim.compiler_frontend_program_status_witness"
+]
+
+// Ladder order: remaining modules by max-over-runs cost, worst first.
+data floor_cost_ladder_order: List<String> = [
+  "v2.test.emit.rust_produced_decl_emit",
+  "v2.test.execution.emit_host_field_access_equals_eval",
+  "v2.test.execution.emit_host_fold_closure_equals_eval",
+  "v2.test.emit.semantic_decl_serialize_parity",
+  "v2.test.execution.emit_host_meet_join_equals_eval",
+  "v2.test.execution.emit_host_complement_equals_eval",
+  "v2.test.emit.produced_decl_two_target",
+  "v2.test.execution.emit_host_add_equals_eval",
+  "v2.test.emit.semantic_decl_routing_generic",
+  "v2.test.claim.enforcement.lens_module_gate_witness"
+]
+
+fn floor_cost_distribution_report() -> String {
+  floor_cost_distribution_report_for(
+    root: floor_cost_artifact_root,
+    run_ids: floor_cost_sampled_runs,
+    baseline: floor_cost_baseline_run,
+    contended: floor_cost_contended_run,
+    repaired: floor_cost_repaired_modules,
+    order: floor_cost_ladder_order
+  )
+}
+
+// THE ACTUATOR. It REFUSES when any named run failed to load rather than reporting over whatever
+// was readable: a report derived from six of ten runs is a different measurement wearing the same
+// name, and the percentiles below it would be a statement about which downloads happened to
+// succeed. The refusal names the runs, so the operator's next move is a download and not a guess.
+fn floor_cost_distribution_check() -> ProcessExit {
+  let loads = floor_cost_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r))
+  match run_sample_admission(loads: loads) {
+    RunSampleRefused { failures: f } =>
+      exit_failure(reason: join(concat(["floor cost distribution: refusing an incomplete sample"], f), "\n"))
+    RunSampleAdmitted { runs: _ } => ExitSuccess
+  }
+}
+
+// THE BETWEEN-RUN ENVELOPE REPORT, a SECOND entry point rather than more lines on the first,
+// because it answers a different question over a different sample. The report above measures ONE
+// run's band histogram and ONE pair's inflation; this one measures how far a single identity's cost
+// travels across runs, which is the only quantity a budget may be set from.
+//
+// Recipe -- again no floor run, the artifacts are uploaded by every required-floor run:
+//
+//   for r in <the run ids in `floor_cost_envelope_sampled_runs`>; do
+//     gh run download $r -n required-floor-claim-cost -D /tmp/floor-cost/$r
+//   done
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/floor_cost_distribution_instrument.dag \
+//     --function floor_cost_envelope_report
+//
+// THE RUNNER IS CARRIED BESIDE THE RUN AND IS NOT IN THE ARTIFACT. `required_floor_claim_cost.tsv`
+// records no host, so the run-to-runner binding is provenance acquired from
+// `repos/gunb-ai/gunbc/actions/runs/<id>/jobs` (`required-witnesses-floor`, field `runner_name`) and
+// declared here. It is data rather than prose because the whole question this report exists to
+// settle -- whether a verdict is a property of which runner picked up the job -- cannot be asked
+// without it, and a host read off a job page into a sentence is unreachable from the census that
+// would contradict it.
+//
+// THE RUNNER NAME IS A HOST PLUS AN EPHEMERAL SUFFIX. `srv1-19-1788450638-2019208` names host
+// `srv1-19` and a per-job registration; the suffix differs on every job, so the twelve runs sampled
+// here ran on twelve DISTINCT runner registrations across three distinct hosts. Run and runner are
+// therefore one-to-one in this sample and cannot be separated by it; HOST can be, and is.
+type FloorRunProvenance {
+  run: NonEmptyStr
+  runner: NonEmptyStr
+}
+
+// TWELVE GREEN `main` RUNS OF `witnesses.yml`, 2026-09-03. Green rather than mixed, and `main`
+// rather than pull-request, so the population is one the required floor actually admitted: a
+// refused run's crossing rows are censored and `v2.workflow.floor_cost_debt` measured that a
+// censored figure and the true cost are essentially uncorrelated.
+//
+// TWELVE RATHER THAN TWO IS THE WHOLE POINT OF THIS ROSTER. The finding that commissioned it rested
+// on a single pair of runs, whose percentiles were computed across ROWS inside that one pair and
+// therefore described row-to-row heterogeneity rather than run-to-run spread. N runs on N distinct
+// runners is the sample that indexes over the right thing.
+data floor_cost_envelope_sampled_runs: List<FloorRunProvenance> = [
+  FloorRunProvenance { run: "33778067165" as NonEmptyStr, runner: "srv4-06-1788452232-1908277" as NonEmptyStr },
+  FloorRunProvenance { run: "33776747244" as NonEmptyStr, runner: "srv4-14-1788451568-1822397" as NonEmptyStr },
+  FloorRunProvenance { run: "33775106554" as NonEmptyStr, runner: "srv1-19-1788450638-2019208" as NonEmptyStr },
+  FloorRunProvenance { run: "33774684988" as NonEmptyStr, runner: "srv3-11-1788449654-3251019" as NonEmptyStr },
+  FloorRunProvenance { run: "33772569940" as NonEmptyStr, runner: "srv1-13-1788448111-660445" as NonEmptyStr },
+  FloorRunProvenance { run: "33772503574" as NonEmptyStr, runner: "srv4-01-1788448102-1586464" as NonEmptyStr },
+  FloorRunProvenance { run: "33772224705" as NonEmptyStr, runner: "srv3-13-1788442800-3072494" as NonEmptyStr },
+  FloorRunProvenance { run: "33772122416" as NonEmptyStr, runner: "srv3-21-1788448106-3180404" as NonEmptyStr },
+  FloorRunProvenance { run: "33766436293" as NonEmptyStr, runner: "srv4-09-1788443674-1514295" as NonEmptyStr },
+  FloorRunProvenance { run: "33754393519" as NonEmptyStr, runner: "srv3-04-1788436534-2520344" as NonEmptyStr },
+  FloorRunProvenance { run: "33749762586" as NonEmptyStr, runner: "srv3-14-1788435102-2419101" as NonEmptyStr },
+  FloorRunProvenance { run: "33747598822" as NonEmptyStr, runner: "srv1-03-1788434224-1059575" as NonEmptyStr }
+]
+
+// The subject the measurement was commissioned over, named so the report prints its envelope beside
+// the corpus percentiles rather than leaving a reader to grep for it.
+data floor_cost_envelope_subject: String = "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates"
+
+fn envelope_runner_line(prov: FloorRunProvenance, census: List<RunExtremeCount>) -> String {
+  concat(
+    concat(prov.run as String, concat("\t", prov.runner as String)),
+    match census |> filter(c => (c.run as String) == (prov.run as String)) |> first {
+      Absent => "\tno-population"
+      Present { value: c } => concat(
+        concat("\thottest_for=", to_string(c.hottest_for)),
+        concat("\tcoolest_for=", to_string(c.coolest_for))
+      )
+    }
+  )
+}
+
+fn envelope_subject_line(envelopes: List<IdentityEnvelope>, subject: String) -> String {
+  match envelopes |> filter(e => e.identity == subject) |> first {
+    Absent => concat("subject absent from the complete population\t", subject)
+    Present { value: e } => concat(
+      concat(subject, concat("\truns=", to_string(e.runs_observed))),
+      concat(
+        concat(concat("\tmin=", to_string(millisecond_count(m: e.min_ms))), concat("ms\tmax=", concat(to_string(millisecond_count(m: e.max_ms)), "ms"))),
+        concat(
+          concat("\tenvelope=", match envelope_permille(e: e) {
+            Absent => "unmeasurable-at-a-zero-baseline"
+            Present { value: v } => concat(to_string(v), " permille")
+          }),
+          concat(concat("\thottest=", e.hottest_run as String), concat("\tcoolest=", e.coolest_run as String))
+        )
+      )
+    )
+  }
+}
+
+// THE ENVELOPE'S ADMISSION, ROUTED THROUGH THE SAME GATE AS THE DISTRIBUTION REPORT RATHER THAN A
+// SECOND ONE. This entry point was authored to call `loaded_runs` and render its refusals BESIDE its
+// figures, which is the shape whose removal from `floor_cost_distribution_lines` is the whole point
+// of `RunSampleAdmission`: a reader who takes the last four lines of a report has no way to know a
+// run was dropped, and a narrowed envelope is narrowed in the direction that makes a budget look
+// safer than it is. `floor_cost_envelope_check` refusing separately does not cover this, because the
+// report is read by people and the check is read by CI. Splitting the figures into their own
+// function is what makes the coverage structural instead of remembered -- a refused load now has no
+// REPRESENTATION in the figures' input type, so there is no arm in which it could be rendered past.
+fn floor_cost_envelope_lines(
+  loads: List<RunLoad>,
+  provenance: List<FloorRunProvenance>,
+  min_ms: Millisecond,
+  subject: String
+) -> List<String> {
+  match run_sample_admission(loads: loads) {
+    RunSampleRefused { failures: f } =>
+      concat(["floor cost envelope: REFUSING an incomplete sample -- no figures follow"], f)
+    RunSampleAdmitted { runs: r } => floor_cost_envelope_figures(
+      runs: r,
+      provenance: provenance,
+      min_ms: min_ms,
+      subject: subject
+    )
+  }
+}
+
+fn floor_cost_envelope_figures(
+  runs: List<RunCost>,
+  provenance: List<FloorRunProvenance>,
+  min_ms: Millisecond,
+  subject: String
+) -> List<String> {
+  let all = identity_envelopes(runs: runs)
+  let complete = complete_envelopes(envelopes: all, runs_expected: count(provenance), min_ms: min_ms)
+  let controlled = work_invariant_envelopes(envelopes: complete)
+  let census = run_extreme_census(runs: runs, envelopes: controlled)
+  concat(
+    concat(
+      [
+        concat("runs loaded\t", to_string(count(runs))),
+        concat("identities observed\t", to_string(count(all))),
+        concat("identities present in every run and at or above the floor\t", to_string(count(complete))),
+        concat("of those, work-invariant across every run\t", to_string(count(controlled)))
+      ],
+      concat(
+        [
+          concat("worst between-run inflation observed\t", concat(to_string(worst_envelope_permille(envelopes: controlled)), " permille")),
+          envelope_subject_line(envelopes: controlled, subject: subject)
+        ],
+        [50, 90, 95, 99] |> map(p => percentile_line(values: envelope_permilles(envelopes: controlled), percent: p))
+      )
+    ),
+    concat(
+      ["run\trunner\textreme census over the work-invariant population"],
+      provenance |> map(prov => envelope_runner_line(prov: prov, census: census))
+    )
+  )
+}
+
+fn floor_cost_envelope_report() -> String {
+  join(
+    floor_cost_envelope_lines(
+      loads: floor_cost_envelope_sampled_runs |> map(p => load_run_cost(root: floor_cost_artifact_root, run: p.run)),
+      provenance: floor_cost_envelope_sampled_runs,
+      min_ms: millisecond(count: 50),
+      subject: floor_cost_envelope_subject
+    ),
+    "\n"
+  )
+}
+
+// THE ACTUATOR, refusing an incomplete sample for the reason `floor_cost_distribution_check` states:
+// a run that reads as zero rows is indistinguishable from a run in which nothing crossed, and here
+// it is worse -- a missing run silently narrows every identity's envelope, which is the direction
+// that makes a budget look safer than it is.
+fn floor_cost_envelope_check() -> ProcessExit {
+  let loads = floor_cost_envelope_sampled_runs |> map(p => load_run_cost(root: floor_cost_artifact_root, run: p.run))
+  match run_sample_admission(loads: loads) {
+    RunSampleRefused { failures: f } =>
+      exit_failure(reason: join(concat(["floor cost envelope: refusing an incomplete sample"], f), "\n"))
+    RunSampleAdmitted { runs: _ } => ExitSuccess
+  }
+}
+
+
+// =============================================================================================
+// THE CROSSING-POPULATION CENSUS: THE COUNTS THE SEED PARKED WITH THE OPERATOR.
+//
+// `required_floor_runner`'s `ClaimOutcome::CompletedOverBudget` arm records that whether the
+// pollable population should keep blocking "is the open question this column exists to make
+// answerable with counts instead of argument -- it stays with the operator". This entry point is
+// the consumer of that column. It reports; it decides nothing.
+//
+// WHY THIS SAMPLE IS REFUSED RUNS AND NOT THE ENVELOPE'S TWELVE GREEN ONES. A crossing that
+// BLOCKED is by construction absent from a green run, so `floor_cost_envelope_sampled_runs` is
+// structurally blind to this population -- pointing this census at it would measure zero over a
+// sample that cannot contain a member, and a zero from a blind sample is the strongest possible
+// misreading. These are runs of `witnesses.yml` whose required floor recorded
+// `completed_over_cost_requirement` at or above one.
+//
+// THE ROSTER IS AN APPEND SURFACE AND THAT IS THIS CENSUS'S GROWTH PATH, NOT A DEFECT IN IT. The
+// `preemption_reachability` column is NEW, so the older a sampled run is the likelier its artifact
+// predates the column and refuses -- which is why the first sample could answer for only three of
+// its seven runs. Appending runs discovered by a later scan needs no code change and the census
+// strengthens on its own as refused runs accumulate. Two scans have contributed so far: the
+// commissioning scan over 131 runs, and a second over the 90 runs that completed after it, whose
+// three additions all carry the column and so DOUBLE the answerable population.
+//
+// RUN 33846875188 IS THIS REPOSITORY'S OWN, and it is here by the same mechanical predicate as
+// every other member rather than because of where it came from: it is the required-witnesses-floor
+// of gunbc#10369, whose first attempt refused with one completed-over-cost crossing beside two
+// cpu_deadline interrupts on a roster-append diff. It was deliberately NOT appended while #10369
+// was open -- adding it there would have made that PR's content a function of that PR's own CI
+// result, so its re-run would no longer have been a re-run of the same subject. The second attempt
+// of this run is the left/right of `floor_cost_attempt_pairs` below, which is the finer-grained
+// reading of the same evidence.
+//
+// A RUN EARNS ITS PLACE BY ITS FLOOR'S OWN RECEIPT, never by what this census would conclude from
+// it. The admission predicate is `completed_over_cost_requirement >= 1` read off the run, so no
+// row is here because it looked interesting once loaded -- a sample selected by its own analysis
+// output is a view, not a population.
+data floor_cost_crossing_sampled_runs: List<NonEmptyStr> = [
+  "33846875188" as NonEmptyStr,
+  "33840420183" as NonEmptyStr,
+  "33839967352" as NonEmptyStr,
+  "33836628401" as NonEmptyStr,
+  "33832675896" as NonEmptyStr,
+  "33832137832" as NonEmptyStr,
+  "33826628566" as NonEmptyStr,
+  "33825929937" as NonEmptyStr,
+  "33824144660" as NonEmptyStr,
+  "33823603404" as NonEmptyStr,
+  "33817080219" as NonEmptyStr
+]
+
+// THIS ENTRY POINT DOES NOT REFUSE AN INCOMPLETE SAMPLE, AND THAT IS A DIFFERENT RULING FROM ITS
+// TWO SIBLINGS RATHER THAN A WEAKER ONE. `floor_cost_distribution_figures` and
+// `floor_cost_envelope_figures` compute quantities whose validity depends on every run being
+// present -- a missing run silently NARROWS an identity's envelope, in the direction that makes a
+// budget look safer than it is -- so they have no partial answer to give and refuse.
+//
+// This census has no such quantity. Each run's census is a COMPLETE statement about THAT run, and
+// the report is their union; a run that cannot be read removes its crossings from the numerator
+// and from the denominator together. What would be dishonest here is a RATE, so no line divides.
+// The coverage line states sampled, loaded and refused as three separate numbers, and every
+// unreadable run is named with its cause, because "we could not look" and "we looked and found
+// none" are the two values this report exists to keep apart.
+//
+// THE ACTUATOR STILL FAILS CLOSED on the case that is genuinely a non-measurement: a sample in
+// which NO run could be read has measured nothing at all and must not exit green.
+fn crossing_run_line(run: NonEmptyStr, census: CrossingPopulationCensus) -> String {
+  concat(
+    concat(run as String, "\t"),
+    join(
+      [
+        concat("completed_crossings=", to_string(census.completed_crossings)),
+        concat("overshoot_charge=", to_string(census.overshoot_charge)),
+        concat("missed_interrupt=", to_string(census.missed_interrupt)),
+        concat("surface_unarmed=", to_string(census.surface_unarmed)),
+        concat("reachability_unrecorded=", to_string(census.reachability_unrecorded)),
+        concat("censored_crossings=", to_string(census.censored_crossings)),
+        concat("undecidable_crossings=", to_string(census.undecidable_crossings))
+      ],
+      " "
+    )
+  )
+}
+
+fn crossing_identity_lines(label: String, identities: List<String>) -> List<String> {
+  concat(
+    [concat(concat(label, "\tdistinct identities "), to_string(count(identities)))],
+    identities |> map(i => concat("\t", i))
+  )
+}
+
+// IDENTITIES THAT LANDED ON BOTH SIDES OF THE DEADLINE, rendered beside the crossing populations
+// because they answer the question the crossing counts alone cannot: whether the INTERRUPT arm is
+// also reporting the host. An identity that completed on one run and was preempted on another had
+// its disposition decided by something other than the row.
+fn disposition_split_line(d: IdentityDisposition) -> String {
+  concat(
+    concat("\t", d.identity),
+    concat(
+      concat("\tcompleted_runs=", to_string(d.completed_runs)),
+      concat("\tpreempted_runs=", to_string(d.preempted_runs))
+    )
+  )
+}
+
+fn disposition_split_lines(runs: List<RunCost>) -> List<String> {
+  let split = split_disposition_identities(runs: runs)
+  concat(
+    [concat("identities observed on BOTH sides of the deadline\t", to_string(count(split)))],
+    split |> map(d => disposition_split_line(d: d))
+  )
+}
+
+fn floor_cost_crossing_figures(loads: List<RunLoad>, ceiling_ms: Millisecond) -> List<String> {
+  let runs = loaded_runs(loads: loads)
+  let rows = completed_crossing_rows(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: [])
+  let split = split_crossing_rows(rows: rows)
+  let total = crossing_population_census(runs: runs, ceiling_ms: ceiling_ms, excluded_modules: [])
+  concat(
+    concat(
+      [
+        concat("ceiling\t", concat(to_string(millisecond_count(m: ceiling_ms)), "ms cpu")),
+        concat("runs sampled\t", to_string(count(loads))),
+        concat("runs loaded\t", to_string(count(runs))),
+        concat("runs unreadable -- these measured NOTHING and are not a zero\t",
+               to_string(count(refused_load_lines(loads: loads)))),
+        concat("partition closes\t", if crossing_census_partition_closes(census: total) { "yes" } else { "NO -- an arm was dropped" })
+      ],
+      concat(
+        ["run\tcrossing populations"],
+        loads |> flat_map(l => match l {
+          RunLoaded { run: r } => [crossing_run_line(run: r.run, census: crossing_population_census(runs: [r], ceiling_ms: ceiling_ms, excluded_modules: []))]
+          RunUnreadable { run: _, path: _ } => []
+          RunEmpty { run: _, path: _ } => []
+          RunRefused { run: _, path: _, cause: _ } => []
+        })
+      )
+    ),
+    concat(
+      concat(
+        [crossing_run_line(run: "TOTAL over loaded runs" as NonEmptyStr, census: total)],
+        crossing_identity_lines(label: "overshoot charge", identities: crossing_population_identities(rows: split.overshoot_charge))
+      ),
+      concat(
+        concat(
+          crossing_identity_lines(label: "missed interrupt", identities: crossing_population_identities(rows: split.missed_interrupt)),
+          disposition_split_lines(runs: runs)
+        ),
+        refused_load_lines(loads: loads)
+      )
+    )
+  )
+}
+
+fn floor_cost_crossing_lines(loads: List<RunLoad>, ceiling_ms: Millisecond) -> List<String> {
+  if count(loaded_runs(loads: loads)) == 0 {
+    concat(
+      ["floor cost crossing census: REFUSING a sample in which no run could be read -- nothing was measured"],
+      refused_load_lines(loads: loads)
+    )
+  } else {
+    floor_cost_crossing_figures(loads: loads, ceiling_ms: ceiling_ms)
+  }
+}
+
+fn floor_cost_crossing_report() -> String {
+  join(
+    floor_cost_crossing_lines(
+      loads: floor_cost_crossing_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r)),
+      ceiling_ms: floor_cost_ceiling
+    ),
+    "\n"
+  )
+}
+
+fn floor_cost_crossing_check() -> ProcessExit {
+  let loads = floor_cost_crossing_sampled_runs |> map(r => load_run_cost(root: floor_cost_artifact_root, run: r))
+  if count(loaded_runs(loads: loads)) == 0 {
+    exit_failure(reason: join(
+      concat(["floor cost crossing census: no run in the sample could be read"], refused_load_lines(loads: loads)),
+      "\n"
+    ))
+  } else {
+    ExitSuccess
+  }
+}
+
+
+// =============================================================================================
+// THE SAME-HEAD ATTEMPT PAIR: THE CROSS-ENVELOPE A/B THAT `SameHeadAttemptPair` WAS DECLARED FOR
+// AND HAS NEVER HAD A PRODUCER.
+//
+// `gunbc.floor_cost_distribution` has carried `SameHeadAttemptPair`,
+// `EvalStepDeterminismViolation` and `same_head_eval_step_violations` -- a comparison that refuses
+// before looking at a single row when the two heads differ, so a caller cannot turn two different
+// trees into a plausible determinism result -- and NOTHING HAS EVER CALLED THEM on real bytes.
+// A model with no producer is specification without execution (DESIGN section 5), and the missing
+// producer is the whole of what this section adds: no new comparison, no new vocabulary.
+//
+// WHY THE SAMPLE IS A PAIR OF ATTEMPTS AND NOT A PAIR OF RUNS, which is the distinction this makes
+// addressable for the first time. `floor_cost_crossing_sampled_runs` holds RUN identities, and two
+// attempts of one run share a run id, so that roster cannot name either attempt of a re-run. A pair
+// of attempts on ONE commit is a strictly better control than any pair of runs: across two runs the
+// confounder is held constant, while across two attempts of one commit it DOES NOT EXIST.
+//
+// THE HEAD IS AN AUTHORED CLAIM TODAY, AND THIS IS VALIDATION RATHER THAN CONSTRUCTION. The cost
+// artifact carries no head SHA, so the head each attempt executed is DECLARED here and checked by
+// `same_head_eval_step_violations` before any row is read. State the guarantee at its real strength:
+// the guard compares two values THE AUTHOR SUPPLIED, so it catches a roster whose heads disagree and
+// it does NOT catch a roster that declares one head over artifacts drawn from two different trees.
+// DESIGN section 5's tell applies exactly -- the check can be satisfied by editing the DECLARATION
+// while the bytes still lie.
+//
+// THE CONSTRUCTION IS AVAILABLE AND THE TRIGGER NAMES IT, so this does not stall silently. The
+// artifacts endpoint that already serves `artifact_id` also serves `workflow_run.head_sha` in the
+// SAME response, and that field is byte-identical across two attempts of one run -- which is exactly
+// and only the fact this guard needs. It is a RUN-grain fact and that is not a shortfall: "are these
+// two artifacts from one tree" is a run-grain question, so the run-grain answer is exact for it.
+//
+// THE TRIGGER: an ARTIFACTS LISTING operation on `extdeps.github.workflow_runs`, and
+// `FloorAttemptRef.head` resolving THROUGH it instead of from this literal. Only the listing is
+// missing -- that module already models `WorkflowRun.head_sha` as a `CommitSha` and already carries
+// an operation keyed on `head_sha` that puts it on the wire, so the head half of this capability
+// exists and is typed.
+//
+// AND THE TRIGGER NAMES THAT MODULE RATHER THAN `extdeps.github.actions_runs` DELIBERATELY. Both
+// modules declare the SAME upstream authority -- locator
+// `docs.github.com/en/rest/actions/workflow-runs`, character for character -- so by the tree's own
+// declarations they are one upstream concept with two authorities, and they have grown two type
+// families for it: `RunConclusion` (10 variants) beside `WorkflowRunConclusion` (8), and
+// `WorkflowRunRecord` (stringly `status`/`conclusion`, epoch `Int` timestamps, no head) beside
+// `WorkflowRun` (`CommitSha`, `WorkflowRunStatus`, `Timestamp`). The fork is UNDECLARED: that
+// module's `conclusion_authority_consolidation_frontier_rows` is about a genuinely different pair
+// -- `WorkflowRunConclusion` against `CheckConclusion` from the CHECKS api -- and says nothing about
+// these two, which are not different APIs at all.
+//
+// THIS COMMENT DOES NOT FIX THAT AND MUST NOT BE READ AS DECLARING IT. It records only what the
+// trigger has to avoid: building the artifacts operation onto the stringly module would satisfy this
+// trigger while deepening a fork over one cited spec, and DESIGN section 3 says a fork always gets
+// consolidated later -- so that arm is deferred cost rather than a shortcut. Consolidating the two
+// is its own change against that upstream's authority, with its own review.
+//
+// Until the listing lands, this field is an authored claim and must not be cited as proof the pair
+// is one tree.
+//
+// THE ARTIFACT ID IS CARRIED BECAUSE IT IS THE ONLY THING THAT ADDRESSES AN ATTEMPT. GitHub serves
+// no per-attempt artifacts endpoint: a re-run's upload lands as a SECOND artifact under the SAME
+// NAME on the same run, distinguishable only by artifact id and creation time. So the id is the
+// acquisition handle a reader needs to fetch these exact bytes again, and without it "attempt 1"
+// names nothing retrievable.
+type FloorAttemptRef {
+  run: NonEmptyStr
+  attempt: NonEmptyStr
+  head: NonEmptyStr
+  artifact_id: NonEmptyStr
+}
+
+type FloorAttemptPair {
+  left: FloorAttemptRef
+  right: FloorAttemptRef
+}
+
+// ONE PAIR TODAY, AND IT IS THE ONE THE CENSUS ITSELF PRODUCED. Run 33846875188 is the
+// required-witnesses-floor of gunbc#10369 -- a roster-append diff that adds three run-id string
+// literals and a comment to a list no witness loads. Its first attempt REFUSED with one
+// completed-over-cost crossing and two cpu_deadline interrupts; its second attempt, on the same
+// commit with no change of any kind, was CLEAN. Both attempts' artifacts are retained.
+data floor_cost_attempt_pairs: List<FloorAttemptPair> = [
+  FloorAttemptPair {
+    left: FloorAttemptRef {
+      run: "33846875188" as NonEmptyStr,
+      attempt: "1" as NonEmptyStr,
+      head: "ceb7aea829fa73bedc7ad38d38523d81a8c7a2dc" as NonEmptyStr,
+      artifact_id: "9928032537" as NonEmptyStr
+    },
+    right: FloorAttemptRef {
+      run: "33846875188" as NonEmptyStr,
+      attempt: "2" as NonEmptyStr,
+      head: "ceb7aea829fa73bedc7ad38d38523d81a8c7a2dc" as NonEmptyStr,
+      artifact_id: "9931292338" as NonEmptyStr
+    }
+  }
+]
+
+// THE LABEL IS WHAT THE ENVELOPE FAMILY WILL PRINT AS `hottest_run` / `coolest_run`, so it names the
+// ATTEMPT rather than the run -- otherwise both members of a pair render as the same string and the
+// extreme census cannot say which side of the pair carried an extreme.
+fn attempt_label(ref: FloorAttemptRef) -> NonEmptyStr {
+  concat(concat(ref.run as String, "/attempt-"), ref.attempt as String) as NonEmptyStr
+}
+
+fn attempt_cost_path(root: String, ref: FloorAttemptRef) -> String {
+  concat(
+    concat(root, concat("/", concat(ref.run as String, concat("/attempt-", ref.attempt as String)))),
+    concat("/", floor_cost_artifact_file)
+  )
+}
+
+fn load_attempt_cost(root: String, ref: FloorAttemptRef) -> RunLoad {
+  load_cost_at(path: attempt_cost_path(root: root, ref: ref), label: attempt_label(ref: ref))
+}
+
+fn attempt_ref_line(ref: FloorAttemptRef) -> String {
+  join(
+    [
+      concat("\tattempt\t", attempt_label(ref: ref) as String),
+      concat("head=", ref.head as String),
+      concat("artifact_id=", ref.artifact_id as String)
+    ],
+    "\t"
+  )
+}
+
+// THE VIOLATION IS RENDERED BY ARM, never counted. Each arm names a different fact about the pair
+// and a reader triaging one identity needs the arm, not a total: heads differing is a sample defect,
+// an absent counterpart is a plan difference, an unavailable one is a preemption, and differing
+// steps is the finding this comparison exists to look for.
+fn eval_step_violation_line(v: EvalStepDeterminismViolation) -> String {
+  match v {
+    AttemptHeadsDiffer { left_head: lh, left_attempt: la, right_head: rh, right_attempt: ra } =>
+      concat(
+        "\tHEADS-DIFFER -- this is not one tree and no determinism reading is available: ",
+        concat(concat(la as String, concat("=", lh as String)), concat(" vs ", concat(ra as String, concat("=", rh as String))))
+      )
+    CompletedIdentityAbsent { identity: i, module: _, completed_attempt: c, absent_attempt: a } =>
+      concat("\tABSENT ", concat(i, concat(" completed on ", concat(c as String, concat(", not present on ", a as String)))))
+    CompletedIdentityUnavailable { identity: i, module: _, completed_attempt: c, unavailable_attempt: u } =>
+      concat("\tUNAVAILABLE ", concat(i, concat(" completed on ", concat(c as String, concat(", reached no verdict on ", u as String)))))
+    CompletedIdentityStepsDiffer { identity: i, module: _, left_attempt: la, left_steps: ls, right_attempt: ra, right_steps: rs } =>
+      concat(
+        "\tSTEPS-DIFFER ",
+        concat(i, concat(concat(concat(" ", la as String), concat("=", to_string(ls))), concat(concat(" ", ra as String), concat("=", to_string(rs)))))
+      )
+  }
+}
+
+// THE ENVELOPE IS REPORTED WITH ITS MEDIAN BESIDE ITS MAXIMUM, ALWAYS, AND THAT IS NOT A
+// PRESENTATION CHOICE. A maximum over several hundred rows is an extreme-value statistic that ONE
+// row can drive, so a max alone cannot distinguish a fat tail from a single outlier; a median alone
+// cannot see the tail at all. The pair is what makes an unremarkable centre and a real tail
+// readable as one fact, and either number quoted by itself misleads in a different direction.
+//
+// `work_invariant_envelopes` IS WHAT MAKES THIS A CONTROL RATHER THAN A COMPLAINT ABOUT NOISE: the
+// population is rows whose evaluator step count was IDENTICAL on both attempts, so the cpu movement
+// it reports is movement with the work held fixed at ROW grain, on one commit.
+fn attempt_pair_envelope_lines(runs: List<RunCost>, min_ms: Millisecond) -> List<String> {
+  let all = identity_envelopes(runs: runs)
+  let complete = complete_envelopes(envelopes: all, runs_expected: 2, min_ms: min_ms)
+  let controlled = work_invariant_envelopes(envelopes: complete)
+  concat(
+    [
+      concat("identities observed\t", to_string(count(all))),
+      concat("identities completing on BOTH attempts at or above the floor\t", to_string(count(complete))),
+      concat("of those, step-count IDENTICAL on both attempts\t", to_string(count(controlled))),
+      concat("worst cpu envelope over the identical-work population\t", concat(to_string(worst_envelope_permille(envelopes: controlled)), " permille"))
+    ],
+    [50, 90, 99] |> map(p => percentile_line(values: envelope_permilles(envelopes: controlled), percent: p))
+  )
+}
+
+fn attempt_pair_figures(pair: FloorAttemptPair, left: RunCost, right: RunCost, min_ms: Millisecond) -> List<String> {
+  let violations = same_head_eval_step_violations(pair: SameHeadAttemptPair {
+    left_head: pair.left.head,
+    left_attempt: attempt_label(ref: pair.left),
+    left_rows: left.rows,
+    right_head: pair.right.head,
+    right_attempt: attempt_label(ref: pair.right),
+    right_rows: right.rows
+  })
+  concat(
+    concat(
+      [attempt_ref_line(ref: pair.left), attempt_ref_line(ref: pair.right)],
+      concat(
+        [concat("evaluator-step determinism violations\t", to_string(count(violations)))],
+        violations |> map(v => eval_step_violation_line(v: v))
+      )
+    ),
+    attempt_pair_envelope_lines(runs: [left, right], min_ms: min_ms)
+  )
+}
+
+// A PAIR WHOSE EITHER SIDE COULD NOT BE READ PRODUCES NO FIGURES AT ALL, which is the opposite
+// ruling from the crossing census beside it and correct for the same reason that one reports:
+// a crossing census over one loaded run is a complete statement about that run, while HALF a pair
+// is not a comparison. There is nothing partial to report here, so the refusal is total and names
+// which side failed.
+fn attempt_pair_lines(pair: FloorAttemptPair, left: RunLoad, right: RunLoad, min_ms: Millisecond) -> List<String> {
+  match left {
+    RunLoaded { run: l } => match right {
+      RunLoaded { run: r } => attempt_pair_figures(pair: pair, left: l, right: r, min_ms: min_ms)
+      RunUnreadable { run: _, path: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+      RunEmpty { run: _, path: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+      RunRefused { run: _, path: _, cause: _ } => concat(["attempt pair: REFUSING -- the right attempt could not be read"], refused_load_lines(loads: [right]))
+    }
+    RunUnreadable { run: _, path: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+    RunEmpty { run: _, path: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+    RunRefused { run: _, path: _, cause: _ } => concat(["attempt pair: REFUSING -- the left attempt could not be read"], refused_load_lines(loads: [left]))
+  }
+}
+
+fn floor_cost_attempt_pair_lines(root: String, pairs: List<FloorAttemptPair>, min_ms: Millisecond) -> List<String> {
+  pairs |> flat_map(pair => attempt_pair_lines(
+    pair: pair,
+    left: load_attempt_cost(root: root, ref: pair.left),
+    right: load_attempt_cost(root: root, ref: pair.right),
+    min_ms: min_ms
+  ))
+}
+
+fn floor_cost_attempt_pair_report() -> String {
+  join(
+    floor_cost_attempt_pair_lines(
+      root: floor_cost_artifact_root,
+      pairs: floor_cost_attempt_pairs,
+      min_ms: millisecond(count: 50)
+    ),
+    "\n"
+  )
+}
+
+// THE ACTUATOR REFUSES ON A PAIR THAT COULD NOT BE COMPARED, which includes the heads-differ arm:
+// a sample that silently became a cross-tree comparison is the one failure this whole family exists
+// to prevent, so it must not exit green.
+fn floor_cost_attempt_pair_check() -> ProcessExit {
+  let lines = floor_cost_attempt_pair_lines(
+    root: floor_cost_artifact_root,
+    pairs: floor_cost_attempt_pairs,
+    min_ms: millisecond(count: 50)
+  )
+  let refusals = lines |> filter(l => starts_with(s: l, prefix: "attempt pair: REFUSING"))
+  let heads = lines |> filter(l => starts_with(s: l, prefix: "\tHEADS-DIFFER"))
+  if count(refusals) + count(heads) > 0 {
+    exit_failure(reason: join(concat(refusals, heads), "\n"))
+  } else {
+    ExitSuccess
+  }
+}

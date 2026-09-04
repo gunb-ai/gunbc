@@ -116,6 +116,11 @@ fn gibibyte_scale_factor_bytes() -> Nat {
   k * k * k
 }
 
+fn mebibyte_scale_factor_bytes() -> Nat {
+  let k = kibi_factor()
+  k * k
+}
+
 fn kibi_factor() -> Nat {
   iec_kibi_factor()
 }
@@ -300,6 +305,10 @@ fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
   byte_size(count: kibibyte_count(k) * kibi_factor())
 }
 
+fn mebibyte_to_byte_size(m: Mebibyte) -> ByteSize {
+  byte_size(count: mebibyte_count(m) * mebibyte_scale_factor_bytes())
+}
+
 type BitWidth = Measure<Information, One, Nat>
 
 fn bits_per_byte() -> Nat {
@@ -319,6 +328,20 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
+
+type CpuCoreCount = Measure<Count, One, Nat>
+
+// A count of entries in a merge queue. It sits with its Count siblings rather than in the module
+// that decodes GitHub's merge_queue rule, for the reason those siblings are here: the axis is
+// "count of things at unit scale", and an extdeps module minting its own alias for it would fork
+// that axis once per upstream that happens to count something.
+type MergeQueueEntryCount = Measure<Count, One, Nat>
+
+// A count of included power cords or other basic physical accessories. On the Count axis alongside
+// its siblings (HardwareThreadCount, CpuCoreCount, MergeQueueEntryCount), typed here so a product
+// module (extdeps.network.mikrotik_crs812) consumes it rather than re-minting a local alias for the
+// same axis. Added 2026-09-04.
+type PowerCordCount = Measure<Count, One, Nat>
 
 type Millicore = Measure<Count, Milli, Nat>
 
@@ -585,6 +608,27 @@ fn events_per_minute_count(r: EventsPerMinute) -> Nat {
   measure_count(r)
 }
 
+// HOW MANY FILES ONE ARTIFACT IS SPLIT INTO, on the Count axis beside PositiveSlotCount and built
+// the same way over PositiveMeasureCount.
+//
+// Zero is excluded by CONSTRUCTION rather than by a check, and the argument is the sibling's: a
+// zero-shard artifact is not a smaller artifact, it is an absent one -- there is nothing to load, so
+// the row describes a model that cannot be served. A caller with no artifact removes the artifact
+// rather than declaring it as zero files.
+type PositiveShardCount
+  = PositiveShardCountValue { count: PositiveMeasureCount }
+
+fn positive_shard_count(count: PositiveMeasureCount) -> PositiveShardCount {
+  PositiveShardCountValue { count: count }
+}
+
+fn positive_shard_count_value(shards: PositiveShardCount) -> Int {
+  match shards {
+    PositiveShardCountValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
+}
+
 fn watt(count: Nat) -> Watt {
   Measure { count: count }
 }
@@ -733,6 +777,21 @@ fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
 }
 
 fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
+  measure_count(m)
+}
+
+// A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
+// at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
+// and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
+// in std prevents the fork DESIGN §3 names and the SEC module can import from here rather than
+// defining its own copy. Added 2026-09-03.
+type UsdWholeDollars = MoneyAmount<One>
+
+fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+  UsdWholeDollars { count: count }
+}
+
+fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
   measure_count(m)
 }
 
@@ -909,12 +968,85 @@ fn character_count_value(c: CharacterCount) -> Nat {
 // TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one
 // construction site each, never a wall.
 
+// A count of MODEL PARAMETERS, a fifth member of the same Count family -- and the one member whose
+// SCALE is the whole point. A published parameter figure is quoted in billions and is not an
+// integer number of them: DeepSeek-V4's own /api/show reports 284.3B. Stored at Giga over Nat that
+// fact is unwritable and rounds to 284; stored as a bare Nat the scale lives in prose, which is how
+// `284` comes to mean 284,000,000,000 with nothing to say so. Mega holds it exactly -- 284.3B is
+// 284300 -- so the fraction survives without introducing a rational.
+//
+// It lives HERE for the reason its four siblings do: Measure of Count at Mega over Nat takes only
+// arguments std.measure already owns, so an instantiation declared downstream would be a fifth name
+// for a shape this module already names. Landed by review 58449 on gunbc#9897, which caught
+// gunbc.model.publication's ParameterCounts storing scaled quantities as raw naturals.
+//
+// HONEST LIMIT, the same one the siblings carry: the family is structurally identical, so passing a
+// ParameterCount where a CharacterCount belongs is WRITABLE. It buys reading clarity and one
+// construction site, never a wall.
+type ParameterCount = Measure<Count, Mega, Nat>
+
+fn parameter_count(millions: Nat) -> ParameterCount {
+  Measure { count: millions }
+}
+
+fn parameter_count_value(p: ParameterCount) -> Nat {
+  measure_count(p)
+}
+
 fn token_count(count: Nat) -> TokenCount {
   Measure { count: count }
 }
 
 fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
+}
+
+// A discrete CPU core count, on the Count axis alongside HardwareThreadCount and CharacterCount.
+// Distinguished from HardwareThreadCount because a core is not a thread; on SMT parts they differ
+// and the type would assert something false if conflated. Added 2026-09-03 for the MikroTik
+// CRS812 and future network-switch platform models.
+fn cpu_core_count(count: Nat) -> CpuCoreCount {
+  Measure { count: count }
+}
+
+fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+  measure_count(c)
+}
+
+fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
+  Measure { count: count }
+}
+
+fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+  measure_count(c)
+}
+
+fn power_cord_count(count: Nat) -> PowerCordCount {
+  Measure { count: count }
+}
+
+fn power_cord_count_value(c: PowerCordCount) -> Nat {
+  measure_count(c)
+}
+
+// A per-second rate of tokens -- the frequency family at One, period marker in the type, sibling of
+// EventsPerMinute and MegatransfersPerSecond. It exists because token throughput is quoted two ways
+// that are NOT the same quantity and get confused constantly: PREFILL rate (how fast an existing
+// prompt is absorbed) and DECODE rate (how fast new tokens are emitted). Both are tokens per second,
+// so the type cannot separate them -- the FIELD NAME must, and a consumer carrying only one of them
+// is under-specified rather than merely terse.
+//
+// First consumer: gunbc.model.ollama_choice, where prefill rate is a serving-admission floor. It is a rate
+// and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
+// one to the other is the class this family exists to make unwritable.
+type TokensPerSecond = Measure<Frequency, One, Nat>
+
+fn tokens_per_second(count: Nat) -> TokensPerSecond {
+  Measure { count: count }
+}
+
+fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
 }
 
 fn millicore(count: Nat) -> Millicore {
@@ -933,6 +1065,21 @@ fn bandwidth(count: Nat) -> Bandwidth {
 
 fn bandwidth_count(b: Bandwidth) -> Nat {
   measure_count(b)
+}
+
+// A rate of discrete packets or events per second, on the same Frequency axis as
+// MegatransfersPerSecond and EventsPerMinute but at One (per-second) scale so no conversion is
+// required. Sibling of TokensPerSecond (which would be the same Measure<Frequency, One, Nat> on
+// its own line, syntactically distinct only by name). Added 2026-09-03 for the Arista 7050S-52
+// throughput fact (780 Mpps).
+type PacketRate = Measure<Frequency, One, Nat>
+
+fn packet_rate(count: Nat) -> PacketRate {
+  Measure { count: count }
+}
+
+fn packet_rate_count(r: PacketRate) -> Nat {
+  measure_count(r)
 }
 
 type Nanosecond = Measure<Time, Nano, Nat>

@@ -415,6 +415,77 @@ mod compiler_tests {
     }
 
     #[test]
+    fn a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "entry_point_absent.dag".to_string(),
+                    content: "module entry.point.absent\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let main_rs = result.files.iter()
+                    .find(|f| f.path == "src/main.rs")
+                    .expect("emission must produce src/main.rs");
+                let marker = crate::v1_compiler_emit_rust::entry_point_absent_refusal_marker();
+                assert!(
+                    main_rs.content.contains(&marker),
+                    "a corpus with no workflow function and no pipeline module must emit a main that REFUSES, carrying {:?}; got: {:?}",
+                    marker, main_rs.content
+                );
+                assert!(
+                    !main_rs.content.contains("fn main() {}"),
+                    "the fabricating empty-body entry point must not be emitted -- it builds, runs, exits zero and does nothing; got: {:?}",
+                    main_rs.content
+                );
+                assert!(
+                    main_rs.content.contains("std::process::exit(2)"),
+                    "the refusal must leave a nonzero exit status; got: {:?}",
+                    main_rs.content
+                );
+                let cargo_toml = result.files.iter()
+                    .find(|f| f.path == "Cargo.toml")
+                    .expect("emission must produce Cargo.toml");
+                assert!(
+                    !cargo_toml.content.contains("clap"),
+                    "a crate whose emitted sources reference clap nowhere must not declare it; got: {:?}",
+                    cargo_toml.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "a_corpus_with_no_entry_point_emits_a_refusing_main_and_declares_no_clap panicked",
+        );
+    }
+
+    #[test]
+    fn the_clap_dependency_follows_the_emitted_cli_demand_in_both_directions() {
+        let with_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
+            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                renders_clap_cli: true,
+                renders_async_services: false,
+            },
+        );
+        let without_cli = crate::v1_compiler_emit_rust::emitted_crate_dependency_lines(
+            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                renders_clap_cli: false,
+                renders_async_services: false,
+            },
+        );
+        assert!(
+            with_cli.iter().any(|line| line.starts_with("clap = ")),
+            "a crate that renders a clap CLI must declare clap; got: {:?}",
+            with_cli
+        );
+        assert!(
+            !without_cli.iter().any(|line| line.starts_with("clap = ")),
+            "a crate that renders no clap CLI must not declare clap; got: {:?}",
+            without_cli
+        );
+    }
+
+    #[test]
     fn emit_import_lines_follow_resolved_binding_identity() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -504,6 +575,45 @@ mod compiler_tests {
         );
     }
 
+    /// THE PRODUCT FALSIFIER FOR THE EVALUATION-BUDGET CONSEQUENCE BRIDGE.
+    ///
+    /// It moves the authority value in a disposable worktree and requires the SERVED response
+    /// to move with it: exactly one drift before regeneration, the regenerated constant
+    /// carrying the moved value, a rebuilt seed, a real thread-CPU breach over the committed
+    /// fixture, the moved code once and the former code zero times, then a restored tree.
+    ///
+    /// WHY THE PERTURBATION IS THE INSTRUMENT: unperturbed, every step of that chain is green
+    /// whether or not the seed reads the projection at all, because the value the boundary
+    /// would have chosen independently is the same value.
+    ///
+    /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
+    /// generations and starts a server, which is tens of minutes rather than milliseconds,
+    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
+    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    #[test]
+    #[ignore]
+    fn evaluation_budget_consequence_falsifier() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let scratch = std::env::var("GUNBC_FALSIFIER_SCRATCH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let outcome =
+            crate::cli_run::run_evaluation_budget_consequence_falsifier(&repo_root, &scratch);
+        // The receipt is printed on the way past whichever verdict is reached, so a red names
+        // the step that refused rather than only the fact that the transaction did not pass.
+        eprintln!("evaluation-budget falsifier: {:?}", outcome);
+        assert!(
+            crate::cli_run::evaluation_budget_consequence_falsifier_passed(&outcome),
+            "the served consequence must move with its authority: {:?}",
+            outcome
+        );
+    }
+
     /// THE FUNCTION-VALUE ADAPTER, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
     ///
     /// The subject is `v1.compiler.emit_rust` `rust_call_arg_function_value_adapt`: the call-position
@@ -527,9 +637,11 @@ mod compiler_tests {
     /// terms as `fixture_closure_rustc_discrimination` beside it: this arm spawns cargo and compiles
     /// two emitted crates, which is minutes rather than milliseconds, so it is ENROLLED AND OPT-IN --
     /// `cargo test --release -p v1-compiler --lib function_value_adapter_fixture_closure_discrimination
-    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. `rust-unit-tests` is
-    /// additionally not a `needs` of the required aggregate, so even un-ignored a red here would be
-    /// visible and would not block through the required context. CANDIDATE EVIDENCE, NO WALL: an
+    /// -- --ignored` -- and DOES NOT EXECUTE BY DEFAULT on push or pull request. CANDIDATE
+    /// EVIDENCE, NO WALL, AND THE `#[ignore]` IS THE WHOLE OF THAT. A second clause stood here
+    /// until gunbc#10078, saying `rust-unit-tests` is additionally not a `needs` of the required
+    /// aggregate; the lane IS required now, so it is removed rather than softened -- deleting the
+    /// `#[ignore]` is by itself sufficient to put this on the acceptance path. Until then: an
     /// `#[ignore]` is a cost decision and NOT a rung, and nothing here may be cited as coverage that
     /// executes on the merge path or as a rung for the adapter.
     #[test]
@@ -575,6 +687,53 @@ mod compiler_tests {
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red)
+        );
+    }
+
+    /// REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS, JUDGED BY RUSTC (gunbc#10266).
+    ///
+    /// The subject is `v1.compiler.emit` `cast_representation_identical`: a cast whose source and
+    /// target are ONE host carrier reached through transparent refinement, alias and brand edges
+    /// asks the target for no operation, so the emission must be the operand unchanged. The
+    /// fixture exercises six such casts across three aliases in BOTH directions, plus one genuine
+    /// numeric conversion that must still go through the target cast syntax.
+    ///
+    /// WHY THIS SUBJECT NEEDS RUSTC AND NOT A SUBSTRING. `test.claim`
+    /// `emitter_nested_refinement_cast_witness_test` asserts the ABSENCE of the fabricated
+    /// unsupported-cast text, and absence is all a spelling oracle can honestly assert here:
+    /// asserting the presence of a particular replacement would pin one rendering of "the operand
+    /// unchanged". Whether the replacement TYPE-CHECKS as the declared return is a meaning-level
+    /// question, and the never type is exactly what let the defective form pass a type check.
+    ///
+    /// THE RED ARM IS THE ROUTE'S OWN, so this pair proves the route can still fail using the
+    /// discrimination already adjudicated for it rather than a fresh unadjudicated arm.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the two pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED AND
+    /// OPT-IN -- `cargo test --release -p v1-compiler --lib
+    /// nested_refinement_cast_fixture_closure_discrimination -- --ignored`. An #[ignore] is a cost
+    /// decision and NOT a rung: nothing here may be cited as coverage that executes on the merge
+    /// path.
+    #[test]
+    #[ignore]
+    fn nested_refinement_cast_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("nested-refinement-cast {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the representation-identical cast control must COMPILE -- an unsupported-cast panic emitted for any of its six casts is a type error at the declared return -- and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
         );
     }
 
@@ -1876,6 +2035,83 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("declared_type_conformance_witness panicked");
+    }
+
+    #[test]
+    fn direct_call_formal_authority_is_declaration_bound() {
+        let sources = im::vector![
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "authority_decl.dag".to_string(), content: "module authority.decl\ntype Left = String\ntype Right = String\nfn accept(left: Left, right: Right) -> Unit { }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_a.dag".to_string(), content: "module authority.caller_a\nimport authority.decl { accept }\ntype Left = Int\ntype Right = Bool\nfn use() -> Unit { accept(right: \"r\", left: \"l\") }\n".to_string() }),
+            std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "caller_b.dag".to_string(), content: "module perturbed.namespace.caller_b\nimport authority.decl { accept }\ntype Left = Bool\ntype Right = Int\nfn use() -> Unit { accept(right: \"rr\", left: \"ll\") }\n".to_string() }),
+        ];
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources.into());
+        assert!(
+            result.diagnostics.is_empty(),
+            "authority carrier fixture must compile: {:?}",
+            result.diagnostics
+        );
+        let json = serde_json::to_value(result.graph.as_ref().expect("resolved graph"))
+            .expect("serializable resolved graph");
+        let mut observed = 0usize;
+        let mut seen_calls = std::collections::HashSet::new();
+        fn inspect(
+            value: &serde_json::Value,
+            observed: &mut usize,
+            seen_calls: &mut std::collections::HashSet<String>,
+        ) {
+            let semantics = &value["expr_data"]["call_semantics"];
+            if semantics["_variant"] == "ResolvedDirectCallSemantics" {
+                let call_key = format!("{}:{}", value["span"]["file"], value["span"]["start"]);
+                if seen_calls.insert(call_key) {
+                    for application in semantics["application_plan"]
+                        .as_array()
+                        .expect("resolved application plan")
+                    {
+                        let formal = &application["formal"];
+                        if formal["parameter_identity"] != "left"
+                            && formal["parameter_identity"] != "right"
+                        {
+                            continue;
+                        }
+                        *observed += 1;
+                        assert_eq!(formal["declaration_bound_conformance"]["name"], "String", "formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv");
+                        assert_eq!(
+                            formal["declaration_bound_conformance"]["span"]["file"],
+                            "<kernel:String>",
+                            "formal conformance must retain the declaration-bound kernel authority"
+                        );
+                        assert!(
+                            formal["substitution_basis"].is_object(),
+                            "emission substitution basis must survive in the same plan"
+                        );
+                        let expected_argument = if formal["parameter_identity"] == "left" {
+                            1
+                        } else {
+                            0
+                        };
+                        assert_eq!(application["matched_argument_index"].as_i64(), Some(expected_argument), "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation");
+                    }
+                }
+            }
+            match value {
+                serde_json::Value::Array(xs) => {
+                    for x in xs {
+                        inspect(x, observed, seen_calls);
+                    }
+                }
+                serde_json::Value::Object(fields) => {
+                    for x in fields.values() {
+                        inspect(x, observed, seen_calls);
+                    }
+                }
+                _ => {}
+            }
+        }
+        inspect(&json, &mut observed, &mut seen_calls);
+        assert_eq!(
+            observed, 4,
+            "both caller perturbation controls must expose both declaration-bound formals"
+        );
     }
 
     #[test]
@@ -3491,6 +3727,224 @@ mod compiler_tests {
             Some("Node".to_string()),
             "a Witness-headed resolved type still answers the Violates fallback"
         );
+    }
+
+    // THE KERNEL-IDENTITY FACT HAS ONE AUTHORITY, AND THIS IS THE ROW THAT SEPARATES IT FROM THE
+    // PREFIX TEST IT REPLACED. `resolved_node_is_kernel_identity_for_name` moved from
+    // v1.compiler.infer_env -- where it was declared, never called, and sat ABOVE the module whose
+    // kernel_span mints the span it tests -- down to v1.std.core beside that minter, and
+    // declaration_provenance_of's KernelMinted arm now READS it instead of re-deriving the same
+    // comparison. The old infer_env body inlined `concat("<kernel:", name, ">")`, reproducing
+    // kernel_span's output by hand, which made it a second authority for the span FORMAT too.
+    //
+    // WHAT EACH ROW HOLDS. The mismatch row is the discriminating one: a node whose ident_span is a
+    // kernel span for a DIFFERENT name is not the kernel identity for the queried name, so a
+    // substring or prefix test over "<kernel:" -- the weaker authority the notes on both
+    // declarations warn about -- answers KernelMinted here and goes red. The positive control stops
+    // that row being satisfied by a predicate that had simply stopped answering true. The agreement
+    // row asserts the recognizer and the provenance mint give the SAME verdict on one node, which
+    // is what makes them one authority rather than two that happen to agree today.
+    #[test]
+    fn kernel_identity_is_one_authority_shared_by_recognizer_and_provenance_mint() {
+        fn node_with_ident_file(
+            name: &str,
+            ident_file: String,
+        ) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let base = shaped_type_node(name, Vec::new());
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: ident_file,
+                    start: 0,
+                    end: 0,
+                })),
+                ..(*base).clone()
+            })
+        }
+
+        // POSITIVE CONTROL -- the minter's own output, recognized for its own name.
+        let int_kernel = node_with_ident_file(
+            "Int",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                int_kernel.clone(),
+                "Int".to_string()
+            ),
+            "the recognizer must accept the span its own minter built for that name"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(int_kernel.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { minted_name }
+                    if minted_name == "Int"
+            ),
+            "the provenance mint must reach KernelMinted through that same recognizer"
+        );
+
+        // THE DISCRIMINATOR -- exact equality against the minter, never a "<kernel:" prefix.
+        let mismatched = node_with_ident_file(
+            "Nat",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            !crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                mismatched.clone(),
+                "Nat".to_string()
+            ),
+            "a kernel span for a DIFFERENT name is not this name's kernel identity -- a prefix test over \"<kernel:\" answers true here"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(mismatched.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "<kernel:Int>"
+            ),
+            "the mint must not upgrade a non-matching kernel-shaped span to KernelMinted"
+        );
+
+        // AGREEMENT -- one verdict, read twice. These cannot diverge while one authority answers.
+        for (name, file) in [
+            (
+                "Int",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            (
+                "Nat",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            ("Widget", "dag/std/nat.dag".to_string()),
+        ] {
+            let n = node_with_ident_file(name, file);
+            let recognized = crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                n.clone(),
+                name.to_string(),
+            );
+            let minted = matches!(
+                &*crate::v1_std_core::declaration_provenance_of(n.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { .. }
+            );
+            assert_eq!(
+                recognized, minted,
+                "recognizer and provenance mint must give one verdict for `{}`",
+                name
+            );
+        }
+
+        // THE TWO SURVIVING ARMS, unchanged by the relocation.
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "dag/std/nat.dag".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "dag/std/nat.dag"
+            ),
+            "a real declaring file must still mint CorpusDeclared"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent
+            ),
+            "an empty ident file must still mint DeclarationIdentityAbsent"
+        );
+    }
+
+    fn item_carrying_properties(
+        name: &str,
+        property_names: Vec<&str>,
+    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        let mut props: im::Vector<std::rc::Rc<crate::v1_std_core::Node>> = im::Vector::new();
+        for p in property_names {
+            props.push_back(shaped_type_node(p, Vec::new()));
+        }
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            properties: std::rc::Rc::new(props),
+            ..(*shaped_type_node(name, Vec::new())).clone()
+        })
+    }
+
+    // THE SUBJECT IS THE COMPOSITE THE CENSUS JOINS ON, NOT ONE ARM OF IT. The emit-side reader
+    // in the type-occurrence census asks is_type_def_item OR is_type_alias_item OR
+    // is_type_decl_item, and it is THAT disjunction which must disagree with the parser for the
+    // census to refuse. Asserting a single arm measures which bucket a type item lands in, which
+    // is a different and much more fragile question -- an earlier draft of this test asserted
+    // is_type_decl_item for a property-free bare leaf and went RED, because with no inferred type
+    // such an item reads as a type ALIAS. It is still a type item; the arm was the wrong subject.
+    fn reads_as_a_type_item(
+        item: std::rc::Rc<crate::v1_std_core::Node>,
+        source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+    ) -> bool {
+        crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+            || crate::v1_compiler_emit_core_support::is_type_alias_item(
+                item.clone(),
+                source_indices.clone(),
+            )
+            || crate::v1_compiler_emit_core_support::is_type_decl_item(item, source_indices)
+    }
+
+    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THE DISCRIMINATING ROW IS THE CAPABILITY-LESS ONE.
+    // `resource Network` and `resource AuthContext` declare no capabilities, so they carry no
+    // children, no body, no params and no connective -- they ARE bare leaves by shape, which is
+    // why the emit side read them as type items while v1.compiler.parse read them as resources.
+    // That disagreement is what made the type-occurrence census refuse with
+    // CensusUnavailable { cause: DeclarationDomainDisagrees }, and both readers previously AGREED
+    // they were types, so the pair was invisible until the readers were separated.
+    //
+    // THE THIRD ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by COUNTING
+    // properties is the shape v1.compiler.parse already had to repair: `type X sole_constructor`
+    // carries a property too, and counting swallowed 202 sole-constructor types across 100
+    // modules into the resource bucket. So a sole-constructor-only item must still read as a type
+    // item, and this row goes red if the exclusion is ever re-spelled as a property count.
+    #[test]
+    fn a_resource_item_is_not_read_as_a_type_item() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+
+        // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type item.
+        let plain = item_carrying_properties("Symbol", Vec::new());
+        assert!(
+            reads_as_a_type_item(plain, source_indices.clone()),
+            "positive control: a property-free bare leaf must still read as a type item"
+        );
+
+        // THE DISCRIMINATOR: resource entries present. Removing the exclusion turns this true.
+        let resource_like =
+            item_carrying_properties("Network", vec!["kind", "mode", "acquire", "release"]);
+        assert!(
+            !reads_as_a_type_item(resource_like.clone(), source_indices.clone()),
+            "a capability-less resource item must NOT read as a type item"
+        );
+
+        // THE OVER-CORRECTION GUARD: sole_constructor is a TYPE modifier, not a resource entry.
+        let sole_constructor_type = item_carrying_properties("Wrapper", vec!["sole_constructor"]);
+        assert!(
+            reads_as_a_type_item(sole_constructor_type.clone(), source_indices.clone()),
+            "a sole_constructor type must still read as a type item"
+        );
+
+        // THE TWO READERS AGREE, which is the exact fact the census join measures and the fact
+        // whose absence made it refuse. Stated as an equality so it fails from either side.
+        for item in [resource_like, sole_constructor_type] {
+            assert_eq!(
+                crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()),
+                !reads_as_a_type_item(item.clone(), source_indices.clone()),
+                "parse-side and emit-side readers must agree on {}",
+                item.name
+            );
+        }
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).

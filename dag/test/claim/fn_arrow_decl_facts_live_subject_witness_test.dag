@@ -1,0 +1,84 @@
+module test.claim.fn_arrow_decl_facts_live_subject_witness_test
+
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// THE SUBJECT DECIDES THE POPULATION, AND THIS IS THE ROW THAT WOULD GO RED IF IT DID NOT.
+//
+// `fn_arrow_decl_facts_live` took no subject until gunbc#10156 clause 2: it walked the calling
+// claim's resolved module closure, an input it did not declare. Every consumer therefore got
+// whatever closure happened to exist, and the acquisition could not be keyed, shared or narrowed
+// — which is what withdrew the determinism transitive live consumer.
+//
+// WHY TWO ROOTS AND NOT ONE. A single-root row would be green under the OLD producer too,
+// because the fixture module is in the witness's own closure either way; it would assert that
+// the call compiles, not that the argument is read. The two fixture roots hold one declared fn
+// each, neither importing the other, so the ONLY thing that can separate the two populations
+// below is the argument. Point the producer at ALPHA and it must not see BETA's declaration:
+// under a producer that ignored `pool_roots` — or that answered from the closure — both markers
+// appear in both populations and `alpha_subject_excludes_the_beta_declaration` and its mirror
+// both go red. That is the discriminating pair; the union row beside them is the positive
+// control that the two fixtures are genuinely findable at all, so an EMPTY answer cannot pass
+// the exclusion rows for the wrong reason.
+
+data alpha_root: List<String> = ["dag/test/fixture/fn_index_subject/alpha"]
+data beta_root: List<String> = ["dag/test/fixture/fn_index_subject/beta"]
+data both_roots: List<String> = [
+  "dag/test/fixture/fn_index_subject/alpha",
+  "dag/test/fixture/fn_index_subject/beta"
+]
+
+data no_files: List<String> = []
+data no_roots: List<String> = []
+
+data alpha_file: List<String> = ["dag/test/fixture/fn_index_subject/alpha/alpha.dag"]
+
+data alpha_marker: String = "test.fixture.fn_index_subject.alpha.fn_index_subject_alpha_marker"
+data beta_marker: String = "test.fixture.fn_index_subject.beta.fn_index_subject_beta_marker"
+
+fn declares(decls: List<FnArrowDecl>, qualified_name: String) -> Bool {
+  any(xs: decls, predicate: fn(decl) { decl.qualified_name == qualified_name })
+}
+
+test fn alpha_subject_yields_the_alpha_declaration() -> Bool {
+  declares(decls: fn_arrow_decl_facts_live(pool_roots: alpha_root, pool_files: no_files), qualified_name: alpha_marker)
+}
+
+test fn alpha_subject_excludes_the_beta_declaration() -> Bool {
+  !declares(decls: fn_arrow_decl_facts_live(pool_roots: alpha_root, pool_files: no_files), qualified_name: beta_marker)
+}
+
+test fn beta_subject_excludes_the_alpha_declaration() -> Bool {
+  !declares(decls: fn_arrow_decl_facts_live(pool_roots: beta_root, pool_files: no_files), qualified_name: alpha_marker)
+}
+
+// POSITIVE CONTROL. Both markers are reachable when both roots are named, so the two exclusion
+// rows above are excluding something that exists rather than passing over an empty answer.
+test fn naming_both_roots_yields_both_declarations() -> Bool {
+  let decls = fn_arrow_decl_facts_live(pool_roots: both_roots, pool_files: no_files)
+  declares(decls: decls, qualified_name: alpha_marker)
+    && declares(decls: decls, qualified_name: beta_marker)
+    && (length(xs: decls) == 2)
+}
+
+// ── file grain ────────────────────────────────────────────────────────────────────────────────
+//
+// THE SAME DISCRIMINATION ONE GRAIN DOWN. `pool_files` names single modules; `pool_roots` names
+// directories. These two rows would both go red if file grain were ignored and the answer came
+// from the directory containing the named file -- beta lives in a SIBLING directory, so a producer
+// that widened a file to its parent would still exclude beta and the exclusion row would pass for
+// the wrong reason. That is why the pair is here rather than a single presence row: the inclusion
+// row fails if the file is not read at all, and together they pin the population to the file.
+test fn a_named_file_yields_its_own_declaration() -> Bool {
+  declares(
+    decls: fn_arrow_decl_facts_live(pool_roots: no_roots, pool_files: alpha_file),
+    qualified_name: alpha_marker
+  )
+}
+
+test fn a_named_file_yields_only_its_own_declaration() -> Bool {
+  length(xs: fn_arrow_decl_facts_live(pool_roots: no_roots, pool_files: alpha_file)) == 1
+}

@@ -53,12 +53,12 @@ because a step without one cannot be said to be done.
 | Step | Project | Terminal evidence | State |
 |---|---|---|---|
 | **PRINT-0** | MEASURE | Board outline typed from the vendor manual (243.840 x 266.700 mm exact, axes corrected); micro-ATX lettered grid under its own standard authority; standoff placement derived from per-location evidence standings | **done** |
-| **PRINT-1** | TOOLCHAIN | Build envelope, filament classes, slicer platform claims as separate authorities, **and a concrete A1 mini product row that the coupon fit witness consumes** | reopened |
+| **PRINT-1** | TOOLCHAIN | Build envelope, filament classes, slicer platform claims as separate authorities, **and a concrete A1 mini product row that the coupon fit witness consumes** | **done** (binding mutation-verified) |
 | **PRINT-2** | MEASURE | Measurement authority: absent refuses, duplicate-key conflict refuses, precision budget enforced | **done** |
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
 | **PRINT-4** | TOOLCHAIN | Realization contract v0: contract derives its own rungs; a wrong-step handler is caught and located | **done** |
-| **PRINT-5** | TOOLCHAIN | Raw transport schema admission: unknown version, missing field and unknown operation all refuse before any geometry call | |
-| **PRINT-6** | TOOLCHAIN | CadQuery handler + four-part authority wall; all four negative controls flip | |
+| **PRINT-5** | TOOLCHAIN | Raw transport schema admission: unknown version, missing field and unknown operation all refuse before any geometry call | **done** |
+| **PRINT-6** | TOOLCHAIN | CadQuery handler + authority wall; sealed instruction plan; walls 1-3 execute, wall 4 (solid readback) is a declared boundary | handler done; materializer + export profile open |
 | **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | |
 | **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | |
 | **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
@@ -83,13 +83,28 @@ onward now carries the cable obligation in its own terminal evidence: endpoints,
 volume, clip positions, strain relief, moving-versus-fixed classification, and declared separation
 from blades and hot surfaces.
 
-**N = 17.** PRINT-0 through PRINT-4 are landed and executing (27 witnesses); PRINT-1 is REOPENED because the build envelope is authored inside the fit witness rather than owned by a printer product row, so that witness would stay green if the product authority changed or vanished. PRINT-5 through PRINT-7
-are the pre-arrival critical path and depend on no operator input. PRINT-8 is the first step that
-needs hardware.
+**N = 17.** PRINT-0 through PRINT-6 are landed and executing. PRINT-1's reopening is CLOSED: the
+build envelope is owned by `extdeps.printing.bambu_lab_a1_mini` and the coupon fit witness reads
+`a1_mini_build_envelope` rather than an inline literal. That was verified by MUTATION rather than by
+reading the import — shrinking the product row's x from 180 mm to 50 mm flips
+`w_the_hole_ladder_coupon_fits_the_a1_mini` from green to red, so the binding is live and not
+nominal. The check was run because the module's own annotation asserted "changing this row is what
+moves that witness", and an annotation asserting a property the code does not have is exactly what
+#10119 had to repair four times.
+
+PRINT-5 and PRINT-6 landed with #10119, so the pre-arrival critical path is now **PRINT-7 alone**,
+and it is BLOCKED rather than merely pending: re-inspecting an emitted STEP/3MF needs a CAD kernel,
+and the trigger for that is a base image with glibc >= 2.38 or an x86_64 runner. PRINT-8 is the first
+step that needs the hardware itself, and it is not blocked by PRINT-7 — the coupon can be printed and
+measured before any kernel readback exists, it just cannot issue an absolute process-qualification
+receipt until PRINT-7 closes.
 
 ### What blocks what
 
-- **Nothing blocks PRINT-5..7.** These are the two-day cut.
+- **PRINT-5..6 are landed.** PRINT-7 is BLOCKED on a CAD kernel — measured, not assumed: CadQuery
+  installs on this arm64 container and clears `libGL.so.1`, then `casadi` requires `GLIBCXX_3.4.32`
+  which requires `GLIBC_2.38`, and this box is glibc 2.36. The trigger is a base image or an x86_64
+  runner, NOT a pip install.
 - **Joint family** (dovetail / tongue-and-groove / keyed slide / pin) gates the
   ProductionInterfaceCoupon only — a later half of PRINT-8, not the MachineProcessCoupon.
 - **PETG** gates PRINT-10 onward. PLA carries PRINT-8 and PRINT-9 and stops there: no PLA-to-PETG
@@ -307,6 +322,94 @@ not choose it.
   and vacancy produce the same number. Only a deliberate must-fail control in the same file
   distinguished them.
 
+### PRINT-5 — the handler, and the one thing it does not yet do
+
+The pairing discharge and the CadQuery handler both land: `AdmittedRealizationV0` is sealed and
+minted only inside `judge_realization` from the **canonical** specimen, and `realize_admitted` takes
+that capability and nothing else. Five witnesses green by execution — per-feature trace with the
+datum as a distinct subject, uncentred plate, whole-program equality against a model-rebuilt
+expectation, exact millimetre rendering on odd micrometres, and overtravel moving no measured
+dimension.
+
+**Actuation is registered but NOT materialized, and that is the honest state.**
+`CouponCadQueryProgramArtifact` is a `gunbc.generated_artifact` variant generated through
+`artifact_generate`, and it is `NotCommitted`. Since `main_wet` selects only committed artifacts,
+**nothing writes the `.py` to disk today.** The remaining work is a typed workspace materializer and
+a pinned CadQuery environment; using `main_wet` to keep an actuation claim alive would have been the
+claim outrunning the execution.
+
+The commit-policy question resolved against my first answer. I had registered it
+`CommitRequired { consumer: FabricationToolchain }`, reasoning that `RepoConsumer` already spanned
+more than git and CI. The correction, from review 5095012465: `RepoConsumer` answers the narrower
+question *why must these bytes persist in a git checkout*, and a CAD kernel reading a materialized
+workspace establishes no such requirement — one `FabricationToolchain` arm would have conflated the
+program consumer, the solid consumer, the mesh consumer, the slicer and the printer. The arm becomes
+justified only when a workflow requires an operator to obtain *this file* from a checkout, and then
+it is narrow (`FabricationWorkstationCheckout`) with a receipt.
+
+Committing it had already produced its own evidence: `.gitignore`'s blanket `*.py` swallowed the
+path, so an artifact declared `CommitRequired` could never be committed and the drift gate would
+have read an absent file indefinitely. A derived negation section in `gunbc.gitignore_emit` fixed
+that and has been reverted with the policy — with no such artifact it is machinery whose
+non-vacuity control names a path that no longer exists. **The latent class is real and now
+unwalled**: a `CommitRequired` artifact whose path matches a developer ignore pattern is silently
+uncommittable. Its trigger is the first such artifact; walling it before one exists would be a check
+whose RED is unauthorable.
+
+**Export is removed from the emitted program rather than profiled.** The
+`cq.exporters.export(result, "…stl")` line chose five things the model never stated — STL over STEP
+or 3MF, a filename, a working-directory-relative destination, format-by-extension, and CadQuery's
+default tessellation policy. The last is not neutral: STL is a mesh format, so every modeled circle
+becomes a polygon whose fidelity is set by linear and angular tolerances, and the emitter was
+choosing how round the holes this coupon exists to *measure* come out. The program now builds
+`result` and stops. `CadQueryExportProfile` is a real obligation and is deliberately unauthored:
+with no kernel here its tolerance fields would be literals with no oracle.
+
+**Four defects the review found, three of which my own annotations had asserted away.** `zip_map`
+truncates (`Empty` on either side) while the comment claimed it refuses a length mismatch — the
+third appearance of the positional-parallel-list defect here, and the first where a comment supplied
+the false guarantee; replaced by one row per substitution, which deletes the correspondence. The
+capability wall leaked through `plate_line`/`cut_line`, callable on bare geometry, directly beneath a
+header claiming there was "not even a private one" — the emitters now destructure geometry inside
+the arms of a sealed `CadQueryInstructionV0` that only `cadquery_emission_plan` can mint.
+`AdmittedRealizationV0` had no seal evidence at all while a witness annotation asserted its seal
+held; its red/green/differential battery is now enrolled and green. And the overtravel annotation
+described a doubled-overtravel diff that no body ever performed — the claim is narrowed to what
+executes, with the solid readback recorded as an open obligation.
+
+The discharged `RealizationV0Obligation` vocabulary is deleted. Keeping an empty roster was argued
+on the grounds that it preserves a typed place for the next obligation, but nothing read it — no
+gate required emptiness — so the forcing did not exist, and the discharged property is carried where
+it executes, in the type of the accepting arm.
+
+**Toolchain boundary, now measured rather than assumed.** Wall 4 — re-reading the produced *solid*
+for plate dimensions, datum location and the eleven ladder holes — is a §4b boundary obligation, not
+a rung. Its trigger was written as "a runner with cadquery importable", which was too vague to act
+on, so it was probed to termination:
+
+- CadQuery **does** install from PyPI on this arm64 container (wheels exist for aarch64); the
+  earlier note that this box has "no CAD kernel" was a missing-bootstrap observation, not an
+  architecture wall. `pip` bootstraps into a venv via `get-pip.py` (the system interpreter is
+  PEP-668 externally-managed, so `--user` refuses).
+- `import cadquery` then fails on **`libGL.so.1`**, which is satisfiable by extracting
+  `libgl1`/`libglx0`/`libglvnd0` plus the X client libs.
+- Past that, `casadi` requires **`GLIBCXX_3.4.32`**, and a libstdc++ carrying it requires
+  **`GLIBC_2.38`**. This container is **glibc 2.36**.
+
+So the real trigger is **a base image with glibc ≥ 2.38 (or an x86_64 runner), not a pip install** —
+and assembling one by hand-extracting `.deb`s onto `LD_LIBRARY_PATH` is where a probe turns into the
+workaround §5 names, so it was stopped there rather than pushed through. The environment wall 4 needs
+is a *pinned, identified* toolchain — Python version, CadQuery version, OCP closure, image digest,
+install method — which is the same identity the qualification receipt has to carry anyway.
+
+**What this costs tomorrow, stated plainly.** Without wall 4 the physical deviation measured on a
+printed coupon is the sum of model→source, kernel, tessellation, slicer and printer–spool terms, and
+the coupon exists to isolate the last. A print made before wall 4 closes therefore yields operational
+evidence (adhesion, gross scale, obvious defects) and a valid **A-vs-B differential** between the two
+printer–spool pairs — the upstream terms are common-mode across two prints of the same artifact and
+cancel in the comparison — but it **cannot issue an absolute process-qualification receipt** against
+the modeled nominal. Relative comparison survives; absolute qualification does not.
+
 ## The two-day cut (printers arrive 2026-09-03)
 
 **Ruling: a CAL-driven vertical slice, not a general framework and not hand-authored coupon CAD.**
@@ -407,6 +510,66 @@ observed difference is the printer alone.
 **Deferred as definition-only residue until each has a consumer:** `CONTRACT` (needs the generator),
 `DeploymentEnvelope` (needs the layout-comparison consumer). The design of both is pinned above.
 
+## Supply identity — RULED, and it unblocks the filament slice
+
+The open question was whether a spool is an inventory **lot** or a **PhysicalAsset instance**. Ruled:
+**one supply instance per physical spool, allocated at durable physical individuation, each retaining
+its source procurement lot.** The dependency runs one way only —
+
+```
+identity makes a later divergence attributable
+NOT: a later divergence earns the object an identity
+```
+
+so the two day-one spools are separate instances *before* either print begins, even though they came
+from one order, name one catalog product, and have no known difference. Waiting for measured
+divergence would leave the first divergence with nowhere truthful to live.
+
+Grains stay distinct rather than collapsing onto the lot: catalog product (what was sold),
+manufacturer batch (what the maker says), procurement lot (what was bought), supply instance (which
+spool fed this print), condition observation (instance x time). **One order is not one material
+batch** — `ProcurementLotIdentity` and manufacturer batch standing stay independent, since one order
+may span two production batches and two orders may share one. Moisture at print time is an
+instance-and-time observation; a drying cycle mints a new condition observation, never a new spool
+identity.
+
+RFID and operator label are both **evidence routes, not identity kinds**. They may coexist; an RFID
+read failure does not create a different spool, replacing a label does not create a different spool,
+and disagreement must refuse the attribution rather than letting either route silently win. The RFID
+UID is a machine-read manufacturer identifier, not a guaranteed globally unique spool serial, until
+something establishes that.
+
+The lot-to-spool relation must not be authored twice. The existing inventory event already relates
+installed assets to the lot whose stock moved, so day one is one install event per spool with
+`quantity: 1`. The generic rule refuses only when assets *exceed* quantity, which would admit
+`quantity 2, assets [spool_a]`; an attribution-critical supply needs the stronger local law
+`asset count == installed quantity AND the requested asset occurs exactly once`. The admitted supply
+may carry the derived source lot, and must never accept an independently authored `source_lot`
+without comparing it against the event.
+
+Catalog boundary: `PhysicalAsset` requires a catalog `DeclarationRef` while `ProcurementLot` may
+carry an unread catalog standing. Instance-per-spool must not force a fabricated exact filament
+product — where only a package description is known, keep the unresolved standing and limit the
+receipt to an end-to-end observation. Do not point a spool at the `Pla` polymer class as though a
+class were a particular commercial product.
+
+### Correction landed to the printer slice
+
+The manifest annotation said the roster is filled by **reading the serial off each machine**. That
+conflated two states the carrier already distinguishes: `PhysicalAsset.physical_serial` is optional,
+so a printer present on the bench with an unread serial and a printer that has not arrived are
+different facts, and collapsing them would report a machine the operator is standing in front of as
+absent. A row is allocated at receipt and durable individuation — an operator-applied label suffices
+— and the serial **corroborates** that binding rather than establishing it. If a serial is ever
+required before attribution, that is an admission refusal arm, visible and countable, never silence.
+
+### Two coupons per machine is two attempts, not two objects on one plate
+
+`A1/B1` then `A2/B2`, each pair consuming the same machine artifact, supplies and nozzle unchanged
+and no intervening calibration unless recorded. Two copies printed together answer **within-job /
+bed-position** variation; two executions answer **print-to-print** variation. Both are useful and
+they must not share one receipt name.
+
 ## On arrival (2026-09-03)
 
 ```
@@ -422,6 +585,39 @@ printer setup and identity observation
 The duplicate-measurement repair already has the right semantics for this: lookup refuses
 contradiction. A future adjudication relation may supersede a measurement, but selection must never
 be smuggled into ordinary resolution.
+
+### The bench procedure, in the order it must physically happen
+
+Written out because the ordering is the whole content: two steps here capture facts that **no later
+measurement can reconstruct**, and both are cheap only while the parts are still on the machines.
+
+1. **Label both printers before either is powered on.** A physical label, applied by hand — `A` and
+   `B` is sufficient. This is the durable individuation the roster needs; the identity is allocated
+   here, not derived from anything read later. Record the machine each label went on.
+2. **Label both spools before either is loaded.** Same rule, `PLA-A` / `PLA-B`. Do this while they
+   are still sealed and distinguishable as objects rather than as "the one in the left printer".
+3. **Read the serials, if convenient — and do not wait on them.** The serial *corroborates* the
+   binding made in step 1; it does not establish it. If a serial is unreadable, the printer is still
+   registered. If an RFID tag reads, record it as evidence beside the label, never instead of it.
+   Label and tag disagreeing is a refusal to resolve later, not a coin flip.
+4. **Load spool A into printer A, spool B into printer B, and write down which went where.** This
+   pairing is the treatment variable of the entire experiment. It is not recoverable from the plastic.
+5. **Print the same coupon on both machines, concurrently.** Same generated artifact, same profile,
+   same nozzle. Concurrency matters: it holds ambient conditions roughly fixed across the pair.
+6. **Bind each coupon to its printer and spool BEFORE it leaves the bed.** Write on it, bag it and
+   label the bag, or photograph it in place — any durable mark. **This is the irreversible step.**
+   The two coupons are geometrically identical *by design*, so once both are off their beds and on
+   the same table, nothing measured afterwards can tell them apart. Getting this wrong does not
+   degrade the experiment; it voids it.
+7. **Then repeat as a second attempt: A2 and B2**, same supplies, same nozzle, same profile, no
+   intervening calibration unless it is recorded. A1/B1 versus A2/B2 answers *print-to-print*
+   variation. Two copies on one plate would instead answer *bed-position* variation — a different
+   question with a different receipt name, and conflating them is how a machine difference gets
+   attributed to a corner of a build plate.
+
+What is deliberately **not** on this list: any dimension read off a coupon, any compensation constant,
+any judgement about which machine is better. Those are measurements, and they are all still available
+tomorrow. Steps 1, 2, 4 and 6 are the only ones that expire.
 
 
 ## The floor-budget cluster, and why this program did not take the coverage loss
@@ -546,3 +742,62 @@ three-fan chain draws 0.27 A and a five-fan chain 0.45 A steady — neither figu
 because the header rating and startup behaviour are unmeasured. Do not assume every chained fan is
 independently observable just because a downstream socket exists; tach forwarding needs manufacturer
 authority or an executed electrical observation.
+
+## The GPU-bearing node — how a card changes the cassette's structure
+
+A node carrying a full-height dual-slot card is a **variant of the node contract**, not a second
+product. What it changes is not "make it bigger": it converts two of the cassette's founding
+assumptions.
+
+**1. Distributed load becomes a concentrated cantilever.** The board is ~1 kg spread over standoffs;
+a dual-slot card is ~1.5-2.5 kg hanging off one slot at one end. The existing standoff model cannot
+carry it, and neither can the PCIe connector. The node needs a **second load termination** — a card
+support spanning to the cassette frame, with the printed part as an alignment pad rather than the
+retention. This is the same law the GPU augmentation program states, arriving inside the chassis:
+*printed parts locate, metal retains.*
+
+**2. The stack load path is sized by the heaviest node, not the average one.** "Remove a node from
+the middle without lifting the others" means every shell carries the stack above it through its own
+sidewalls. A GPU node is the heaviest member, so it sets the sidewall section for **every** node in a
+mixed stack — or the model must carry a per-node mass and refuse a stacking order whose lower
+members cannot carry what is above them. The second is the honest version and it is a real
+refusal the current model cannot express.
+
+**3. One airflow domain becomes two, and the second one exhausts sideways.** The cassette channels
+80 mm fan air across the DIMMs. A blower card pulls its own air and exhausts out the bracket — which
+in an OPEN, stacked chassis discharges into whatever is adjacent, including the intake of the
+neighbouring node. **Inter-node recirculation is a failure mode the single-node airflow model does
+not have.** It forces a declared exhaust destination per node and the rule that one node's exhaust is
+never another's intake — which in practice means a consistent front-intake/rear-exhaust convention
+and a duct from the blower to the rear face, even though the chassis is otherwise open.
+
+**4. Grounding gets materially harder, not incrementally.** The standing requirement is a ground for
+each board. A card bracket normally grounds through a metal chassis; in a printed, insulating
+cassette there is **no such path** unless one is modeled. The GPU does not create this gap, it
+exposes it — the bracket is simply the first component that assumes a conductive chassis and finds
+none.
+
+**5. Service becomes node-scoped.** A mid-stack node must extract with its card, cables and service
+loops intact, so disconnect order and bend volumes become properties of the node, not the rack.
+
+### The modeling consequence, and it is the operator's ruling applied
+
+The shared authority is the **logical** structure — where load goes, where air goes, where fasteners
+and interfaces sit. The **process** is an input to realization, not a fork of the design: PLA wants
+thicker walls and rewards ribs; sheet metal is one folded surface that forbids enclosed ribs and
+bosses and requires a bend radius and relief at every fold; molding wants uniform walls, draft and no
+undercuts. So the process-specific part is **more than thickness**, and the difference must live in a
+realization bound to a `FabricationProcess`, never in a hand-edited second model.
+
+That is the same shape `gunbc.product.printed_chassis.realization_contract` already has for CadQuery,
+and it says the emitter must not be forked per process: one logical model, N bound handlers, STL for
+the printer and DXF for the laser shop derived from **one** source. Forking the emitter per process
+is §3's fused-transport tell exactly.
+
+### Open facts this cannot proceed without
+
+Exact card envelope, mass, slot width and bracket geometry · blower exhaust direction and volume ·
+node pitch (which decides upright versus flat-on-riser, and the riser makes it a cable problem) ·
+aux power connector type and sustained draw against the node supply and stack distribution · whether
+a mixed stack is allowed at all, since a uniform GPU stack and a mixed stack have different sidewall
+answers.

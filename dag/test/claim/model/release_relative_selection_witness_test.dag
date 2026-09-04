@@ -1,0 +1,235 @@
+module test.claim.model.release_relative_selection_witness_test
+
+import std.types { Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import gunbc.model.publication { ReleaseIdentity }
+import gunbc.model.release_relative_selection {
+  WithinReleaseQuality, compare_within_release,
+  ReleaseRanked,
+  UniqueReleaseRelativeMaximum, NoRankedAlternative, UniqueMaximumFound,
+  NoCommonReleaseScale, MaximumNotUnique,
+  unique_release_relative_maximum,
+}
+
+// THIS BATTERY EXISTS BECAUSE AN INTEGRATION WITNESS CANNOT HOLD A GENERIC CONTRACT.
+//
+// The Ollama rows in test.claim.model.serving_choice_witness_test prove that ONE adapter still
+// returns familiar end results. They cannot hold this authority's four arms, its payload
+// preservation, its duplicate behaviour, or its ordering law, because their fixtures do not reach
+// those states -- every rank in them is small and positive, and every payload is an
+// OllamaCandidateVerdict. So the generic contract could be weakened in ways that leave every Ollama
+// row green, which is exactly the specification-without-execution shape DESIGN section 5 names: a
+// consumer that is green by execution is not evidence for a claim its inputs never exercise.
+//
+// The payload here is deliberately NOT a serving verdict. It is an Int, chosen because this module
+// promises never to look inside T: if any future edit starts reading the payload, an Int cannot
+// satisfy it and the failure is a compile error rather than a silently different answer.
+
+data release_a: ReleaseIdentity = ReleaseIdentity {
+  publisher: "fixture-publisher" as NonEmptyStr,
+  family: "Fixture-Alpha" as NonEmptyStr,
+  revision: "1" as NonEmptyStr,
+}
+
+data release_b: ReleaseIdentity = ReleaseIdentity {
+  publisher: "fixture-publisher" as NonEmptyStr,
+  family: "Fixture-Beta" as NonEmptyStr,
+  revision: "1" as NonEmptyStr,
+}
+
+fn ranked_a(rank: Int, payload: Int) -> ReleaseRanked<Int> {
+  ReleaseRanked { quality: WithinReleaseQuality { identity: release_a, rank: rank }, payload: payload }
+}
+
+fn ranked_b(rank: Int, payload: Int) -> ReleaseRanked<Int> {
+  ReleaseRanked { quality: WithinReleaseQuality { identity: release_b, rank: rank }, payload: payload }
+}
+
+fn is_unique_payload(result: UniqueReleaseRelativeMaximum<Int>, expected: Int) -> Bool {
+  match result {
+    UniqueMaximumFound { payload: p } => p == expected
+    NoRankedAlternative => false
+    NoCommonReleaseScale { distinct_release_count: _ } => false
+    MaximumNotUnique { quality: _, tied_count: _ } => false
+  }
+}
+
+fn is_no_alternative(result: UniqueReleaseRelativeMaximum<Int>) -> Bool {
+  match result {
+    NoRankedAlternative => true
+    UniqueMaximumFound { payload: _ } => false
+    NoCommonReleaseScale { distinct_release_count: _ } => false
+    MaximumNotUnique { quality: _, tied_count: _ } => false
+  }
+}
+
+fn is_no_common_scale(result: UniqueReleaseRelativeMaximum<Int>, expected_releases: Nat) -> Bool {
+  match result {
+    NoCommonReleaseScale { distinct_release_count: n } => n == expected_releases
+    NoRankedAlternative => false
+    UniqueMaximumFound { payload: _ } => false
+    MaximumNotUnique { quality: _, tied_count: _ } => false
+  }
+}
+
+fn is_not_unique(result: UniqueReleaseRelativeMaximum<Int>, expected_rank: Int, expected_tied: Nat) -> Bool {
+  match result {
+    MaximumNotUnique { quality: q, tied_count: n } => q.rank == expected_rank && n == expected_tied
+    NoRankedAlternative => false
+    UniqueMaximumFound { payload: _ } => false
+    NoCommonReleaseScale { distinct_release_count: _ } => false
+  }
+}
+
+// EMPTY IS ITS OWN ANSWER, not a fabricated alternative. This is the arm that a fold seeded with a
+// synthetic row would have destroyed, and no Ollama fixture reaches it with an empty roster.
+test fn w_no_alternatives_is_its_own_arm() -> Bool {
+  is_no_alternative(result: unique_release_relative_maximum(alternatives: []))
+}
+
+// THE PAYLOAD COMES BACK EXACTLY, which is the whole opacity claim. A kernel that reconstructed its
+// answer from parts it inspected could still return something equal-looking here; returning the
+// identical supplied value is what this row holds.
+test fn w_a_single_alternative_returns_the_exact_payload_supplied() -> Bool {
+  is_unique_payload(result: unique_release_relative_maximum(alternatives: [ranked_a(rank: 7, payload: 41)]),
+    expected: 41)
+}
+
+// ORDER-INDEPENDENCE, asserted in BOTH roster orders. A maximum that depends on input order is the
+// defect this module's tie refusal exists to prevent, and one order alone cannot detect it.
+test fn w_the_higher_rank_wins_in_both_roster_orders() -> Bool {
+  is_unique_payload(result: unique_release_relative_maximum(
+    alternatives: [ranked_a(rank: 3, payload: 10), ranked_a(rank: 9, payload: 20)]), expected: 20)
+    && is_unique_payload(result: unique_release_relative_maximum(
+      alternatives: [ranked_a(rank: 9, payload: 20), ranked_a(rank: 3, payload: 10)]), expected: 20)
+}
+
+// NEGATIVE RANKS ORDER CORRECTLY, with no nonnegative assumption anywhere. The predecessor used
+// `0 - 1` as a sentinel for "not admissible", which would have collided with a release that ranks
+// its own artifacts from -1; this row is the standing control that no such assumption returned.
+test fn w_negative_ranks_order_without_a_nonnegative_assumption() -> Bool {
+  is_unique_payload(result: unique_release_relative_maximum(
+    alternatives: [ranked_a(rank: 0 - 5, payload: 10), ranked_a(rank: 0 - 1, payload: 20)]), expected: 20)
+    && is_unique_payload(result: unique_release_relative_maximum(
+      alternatives: [ranked_a(rank: 0 - 1, payload: 20), ranked_a(rank: 0 - 5, payload: 10)]), expected: 20)
+}
+
+// THE COMPARATOR IS TOTAL AT THE BOUNDS OF Int, and this is the discriminating RED for the
+// subtraction defect. The predecessor compared by `a.rank - b.rank`; Int realizes as signed i64, so
+// this pair demands a difference outside the represented domain and wraps, traps or refuses
+// depending on the execution path. Every Ollama fixture rank is small and positive, so no
+// integration row could ever have reached this state.
+test fn w_the_comparator_is_total_at_the_bounds_of_int() -> Bool {
+  is_unique_payload(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 0 - 9223372036854775807, payload: 10),
+    ranked_a(rank: 9223372036854775807, payload: 20),
+  ]), expected: 20)
+    && is_unique_payload(result: unique_release_relative_maximum(alternatives: [
+      ranked_a(rank: 9223372036854775807, payload: 20),
+      ranked_a(rank: 0 - 9223372036854775807, payload: 10),
+    ]), expected: 20)
+}
+
+// NO CROSS-RELEASE ORDER EXISTS, in both orders, and the count is complete. Returning a maximum
+// here would manufacture an ordering the inputs never carried.
+test fn w_two_releases_have_no_common_scale_in_both_orders() -> Bool {
+  is_no_common_scale(result: unique_release_relative_maximum(
+    alternatives: [ranked_a(rank: 1, payload: 10), ranked_b(rank: 2, payload: 20)]), expected_releases: 2)
+    && is_no_common_scale(result: unique_release_relative_maximum(
+      alternatives: [ranked_b(rank: 2, payload: 20), ranked_a(rank: 1, payload: 10)]), expected_releases: 2)
+}
+
+// THE COUNT IS OF DISTINCT RELEASES, NOT OF ROWS, and this row is what makes distinctness
+// load-bearing. The two-alternative cross-release row above checks the observed NUMBER, but with one
+// alternative per release the row count and the distinct count coincide -- so replacing
+// distinct_ranking_releases with `length(alternatives)` leaves it green. Here one release
+// contributes two alternatives, so a row count reports 3 where the distinct count reports 2.
+//
+// THREE ROSTERS, AND THE THIRD IS THE ONE THAT CARRIES THE DEDUPE CLAIM. An earlier version of this
+// annotation said the two block orders caught "an accumulator that only checked the immediately
+// preceding entry". THAT WAS FALSE, and it is worth saying why rather than quietly deleting it: in
+// both [A,A,B] and [B,A,A] the two A-rows are ADJACENT, so a previous-entry-only accumulator
+// compares A against A, dedupes correctly, and reports 2. It stays GREEN on both. Block order alone
+// varies which release is seen first; it never separates the repeats.
+//
+// Only the INTERLEAVED roster [A,B,A] does. There the second A's predecessor is B, so an accumulator
+// carrying just the last entry admits it as new and reports 3 where the distinct count is 2. The
+// claim and the fixture now match, and the two facts are held by SEPARATE ROWS so each failure names
+// one cause: this row owns rows-vs-distinct counting and block-order/head-seeding, and
+// `w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent` alone owns previous-entry-only
+// membership. This row deliberately does NOT call that one -- a conjunct here would make the
+// interleaved fact fail BOTH rows under one mutant, which is the opposite of the localization the
+// annotation below claims.
+test fn w_the_release_count_counts_releases_and_not_rows() -> Bool {
+  is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20), ranked_b(rank: 1, payload: 30),
+  ]), expected_releases: 2)
+    && is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+      ranked_b(rank: 1, payload: 30), ranked_a(rank: 1, payload: 10), ranked_a(rank: 2, payload: 20),
+    ]), expected_releases: 2)
+}
+
+// THE REPEATS ARE SEPARATED, which is the only arrangement that fails a previous-entry-only
+// membership test. Held as its own row rather than folded into the arm above so that a failure names
+// the interleaving rather than a three-way conjunction.
+test fn w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent() -> Bool {
+  is_no_common_scale(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 1, payload: 10), ranked_b(rank: 1, payload: 30), ranked_a(rank: 2, payload: 20),
+  ]), expected_releases: 2)
+}
+
+// A TIE REFUSES rather than picking, in both orders, and reports the same top quality and
+// multiplicity either way. Keeping the earlier entry is the one rule whose answer changes when the
+// roster is reversed, so both orders are required to hold the refusal.
+test fn w_an_equal_top_rank_refuses_in_both_orders() -> Bool {
+  is_not_unique(result: unique_release_relative_maximum(
+    alternatives: [ranked_a(rank: 4, payload: 10), ranked_a(rank: 4, payload: 20)]),
+    expected_rank: 4, expected_tied: 2)
+    && is_not_unique(result: unique_release_relative_maximum(
+      alternatives: [ranked_a(rank: 4, payload: 20), ranked_a(rank: 4, payload: 10)]),
+      expected_rank: 4, expected_tied: 2)
+}
+
+// A TIE BELOW THE MAXIMUM IS NOT A TIE. Uniqueness is a property of the TOP rank alone, and a
+// kernel that counted ties anywhere in the roster would refuse a question that has an answer.
+test fn w_a_tie_beneath_a_unique_maximum_does_not_refuse() -> Bool {
+  is_unique_payload(result: unique_release_relative_maximum(alternatives: [
+    ranked_a(rank: 2, payload: 10), ranked_a(rank: 2, payload: 20), ranked_a(rank: 8, payload: 30),
+  ]), expected: 30)
+}
+
+// THE SAME ALTERNATIVE SUPPLIED TWICE IS TWO ALTERNATIVES. Silently deduplicating would answer a
+// question the caller did not ask -- whether two rows denote one artifact is the caller's identity
+// question, and this module has no key with which to decide it.
+test fn w_a_duplicated_top_alternative_is_not_silently_deduplicated() -> Bool {
+  is_not_unique(result: unique_release_relative_maximum(
+    alternatives: [ranked_a(rank: 6, payload: 99), ranked_a(rank: 6, payload: 99)]),
+    expected_rank: 6, expected_tied: 2)
+}
+
+// THE COMPARATOR REFUSES ACROSS RELEASES AT ITS OWN GRAIN, beneath the maximum fold. The fold could
+// mask a comparator that invented an ordering, so the primitive is held directly.
+test fn w_the_comparator_itself_has_no_cross_release_answer() -> Bool {
+  match compare_within_release(
+    a: WithinReleaseQuality { identity: release_a, rank: 1 },
+    b: WithinReleaseQuality { identity: release_b, rank: 1 },
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_all_release_relative_selection_claims_hold() -> Bool {
+  w_no_alternatives_is_its_own_arm()
+    && w_a_single_alternative_returns_the_exact_payload_supplied()
+    && w_the_higher_rank_wins_in_both_roster_orders()
+    && w_negative_ranks_order_without_a_nonnegative_assumption()
+    && w_the_comparator_is_total_at_the_bounds_of_int()
+    && w_two_releases_have_no_common_scale_in_both_orders()
+    && w_the_release_count_counts_releases_and_not_rows()
+    && w_a_repeated_release_is_counted_once_when_its_rows_are_not_adjacent()
+    && w_an_equal_top_rank_refuses_in_both_orders()
+    && w_a_tie_beneath_a_unique_maximum_does_not_refuse()
+    && w_a_duplicated_top_alternative_is_not_silently_deduplicated()
+    && w_the_comparator_itself_has_no_cross_release_answer()
+}

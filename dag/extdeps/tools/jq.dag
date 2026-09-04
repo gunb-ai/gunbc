@@ -3,10 +3,11 @@ module extdeps.tools.jq
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.algebra { Cons, Empty, trim }
-import v2.std.algebra { list_append, list_snoc_item }
-import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.algebra { list_append, list_snoc_item, fold_list }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.text { string_join }
 import v2.std.compilers.cli_surface { CliArgumentSyntax, CliSurface, cli_long_option_spelling, process_argv_expansion, serialize_cli_arguments }
-import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
+import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule, symbol_intern_lexeme }
 import v2.std.compilers.target_model { BoundToken, FixedToken }
 import v2.std.diagnostic {
   Diagnostic,
@@ -20,6 +21,8 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Optional, Present }
+import std.types { FilePath }
+import extdeps.languages.json.emit { JsonValue, serialize_json }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.shell.exec { ProcessObservation, process_observation }
@@ -123,14 +126,14 @@ type JqProgram { source: NonEmptyStr }
 type JqBindingName { name: NonEmptyStr }
 
 type JqBinding
-  = JqJsonBinding { name: JqBindingName, value: NonEmptyStr }
+  = JqJsonBinding { name: JqBindingName, value: JsonValue }
   | JqTextBinding { name: JqBindingName, value: String }
 
 // Input is an AXIS, not an operand, because the two arms differ in WHERE the bytes go: a file is
 // an argv operand, stdin is a process channel. An argv-only model cannot state that difference,
 // which is the same gap extdeps.llm.cursor_cli hit when an environment credential had no field.
 type JqInput
-  = JqInputFile { path: NonEmptyStr }
+  = JqInputFile { path: FilePath }
   | JqInputStdin { content: String }
 
 // -r writes STRING results raw; non-string results stay JSON-formatted. Hence JqRawOutput rather
@@ -162,6 +165,7 @@ type JqInvocation {
 type JqCliOption
   = JqCliOptionRawOutput
   | JqCliOptionExitStatus
+  | JqCliOptionArgJson
 
 // ABSENCE IS A DECLARED ROW, NOT A MISSING ONE. An earlier revision returned Optional<JqCliOption>
 // and answered Absent for JqProgramExit -- which makes "this policy deliberately requires no
@@ -195,6 +199,7 @@ fn jq_option_token_class(option: JqCliOption) -> Symbol {
   match option {
     JqCliOptionRawOutput => ^jq_opt_raw_output
     JqCliOptionExitStatus => ^jq_opt_exit_status
+    JqCliOptionArgJson => ^jq_opt_argjson
   }
 }
 
@@ -207,6 +212,7 @@ fn jq_option_long_name(option: JqCliOption) -> NonEmptyStr {
   match option {
     JqCliOptionRawOutput => "raw-output"
     JqCliOptionExitStatus => "exit-status"
+    JqCliOptionArgJson => "argjson"
   }
 }
 
@@ -229,10 +235,19 @@ fn jq_cli_lex_rules() -> ModeledLexRules {
           token_class: jq_option_token_class(option: JqCliOptionExitStatus),
           pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionExitStatus) }
         },
+        TokenRule {
+          token_class: jq_option_token_class(option: JqCliOptionArgJson),
+          pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionArgJson) }
+        },
       ]
     }
   }
 }
+
+// The executable identity that jq owns. Every consumer of a JqProcessPlan reads the executable
+// from this row; no external module spells "jq" as a literal. The local handler (jq.Process) and
+// the remote realization both derive from it.
+data jq_executable: NonEmptyStr = "jq"
 
 // WHAT THE PROCESS NEEDS, which is more than an argv: an argv is not a process. The stdin arm is
 // carried here rather than smuggled into the arguments, so a consumer physically cannot route the
@@ -249,32 +264,150 @@ type JqProcessPlan {
 // authored payload, carried briefly, then erased. Each cause now projects a distinct diagnostic
 // identity the witnesses assert, so the two refusals are distinguishable by a consumer.
 type JqLoweringRefusal
-  = JqBindingLoweringUnwired
-  | JqFileInputLoweringUnwired
+  = JqBindingNameDuplicate
+  | JqTextBindingUnwired
 
 type JqLowering
   = JqLowered { plan: JqProcessPlan }
   | JqLoweringRefused { cause: JqLoweringRefusal }
 
-// The lowering REFUSES the axes this wave has no live consumer for, rather than emitting a
-// plausible guess. Bindings land with ObjectMapperServiceAt (the --argjson vertical) and file
-// input with the remote population; until then an invocation carrying them is a typed, located
-// refusal, never a silently dropped flag. DESIGN section 5: a failure arm must refuse, never
-// widen -- and never fabricate.
-fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
-  match invocation.bindings {
-    Cons { head: _, tail: _ } =>
-      JqLoweringRefused { cause: JqBindingLoweringUnwired }
+// A binding's NAME and VALUE each need their own spelling-map key, and the keys must be
+// INJECTIVE over (name, role) or one binding's value can be silently substituted for another's --
+// the state-space collapse this lane exists to remove. Names are arbitrary NonEmptyStr, so no
+// fixed separator is safe; instead each key carries a role prefix that cannot collide with any
+// name (the prefixes are disjoint and no name can equal a prefixed key, because every prefixed
+// key begins with a reserved dot-suffixed stem). Duplicate NAMES refuse separately, so two
+// bindings never share a name-key either.
+data jq_binding_name_key_prefix: String = "gunbc.jq.binding.name."
+data jq_binding_value_key_prefix: String = "gunbc.jq.binding.value."
+
+fn jq_binding_name_key(binding_name: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: string_join(fields: [jq_binding_name_key_prefix, binding_name], separator: ""))
+}
+
+fn jq_binding_value_key(binding_name: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: string_join(fields: [jq_binding_value_key_prefix, binding_name], separator: ""))
+}
+
+type JqBindingsResult
+  = JqBindingsLowered { arguments: List<CliArgumentSyntax>, spellings: Map<Symbol, String> }
+  | JqBindingsRefused { cause: JqLoweringRefusal }
+
+// A JSON binding lowers to THREE consecutive argv words -- the option, the binding name, and the
+// JSON value -- held as one group to enforce arity and order until final argv flattening.
+type JqBindingArgumentGroup {
+  option_word: CliArgumentSyntax
+  name_word: CliArgumentSyntax
+  value_word: CliArgumentSyntax
+}
+
+fn jq_binding_group_argv(group: JqBindingArgumentGroup) -> List<CliArgumentSyntax> {
+  [group.option_word, group.name_word, group.value_word]
+}
+
+// THE BINDING FOLD. Each JqJsonBinding renders as THREE arguments -- the --argjson option, the
+// binding name, the JSON value -- each its own argv word, inserted BEFORE the program operand
+// (POSIX guideline 9: options precede operands). The three words are held as ONE JqBindingArgumentGroup
+// to enforce arity and order until final argv flattening. A repeated name is refused, never handed
+// to jq's last-wins behaviour. JqTextBinding has no live consumer this wave and refuses rather than
+// emitting a plausible guess. DESIGN section 5: a failure arm must refuse, never widen.
+//
+// The `seen` map records every binding name already folded, keyed by the interned name; the VALUE
+// is the name itself (a fabricated sentinel would be a second representation of presence -- the
+// map is used as a presence set, but the value carries the real name, never a fake string).
+//
+// THE OPTION TOKEN IS SELECTED THROUGH THE AUTHORITY. The FixedToken carries
+// jq_option_token_class(JqCliOptionArgJson), NOT a bare ^jq_opt_argjson literal -- the two-level
+// derivation from semantic property to cited spelling owns the token, not a hand-spelled constant.
+fn jq_bindings_lower(
+  bindings: List<JqBinding>,
+  seen: Map<Symbol, String>,
+  groups: List<JqBindingArgumentGroup>,
+  spellings: Map<Symbol, String>
+) -> JqBindingsResult {
+  match bindings {
     Empty =>
+      JqBindingsLowered {
+        arguments: fold_list(
+          xs: groups,
+          empty: Empty,
+          cons: fn(acc, g) { list_append(left: acc, right: jq_binding_group_argv(group: g)) }
+        ),
+        spellings: spellings
+      }
+    Cons { head: binding, tail: rest } =>
+      match binding {
+        JqTextBinding { name: _, value: _ } =>
+          JqBindingsRefused { cause: JqTextBindingUnwired }
+        JqJsonBinding { name: JqBindingName { name: binding_name }, value: value } =>
+          match map_lookup(m: seen, key: symbol_intern_lexeme(lexeme: binding_name as String)) {
+            Present { value: _ } =>
+              JqBindingsRefused { cause: JqBindingNameDuplicate }
+            Absent =>
+              let name_key = jq_binding_name_key(binding_name: binding_name as String)
+              let value_key = jq_binding_value_key(binding_name: binding_name as String)
+              let new_group = JqBindingArgumentGroup {
+                option_word: CliArgumentSyntax {
+                  fragments: [FixedToken { token_class: jq_option_token_class(option: JqCliOptionArgJson) }]
+                },
+                name_word: CliArgumentSyntax {
+                  fragments: [BoundToken { token_class: ^jq_binding_name, binding: name_key }]
+                },
+                value_word: CliArgumentSyntax {
+                  fragments: [BoundToken { token_class: ^jq_binding_value, binding: value_key }]
+                },
+              }
+              let new_spellings = map_insert(
+                m: map_insert(m: spellings, key: name_key, value: binding_name as String),
+                key: value_key,
+                value: serialize_json(v: value)
+              )
+              let new_seen = map_insert(m: seen, key: symbol_intern_lexeme(lexeme: binding_name as String), value: binding_name as String)
+              jq_bindings_lower(
+                bindings: rest,
+                seen: new_seen,
+                groups: list_append(left: groups, right: [new_group]),
+                spellings: new_spellings
+              )
+          }
+      }
+  }
+}
+
+// The lowering REFUSES the one axis this wave has no live consumer for (a text binding), rather
+// than emitting a plausible guess. A JSON binding and a file input now lower. DESIGN section 5: a
+// failure arm must refuse, never widen -- and never fabricate.
+fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
+  match jq_bindings_lower(bindings: invocation.bindings, seen: empty_map(), groups: Empty, spellings: empty_map()) {
+    JqBindingsRefused { cause: cause } =>
+      JqLoweringRefused { cause: cause }
+    JqBindingsLowered { arguments: binding_arguments, spellings: binding_spellings } =>
       match invocation.input {
-        JqInputFile { path: _ } =>
-          JqLoweringRefused { cause: JqFileInputLoweringUnwired }
+        JqInputFile { path } =>
+          JqLowered {
+            plan: JqProcessPlan {
+              arguments: jq_file_input_arguments(
+                invocation: invocation,
+                binding_arguments: binding_arguments,
+                path: path
+              ),
+              binding_spellings: map_insert(
+                m: map_insert(m: binding_spellings, key: ^jq_program_text, value: invocation.program.source as String),
+                key: ^jq_file_input_text,
+                value: path as String
+              ),
+              process_input: JqProcessNoStdin
+            }
+          }
         JqInputStdin { content: content } =>
           JqLowered {
             plan: JqProcessPlan {
-              arguments: jq_option_arguments(invocation: invocation),
+              arguments: jq_option_arguments(
+                invocation: invocation,
+                binding_arguments: binding_arguments
+              ),
               binding_spellings: map_insert(
-                m: empty_map(),
+                m: binding_spellings,
                 key: ^jq_program_text,
                 value: invocation.program.source as String
               ),
@@ -285,13 +418,30 @@ fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
   }
 }
 
+// THE FILE OPERAND. A file input is an ARGV OPERAND, not a process channel -- jq reads the named
+// file itself, so the bytes travel on the filesystem, and the path lands AFTER the program
+// operand (POSIX guideline 9: options precede operands; jq's program precedes its input file).
+// The path is a bound word like the program, never an option and never caller-authored spelling.
+fn jq_file_input_arguments(invocation: JqInvocation, binding_arguments: List<CliArgumentSyntax>, path: NonEmptyStr) -> List<CliArgumentSyntax> {
+  list_snoc_item(
+    xs: jq_option_arguments(invocation: invocation, binding_arguments: binding_arguments),
+    item: CliArgumentSyntax {
+      fragments: [BoundToken { token_class: ^jq_file_input_operand, binding: ^jq_file_input_text }]
+    }
+  )
+}
+
 // Options first, then the program operand. Order is jq's, not the caller's: POSIX guideline 9
-// puts options before operands, and jq does not deviate.
-fn jq_option_arguments(invocation: JqInvocation) -> List<CliArgumentSyntax> {
+// puts options before operands, and jq does not deviate. Bindings are options (each is an
+// --argjson triplet), so they sit with the options, ahead of the program operand.
+fn jq_option_arguments(invocation: JqInvocation, binding_arguments: List<CliArgumentSyntax>) -> List<CliArgumentSyntax> {
   list_snoc_item(
     xs: list_append(
-      left: jq_selected_option_argument(selection: jq_selection_for_output_encoding(encoding: invocation.output_encoding)),
-      right: jq_selected_option_argument(selection: jq_selection_for_exit_policy(policy: invocation.exit_policy))
+      left: list_append(
+        left: jq_selected_option_argument(selection: jq_selection_for_output_encoding(encoding: invocation.output_encoding)),
+        right: jq_selected_option_argument(selection: jq_selection_for_exit_policy(policy: invocation.exit_policy))
+      ),
+      right: binding_arguments
     ),
     item: CliArgumentSyntax {
       fragments: [BoundToken { token_class: ^jq_program_operand, binding: ^jq_program_text }]
@@ -437,8 +587,8 @@ fn jq_invocation_cli_arguments(invocation: JqInvocation) -> Outcome<CliSurface> 
 
 fn jq_lowering_refusal_identity(cause: JqLoweringRefusal) -> Symbol {
   match cause {
-    JqBindingLoweringUnwired => ^jq_binding_lowering_unwired
-    JqFileInputLoweringUnwired => ^jq_file_input_lowering_unwired
+    JqBindingNameDuplicate => ^jq_binding_name_duplicate
+    JqTextBindingUnwired => ^jq_text_binding_unwired
   }
 }
 

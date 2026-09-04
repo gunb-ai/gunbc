@@ -3,7 +3,7 @@ module test.claim.fleet_converge_launch_environment_scope_witness
 import std.types { String, Bool, NonEmptyStr, List, Int, list_length }
 import product.placement_supply { HostIdentity }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   FleetConvergeRequest,
   FullHostConverge,
@@ -14,6 +14,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  SparkServing,
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
@@ -95,6 +96,7 @@ fn witness_full_host_request() -> FleetConvergeRequest {
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   }
 }
 
@@ -115,6 +117,7 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
     FullHost => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    SparkServing => false
   }
 }
 
@@ -235,6 +238,7 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   ) {
     FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: artifact } =>
@@ -272,6 +276,7 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   )
   let launch = fleet_converge_launch_environment_plan_artifact(
     host: witness_host_srv1,
@@ -312,6 +317,7 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   )
   let le = fleet_converge_launch_environment_plan_artifact(
     host: operator_host_srv3 as NonEmptyStr,
@@ -450,8 +456,18 @@ test fn every_scope_wire_is_distinct() -> Bool {
     fleet_converge_scope_wire(scope: LaunchEnvironment),
     fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    fleet_converge_scope_wire(scope: SparkServing),
   ]
   all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
+}
+
+// The Spark scope round-trips through the same decoder every other scope does, so an apply handed
+// a spark-serving artifact routes to the Spark observer rather than refusing as an unknown wire.
+test fn the_spark_serving_scope_wire_round_trips() -> Bool {
+  match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: SparkServing)) {
+    ScopeDecoded { scope: s } => fleet_converge_scope_wire(scope: s) == "scope:spark-serving"
+    ScopeUndecodable { cause: _ } => false
+  }
 }
 
 test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {
@@ -498,6 +514,7 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
     observed_slots: srv1_production_shaped_slots(),
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   }
 }
 
@@ -532,6 +549,7 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
     observed_slots: srv1_production_shaped_slots(),
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   ) {
     FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: artifact } =>

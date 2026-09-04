@@ -4,9 +4,6 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.measure {
   TokenCount, token_count, PositiveSlotCount, positive_slot_count, positive_measure_count,
 }
-import gunbc.guarantee_rung_drop {
-  GuaranteeRungDrop, MechanicallyPreventable, Mitigatable, DeletedWithoutReplacement,
-}
 import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
@@ -41,11 +38,12 @@ import extdeps.ollama.capability {
 import gunbc.spark.serving_release {
   SparkServingRelease,
   SparkServingOccurrence,
-  OllamaServingLaunchProfile,
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
-  SparkServingBindListen,
-  spark_serving_bind_listen_wire,
+}
+import gunbc.spark.serving_engine {
+  ServingEngine, OllamaServing, OllamaServingLaunchProfile,
+  SparkServingBindListen, spark_serving_bind_listen_wire,
 }
 import gunbc.spark.serving_realization {
   SparkServingIntent,
@@ -268,7 +266,7 @@ fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRel
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: serving_release),
-    launch_profile: spark_serving_desired_launch_profile(),
+    engine: spark_serving_desired_engine(),
   }
 }
 
@@ -287,6 +285,13 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
 }
 
 data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
+
+// THE DESIRED ENGINE. The desired row selects a runtime, not merely a launch window; today it
+// selects Ollama and carries that engine's profile as the arm's payload. When the fleet's desired
+// engine becomes vLLM this function changes arm and nothing downstream of the occurrence does.
+fn spark_serving_desired_engine() -> ServingEngine {
+  OllamaServing { profile: spark_serving_desired_launch_profile() }
+}
 
 fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
@@ -384,38 +389,4 @@ fn spark_serving_automation_principal_login() -> NonEmptyStr {
 
 fn spark_serving_automation_principal() -> NamedPrincipal {
   NamedPrincipal { login: spark_serving_automation_principal_login() }
-}
-
-
-// ============================================================================================
-// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
-// ============================================================================================
-//
-// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
-// spellings: a value measured on one node, one artifact, one runtime configuration and one
-// concurrency condition, then applied to two hosts and every realization the cell can load. Two
-// rows would be two places to update when one restoration discharges both, and the restoration IS
-// shared -- neither value becomes qualified until per-realization observation exists.
-//
-// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
-// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
-// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
-// resident models, the second host, and every concurrency above one.
-//
-// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
-// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
-// these numbers automatically, so measuring some of the roster leaves the same unqualified
-// inheritance for the rest. The capability is that no realization can be served at a configuration
-// it has not been observed at -- which requires both the observations and the removal of automatic
-// inheritance.
-data spark_serving_fleet_global_configuration_drop: GuaranteeRungDrop = GuaranteeRungDrop {
-  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
-  previous: MechanicallyPreventable,
-  temporary: Mitigatable,
-  reason: DeletedWithoutReplacement,
-  population: [
-    "gunbc.spark.serving_desired spark_serving_desired_context_length",
-    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
-  ],
-  restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
 }

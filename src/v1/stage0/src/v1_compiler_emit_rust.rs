@@ -148,11 +148,11 @@ pub use crate::v1_compiler_emit::{
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
     is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
-    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
-    render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
-    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
-    transport_binding_refusal_fact,
+    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope,
+    order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
+    rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
+    service_field_ctors, service_field_decls, shell_emission_refusal_fact,
+    shell_result_channel_key, tco_reassign_core, transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -191,7 +191,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    resolved_node_is_kernel_identity_for_name, type_reference_declaration_ref,
+    type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_kind;
@@ -247,6 +247,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+    ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
@@ -289,10 +290,11 @@ pub use crate::v1_std_core::{
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, no_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
+    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
+    match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
+    param_node_type_expr, qualified_last_segment, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
     resource_use_resource, return_value, service_config_auth, service_config_auth_input,
     service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
     transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
@@ -304,8 +306,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ResolvedCallFormal,
+    StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -6402,7 +6404,14 @@ pub fn emit_rust_selected(
         } else {
             "v1_compiled".to_string()
         };
-        let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
+        let cargo = emit_cargo_toml(
+            crate_name.clone(),
+            EmittedCrateDependencyDemand {
+                renders_clap_cli: (has_pipeline.clone()
+                    || ((workflow_funcs.clone().len() as i64) > 0)),
+                renders_async_services: has_services.clone(),
+            },
+        );
         let main_file = emit_main_rs(
             workflow_funcs.clone(),
             typed.modules.clone(),
@@ -12381,7 +12390,7 @@ pub fn import_name_resolves_to_host_realized_kernel_scalar(
             match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
                 std::option::Option::None => false,
                 Some(n) => {
-                    ((crate::v1_compiler_infer_env::resolved_node_is_kernel_identity_for_name(
+                    ((crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
                         n.clone(),
                         name.clone(),
                     ) && (n.connective.clone() == Connective::NoConnective))
@@ -20648,14 +20657,6 @@ v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit::emit_ident(fb_name.clone(),
     }
 }
 
-pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind { declaration: _, .. } => true,
-        MatchPattern::Wildcard => true,
-        _ => false,
-    }
-}
-
 pub fn variant_pattern_shape_for(
     name: String,
     parent_enum: Option<String>,
@@ -20764,7 +20765,7 @@ if (inner.clone() == "".to_string()) {
                             if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
                                 {
                                     let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
-if match_pattern_is_irrefutable(fb_pat.clone()) {
+if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat.clone()) {
                                         Rc::new(vec![])
                                     } else {
                                         match (*fb_pat.clone()).clone() {
@@ -20890,7 +20891,7 @@ if (inner_preludes.clone() == "".to_string()) {
                                     } else {
                                         {
                                             let bound_str = emit_pattern(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
@@ -22330,9 +22331,36 @@ pub fn call_semantics_is_function_value(cs: Option<Rc<CallSemantics>>) -> bool {
     }
 }
 
+pub fn call_semantics_application_plan(
+    cs: Option<Rc<CallSemantics>>,
+) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
+    match cs.clone().as_deref().cloned() {
+        Some(CallSemantics::ResolvedDirectCallSemantics {
+            application_plan: plan,
+            ..
+        }) => plan.clone(),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn call_semantics_supplied_application_plan(
+    cs: Option<Rc<CallSemantics>>,
+) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for application in call_semantics_application_plan(cs.clone()).iter().cloned() {
+            if (application.matched_argument_index.clone() != std::option::Option::None) {
+                __result.push(application);
+            }
+        }
+        __result
+    })
+}
+
 pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
     match cs.clone().as_deref().cloned() {
         Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
         Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
         Some(CallSemantics::FunctionValueCallSemantics) => {
             Rc::new(CallTargetIdentity::CallableTargetUndetermined)
@@ -22392,6 +22420,7 @@ pub fn emit_rust_expr_call(
                 f.clone(),
                 expr.children.clone(),
                 expr.inferred.clone(),
+                cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 call_semantics_target(cs.clone()),
                 registry.clone(),
@@ -22745,6 +22774,7 @@ pub fn emit_rust_expr_cast(
                     1024,
                 )
             },
+            scope.type_env.clone(),
             scope.type_env.clone().source_indices.clone(),
         ),
         _ => crate::v1_compiler_emit::emit_error_expr(
@@ -23371,6 +23401,7 @@ pub fn emit_typed_call_expr(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
+    call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -23425,6 +23456,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    call_semantics.clone(),
                     callee_is_function_value.clone(),
                     call_target.clone(),
                     registry.clone(),
@@ -23658,6 +23690,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -23681,9 +23714,10 @@ pub fn emit_typed_call(
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
         if (target_is_runtime.clone() && (func.clone() == "get".to_string())) {
             {
-                let get_args = crate::v1_compiler_emit::order_typed_call_args(
+                let get_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let get_list = get_args.clone().first().cloned();
@@ -23733,9 +23767,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "with".to_string())) {
             {
-                let with_args = crate::v1_compiler_emit::order_typed_call_args(
+                let with_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 if ((with_args.clone().len() as i64) == 0) {
@@ -23853,9 +23888,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "to_string".to_string())) {
             {
-                let to_string_args = crate::v1_compiler_emit::order_typed_call_args(
+                let to_string_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let ts_result = match to_string_args.clone().first().cloned() {
@@ -23883,9 +23919,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "utf8_decode_bytes".to_string())) {
             {
-                let decode_args = crate::v1_compiler_emit::order_typed_call_args(
+                let decode_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let decode_result = match decode_args.clone().first().cloned() {
@@ -23897,9 +23934,10 @@ pub fn emit_typed_call(
         }
         if (target_is_runtime.clone() && (func.clone() == "discriminant".to_string())) {
             {
-                let disc_args = crate::v1_compiler_emit::order_typed_call_args(
+                let disc_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
                     args.clone(),
                     func.clone(),
+                    call_semantics.clone(),
                     scope.clone(),
                 );
                 let disc_result = match disc_args.clone().first().cloned() {
@@ -23918,11 +23956,13 @@ pub fn emit_typed_call(
                 return disc_result;
             }
         }
-        let ordered_args = crate::v1_compiler_emit::order_typed_call_args(
+        let ordered_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
             args.clone(),
             func.clone(),
+            call_semantics.clone(),
             scope.clone(),
         );
+        let application_plan = call_semantics_supplied_application_plan(call_semantics.clone());
         let callee = match (*call_target.clone()).clone() {
             CallTargetIdentity::SourceDeclarationCall {
                 owner_module_path: owner,
@@ -23971,6 +24011,21 @@ pub fn emit_typed_call(
                 __result.push({
                     let idx = pair.0.clone();
                     let a = pair.1.clone();
+                    let arg_emit_info = match application_plan
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
+                    {
+                        Some(application) => {
+                            crate::v1_compiler_infer_emit_info::emit_info_with_expected_type(
+                                emit_info.clone(),
+                                Some(application.formal.clone().substitution_basis.clone()),
+                            )
+                        }
+                        std::option::Option::None => emit_info.clone(),
+                    };
                     let arg_scope = lambda_argument_scope(
                         crate::v1_std_core::arg_value(a.clone()),
                         scope.clone(),
@@ -23983,7 +24038,7 @@ pub fn emit_typed_call(
                                 arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
-                                emit_info.clone(),
+                                arg_emit_info.clone(),
                             );
                             v1_rt::concat("&".to_string(), base.clone())
                         }
@@ -23995,7 +24050,7 @@ pub fn emit_typed_call(
                                 arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
-                                emit_info.clone(),
+                                arg_emit_info.clone(),
                             );
                             let unwrapped = rust_call_arg_fail_closed_unwrap(
                                 base.clone(),
@@ -27551,9 +27606,9 @@ pub fn rc_arm_has_refutable_plain_field(
             for fb in fbs.iter().cloned() {
                 if ((crate::v1_std_core::field_binding_name_at(fb.clone(), source_indices.clone())
                     != ref_field.clone())
-                    && !match_pattern_is_irrefutable(crate::v1_std_core::field_binding_pattern(
-                        fb.clone(),
-                    )))
+                    && !crate::v1_std_core::match_pattern_is_irrefutable(
+                        crate::v1_std_core::field_binding_pattern(fb.clone()),
+                    ))
                 {
                     __found = true;
                     break;
@@ -27897,7 +27952,9 @@ pub fn emit_typed_match_arm_strs(
         let has_irrefutable = {
             let mut __found = false;
             for a in arms.iter().cloned() {
-                if match_pattern_is_irrefutable(crate::v1_std_core::arm_pattern(a.clone())) {
+                if crate::v1_std_core::match_pattern_is_irrefutable(
+                    crate::v1_std_core::arm_pattern(a.clone()),
+                ) {
                     __found = true;
                     break;
                 }
@@ -31355,6 +31412,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 call_semantics_target(cs.clone()),
                 registry.clone(),
@@ -35320,7 +35378,7 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    let create_new_result = (|| -> std::io::Result<()> {\n        use std::io::Write;\n        let staging_path = format!(\"{}.gunbc-create-{}\", file_path, std::process::id());\n        let mut staged = std::fs::OpenOptions::new().write(true).create_new(true).open(&staging_path)?;\n        if let Err(staging_err) = staged.write_all(content.as_bytes()) {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(staging_err);\n        }\n        if let Err(sync_err) = staged.sync_all() {\n            let _ = std::fs::remove_file(&staging_path);\n            return Err(sync_err);\n        }\n        drop(staged);\n        let published = std::fs::hard_link(&staging_path, &file_path);\n        let _ = std::fs::remove_file(&staging_path);\n        published\n    })();\n    match create_new_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36402,13 +36460,14 @@ pub fn emit_cargo_dep_no_default_features(
     }
 }
 
-pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmittedCrateDependencyDemand {
+    pub renders_clap_cli: bool,
+    pub renders_async_services: bool,
+}
+
+pub fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> Rc<Vec<String>> {
     {
-        let header = v1_rt::concat(
-            crate::extdeps_cargo_version::render_cargo_package_header_prefix(crate_name.clone()),
-            "\nedition = \"2021\"\n".to_string(),
-        );
-        let workspace = "\n[workspace]\n".to_string();
         let base_deps = Rc::new(vec![
             emit_cargo_dep(
                 "im".to_string(),
@@ -36432,11 +36491,6 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
             ),
             emit_cargo_dep("serde_json".to_string(), "1".to_string(), Rc::new(vec![])),
             emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep(
-                "clap".to_string(),
-                "4".to_string(),
-                Rc::new(vec!["derive".to_string()]),
-            ),
             emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
             emit_cargo_dep(
                 "ureq".to_string(),
@@ -36444,7 +36498,16 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
                 Rc::new(vec!["json".to_string()]),
             ),
         ]);
-        let async_deps = if has_services.clone() {
+        let cli_deps = if demand.renders_clap_cli.clone() {
+            Rc::new(vec![emit_cargo_dep(
+                "clap".to_string(),
+                "4".to_string(),
+                Rc::new(vec!["derive".to_string()]),
+            )])
+        } else {
+            Rc::new(vec![])
+        };
+        let async_deps = if demand.renders_async_services.clone() {
             Rc::new(vec![
                 emit_cargo_dep(
                     "tokio".to_string(),
@@ -36470,7 +36533,21 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
         } else {
             Rc::new(vec![])
         };
-        let all_deps = v1_rt::concat(base_deps.clone(), async_deps.clone());
+        v1_rt::concat(
+            base_deps.clone(),
+            v1_rt::concat(cli_deps.clone(), async_deps.clone()),
+        )
+    }
+}
+
+pub fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> Rc<TextFile> {
+    {
+        let header = v1_rt::concat(
+            crate::extdeps_cargo_version::render_cargo_package_header_prefix(crate_name.clone()),
+            "\nedition = \"2021\"\n".to_string(),
+        );
+        let workspace = "\n[workspace]\n".to_string();
+        let all_deps = emitted_crate_dependency_lines(demand.clone());
         Rc::new(TextFile {
             path: "Cargo.toml".to_string(),
             content: v1_rt::concat(
@@ -37752,20 +37829,7 @@ pub fn emit_main_rs(
             "".to_string()
         };
         if (((workflow_funcs.clone().len() as i64) == 0) && (has_pipeline.clone() == false)) {
-            return Rc::new(TextFile {
-                path: v1_rt::concat(
-                    v1_rt::concat(rust_source_root(), "main".to_string()),
-                    rust_source_ext(),
-                ),
-                content: v1_rt::concat(
-                    v1_rt::concat(
-                        "// Generated by v1 compiler -- do not edit.\n\n".to_string(),
-                        "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n"
-                            .to_string(),
-                    ),
-                    "fn main() {}\n".to_string(),
-                ),
-            });
+            return emit_entry_point_absent_main_rs(crate_name.clone());
         }
         let mod_uses = emit_main_mod_uses(
             workflow_funcs.clone(),
@@ -37898,6 +37962,21 @@ pub fn emit_main_rs(
             content: content.clone(),
         })
     }
+}
+
+pub fn emit_entry_point_absent_main_rs(crate_name: String) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), "fn main() {\n".to_string()), "    eprintln!(\"".to_string()), entry_point_absent_refusal_text(crate_name.clone())), "\");\n".to_string()), "    std::process::exit(2);\n".to_string()), "}\n".to_string()),
+})
+}
+
+pub fn entry_point_absent_refusal_marker() -> String {
+    "REFUSED: emitted crate declares no entry point".to_string()
+}
+
+pub fn entry_point_absent_refusal_text(crate_name: String) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(entry_point_absent_refusal_marker(), " -- crate ".to_string()), crate_name.clone()), " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run".to_string())
 }
 
 pub fn emit_main_mod_uses(
@@ -38527,22 +38606,40 @@ pub fn emit_bootstrap_dag_operation_match_arm(
             __result
         })
         .join(&", ".to_string());
-        let public_args = Rc::new({
-            let mut __result = Vec::new();
-            for arg in binding.public_operands.clone().iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
+        let public_args = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for arg in binding.public_operands.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
-                            "\".to_string(), ".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), arg.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            arg.operand_field.clone(),
                         ),
-                        arg.operand_field.clone(),
-                    ),
-                    ")".to_string(),
-                ));
-            }
-            __result
-        })
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for opt in binding.public_options.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("(\"".to_string(), opt.parameter.clone()),
+                                "\".to_string(), ".to_string(),
+                            ),
+                            opt.option_field.clone(),
+                        ),
+                        ")".to_string(),
+                    ));
+                }
+                __result
+            }),
+        )
         .join(&", ".to_string());
         match binding.execution_class.clone() {
             CliBootstrapExecutionClass::BootstrapSuccessorOperation => {

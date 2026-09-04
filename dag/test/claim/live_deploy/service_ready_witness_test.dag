@@ -54,7 +54,7 @@ test fn witness_service_not_ready_reason_is_located() -> Bool {
 
 test fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
   live_deploy_readiness_poll_bound_is_positive()
-    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 120
+    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 720
 }
 
 test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
@@ -65,9 +65,11 @@ test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
     && bound == expected * live_deploy_service_ready_poll_bound_margin_factor
 }
 
+// The floor is the latest measured successful start on srv1: 219s from Started to listening on
+// 2026-09-04, which superseded the four 35-39s July observations when the corpus grew.
 test fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
   let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
-  expected >= 39
+  expected >= 219
 }
 
 test fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
@@ -82,6 +84,8 @@ test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
     } =>
       m == "gunbc.live_deploy.readiness" && n == "live_deploy_poll_until_service_ready"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -94,6 +98,8 @@ test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
       m == "gunbc.live_deploy.service_ready"
         && n == "live_deploy_service_ready_scaffold_dissolution_trigger"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 
@@ -137,6 +143,8 @@ test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
     } =>
       m == "gunbc.host_effect" && n == "Srv3BootOnceReadBackSleep"
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 

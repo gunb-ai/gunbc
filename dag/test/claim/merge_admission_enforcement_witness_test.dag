@@ -46,6 +46,8 @@ test fn enforcement_gating_scaffold_is_tracked() -> Bool {
   match merge_admission_enforcement_gating_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     Terminal { reason: _ } => false
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
   }
 }
 

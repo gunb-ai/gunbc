@@ -76,6 +76,48 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
     }
 }
 
+/// A caller-named `List<String>` subject argument, BY NAME ONLY.
+///
+/// An earlier revision fell back to the first positional argument when the name was absent. That
+/// was safe while the subject had one part and became a silent-wrong-answer hazard the moment it
+/// had two: `pool_files` would have quietly read `pool_roots`, and the producer would have answered
+/// over a subject the caller never declared -- with no refusal, because both are `List<String>`.
+/// A subject that can be taken from the wrong position is not caller-named, so an unnamed argument
+/// refuses here rather than guessing.
+fn expect_pool_roots(
+    args: &[(Option<String>, Value)],
+    param: &str,
+    what: &str,
+) -> InterpResult<Vec<String>> {
+    let val = args
+        .iter()
+        .find(|(name, _)| name.as_deref() == Some(param))
+        .map(|(_, v)| v)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("{what} requires a `{param}: List<String>` argument, passed by name"),
+        })?;
+    let items = match val {
+        Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
+        other => crate::v1_interpreter::free_monoid_to_vec(other).ok_or_else(|| {
+            InterpError::TypeError {
+                msg: format!("{what} expects `{param}: List<String>`, got {other:?}"),
+            }
+        })?,
+    };
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            Value::Str(s) => out.push(s.to_string()),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub fn eval_symbol_intern_lexeme(
     _ctx: &InterpContext,
     args: &[(Option<String>, Value)],
@@ -327,7 +369,7 @@ use std::collections::BTreeMap as StdDeclParseMemoMap;
 
 thread_local! {
     static FLOOR_DECL_PARSE_MEMO: RefCell<
-        Option<StdDeclParseMemoMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>>,
+        Option<StdDeclParseMemoMap<(Vec<String>, Vec<String>, Vec<ItemKind>), (Vec<ParsedTypeDecl>, usize)>>,
     > = RefCell::new(None);
 }
 
@@ -417,26 +459,32 @@ pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>
 
 fn floor_decl_parse_memo_lookup(
     roots: &[String],
-    want_kind: ItemKind,
+    files: &[String],
+    want_kinds: &[ItemKind],
 ) -> Option<(Vec<ParsedTypeDecl>, usize)> {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let slot = cell.borrow();
         let Some(map) = slot.as_ref() else {
             return None;
         };
-        map.get(&(roots.to_vec(), want_kind)).cloned()
+        map.get(&(roots.to_vec(), files.to_vec(), want_kinds.to_vec()))
+            .cloned()
     })
 }
 
 fn floor_decl_parse_memo_store(
     roots: &[String],
-    want_kind: ItemKind,
+    files: &[String],
+    want_kinds: &[ItemKind],
     result: &(Vec<ParsedTypeDecl>, usize),
 ) {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
         let mut slot = cell.borrow_mut();
         if let Some(map) = slot.as_mut() {
-            map.insert((roots.to_vec(), want_kind), result.clone());
+            map.insert(
+                (roots.to_vec(), files.to_vec(), want_kinds.to_vec()),
+                result.clone(),
+            );
         }
     });
 }
@@ -456,13 +504,22 @@ fn inventory_entry_under_abs_roots(
 fn decls_parse_only_from_inventory(
     inventory: &[crate::cli_run::PreparedSourceView],
     roots: &[String],
-    want_kind: ItemKind,
+    files: &[String],
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
+    let declared_files: std::collections::BTreeSet<PathBuf> = files
+        .iter()
+        .map(|f| ws.join(f.replace('\\', "/")))
+        .collect();
     let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
         .iter()
-        .filter(|e| inventory_entry_under_abs_roots(&e.source.path, roots, &ws))
+        .filter(|e| {
+            let abs = ws.join(e.source.path.replace('\\', "/"));
+            inventory_entry_under_abs_roots(&e.source.path, roots, &ws)
+                || declared_files.contains(&abs)
+        })
         .collect();
     entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
     let module_count = entries.len();
@@ -482,7 +539,7 @@ fn decls_parse_only_from_inventory(
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != want_kind {
+            if !want_kinds.contains(&item_kind(item.clone())) {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -505,26 +562,52 @@ fn decls_parse_only_from_inventory(
 /// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
 pub fn pool_decl_parse_wall_ms(
     pool_roots: &[String],
-    want_kind: ItemKind,
+    want_kinds: &[ItemKind],
     inventory: Option<&[crate::cli_run::PreparedSourceView]>,
 ) -> Result<(u128, usize), String> {
     let started = std::time::Instant::now();
     let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(inv, pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_inventory(
+            inv,
+            pool_roots,
+            &[],
+            want_kinds,
+            "pool_decl_parse_wall_ms",
+        )?
     } else {
-        decls_parse_only_from_disk(pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+        decls_parse_only_from_disk(pool_roots, &[], want_kinds, "pool_decl_parse_wall_ms")?
     };
     Ok((started.elapsed().as_millis(), module_count))
 }
 
 fn decls_parse_only_from_disk(
     roots: &[String],
-    want_kind: ItemKind,
+    files: &[String],
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
     let ws = workspace_root();
     let index = crate::cli_run::build_module_path_index(roots);
     let mut modules: Vec<(String, String)> = index.into_iter().collect();
+    // DECLARED FILE-GRAIN MEMBERS, joined into the same population the directory roots produce.
+    // Keyed by module path like the index is, so a file also covered by a directory root is one
+    // member and not two -- naming both is a redundant declaration, never a doubled population.
+    for f in files {
+        let abs = ws.join(f);
+        let content = std::fs::read_to_string(&abs).map_err(|e| {
+            format!("{caller}: read declared pool file `{f}`: {e} (fail-closed; no silent skip)")
+        })?;
+        let Some(module_path) = crate::cli_run::extract_module_path(&content) else {
+            return Err(format!(
+                "{caller}: declared pool file `{f}` carries no module declaration, so it names no \
+                 module and contributes nothing (fail-closed; no silent skip)"
+            ));
+        };
+        let rel = f.replace('\\', "/");
+        if !modules.iter().any(|(m, _)| m == &module_path) {
+            modules.push((module_path, rel));
+        }
+    }
     modules.sort();
     let module_count = modules.len();
     let mut out = Vec::new();
@@ -535,7 +618,7 @@ fn decls_parse_only_from_disk(
         })?;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if item_kind(item.clone()) != want_kind {
+            if !want_kinds.contains(&item_kind(item.clone())) {
                 continue;
             }
             let name = authored_name_at(si.clone(), item.clone());
@@ -559,20 +642,76 @@ fn decls_parse_only_from_disk(
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
 /// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
 /// on a walk that silently skips a file, so both callers share this one.
+/// Every `.dag` file the named roots contain on disk, by absolute path. The roots are already
+/// absolute here; this is the same walk `build_module_path_index` performs, without the parse.
+fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for root in abs_roots {
+        let root_path = PathBuf::from(root);
+        if root_path.is_dir() {
+            collect_dag_files_tolerant(&root_path, &mut files);
+        }
+    }
+    files.sort();
+    files
+}
+
+/// WHETHER THE PREPARED INVENTORY CAN ANSWER FOR THIS SUBJECT AT ALL, and it frequently cannot.
+///
+/// The floor registers the REQUIRED-GATE CLOSURE as its prepared inventory, not the full index --
+/// `run_required_floor` takes `full_inventory` out for the discovery phase and hands
+/// `prepared_sources` to the guard. So the inventory is a SUBSET of the tree whose membership is
+/// decided by what preparation admitted, which is an input no caller declares and none can state.
+/// Filtering it by a caller's roots therefore answers with whatever part of the subject happened to
+/// be prepared, and a subject prepared not at all answers EMPTY.
+///
+/// THAT IS THE SILENT-NARROWING FAILURE THIS MODULE EXISTS TO REFUSE, one layer below the one
+/// gunbc#10245 closed in `fn_arrow_decl_facts_live`: the producer takes a declared subject, and the
+/// answer was still a function of an undeclared one. It was found by execution rather than by
+/// reading -- the vacuity controls on that producer's witnesses went red on the required floor while
+/// every discrimination row beside them stayed green, because an empty population satisfies an
+/// exclusion trivially. Nothing asserted non-emptiness before, so the same hole was already open for
+/// `concept_decl_facts` and `data_decl_type_facts` and reported nothing.
+///
+/// COVERAGE IS DECIDABLE, so this is a cache-miss test and not a confidence threshold: the roots
+/// name a set of files on disk, and the inventory either contains all of them or does not. A miss
+/// falls through to the disk walk, which is the SAME ANSWER computed the slower way -- not a wider
+/// one, not a default, and not a degraded one. Answering from a subset would be the fail-open arm.
+fn inventory_covers_subject(
+    inventory: &[crate::cli_run::PreparedSourceView],
+    abs_roots: &[String],
+    files: &[String],
+) -> bool {
+    let ws = workspace_root();
+    let present: std::collections::BTreeSet<PathBuf> = inventory
+        .iter()
+        .map(|e| ws.join(e.source.path.replace('\\', "/")))
+        .collect();
+    dag_files_under_abs_roots(abs_roots)
+        .iter()
+        .all(|f| present.contains(f))
+        && files
+            .iter()
+            .all(|f| present.contains(&ws.join(f.replace('\\', "/"))))
+}
+
 fn decls_parse_only_fail_closed(
     roots: &[String],
-    want_kind: ItemKind,
+    files: &[String],
+    want_kinds: &[ItemKind],
     caller: &str,
 ) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
-    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kind) {
+    if let Some(cached) = floor_decl_parse_memo_lookup(roots, files, want_kinds) {
         return Ok(cached);
     }
-    let result = if let Some(inventory) = crate::cli_run::floor_prepared_inventory_snapshot() {
-        decls_parse_only_from_inventory(&inventory, roots, want_kind, caller)?
+    let inventory = crate::cli_run::floor_prepared_inventory_snapshot()
+        .filter(|inv| inventory_covers_subject(inv, roots, files));
+    let result = if let Some(inventory) = inventory {
+        decls_parse_only_from_inventory(&inventory, roots, files, want_kinds, caller)?
     } else {
-        decls_parse_only_from_disk(roots, want_kind, caller)?
+        decls_parse_only_from_disk(roots, files, want_kinds, caller)?
     };
-    floor_decl_parse_memo_store(roots, want_kind, &result);
+    floor_decl_parse_memo_store(roots, files, want_kinds, &result);
     Ok(result)
 }
 
@@ -636,9 +775,13 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (type_decls, module_count) =
-        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::TypeItem, "concept_decl_facts")
-            .map_err(|msg| InterpError::TypeError { msg })?;
+    let (type_decls, module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::TypeItem],
+        "concept_decl_facts",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
@@ -715,9 +858,13 @@ pub fn eval_data_decl_type_facts(
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let (data_decls, module_count) =
-        decls_parse_only_fail_closed(&abs_pool_roots, ItemKind::DataItem, "data_decl_type_facts")
-            .map_err(|msg| InterpError::TypeError { msg })?;
+    let (data_decls, module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::DataItem],
+        "data_decl_type_facts",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
     for decl in data_decls.iter() {
         rows.push(Value::Record {
@@ -819,23 +966,38 @@ fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>
 }
 
 // Does this node REFERENCE a declared parameter `name`? Two body forms do: an `ExprVar` value
-// read (`x`) resolved to a `LocalValueBinding` (so a `FunctionValueBinding` global or
-// `VariantValueBinding` constructor sharing the name is excluded); and an `ExprCall` whose
-// callee IS the parameter (`predicate(x)`) -- the callee is the call node's own name, not a
-// child, invisible to a children-only walk.
+// read (`x`); and an `ExprCall` whose callee IS the parameter (`predicate(x)`) -- the callee is
+// the call node's own name, not a child, invisible to a children-only walk.
+//
+// The guard is LEXICAL -- `name` is one of the enclosing declaration's own parameter names --
+// and deliberately consults no phase beyond parse. It previously demanded, additionally, that
+// the `ExprVar` carry `binding_kind: Some(LocalValueBinding)`, to exclude a `FunctionValueBinding`
+// global or a `VariantValueBinding` constructor sharing the name. That demand was BOTH vacuous
+// and, since the producer's substrate became parse-only items, unsatisfiable:
+//
+//  - vacuous, because `binding_kind` is populated by INFER (`v1_compiler_infer`), whose
+//    `qualified_value_projection` declines the global projection outright when
+//    `spine_root_is_shadowed` holds. A parameter shadows a like-named global or constructor
+//    throughout its own body, so a bare read that PASSES the `param_names` guard has no
+//    reachable non-local binding for the strict arm to exclude.
+//  - unsatisfiable, because parse writes `binding_kind: None` at every `ExprVar` construction
+//    site and nothing between parse and this reader fills it. Under a parse-only substrate the
+//    strict arm was therefore FALSE at every body reference: no identity atom was attached to
+//    any parameter-reference site, every parameter read dead, and every wall standing on this
+//    reachability query went DARK while still reporting green.
+//
+// Shadowing by an inner `let`/lambda local of the same name is not newly admitted here: it was
+// already admitted by `LocalValueBinding`, which does not distinguish a parameter from any other
+// local, and it is the residue already declared as `v2.lens.wiring_liveness`
+// construction_justification HONEST BOUNDARY (3).
 fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
     if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
         return false;
     }
-    match node.expr_data.as_ref() {
-        ExprData::ExprVar {
-            binding_kind: Some(bk),
-        } => {
-            matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
-        }
-        ExprData::ExprCall { .. } => true,
-        _ => false,
-    }
+    matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. }
+    )
 }
 
 // Does this node REFERENCE some local binding (param OR let/lambda-local), by name? The
@@ -899,6 +1061,41 @@ fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
     node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    )
+}
+
+fn nullary_behavior_variant(ctx: &InterpContext, name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Behavior"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn node_kind_computation_node(ctx: &InterpContext, behavior: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("NodeKind"),
+        variant_name: ctx.sym("ComputationNode"),
+        fields: Rc::new(vec![(ctx.sym("behavior"), behavior)]),
+    }
+}
+
+// A CALL IS A CALL IN BOTH REPRESENTATIONS. `v2.std.node_query::node_is_call` recognises a call as
+// a `ComputationNode { behavior: Transform }` whose first positional child is a callee reference --
+// the shape `v2.compiler.body_lowering_fold` produces for the lowered body, and the shape every
+// call-shaped lens matches on. This marshal emitted `TypeNode { connective: Conj }` for EVERY node
+// including calls, so `node_is_call` was false on every skeleton node the corpus can produce, and
+// each lens folding a skeleton through it (`v2.lens.determinism` transitive findings,
+// `v2.lens.machine_shape`, the origin probe's call walk) was GREEN BY CONSTRUCTION: the state it
+// refuses had no constructor on its own input. That is DESIGN §4b's decoration -- worse than an
+// absent check, because it was cited as coverage -- and its §3 receipt was already standing in
+// `v2.lens.no_dual_representation_test.scan`, which carried a SECOND call predicate spelled against
+// the Conj shape because the shared one could not answer here.
+fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
+    node_record(
+        ctx,
+        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Transform")),
         edges,
     )
 }
@@ -1026,7 +1223,18 @@ fn marshal_generic(
             refs.remove(&pname);
         }
     }
-    (conj_record(ctx, edges), refs)
+    // The callee atom is `edges[0]` on exactly this condition: an `ExprCall` with a non-empty
+    // authored name takes either the parameter-reference arm or the callee-atom arm above, and both
+    // push the identity leaf before any child skeleton. A call through an unnamed callee expression
+    // stays `Conj` -- it has no callee reference to be first, so `node_is_call` would refuse it
+    // anyway, and claiming the Transform kind without one would be the shape without the fact.
+    let is_call_shaped =
+        matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty();
+    if is_call_shaped {
+        (transform_record(ctx, edges), refs)
+    } else {
+        (conj_record(ctx, edges), refs)
+    }
 }
 
 // A statement sequence -- a block's children, or a standalone `let` (optional children[1] is
@@ -1163,50 +1371,82 @@ fn fn_arrow_decl_record(
     })
 }
 
-// Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
-// `v2.lens.wiring_liveness`'s construction_justification. Sibling of
-// `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
-// one `FnArrowDecl` per declared function across every loaded module -- the body
-// projected to a reachability skeleton (`output`) plus its declared parameter atoms
-// (`params`) -- so the wiring lens folds over REAL fn params corpus-wide, not synthetic
-// arrows. Host SOURCE half; dissolves with `concept_decl_facts_live` on the same #5364
-// corpus-as-node accessor.
+// Corpus-wide fn/arrow reflection over a CALLER-NAMED SUBJECT. Sibling of
+// `eval_concept_decl_facts` (`ItemKind::TypeItem`) and `eval_data_decl_type_facts`
+// (`ItemKind::DataItem`): one `FnArrowDecl` per declared function under the named
+// `pool_roots` -- the body projected to a reachability skeleton (`output`) plus its declared
+// parameter atoms (`params`).
+//
+// THE SUBJECT IS THE DECLARED ROOTS AND NOTHING ELSE. This producer walked `ctx.modules` --
+// the caller's entry closure, an input it did not declare -- until gunbc#10156 clause 2. Two
+// things followed and both are closed here: its population was whatever closure happened to be
+// resolved (so `fn_arrow_decl_substrate_is_whole_tree` had to ASK AT RUNTIME whether the answer
+// was corpus-wide, and `corpus_dependency_view` carried a refusal arm for when it was not), and
+// its cost could not be netted across claims because any key would have named less than the
+// answer depended on. Reading through `decls_parse_only_fail_closed` makes the population a
+// function of the roots alone, which is what makes the floor's `FLOOR_DECL_PARSE_MEMO` a
+// correct shared artifact for it rather than a key that would serve one claim another claim's
+// declarations.
 pub fn eval_fn_arrow_decl_facts_live(
     ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
+    args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
-    let si = ctx.source_indices();
+    let pool_roots = expect_pool_roots(args, "pool_roots", "fn_arrow_decl_facts_live")?;
+    let pool_files = expect_pool_roots(args, "pool_files", "fn_arrow_decl_facts_live")?;
+    let pool_root_defects_found = pool_root_defects(&pool_roots);
+    if !pool_root_defects_found.is_empty() {
+        return Err(
+            crate::v1_interpreter::InterpError::PoolRootContributesNothing {
+                caller: "fn_arrow_decl_facts_live",
+                declared: pool_roots.len(),
+                defects: pool_root_defects_found,
+            },
+        );
+    }
+    let pool_file_defects_found = pool_file_defects(&pool_files);
+    if !pool_file_defects_found.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: pool_file_refusal_message(
+                &pool_file_defects_found,
+                pool_files.len(),
+                "fn_arrow_decl_facts_live",
+            ),
+        });
+    }
+    if pool_roots.is_empty() && pool_files.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "fn_arrow_decl_facts_live was given an EMPTY subject: no pool_roots and no \
+                  pool_files. An empty subject answers with an empty population, and every row \
+                  over it passes by having nothing to look at -- name at least one directory or \
+                  one .dag file."
+                .to_string(),
+        });
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (fn_decls, _module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &pool_files,
+        &[ItemKind::FnItem, ItemKind::FuncItem],
+        "fn_arrow_decl_facts_live",
+    )
+    .map_err(|msg| InterpError::TypeError { msg })?;
     let mut rows: Vec<Value> = Vec::new();
-    for_each_live_registry_item(
-        ctx,
-        |k| k == ItemKind::FnItem || k == ItemKind::FuncItem,
-        |module_name, name, item| {
-            if let Some(row) = fn_arrow_decl_record(ctx, &si, module_name, name, item) {
-                rows.push(row);
-            }
-            Ok(())
-        },
-    )?;
+    for decl in fn_decls {
+        if let Some(row) = fn_arrow_decl_record(
+            ctx,
+            &decl.source_indices,
+            &decl.module_path,
+            &decl.name,
+            &decl.item,
+        ) {
+            rows.push(row);
+        }
+    }
     Ok(crate::v1_interpreter::list_value(rows))
-}
-
-/// module census (same exclude set as `whole_tree_resolved_ctx` / measurement probe).
-pub fn eval_fn_arrow_decl_substrate_is_whole_tree(
-    ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    Ok(Value::Bool(
-        crate::cli_run::fn_arrow_decl_substrate_is_whole_tree_for_census(ctx.modules.len()),
-    ))
-}
-
-pub fn eval_corpus_dependency_view_per_pr_substrate_refuse(
-    _ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    Err(InterpError::TypeError {
-        msg: "corpus_dependency_view per-PR execution refused: fn_arrow_decl_substrate_is_whole_tree is false (blocked-on-#6239)".to_string(),
-    })
 }
 
 fn literal_source_lexeme(
@@ -1331,6 +1571,79 @@ pub enum PoolRootDefect {
     NamesFile,
     /// The path is a directory and holds no `.dag` file anywhere beneath it.
     DirectoryHasNoDagFiles,
+}
+
+/// Why a declared pool FILE contributed nothing. The file-grain sibling of `PoolRootDefect`, and
+/// deliberately a SECOND enum rather than three more variants on that one.
+///
+/// GRAIN IS DECLARED, NOT INFERRED FROM THE PATH. A subject names directories in `pool_roots` and
+/// single modules in `pool_files`, and which parameter the author wrote is the declaration -- so
+/// `PoolRootDefect::NamesFile` keeps refusing a file in `pool_roots` exactly as it does today.
+/// That refusal is load-bearing and was NOT relaxed to admit file grain: it catches the likeliest
+/// authoring error, a module path written without `.dag`, and `dag/extdeps/external_authority` is
+/// the receipt that the distinction finds real defects. Widening it would have deleted the ability
+/// to tell "the author typo'd a directory" from "the author means one module" -- one answer for two
+/// states, which is the conflation the three states above exist to close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolFileDefect {
+    /// The path does not exist.
+    Missing,
+    /// The path exists and is a DIRECTORY -- the mirror of `NamesFile`, and the same class of
+    /// authoring error read from the other side.
+    NamesDirectory,
+    /// The path is a file but not a `.dag` source, so it contributes no declarations.
+    NotDagSource,
+}
+
+impl PoolFileDefect {
+    fn cause(self) -> &'static str {
+        match self {
+            PoolFileDefect::Missing => "the path does not exist",
+            PoolFileDefect::NamesDirectory => {
+                "this names a DIRECTORY; a pool file must be one .dag source (name it in pool_roots instead)"
+            }
+            PoolFileDefect::NotDagSource => "the file exists but is not a .dag source",
+        }
+    }
+}
+
+/// Classify one declared pool file. `None` means it contributes.
+pub fn classify_pool_file(path: &str) -> Option<PoolFileDefect> {
+    let file_path = workspace_root().join(path);
+    if !file_path.exists() {
+        return Some(PoolFileDefect::Missing);
+    }
+    if file_path.is_dir() {
+        return Some(PoolFileDefect::NamesDirectory);
+    }
+    if file_path.extension().and_then(|e| e.to_str()) != Some("dag") {
+        return Some(PoolFileDefect::NotDagSource);
+    }
+    None
+}
+
+pub fn pool_file_defects(pool_files: &[String]) -> Vec<(String, PoolFileDefect)> {
+    pool_files
+        .iter()
+        .filter_map(|f| classify_pool_file(f).map(|d| (f.clone(), d)))
+        .collect()
+}
+
+/// Render the file-grain defects, same shape as `pool_root_refusal_message`.
+pub fn pool_file_refusal_message(
+    defects: &[(String, PoolFileDefect)],
+    declared: usize,
+    caller: &str,
+) -> String {
+    let rows: Vec<String> = defects
+        .iter()
+        .map(|(f, d)| format!("  file {:?}: {:?} -- {}", f, d, d.cause()))
+        .collect();
+    format!(
+        "{caller} was given {declared} declared pool file(s), {bad} of which contribute nothing. A declared file that contributes nothing is not a narrower subject -- it is a subject that silently lost part of itself, so every row over it keeps passing on a population smaller than its author declared, and nothing says so. Fix or delete each file named below.\n{rows}",
+        bad = defects.len(),
+        rows = rows.join("\n")
+    )
 }
 
 impl PoolRootDefect {
@@ -2070,6 +2383,162 @@ mod parse_only_uppercase_variant_regression_tests {
             skeleton_children_len(&ctx, &skel),
             1,
             "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    fn call_expr(
+        callee: &str,
+        args: Vec<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            callee.to_string(),
+            Rc::new(ExprData::ExprCall {
+                call_semantics: None,
+                descent_evidence: None,
+            }),
+            Rc::new(args.into()),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn var_expr(name: &str) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn field(ctx: &InterpContext, value: &Value, key: &str) -> Option<Value> {
+        match value {
+            Value::Record { fields, .. } => {
+                let k = ctx.sym(key);
+                fields
+                    .iter()
+                    .find(|(fk, _)| *fk == k)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+        match value {
+            Value::Variant { fields, .. } => {
+                let key = ctx.sym(name);
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_is(ctx: &InterpContext, value: Option<&Value>, expected: &str) -> bool {
+        matches!(
+            value,
+            Some(Value::Variant { variant_name, .. }) if *variant_name == ctx.sym(expected)
+        )
+    }
+
+    // THE WHOLE ACCEPTED SHAPE, NOT ITS OUTER TAG. `node_is_call` reads two nested variants -- the
+    // kind's `behavior` and the callee child's `connective` -- so a probe asserting only
+    // `ComputationNode` and `TypeNode` is satisfied by a marshal emitting `behavior: Loop` over a
+    // `connective: Conj` child, which `node_is_call` refuses. That is the §5 tell in this module's
+    // own test: an assertion that passes while the realization lies. These two read the full path.
+    fn is_transform_computation_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "ComputationNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "behavior").as_ref(),
+                        "Transform",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_atom_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Atom",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_conj_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Conj",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
+        match field(ctx, skel, "children") {
+            Some(Value::List(items)) => items
+                .iter()
+                .next()
+                .and_then(|edge| field(ctx, edge, "target")),
+            _ => None,
+        }
+    }
+
+    // THE DISCRIMINATING PAIR FOR THE CALL CARRIER. `v2.std.node_query::node_is_call` accepts a
+    // node only when its kind is `ComputationNode { behavior: Transform }` AND its first positional
+    // child is a callee reference. Before this marshal emitted the carrier, the first assertion
+    // below read `TypeNode` for every node the corpus could produce, so every call-shaped lens over
+    // a skeleton was green with no reachable red. The second row is the control that keeps the fix
+    // from degenerating into "everything is a call".
+    #[test]
+    fn marshaled_call_carries_the_transform_call_carrier() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) =
+            marshal_generic(&ctx, &call_expr("map_keys", vec![var_expr("m")]), &[], &si);
+        assert!(
+            is_transform_computation_node(&ctx, &skel),
+            "a marshaled call must carry ComputationNode {{ behavior: Transform }} -- the exact \
+             kind node_is_call matches, behavior included"
+        );
+        let callee = first_child_target(&ctx, &skel).expect("call skeleton has a first child");
+        assert!(
+            is_atom_type_node(&ctx, &callee),
+            "the first positional child must be TypeNode {{ connective: Atom }} -- node_is_call's \
+             second predicate, node_is_callee_reference, accepts only Atom or Arrow"
+        );
+    }
+
+    #[test]
+    fn marshaled_non_call_stays_a_conj_type_node() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &var_expr("m"), &[], &si);
+        assert!(
+            is_conj_type_node(&ctx, &skel),
+            "only a call node may carry the call carrier; everything else stays TypeNode {{ connective: Conj }}"
         );
     }
 

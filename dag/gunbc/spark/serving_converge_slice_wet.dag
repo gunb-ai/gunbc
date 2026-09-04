@@ -68,6 +68,18 @@ import gunbc.spark.serving_observe {
   SparkServingObservedFactsRefused,
   spark_serving_observed_members_for_unit,
 }
+import gunbc.spark.serving_realization {
+  UserUnitRealization,
+  SparkServingRunningDefinition,
+  spark_serving_reactivation_remedy,
+}
+import gunbc.spark.serving_unit_render { spark_serving_desired_user_unit_definition_identity }
+import gunbc.spark.serving_admission_fence {
+  spark_serving_locus,
+  spark_serving_unfenced_production_drain,
+  spark_serving_guarded_bound_reactivation,
+  spark_serving_bound_reactivation_planning_wire,
+}
 import gunbc.remote_operation {
   RemoteStepStanding,
   remote_operation_count,
@@ -205,6 +217,7 @@ fn spark_serving_converge_slice_host_line(
   typed_row_count: Int,
   apply_effect_count: Int,
   apply_command_count: Int,
+  reactivation: String,
   verdict: String,
 ) -> SparkServingSliceHostReport {
   SparkServingSliceHostReport {
@@ -216,6 +229,7 @@ fn spark_serving_converge_slice_host_line(
     " typed_rows=", to_string(typed_row_count),
     " apply_effect_count=", to_string(apply_effect_count),
     " apply_command_count=", to_string(apply_command_count),
+      " reactivation=", reactivation,
       " verdict=", verdict,
       "\n",
     ], ""),
@@ -349,7 +363,11 @@ fn spark_serving_replan_rows(
   match spark_serving_observed_facts_via_locus(context: context, host: host, phase: phase) {
     SparkServingObservedFactsRefused { cause: why } =>
       SparkServingReplanRowsRefused { cause: why as String }
-    SparkServingObservedFactsReady { observation: observation } =>
+    SparkServingObservedFactsReady {
+      observation: observation,
+      running_definition: _,
+      invocation: _,
+    } =>
       spark_serving_replan_rows_for(observation: observation)
   }
 }
@@ -529,9 +547,14 @@ fn spark_serving_converge_slice_wet_host_report(
         typed_row_count: 0,
         apply_effect_count: 0,
         apply_command_count: 0,
+        reactivation: "reactivation-refused the observation transaction was refused, so no running definition was read",
         verdict: join(["observation-refused ", why as String], ""),
       )
-    SparkServingObservedFactsReady { observation: observation } =>
+    SparkServingObservedFactsReady {
+      observation: observation,
+      running_definition: running_definition,
+      invocation: _,
+    } =>
       spark_serving_slice_report_for(
         context: context,
         host: host,
@@ -539,6 +562,10 @@ fn spark_serving_converge_slice_wet_host_report(
         execute_apply: execute_apply,
         transport: transport,
         observation: observation,
+        reactivation: spark_serving_reactivation_standing_for(
+          host: host,
+          running_definition: running_definition,
+        ),
       )
   }
 }
@@ -549,6 +576,35 @@ fn spark_serving_converge_slice_wet_host_report(
 // captured ProbeLinger as well: two readings, two instants, and a report whose printed
 // observed_linger could disagree with the linger the projection planned against. Same class as the
 // is_active double read, arriving from the caller's side while the carrier was being built.
+// THE PRODUCTION CONSUMER OF THE GUARDED PRODUCER, AND ITS ANSWER TODAY IS A REFUSAL.
+//
+// The remedy verdict is real: it is computed from the running definition this host's own observation
+// transaction read, against the definition identity the desired unit spec renders. What is not real
+// is a held fence -- no admission-state authority and no active-turn population exist -- so the
+// drain half comes from spark_serving_unfenced_production_drain and the guarded producer refuses
+// every time, naming the missing capability in the receipt.
+//
+// This is deliberately a REACHABLE refusal rather than an unwired one. A fence, a drain and a plan
+// that no production path can reach would be the inert-lens shape; a path that reaches them and is
+// told, per host, exactly which capability is absent is the honest state of DCH-0r before its live
+// receipt exists. Nothing here restarts anything, and the Planned arm of the producer has never once
+// been reached from this call site.
+fn spark_serving_reactivation_standing_for(
+  host: HostIdentity,
+  running_definition: SparkServingRunningDefinition,
+) -> String {
+  spark_serving_bound_reactivation_planning_wire(
+    planning: spark_serving_guarded_bound_reactivation(
+      remedy: spark_serving_reactivation_remedy(
+        realization: UserUnitRealization,
+        running: running_definition,
+        desired_definition_identity: spark_serving_desired_user_unit_definition_identity(),
+      ),
+      drain: spark_serving_unfenced_production_drain(locus: spark_serving_locus(host: host)),
+    ),
+  )
+}
+
 fn spark_serving_slice_report_for(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -556,6 +612,7 @@ fn spark_serving_slice_report_for(
   execute_apply: Bool,
   transport: HostEffectTransport,
   observation: SparkServingHostObservation,
+  reactivation: String,
 ) -> SparkServingSliceHostReport {
   let linger_enabled = spark_serving_projection_linger_enabled(
     projection: observation.projection,
@@ -569,6 +626,7 @@ fn spark_serving_slice_report_for(
               observed_slots: [],
               observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
               observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+            observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
             ) {
               FleetConvergePlanArtifactRefused { refusal: r } =>
                 spark_serving_converge_slice_host_line(
@@ -578,6 +636,7 @@ fn spark_serving_slice_report_for(
                   typed_row_count: 0,
                   apply_effect_count: 0,
                   apply_command_count: 0,
+                  reactivation: reactivation,
                   verdict: fleet_converge_plan_artifact_refusal_text(r: r),
                 )
               FleetConvergePlanArtifactReady { artifact: artifact } =>
@@ -590,6 +649,7 @@ fn spark_serving_slice_report_for(
                       typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                       apply_effect_count: 0,
                       apply_command_count: 0,
+                      reactivation: reactivation,
                       verdict: "plan-hash-refused",
                     )
                   Present { value: hex } =>
@@ -605,6 +665,7 @@ fn spark_serving_slice_report_for(
                           typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                           apply_effect_count: 0,
                           apply_command_count: 0,
+                          reactivation: reactivation,
                           verdict: join(["apply-refused ", why], ""),
                         )
                       SparkServingFrozenApplied { remote_steps: steps, effect_count: n } =>
@@ -615,6 +676,7 @@ fn spark_serving_slice_report_for(
                           typed_row_count: length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)),
                           apply_effect_count: n,
                           apply_command_count: remote_operation_count(operations: map(steps, st => st.operation)),
+                          reactivation: reactivation,
                           verdict: if execute_apply {
                             spark_serving_converge_slice_exec_verdict(
                               context: context,

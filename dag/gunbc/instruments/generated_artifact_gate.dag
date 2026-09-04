@@ -18,10 +18,32 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import v2.std.algebra { fold_list, length }
+import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObservation,
+  GeneratedArtifactObserved,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactPopulationFindings,
   generated_artifact_population_findings,
   generated_artifact_population_findings_empty,
   generated_artifact_population_findings_rendered
+}
+
+// ONE VERDICT CONSTRUCTOR FOR THE REQUIRED GATE AND HEAL'S SECOND PASS. Keeping the injected
+// expected/observed populations at this pure seam gives the non-idempotence refusal a real RED:
+// a fixture can present different first- and second-pass bytes to the exact function production
+// calls, rather than merely testing a nearby findings renderer. The observation and findings are
+// still each produced once; this consumes the retained finding population instead of recomputing it.
+fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFindings) -> ProcessExit {
+  if generated_artifact_population_findings_empty(f: findings) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "generated-artifact agreement failed: ",
+      generated_artifact_population_findings_rendered(f: findings)
+    ))
+  }
 }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -56,21 +78,16 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
   let findings = generated_artifact_population_findings(expected: committed_generated_artifacts(), observations: observations)
   let all_ok = generated_artifact_population_findings_empty(f: findings)
-  let reason = if all_ok {
-    ""
-  } else {
-    concat("generated-artifact agreement failed: ", generated_artifact_population_findings_rendered(f: findings))
-  }
+  let verdict = generated_artifact_agreement_verdict(
+    findings: findings
+  )
+  let reason = generated_artifact_drift_failure_reason(exit: verdict)
   if all_ok {
     record_generated_artifact_drift_gate_clean()
   } else {
     record_generated_artifact_drift_gate_failure_detail(detail: reason)
   }
-  return if all_ok {
-    ExitSuccess
-  } else {
-    exit_failure(reason: reason)
-  }
+  return verdict
 }
 
 func main() -> ProcessExit {
@@ -239,4 +256,112 @@ func main_wet() -> ProcessExit {
       acc
     }
   })
+}
+
+// HEAL MAY COMMIT ONLY A FIXED POINT. The first pass is the actuator: it overwrites every
+// committed projection from this checkout's authorities. The second pass is the same independent
+// observation used by the required drift gate: it reads those bytes, generates every expected
+// body again, and returns the typed, located finding population on any disagreement. A warning is
+// not an arm here; any non-idempotent artifact returns ExitFailure before the workflow reaches its
+// commit step.
+//
+// This is deliberately a separate entry from main_wet. Authors regenerating an ordinary
+// concurrent projection retain the one-pass command, while heal-generated-artifacts binds the
+// stronger actuator-plus-proof because it is about to write a commit without a human inspecting
+// the bytes. Both passes preserve committed_generated_artifacts() source order; there is no sort.
+// WHERE THE DECLARATION HAS TO BE TAKEN, AND WHY IT CANNOT BE TAKEN LATER. The actuator OVERWRITES
+// every committed projection from this checkout's authorities, so once it has run the tree agrees
+// with its authority BY CONSTRUCTION and nothing downstream -- a verify pass, the commit step, a
+// later reader -- can see what the write repaired. The defect is gone and so is the evidence it
+// existed. So the only moment this fact is observable is BEFORE the actuator runs, which is why
+// this is its own entry invoked ahead of the regeneration rather than a field on any result the
+// regeneration produces.
+//
+// THE STEP IS ORDERED AGAINST THE WRITE, NOT AGAINST A PARTICULAR ENTRY NAME, and that is
+// deliberate: gunbc.ci_spec has already repointed the heal job's regeneration step from
+// main_wet_verified to main_wet once. A rationale written against whichever entry heal happens to
+// invoke would have quietly become false at that change while still reading as current. What this
+// step requires is only that it run before ANY entry that writes the projections.
+//
+// IT WRITES A FILE RATHER THAN RETURNING A REASON because a ProcessExit reason is rendered only on
+// FAILURE, and this observation is taken on the path where heal is about to succeed. Reporting it
+// through the failure channel would mean the record exists exactly when the repair does not.
+//
+// THIS ENTRY NEVER REFUSES ON DRIFT. Drift is the expected input -- heal exists because it is there
+// -- so refusing here would stop the repair this job is for. It refuses only when it cannot WRITE
+// the declaration, because an unwritten declaration that reported success would put the class back
+// in the silent state: the commit would carry no trailer and nothing would say the record is missing
+// rather than empty.
+// A LEDGER THAT COULD NOT BE JUDGED IS A REFUSAL, NOT A SKIPPED ROW (review 60099). These two arms
+// previously returned the accumulator unchanged, which is the uncounted degradation DESIGN section 5
+// hard-rejects: a refused observation or an absent committed file means NO VERDICT WAS REACHED for
+// that ledger, and returning `acc` made that indistinguishable from a ledger judged and found whole.
+//
+// THE MASKING IS THE POINT AND IT DEFEATS THE DENOMINATOR ONE LEVEL UP. There are two ledgers. If one
+// is judged and the other is unjudgeable, the declaration file is NONEMPTY -- it carries the first
+// ledger's judged line -- so the commit step's own `-s` refusal passes and heal commits with a
+// denominator covering half the population. The judged token exists precisely so that coverage
+// collapse cannot read as a clean numerator, and a silent skip here reintroduced that below it.
+//
+// It refuses rather than emitting an unjudged marker because the population is TWO artifacts that are
+// always committed: an unobservable design ledger is anomalous, not routine drift, so the line stops
+// and a human looks. Non-ledger artifacts still skip, and that is not a widen -- they have no rows to
+// lose, which artifact_is_ledger decides from ledger_rows rather than by matching the coproduct again.
+fn unjudged_ledger_refusals(observations: List<GeneratedArtifactObservation>) -> List<String> {
+  fold(observations, init: [], f: fn(acc, o) {
+    match o {
+      GeneratedArtifactObserved { artifact: _, path: _, generated_content: _, committed_content: _, extra_validation: _ } => acc
+      GeneratedArtifactObservationRefused { artifact, path, cause } =>
+        if artifact_is_ledger(a: artifact) {
+          concat(acc, [concat(path, concat(" (observation refused: ", concat(cause, ")")))])
+        } else { acc }
+      GeneratedArtifactCommittedAbsent { artifact, path, detail } =>
+        if artifact_is_ledger(a: artifact) {
+          concat(acc, [concat(path, concat(" (committed artifact absent: ", concat(detail, ")")))])
+        } else { acc }
+    }
+  })
+}
+
+func heal_repair_declaration() -> ProcessExit {
+  let observations = observe_generated_artifact_population()
+  let unjudged = unjudged_ledger_refusals(observations: observations)
+  if length(unjudged) > 0 {
+    exit_failure(reason: concat(
+      "heal repair declaration reached no verdict for a design ledger, so a commit here would record a partial denominator: ",
+      fold(unjudged, init: "", f: fn(a, u) { if a == "" { u } else { concat(a, concat("; ", u)) } })
+    ))
+  } else {
+    let text = fold(observations, init: "", f: fn(acc, o) {
+      match o {
+        GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation: _ } =>
+          concat(acc, render_ledger_repair_trailers(
+            path: path,
+            c: ledger_row_coherence(
+              a: artifact,
+              generated_content: generated_content,
+              committed_content: committed_content
+            )
+          ))
+        GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => acc
+        GeneratedArtifactCommittedAbsent { artifact: _, path: _, detail: _ } => acc
+      }
+    })
+    let w = Filesystem.Write(path: heal_repair_declaration_artifact_path, content: text)
+    if w.success { ExitSuccess } else {
+      exit_failure(reason: concat(
+        concat("heal repair declaration could not be written to ", heal_repair_declaration_artifact_path),
+        concat(": ", w.error)
+      ))
+    }
+  }
+}
+
+func main_wet_verified() -> ProcessExit {
+  let first = main_wet()
+  if exit_ok(e: first) {
+    run_generated_artifact_drift_gate_body()
+  } else {
+    first
+  }
 }

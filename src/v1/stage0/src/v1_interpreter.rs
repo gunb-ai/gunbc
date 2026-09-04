@@ -7165,13 +7165,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_fn_index eval_call_bridge__v2_std_fn_index_arm {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
-                arm "v4_bridge.fn_arrow_decl_substrate_is_whole_tree" { "fn_arrow_decl_substrate_is_whole_tree" } =>
-                    crate::coproduct_reflection::eval_fn_arrow_decl_substrate_is_whole_tree($ctx, &$args),
-            }
-            family CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS "v2.lens.affected_set.corpus_dependency_view"
-                lookup_eval_call_bridge_lens_affected_set_corpus_dependency_view eval_call_bridge__v2_lens_affected_set_corpus_dependency_view_arm {
-                arm "v4_bridge.corpus_dependency_view_per_pr_substrate_refuse" { "corpus_dependency_view_per_pr_substrate_refuse" } =>
-                    crate::coproduct_reflection::eval_corpus_dependency_view_per_pr_substrate_refuse($ctx, &$args),
             }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
@@ -7269,10 +7262,6 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
-}
-
-pub fn corpus_dependency_view_bridge_fn_names() -> &'static [&'static str] {
-    CORPUS_DEPENDENCY_VIEW_BRIDGE_FNS
 }
 
 pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
@@ -11591,9 +11580,30 @@ fn parsed_import_statements_value(
             variant_name: ctx.sym("ImportStatementParseRefused"),
             fields: Rc::new(sorted_fields(vec![(
                 ctx.sym("cause"),
-                str_value(cause.clone()),
+                import_statement_parse_cause_value(cause.clone(), ctx),
             )])),
         },
+    }
+}
+
+fn import_statement_parse_cause_value(
+    cause: Rc<crate::std_import::ImportStatementParseCause>,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_import::ImportStatementParseCause as C;
+    let (variant, fields) = match &*cause {
+        C::SourceHasNoModuleDeclaration => ("SourceHasNoModuleDeclaration", vec![]),
+        C::ModuleDeclarationPathMalformed => ("ModuleDeclarationPathMalformed", vec![]),
+        C::ImportStatementMalformed => ("ImportStatementMalformed", vec![]),
+        C::ImportParseInstrumentAnomaly { detail } => (
+            "ImportParseInstrumentAnomaly",
+            vec![(ctx.sym("detail"), str_value(detail.clone()))],
+        ),
+    };
+    Value::Variant {
+        type_name: ctx.sym("ImportStatementParseCause"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(fields)),
     }
 }
 
@@ -11722,6 +11732,172 @@ fn multi_module_compile_fixture_value(
                 (ctx.sym("compiler_digest"), str_value(compiler_digest)),
             ],
         ),
+    }
+}
+
+fn occurrence_category_value(
+    category: &crate::std_occurrence_identity::OccurrenceCategory,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_occurrence_identity::OccurrenceCategory;
+    Value::Variant {
+        type_name: ctx.sym("OccurrenceCategory"),
+        variant_name: ctx.sym(match category {
+            OccurrenceCategory::LexicalValueOccurrence => "LexicalValueOccurrence",
+            OccurrenceCategory::TypeOccurrence => "TypeOccurrence",
+            OccurrenceCategory::CallableOccurrence => "CallableOccurrence",
+            OccurrenceCategory::ConstructorOccurrence => "ConstructorOccurrence",
+            OccurrenceCategory::NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence",
+            OccurrenceCategory::FieldOccurrence => "FieldOccurrence",
+            OccurrenceCategory::MethodOccurrence => "MethodOccurrence",
+        }),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn reference_occurrence_binding_census_value(
+    census: crate::cli_run::ReferenceOccurrenceBindingCensus,
+    ctx: &InterpContext,
+) -> Value {
+    let denominator_value =
+        |row: crate::cli_run::ReferenceOccurrenceDenominatorRow| Value::Record {
+            type_name: ctx.sym("ReferenceOccurrenceDenominatorRow"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("occurrence"), Value::Int(row.occurrence)),
+                (ctx.sym("consumer_file"), str_value(row.consumer_file)),
+                (ctx.sym("consumer_module"), str_value(row.consumer_module)),
+                (ctx.sym("authored_name"), str_value(row.authored_name)),
+                (
+                    ctx.sym("category"),
+                    occurrence_category_value(&row.category, ctx),
+                ),
+                (
+                    ctx.sym("file_reference_ordinal"),
+                    Value::Int(row.file_reference_ordinal),
+                ),
+                (ctx.sym("span_start"), Value::Int(row.span_start)),
+            ])),
+        };
+    let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(match source {
+            crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+            crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+            crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        }),
+        fields: Rc::new(vec![]),
+    };
+    let disposition_value =
+        |disposition: crate::cli_run::ReferenceOccurrenceBindingDisposition| match disposition {
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Bound {
+                declaration_occurrence,
+                provider_module,
+                binding_source,
+            } => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceBound"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("declaration_occurrence"),
+                        Value::Int(declaration_occurrence),
+                    ),
+                    (ctx.sym("provider_module"), str_value(provider_module)),
+                    (ctx.sym("binding_source"), source_value(binding_source)),
+                ])),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Unresolved => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceUnresolved"),
+                fields: Rc::new(vec![]),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Ambiguous { candidates } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceAmbiguous"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("candidates"),
+                        list_value(candidates.into_iter().map(Value::Int).collect::<Vec<_>>()),
+                    )])),
+                }
+            }
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Refused { cause } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceBindingRefused"),
+                    fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+                }
+            }
+        };
+    match census {
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Observed {
+            source_digest,
+            compiler_digest,
+            denominator,
+            observations,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+                (
+                    ctx.sym("denominator"),
+                    list_value(
+                        denominator
+                            .into_iter()
+                            .map(denominator_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("observations"),
+                    list_value(
+                        observations
+                            .into_iter()
+                            .map(|row| Value::Record {
+                                type_name: ctx.sym("ReferenceOccurrenceBindingRow"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (
+                                        ctx.sym("occurrence"),
+                                        Value::Int(row.denominator.occurrence),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_file"),
+                                        str_value(row.denominator.consumer_file),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_module"),
+                                        str_value(row.denominator.consumer_module),
+                                    ),
+                                    (
+                                        ctx.sym("authored_name"),
+                                        str_value(row.denominator.authored_name),
+                                    ),
+                                    (
+                                        ctx.sym("category"),
+                                        occurrence_category_value(&row.denominator.category, ctx),
+                                    ),
+                                    (
+                                        ctx.sym("file_reference_ordinal"),
+                                        Value::Int(row.denominator.file_reference_ordinal),
+                                    ),
+                                    (
+                                        ctx.sym("span_start"),
+                                        Value::Int(row.denominator.span_start),
+                                    ),
+                                    (ctx.sym("disposition"), disposition_value(row.disposition)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
     }
 }
 
@@ -12991,36 +13167,20 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 /// The temporary is removed on every path. Its removal failure is deliberately NOT propagated: it
 /// leaves a stray sibling and does not affect what the target is, and reporting it as a write
 /// failure would say the repository was not created when it was.
-fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
-    let temp = format!("{path}.gunbc-create-{}", std::process::id());
-
-    // The temporary is exclusive too, so two concurrent creators cannot share one staging file.
-    // `?` rather than a match: this arm creates nothing, so there is no staging file to clean up --
-    // which is exactly why it is the one failure below that does NOT remove_file. The emitted
-    // realization already spells it `?`, so this also stops the two spellings differing over a
-    // difference that was never semantic.
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp)?;
-    if let Err(e) = file.write_all(content) {
-        let _ = std::fs::remove_file(&temp);
-        return Err(e);
-    }
-    if let Err(e) = file.sync_all() {
-        let _ = std::fs::remove_file(&temp);
-        return Err(e);
-    }
-    drop(file);
-
-    // hard_link refuses an existing target, which is where this operation's exclusivity now lives.
-    let published = std::fs::hard_link(&temp, path);
-    let _ = std::fs::remove_file(&temp);
-    published
-}
+// THE CREATE-NEW REALIZATION IS NOT WRITTEN HERE ANY MORE, AND THAT IS THE POINT.
+//
+// This function used to be a hand-written twin of the Rust source string
+// v1.compiler.emit_rust emitted into every compiled program. One fact, two authorities: review
+// 5089156132 on gunbc#10069 repaired the defect in THIS one while the emitted spelling still
+// opened the target directly, so a failed emitted write left a partial repository the model
+// reported as never created. The two were brought back into agreement by hand, and #10069's own
+// annotation admitted that nothing but review held them there.
+//
+// The implementation now has ONE home, extdeps.filesystem.rust_realization, and both consumers
+// receive its exact bytes: the emitted crate through its lib.rs root, the seed through the
+// committed generated artifact this call resolves to. The regeneration and fixed-point gates
+// refuse drift on that artifact, so the agreement is machine-held rather than review-held.
+use crate::gunbc_file_transport_generated::gunbc_file_write_create_new as write_file_create_new;
 
 // ------------------------------------------------------------------------------------------------
 // THE PRIMITIVE'S OWN EVIDENCE. gunbc.scm.init's witnesses cover the DECISION -- which observation
@@ -13030,6 +13190,374 @@ fn write_file_create_new(path: &str, content: &[u8]) -> std::io::Result<()> {
 // ------------------------------------------------------------------------------------------------
 #[cfg(test)]
 mod write_file_create_new_tests {
+    // ---------------------------------------------------------------------------------------
+    // PROJECTION INTEGRITY, EXECUTED RATHER THAN ASSERTED.
+    //
+    // This module's whole claim is that ONE authority
+    // (extdeps.filesystem.rust_realization rust_file_write_create_new_fn_def) reaches two committed
+    // consumers verbatim. A one-time manual comparison is a receipt about the tree that existed when
+    // someone ran it; it is not enforcement, and external review required this to execute. A future
+    // rustfmt release or a generator edit could reopen the difference without touching the authority
+    // at all, and nothing would say so.
+    //
+    // THIS IS NOT THE FORBIDDEN EQUALITY WITNESS. That pattern pins two independently authored
+    // implementations to each other and calls the agreement a guarantee. There is one implementation
+    // here; this checks that its two PROJECTIONS carry it unchanged, which is necessary precisely
+    // because one of those paths passes through an external canonicalizer this repo does not own.
+    //
+    // The fourth assertion is the load-bearing one: `cargo fmt --all --check` is a declared rung
+    // drop as a merge gate, so nothing else in CI would notice the seed artifact drifting out of
+    // rustfmt's fixed point.
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("stage0 crate sits three levels under the repo root")
+            .to_path_buf()
+    }
+
+    // THE BLOCK, NOT THE FUNCTION. Extraction starts at the generated CONSTANT, not at `pub fn`.
+    // Starting at the function would leave a real blind spot the moment the limit became a named
+    // authority: seed renders 1024, v1_rt renders a stale 512, the function bytes match, BOTH
+    // projections compile, this control stays green, and the two behave differently. "It would not
+    // compile without the constant" proves presence, never agreement.
+    const CANONICAL_BLOCK_MARKER: &str = "pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT";
+
+    fn extract_create_new_definition(source: &str, what: &str) -> String {
+        let start = source
+            .find(CANONICAL_BLOCK_MARKER)
+            .unwrap_or_else(|| panic!("{what} does not carry the create-new canonical block"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n}\n")
+            .unwrap_or_else(|| panic!("{what}'s definition is not brace-terminated"));
+        rest[..end + 3].to_string()
+    }
+
+    #[test]
+    fn both_projections_carry_the_one_authority_verbatim() {
+        let root = repo_root();
+        let seed_path = root.join("src/v1/stage0/src/gunbc_file_transport_generated.rs");
+        let runtime_path = root.join("src/v1/stage0/src/v1_rt.rs");
+
+        let seed_src = std::fs::read_to_string(&seed_path).expect("seed projection");
+        let runtime_src = std::fs::read_to_string(&runtime_path).expect("runtime projection");
+
+        let seed = extract_create_new_definition(&seed_src, "the generated seed module");
+        let runtime = extract_create_new_definition(&runtime_src, "emitted v1_rt");
+
+        // (2) exactly once in the runtime projection -- a second copy would be a second authority,
+        // checked for the constant AND the function, since either alone could be duplicated.
+        for marker in [CANONICAL_BLOCK_MARKER, "pub fn gunbc_file_write_create_new"] {
+            assert_eq!(
+                runtime_src.matches(marker).count(),
+                1,
+                "v1_rt must carry {marker} exactly once",
+            );
+        }
+        // The block really must carry the limit, or the extraction range proves nothing about it.
+        assert!(
+            seed.starts_with(CANONICAL_BLOCK_MARKER),
+            "the compared range must begin at the generated limit, not at the function",
+        );
+        // (3) the two extracted byte ranges are identical
+        assert_eq!(
+            seed, runtime,
+            "the seed artifact and emitted v1_rt must carry byte-identical definitions",
+        );
+
+        // (4) the seed artifact is already at rustfmt's fixed point
+        let fmt = std::process::Command::new("rustfmt")
+            .args(["--edition", "2021", "--emit", "stdout", "--quiet"])
+            .arg(&seed_path)
+            .output()
+            .expect("rustfmt must be available: this check refuses rather than skipping");
+        assert!(fmt.status.success(), "rustfmt failed on the seed artifact");
+        let formatted = String::from_utf8(fmt.stdout).expect("rustfmt output is utf-8");
+        assert_eq!(
+            extract_create_new_definition(&formatted, "rustfmt output"),
+            seed,
+            "the seed artifact must already be at rustfmt's fixed point, or the two projections \
+             will drift the next time a formatter runs over one of them",
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // THE SAME-PROCESS STAGING COLLISION, AND WHY THE FIRST FORMULATION OF THIS CONTROL WAS
+    // NOT DISCRIMINATING.
+    //
+    // Review 58836 on gunbc#10069 found that the staging name was `{path}.gunbc-create-{pid}`:
+    // unique per TARGET, but not per THREAD. Two threads of one process creating the same target
+    // derived the SAME staging name, so the loser failed its exclusive open on the TEMPORARY and
+    // reported AlreadyExists against an internal name it never asked to write -- and if the winner
+    // then failed too, both calls could refuse with no target ever published.
+    //
+    // The obvious control -- race N threads and assert exactly one wins -- PASSES under the
+    // defective construction, because there too exactly one wins and the losers report
+    // AlreadyExists. Same verdict, same ErrorKind, no information. It would have been a decoration
+    // (DESIGN section 4b), and #10069 already paid for one of those.
+    //
+    // THIS ONE IS DETERMINISTIC AND SEPARATES THE TWO CONSTRUCTIONS. It plants exactly the staging
+    // file the OLD naming rule would have chosen and leaves the TARGET ABSENT. The old rule
+    // collides with that leftover and refuses a create that was entirely legitimate; the sequence
+    // suffix makes each attempt's staging name its own, so the create proceeds. Red on the defect,
+    // green on the repair, with no timing dependence.
+    // THE GENERALIZED CONTROL: AN OCCUPIED CANDIDATE UNDER THE *CURRENT* RULE.
+    //
+    // External review established that the previous control, which plants the PID-only name #10069
+    // used, does not prove the class closed -- it only proves the literal suffix changed. Under the
+    // current rule that planted file is not a candidate at all, so the test passes without ever
+    // exercising an occupied candidate.
+    //
+    // The defect it failed to catch is real: a per-attempt sequence makes the name unique among LIVE
+    // calls in one process, but this function deliberately ignores removal failure after
+    // publication, so stale staging files are an admitted physical state, and a later process may
+    // reuse the pid and restart its sequence at zero. A one-shot candidate that returned its own
+    // AlreadyExists would reproduce the identical defect -- target absent, legitimate create refused
+    // because an INTERNAL name was occupied -- at a frequency low enough to be harder to observe.
+    //
+    // So this control plants the FIRST candidate the current rule derives, in a freshly spawned
+    // process so the sequence is known to start at zero, and requires the operation to SKIP it,
+    // acquire the next, and publish the requested target -- leaving the planted file untouched,
+    // because it belongs to another attempt and deleting it would turn a naming collision into data
+    // loss. It goes red against a one-shot candidate, which the previous control could not do.
+    #[test]
+    fn an_occupied_staging_candidate_is_skipped_rather_than_refused() {
+        // A FRESH PROCESS, NOT A FORK. The previous version of this control forked and asserted the
+        // child's first candidate was seq 0. That was wrong, and external review caught it: fork
+        // COPIES the counter's current value, and cargo runs these tests as threads of ONE process
+        // where sibling tests have already advanced it. The planted name was then not a candidate at
+        // all, so the control passed without ever exercising an occupied candidate -- the identical
+        // vacuity this test exists to rule out. Only a new process gives the static its initializer.
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        // The helper is inert without the variable, so prove the child actually RAN it -- otherwise a
+        // renamed test would leave this green while asserting nothing.
+        assert!(
+            rendered.contains("1 passed"),
+            "the helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an occupied staging candidate must be skipped, the next acquired, the target \
+             published, and the planted file left untouched; got:\n{rendered}",
+        );
+    }
+
+    // THE BUDGET REFUSAL HAS TO BE REACHED, NOT ASSERTED. Nothing above this exercises the arm that
+    // ends the candidate search, so without it the limit is a number no executed path ever meets.
+    // It occupies exactly the CONFIGURED number of candidates -- read from the one authority, never
+    // retyped -- so that changing the limit changes this control rather than leaving it stale.
+    #[test]
+    fn the_candidate_budget_refuses_rather_than_publishing_or_looping() {
+        let exe = std::env::current_exe().expect("test binary");
+        let helper = exact_helper_name(&exe, BUDGET_HELPER_LEAF);
+        let out = std::process::Command::new(exe)
+            .args(["--exact", &helper, "--nocapture", "--test-threads=1"])
+            .env(BUDGET_HELPER_ENV, "1")
+            .output()
+            .expect("re-exec the test binary");
+        let rendered = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+        assert!(
+            rendered.contains("1 passed"),
+            "the budget helper child must run exactly one test; got:\n{rendered}",
+        );
+        assert!(
+            out.status.success(),
+            "an exhausted candidate budget must refuse, leave the target absent, and leave every \
+             planted candidate untouched; got:\n{rendered}",
+        );
+    }
+
+    const BUDGET_HELPER_ENV: &str = "GUNBC_STAGING_CANDIDATE_BUDGET_CHILD";
+    const BUDGET_HELPER_LEAF: &str = "::staging_candidate_budget_child_helper";
+
+    #[test]
+    fn staging_candidate_budget_child_helper() {
+        if std::env::var(BUDGET_HELPER_ENV).is_err() {
+            return;
+        }
+        let limit =
+            crate::gunbc_file_transport_generated::GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT;
+        let dir = std::env::temp_dir().join(format!("gunbc-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Occupy every candidate this call is permitted to try, and no more.
+        let planted: Vec<String> = (0..limit)
+            .map(|seq| format!("{}.gunbc-create-{}-{}", target, std::process::id(), seq))
+            .collect();
+        for (seq, name) in planted.iter().enumerate() {
+            std::fs::write(name, format!("occupant {seq}")).expect("plant a candidate");
+        }
+
+        let refusal = super::write_file_create_new(&target, b"a fresh repository")
+            .expect_err("an exhausted candidate budget must refuse");
+        // NOT AlreadyExists: the target is absent, and conflating the two is the defect this
+        // whole module exists to remove.
+        assert_eq!(refusal.kind(), std::io::ErrorKind::Other, "{refusal}");
+        let rendered = refusal.to_string();
+        assert!(
+            rendered.contains("StagingCandidateBudgetExhausted")
+                && rendered.contains(&format!("attempted={limit}"))
+                && rendered.contains(&format!("limit={limit}")),
+            "the refusal must name the cause and the budget it reached: {rendered}",
+        );
+        assert!(
+            !path.exists(),
+            "no target may be published when the budget is exhausted"
+        );
+        for (seq, name) in planted.iter().enumerate() {
+            assert_eq!(
+                std::fs::read_to_string(name).expect("a planted candidate must survive"),
+                format!("occupant {seq}"),
+                "a refusal must not delete another attempt's file",
+            );
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Ask the harness for a helper's own full path rather than spelling it here: a hardcoded module
+    // path would go stale on a rename and leave the control running nothing at all.
+    fn exact_helper_name(exe: &std::path::Path, leaf: &str) -> String {
+        let listed = std::process::Command::new(exe)
+            .args(["--list"])
+            .output()
+            .expect("list tests");
+        let listing = String::from_utf8_lossy(&listed.stdout);
+        let matches: Vec<&str> = listing
+            .lines()
+            .filter_map(|line| line.strip_suffix(": test"))
+            .filter(|name| name.ends_with(leaf))
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "expected exactly one helper named {leaf}, found {matches:?}",
+        );
+        matches[0].to_string()
+    }
+
+    const HELPER_ENV: &str = "GUNBC_OCCUPIED_STAGING_CANDIDATE_CHILD";
+    const HELPER_LEAF: &str = "::occupied_staging_candidate_child_helper";
+
+    // Runs for real ONLY in the child process the control above spawns, where this is the first and
+    // only caller and the sequence therefore starts at its initializer.
+    #[test]
+    fn occupied_staging_candidate_child_helper() {
+        if std::env::var(HELPER_ENV).is_err() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("gunbc-occupied-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
+        std::fs::write(&planted, b"a stale internal candidate").expect("plant the first candidate");
+
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("an occupied staging candidate must be skipped, not refused");
+        assert_eq!(
+            std::fs::read(&path).expect("target must be published"),
+            b"a fresh repository",
+        );
+        // The occupied candidate must survive: it is another attempt's file, and removing it would
+        // convert a naming collision into data loss.
+        assert_eq!(
+            std::fs::read(&planted).expect("the planted candidate must survive"),
+            b"a stale internal candidate",
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Kept as the historical mutation control for #10069's PID-only naming. It is NOT sufficient on
+    // its own -- see the generalized control above -- but it still pins the specific regression.
+    #[test]
+    fn a_leftover_staging_file_does_not_refuse_a_legitimate_create() {
+        let dir = std::env::temp_dir().join(format!("gunbc-stale-staging-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        // Exactly the name the pre-repair rule derived, and nothing else.
+        let collided = format!("{}.gunbc-create-{}", target, std::process::id());
+        std::fs::write(&collided, b"a leftover from an earlier attempt")
+            .expect("plant the leftover");
+
+        super::write_file_create_new(&target, b"a fresh repository")
+            .expect("a leftover staging file must not refuse a create whose TARGET is absent");
+        assert_eq!(
+            std::fs::read(&path).expect("target must exist"),
+            b"a fresh repository",
+        );
+
+        let _ = std::fs::remove_file(&collided);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // AND THE RACE ITSELF STILL HAS TO BEHAVE. This one is not discriminating on its own -- see
+    // above -- but it is the positive control for the claim the repair makes about concurrency:
+    // every refusal must name a target that REALLY exists, so no caller is told AlreadyExists about
+    // a target nobody published, and no staging file may survive the run.
+    #[test]
+    fn concurrent_same_target_creates_produce_one_winner_and_no_residue() {
+        let dir = std::env::temp_dir().join(format!("gunbc-race-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("repo.json");
+        let target = path.to_str().unwrap().to_string();
+
+        let payload = vec![b'x'; 512 * 1024];
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let t = target.clone();
+                let p = payload.clone();
+                std::thread::spawn(move || super::write_file_create_new(&t, &p))
+            })
+            .collect();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("thread"))
+            .collect();
+
+        let winners = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(winners, 1, "exactly one creator may publish the target");
+        for r in results.iter().filter(|r| r.is_err()) {
+            let e = r.as_ref().unwrap_err();
+            assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        }
+        assert!(path.exists(), "the winner's target must be published");
+        assert_eq!(std::fs::read(&path).expect("target").len(), payload.len());
+
+        let residue: Vec<_> = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".gunbc-create-"))
+            .collect();
+        assert!(
+            residue.is_empty(),
+            "staging files must not survive: {residue:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn create_new_refuses_a_path_that_already_exists_and_leaves_its_bytes() {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-{}", std::process::id()));
@@ -17408,6 +17936,15 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.compile_dag_reference_occurrence_binding_census" { "compile_dag_reference_occurrence_binding_census" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(reference_occurrence_binding_census_value(
+                    crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
+                )))
+            },
+
             arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), $name)?;
                 let entry_path = expect_str($positional.get(1).copied(), $name)?;
@@ -17617,12 +18154,153 @@ macro_rules! v1_builtin_dispatch {
     };
 }
 
+// ── OPAQUE-HOST-CALL REACH: OBSERVED AT THE ONE DISPATCH THAT CAN SEE IT ──────────────────
+//
+// WHY THIS EXISTS AND WHY IT IS HERE RATHER THAN AT THE FLOOR. `v2.workflow.required_floor`
+// classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
+// `ClaimPreemptionReachability`, and `gunbc.v1_interpreter_opaque_host_call` already grounds
+// which operations are unpollable. But the seed had no way to say which arm a claim actually
+// REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
+// discarded everywhere else -- the two populations the model distinguishes arrived at the floor
+// as one bucket. `eval_builtin_inner` is the single point every `free_call.*` arm passes
+// through, so recording reach here costs one site rather than one per arm, and no arm can be
+// added that silently escapes it.
+//
+// IT RECORDS, IT DOES NOT DECIDE. Nothing here compares a cost or blocks a claim: the floor
+// reads this to REPORT which population a crossing belongs to, and blocking behaviour is
+// unchanged. The roster is NOT duplicated in Rust -- the floor reads
+// `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
+// it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
+// arming an empty one (an empty roster would report every crossing as pollable, which is the
+// reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
+thread_local! {
+    static OPAQUE_HOST_CALL_SURFACE: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
+    static OPAQUE_HOST_CALL_REACHED: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    // THE DENOMINATOR FOR THE REACH RECORD, AND THE ONLY THING THAT SEPARATES ITS TWO FAILURES.
+    // A claim reporting no reach is either a claim that called no opaque arm (the finding the
+    // column exists to report) or a claim whose calls never passed this hook at all (the column
+    // being a decoration). Those are indistinguishable from an empty list, so the hook counts
+    // EVERY dispatch it sees beside the ones it matches: `dispatches` is the population the
+    // identity test was applied to, and zero dispatches under a claim that provably compiled a
+    // module says the hook is not on the path — a statement the reach list alone cannot make.
+    static BUILTIN_DISPATCHES_OBSERVED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static BUILTIN_DISPATCH_LAST_NAME: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Arm the recorder with the grounded surface. `None` DISARMS it, which is not the same fact as
+/// an empty surface: a disarmed recorder answers `SurfaceUnarmed` and a caller that cannot tell
+/// those apart would read "no opaque call reached" out of "nobody told me what opaque means".
+pub fn set_opaque_host_call_surface(operations: Option<Vec<String>>) {
+    OPAQUE_HOST_CALL_SURFACE.with(|s| *s.borrow_mut() = operations);
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+}
+
+/// Clear the per-claim record. Called by the floor before each claim; the surface stays armed.
+pub fn reset_opaque_host_call_reach() {
+    OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow_mut().clear());
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(0));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = None);
+}
+
+/// How many builtin dispatches passed the reach hook since the last reset, and the last name it
+/// saw. Reported beside the reach so an empty reach can be read: with dispatches > 0 the hook ran
+/// and the claim genuinely reached no listed arm; with dispatches == 0 the hook never ran and the
+/// reach is not an observation at all.
+pub fn builtin_dispatches_observed() -> (u64, Option<String>) {
+    (
+        BUILTIN_DISPATCHES_OBSERVED.with(|c| c.get()),
+        BUILTIN_DISPATCH_LAST_NAME.with(|n| n.borrow().clone()),
+    )
+}
+
+/// Which armed opaque operations this claim reached, in first-reach order, deduplicated.
+pub fn opaque_host_call_reach() -> OpaqueHostCallReach {
+    let armed = OPAQUE_HOST_CALL_SURFACE.with(|s| s.borrow().is_some());
+    if !armed {
+        return OpaqueHostCallReach::SurfaceUnarmed;
+    }
+    let reached = OPAQUE_HOST_CALL_REACHED.with(|r| r.borrow().clone());
+    if reached.is_empty() {
+        OpaqueHostCallReach::CooperativelyPollable
+    } else {
+        OpaqueHostCallReach::OpaqueHostCallUnbounded {
+            operations: reached,
+        }
+    }
+}
+
+/// The seed's spelling of `v2.workflow.floor_terminal_ledger`'s `ClaimPreemptionReachability`,
+/// plus the third state the model does not need and the seed does: the surface was never armed.
+/// `SurfaceUnarmed` is a REFUSAL cause at the floor, never a synonym for `CooperativelyPollable`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpaqueHostCallReach {
+    SurfaceUnarmed,
+    CooperativelyPollable,
+    OpaqueHostCallUnbounded { operations: Vec<String> },
+}
+
+/// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
+/// AUTHORED SPELLING, which is the BARE dispatch key and is what
+/// `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
+/// the `free_call.*` arm identity, which is the join's INPUT and never its output.
+fn note_opaque_host_call_reach(name: &str) {
+    BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
+    BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = Some(name.to_string()));
+    OPAQUE_HOST_CALL_SURFACE.with(|s| {
+        let borrowed = s.borrow();
+        let Some(surface) = borrowed.as_ref() else {
+            return;
+        };
+        // THE SURFACE PUBLISHES `authored_spelling`, WHICH IS THE BARE DISPATCH KEY, AND THIS
+        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1_interpreter_opaque_host_call`
+        // `opaque_host_call_surface` projects `roster_arms_for_identity(..) |> map(a =>
+        // a.authored_spelling)`, and `gunbc.v1_interpreter_primitive_surface` carries
+        // `authored_spelling: "compile_dag_rust_emit_check"` beside
+        // `identity: "free_call.compile_dag_rust_emit_check"`. This built the identity form and
+        // compared it to a list of spellings, so the two vocabularies never intersected and no
+        // claim could ever be recorded as reaching an opaque arm.
+        //
+        // MEASURED, NOT INFERRED: on run 33832137832 the published column read
+        // `cooperatively_pollable` for 3602 of 3602 claims including a witness authored to enter
+        // a listed arm, and gunbc#10336's probe then printed `dispatches=2
+        // last_builtin=compile_dag_rust_emit_check reach=cooperatively_pollable` -- the hook ran,
+        // saw the exact arm, and the identity test rejected it.
+        //
+        // THE BARE SPELLING IS THE CORRECT SIDE TO MOVE, AND NOT ONLY BECAUSE IT IS THE SMALLER
+        // DIFF. The whole `.dag` tower is authored in bare spellings -- the grandfather population
+        // in `v2.workflow.required_floor`, `claim_preemption_admission`, and the identity join
+        // `w_grandfather_population_matches_the_grounded_surface` that binds them -- so changing
+        // the projection would have reddened that wall and forked a vocabulary three authorities
+        // already agree on.
+        //
+        // WHAT MAKES THE BARE COMPARISON SAFE HERE IS THE CALL SITE, NOT THE STRING. An earlier
+        // note argued that matching a bare name could admit an arm the surface never listed,
+        // because the roster carries several spellings for one arm. That hazard is real for a
+        // comparison made anywhere; it cannot arise at THIS site. `eval_builtin_inner` is the
+        // free-call dispatch site and dispatches nothing else, and the grounded surface is
+        // all-`FreeCall` by construction -- `opaque_host_call_surface` refuses through
+        // `not_free_call` otherwise. So the form is fixed on both sides before the comparison.
+        if surface.iter().any(|op| op == name) {
+            OPAQUE_HOST_CALL_REACHED.with(|r| {
+                let mut reached = r.borrow_mut();
+                if !reached.iter().any(|o| o == name) {
+                    reached.push(name.to_string());
+                }
+            });
+        }
+    });
+}
+
 fn eval_builtin_inner(
     name: &str,
     args: &[(Option<String>, Value)],
     ctx: &InterpContext,
 ) -> InterpResult<Option<Value>> {
     let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+    note_opaque_host_call_reach(name);
     v1_builtin_arms!(v1_builtin_dispatch, name, positional, ctx)
 }
 
@@ -18213,6 +18891,20 @@ pub fn eval_profile_enabled() -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceReceipt {
     pub subject_key: String,
+    /// WHICH PREEMPTION POPULATION THIS CLAIM BELONGS TO, OBSERVED RATHER THAN ASSUMED.
+    ///
+    /// `v2.workflow.required_floor` classifies a completed-over-limit claim as
+    /// `CompletedPastSafetyLimit` carrying a `ClaimPreemptionReachability`, because completion is
+    /// evidence of safety ONLY for a claim the poll could have stopped. For a claim whose cost
+    /// accrued inside an opaque host call no stride point falls inside it, so it completes
+    /// however far over the ceiling and the limit observed nothing. Until this field the seed
+    /// could not tell the two apart: the reachability was hand-supplied in
+    /// `test.claim.preemption_reachability` and every real crossing arrived at the floor as one
+    /// undifferentiated bucket, which is why nobody could say how many crossings were missed
+    /// interrupts and how many were near-line overshoots.
+    ///
+    /// IT REPORTS; IT DOES NOT GATE. Blocking behaviour is unchanged by this field's presence.
+    pub opaque_host_call_reach: OpaqueHostCallReach,
     pub work_shape: String,
     /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
     /// existing receipt column projects.
@@ -18333,6 +19025,7 @@ pub fn performance_receipt_from_witness(
         .unwrap_or(0);
     PerformanceReceipt {
         subject_key,
+        opaque_host_call_reach: opaque_host_call_reach(),
         work_shape: work_shape.to_string(),
         wall_nanos,
         cpu_nanos,
@@ -21033,6 +21726,135 @@ mod evaluator_step_work_measure_tests {
             "the claim that PAID for a shared fill and the claim that read it warm must carry \
              the same marginal step count, or the measure is a function of execution order: \
              filler={marginal_filler}, reader={marginal_reader}"
+        );
+    }
+}
+
+// ── OPAQUE-HOST-CALL REACH: THE EXECUTED EVIDENCE ────────────────────────────────────────────
+//
+// These are the discriminating controls for the recorder, not a demonstration that it runs. Each
+// one is RED under a specific wrong behaviour, and the third is the one that matters most: an
+// unarmed surface must NOT answer `CooperativelyPollable`, because that is the reassuring
+// direction — it would report every completed-over-ceiling crossing as an ordinary overshoot on
+// a run that never observed reachability at all.
+#[cfg(test)]
+mod opaque_host_call_reach_tests {
+    use super::*;
+
+    // The tests share one thread-local recorder, so each arms the surface it needs rather than
+    // inheriting whatever ran before it. Serial by construction within a thread; the arming call
+    // is itself the reset.
+    // THE SURFACE IS SPELLED THE WAY THE AUTHORITY SPELLS IT. `opaque_host_call_surface` projects
+    // `authored_spelling`, which is the BARE dispatch key, so these fixtures carry bare names. The
+    // previous fixtures armed the surface with `free_call.` identities, which is the join's INPUT
+    // vocabulary and never its output -- so they passed while the real surface could never match,
+    // and the column read `cooperatively_pollable` for 3602 of 3602 claims in production.
+    #[test]
+    fn a_listed_arm_is_recorded_and_an_unlisted_one_is_not() {
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
+        note_opaque_host_call_reach("parse_stage0_cargo_manifest_bins");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "an arm that is NOT on the surface must leave the claim in the pollable population"
+        );
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["compile_dag_rust_emit_check".to_string()],
+            },
+            "a listed arm must move the claim into the unbounded population, carrying the \
+             operation rather than only the fact"
+        );
+    }
+
+    // THE REGRESSION CONTROL FOR THE DEFECT ITSELF, AND IT IS THE ONE THAT WOULD HAVE CAUGHT IT.
+    // A surface spelled the way the AUTHORITY spells it must move a claim out of the benign
+    // population. Under the previous comparison this went red: the hook built
+    // `free_call.compile_dag_rust_emit_check` and no bare-spelled surface could ever contain it,
+    // which is exactly the production reading. The old suite had the mirror of this test asserting
+    // that a bare surface must NOT match -- it enshrined the defect as the intended behaviour, so
+    // it is deleted rather than kept beside this one.
+    #[test]
+    fn the_authoritys_own_spelling_moves_a_claim_out_of_the_benign_population() {
+        set_opaque_host_call_surface(Some(vec![
+            "compile_dag_rust_emit_check".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_ne!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "a surface carrying the authority's own `authored_spelling` must record a reach; \
+             reporting the benign population here is the decoration this control exists to stop"
+        );
+    }
+
+    // THE ONE THAT GUARDS THE REASSURING DIRECTION.
+    #[test]
+    fn an_unarmed_surface_is_unknown_and_never_the_benign_population() {
+        set_opaque_host_call_surface(None);
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::SurfaceUnarmed,
+            "an unarmed surface must report UNKNOWN; answering `CooperativelyPollable` would \
+             report every crossing on such a run as a benign overshoot"
+        );
+    }
+
+    // Reach is per claim: the floor clears it between claims and the surface survives that.
+    #[test]
+    fn reset_clears_the_reach_but_leaves_the_surface_armed() {
+        // THE PRE-RESET ASSERTION IS THE HALF THIS TEST IS NAMED FOR, AND IT WAS DEAD. The
+        // fixture armed the surface with `free_call.compile_dag_rust_emit_check` -- the arm
+        // IDENTITY -- while the recorder compares the bare `authored_spelling` the authority
+        // publishes, so no reach was ever recorded and "reset CLEARS the reach" asserted nothing:
+        // the post-reset value would have been `CooperativelyPollable` whether reset ran or not.
+        // Only the surviving half, that the surface stays armed rather than going
+        // `SurfaceUnarmed`, was carrying any weight. A vocabulary change under a test leaves the
+        // test green and its name false, which is why the spelling is now taken from the
+        // authority and the cleared state is asserted against a reach that DEMONSTRABLY existed
+        // first.
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["compile_dag_rust_emit_check".to_string()],
+            },
+            "the reach must exist BEFORE the reset, or clearing it proves nothing"
+        );
+        reset_opaque_host_call_reach();
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::CooperativelyPollable,
+            "after a reset the next claim starts clean — but still ARMED, or every later claim \
+             would report `SurfaceUnarmed`"
+        );
+    }
+
+    // A claim reaching two opaque arms reports both: naming only the first would under-state the
+    // surface a repair has to cover.
+    #[test]
+    fn multiple_reached_operations_are_all_carried_and_deduplicated() {
+        set_opaque_host_call_surface(Some(vec![
+            "compile_dag_rust_emit_check".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
+        ]));
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        note_opaque_host_call_reach("compile_dag_diagnostic_census");
+        note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec![
+                    "compile_dag_rust_emit_check".to_string(),
+                    "compile_dag_diagnostic_census".to_string(),
+                ],
+            },
+            "both operations must appear, in first-reach order, without the repeat"
         );
     }
 }
