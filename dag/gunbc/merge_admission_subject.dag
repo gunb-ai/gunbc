@@ -134,9 +134,15 @@ fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
   if !(length(split(s: raw, delimiter: ":")) == 2) {
     none
   } else if match split(s: raw, delimiter: ":").first() { Present { value: algorithm } => algorithm == "sha1"  Absent => false } {
-    git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+    match split(s: raw, delimiter: ":").skip(n: 1).first() {
+      Absent => none
+      Present { value: hex } => git_sha1_object_id(hex: hex)
+    }
   } else if match split(s: raw, delimiter: ":").first() { Present { value: algorithm } => algorithm == "sha256"  Absent => false } {
-    git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+    match split(s: raw, delimiter: ":").skip(n: 1).first() {
+      Absent => none
+      Present { value: hex } => git_sha256_object_id(hex: hex)
+    }
   } else {
     none
   }
@@ -169,7 +175,10 @@ fn parse_tested_subject_wire(text: String) -> TestedSubject? {
   } else if match lines.skip(n: 4).first() { Present { value: field } => field == ""  Absent => true } {
     none
   } else {
-    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
+    match (match lines.skip(n: 1).first() {
+             Absent => none
+             Present { value: attempt_line } => walk_attempt_id(raw: attempt_line)
+           }) {
       Absent => none
       Present { value: attempt } =>
         match lines.skip(n: 2).first() {

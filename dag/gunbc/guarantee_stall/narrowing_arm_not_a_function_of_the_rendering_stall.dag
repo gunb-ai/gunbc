@@ -1,0 +1,41 @@
+module gunbc.guarantee_stall.narrowing_arm_not_a_function_of_the_rendering_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+
+// THE DISCRIMINATING FACT IS AN EQUALITY: two positions the checker renders IDENTICALLY took
+// OPPOSITE arms. extdeps.github.app:112 and gunbc.auth.secret_rotation:341 were ACCUSED at a
+// position rendered 'Node(fn)', while 114 of the 120 DECLINED lines in the same run rendered
+// 'Node(fn)' too. No predicate over the shown text can separate arms whose shown text is equal,
+// which is why this is an OBSERVABILITY defect and not a reach gap -- a reach gap would be closed
+// by widening a predicate.
+//
+// WHERE THAT MEASUREMENT CAME FROM, stated because it decides how a reader can check it: a
+// substitution-aware decline candidate that was built, measured, and WITHDRAWN. It is not in this
+// tree. So the equality is NOT re-derivable from the committed corpus, and this row does not claim
+// it is. Re-deriving it means rebuilding the candidate. The row is filed anyway because the defect
+// it names is a property of the SURVIVING check -- what the narrowing diagnostic renders -- and
+// that is unchanged by the candidate's withdrawal.
+//
+// ONE OF THE TWO CITED SITES DID NOT SURVIVE THE WITHDRAWAL, and saying so is the point. With the
+// candidate removed, extdeps.github.app:112 is no longer accused at all; only
+// gunbc.auth.secret_rotation:341 still is. The candidate's presence had perturbed an arm at a site
+// it was never aimed at, which is a second instance of the same class: an arm moved for a reason
+// invisible in what the checker showed.
+//
+// THE MEASURED CONSEQUENCE, which is what makes the class real rather than a story: an attempt to
+// predict the arms from source SHAPE -- fold_list cons: positions and Accepted { value: ... }
+// positions -- named 17 sites and moved 0 of them. Recognizing a shape in the source is not knowing
+// what the checker consumes, and a third group in that census rendered 'Primitive()' and was never
+// a generic formal at all, so the census was mixing three mechanisms under one name. The count
+// would have concealed all of it: accused fell 42 -> 17 and read as a win while zero intended sites
+// moved and the entire drop came from unrelated repairs. Only a site-identity join refused it.
+data narrowing_arm_not_a_function_of_the_rendering_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the optional-into-required check decides its arm using facts its diagnostic does not render, so positions whose declared type prints identically can take opposite arms and no reader -- author, reviewer, or a later repair pass -- can predict from what the compiler shows them which arm a position will take",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "the narrowing diagnostic renders the FACT THE ARM WAS DECIDED ON -- whether the declared formal at this position was substituted, and by what -- rather than the post-hoc printing of a type whose rendering is equal across both arms" },
+  population: BoundedPopulation { members: Cons { head: "v1.compiler.infer.optional_into_required_mismatch", tail: Cons { head: "v1.compiler.infer.optional_narrowing_diags", tail: Empty {} } } },
+  next_rung_trigger: "the diagnostic CARRIES the deciding fact and a reader CONSUMES it -- sufficient for two positions that render identically today to render differently once the deciding fact is carried, demonstrated by a fixture pair built to render identically and a run showing them distinguishable BY THE DIAGNOSTIC TEXT ALONE. A richer type rendering that leaves such a pair's texts equal does NOT retire this row, because the equality is the defect and a longer string preserving it has changed nothing. Note that the demonstration requires a FIXTURE PAIR rather than the two historical sites, because the withdrawal of the measured candidate left only one of them accused"
+}

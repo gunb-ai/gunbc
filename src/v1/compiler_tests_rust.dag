@@ -863,6 +863,7 @@ fn ct_coercion_tests() -> String {
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
     ct_optional_narrowing_undetermined_test(),
+    ct_instantiation_unavailable_refuses_fallback_test(),
     ct_witness_carrier_declines_non_witness_expected_type_test())
 }
 
@@ -889,6 +890,49 @@ fn ct_coercion_tests() -> String {
 // It is the only artifact that will tell a future reader the decline must stay OBSERVABLE:
 // optional_narrowing_refuses and optional_into_required_error were both deleted by the climb, so no
 // production code carries that history any more.
+fn ct_instantiation_unavailable_refuses_fallback_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {\n",
+    "        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;\n",
+    "        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {\n",
+    "            cause: \"declared generic arity does not match the supplied type arguments\".to_string(),\n",
+    "        });\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),\n",
+    "            \"SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced\"\n",
+    "        );\n",
+    "        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(\n",
+    "            unavailable.clone(),\n",
+    "            false,\n",
+    "            crate::v1_std_core::no_span(),\n",
+    "            \"probe.module\".to_string(),\n",
+    "        );\n",
+    "        assert_eq!(\n",
+    "            diags.len(),\n",
+    "            1,\n",
+    "            \"SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place\"\n",
+    "        );\n",
+    "        match &*diags[0].diagnostic {\n",
+    "            crate::v1_std_core::CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}\n",
+    "            other => panic!(\"the unavailable arm emitted an unexpected diagnostic: {:?}\", other),\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::InstantiationNotApplicable\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer\"\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
+
 fn ct_optional_narrowing_undetermined_test() -> String {
   concat(
     "    fn type_variable_declared_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",

@@ -639,7 +639,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
 
 fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
   let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
-  let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
+  concat(
   [
     slice_numeric_knob(
       slice: SessionsSlice,
@@ -668,17 +668,6 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
         expected_effective: kill_value,
       }
     ),
-    legacy_converge_knob(
-      slice: SessionsSlice,
-      name: "oom_pressure_limit_pct",
-      desired: pct,
-      target: SliceProperty {
-        unit: gunbc_oomd_sessions_slice,
-        property: oomd_managed_oom_memory_pressure_limit_property,
-        apply_value: concat(pct, "%"),
-        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
-      }
-    ),
     slice_numeric_knob(
       slice: SessionsSlice,
       name: "cpu_weight",
@@ -686,7 +675,35 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
       property: systemd_cpu_weight_property,
       value: workload_class_cpu_weight(wc: InteractiveLatencySensitive)
     ),
-  ]
+  ],
+  session_host_pressure_limit_knobs(limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)
+  )
+}
+
+// The pressure-limit knob is a LIST rather than a knob because the upstream field it converges is
+// optional in oomd's own schema. A knob whose desired value is absent has nothing to converge
+// toward, so the honest arm emits no knob -- not a knob carrying a fabricated default percentage,
+// which would drive a live slice property from a number the policy never stated.
+fn session_host_pressure_limit_knobs(limit: Percent?) -> List<ConvergeKnob> {
+  match limit {
+    Absent => []
+    Present { value: p } => {
+      let pct = to_string(percent_count(p: p))
+      [
+        legacy_converge_knob(
+          slice: SessionsSlice,
+          name: "oom_pressure_limit_pct",
+          desired: pct,
+          target: SliceProperty {
+            unit: gunbc_oomd_sessions_slice,
+            property: oomd_managed_oom_memory_pressure_limit_property,
+            apply_value: concat(pct, "%"),
+            expected_effective: to_string(managed_oom_pressure_limit_show_value(p: p)),
+          }
+        ),
+      ]
+    }
+  }
 }
 
 // ONE KNOB LIST WAS BEING WRITTEN TO EVERY HOST, AND THAT IS THE SHARP END OF THE AUTHORITY FORK.

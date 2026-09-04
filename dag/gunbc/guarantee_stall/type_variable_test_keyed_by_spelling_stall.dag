@@ -1,0 +1,14 @@
+module gunbc.guarantee_stall.type_variable_test_keyed_by_spelling_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+data type_variable_test_keyed_by_spelling_stall: GuaranteeStall = GuaranteeStall {
+  subject: "is_type_variable_name decides whether a name is a type variable by comparing it against a hand-authored spelling roster -- T, K, V, MappedElement, FoldAccumulator -- rather than against the declared generic parameters of the declaration in hand, so it is wrong for every formal nobody thought to add to the list",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1.compiler.infer.is_type_variable_name", tail: Empty {} } },
+  next_rung_trigger: "the type-variable test CONSULTS DECLARATION IDENTITY -- the generic parameter list of the declaration whose formal is being judged -- and its callers consume that answer, sufficient for a formal named outside the roster to be recognized, demonstrated by a red on a fixture whose declaration names a generic parameter absent from the spelling list and a green once the declaration-identity test is consulted. Deleting the roster while leaving a caller reading a name-shaped approximation does NOT retire this row"
+}

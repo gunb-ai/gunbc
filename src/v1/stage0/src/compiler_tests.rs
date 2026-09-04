@@ -3610,6 +3610,48 @@ mod compiler_tests {
     }
 
     #[test]
+    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {
+        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;
+        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {
+            cause: "declared generic arity does not match the supplied type arguments".to_string(),
+        });
+        assert!(
+            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),
+            "SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced"
+        );
+        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(
+            unavailable.clone(),
+            false,
+            crate::v1_std_core::no_span(),
+            "probe.module".to_string(),
+        );
+        assert_eq!(
+            diags.len(),
+            1,
+            "SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place"
+        );
+        match &*diags[0].diagnostic {
+            crate::v1_std_core::CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}
+            other => panic!(
+                "the unavailable arm emitted an unexpected diagnostic: {:?}",
+                other
+            ),
+        }
+        assert!(
+            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
+                RLI::InstantiationNotApplicable
+            )),
+            "POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives"
+        );
+        assert!(
+            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
+                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }
+            )),
+            "POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer"
+        );
+    }
+
+    #[test]
     fn witness_carrier_declines_a_non_witness_expected_type() {
         let source_indices = std::rc::Rc::new(HashMap::new());
         let shared = std::rc::Rc::new(im::OrdSet::new());

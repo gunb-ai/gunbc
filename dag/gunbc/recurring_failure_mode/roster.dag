@@ -25,6 +25,7 @@ import gunbc.recurring_failure_mode.coercion_proven_by_normalized_round_trip { c
 import gunbc.recurring_failure_mode.parallel_representation_debt { parallel_representation_debt }
 import gunbc.recurring_failure_mode.internal_review_finds_missing_tests_external { internal_review_finds_missing_tests_external }
 import gunbc.recurring_failure_mode.unmarked_workaround { unmarked_workaround }
+import gunbc.recurring_failure_mode.declared_type_inhabitance_unchecked_by_position { declared_type_inhabitance_unchecked_by_position }
 import gunbc.recurring_failure_mode.self_authorized_dissolution { self_authorized_dissolution }
 import gunbc.recurring_failure_mode.positional_citation { positional_citation }
 import gunbc.recurring_failure_mode.bound_shaped_closure { bound_shaped_closure }
@@ -129,6 +130,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   parallel_representation_debt,
   internal_review_finds_missing_tests_external,
   unmarked_workaround,
+  declared_type_inhabitance_unchecked_by_position,
   self_authorized_dissolution,
   positional_citation,
   bound_shaped_closure,

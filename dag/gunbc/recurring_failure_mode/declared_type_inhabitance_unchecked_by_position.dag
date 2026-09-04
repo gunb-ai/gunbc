@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.declared_type_inhabitance_unchecked_by_position
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declared_type_inhabitance_unchecked_by_position: RecurringFailureMode = RecurringFailureMode {
+  identity: "declared_type_inhabitance_unchecked_by_position" as NonEmptyStr,
+
+  receipts: [
+    "**A BELOW-BASELINE FLOOR FAILURE, in DESIGN 4b's own words.** The ordinary compiler floor names `values inhabit declared types` alongside name resolution and exact-bijection binding, and says a failure there is a below-baseline safety regression never compensated by higher-order capability. This is that clause failing: a value of a wholly unrelated record type sits in a declared position and no diagnostic is produced. It ranks above every differentiating claim in the tree. ",
+
+    "**The class is POSITIONAL, and genericity is a second axis that removes the check where it survives.** Measured with the discriminating matrix rather than a single site, because probing one position and filing at that width would send a reader to fix one arm of something general. Declared type CONCRETE then a GENERIC INSTANTIATION of the same shape, wrong-typed record literal in each of six positions: record field REFUSES then SILENT; direct call argument REFUSES then REFUSES; nested field REFUSES then SILENT; function RETURN silent then SILENT; let BINDING silent then SILENT; field declared through a type ALIAS silent then SILENT. ",
+
+    "**So there are two classes here and they must not be merged.** (1) Generic-instantiation loss: field and nested positions hold for a concrete declared type and lose the wall when the same declared type is a generic instantiation. (2) Position-wide absence: return, let-binding and alias positions are unchecked for CONCRETE types too, so a function declared to return one record type may return an unrelated one with zero diagnostics. Only the direct-call argument seam enforces inhabitance in both columns. ",
+
+    "**THE CHECK IS NOT MISSING AT THOSE POSITIONS; IT IS COMPARING THE WRONG THING.** Measured independently by a second session with primitive controls at the same positions: returning an `Int` where `A` is declared REFUSES, and returning a `String` where `Int` is declared REFUSES. So a return-position check EXISTS and catches primitives, and what passes through it is specifically a wrong RECORD LITERAL. That relocates the repair for whoever takes it -- not `add an inhabitance producer at return/binding/alias`, but `the existing comparison at those positions does not read a record literal's own type against the expected type`. It is the same shape as every other defect in this cluster: a comparison reading an axis that does not carry the question. ",
+
+    "**AGREEMENT BETWEEN TWO AUTHORS ON ONE INSTRUMENT IS NOT CORROBORATION, and the row says so rather than banking the convergence.** Both measurements above used the same one-file harness and the same binary, which rules out author error and NOT instrument error -- a one-file corpus need not run every phase a full-corpus compile runs, and if a later pass is what would catch a return-position record mismatch, the probe would report a silence the production configuration does not have. The two harness validations (a bogus field refuses; two independent errors both report) establish that inference runs and that it is not fail-fast; NEITHER establishes phase parity with a whole-tree compile. The parity control is the probe placed INSIDE the full corpus and compiled with the argv CI uses, carrying a primitive control beside the mismatch so that a silence from a file nothing compiled cannot be read as a finding. ",
+
+    "**Recognition rule**: for any refusal about a value against its DECLARED type, author the same mistake across positions -- field, argument, return, binding, nested, alias -- and across the concrete/generic axis. A wall present in one cell and absent in another is a wall whose declared subject is a superset of the population it ranges over. Reading the check cannot find it, because the check is correct wherever it runs; what is missing is a producer at the other positions. ",
+
+    "**A corpus census cannot discover this class**: the silent cells emit nothing, so there is no diagnostic to count and no site list to join. It is reachable only by authoring the discriminating matrix, which is why the entry cost is a fixture harness rather than a lens. ",
+
+    "**THE HARNESS EXISTS AND IS CHEAP, WHICH RETIRES THE STANDARD EXCUSE FOR LEAVING A CLASS AT UNAUTHORABLE-RED.** A one-file corpus under a workspace-relative source root, compiled with `gunbc compile --source-root <dir> --target dag --output-dir <out>`, runs FULL INFERENCE at roughly a minute per probe. Verified two ways before any finding was drawn from it: a bogus field name refuses (so inference runs), and a file with two independent errors reports BOTH (so it is not fail-fast and a single diagnostic is not masking the rest). DESIGN 4b says to ask whether a check's RED is authorable in a fixture before calling a ceiling permanent; this is that fixture, and its cost is minutes. ",
+
+    "**The control that separates cause from coincidence is mandatory for this class**, because it is typically discovered while editing the generic path. Here the record-literal instantiation gate was flipped from admitting to refusing and the probe re-run: zero diagnostics BOTH WAYS, establishing the silence is upstream and pre-existing rather than caused by the edit that found it. A class found inside one's own diff is not thereby caused by it, and claiming it so the change looks thorough is the mirror error of hiding it. ",
+
+    "**NOT `check_subject_narrower_than_its_declared_claim`**, whose repair is to widen the range a check visits: several of these positions have no inhabitance producer at all, so there is no range to widen. **NOT `absorbing_fallback`**: nothing widens to accept, the value simply reaches a producer of fields where another position reaches a producer of judgments. ",
+  ],
+}

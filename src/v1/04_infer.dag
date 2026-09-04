@@ -1544,8 +1544,22 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 // used as a verdict, where Absent means both nothing-to-report and could-not-tell.
 //
 // Split at the SOURCE rather than at the one caller, because struct_fields has other consumers and
-// each of them inherited the same conflation. A caller may now only reach the legacy fallback on
-// NotApplicable; Unavailable carries its cause and is judged, never silently widened.
+// each of them inherited the same conflation.
+//
+// WHY THE THREE CONSTRUCTORS ARE NOT TWO, which is the part the arms alone do not say:
+// NotApplicable and Unavailable are OPPOSITE dispositions, not two shades of "no answer".
+// NotApplicable means the question does not arise -- a record literal naming a variant is not a
+// generic instantiation and never was. Unavailable means the question DOES arise and cannot be
+// answered from the evidence present. Collapsing them is what an optional-as-verdict did before
+// the split, and any Bool projection over this type re-creates that collapse at the consumer,
+// which is where the distinction actually has to survive.
+//
+// This annotation deliberately states no enforcement. An earlier version of it asserted that only
+// NotApplicable could reach the legacy fallback, three lines above a gate that admitted
+// Unavailable too -- a prose claim standing where a wall was needed. No Accepted program can read
+// an annotation, so an annotation can explain WHY a shape is what it is and can never be evidence
+// that a rule HOLDS: if the rule holds the arms already say so, and if it does not, the sentence
+// is the only thing carrying it.
 type RecordLitInstantiation =
   | InstantiationNotApplicable
   | Instantiated { fields: List<Node> }
@@ -1658,7 +1672,7 @@ fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged
 fn record_lit_instantiation_may_fall_back(v: RecordLitInstantiation) -> Bool {
   match v {
     InstantiationNotApplicable => true
-    InstantiationUnavailable { cause: _ } => true
+    InstantiationUnavailable { cause: _ } => false
     Instantiated { fields: _ } => false
   }
 }

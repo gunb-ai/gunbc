@@ -1186,16 +1186,22 @@ fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) 
 
 fn parse_observe_content_hash_observed(stdout: String) -> ContentHash? {
   let parts = split(s: stdout, delimiter: "content_hash_observed=")
-  if parts.length() <= 1 {
-    none
-  } else {
-    let tail = parts.skip(n: 1).first()
-    let line = split(s: tail, delimiter: "\n").first()
-    match fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
-      Present { value: structural } =>
-        Present { value: as_content_hash_structural(structural: structural) }
-      Absent => none
-    }
+  match parts.skip(n: 1).first() {
+    Absent => none
+    Present { value: tail } =>
+      match split(s: tail, delimiter: "\n").first() {
+        Absent => none
+        Present { value: line } =>
+          match split(s: line, delimiter: " ").first() {
+            Absent => none
+            Present { value: hex } =>
+              match fnv1a64_structural_hex_digest(hex: hex) {
+                Present { value: structural } =>
+                  Present { value: as_content_hash_structural(structural: structural) }
+                Absent => none
+              }
+          }
+      }
   }
 }
 

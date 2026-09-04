@@ -237,10 +237,9 @@ fn rest_fixture_scan(
   invocation: RestBoundOperationInvocation,
   scan: RestFixtureScan,
 ) -> RestFixtureScan {
-  if fixtures.count() == 0 {
-    scan
-  } else {
-    let fixture = fixtures.first()
+  match fixtures.first() {
+    Absent => scan
+    Present { value: fixture } =>
     let matches = fixture.store == store
       && rest_bound_invocation_eq(a: fixture.invocation, b: invocation)
     let next = if matches {

@@ -706,14 +706,18 @@ fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInl
   if open_parts.length() < 2 {
     [ TextInline { text: text } ]
   } else {
-    let before_bracket = open_parts.first()
+    match open_parts.first() {
+      Absent => [ TextInline { text: text } ]
+      Present { value: before_bracket } => {
     let after_bracket = join(open_parts.skip(n: 1), sp.link_text_open)
     let close_open_pat = join([sp.link_text_close, sp.link_url_open], "")
     let inner_parts = split(s: after_bracket, delimiter: close_open_pat)
     if inner_parts.length() < 2 {
       [ TextInline { text: text } ]
     } else {
-      let label_text = inner_parts.first()
+      match inner_parts.first() {
+        Absent => [ TextInline { text: text } ]
+        Present { value: label_text } => {
       let url_and_rest = join(inner_parts.skip(n: 1), close_open_pat)
       let url_parts = split(s: url_and_rest, delimiter: sp.link_url_close)
       if url_parts.length() < 2 {
@@ -735,6 +739,10 @@ fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInl
           )
         )
         }
+      }
+        }
+      }
+    }
       }
     }
   }

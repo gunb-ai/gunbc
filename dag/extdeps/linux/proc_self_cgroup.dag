@@ -122,10 +122,9 @@ fn proc_self_cgroup_unified_hierarchy_paths_loop(
   lines: List<String>,
   acc: List<NonEmptyStr>,
 ) -> List<NonEmptyStr> {
-  if list_length(items: lines) == 0 {
-    acc
-  } else {
-    let line = lines.first()
+  match lines.first() {
+    Absent => acc
+    Present { value: line } => {
     let rest = lines.skip(n: 1)
     match proc_self_cgroup_line_from_wire(line: line) {
       ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
@@ -136,6 +135,7 @@ fn proc_self_cgroup_unified_hierarchy_paths_loop(
         }
       ProcSelfCgroupLineRefused { cause: _ } =>
         proc_self_cgroup_unified_hierarchy_paths_loop(lines: rest, acc: acc)
+    }
     }
   }
 }
@@ -148,10 +148,9 @@ fn proc_self_cgroup_unified_hierarchy_paths(content: String) -> List<NonEmptyStr
 }
 
 fn proc_self_cgroup_first_malformed_cause_loop(lines: List<String>) -> ProcSelfCgroupMalformedScan {
-  if list_length(items: lines) == 0 {
-    NoMalformedLine
-  } else {
-    let line = lines.first()
+  match lines.first() {
+    Absent => NoMalformedLine
+    Present { value: line } =>
     match proc_self_cgroup_line_from_wire(line: line) {
       ProcSelfCgroupLineRefused { cause: c } => MalformedFound { cause: c }
       ProcSelfCgroupLineParsed { hierarchy_id: _, controller_list: _, relative_path: _ } =>
@@ -228,10 +227,9 @@ fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
   lines: List<String>,
   acc: List<NonEmptyStr>,
 ) -> List<NonEmptyStr> {
-  if list_length(items: lines) == 0 {
-    acc
-  } else {
-    let line = lines.first()
+  match lines.first() {
+    Absent => acc
+    Present { value: line } => {
     let rest = lines.skip(n: 1)
     match proc_self_cgroup_line_from_wire(line: line) {
       ProcSelfCgroupLineParsed { hierarchy_id: hid, controller_list: ctl, relative_path: path } =>
@@ -248,6 +246,7 @@ fn proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(
         }
       ProcSelfCgroupLineRefused { cause: _ } =>
         proc_self_cgroup_unified_hierarchy_paths_drift_sketch_loop(lines: rest, acc: acc)
+    }
     }
   }
 }

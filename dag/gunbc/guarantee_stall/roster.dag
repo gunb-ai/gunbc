@@ -42,6 +42,9 @@ import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.produced_operand_substitution_stall { produced_operand_substitution_stall }
 import gunbc.guarantee_stall.split_non_emptiness_unmodelled_stall { split_non_emptiness_unmodelled_stall }
+import gunbc.guarantee_stall.type_variable_test_keyed_by_spelling_stall { type_variable_test_keyed_by_spelling_stall }
+import gunbc.guarantee_stall.undetermined_arm_severity_unsettled_stall { undetermined_arm_severity_unsettled_stall }
+import gunbc.guarantee_stall.narrowing_arm_not_a_function_of_the_rendering_stall { narrowing_arm_not_a_function_of_the_rendering_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -144,6 +147,9 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   operation_argv_binding_wall_stall,
   produced_operand_substitution_stall,
   split_non_emptiness_unmodelled_stall,
+  type_variable_test_keyed_by_spelling_stall,
+  undetermined_arm_severity_unsettled_stall,
+  narrowing_arm_not_a_function_of_the_rendering_stall,
   roster_re_enumerates_its_own_rows_stall,
 ]
 

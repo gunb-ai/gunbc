@@ -49,7 +49,10 @@ fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
     if line == "" {
       FleetDesiredAbsent
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match (match split(s: line, delimiter: "\t").first() {
+               Absent => none
+               Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+             }) {
         Present { value: oid } => FleetDesiredAdmitted { revision: oid }
         Absent => FleetDesiredUndecodable { advertised: line }
       }

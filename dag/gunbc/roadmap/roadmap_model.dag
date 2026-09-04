@@ -87,10 +87,9 @@ fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<Roa
 
 fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
   let parents = roadmap_parent_ids(edges: edges, node: node)
-  if count(parents) == 0 {
-    top_level()
-  } else {
-    under_parent(p: first(parents))
+  match first(parents) {
+    Absent => top_level()
+    Present { value: parent } => under_parent(p: parent)
   }
 }
 
@@ -484,18 +483,22 @@ fn acceptance_history_prior_prefix_mismatch_index_at(
   current: List<RoadmapAcceptanceEvent>,
   index: Int,
 ) -> Int {
-  if count(prior) == 0 {
-    index
-  } else if count(current) == 0 {
-    index
-  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
-    index
-  } else {
-    acceptance_history_prior_prefix_mismatch_index_at(
-      prior: drop_first_acceptance_event(events: prior),
-      current: drop_first_acceptance_event(events: current),
-      index: index + 1,
-    )
+  match first(prior) {
+    Absent => index
+    Present { value: prior_head } =>
+      match first(current) {
+        Absent => index
+        Present { value: current_head } =>
+          if !acceptance_event_eq(a: prior_head, b: current_head) {
+            index
+          } else {
+            acceptance_history_prior_prefix_mismatch_index_at(
+              prior: drop_first_acceptance_event(events: prior),
+              current: drop_first_acceptance_event(events: current),
+              index: index + 1,
+            )
+          }
+      }
   }
 }
 
@@ -510,16 +513,22 @@ fn acceptance_history_extends_prior(
   prior: List<RoadmapAcceptanceEvent>,
   current: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
-  if count(prior) == 0 {
-    true
-  } else if count(current) < count(prior) {
-    false
-  } else {
-    acceptance_event_eq(a: first(prior), b: first(current))
-      && acceptance_history_extends_prior(
-        prior: drop_first_acceptance_event(events: prior),
-        current: drop_first_acceptance_event(events: current),
-      )
+  match first(prior) {
+    Absent => true
+    Present { value: prior_head } =>
+      if count(current) < count(prior) {
+        false
+      } else {
+        match first(current) {
+          Absent => false
+          Present { value: current_head } =>
+            acceptance_event_eq(a: prior_head, b: current_head)
+              && acceptance_history_extends_prior(
+                   prior: drop_first_acceptance_event(events: prior),
+                   current: drop_first_acceptance_event(events: current),
+                 )
+        }
+      }
   }
 }
 
@@ -605,27 +614,18 @@ fn acceptance_history_integrity_verdict(
     match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
       Present { value: state } =>
-        if !all(
-          state.ever_recorded,
-          r => ever_recorded_receipt_accounted_for(
-            receipt: r,
-            live: state.live,
-            revoked: state.revoked,
+        match first(
+          state.ever_recorded |> filter(r =>
+            !ever_recorded_receipt_accounted_for(
+              receipt: r,
+              live: state.live,
+              revoked: state.revoked,
+            )
           ),
         ) {
-          AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
-            receipt: first(
-              state.ever_recorded |> filter(r =>
-                !ever_recorded_receipt_accounted_for(
-                  receipt: r,
-                  live: state.live,
-                  revoked: state.revoked,
-                )
-              ),
-            ),
-          }
-        } else {
-          AcceptanceHistoryIntegrityHolds
+          Absent => AcceptanceHistoryIntegrityHolds
+          Present { value: unaccounted } =>
+            AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: unaccounted }
         }
     }
   }

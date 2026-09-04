@@ -60,23 +60,16 @@ fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
   }
 }
 
-fn layer_at(layers: List<OciDescriptor>, index: Int) -> OciDescriptor? {
-  match layers |> get(index) {
-    null => null
-    other => other
-  }
-}
-
 fn accept_image_manifest_layers(m: ImageManifest, index: Int) -> ManifestOutcome {
   if index >= count(m.layers) {
     ManifestAccepted { value: m }
   } else {
-    match layer_at(m.layers, index) {
-      null =>
+    match m.layers |> get(index) {
+      Absent =>
         ManifestRejected {
           reason: LayerMissing { index: index },
         }
-      layer =>
+      Present { value: layer } =>
         match accept_descriptor(layer) {
           DescriptorRejected { reason } =>
             ManifestRejected {

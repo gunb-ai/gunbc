@@ -1877,14 +1877,13 @@ fn tmux_session_observation_for_scope(
 ) -> TmuxSessionObservation {
   let scoped_name = scope.session_name as String
   let matched = entries |> filter(e => e.session_name == scoped_name)
-  if count(matched) == 0 {
-    SessionAbsent
-  } else {
-    let e = matched.first()
-    SessionNameObserved {
-      session_name: scope.session_name,
-      windows: e.windows,
-    }
+  match matched.first() {
+    Absent => SessionAbsent
+    Present { value: e } =>
+      SessionNameObserved {
+        session_name: scope.session_name,
+        windows: e.windows,
+      }
   }
 }
 
@@ -2310,14 +2309,17 @@ type TmuxPaneEntry {
 
 fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
   let segs = split(s: line, delimiter: " ")
-  if count(segs) >= 2 && segs.first() != "" {
-    let name = segs.first()
-    Present { value: TmuxPaneEntry {
-      session_name: name,
-      command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
-    } }
-  } else {
-    none
+  match segs.first() {
+    Absent => none
+    Present { value: name } =>
+      if count(segs) >= 2 && name != "" {
+        Present { value: TmuxPaneEntry {
+          session_name: name,
+          command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
+        } }
+      } else {
+        none
+      }
   }
 }
 

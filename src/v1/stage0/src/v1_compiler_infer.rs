@@ -2156,7 +2156,7 @@ pub fn record_lit_instantiation_undetermined_diags(
 pub fn record_lit_instantiation_may_fall_back(v: Rc<RecordLitInstantiation>) -> bool {
     match (*v.clone()).clone() {
         RecordLitInstantiation::InstantiationNotApplicable => true,
-        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => true,
+        RecordLitInstantiation::InstantiationUnavailable { cause: _, .. } => false,
         RecordLitInstantiation::Instantiated { fields: _, .. } => false,
     }
 }
