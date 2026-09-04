@@ -146,6 +146,13 @@ fn node_is_call_shaped(node: Node) -> Int {
   }
 }
 
+// THE RESOLVED-CALLEE HALF IS GATED ON THE CALL-SHAPED HALF, and not merely as an optimization.
+// `call_callee_target` builds a diagnostic-carrying `Accepted`/`Rejected` per node; calling it on
+// all 60k nodes of the live skeleton ran 35 minutes at 9.8GB without finishing, which on a shared
+// 64GiB slice is a hazard to other sessions, not just a slow instrument. It is also unnecessary:
+// `node_is_call` is the precondition for a callee existing at all, so when the call-shaped count is
+// zero the resolved count is zero WITHOUT evaluating the accessor, and when it is nonzero the
+// accessor runs only on that population. The zero arm is the one that decides review 60065.
 fn resolved_callee_count(node: Node) -> Int {
   if node_is_call(node: node) {
     match call_callee_target(node: node) {
@@ -162,11 +169,13 @@ fn resolved_callee_count(node: Node) -> Int {
 }
 
 fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelState {
+  let child_shaped = node_is_call_shaped(node: child.node)
   let below_resolved = acc.resolved_callees + child.resolved_callees
+  let child_resolved = if child_shaped > 0 { resolved_callee_count(node: child.node) } else { 0 }
   ChannelState {
     node: acc.node,
-    call_nodes: acc.call_nodes + child.call_nodes + node_is_call_shaped(node: child.node),
-    resolved_callees: below_resolved + resolved_callee_count(node: child.node)
+    call_nodes: acc.call_nodes + child.call_nodes + child_shaped,
+    resolved_callees: below_resolved + child_resolved
   }
 }
 
@@ -175,11 +184,67 @@ fn channel_subtree(node: Node) -> ChannelState {
     n: node,
     algebra: NodeFold { init: channel_init, step: channel_step }
   )
+  let root_shaped = node_is_call_shaped(node: node)
+  let root_resolved = if root_shaped > 0 { resolved_callee_count(node: node) } else { 0 }
   ChannelState {
     node: node,
-    call_nodes: below.call_nodes + node_is_call_shaped(node: node),
-    resolved_callees: below.resolved_callees + resolved_callee_count(node: node)
+    call_nodes: below.call_nodes + root_shaped,
+    resolved_callees: below.resolved_callees + root_resolved
   }
+}
+
+// THE ONE-DECLARATION PROBE, because the question review 60065 raises is STRUCTURAL, not
+// statistical. If `node_is_call` accepts no node of a live fn-arrow skeleton, it accepts none in
+// any of them for the same reason, and one declaration exhibits that at a thousandth of the cost.
+// `subtree_nodes` is carried beside `call_shaped` so the zero is readable: a zero over zero nodes
+// would be an empty probe, and a zero over a populated subtree is the finding.
+type FirstDeclChannel {
+  decl_name: String
+  subtree_nodes: Int
+  call_shaped: Int
+  atom_callees: Int
+}
+
+data empty_first_decl_channel: FirstDeclChannel = FirstDeclChannel {
+  decl_name: "",
+  subtree_nodes: 0,
+  call_shaped: 0,
+  atom_callees: 0
+}
+
+// FIRST BY FOLD, NOT BY LIST PATTERN, because a `[first, ...rest]` match arm is not admitted here
+// -- the parser refuses it with `expected FatArrow, found LBracket`.
+//
+// THE GUARD IS `atom_callees`, NOT `subtree_nodes`, AND THE DIFFERENCE IS THE WHOLE PROBE. The
+// corpus's first declaration is `add`, whose subtree is five nodes and which calls nothing; its
+// call-shaped count and its atom-callee count are both zero, which discriminates nothing. The
+// declaration this question needs is the first one the ATOM reader finds callees in, because only
+// there does a zero from the CALL-CHANNEL reader mean the channel lost an edge the atom scan saw.
+fn pick_first_decl(acc: FirstDeclChannel, decl: FnArrowDecl) -> FirstDeclChannel {
+  if acc.atom_callees > 0 {
+    acc
+  } else {
+    FirstDeclChannel {
+      decl_name: decl.name,
+      subtree_nodes: node_subtree_count(n: decl.output),
+      call_shaped: channel_subtree(node: decl.output).call_nodes,
+      atom_callees: length(
+        xs: callees_from_node(
+          node: decl.output,
+          terminal_callee_symbols: no_terminal_callees,
+          param_names: param_names_of(decl: decl)
+        )
+      )
+    }
+  }
+}
+
+fn first_decl_channel() -> FirstDeclChannel {
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
+  fold_list(xs: decls, empty: empty_first_decl_channel, cons: pick_first_decl)
 }
 
 type DepthAgreementTally {
