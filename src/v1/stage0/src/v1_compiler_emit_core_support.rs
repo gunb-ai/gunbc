@@ -766,7 +766,8 @@ pub fn is_type_alias_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_bare_leaf_item(item.clone())
+    ((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),
@@ -777,7 +778,8 @@ pub fn is_type_decl_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((is_bare_leaf_item(item.clone())
+    (((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && !is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),

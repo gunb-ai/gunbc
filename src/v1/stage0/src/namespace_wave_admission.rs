@@ -1034,7 +1034,51 @@ pub struct TransitionAdmission {
 ///
 const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
 
+/// TWENTY-SEVENTH ENTRY (2026-09-04, gunbc#10350): the kernel-identity predicate's relocation.
+///
+/// `resolved_node_is_kernel_identity_for_name` moved from `v1.compiler.infer_env` -- where it was
+/// declared, never called, and sat ABOVE the module whose `kernel_span` mints the span it tests --
+/// down into `v1.std.core` beside that minter. Its two callers therefore bind the same spelling to
+/// a different declaring module, which is a `TargetChanged` binding delta by construction and
+/// exactly the motion this wall exists to make visible rather than silent.
+///
+/// THE MOTION IS THE POINT OF THE CHANGE, NOT A SIDE EFFECT OF IT, which is what makes these rows
+/// admissions rather than an excuse. The old site re-derived kernel identity by inlining
+/// `concat("<kernel:", name, ">")` -- a SECOND authority for the span FORMAT that `kernel_span`
+/// already owns -- so the relocation is a §3 single-authority consolidation whose entire content is
+/// that these two bindings now resolve to the minter's module.
+///
+/// TRIGGER, AND IT IS THE ROWS' OWN DEATH: these two rows go when gunbc#10350 merges. Once the
+/// relocation is on main, merge commit and base both carry it, no run can produce these deltas, and
+/// both report STALE -- which refuses every unrelated PR, the shape this file records repeatedly
+/// above. Deleting them is the fix and not housekeeping. Adjudicate the deletion the way the
+/// TWENTY-SIXTH entry did: join each row against main's tree by its own (module, in_declaration,
+/// spelling, target) tuple rather than trusting this sentence, because a trigger sentence is not
+/// evidence that the trigger fired.
+const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
+    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer",
+            in_declaration: "ancestry_binding_is_kernel_identity",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {

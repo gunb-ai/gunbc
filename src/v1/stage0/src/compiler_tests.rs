@@ -3739,6 +3739,96 @@ mod compiler_tests {
         );
     }
 
+    fn item_carrying_properties(
+        name: &str,
+        property_names: Vec<&str>,
+    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = shaped_type_node(name, Vec::new());
+        let props: Vec<std::rc::Rc<crate::v1_std_core::Node>> = property_names
+            .into_iter()
+            .map(|p| shaped_type_node(p, Vec::new()))
+            .collect();
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            properties: std::rc::Rc::new(props),
+            ..(*base).clone()
+        })
+    }
+
+    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THE DISCRIMINATING ROW IS THE CAPABILITY-LESS ONE.
+    // `resource Network` and `resource AuthContext` declare no capabilities, so they carry no
+    // children, no body, no params and no connective -- they ARE bare leaves by shape, which is
+    // why the emit side read them as type declarations while v1.compiler.parse read them as
+    // resources. That disagreement is what made the type-occurrence census refuse with
+    // CensusUnavailable { cause: DeclarationDomainDisagrees }.
+    //
+    // THE THIRD ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by COUNTING
+    // properties is the shape v1.compiler.parse already had to repair: `type X sole_constructor`
+    // carries a property too, and counting swallowed 202 sole-constructor types across 100
+    // modules into the resource bucket. So a sole-constructor-only item must still read as a type
+    // declaration, and this row goes red if the exclusion is ever re-spelled as a property count.
+    #[test]
+    fn a_resource_item_is_not_read_as_a_type_declaration() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+
+        // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type declaration.
+        let plain = item_carrying_properties("Symbol", Vec::new());
+        assert!(
+            crate::v1_compiler_emit_core_support::is_type_decl_item(
+                plain.clone(),
+                source_indices.clone()
+            ),
+            "positive control: a property-free bare leaf must still read as a type declaration"
+        );
+
+        // THE DISCRIMINATOR: resource entries present. Removing the exclusion turns this true.
+        let resource_like =
+            item_carrying_properties("Network", vec!["kind", "mode", "acquire", "release"]);
+        assert!(
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "a capability-less resource item must NOT read as a type declaration"
+        );
+        assert!(
+            !crate::v1_compiler_emit_core_support::is_type_alias_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "a capability-less resource item must NOT read as a type alias either"
+        );
+
+        // THE OVER-CORRECTION GUARD: sole_constructor is a TYPE modifier, not a resource entry.
+        let sole_constructor_type = item_carrying_properties("Wrapper", vec!["sole_constructor"]);
+        assert!(
+            crate::v1_compiler_emit_core_support::is_type_decl_item(
+                sole_constructor_type.clone(),
+                source_indices.clone()
+            ),
+            "a sole_constructor type must still read as a type declaration"
+        );
+
+        // THE TWO READERS NOW AGREE, which is the fact the census join actually measures.
+        assert_eq!(
+            crate::v1_compiler_parse::parsed_item_carries_resource_entries(resource_like.clone()),
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "parse-side and emit-side readers must agree on the resource item"
+        );
+        assert_eq!(
+            crate::v1_compiler_parse::parsed_item_carries_resource_entries(
+                sole_constructor_type.clone()
+            ),
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                sole_constructor_type.clone(),
+                source_indices.clone()
+            ),
+            "parse-side and emit-side readers must agree on the sole_constructor type"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
