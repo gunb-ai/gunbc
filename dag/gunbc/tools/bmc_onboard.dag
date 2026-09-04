@@ -1,11 +1,6 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
-import extdeps.bmc.netrc {
-  NetrcResolution, NetrcResolved, NetrcRefused,
-  NetrcNoMatchingEntry, NetrcDuplicateMachine, NetrcMalformedFile, NetrcFileUnreadable,
-  netrc_resolve,
-}
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }

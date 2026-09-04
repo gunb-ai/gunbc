@@ -3,6 +3,8 @@ module gunbc.tools.bmc_read_telemetry
 import extdeps.bmc.http
 import extdeps.bmc.netrc {
   NetrcResolution, NetrcResolved, NetrcRefused,
+  NetrcRefusalCause,
+  NetrcNoMatchingEntry, NetrcDuplicateMachine, NetrcMalformedFile, NetrcFileUnreadable,
   netrc_resolve,
 }
 import extdeps.transports.rest {
