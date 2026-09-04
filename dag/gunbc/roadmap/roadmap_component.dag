@@ -3180,9 +3180,14 @@ data sandbox_live_class: String = "sandbox-live-btn"
 data strip_lab_replay_class: String = "strip-lab-replay"
 data strip_lab_slow_class: String = "strip-lab-slow"
 data strip_lab_section_class: String = "sandbox-strip-lab"
+data round_strip_playback_ms: Int = 2400
 
 fn strip_lab_query_all(selector: String) -> TsExpr {
   ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: selector)])
+}
+
+fn strip_lab_dataset_number(name: String) -> TsExpr {
+  ts_call(callee: ts_ident(name: "Number"), args: [ts_member(object: ts_member(object: ts_ident(name: "seg"), property: "dataset"), property: name)])
 }
 
 fn strip_lab_set_style(target: String, property: String, value: TsExpr) -> TsStmt {
@@ -3205,16 +3210,14 @@ fn strip_lab_bind_statements() -> List<TsStmt> {
     ts_const(name: "gunbcStripApply", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
       callee: ts_member(object: strip_lab_query_all(selector: join([".", strip_lab_section_class, " .", activity_round_strip_class], "")), property: "forEach"),
       args: [ts_arrow(params: ["strip"], body: ts_block(stmts: [
-        ts_let(name: "i", value: ts_lit_num(text: "0")),
+        ts_const(name: "factor", value: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_num(text: "8"), alternate: ts_lit_num(text: "1"))),
         ts_for_of(var_name: "seg", iterable: ts_member(object: ts_ident(name: "strip"), property: "children"), body: ts_block(stmts: [
           strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "none")),
           ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "seg"), property: "getBoundingClientRect"), args: [])),
           strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "")),
-          strip_lab_set_style(target: "seg", property: "animationDuration", value: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_str(value: "3400ms"), alternate: ts_lit_str(value: ""))),
-          strip_lab_set_style(target: "seg", property: "animationDelay", value: ts_binop(
-            left: ts_binop(left: ts_ident(name: "i"), op: "*", right: ts_cond(test: ts_ident(name: "gunbcStripSlow"), consequent: ts_lit_num(text: "320"), alternate: ts_lit_num(text: "40"))),
-            op: "+", right: ts_lit_str(value: "ms"))),
-          ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "i"), op: "=", right: ts_binop(left: ts_ident(name: "i"), op: "+", right: ts_lit_num(text: "1")))),
+          strip_lab_set_style(target: "seg", property: "animationDuration", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "durationMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          strip_lab_set_style(target: "seg", property: "animationDelay", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "delayMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          
         ])),
       ]))],
     )))),

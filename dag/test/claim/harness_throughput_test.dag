@@ -1,11 +1,12 @@
 module test.claim.harness_throughput
 
-import std.types { Bool, String, Int }
+import std.types { Bool, String, Int, list_length }
 import gunbc.harness.harness_throughput {
   HarnessThroughput, ThroughputObserved, ThroughputUnobserved,
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
   harness_round_ledger_from_events, round_segments, round_segment_kind_word, RoundSegment,
+  round_playback, round_playback_floor_ms, RoundPlayback, WriteRound, ReadRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
 
@@ -99,6 +100,23 @@ fn three_rounds_one_write() -> String {
 
 test fn n_rounds_paint_n_minus_one_segments() -> Bool {
   list_length(items: round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))) == 2
+}
+
+fn playback_expected(p: RoundPlayback) -> Bool {
+  if p.segment.step == 2 { p.delay_ms == 0 && p.duration_ms == 1000 }
+  else if p.segment.step == 3 { p.delay_ms == 1000 && p.duration_ms == 3000 }
+  else if p.segment.step == 4 { p.delay_ms == 4000 && p.duration_ms == round_playback_floor_ms }
+  else { false }
+}
+
+test fn playback_compresses_the_run_into_a_fixed_window_with_a_floor() -> Bool {
+  let segs = [
+    RoundSegment { step: 2, duration_ms: 1000, output_tokens: 1, kind: ReadRound },
+    RoundSegment { step: 3, duration_ms: 3000, output_tokens: 1, kind: ReadRound },
+    RoundSegment { step: 4, duration_ms: 40, output_tokens: 1, kind: WriteRound },
+  ]
+  let plays = round_playback(segs: segs, playback_ms: 4040)
+  list_length(items: plays) == 3 && fold(plays, init: true, f: (acc, p) => acc && playback_expected(p: p))
 }
 
 test fn segment_width_is_the_interval_that_ended_at_its_round() -> Bool {

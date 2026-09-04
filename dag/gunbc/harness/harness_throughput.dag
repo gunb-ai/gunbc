@@ -275,6 +275,38 @@ fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
   }
 }
 
+type RoundPlayback {
+  segment: RoundSegment
+  delay_ms: Int
+  duration_ms: Int
+}
+
+type PlaybackFold {
+  elapsed: Int
+  out: List<RoundPlayback>
+}
+
+data round_playback_floor_ms: Int = 120
+
+fn round_playback_total(segs: List<RoundSegment>) -> Int {
+  let total = fold(segs, init: 0, f: (acc, s) => acc + s.duration_ms)
+  if total < 1 { 1 } else { total }
+}
+
+fn round_playback_step(acc: PlaybackFold, seg: RoundSegment, total: Int, playback_ms: Int) -> PlaybackFold {
+  let scaled = seg.duration_ms * playback_ms / total
+  let shown = if scaled < round_playback_floor_ms { round_playback_floor_ms } else { scaled }
+  PlaybackFold {
+    elapsed: acc.elapsed + seg.duration_ms,
+    out: concat(acc.out, [ RoundPlayback { segment: seg, delay_ms: acc.elapsed * playback_ms / total, duration_ms: shown } ]),
+  }
+}
+
+fn round_playback(segs: List<RoundSegment>, playback_ms: Int) -> List<RoundPlayback> {
+  let total = round_playback_total(segs: segs)
+  (fold(segs, init: PlaybackFold { elapsed: 0, out: [] }, f: (a, s) => round_playback_step(acc: a, seg: s, total: total, playback_ms: playback_ms))).out
+}
+
 fn round_segments(ledger: HarnessRoundLedger) -> List<RoundSegment> {
   match ledger {
     RoundsUnobserved { reason: _ } => []
