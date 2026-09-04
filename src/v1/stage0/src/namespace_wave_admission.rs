@@ -1213,9 +1213,6 @@ pub struct TransitionAdmission {
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
 ///
-const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
-    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
-
 /// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
 /// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
 /// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
@@ -1255,6 +1252,23 @@ const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
 /// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
 /// -- is what makes an append-only ledger grow without bound.
 ///
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10300). All six `gunbc#10439` serving-engine
+/// launch-vocabulary rows are deleted, and `SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL` with them.
+/// Reported by identity as `CONSUMED ADMISSION`, 6 of 6, by the required phase on this branch's own
+/// head: #10439 has merged and none of the six deltas is producible against the base any more.
+///
+/// THE THIRD PAYMENT ON THIS ONE BRANCH, AND THE PATTERN IS NOW THE POINT. The THIRTIETH cleared 30
+/// consumed `gunbc#10355` rows, the THIRTY-FIRST cleared 2 `gunbc#10350` rows, and this clears 6
+/// `gunbc#10439` rows -- three different cohorts, none of them this PR's, each consumed by a merge
+/// that happened while this branch was open. A branch that syncs with main N times touches the
+/// roster N times and owes the payment N times.
+///
+/// THAT IS THE RULE WORKING, NOT FRICTION TO ROUTE AROUND, and it is worth saying plainly because
+/// the tempting reading is the opposite. The alternative to paying on touch is a roster that only
+/// ever grows, where every stale row refuses unrelated changes and the cost lands on whoever is
+/// unlucky enough to touch the file last. Paying three times over one afternoon is the ledger
+/// staying small; it is not the ledger misbehaving.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
@@ -1273,66 +1287,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "carriers_from_reachable_decls",
             spelling: "param_names_of",
             target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_host_port",
-            spelling: "spark_serving_bind_listen_wire",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_listen",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_launch_profile",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_base",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_other_window",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "witness_bind",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
