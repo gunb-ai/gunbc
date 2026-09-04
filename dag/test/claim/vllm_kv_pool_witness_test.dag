@@ -4,11 +4,14 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, Percent, token_count, percent }
 import extdeps.vllm.log_lines {
+  VllmStartupReading, vllm_startup_reading,
   VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
   vllm_startup_line_prefix, vllm_startup_lines
 }
 import extdeps.vllm.kv_cache {
-  VllmObservedKvPool, vllm_observed_kv_pool, vllm_observed_kv_pool_line,
+  VllmObservedKvPool, vllm_observed_kv_pool_from_reading,
+  VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
+  VllmKvPoolRefusal, ReadingIsNotTheKvCacheSizeLine,
   VllmPoolReconstruction, BlockCountTimesBlockSize, UtilizationTimesTotalMemory,
   vllm_pool_reconstruction_is_authoritative,
   VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved, vllm_resolved_kv_format_is_observed,
@@ -60,11 +63,66 @@ test fn w_the_three_startup_prefixes_are_distinct() -> Bool {
     && length(vllm_startup_lines) == 3
 }
 
-// The pool carrier names the line it is read from, so a future parser cannot bind it to the
-// concurrency line and still typecheck against this expectation.
+fn kv_size_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: GpuKvCacheSize,
+    captured_text: "GPU KV cache size: 3,330,000 tokens" as NonEmptyStr)
+}
+
+fn admitted_pool(a: VllmKvPoolAdmission) -> VllmObservedKvPool? {
+  match a {
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
+  }
+}
+
+fn refused_on_line(a: VllmKvPoolAdmission, wanted: NonEmptyStr) -> Bool {
+  match a {
+    KvPoolAdmitted { pool: _ } => false
+    KvPoolRefused { cause: c } =>
+      match c {
+        ReadingIsNotTheKvCacheSizeLine { line: l } => vllm_startup_line_prefix(line: l) == wanted
+      }
+  }
+}
+
+// THE KV-CACHE-SIZE READING ADMITS, AND ITS SOURCE TEXT SURVIVES INTO THE POOL. Without the second
+// conjunct this row would be satisfied by a constructor that accepted the reading and then dropped
+// it -- which is what the deleted free constructor effectively did.
 test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool {
-  vllm_startup_line_prefix(line: vllm_observed_kv_pool_line())
-    == vllm_startup_line_prefix(line: GpuKvCacheSize)
+  match admitted_pool(a: vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 3330000), reading: kv_size_reading())) {
+    Absent => false
+    Present { value: p } =>
+      p.captured_line == ("GPU KV cache size: 3,330,000 tokens" as NonEmptyStr)
+        && p.tokens == token_count(count: 3330000)
+  }
+}
+
+// RED, AND THIS IS THE ROW THE OLD SHAPE COULD NOT HAVE. The concurrency line is the one that was
+// silently acceptable before: it is a real vLLM startup line carrying a real number, so nothing
+// about it looks wrong until you ask which quantity it names. It now refuses, and the refusal names
+// the line it was handed rather than answering with a pool.
+test fn w_the_concurrency_line_refuses_rather_than_becoming_a_pool() -> Bool {
+  refused_on_line(
+    a: vllm_observed_kv_pool_from_reading(
+      tokens: token_count(count: 3330000),
+      reading: vllm_startup_reading(
+        line: MaximumConcurrency,
+        captured_text: "Maximum concurrency for 262,144 tokens per request: 9.81x" as NonEmptyStr)),
+    wanted: vllm_startup_line_prefix(line: MaximumConcurrency))
+}
+
+// RED. The format line likewise, so the admission is keyed on being THE kv-cache-size line and not
+// merely on being "not the concurrency line".
+test fn w_the_resolved_format_line_refuses_rather_than_becoming_a_pool() -> Bool {
+  refused_on_line(
+    a: vllm_observed_kv_pool_from_reading(
+      tokens: token_count(count: 3330000),
+      reading: vllm_startup_reading(
+        line: ResolvedKvCacheFormat,
+        captured_text: "Using DeepSeek's fp8_ds_mla KV cache format" as NonEmptyStr)),
+    wanted: vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
 }
 
 // ── A CAP/POOL OBSERVATION CARRIES THE UTILIZATION IT WAS TAKEN AT ─────────────────────────────
@@ -73,14 +131,19 @@ test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool {
 // utilization would look like a function of the cap alone -- which is exactly the curve this module
 // refuses to fit. This holds the pairing, not a value.
 test fn w_a_cap_pool_pair_carries_its_utilization_and_its_source_line() -> Bool {
-  let obs = vllm_cap_pool_observation(
-    max_model_len: token_count(count: 524288),
-    utilization: percent(count: 82),
-    pool: vllm_observed_kv_pool(
-      tokens: token_count(count: 3330000),
-      captured_line: "GPU KV cache size: 3,330,000 tokens" as NonEmptyStr))
-  obs.utilization == percent(count: 82)
-    && obs.max_model_len == token_count(count: 524288)
+  match admitted_pool(a: vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 3330000), reading: kv_size_reading())) {
+    Absent => false
+    Present { value: p } => {
+      let obs = vllm_cap_pool_observation(
+        max_model_len: token_count(count: 524288),
+        utilization: percent(count: 82),
+        pool: p)
+      obs.utilization == percent(count: 82)
+        && obs.max_model_len == token_count(count: 524288)
+        && obs.pool.captured_line == ("GPU KV cache size: 3,330,000 tokens" as NonEmptyStr)
+    }
+  }
 }
 
 test fn w_all_vllm_kv_pool_claims_hold() -> Bool {
@@ -89,5 +152,7 @@ test fn w_all_vllm_kv_pool_claims_hold() -> Bool {
     && w_an_unobserved_format_is_not_an_observation()
     && w_the_three_startup_prefixes_are_distinct()
     && w_the_pool_is_read_from_the_kv_cache_size_line()
+    && w_the_concurrency_line_refuses_rather_than_becoming_a_pool()
+    && w_the_resolved_format_line_refuses_rather_than_becoming_a_pool()
     && w_a_cap_pool_pair_carries_its_utilization_and_its_source_line()
 }

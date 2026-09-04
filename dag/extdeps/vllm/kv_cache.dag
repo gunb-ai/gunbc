@@ -7,7 +7,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
-import extdeps.vllm.log_lines { VllmStartupLine, GpuKvCacheSize, vllm_startup_line_prefix }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+  vllm_startup_line_prefix }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,15 +55,48 @@ type VllmObservedKvPool sole_constructor {
   observed_at_revision: VllmSourceRevision
 }
 
-fn vllm_observed_kv_pool(tokens: TokenCount, captured_line: NonEmptyStr) -> VllmObservedKvPool {
-  VllmObservedKvPool {
-    tokens: tokens,
-    captured_line: captured_line,
-    observed_at_revision: vllm_source_revision_read
+// THE CONSTRUCTOR CONSUMES A TYPED READING, SO THE LINE CLASS IS BOUND BY CONSTRUCTION.
+//
+// A free constructor taking `(tokens, captured_line: NonEmptyStr)` stood here, beside a zero-argument
+// `vllm_observed_kv_pool_line()` that returned `GpuKvCacheSize`. Those two never met: the carrier
+// took ANY string, so a pool built from the "Maximum concurrency for ..." line typechecked and
+// carried a line without carrying THE KV-cache-size line -- and the witness that claimed otherwise
+// only proved the disconnected helper returned the enum value it was written to return. The claim
+// was true of the prose and false of the executable graph, which is the rung inflation §4b(1) names.
+//
+// Both are deleted rather than kept beside this one. An unchecked constructor surviving next to a
+// checking one is the escape hatch §5 forbids: the refusal below would be satisfiable by calling the
+// other function.
+type VllmKvPoolRefusal
+  = ReadingIsNotTheKvCacheSizeLine { line: VllmStartupLine }
+
+type VllmKvPoolAdmission
+  = KvPoolAdmitted { pool: VllmObservedKvPool }
+  | KvPoolRefused { cause: VllmKvPoolRefusal }
+
+// THE REVISION TRAVELS FROM THE READING, NOT FROM THIS CALL. A reading taken against one revision is
+// not evidence about another, so re-stamping it here would launder a stale observation as current.
+fn vllm_observed_kv_pool_from_reading(
+  tokens: TokenCount,
+  reading: VllmStartupReading,
+) -> VllmKvPoolAdmission {
+  match reading.line {
+    GpuKvCacheSize =>
+      KvPoolAdmitted { pool: VllmObservedKvPool {
+        tokens: tokens,
+        captured_line: reading.captured_text,
+        observed_at_revision: reading.observed_at_revision
+      } }
+    MaximumConcurrency => KvPoolRefused { cause: ReadingIsNotTheKvCacheSizeLine { line: reading.line } }
+    ResolvedKvCacheFormat => KvPoolRefused { cause: ReadingIsNotTheKvCacheSizeLine { line: reading.line } }
   }
 }
 
-fn vllm_observed_kv_pool_line() -> VllmStartupLine { GpuKvCacheSize }
+// WHAT THIS STILL DOES NOT ESTABLISH, stated so the rung is not read as higher than it is: the
+// TOKEN COUNT is authored beside the reading rather than parsed out of it, so an author can still
+// pair a real KV-cache-size line with a wrong number. The line CLASS is now structural; the number
+// is mitigatable. The next-rung trigger is the same parser named below -- one that takes captured
+// stdout and produces both halves, so neither is authorable independently.
 
 // ── BLOCK ARITHMETIC IS A DIFFERENT QUANTITY WEARING THE SAME UNITS ────────────────────────────
 //
