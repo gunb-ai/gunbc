@@ -39,8 +39,16 @@ import std.types { Bool, String, List }
 // tracked"; this one answers "must not be shipped", and the sets differ -- a tracked file ships and
 // is not ignored. Deriving would also let an ordinary .gitignore edit silently change what a deploy
 // installs, and would put an import edge into a module kept leaf for the acyclicity reason above.
+// THE TWO BOOTSTRAP RECEIPT CHANNELS ARE EXCLUDED FOR THE SAME REASON `.gunbc` IS: they are
+// per-invocation runtime state the launcher writes under the cwd, and the cwd of `gunbc converge
+// --mode deploy` IS the deploying checkout. The first deploy through that verb refused itself --
+// CandidateCheckoutNotClean, ignored-deployed=.gunbc-converge-receipts/receipt-446101-0 -- because
+// the verb's own receipt from the attempt before sat in a shipped path. Excluding the channel makes
+// the verb's residue invisible to the candidate it produces, which is the only consistent answer:
+// a receipt of the deploy is never part of what the deploy installs.
 data deployed_tree_excluded_prefixes: List<String> = [
   "target", ".git", ".claude", ".gunbc", "target-codex", ".cargo-home",
+  ".gunbc-build-receipts", ".gunbc-converge-receipts",
 ]
 
 fn deployed_tree_rsync_exclude_flags() -> String {
