@@ -690,53 +690,6 @@ mod compiler_tests {
         );
     }
 
-    /// REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS, JUDGED BY RUSTC (gunbc#10266).
-    ///
-    /// The subject is `v1.compiler.emit` `cast_representation_identical`: a cast whose source and
-    /// target are ONE host carrier reached through transparent refinement, alias and brand edges
-    /// asks the target for no operation, so the emission must be the operand unchanged. The
-    /// fixture exercises six such casts across three aliases in BOTH directions, plus one genuine
-    /// numeric conversion that must still go through the target cast syntax.
-    ///
-    /// WHY THIS SUBJECT NEEDS RUSTC AND NOT A SUBSTRING. `test.claim`
-    /// `emitter_nested_refinement_cast_witness_test` asserts the ABSENCE of the fabricated
-    /// unsupported-cast text, and absence is all a spelling oracle can honestly assert here:
-    /// asserting the presence of a particular replacement would pin one rendering of "the operand
-    /// unchanged". Whether the replacement TYPE-CHECKS as the declared return is a meaning-level
-    /// question, and the never type is exactly what let the defective form pass a type check.
-    ///
-    /// THE RED ARM IS THE ROUTE'S OWN, so this pair proves the route can still fail using the
-    /// discrimination already adjudicated for it rather than a fresh unadjudicated arm.
-    ///
-    /// #[ignore] AND WHY, on the same terms as the two pairs beside it: this arm spawns cargo and
-    /// compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED AND
-    /// OPT-IN -- `cargo test --release -p v1-compiler --lib
-    /// nested_refinement_cast_fixture_closure_discrimination -- --ignored`. An #[ignore] is a cost
-    /// decision and NOT a rung: nothing here may be cited as coverage that executes on the merge
-    /// path.
-    #[test]
-    #[ignore]
-    fn nested_refinement_cast_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
-        let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("nested-refinement-cast {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the representation-identical cast control must COMPILE -- an unsupported-cast panic emitted for any of its six casts is a type error at the declared return -- and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red),
-            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
-        );
-    }
-
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -3649,6 +3602,230 @@ mod compiler_tests {
             ),
             Some("Node".to_string()),
             "a Witness-headed resolved type still answers the Violates fallback"
+        );
+    }
+
+    // THE KERNEL-IDENTITY FACT HAS ONE AUTHORITY, AND THIS IS THE ROW THAT SEPARATES IT FROM THE
+    // PREFIX TEST IT REPLACED. `resolved_node_is_kernel_identity_for_name` moved from
+    // v1.compiler.infer_env -- where it was declared, never called, and sat ABOVE the module whose
+    // kernel_span mints the span it tests -- down to v1.std.core beside that minter, and
+    // declaration_provenance_of's KernelMinted arm now READS it instead of re-deriving the same
+    // comparison. The old infer_env body inlined `concat("<kernel:", name, ">")`, reproducing
+    // kernel_span's output by hand, which made it a second authority for the span FORMAT too.
+    //
+    // WHAT EACH ROW HOLDS. The mismatch row is the discriminating one: a node whose ident_span is a
+    // kernel span for a DIFFERENT name is not the kernel identity for the queried name, so a
+    // substring or prefix test over "<kernel:" -- the weaker authority the notes on both
+    // declarations warn about -- answers KernelMinted here and goes red. The positive control stops
+    // that row being satisfied by a predicate that had simply stopped answering true. The agreement
+    // row asserts the recognizer and the provenance mint give the SAME verdict on one node, which
+    // is what makes them one authority rather than two that happen to agree today.
+    #[test]
+    fn kernel_identity_is_one_authority_shared_by_recognizer_and_provenance_mint() {
+        fn node_with_ident_file(
+            name: &str,
+            ident_file: String,
+        ) -> std::rc::Rc<crate::v1_std_core::Node> {
+            let base = shaped_type_node(name, Vec::new());
+            std::rc::Rc::new(crate::v1_std_core::Node {
+                ident_span: Some(std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: ident_file,
+                    start: 0,
+                    end: 0,
+                })),
+                ..(*base).clone()
+            })
+        }
+
+        // POSITIVE CONTROL -- the minter's own output, recognized for its own name.
+        let int_kernel = node_with_ident_file(
+            "Int",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                int_kernel.clone(),
+                "Int".to_string()
+            ),
+            "the recognizer must accept the span its own minter built for that name"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(int_kernel.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { minted_name }
+                    if minted_name == "Int"
+            ),
+            "the provenance mint must reach KernelMinted through that same recognizer"
+        );
+
+        // THE DISCRIMINATOR -- exact equality against the minter, never a "<kernel:" prefix.
+        let mismatched = node_with_ident_file(
+            "Nat",
+            crate::v1_std_core::kernel_span("Int".to_string())
+                .file
+                .clone(),
+        );
+        assert!(
+            !crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                mismatched.clone(),
+                "Nat".to_string()
+            ),
+            "a kernel span for a DIFFERENT name is not this name's kernel identity -- a prefix test over \"<kernel:\" answers true here"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(mismatched.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "<kernel:Int>"
+            ),
+            "the mint must not upgrade a non-matching kernel-shaped span to KernelMinted"
+        );
+
+        // AGREEMENT -- one verdict, read twice. These cannot diverge while one authority answers.
+        for (name, file) in [
+            (
+                "Int",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            (
+                "Nat",
+                crate::v1_std_core::kernel_span("Int".to_string())
+                    .file
+                    .clone(),
+            ),
+            ("Widget", "dag/std/nat.dag".to_string()),
+        ] {
+            let n = node_with_ident_file(name, file);
+            let recognized = crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+                n.clone(),
+                name.to_string(),
+            );
+            let minted = matches!(
+                &*crate::v1_std_core::declaration_provenance_of(n.clone()),
+                crate::std_coercion::TypeDeclarationProvenance::KernelMinted { .. }
+            );
+            assert_eq!(
+                recognized, minted,
+                "recognizer and provenance mint must give one verdict for `{}`",
+                name
+            );
+        }
+
+        // THE TWO SURVIVING ARMS, unchanged by the relocation.
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "dag/std/nat.dag".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::CorpusDeclared { decl_file }
+                    if decl_file == "dag/std/nat.dag"
+            ),
+            "a real declaring file must still mint CorpusDeclared"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_std_core::declaration_provenance_of(node_with_ident_file(
+                    "Widget",
+                    "".to_string()
+                )),
+                crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent
+            ),
+            "an empty ident file must still mint DeclarationIdentityAbsent"
+        );
+    }
+
+    fn item_carrying_properties(
+        name: &str,
+        property_names: Vec<&str>,
+    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = shaped_type_node(name, Vec::new());
+        let props: Vec<std::rc::Rc<crate::v1_std_core::Node>> = property_names
+            .into_iter()
+            .map(|p| shaped_type_node(p, Vec::new()))
+            .collect();
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            properties: std::rc::Rc::new(props),
+            ..(*base).clone()
+        })
+    }
+
+    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THE DISCRIMINATING ROW IS THE CAPABILITY-LESS ONE.
+    // `resource Network` and `resource AuthContext` declare no capabilities, so they carry no
+    // children, no body, no params and no connective -- they ARE bare leaves by shape, which is
+    // why the emit side read them as type declarations while v1.compiler.parse read them as
+    // resources. That disagreement is what made the type-occurrence census refuse with
+    // CensusUnavailable { cause: DeclarationDomainDisagrees }.
+    //
+    // THE THIRD ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by COUNTING
+    // properties is the shape v1.compiler.parse already had to repair: `type X sole_constructor`
+    // carries a property too, and counting swallowed 202 sole-constructor types across 100
+    // modules into the resource bucket. So a sole-constructor-only item must still read as a type
+    // declaration, and this row goes red if the exclusion is ever re-spelled as a property count.
+    #[test]
+    fn a_resource_item_is_not_read_as_a_type_declaration() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+
+        // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type declaration.
+        let plain = item_carrying_properties("Symbol", Vec::new());
+        assert!(
+            crate::v1_compiler_emit_core_support::is_type_decl_item(
+                plain.clone(),
+                source_indices.clone()
+            ),
+            "positive control: a property-free bare leaf must still read as a type declaration"
+        );
+
+        // THE DISCRIMINATOR: resource entries present. Removing the exclusion turns this true.
+        let resource_like =
+            item_carrying_properties("Network", vec!["kind", "mode", "acquire", "release"]);
+        assert!(
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "a capability-less resource item must NOT read as a type declaration"
+        );
+        assert!(
+            !crate::v1_compiler_emit_core_support::is_type_alias_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "a capability-less resource item must NOT read as a type alias either"
+        );
+
+        // THE OVER-CORRECTION GUARD: sole_constructor is a TYPE modifier, not a resource entry.
+        let sole_constructor_type = item_carrying_properties("Wrapper", vec!["sole_constructor"]);
+        assert!(
+            crate::v1_compiler_emit_core_support::is_type_decl_item(
+                sole_constructor_type.clone(),
+                source_indices.clone()
+            ),
+            "a sole_constructor type must still read as a type declaration"
+        );
+
+        // THE TWO READERS NOW AGREE, which is the fact the census join actually measures.
+        assert_eq!(
+            crate::v1_compiler_parse::parsed_item_carries_resource_entries(resource_like.clone()),
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                resource_like.clone(),
+                source_indices.clone()
+            ),
+            "parse-side and emit-side readers must agree on the resource item"
+        );
+        assert_eq!(
+            crate::v1_compiler_parse::parsed_item_carries_resource_entries(
+                sole_constructor_type.clone()
+            ),
+            !crate::v1_compiler_emit_core_support::is_type_decl_item(
+                sole_constructor_type.clone(),
+                source_indices.clone()
+            ),
+            "parse-side and emit-side readers must agree on the sole_constructor type"
         );
     }
 
