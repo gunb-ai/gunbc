@@ -1,10 +1,10 @@
-module gunbc.recurring_failure_mode.append_only_carrier_re_adds_what_its_own_base_already_carries
+module gunbc.recurring_failure_mode.duplicate_declaration_arrives_through_a_clean_merge
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
-data append_only_carrier_re_adds_what_its_own_base_already_carries: RecurringFailureMode = RecurringFailureMode {
-  identity: "append_only_carrier_re_adds_what_its_own_base_already_carries" as NonEmptyStr,
+data duplicate_declaration_arrives_through_a_clean_merge: RecurringFailureMode = RecurringFailureMode {
+  identity: "duplicate_declaration_arrives_through_a_clean_merge" as NonEmptyStr,
 
   receipts: [
     "**a branch appends a declaration to an append-only carrier that its OWN MERGE BASE already carries, and the three-way text merge reports nothing, because both sides are INSERTIONS AT DIFFERENT OFFSETS and text merge is offset-based rather than identity-based.** INVALID STATE: one module declares one name twice, each copy byte-identical to the other, arriving through a merge that never saw a conflict. ",
@@ -22,6 +22,8 @@ data append_only_carrier_re_adds_what_its_own_base_already_carries: RecurringFai
     "RECOGNITION RULE: for any carrier whose normal operation is APPEND, ask what the merge is comparing. If it compares LINE REGIONS, then identity collisions between two appends are invisible by construction, and the absence of a conflict is evidence about offsets and about nothing else. The tell in the record is a diff that is purely additive, mergeable without incident, and semantically a duplicate of content already above it. ",
 
     "DISTINCT FROM `authority_merges_unprotected_while_its_projection_is_guarded`: that row is about which merge DRIVER a path resolves to. This row holds even where the driver is correct, because a driver that merges text is still merging text -- the defect is the grain of the comparison, not its configuration. ",
+
+    "DISTINCT FROM `append_only_carrier_whose_serialization_shares_a_merge_region`, WHICH LANDED ON MAIN WHILE THIS ROW WAS IN REVIEW AND IS THIS ROW'S EXACT DUAL. That class is a CONFLICT THAT CARRIES NO INFORMATION: two lanes append logically disjoint rows, the serialization puts them in one merge region, and the textual merge refuses a union whose answer is mechanically determined. This class is A COLLISION THAT PRODUCES NO CONFLICT: two lanes append the SAME identity, the serialization puts them at different offsets, and the textual merge accepts a result that cannot resolve. Same carrier, same merge, opposite errors -- one refuses where it should union, the other unions where it should refuse -- and neither repair is the other's. A serialization in which independent appends do not share a merge region retires that row and leaves this one exactly where it is, because the defect here is not WHERE the comparison happens but WHAT it compares: offsets rather than identities. This row was originally filed as `append_only_carrier_re_adds_what_its_own_base_already_carries` and renamed on the merge that brought the two together, because two rows opening with the same four words is the fusion DESIGN section 3 warns about. ",
 
     "RUNG FOUND AT: mitigatable. The compiler refuses the resulting state totally and with a located diagnostic, so the ordinary floor held and no wrong answer was produced; what was unheld is everything before the refusal. ",
 
