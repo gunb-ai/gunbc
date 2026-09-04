@@ -79,16 +79,6 @@ data artifact_declares_a_threshold_it_is_not_measured_against: RecurringFailureM
     "SO THE TRIGGER IS AMENDED, STILL AS A CAPABILITY: each cost row emits the line actually applied AND the quantity actually compared against it, both derived from the authority the enforcement reads, sufficient for a consumer to reproduce the judge's verdict from the row alone. ",
 
     "A row from which the verdict cannot be recomputed is the whole defect, and line-versus-column is two ways to have it rather than two defects. ",
-
-    "**A SECOND MISREADING OF THE SAME ARTIFACT, MEASURED ACROSS 23 RUNS AND RECORDED BECAUSE IT IS A CAP WEARING AN INVARIANT'S CLOTHES: the floor log's `[over-cost]` listing is TRUNCATED, and nothing in it says so. ",
-
-    "It printed exactly 26 rows in every one of 23 consecutive `witnesses.yml` push runs on main -- a constancy that reads as the strongest possible evidence the work is stable, which is how it was nearly cited. ",
-
-    "It is a display cap: the lowest listed row is 336ms while this row's own census records ~300 of 3534 rows exceeding the declared line, and the 26 identities are not the same set between runs. ",
-
-    "A CONSTANT PRODUCED BY A CAP IS INDISTINGUISHABLE FROM A CONSTANT PRODUCED BY STABILITY, and the cap direction is the reassuring one. ",
-
-    "This belongs on this row rather than a new one because it is the same subject -- the artifact misleading a consumer about a population it appears to report -- and its trigger is the same shape: the listing states its own truncation and the total it was drawn from, sufficient for a consumer to tell a complete population from a prefix of one. ",
   ],
 
   evidence: [],
