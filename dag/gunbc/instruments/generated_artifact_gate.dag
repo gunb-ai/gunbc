@@ -18,7 +18,12 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import v2.std.algebra { fold_list, length }
+import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObservation,
+  GeneratedArtifactObserved,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactCommittedAbsent,
   GeneratedArtifactPopulationFindings,
   generated_artifact_population_findings,
   generated_artifact_population_findings_empty,
@@ -264,6 +269,48 @@ func main_wet() -> ProcessExit {
 // concurrent projection retain the one-pass command, while heal-generated-artifacts binds the
 // stronger actuator-plus-proof because it is about to write a commit without a human inspecting
 // the bytes. Both passes preserve committed_generated_artifacts() source order; there is no sort.
+// WHERE THE DECLARATION HAS TO BE TAKEN, AND WHY IT CANNOT BE TAKEN LATER. main_wet_verified WRITES
+// and then verifies, so by the time its verify pass runs the projection agrees with its authority BY
+// CONSTRUCTION -- the second pass is structurally incapable of seeing what the first pass repaired.
+// Anything downstream of the write, including the commit step itself, is looking at a tree in which
+// the defect no longer exists. So the only moment this fact is observable is BEFORE the actuator
+// runs, which is why this is its own entry invoked ahead of the regeneration rather than a field on
+// the verified result.
+//
+// IT WRITES A FILE RATHER THAN RETURNING A REASON because a ProcessExit reason is rendered only on
+// FAILURE, and this observation is taken on the path where heal is about to succeed. Reporting it
+// through the failure channel would mean the record exists exactly when the repair does not.
+//
+// THIS ENTRY NEVER REFUSES ON DRIFT. Drift is the expected input -- heal exists because it is there
+// -- so refusing here would stop the repair this job is for. It refuses only when it cannot WRITE
+// the declaration, because an unwritten declaration that reported success would put the class back
+// in the silent state: the commit would carry no trailer and nothing would say the record is missing
+// rather than empty.
+func heal_repair_declaration() -> ProcessExit {
+  let text = fold(observe_generated_artifact_population(), init: "", f: fn(acc, o) {
+    match o {
+      GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation: _ } =>
+        concat(acc, render_ledger_repair_trailers(
+          path: path,
+          c: ledger_row_coherence(
+            a: artifact,
+            generated_content: generated_content,
+            committed_content: committed_content
+          )
+        ))
+      GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => acc
+      GeneratedArtifactCommittedAbsent { artifact: _, path: _, detail: _ } => acc
+    }
+  })
+  let w = Filesystem.Write(path: heal_repair_declaration_artifact_path, content: text)
+  if w.success { ExitSuccess } else {
+    exit_failure(reason: concat(
+      concat("heal repair declaration could not be written to ", heal_repair_declaration_artifact_path),
+      concat(": ", w.error)
+    ))
+  }
+}
+
 func main_wet_verified() -> ProcessExit {
   let first = main_wet()
   if exit_ok(e: first) {

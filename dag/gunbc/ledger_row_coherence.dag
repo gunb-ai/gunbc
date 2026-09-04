@@ -1,7 +1,18 @@
 module gunbc.ledger_row_coherence
 
 import std.types { String, List, Bool }
-import gunbc.generated_artifact { GeneratedArtifact }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
+  GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact,
+  GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
+  RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
+  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact,
+  AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
+}
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 import gunbc.rung_drop { RungDrop, rung_drop_roster, rung_drop_declaration_message }
@@ -70,13 +81,21 @@ type LedgerRow {
   body: String
 }
 
-// THE TWO LEDGERS ARE NOT ENUMERATED BY NAME HERE AS A SECOND ROSTER. The match is over the closed
-// GeneratedArtifact coproduct, so a newly registered artifact does not silently acquire an empty
-// row population by default -- the wildcard arm answers NOT-A-LEDGER, which is the honest answer
-// for provisioning files and plan documents, and the two ledger arms are the only ones that carry a
-// row identity at all. If a third ledger is ever registered its arm must be written here, and until
-// it is, this classifier reports NotALedgerArtifact for it rather than reporting zero missing rows,
-// which is the difference between "cannot speak for this" and "this is fine".
+// EVERY VARIANT IS WRITTEN OUT AND THERE IS NO WILDCARD, WHICH IS THE WHOLE PROPERTY THIS FUNCTION
+// CLAIMS. An earlier revision ended in `_ => []` and carried a comment asserting that "a newly
+// registered artifact does not silently acquire an empty row population by default". THAT COMMENT
+// WAS FALSE WHILE THE WILDCARD STOOD: a new ledger added to GeneratedArtifact would have fallen
+// into `_`, reported NotALedgerArtifact, and been excluded from coherence checking forever with
+// nothing anywhere to say so. The required nfr_roster_receipt test caught the residue and refused
+// the merge -- a wall doing exactly its job on an author who had written the right sentence over
+// the wrong construction.
+//
+// With the coproduct exhausted, adding a variant to GeneratedArtifact FAILS TO COMPILE until
+// somebody decides which arm it belongs in. That is the difference between a claim about behaviour
+// and a construction that enforces it, and it is why the verbosity is the point rather than a cost:
+// the twenty-two non-ledger arms are not noise, they are the record that each was CONSIDERED and
+// classified. NotALedgerArtifact remains a distinct arm from LedgerRowsAllRendered, so "cannot
+// speak for this" never reads as "this is fine".
 fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
   match a {
     DesignFailureModesArtifact =>
@@ -89,7 +108,28 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
         identity: (d.identity as String),
         body: rung_drop_declaration_message(d: d)
       })
-    _ => []
+    WitnessFloorYamlArtifact => []
+    FleetConvergeYamlArtifact => []
+    FleetDesiredAdmissionYamlArtifact => []
+    GitignoreArtifact => []
+    GitattributesArtifact => []
+    RoadmapArtifact => []
+    DesignArtifact => []
+    GithooksPrePushArtifact => []
+    GithooksPreCommitArtifact => []
+    GeneratedArtifactMergeDriverArtifact => []
+    RunnerDeployArtifact => []
+    Stage0CrateLayoutGeneratedDagArtifact => []
+    Stage0CrateLayoutGeneratedRsArtifact => []
+    Stage0CratePartitionGeneratedDagArtifact => []
+    Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    V1InterpreterDispatchGeneratedRsArtifact => []
+    EvaluationBudgetConsequenceGeneratedRsArtifact => []
+    FileTransportRealizationGeneratedRsArtifact => []
+    CouponCadQueryProgramArtifact => []
+    AutoinstallUserDataArtifact { spec: _ } => []
+    RunnerHostSudoersArtifact { host: _ } => []
+    PlanArtifact { plan: _ } => []
   }
 }
 
@@ -148,5 +188,166 @@ fn ledger_row_coherence_rendered(c: LedgerRowCoherence) -> String {
         if acc == "" { id } else { concat(acc, concat(", ", id)) }
       })
     )
+  }
+}
+
+// THE REPAIR MUST DECLARE ITSELF ON THE CARRIER THAT PERFORMS IT, AND THE CARRIER IS A COMMIT.
+//
+// Heal's regeneration IS a commit, so annotating that commit with what it repaired puts the mark on
+// the thing that did the work rather than in a parallel ledger beside it -- which is what DESIGN
+// section 6 asks for, and it is the reason the retrospective classification above was derivable at
+// all: git history already carried enough to classify against, it simply never SAID anything.
+//
+// WHY A STRUCTURED TRAILER AND NOT A SENTENCE. DESIGN section 4c quarantines unclassified prose:
+// an invariant, receipt or count belongs in a typed carrier, and a commit message full of free text
+// would put a reader back where the six unmeasurable commits already are -- something happened, and
+// no machine can say what. The trailer token is declared ONCE here and both the renderer and the
+// parser read that one declaration, so the written form and the read form cannot drift apart.
+//
+// THE PARSER IS THE POINT, NOT THE RENDERER. With a declaration to read, classification stops being
+// archaeology over a commit's parent and becomes a fact the repair states about itself. The
+// parent-comparison route does not retire -- it becomes the CROSS-CHECK, which is what a declaration
+// needs if it is to be trusted, since a repair that lies about its own scope is otherwise
+// unfalsifiable. Two routes to one number, disagreeing loudly, is the shape this class was missing.
+
+data ledger_repair_trailer_token: String = "Ledger-Rows-Repaired:"
+
+// THE PATH IS DECLARED ONCE AND CONSUMED BY BOTH ENDS. The gate WRITES this file and the heal commit
+// step READS it; if each spelled its own literal the two would drift and the failure would be
+// silent -- heal would commit with no trailer and nothing would say the declaration had been written
+// somewhere nobody looked. It lives under target/ because that directory is ignored, so the
+// declaration cannot itself become a committed artifact the drift gate then has to adjudicate.
+data heal_repair_declaration_artifact_path: String = "target/heal-repair-declaration.txt"
+
+// THE DENOMINATOR IS DECLARED, BECAUSE A COUNT WITHOUT ONE UNDERCOUNTS SILENTLY. A commit carrying
+// no repair trailer has two completely different meanings -- this heal judged the ledgers and found
+// nothing to repair, or the declaration step never ran at all -- and with only the repair token
+// those are the SAME BYTES. That is this module's own subject reappearing one level up: an absent
+// observable read as a clean one. So every ledger artifact the declaration examined emits a JUDGED
+// line whether or not it repaired anything, and a reader counts repairs against judged rather than
+// against an unstated population.
+//
+// THE FAILURE THIS PREVENTS IS THE REASSURING ONE. Suppose heads start going unjudged -- the
+// declaration step is skipped, or the run that would have executed it is suspended before any job
+// starts. Repairs recorded falls toward zero while repairs OCCURRING is unchanged, and a ledger
+// counting only the numerator reads that as the class being fixed. Coverage collapsing and the
+// defect disappearing must not produce the same number.
+data ledger_repair_judged_token: String = "Ledger-Repair-Judged:"
+
+type LedgerRepairDeclaration {
+  path: String
+  identity: String
+}
+
+// ONE LINE PER IDENTITY rather than one line carrying a delimited list. A per-identity line survives
+// truncation, wrapping and quoting with the loss confined to the lines actually lost, and it makes
+// the count a line count rather than a parse of a separator that some tool may rewrite.
+fn render_ledger_repair_trailers(path: String, c: LedgerRowCoherence) -> String {
+  match c {
+    NotALedgerArtifact => ""
+    LedgerRowsAllRendered => concat("\n", concat(ledger_repair_judged_token, concat(" ", path)))
+    LedgerRowsMissingFromCommitted { missing } =>
+      fold(missing, init: concat("\n", concat(ledger_repair_judged_token, concat(" ", path))), f: fn(acc, id) {
+        concat(acc, concat("\n", concat(ledger_repair_trailer_token, concat(" ", concat(path, concat(" ", id))))))
+      })
+  }
+}
+
+// THE JUDGED POPULATION IS PARSED BY THE SAME ROUTE AS THE REPAIRS, so a reader cannot obtain one
+// without being able to obtain the other. A judged line carries a path and no identity, which is
+// exactly the shape scan_trailer_fields rejects for a repair, so the two tokens cannot be confused
+// even though they share a parse.
+fn parse_ledger_repair_judged(message: String) -> List<String> {
+  fold(split(s: message, delimiter: ledger_repair_judged_token), init: [], f: fn(acc, chunk) {
+    let line = fold(split(s: chunk, delimiter: "\n"), init: "", f: fn(a, l) { if a == "" { l } else { a } })
+    let scan = scan_trailer_fields(fields: trailer_payload_fields(line: line))
+    if scan.n == 1 { concat(acc, [scan.path]) } else { acc }
+  })
+}
+
+// THE SCAN CARRIES ITS OWN POSITION so the parse needs no indexed access into the field list, and a
+// malformed line cannot silently yield a half-built declaration: `n` must be exactly 2 for a
+// declaration to be emitted, so a line with one field or three is DROPPED rather than guessed at.
+type TrailerScan {
+  n: Int
+  path: String
+  identity: String
+}
+
+// THE TOKENS ARE STRIPPED BEFORE SCANNING, and this is a repair rather than a refinement. The first
+// version of this parse asserted that the two tokens could not contaminate each other because they
+// share a field scanner -- and that was FALSE, caught by its own witness: splitting the message on
+// the REPAIR token leaves a judged line intact in the leading chunk, where its token and path
+// present as exactly two fields and read as a repair declaration for identity "docs/...". A claim
+// that two things cannot collide is worth no more than the arm that would fail if they did.
+//
+// Stripping every known token leaves the scanner looking only at PAYLOAD, so arity alone
+// discriminates: a judged line is one field and a repair line is two, whichever token was split on.
+fn trailer_payload_fields(line: String) -> List<String> {
+  filter(
+    split(s: line, delimiter: " "),
+    p => p != "" && p != ledger_repair_trailer_token && p != ledger_repair_judged_token
+  )
+}
+
+fn scan_trailer_fields(fields: List<String>) -> TrailerScan {
+  fold(fields, init: TrailerScan { n: 0, path: "", identity: "" }, f: fn(a, x) {
+    if a.n == 0 {
+      TrailerScan { n: 1, path: x, identity: "" }
+    } else {
+      if a.n == 1 {
+        TrailerScan { n: 2, path: a.path, identity: x }
+      } else {
+        TrailerScan { n: 3, path: a.path, identity: a.identity }
+      }
+    }
+  })
+}
+
+// SPLITTING ON THE TOKEN RATHER THAN SCANNING LINES is what makes the parse indifferent to how the
+// message was assembled -- leading whitespace, a wrapped body, a trailer block appended by another
+// tool. The chunk before the first token is examined like any other and is rejected by the same
+// field-count rule, so no arm exists that treats the message prologue specially.
+fn parse_ledger_repair_trailers(message: String) -> List<LedgerRepairDeclaration> {
+  fold(split(s: message, delimiter: ledger_repair_trailer_token), init: [], f: fn(acc, chunk) {
+    let line = fold(split(s: chunk, delimiter: "\n"), init: "", f: fn(a, l) { if a == "" { l } else { a } })
+    let scan = scan_trailer_fields(fields: trailer_payload_fields(line: line))
+    if scan.n == 2 {
+      concat(acc, [LedgerRepairDeclaration { path: scan.path, identity: scan.identity }])
+    } else {
+      acc
+    }
+  })
+}
+
+// THE DECLARATION IS NOT TRUSTED, IT IS CROSS-CHECKED. A repair that states its own scope is
+// unfalsifiable on its own -- a heal that under-declared would look exactly like a heal that had
+// nothing to declare, which is the state this whole change exists to leave. So the parent-comparison
+// route does NOT retire when the declaration lands: it becomes the second route to the same number,
+// and this type is where the two are joined. Disagreement is rendered as two directed sets rather
+// than a Bool, because which side is missing decides which mechanism is wrong -- declared-only means
+// the declaration over-claims, inferred-only means the repair happened and went unrecorded, and a
+// single false cannot tell a reader which of those to go fix.
+type LedgerRepairCrossCheck
+  = DeclarationAgreesWithInference
+  | DeclarationDisagrees { declared_only: List<String>, inferred_only: List<String> }
+
+fn identity_in(xs: List<String>, wanted: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || x == wanted })
+}
+
+fn cross_check_ledger_repair(declared: List<LedgerRepairDeclaration>, inferred: LedgerRowCoherence) -> LedgerRepairCrossCheck {
+  let declared_ids = map(declared, d => d.identity)
+  let inferred_ids = match inferred {
+    NotALedgerArtifact => []
+    LedgerRowsAllRendered => []
+    LedgerRowsMissingFromCommitted { missing } => missing
+  }
+  let declared_only = filter(declared_ids, d => !identity_in(xs: inferred_ids, wanted: d))
+  let inferred_only = filter(inferred_ids, i => !identity_in(xs: declared_ids, wanted: i))
+  if length(declared_only) == 0 && length(inferred_only) == 0 {
+    DeclarationAgreesWithInference
+  } else {
+    DeclarationDisagrees { declared_only: declared_only, inferred_only: inferred_only }
   }
 }

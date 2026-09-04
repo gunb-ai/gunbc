@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
@@ -800,6 +801,16 @@ data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main_wet_verified",
 }
 
+// THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS.
+// main_wet_verified writes and then verifies, so its verify pass sees a tree that agrees with its
+// authority by construction and can never report what the write repaired. This target runs ahead of
+// it, reads the committed bytes while they are still the drifted ones, and writes the trailer lines
+// the commit step folds into heal's message.
+data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "heal_repair_declaration",
+}
+
 data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/repo/repo_local_git_config.dag",
   function: "converge",
@@ -862,6 +873,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
+    gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_repo_local_git_config_target,
     gunbc_ci_heal_dispatch_target
   ]
@@ -1575,6 +1587,16 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
+fn gunbc_ci_heal_repair_declaration_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_repair_declaration_target.entry,
+    function: gunbc_ci_heal_repair_declaration_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 // Immediately after the release gunbc binary is unpacked, converge repository-local Git integration
 // bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled
 // repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact
@@ -1760,7 +1782,10 @@ fn ci_heal_shell_lines() -> List<String> {
             "  exit 0",
             "else",
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
-            "  git commit --no-verify -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
+            "  HEAL_MESSAGE_FILE=$(mktemp)",
+            "  printf '%s\\n' \"chore: regenerate drifted generated artifacts (ci auto-heal)\" > \"$HEAL_MESSAGE_FILE\"",
+            concat(concat("  if [ -s \"", heal_repair_declaration_artifact_path), concat("\" ]; then cat \"", concat(heal_repair_declaration_artifact_path, "\" >> \"$HEAL_MESSAGE_FILE\"; fi"))),
+            "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
             "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""
