@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import extdeps.gunb_ai.frontend {
-  MarkFrameLength, frame_length, frame_length_tenths, mark_frame_span,
+  MarkFrameLength, mark_frame_length, mark_frame_length_tenths, mark_frame_span,
   MarkFeature, MarkRoundedRect, MarkCircle,
   mark_body, mark_eye_left, mark_eye_right, mark_mouth,
   StoicGiantMark, gunb_stoic_giant_mark,
@@ -20,10 +20,10 @@ test fn w_the_body_spans_the_full_declared_frame() -> Bool {
   match mark_body {
     MarkCircle { center_x: cx, center_y: cy, radius: r } => false
     MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
-      frame_length_tenths(l: x) == 0
-        && frame_length_tenths(l: w) == mark_frame_span
-        && frame_length_tenths(l: y) == 120
-        && frame_length_tenths(l: h) == 960
+      mark_frame_length_tenths(l: x) == 0
+        && mark_frame_length_tenths(l: w) == mark_frame_span
+        && mark_frame_length_tenths(l: y) == 120
+        && mark_frame_length_tenths(l: h) == 960
   }
 }
 
@@ -36,9 +36,9 @@ test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
       match mark_eye_right {
         MarkRoundedRect { x: a, y: b, width: c, height: d, corner_radius: e } => false
         MarkCircle { center_x: rx, center_y: ry, radius: rr } =>
-          frame_length_tenths(l: lx) + frame_length_tenths(l: rx) == mark_frame_span
-            && frame_length_tenths(l: ly) == frame_length_tenths(l: ry)
-            && frame_length_tenths(l: lr) == frame_length_tenths(l: rr)
+          mark_frame_length_tenths(l: lx) + mark_frame_length_tenths(l: rx) == mark_frame_span
+            && mark_frame_length_tenths(l: ly) == mark_frame_length_tenths(l: ry)
+            && mark_frame_length_tenths(l: lr) == mark_frame_length_tenths(l: rr)
       }
   }
 }
@@ -49,7 +49,7 @@ test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> B
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
     MarkScaleExact { ratio: per } =>
       mark_scale_ratio_value(r: per) == 50
-        && micrometer_count(m: scale_frame_length(ratio: per, l: frame_length(tenths: mark_frame_span))) == 60000
+        && micrometer_count(m: scale_frame_length(ratio: per, l: mark_frame_length(tenths: mark_frame_span))) == 60000
   }
 }
 
@@ -70,35 +70,35 @@ test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
 // and the check would have passed on exactly the case it is named for.
 fn feature_min_x(f: MarkFeature) -> Nat {
   match f {
-    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => frame_length_tenths(l: x)
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => mark_frame_length_tenths(l: x)
     MarkCircle { center_x: cx, center_y: cy, radius: r } =>
-      frame_length_tenths(l: cx) - frame_length_tenths(l: r)
+      mark_frame_length_tenths(l: cx) - mark_frame_length_tenths(l: r)
   }
 }
 
 fn feature_max_x(f: MarkFeature) -> Nat {
   match f {
     MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
-      frame_length_tenths(l: x) + frame_length_tenths(l: w)
+      mark_frame_length_tenths(l: x) + mark_frame_length_tenths(l: w)
     MarkCircle { center_x: cx, center_y: cy, radius: r } =>
-      frame_length_tenths(l: cx) + frame_length_tenths(l: r)
+      mark_frame_length_tenths(l: cx) + mark_frame_length_tenths(l: r)
   }
 }
 
 fn feature_min_y(f: MarkFeature) -> Nat {
   match f {
-    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => frame_length_tenths(l: y)
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => mark_frame_length_tenths(l: y)
     MarkCircle { center_x: cx, center_y: cy, radius: r } =>
-      frame_length_tenths(l: cy) - frame_length_tenths(l: r)
+      mark_frame_length_tenths(l: cy) - mark_frame_length_tenths(l: r)
   }
 }
 
 fn feature_max_y(f: MarkFeature) -> Nat {
   match f {
     MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
-      frame_length_tenths(l: y) + frame_length_tenths(l: h)
+      mark_frame_length_tenths(l: y) + mark_frame_length_tenths(l: h)
     MarkCircle { center_x: cx, center_y: cy, radius: r } =>
-      frame_length_tenths(l: cy) + frame_length_tenths(l: r)
+      mark_frame_length_tenths(l: cy) + mark_frame_length_tenths(l: r)
   }
 }
 
@@ -108,10 +108,10 @@ fn body_bounds_hold(min_x: Nat, max_x: Nat, min_y: Nat, max_y: Nat) -> Bool {
   match mark_body {
     MarkCircle { center_x: cx, center_y: cy, radius: r } => false
     MarkRoundedRect { x: bx, y: by, width: bw, height: bh, corner_radius: bcr } =>
-      min_x >= frame_length_tenths(l: bx)
-        && max_x <= frame_length_tenths(l: bx) + frame_length_tenths(l: bw)
-        && min_y >= frame_length_tenths(l: by)
-        && max_y <= frame_length_tenths(l: by) + frame_length_tenths(l: bh)
+      min_x >= mark_frame_length_tenths(l: bx)
+        && max_x <= mark_frame_length_tenths(l: bx) + mark_frame_length_tenths(l: bw)
+        && min_y >= mark_frame_length_tenths(l: by)
+        && max_y <= mark_frame_length_tenths(l: by) + mark_frame_length_tenths(l: bh)
   }
 }
 
@@ -145,9 +145,9 @@ test fn w_every_feature_lies_inside_the_body() -> Bool {
 // At centre 100 radius 96 the extents are 4..196, computed without underflow, and 4 is genuinely
 // below the body's 120. The arm is exercised by arithmetic that means what it says.
 data mark_feature_above_the_body: MarkFeature = MarkCircle {
-  center_x: frame_length(tenths: 600),
-  center_y: frame_length(tenths: 100),
-  radius: frame_length(tenths: 96),
+  center_x: mark_frame_length(tenths: 600),
+  center_y: mark_frame_length(tenths: 100),
+  radius: mark_frame_length(tenths: 96),
 }
 
 test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bool {

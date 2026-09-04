@@ -56,9 +56,9 @@ data mark_frame_span: Nat = 1200
 
 type MarkFrameLength sole_constructor { tenths: Nat }
 
-fn frame_length(tenths: Nat) -> MarkFrameLength { MarkFrameLength { tenths: tenths } }
+fn mark_frame_length(tenths: Nat) -> MarkFrameLength { MarkFrameLength { tenths: tenths } }
 
-fn frame_length_tenths(l: MarkFrameLength) -> Nat { l.tenths }
+fn mark_frame_length_tenths(l: MarkFrameLength) -> Nat { l.tenths }
 
 // ═══ THE FEATURES ═══
 //
@@ -81,31 +81,31 @@ type MarkFeature
 // The body: SVG x 10..110, y 20..100, arc radius 30, transformed. It spans the FULL frame width and
 // is inset top and bottom, which is why the mark reads as wide rather than square.
 data mark_body: MarkFeature = MarkRoundedRect {
-  x: frame_length(tenths: 0),
-  y: frame_length(tenths: 120),
-  width: frame_length(tenths: 1200),
-  height: frame_length(tenths: 960),
-  corner_radius: frame_length(tenths: 360),
+  x: mark_frame_length(tenths: 0),
+  y: mark_frame_length(tenths: 120),
+  width: mark_frame_length(tenths: 1200),
+  height: mark_frame_length(tenths: 960),
+  corner_radius: mark_frame_length(tenths: 360),
 }
 
 data mark_eye_left: MarkFeature = MarkCircle {
-  center_x: frame_length(tenths: 300),
-  center_y: frame_length(tenths: 456),
-  radius: frame_length(tenths: 96),
+  center_x: mark_frame_length(tenths: 300),
+  center_y: mark_frame_length(tenths: 456),
+  radius: mark_frame_length(tenths: 96),
 }
 
 data mark_eye_right: MarkFeature = MarkCircle {
-  center_x: frame_length(tenths: 900),
-  center_y: frame_length(tenths: 456),
-  radius: frame_length(tenths: 96),
+  center_x: mark_frame_length(tenths: 900),
+  center_y: mark_frame_length(tenths: 456),
+  radius: mark_frame_length(tenths: 96),
 }
 
 data mark_mouth: MarkFeature = MarkRoundedRect {
-  x: frame_length(tenths: 504),
-  y: frame_length(tenths: 528),
-  width: frame_length(tenths: 192),
-  height: frame_length(tenths: 72),
-  corner_radius: frame_length(tenths: 24),
+  x: mark_frame_length(tenths: 504),
+  y: mark_frame_length(tenths: 528),
+  width: mark_frame_length(tenths: 192),
+  height: mark_frame_length(tenths: 72),
+  corner_radius: mark_frame_length(tenths: 24),
 }
 
 // ═══ THE MARK, AND WHY ITS TWO POPULATIONS ARE SEPARATE ═══
@@ -183,5 +183,5 @@ fn mark_scale_for_width(width: Micrometer) -> MarkScale {
 // only be obtained by destructuring MarkScale, and only MarkScaleExact carries one. An inexact scale
 // has nothing to hand this function, so there is no bad call to guard against.
 fn scale_frame_length(ratio: MarkScaleRatio, l: MarkFrameLength) -> Micrometer {
-  micrometer(count: frame_length_tenths(l: l) * mark_scale_ratio_value(r: ratio))
+  micrometer(count: mark_frame_length_tenths(l: l) * mark_scale_ratio_value(r: ratio))
 }
