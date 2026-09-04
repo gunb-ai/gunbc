@@ -54,6 +54,7 @@ import gunbc.scm.checkout {
   CheckoutRefused,
   MissingObject,
   ObjectIsAuthoredSource,
+  ObjectIsCorpusManifest,
   checkout_node_target,
 }
 
@@ -185,6 +186,7 @@ type RoleRequirementIntegrationRefusal
   | TargetRootIsAuthoredSource { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
   | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
+  | TargetChildIsCorpusManifest { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
   | RequiredDependencyRemoved { dependency: RoleDependency, removed_role: Symbol }
   | DependencyKindUnsupportedForRoleRequirementIntegration { dependent: Symbol, required: Symbol, kind: Symbol }
@@ -616,6 +618,8 @@ fn root_edge_for(store: ObjectStore, acc: RoleRequirementRootAcc, role: Symbol, 
             MissingObject { identity: _ } => TargetChildMissing { role: role, identity: object }
             ObjectIsAuthoredSource { identity: _ } =>
               TargetChildIsAuthoredSource { role: role, identity: object }
+            ObjectIsCorpusManifest { identity: _ } =>
+              TargetChildIsCorpusManifest { role: role, identity: object }
           },
         },
       }

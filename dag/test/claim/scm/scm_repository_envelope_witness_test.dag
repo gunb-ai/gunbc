@@ -33,6 +33,13 @@ import gunbc.scm.object_store {
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
   store_authored_source,
+  find_authored_source_record,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
 }
 import gunbc.scm.commit_closure { table_unresolved_identities }
 import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
@@ -1291,4 +1298,81 @@ test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() ->
         }
       )
     ) == "target_is_authored_source")
+}
+
+// ---------------------------------------------------------------------------
+// An authored source no commit reaches is still repository content
+// ---------------------------------------------------------------------------
+
+// THE OTHER HALF OF A PAIR, AND THE SPLIT IS THE CLAIM.
+//
+// Its sibling is an_unreachable_authored_source_is_not_part_of_the_semantic_closure in
+// test.claim.scm_commit_closure_witness. Both are written against a store shaped the same way -- one
+// program root, one authored source that no commit reaches -- and they must answer OPPOSITELY:
+//
+//   semantic closure encode   the source is ABSENT, because nothing reaches it from a root
+//   repository encode         the source is PRESENT, because the repository owns the population
+//
+// That is what makes the authority split executable rather than described. Route both writers
+// through one population projection and exactly one of the pair goes red. Before this cut they DID
+// share one, which is how authored sources came to appear in documents whose subject is a single
+// root and which could not reach them.
+//
+// It is not covered by the round-trip claims above: scm_env_two_commit_repository holds only
+// semantic nodes, so an encoder that silently dropped every authored source would leave every one of
+// them green.
+//
+// AND IT INSPECTS THE CONTENT ARM AND THE DERIVED IDENTITY, NOT A COUNT. A count is satisfied by any
+// object of any kind at any identity, so source-to-node or source-to-manifest substitution would
+// stay numerically correct -- the object-count check that would have been the easy spelling here is
+// exactly the total-observer negative this lane keeps re-committing.
+// A deliberately wrong id used only where the fixture could not be built. The claim below asserts a
+// structural fact this value cannot satisfy, so a build failure cannot pass as a green.
+fn scm_env_fallback_id() -> ObjectId {
+  node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_one()).identity)
+}
+
+fn scm_env_unreached_source_text() -> String {
+  "the repository holds this file, and no commit reaches it"
+}
+
+type ScmEnvSourceFixture { repo: RepositoryEnvelope, source: ObjectId, ok: Bool }
+
+fn scm_env_repository_with_an_unreached_source() -> ScmEnvSourceFixture {
+  let base = scm_env_two_commit_repository()
+  match store_authored_source(store: base.store, text: scm_env_unreached_source_text()) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmEnvSourceFixture { repo: base, source: scm_env_fallback_id(), ok: false }
+    SourceStored { store: with_source, source: source } =>
+      ScmEnvSourceFixture {
+        repo: RepositoryEnvelope {
+          store: with_source,
+          commits: base.commits,
+          commit_allocator: base.commit_allocator,
+          checked_out: base.checked_out,
+        },
+        source: source.locator,
+        ok: true,
+      }
+  }
+}
+
+test fn scm_env_an_authored_source_no_commit_reaches_survives_the_round_trip() -> Bool {
+  let fx = scm_env_repository_with_an_unreached_source()
+  fx.ok
+    && match scm_env_reloaded(repo: fx.repo) {
+      RepositoryDecodeRefused { cause: _ } => false
+      RepositoryDecoded { envelope: e } =>
+        match find_authored_source_record(store: e.store, identity: fx.source) {
+          AuthoredSourceAbsent { identity: _ } => false
+          AuthoredSourceIsSemanticNode { identity: _ } => false
+          AuthoredSourceIsCorpusManifest { identity: _ } => false
+          AuthoredSourceFound(record) =>
+            object_id_eq(left: record.identity.locator, right: fx.source)
+              && match record.content {
+                AuthoredSourceEmpty => false
+                AuthoredSourceText(text) => (text as String) == scm_env_unreached_source_text()
+              }
+        }
+    }
 }

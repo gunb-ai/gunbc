@@ -45,6 +45,11 @@ type Commit {
 type CheckoutRefusal
   = MissingObject { identity: ObjectId }
   | ObjectIsAuthoredSource { identity: ObjectId }
+  // A THIRD NEGATIVE, NAMED FOR WHAT IT FOUND. A corpus manifest at a required node is not a file
+  // and not an absence: it is repository inventory sitting where a program was named. Reporting it
+  // as either would hand back a well-formed refusal about the wrong object kind, and only one of
+  // the three has a remedy that is even the same shape.
+  | ObjectIsCorpusManifest { identity: ObjectId }
 
 type CheckoutOutcome
   = CheckedOut { program: Node }
@@ -100,6 +105,8 @@ fn checkout_node_target(store: ObjectStore, target: SemanticNodeTarget) -> Check
     NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
     NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }
@@ -130,6 +137,8 @@ fn checkout_object(store: ObjectStore, identity: SemanticNodeObjectRef) -> Check
     NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
     NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }

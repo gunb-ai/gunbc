@@ -289,6 +289,7 @@ type RepositoryDecodeRefusal
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCommitRootNotInObjectTable { root: ObjectId }
   | RepositoryCommitRootIsAuthoredSource { root: ObjectId }
+  | RepositoryCommitRootIsCorpusManifest { root: ObjectId }
   | RepositoryCheckoutReferenceUnresolved { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicatedOnWire { reference: RepositoryCommitRef }
   | RepositoryCommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
@@ -336,6 +337,7 @@ type RepositoryCommitMint
   | RepositoryCommitMintAllocatorInvalid { next_ordinal: Int }
   | RepositoryCommitMintRootMissing { root: ObjectId }
   | RepositoryCommitMintRootIsAuthoredSource { root: ObjectId }
+  | RepositoryCommitMintRootIsCorpusManifest { root: ObjectId }
   | RepositoryCommitMintParentMissing { parent: RepositoryCommitRef }
 
 // PURE CONSTRUCTION WALL FOR INTERNAL HISTORIES. The allocator is carried by the repository and
@@ -367,6 +369,8 @@ fn mint_repository_commit(
       NodeRecordAbsent { identity: r } => RepositoryCommitMintRootMissing { root: r }
       NodeRecordIsAuthoredSource { identity: r } =>
         RepositoryCommitMintRootIsAuthoredSource { root: r }
+      NodeRecordIsCorpusManifest { identity: r } =>
+        RepositoryCommitMintRootIsCorpusManifest { root: r }
       NodeRecordFound(record) =>
         match parent {
           Present { value: parent_ref } =>
@@ -877,6 +881,12 @@ fn resolve_pending_step(
             commits: acc.commits,
             seen: acc.seen,
             refusal: Present { value: RepositoryCommitRootIsAuthoredSource { root: r } },
+          }
+        NodeRecordIsCorpusManifest { identity: r } =>
+          ResolvedCommitAcc {
+            commits: acc.commits,
+            seen: acc.seen,
+            refusal: Present { value: RepositoryCommitRootIsCorpusManifest { root: r } },
           }
         NodeRecordFound(record) =>
           resolve_pending_step_admitted(

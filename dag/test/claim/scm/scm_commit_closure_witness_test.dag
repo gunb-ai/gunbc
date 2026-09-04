@@ -12,7 +12,7 @@ module test.claim.scm_commit_closure_witness
 // the returned identity is THE MISSING OBJECT'S OWN, which is what makes it fetchable rather than
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
-import std.types { Bool, Int, String, List, list_length }
+import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
 import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
@@ -37,6 +37,13 @@ import gunbc.scm.object_store {
   SourceLocatorCollision,
   insert_from_structure,
   StoredEdge,
+  ObjectRecord,
+  CorpusManifestEntry,
+  store_corpus_manifest,
+  CorpusManifestStored,
+  CorpusManifestLocatorCollision,
+  authored_source_target_of,
+  node_target_of,
 }
 import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
@@ -93,6 +100,12 @@ import gunbc.scm.commit_closure {
   admitted_unresolved,
   unresolved_identities,
   closure_is_complete,
+  admit_well_kinded_closure,
+  admitted_well_kinded,
+  WellKindedAdmission,
+  WellKinded,
+  NotWellKinded,
+  well_kinded_nodes,
 }
 
 fn child_node() -> Node {
@@ -1074,5 +1087,227 @@ test fn the_complete_writer_still_encodes_a_complete_closure() -> Bool {
   ) {
     ClosureDocEncoded { value: v } => json_is_object(v: v)
     ClosureDocEncodeRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The closure is what its root REACHES, not what its store happens to hold
+// ---------------------------------------------------------------------------
+
+// THESE FOUR ARE THE DISCRIMINATING SET FOR THE REACHABILITY CUT, and each one goes red against a
+// different wrong answer that was available. Without the two controls a derivation that refused
+// every store containing anything unrelated would satisfy the RED; without the RED a derivation
+// that admitted everything would satisfy the controls; without the parity claim the two admission
+// routes could disagree and only the unused one be wrong.
+
+fn manifest_witness_file_text() -> String {
+  "the corpus manifest witness file"
+}
+
+// A store holding one authored source and a manifest naming it at a path, plus that manifest's
+// locator. Nothing here is reachable from any semantic root, which is the whole point.
+type ManifestFixture { store: ObjectStore, manifest: ObjectId, source: ObjectId, ok: Bool }
+
+fn a_store_holding_a_manifest() -> ManifestFixture {
+  match store_authored_source(store: empty_store(), text: manifest_witness_file_text()) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ManifestFixture { store: empty_store(), manifest: fallback_id(), source: fallback_id(), ok: false }
+    SourceStored { store: with_file, source: file } =>
+      match store_corpus_manifest(
+        store: with_file,
+        entries: [
+          CorpusManifestEntry {
+            path: "witness/only.dag" as NonEmptyStr,
+            source: authored_source_target_of(reference: file),
+          },
+        ],
+      ) {
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+          ManifestFixture { store: empty_store(), manifest: fallback_id(), source: fallback_id(), ok: false }
+        CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+          ManifestFixture {
+            store: with_manifest,
+            manifest: manifest.locator,
+            source: file.locator,
+            ok: true,
+          }
+      }
+  }
+}
+
+// Grafts the node pair from build_full_store onto a store that already holds a manifest, so the
+// result has a legitimate semantic root AND unrelated repository inventory sitting beside it.
+type MixedFixture { store: ObjectStore, root: SemanticNodeTarget, manifest: ObjectId, source: ObjectId, ok: Bool }
+
+fn a_store_holding_a_manifest_and_an_unrelated_program() -> MixedFixture {
+  let inventory = a_store_holding_a_manifest()
+  let full = build_full_store()
+  match copy_object(
+    from: full.store,
+    to: inventory.store,
+    identity: full.child,
+  ) {
+    CopySourceAbsent { identity: _ } =>
+      MixedFixture { store: empty_store(), root: full.root, manifest: fallback_id(), source: fallback_id(), ok: false }
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      MixedFixture { store: empty_store(), root: full.root, manifest: fallback_id(), source: fallback_id(), ok: false }
+    Copied { store: with_child, reference: _ } =>
+      match copy_object(
+        from: full.store,
+        to: with_child,
+        identity: node_target_locator(target: full.root),
+      ) {
+        CopySourceAbsent { identity: _ } =>
+          MixedFixture { store: empty_store(), root: full.root, manifest: fallback_id(), source: fallback_id(), ok: false }
+        CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+          MixedFixture { store: empty_store(), root: full.root, manifest: fallback_id(), source: fallback_id(), ok: false }
+        Copied { store: with_program, reference: _ } =>
+          MixedFixture {
+            store: with_program,
+            root: full.root,
+            manifest: inventory.manifest,
+            source: inventory.source,
+            ok: inventory.ok,
+          }
+      }
+  }
+}
+
+fn nodes_hold(nodes: List<ObjectRecord>, identity: ObjectId) -> Bool {
+  fold(
+    nodes,
+    init: false,
+    f: fn(seen, record) { seen || object_id_eq(left: record.identity.locator, right: identity) }
+  )
+}
+
+// CONTROL 1. A repository holding an unrelated manifest can still publish the closure rooted at P.
+//
+// This is the claim that keeps the refusal from being satisfied by refusing everything -- and the
+// wrong answer it excludes was a real candidate: an admission that scanned the whole store for
+// manifests and refused on finding one. That would make "serialize the program I asked for" fail on
+// inventory the program does not reference, which is a failure arm that widens instead of refusing.
+//
+// It also pins the POPULATION, not merely the outcome. Asserting only that admission succeeded would
+// go green for a carrier that still held the whole store.
+test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool {
+  let fx = a_store_holding_a_manifest_and_an_unrelated_program()
+  fx.ok
+    && match admit_well_kinded_closure(
+      closure: CommitClosure { store: fx.store, root: fx.root }
+    ) {
+      NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
+      WellKinded { admitted: image } =>
+        match well_kinded_nodes(admitted: image) {
+          nodes =>
+            (list_length(items: nodes) == 2)
+              && nodes_hold(nodes: nodes, identity: node_target_locator(target: fx.root))
+              && !nodes_hold(nodes: nodes, identity: fx.manifest)
+        }
+    }
+}
+
+// CONTROL 2, THE SAME QUESTION ASKED OF THE OTHER UNREACHABLE KIND, AND HALF OF A PAIR.
+//
+// Its sibling lives in test.claim.scm_repository_envelope_witness and asserts that this same source
+// SURVIVES the repository round trip with its exact content arm and derived identity. The two are
+// deliberately not one Boolean: they have different owners and either can fail while the other holds
+// -- an encoder that dropped every source would satisfy this one, and a closure that carried the
+// whole store would satisfy that one. Written against the same constructed store, the pair makes the
+// authority split itself executable: route both writers through one population projection and
+// exactly one of them goes red. An authored source in the store
+// is not closure content either, and it is a separate claim rather than a restatement because the
+// two travelled by different routes: the manifest was never encodable at all, while the source WAS
+// emitted by every predecessor of this writer. This is the one that would have gone red before the
+// cut, and it is the evidence that the format's narrowing actually happened.
+test fn an_unreachable_authored_source_is_not_part_of_the_semantic_closure() -> Bool {
+  let fx = a_store_holding_a_manifest_and_an_unrelated_program()
+  fx.ok
+    && match admit_well_kinded_closure(
+      closure: CommitClosure { store: fx.store, root: fx.root }
+    ) {
+      NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
+      WellKinded { admitted: image } =>
+        !nodes_hold(nodes: well_kinded_nodes(admitted: image), identity: fx.source)
+    }
+}
+
+// A node whose only child names the MANIFEST's locator: a semantic requirement occupied by a corpus
+// manifest.
+fn closure_over_a_manifest_locator() -> OccupiedFixture {
+  let inventory = a_store_holding_a_manifest()
+  match insert_from_structure(
+    store: inventory.store,
+    kind: TypeNode { connective: Conj },
+    children: [
+      StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: inventory.manifest } },
+    ],
+  ) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      OccupiedFixture { store: empty_store(), root: SemanticNodeTarget { locator: fallback_id() }, child: fallback_id(), ok: false }
+    Stored { store: s, node: parent } =>
+      OccupiedFixture {
+        store: s,
+        root: node_target_of(reference: parent),
+        child: inventory.manifest,
+        ok: inventory.ok,
+      }
+  }
+}
+
+// THE RED. A manifest at a required node position refuses, and refuses AS A MANIFEST.
+//
+// The discrimination that matters is not that it refuses -- it is WHICH population names it. The
+// available wrong answers were both well-formed: report it in `absent`, which says "fetch this and
+// the closure completes" about a locator that is already occupied and cannot be repaired by any
+// fetch; or fold it into `source_occupied`, which reports a manifest as a file. Both are answers of
+// the right type and the wrong meaning. So this asserts the manifest population names it AND the
+// other two are empty, which is what makes it a discrimination rather than a non-emptiness check.
+test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
+  let fx = closure_over_a_manifest_locator()
+  fx.ok
+    && match admit_well_kinded_closure(
+      closure: CommitClosure { store: fx.store, root: fx.root }
+    ) {
+      WellKinded { admitted: _ } => false
+      NotWellKinded { source_occupied: sources, manifest_occupied: manifests } =>
+        (list_length(items: manifests) == 1)
+          && names_exactly(missing: manifests, expected: fx.child)
+          && (list_length(items: sources) == 0)
+    }
+    && (list_length(
+      items: unresolved_identities(closure: CommitClosure { store: fx.store, root: fx.root })
+    ) == 0)
+}
+
+// PARITY. The ordinary and partial admission routes derive the SAME population.
+//
+// This is the claim with no observable symptom until it is wrong. Both routes mint a
+// WellKindedClosure, and until this cut the partial one built the carrier straight from its stored
+// closure while the ordinary one ran the census -- so narrowing one and not the other would have
+// left partial documents silently carrying the whole repository, with every other claim in this file
+// still green. Mutating either route back to the raw store takes this red.
+test fn both_admission_routes_derive_the_same_population() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  let closure = CommitClosure { store: grafted, root: full.root }
+  match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match admit_well_kinded_closure(closure: closure) {
+        NotWellKinded { source_occupied: _, manifest_occupied: _ } => false
+        WellKinded { admitted: ordinary } =>
+          match well_kinded_nodes(admitted: admitted_well_kinded(admitted: a)) {
+            partial_nodes =>
+              (list_length(items: partial_nodes)
+                == list_length(items: well_kinded_nodes(admitted: ordinary)))
+                && (list_length(items: partial_nodes) == 1)
+                && nodes_hold(
+                  nodes: partial_nodes,
+                  identity: node_target_locator(target: full.root),
+                )
+          }
+      }
   }
 }
