@@ -107,6 +107,33 @@ type WorkflowTrigger
   | WorkflowRunCompleted { workflows: List<String>, branches: List<String> }
   | MergeGroup
 
+// THE CONSTRUCTOR TEST LIVES BESIDE THE COPRODUCT, because "does this trigger list admit a
+// merge_group composition" is a fact about `WorkflowTrigger` and not about whoever is asking. It
+// was authored in `gunbc.merge_queue_admission`, where it was a second site that knew this type's
+// storage shape; the house form for exactly this question is `extdeps.github.checks`
+// `check_conclusion_is_success`, and this follows it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE AND THE WILDCARD IS THE DEFECT IT REPLACES. The original read
+// `MergeGroup => true _ => false`, so a new trigger constructor would have answered `false`
+// silently -- a fabricated default in the position DESIGN section 5 reserves for a refusal. Written
+// out, adding a constructor to this type fails to compile here until someone decides what it means,
+// which is the point of a closed vocabulary.
+fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
+  match trigger {
+    MergeGroup => true
+    Push { branches: _, paths: _ } => false
+    PullRequest { branches: _, types: _ } => false
+    Schedule { cron: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunCompleted { workflows: _, branches: _ } => false
+  }
+}
+
+fn workflow_triggers_admit_merge_group(triggers: List<WorkflowTrigger>) -> Bool {
+  any(triggers, t => workflow_trigger_is_merge_group(trigger: t))
+}
+
 type PullRequestActivity
   = Opened
   | Synchronize
