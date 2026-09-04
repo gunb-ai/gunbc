@@ -13,7 +13,9 @@ import v2.std.text { String }
 // Test-only structural RED-control specimen (wise-ram-22): executable mint path lives under
 // test/claim/self_host/, not v2.lens.*.
 //
-// THE SKELETON FOR THIS BODY IS NOT EMPTY and this annotation said it was. Executed at gunbc#10282,
+// THE SKELETON FOR THIS BODY IS NOT EMPTY ANY MORE. This annotation said it was empty, and that was
+// true until gunbc#10282 reshaped the marshal -- so what changed is the fact, not the reading of it.
+// Executed at gunbc#10282,
 // the origin probe discovers a row for this declaration on the SourceProduced axis, so the mint
 // callee inside the match/let IS read. What is still missing is the ORIGIN: the row classifies
 // UnknownOrigin because direct_rust_door_inferred_tree is read at declaration-root-plus-immediate-

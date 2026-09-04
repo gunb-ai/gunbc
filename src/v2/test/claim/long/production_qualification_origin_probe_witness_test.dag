@@ -27,9 +27,12 @@ import v2.std.text { String }
 // incidental.
 //
 // THE FOUR ADMITTED-RED ROWS DO NOT SHARE A BLOCKER, and this file used to say they did -- "the
-// blocker those rows wait on is unchanged and is the G2 marshal". That sentence was decided false by
-// execution over this declared subject at gunbc#10282: the mint-callee read reaches into block
-// bodies, the population is non-empty, and a marshal repair greens none of these rows. Each note
+// blocker those rows wait on is unchanged and is the G2 marshal". Executed over this declared
+// subject at gunbc#10282, the mint-callee read reaches into block bodies and the population is
+// non-empty, so no row here is still waiting on that marshal. For one of the four that is a cause
+// that MOVED rather than one that was never there: the marshal really did hide its mint callee, and
+// gunbc#10282 really did repair that, leaving a different mechanism holding the row red. For the
+// other three the marshal was never the operative cause. Each note
 // below now carries the cause its own row actually waits on, and they are three different ones --
 // marker-read depth, inter-declaration call reachability, and the declared subject itself. The
 // distinction is load-bearing rather than tidy: an admitted RED retires by ITS trigger, so a row
@@ -64,7 +67,7 @@ test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -
   ) > 0
 }
 
-data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED whose declared cause is FALSIFIED. The skeleton for structural_red_control_mint_site_probe is not empty: executed over this subject at gunbc#10282 (ce937d0c4d), the probe discovers a row carrying that declaration qualified name on the SourceProduced axis, so the mint callee inside the match/let body IS read. This row is red on ORIGIN alone — the discovered row is UnknownOrigin because the fixture marker is read at declaration-root-plus-immediate-children depth. Greens when the marker read reaches declaration subtrees, without any change to the callee path and without a taught qualified-name pin."
+data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED whose cause MOVED — it was the marshal, gunbc#10282 repaired that, and what remains is a different mechanism. The superseded sentence was: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call). That was true when written. Executed over this subject at ce937d0c4d it is no longer: the probe discovers a row carrying that declaration qualified name on the SourceProduced axis, so the mint callee inside the match/let body IS read and the marshal repair is real. This row is now red on ORIGIN alone — the discovered row is UnknownOrigin because the fixture marker is read at declaration-root-plus-immediate-children depth. Greens when the marker read reaches declaration subtrees, without any further change to the callee path and without a taught qualified-name pin."
 
 test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
   structural_red_control_live_fixture_mint_site_discovered(
