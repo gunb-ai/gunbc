@@ -840,10 +840,22 @@ fn floor_cost_crossing_check() -> ProcessExit {
 // of attempts on ONE commit is a strictly better control than any pair of runs: across two runs the
 // confounder is held constant, while across two attempts of one commit it DOES NOT EXIST.
 //
-// THE HEAD IS SUPPLIED BY ACQUISITION AND IS NOT IN THE ARTIFACT. The cost artifact carries no head
-// SHA, so the head each attempt executed is declared here beside the run and checked by
-// `same_head_eval_step_violations` before any row is read -- which is what stops this sample being
-// quietly widened into a cross-tree comparison by a later append.
+// THE HEAD IS AN AUTHORED CLAIM TODAY, AND THIS IS VALIDATION RATHER THAN CONSTRUCTION. The cost
+// artifact carries no head SHA, so the head each attempt executed is DECLARED here and checked by
+// `same_head_eval_step_violations` before any row is read. State the guarantee at its real strength:
+// the guard compares two values THE AUTHOR SUPPLIED, so it catches a roster whose heads disagree and
+// it does NOT catch a roster that declares one head over artifacts drawn from two different trees.
+// DESIGN section 5's tell applies exactly -- the check can be satisfied by editing the DECLARATION
+// while the bytes still lie.
+//
+// THE CONSTRUCTION IS AVAILABLE AND THE TRIGGER NAMES IT, so this does not stall silently. The
+// artifacts endpoint that already serves `artifact_id` also serves `workflow_run.head_sha` in the
+// SAME response, and that field is byte-identical across two attempts of one run -- which is exactly
+// and only the fact this guard needs. Grounding it requires an artifacts operation on the modeled
+// upstream: `extdeps.github.actions_runs` models `WorkflowRunRecord` and the run-conclusion
+// vocabulary but carries NO artifacts listing and no `head_sha` field, so the trigger is that
+// operation existing and `FloorAttemptRef.head` resolving THROUGH it instead of from this literal.
+// Until then the field is an authored claim and must not be cited as proof the pair is one tree.
 //
 // THE ARTIFACT ID IS CARRIED BECAUSE IT IS THE ONLY THING THAT ADDRESSES AN ATTEMPT. GitHub serves
 // no per-attempt artifacts endpoint: a re-run's upload lands as a SECOND artifact under the SAME
