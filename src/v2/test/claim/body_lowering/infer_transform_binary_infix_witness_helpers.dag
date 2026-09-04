@@ -6,13 +6,14 @@ import v2.compiler.infer {
   inferred_facts_witness_for_node
 }
 import v2.compiler.resolve { resolve }
+import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.extdeps.languages.dag {
   dag_int_literal_fixture_one,
   dag_int_literal_fixture_two,
   dag_language_model
 }
 import v2.std.compilers.body_lowering { lower_binary_infix }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -51,10 +52,14 @@ fn infer_transform_witness_resolved_add_arrow() -> Optional<Node> {
   match wave1_gate1_normalized_add_module() {
     Absent => Absent
     Present { value: tree } =>
-      match resolve(tree: tree, lm: dag_language_model()) {
-        Accepted { value: resolved, diagnostics: _ } =>
-          wave1_gate1_find_arrow_in_module(root: resolved)
+      match admit_normalized_tree(root: tree, diagnostics: None) {
         Rejected { diagnostics: _ } => Absent
+        Accepted { value: normalized, diagnostics: _ } =>
+          match resolve(tree: normalized, lm: dag_language_model()) {
+            Accepted { value: resolved, diagnostics: _ } =>
+              wave1_gate1_find_arrow_in_module(root: resolved)
+            Rejected { diagnostics: _ } => Absent
+          }
       }
   }
 }
