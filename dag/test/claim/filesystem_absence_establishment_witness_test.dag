@@ -313,33 +313,50 @@ test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
 }
 
 // AND THE ARM ABOVE PROVES ONLY THE VARIANT, WHICH IS NOT THE THING CONSUMERS USE. `observation_arm`
-// reduces the value to a tag, so a second edge that swapped the two fields and replaced the cause
-// would leave it GREEN -- and every production consumer then tells the operator to repair the wrong
-// argument, which is precisely the subject substitution this module exists to prevent. The payload
-// relation is therefore checked ACROSS the edge: one refusal derived once, its fields read at the
-// entry fold and at the file fold, and required to be equal. The cause is compared to the entry
-// fold's own cause rather than to copied prose, so this cell does not restate the diagnostic text
-// and does not go red when that text is reworded.
-test fn the_payload_survives_the_second_edge_and_is_not_permuted() -> Bool {
+// reduces the value to a tag, so an edge that swapped the two fields and replaced the cause would
+// leave it GREEN -- and every production consumer then tells the operator to repair the wrong
+// argument, which is precisely the subject substitution this module exists to prevent.
+//
+// THE CHAIN IS CHECKED FROM THE LISTING REFUSAL, NOT FROM THE MIDDLE. An earlier cut of this cell
+// read the fields off `FilesystemEntrySubjectRefused` and compared them to
+// `FilesystemFileSubjectRefused`, which proves only the SECOND edge -- a first-edge mutation that
+// fabricated the cause stayed green, because the fabricated value became `ec` and the second edge
+// faithfully copied it into `fc`. Comparing the two derived values to each other cannot detect a
+// corruption they share. So this derives ONE listing refusal and requires the whole chain:
+//
+//   listing.directory == entry.directory == file.directory
+//   requested name    == entry.name      == file.name
+//   listing.cause     == entry.cause     == file.cause
+//
+// No diagnostic prose is duplicated: every comparison is against a value the fold itself produced,
+// so this cell does not go red when the wording of a cause is changed.
+test fn the_payload_survives_both_edges_unpermuted() -> Bool {
   let listing = observe_directory(directory: "", success: true)
-  match filesystem_entry_presence(listing: listing, name: "repo.json") {
-    FilesystemEntrySubjectRefused { directory: ed, name: en, cause: ec } =>
-      match filesystem_file_observation(
-        listing: listing,
-        name: "repo.json",
-        path: "/repo.json",
-        read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
-      ) {
-        FilesystemFileSubjectRefused { directory: fd, name: fn_, cause: fc } =>
-          fd == ed && fn_ == en && fc == ec && fd == "" && fn_ == "repo.json"
-        FilesystemFileAbsent(_) => false
-        FilesystemFileRead { path: _, content: _ } => false
-        FilesystemFileIndeterminate { cause: _ } => false
-        FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+  match listing {
+    FilesystemDirectorySubjectRefused { directory: ld, cause: lc } =>
+      match filesystem_entry_presence(listing: listing, name: "repo.json") {
+        FilesystemEntrySubjectRefused { directory: ed, name: en, cause: ec } =>
+          match filesystem_file_observation(
+            listing: listing,
+            name: "repo.json",
+            path: "/repo.json",
+            read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+          ) {
+            FilesystemFileSubjectRefused { directory: fd, name: fnm, cause: fc } =>
+              ld == ed && ed == fd && ld == ""
+                && en == "repo.json" && en == fnm
+                && lc == ec && ec == fc
+            FilesystemFileAbsent(_) => false
+            FilesystemFileRead { path: _, content: _ } => false
+            FilesystemFileIndeterminate { cause: _ } => false
+            FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+          }
+        FilesystemEntryAbsent(_) => false
+        FilesystemEntryListed { directory: _, name: _ } => false
+        FilesystemEntryPresenceIndeterminate { cause: _ } => false
       }
-    FilesystemEntryAbsent(_) => false
-    FilesystemEntryListed { directory: _, name: _ } => false
-    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemDirectoryListed(_) => false
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => false
   }
 }
 

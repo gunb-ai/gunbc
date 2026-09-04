@@ -104,13 +104,30 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 // close the class -- which is exactly why it belongs on this list rather than being discovered later
 // as a surprise.
 //
-// RESIDUE AT IDENTITY GRAIN, named rather than counted: `filesystem_entry_presence`'s `name`
-// parameter, `FilesystemEstablishedAbsence.name`, `filesystem_established_absence_path`'s
-// composition of an unadmitted component, and `filesystem_file_observation`'s `path` parameter. None
-// is blocked on anything external -- `admit_filesystem_entry_name` above already refuses the
-// spelling, and the path half is derivable from the listing exactly as the absence path is. It is a
-// replacement migration over `filesystem_entry_presence`'s and `filesystem_file_observation`'s whole
-// caller population, which is why it is its own change rather than smuggled into this one.
+// AND `filesystem_file_observation` IS TWO INDEPENDENT INGRESSES, NOT ONE. Its signature accepts a
+// raw `name: String` as well as the raw `path`, and forwards that name straight into
+// `filesystem_entry_presence`. So migrating `filesystem_entry_presence`'s parameter alone would NOT
+// remove the raw ingress: this function stays directly callable with an arbitrary name and keeps
+// feeding it through. Both strings on this one signature are open.
+//
+// RESIDUE AT IDENTITY GRAIN, named rather than counted -- five identities:
+//   1. `filesystem_entry_presence`'s `name` parameter
+//   2. `FilesystemEstablishedAbsence.name`
+//   3. `filesystem_established_absence_path`'s composition of an unadmitted component
+//   4. `filesystem_file_observation`'s `name` parameter
+//   5. `filesystem_file_observation`'s `path` parameter
+//
+// SCOPE OF THAT ROSTER, stated so it is not read as an unqualified module-wide census: it covers the
+// TWO PRODUCTION FOLDS through which consumers observe, and nothing else. The low-level helper
+// `filesystem_listing_names_entry` is deliberately NOT on it -- it is the membership predicate the
+// folds call, its migration is not required to close the ingress, and listing it would inflate the
+// population with an identity this trigger does not speak for.
+//
+// None of the five is blocked on anything external -- `admit_filesystem_entry_name` above already
+// refuses the spelling, and the path half is derivable from the listing exactly as the absence path
+// is. It is a replacement migration over `filesystem_entry_presence`'s and
+// `filesystem_file_observation`'s whole caller population, which is why it is its own change rather
+// than smuggled into this one.
 type FilesystemEntryName sole_constructor {
   name: String
 }
