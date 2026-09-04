@@ -55,6 +55,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // reason alongside class and subject name, SUFFICIENT FOR a probe to distinguish a deliberate
 // deferral from an unrecognised spelling without reading the compiler's tables.
 //
+// THIS WITNESS IS CHANGE-TRIGGERED, NOT CONTINUOUSLY EXECUTING, and the roster records the
+// measurement: its seven identities ran as planned_as_changed_witness because these files changed,
+// while the sibling it was modelled on sits in declined_outside_gate_closure on the same run. So an
+// edit to the compiler's classifier tables does not re-run this join -- it reaches the compiler
+// through a host builtin, not an import edge. Do not read a green floor as evidence this executed;
+// read required_floor_disposition.tsv.
+//
 // THE THREE UNENROLLED ROWS ARE ASSERTED AS A MONOTONE DEBT CONTRACT, NOT AS CORRECT BEHAVIOUR.
 // w_unenrolled_predicates_admit_a_violating_literal asserts that a plainly invalid literal at each
 // of the three unenrolled refined positions compiles with ZERO refusals. That is the defect, held
