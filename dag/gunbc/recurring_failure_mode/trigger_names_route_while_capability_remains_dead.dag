@@ -27,7 +27,9 @@ data trigger_names_route_while_capability_remains_dead: RecurringFailureMode = R
 
     "**RUNG: 1 (mitigatable)** — a reviewer can compare loss and trigger grain and run the trigger predicate against the unrepaired tree, which is how this specimen was caught. ",
 
-    "**CEILING: 3 (mechanically preventable)** — triggers and losses become typed references to the same capability identity, and retirement requires the capability's discriminating witness to hold at its named position; a route identity cannot inhabit a capability trigger by spelling alone. ",
+    "**CEILING: 3 (structurally guaranteed)** — triggers and losses become typed references to the same capability identity, so the compiler derives the refusal from modeled structure rather than from a gate that must stay enrolled: a route identity cannot inhabit a capability trigger by spelling alone. ",
+
+    "WHY 3 AND NOT 4, derived rather than asserted, because DESIGN 4b(1) reads a class's rung as the MINIMUM across its in-scope parts. The subject-mismatch half could reach 4 -- typed at one grain, a trigger naming a route has no constructor. The other half cannot: retirement also requires the capability's discriminating witness to HOLD at its named position, and a witness holding is executed evidence, not a constructor. So the class ceiling is the weaker of the two, and stating 4 would be the rung inflation this ladder names. ",
 
     "**NEXT-RUNG TRIGGER:** the recurring-failure carrier models loss subject and dissolution subject as typed identities at one declared grain, and the retirement fold rejects a trigger whose subject differs from the capability its row says is absent.",
   ],
