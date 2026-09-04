@@ -1,0 +1,154 @@
+module gunbc.spark.serving_engine
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { TokenCount, Percent }
+import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
+import extdeps.vllm.engine_args { VllmEngineArgs, VllmDistributedExecutorBackend, ExecutorRay, ExecutorMp, ExecutorExternalLauncher }
+import gunbc.spark.serving_release { OllamaServingLaunchProfile }
+
+// THE ENGINE AXIS. `what is served` and `how it is served` were one row, and this separates them.
+//
+// THE FUSION THIS REPLACES. `gunbc.spark.serving_desired` declared its desired state as an
+// `OllamaResolvedManifest` plus an `OllamaServingLaunchProfile`, so the ARTIFACT and the RUNTIME were
+// a single fact whose only inhabitant was Ollama. `gunbc.spark.serving_release` already recorded the
+// consequence from inside: its context field had to be renamed off `max_model_len` because that
+// spelling "would have read as authority the moment a second runtime landed". The second runtime has
+// landed, so the axis is cut here rather than by widening the Ollama profile -- which is the move
+// `extdeps.ollama.api` forbids in its own header.
+//
+// WHY THE ENUMERATION LIVES IN GUNBC AND NOT IN EXTDEPS. DESIGN section 3 lets a generic hub define
+// agnostic shapes but forbids it from enumerating concrete products or dispatching among their
+// authorities. Ollama and vLLM are independently governed upstreams with their own extdeps modules;
+// the CHOICE between them is this repository's policy, and the dispatch that selects a realization
+// is itself realization, so it sits here at the periphery and never inside either citation.
+type ServingEngine
+  = OllamaServing { profile: OllamaServingLaunchProfile }
+  | VllmServing { args: VllmEngineArgs }
+
+fn serving_engine_label(engine: ServingEngine) -> NonEmptyStr {
+  match engine {
+    OllamaServing { profile: _ } => "ollama" as NonEmptyStr
+    VllmServing { args: _ } => "vllm" as NonEmptyStr
+  }
+}
+
+// ── ONE POOL, ONE ENGINE ───────────────────────────────────────────────────────────────────────
+//
+// A UNIFIED POOL HAS NO ARBITER, WHICH IS A STRUCTURAL FACT AND NOT A TUNING PREFERENCE.
+// `gunbc.spark.cell_role` already states that two roles on one unified pool have no arbiter; this is
+// that sentence made refusable. On a discrete-VRAM host two engines contend for VRAM and the driver
+// arbitrates. On a GB10 the pool is UNIFIED: a second launcher's allocation comes out of the same
+// bytes the first engine's weights and the KERNEL are living in, so the failure is not a slow
+// neighbour but a starved host.
+//
+// MEASURED, TWICE, AND BOTH TIMES THE HOST DID NOT SURVIVE IT. A checkpoint whose weights exceed the
+// usable pool starves the host in tens of seconds and needs a physical power cycle -- there is no
+// software recovery path, which is why this is a refusal and not a warning. The second occurrence had
+// a different proximate cause and the same shape: a launcher's free-memory probe failed, fell back to
+// a STALE reading, and loaded on top of a live engine. A probe that can answer from a stale reading
+// is not an arbiter, so co-tenancy is refused by construction rather than guarded by a check.
+type SparkEngineSlotVerdict
+  = EngineSlotAvailable
+  | EngineSlotRefused { cause: SparkEngineSlotRefusal }
+
+type SparkEngineSlotRefusal
+  = UnifiedPoolAlreadyOccupied { incumbent: NonEmptyStr, applicant: NonEmptyStr }
+  | WeightsExceedUsablePool { engine: NonEmptyStr }
+
+// The host memory kind DECIDES this, so the rule is derived from the observed hardware row rather
+// than asserted per host. A discrete-memory host is genuinely out of this rule's scope; saying so
+// explicitly keeps the refusal honest instead of universal-by-accident.
+fn spark_engine_slot_admits(
+  memory_kind: MemoryKind,
+  incumbent: ServingEngine?,
+  applicant: ServingEngine,
+) -> SparkEngineSlotVerdict {
+  match memory_kind {
+    Dram => EngineSlotAvailable
+    Hbm => EngineSlotAvailable
+    UnifiedShared =>
+      match incumbent {
+        Absent => EngineSlotAvailable
+        Present { value: held } =>
+          EngineSlotRefused {
+            cause: UnifiedPoolAlreadyOccupied {
+              incumbent: serving_engine_label(engine: held),
+              applicant: serving_engine_label(engine: applicant)
+            }
+          }
+      }
+  }
+}
+
+// ── EXACTLY ONE MEMORY ENFORCER, AND ITS DEFINITION OF "USED" IS PART OF ITS IDENTITY ──────────
+//
+// TWO ENFORCERS WITH DIFFERENT DEFINITIONS OF "USED" KILL YOU WITH THE ONE YOU WERE NOT WATCHING.
+// Measured: Ray's threshold monitor counts the GPU reservation as node memory, so at a high
+// utilization the node reads near its kill line with ZERO requests in flight, and the monitor
+// SIGKILLs the largest worker -- no traceback, no Python exception, and the kernel's own oom_kill
+// counter stays at zero, which is what makes the death look unexplained. A second enforcer keyed on
+// MemAvailable sat BELOW that line and therefore could never fire first.
+//
+// THE FIELD THAT MATTERS IS `counts_device_reservation`. Two enforcers are not redundant coverage
+// when they disagree about what is being counted; they are two different questions, one of which is
+// answered by killing a process. So the enforcer is part of the realization, and more than one is a
+// refusal rather than defence in depth.
+type MemoryEnforcerKind = RayThresholdMonitor | HostMemGuard | KernelOomKiller
+
+type MemoryEnforcer {
+  kind: MemoryEnforcerKind
+  counts_device_reservation: Bool
+  swap_aware: Bool
+}
+
+type EnforcerVerdict
+  = EnforcerAdmitted { enforcer: MemoryEnforcer }
+  | EnforcerRefused { cause: EnforcerRefusal }
+
+type EnforcerRefusal
+  = NoEnforcerDeclared
+  | MoreThanOneEnforcer { count: Nat }
+  | RayMonitorLiveOnUnifiedPool
+
+// A Ray-backed executor on a unified pool brings the threshold monitor with it, and that monitor
+// counts the device reservation. It must be declared OFF, or the realization is refused -- trading
+// KV pool for headroom underneath a mis-calibrated enforcer is the arm this refuses, because it
+// spends the resource the deployment exists to provide in order to appease a counter that is
+// measuring the wrong thing.
+fn spark_memory_enforcer_admits(
+  memory_kind: MemoryKind,
+  enforcers: List<MemoryEnforcer>,
+  ray_monitor_disabled: Bool,
+  backend: VllmDistributedExecutorBackend,
+) -> EnforcerVerdict {
+  match length(enforcers) == 0 {
+    true => EnforcerRefused { cause: NoEnforcerDeclared }
+    false =>
+      match length(enforcers) > 1 {
+        true => EnforcerRefused { cause: MoreThanOneEnforcer { count: length(enforcers) } }
+        false =>
+          match ray_backed_on_unified_pool(memory_kind: memory_kind, backend: backend) && !ray_monitor_disabled {
+            true => EnforcerRefused { cause: RayMonitorLiveOnUnifiedPool }
+            false =>
+              match first(enforcers) {
+                Absent => EnforcerRefused { cause: NoEnforcerDeclared }
+                Present { value: e } => EnforcerAdmitted { enforcer: e }
+              }
+          }
+      }
+  }
+}
+
+fn ray_backed_on_unified_pool(memory_kind: MemoryKind, backend: VllmDistributedExecutorBackend) -> Bool {
+  match memory_kind {
+    Dram => false
+    Hbm => false
+    UnifiedShared =>
+      match backend {
+        ExecutorRay => true
+        ExecutorMp => false
+        ExecutorExternalLauncher => false
+      }
+  }
+}
