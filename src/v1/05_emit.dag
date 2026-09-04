@@ -32,7 +32,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -56,7 +56,7 @@ import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_r
 import v1.compiler.infer_lookup { lookup_func_sig }
 
 import v1.compiler.infer {
-  InferScope,
+  InferScope, is_where_refinement_type,
   build_params_scope, extend_scope, call_param_caller_labels
 }
 
@@ -2794,12 +2794,27 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 // `X` -- so the walk stops there rather than erasing a cast across a real representation change. A
 // GROUNDED carrier stops it too and is the terminal the comparison wants. Fuel bounds a resolution
 // edge that points back at itself, and a self-resolving name is stopped by identity before that.
+//
+// WHAT IS BORROWED AND WHAT IS NOT, because the two questions are genuinely different and a reader
+// should not have to work that out (codex review 59759). The REFINEMENT TEST is not restated here:
+// v1.compiler.infer is_where_refinement_type is the single authority for "this node stores a
+// where-refinement", including its one-child requirement -- an annotated MULTI-child Conj is not a
+// refinement, and a test that omitted that clause would read the first of several children as the
+// whole representation and could erase a real host conversion. NAME RESOLUTION is not restated
+// either: v1.compiler.infer_env lookup_type_for is the resolver, which prefers the reference's own
+// resolved ident over its spelling. What this walk adds is what asks a DIFFERENT question than
+// where_refinement_chain does. That chain answers "which predicates apply", so it stops at the
+// first node that is not itself a refinement -- for a nested refinement that is the intermediate
+// DECLARATION node, one short of any carrier -- and it has no notion of a representation boundary.
+// This walk continues through a declaration's resolved body, and it STOPS at optional cardinality,
+// at applied type parameters and at a grounded carrier, because those are the boundaries of the
+// only question being asked: is there a host operation to perform.
 fn transparent_representation_root(n: Node, env: TypeEnv, target: RenderTarget, fuel: Int) -> Node {
   if fuel <= 0 {
     n
   } else if n.return_cardinality == CardOptional {
     n
-  } else if n.connective == Conj && n.type_annotation != none {
+  } else if is_where_refinement_type(ty: n) {
     match n.children |> first {
       Present { value: base } => transparent_representation_root(n: base, env: env, target: target, fuel: fuel - 1)
       Absent => n
@@ -2818,10 +2833,8 @@ fn transparent_named_carrier_root(n: Node, env: TypeEnv, target: RenderTarget, f
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   if representation_carrier_is_grounded(decision: type_reference_realization(n: n, dag_name: name, target: target)) {
     n
-  } else if name == "" {
-    n
   } else {
-    match lookup_type_by_name(env: env, name: name) {
+    match lookup_type_for(env: env, node: n) {
       Present { value: decl } =>
         if node_occurrence_ids_equal(left: decl.occurrence_identity, right: n.occurrence_identity) {
           n

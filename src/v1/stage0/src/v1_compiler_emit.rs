@@ -55,11 +55,13 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
+pub use crate::v1_compiler_infer::{
+    build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
+};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_by_name};
+pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
@@ -5647,9 +5649,7 @@ pub fn transparent_representation_root(
             if (n.return_cardinality.clone() == Cardinality::CardOptional) {
                 break n.clone();
             } else {
-                if ((n.connective.clone() == Connective::Conj)
-                    && (n.type_annotation.clone() != std::option::Option::None))
-                {
+                if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
                     match n.children.clone().first().cloned() {
                         Some(base) => {
                             let __tco_0 = base.clone();
@@ -5710,27 +5710,23 @@ pub fn transparent_named_carrier_root(
         ) {
             n.clone()
         } else {
-            if (name.clone() == "".to_string()) {
-                n.clone()
-            } else {
-                match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
-                    Some(decl) => {
-                        if node_occurrence_ids_equal(
-                            decl.occurrence_identity.clone(),
-                            n.occurrence_identity.clone(),
-                        ) {
-                            n.clone()
-                        } else {
-                            transparent_representation_root(
-                                decl.clone(),
-                                env.clone(),
-                                target.clone(),
-                                (fuel.clone() - 1),
-                            )
-                        }
+            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+                Some(decl) => {
+                    if node_occurrence_ids_equal(
+                        decl.occurrence_identity.clone(),
+                        n.occurrence_identity.clone(),
+                    ) {
+                        n.clone()
+                    } else {
+                        transparent_representation_root(
+                            decl.clone(),
+                            env.clone(),
+                            target.clone(),
+                            (fuel.clone() - 1),
+                        )
                     }
-                    std::option::Option::None => n.clone(),
                 }
+                std::option::Option::None => n.clone(),
             }
         }
     }
