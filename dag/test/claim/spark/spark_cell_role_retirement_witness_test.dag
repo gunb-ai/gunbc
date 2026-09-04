@@ -32,7 +32,7 @@ import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   spark_serving_desired_hosts,
   spark_serving_desired_model_artifact,
-  spark_serving_desired_launch_profile,
+  spark_serving_desired_engine,
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
@@ -506,7 +506,7 @@ fn w_occurrence(host: HostIdentity) -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: host,
     release_identity: spark_serving_release_identity(spec: w_release()),
-    launch_profile: spark_serving_desired_launch_profile(),
+    engine: spark_serving_desired_engine(),
   }
 }
 

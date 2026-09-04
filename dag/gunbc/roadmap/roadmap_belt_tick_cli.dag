@@ -1,0 +1,111 @@
+module gunbc.roadmap_belt_tick_cli
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.roadmap_belt { roadmap_belt_production_spawn_mode }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
+  belt_run_once_in,
+  belt_tick_observed_at,
+  belt_tick_receipt_from_result,
+  belt_tick_execution_standing_for_instance,
+  belt_tick_receipt_write_for_instance,
+  belt_tick_result_json_value,
+}
+import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+
+// THE SCHEDULED ENTRYPOINT, and the one place the belt's two persisted artifacts are produced
+// together: the BeltTickReceipt (what the tick did) and the served observation (what the host
+// looked like when it did it). It lives outside gunbc.roadmap_belt_actuate because the observation
+// snapshot module imports the belt's observers, so the tick that also writes the snapshot must sit
+// above both — the import graph's only law is acyclicity (DESIGN 3).
+
+data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). EXIT SEMANTICS (operator P0, 2026-08-02): exit 0 when the tick COMPLETED and PERSISTED its BeltTickReceipt and its served observation — spawn failures, recorded validation refusals, and observe_refused on the spawn pass do NOT flip the exit, because those are counted outcomes in the receipt, not a failure to run or record the tick. Nonzero ONLY when the tick could not persist its receipt or its served observation (BeltPassFailed on write) or when GUNBC_BELT_SPAWN_WORKDIR is missing/empty. systemd therefore distinguishes 'tick crashed' from 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick operational receipt for journald; the persisted BeltTickReceipt is what /workflow.json's producer reads, and the persisted served observation is what the dashboard serves."
+
+// THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK; MAKING IT A LITERAL WAS THE DEFECT.
+// belt_actuate_workdir projects srv1_gunbc_repo_root, so a tick ran `git worktree add` into
+// PRODUCTION's tree whichever deployment invoked it — invisible while nothing ticked on a cadence
+// but once a deployment owns a timer the srv1-lab twin would install a unit that actuates
+// production: the failure gunbc.live_deploy.spec's deployment_service_handler_note records for the
+// serve handler, where every path-level check passes and the process operates as production.
+//
+// It enters through the environment for the same reason the node id does
+// (belt_dispatch_node_cli_note): `gunbc run --function` cannot pass an argument, there is no --arg
+// flag. So the deployment's belt unit sets GUNBC_BELT_SPAWN_WORKDIR to ITS instance's repo root and
+// each instance actuates its own tree.
+//
+// FAIL-CLOSED ON THE CHANNEL, more important here than for a node id: defaulting an absent variable
+// to belt_actuate_workdir would silently restore the exact defect for every caller that forgot it —
+// the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. Missing
+// OR empty refuses; shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into
+// one refusal.
+fn belt_run_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+      } else {
+        belt_run_once_cli_in(spawn_workdir: workdir)
+      }
+  }
+}
+
+// The served observation is taken AFTER the tick's own passes, so the surfaces it publishes reflect
+// the sessions this tick spawned or tore down rather than the state a minute before them.
+fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      exit_failure(reason: join([
+        "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
+        w,
+      ], ""))
+    DashboardInstanceResolved { instance } => {
+      let t = belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)
+      let observed_at = belt_tick_observed_at()
+      let tick_receipt = belt_tick_receipt_from_result(
+        result: t,
+        observed_at: observed_at,
+        execution: belt_tick_execution_standing_for_instance(
+          instance: instance,
+          mode: roadmap_belt_production_spawn_mode,
+        ),
+      )
+      match belt_tick_receipt_write_for_instance(instance: instance, receipt: tick_receipt) {
+        BeltPassFailed { reason: r } =>
+          exit_failure(reason: join([
+            serialize_json(v: belt_tick_result_json_value(t: t)),
+            "\n",
+            r,
+          ], ""))
+        BeltPassRecorded =>
+          belt_served_observation_exit(instance: instance, observed_at: observed_at)
+        BeltPassDeferred { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
+        BeltPassRefused { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
+      }
+    }
+  }
+}
+
+fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
+  match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at) {
+    BeltPassRecorded => ExitSuccess
+    BeltPassFailed { reason: r } => exit_failure(reason: r)
+    BeltPassDeferred { reason: r } =>
+      exit_failure(reason: join(["served observation write returned deferred: ", r], ""))
+    BeltPassRefused { reason: r } =>
+      exit_failure(reason: join(["served observation write returned refused: ", r], ""))
+  }
+}

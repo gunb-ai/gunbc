@@ -1057,23 +1057,20 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
   }
 }
 
-// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850). Whether a resolved node
-// IS the kernel identity for a queried name is one semantic fact with one authority: exact
-// equality of the node's ident_span file against the kernel span file "<kernel:NAME>" that
-// build_type_env installs for that name. Both the infer-side rewire guard
-// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision consume THIS
-// predicate; neither re-derives it. The emitter's additional condition -- that the kernel node is
-// a host-realized structureless scalar (NoConnective, zero children), which excludes structural
-// kernels like Bool = True | False whose use-line IS the path to the realization -- is a SEPARATE
-// fact composed beside this one, never folded into it. A substring or prefix test here would be a
-// second, weaker authority for the same fact: the defect this predicate exists to repair was two
-// readers giving one environment two meanings.
-fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
-  match node.ident_span {
-    Present { value: sp } => sp.file == concat("<kernel:", concat(name, ">"))
-    Absent => false
-  }
-}
+// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850), AND ITS HOME IS NOW
+// v1.std.core, BESIDE kernel_span. It was declared here and never called here, while the module
+// that mints the span it tests -- v1.std.core, which cannot import this one without closing a
+// cycle -- had to re-derive the same question inside declaration_provenance_of. So the ruling's
+// "exists once" was true of the name and false of the fact. The body that stood here inlined
+// `concat("<kernel:", name, ">")`, reproducing kernel_span's output by hand, which made it a second
+// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. Both
+// consumers this module used to supply -- the infer-side rewire guard
+// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision -- now import it from
+// v1.std.core directly, so they cite the authority's real home rather than this waypoint. The
+// emitter's additional condition -- that the kernel node is a host-realized structureless scalar
+// (NoConnective, zero children), which excludes structural kernels like Bool = True | False whose
+// use-line IS the path to the realization -- is unchanged: a SEPARATE fact composed beside this
+// one, never folded into it.
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
@@ -1087,6 +1084,28 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
           }
       }
     Absent => Absent
+  }
+}
+
+// Preserve the declaration site's answer to "is this leaf a declared type here?" in the
+// substitution basis. Synthesized constructors can mention a parent generic that is not exposed
+// as one of their own generic params; after resolution that leaf otherwise looks like a concrete
+// Primitive(T). No consumer may reconstruct this distinction through the caller environment.
+fn declaration_substitution_basis(n: Node, env: TypeEnv, generic_names: List<String>) -> Node {
+  let children = n.children |> map(ch => declaration_substitution_basis(n: ch, env: env, generic_names: generic_names))
+  let with_children = node_with_children(n: n, children: children)
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let generic_leaf = n.connective == NoConnective
+    && (n.children |> count) == 0
+    && name != ""
+    && ((generic_names |> any(g => g == name))
+      || (!contains(name, ".")
+        && !is_kernel_type(name: name)
+        && lookup_binding_by_name_local(env: env, name: name) == none))
+  if generic_leaf {
+    node_with_inferred(n: with_children, inferred: Present { value: TypeVariable { id: name } })
+  } else {
+    with_children
   }
 }
 
@@ -1306,6 +1325,30 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       unit_variant_index_observed: e.unit_variant_index_observed
     }
   )
+}
+
+// A census-backed declaration has no materialized module TypeEnv, but its exact owner and the
+// completed symbol census are declaration authority. Build the same owner-position environment
+// for every signature fact recovered from that declaration; a caller environment is not a
+// substitute for this value.
+fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
+  let base = TypeEnv {
+    module_path: module_path,
+    bindings: empty_map(),
+    str_bindings: empty_map(),
+    ancestry_str_bindings: empty_map(),
+    parents: [],
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: source_indices,
+    intern_table: empty_intern_table(),
+    source_visible_names: empty_map(), authored_import_names: empty_map(),
+    symbol_index: census,
+    unit_variant_index: empty_map(),
+    unit_variant_index_observed: false
+  }
+  env_with_type_variable_bindings(env: base, tp_names: tp_names)
 }
 
 // THE EXACT PATH, AT ANY CONSUMER (relocated from v1.compiler.emit_rust, XL-0N). A type reference

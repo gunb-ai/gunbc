@@ -40,7 +40,7 @@ import gunbc.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
-import gunbc.roadmap_page { roadmap_page_for_authority_launch, roadmap_daily_workspace_page_for_authority_observed }
+import gunbc.roadmap_page { roadmap_page_for_authority_launch }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -60,23 +60,17 @@ import gunbc.roadmap_static_site {
   roadmap_site_healthz_body_for_release,
 }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
+import gunbc.roadmap_served_observation {
+  DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
+  served_observation_surface_response_for_instance,
+  served_observation_standing_response_for_instance,
+}
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
-  BeltObserve, Observed, ObserveRefused,
-  belt_sessions_observe_for_instance,
-  belt_sessions_observed_json, belt_sessions_http_status,
-  BeltAttempts, AttemptsObserved, AttemptsRefused,
-  belt_attempts_observe, belt_attempts_observe_for_instance,
-  belt_attempts_observed_json, belt_attempts_http_status,
-  belt_workflow_attempts_observe_for_instance,
-  belt_workflow_attempts_observed_json,
-  belt_workflow_attempts_observed_json_for_instance,
-  belt_workflow_attempts_http_status,
-  BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
@@ -193,6 +187,7 @@ type RoadmapServeHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
+  | ObservationJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
 
@@ -228,6 +223,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
@@ -562,6 +558,7 @@ fn roadmap_serve_invoke_for_instance(
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
+    ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
   }
@@ -612,11 +609,7 @@ fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpRespo
 fn serve_attempts_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let a = belt_attempts_observe_for_instance(instance: instance)
-  serve_text_response(
-    status: belt_attempts_http_status(a: a),
-    content_type: application_json_utf8,
-    body: belt_attempts_observed_json(a: a))
+  served_observation_surface_response_for_instance(instance: instance, kind: AttemptsJson)
 }
 
 fn serve_attempts_response() -> ServeHttpResponse {
@@ -660,8 +653,9 @@ fn serve_attempts_response() -> ServeHttpResponse {
 // 59,522,411 B remains the witness's legitimate worst-observed STRESS SPECIMEN rather than the
 // recurrence's fixture. INCIDENT NOT CLOSED: wedge was finite/self-recovered; wedged route unproven
 // — and the two candidate routes are NOT rival cost centers, because
-// serve_daily_page_response_for_instance and serve_workflow_response_for_instance both call
-// belt_workflow_attempts_observe_for_instance (one observing authority, two projections), so they
+// serve_daily_page_response_for_instance and serve_workflow_response_for_instance both served (then) by calling
+// belt_workflow_attempts_observe_for_instance per request (one observing authority, two projections; since the
+// served-observation split, gunbc.roadmap_served_observation calls it once per belt tick instead), so they
 // share the projection cost and differ only in that the daily page adds the render;
 // interpreter-concat hypothesis live and may be primary; share of two-hour peg versus queued
 // duplicate polls unmeasured, and the share attributable to stream capture is unestablished in BOTH
@@ -679,30 +673,13 @@ fn serve_attempts_response() -> ServeHttpResponse {
 fn serve_daily_page_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let launch = belt_launch_host_standing_for_page(instance: instance)
-  let page = match belt_workflow_attempts_observe_for_instance(instance: instance) {
-    WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, launch: launch)
-    WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, launch: launch)
-  }
-  serve_page_response(page: page)
+  served_observation_surface_response_for_instance(instance: instance, kind: DailyPage)
 }
 
 fn serve_workflow_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let observed = belt_workflow_attempts_observe_for_instance(
-    instance: instance,
-  )
-  serve_text_response(
-    status: belt_workflow_attempts_http_status(observed: observed),
-    content_type: application_json_utf8,
-    body: belt_workflow_attempts_observed_json_for_instance(
-      instance: instance,
-      observed: observed,
-    ),
-  )
+  served_observation_surface_response_for_instance(instance: instance, kind: WorkflowJson)
 }
 
 fn serve_workflow_response() -> ServeHttpResponse {
@@ -718,11 +695,7 @@ fn serve_workflow_response() -> ServeHttpResponse {
 fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let o = belt_sessions_observe_for_instance(instance: instance)
-  serve_text_response(
-    status: belt_sessions_http_status(o: o),
-    content_type: application_json_utf8,
-    body: belt_sessions_observed_json(o: o))
+  served_observation_surface_response_for_instance(instance: instance, kind: SessionsJson)
 }
 
 fn serve_sessions_response() -> ServeHttpResponse {

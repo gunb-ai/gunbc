@@ -1,6 +1,7 @@
 module v2.test.claim.port_locus_classification
 
 import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   ByteRange,
   InvariantPortLocus,
@@ -12,6 +13,7 @@ import v2.std.diagnostic {
   port_refusal_locus,
   source_port_locus
 }
+import v2.std.node { Atom, Node, TypeNode }
 
 test fn port_refusal_classifies_only_from_available_evidence() -> Bool {
   let source = port_refusal_locus(
@@ -31,7 +33,11 @@ test fn port_refusal_classifies_only_from_available_evidence() -> Bool {
     invariant: ^port_locus_projection_failure
   )
   let node_seed = port_refusal_locus(
-    at: node_locus(node: Empty),
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: ^port_locus_projection_node } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }),
     port: ^port_locus_projection_port,
     invariant: ^port_locus_projection_failure
   )

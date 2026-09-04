@@ -17,7 +17,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
-  length(xs: census_closure_frontier_rows()) == 24
+  length(xs: census_closure_frontier_rows()) == 25
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
