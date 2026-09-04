@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.authority_substitution
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data authority_substitution: RecurringFailureMode = RecurringFailureMode {
+  identity: "authority_substitution" as NonEmptyStr,
+
+  receipts: [
+    "**authority substitution** (fact F lives in carrier A; operation O is governed by carrier B; A is cited as the evidence that O changed; no A→B relation is claimed by either carrier. ",
+
+    "Nothing asserted is false — the *entailment* is invented, which is why review reads past it: both halves check out and only the arrow between them is missing. ",
+
+    "It is §3's single-authority rule read in the direction authors actually violate it — not two authorities for one fact, but one authority borrowed to answer for another's. ",
+
+    "Receipt (gunbc#8865): an expecting-red probe was enrolled in `gunbc.explicit_witness_admission`, which DOCUMENTS a known red, and the PR asserted the required floor therefore held it; the floor gates on `v2.workflow.floor_expected_red` and nothing relates the two, so CI went red on a row its author had recorded as expected. ",
+
+    "The general tell is a sentence of the form *I registered it in A, so B now does X* where B is never named — and its structural fix is never a broader guard joining every A row to B, since that manufactures exactly the entailment being invented; the guard must carry the narrow predicate, with its exceptions declared.)",
+  ],
+
+  evidence: [],
+}

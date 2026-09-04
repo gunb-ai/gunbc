@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.liveness_probe_read_as_currency
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data liveness_probe_read_as_currency: RecurringFailureMode = RecurringFailureMode {
+  identity: "liveness_probe_read_as_currency" as NonEmptyStr,
+
+  receipts: [
+    "**a liveness probe read as currency** (a probe answers whether a thing is RUNNING and its answer is consumed as whether it is running the CURRENT definition. ",
+
+    "The two questions differ only for a process that outlived the definition it was started from, which is the one state a converge is supposed to repair, so the conflation is invisible on every host that has never drifted and load-bearing on exactly the hosts that have. ",
+
+    "Its neighbour is `state_space_conflation`, and what separates it is that NOTHING HERE IS OVERLOADED: each probe answers its own subject correctly and the loss happens in the JOIN, where a reader picks the observation nearest the question instead of the one that answers it. ",
+
+    "SPECIMEN, 2026-09-02, gunbc.spark.serving_membership: serving convergence carries an activity member observed through `systemctl --user is-active`, whose four states are running, stopped, no-such-unit and unobserved, and a registration member whose digest is the unit content ON DISK. ",
+
+    "A host whose unit file was rewritten and whose manager was reloaded converges at BOTH addresses -- the disk holds the desired bytes, the manager has consumed them, the unit is active -- while the process still serves the definition it was started from. ",
+
+    "No member disagrees, so no remedy is planned, and the drift is reported as convergence. ",
+
+    "THE HARM IS NOT THE STALE PROCESS, IT IS THAT NOTHING CAN EVER SELECT ITS REMEDY: a restart has no observation to be conditioned on, which is why gunbc.spark.serving_realization carried its only restart as an unconditional third command welded into EnableSystemUnit, restarting every host on every converge because it could not tell which host needed it. ",
+
+    "RUNG FOUND AT: silent wrongness, which is not a rung -- a stale server and a converged one produced the same verdict with no diagnostic. ",
+
+    "THE STATE PREDATES THE CHANGE THAT FILED THIS ROW, stated because an honest declaration of a pre-existing gap is indistinguishable, to a reader scanning a diff for regressions, from a confession of a new one -- and it has now been read that way twice. ",
+
+    "The convergence path acquired this class when activity was modeled on `systemctl --user is-active` in gunbc.spark.serving_observed_members, whose four states name whether a unit runs and never which definition it runs. ",
+
+    "The PR that split the fused restart neither introduced this state nor closed it; it named it. ",
+
+    "IT IS STILL THERE ON THE CONVERGENCE PATH, and an earlier revision of this row said MITIGATABLE, which was rung inflation caught in review: `spark_serving_reactivation_remedy` refuses with a typed located cause, but it has NO PRODUCTION CALLER, so nothing routes a convergence through it and the operational path still reports convergence without the refusal. ",
+
+    "A rung is the minimum across a class's in-scope paths, and a selector nothing calls moves none of them. ",
+
+    "WHAT THIS CHANGE DID ESTABLISH is the vocabulary and a selector whose refusal is executed against FIXTURE inputs -- a declared boundary, not a rung, and named as one so it cannot be cited as coverage. ",
+
+    "THE ABSENCE OF THE CALLER IS A DECISION, NOT AN OMISSION: a production caller is a path that can emit a restart, and until an admission fence, a drain protocol and a lease population exist, a restart emitted on a live host is the destructive convergence the gate exists to prevent -- so wiring it early would trade an honest gap for an unguarded one. ",
+
+    "CEILING: structurally guaranteed. ",
+
+    "The question is decidable -- a running invocation either carries the definition identity it was started from or does not -- so this is DESIGN section 5's wall AFTER GROUNDING, waiting on its single authority rather than on a decidability argument. ",
+
+    "NEXT-RUNG TRIGGER, AND IT IS TWO THINGS RATHER THAN ONE, because either alone leaves the class exactly where it is: (i) an observation that joins a unit's RUNNING INVOCATION to the definition it was started from, sufficient to mint `RunningDefinitionObserved` for a live Spark -- nothing smaller counts, since a probe that reads the file, the manager's loaded definition, or liveness answers a different subject and would leave the capability dead while looking like its trigger; AND (ii) a guarded producer that routes `ReactivationUndecidable` into the convergence verdict, so a host whose running definition cannot be established stops instead of reporting converged. ",
+
+    "Naming only (i) would be the grain mismatch section 4b(3) warns about: the trigger would be satisfied by a probe landing while the convergence path stayed silent, which is the whole defect. ",
+
+    "THE OBSERVED-VERSUS-DESIRED DRIFT ON BOTH SPARKS IS A CANDIDATE CONSEQUENCE OF THIS CLASS AND NOT A FINDING: nobody has read a host back, and candidate is the correct word until someone does. ",
+
+    "RECOGNITION RULE: when a converge concludes from an observation, ask what the observation would say about a subject that is CORRECT BUT STALE -- if the probe answers the same for a current and an outdated instance, it is a liveness reading standing where a currency reading was needed. ",
+
+    "The tell is a remedy with no condition: an operation that is issued every time, or never, because no observation can distinguish the state it repairs.)",
+  ],
+
+  evidence: [],
+}
