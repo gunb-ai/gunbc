@@ -1107,6 +1107,32 @@ pub struct TransitionAdmission {
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
 /// exact head is the proof, and it is the thing to trust.
 ///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10350). All 30 `gunbc#10355` proposal-vocabulary rows
+/// are deleted, and SCM_PROPOSAL_VOCABULARY_LABEL with them. #10355 is in this branch's base, so
+/// every row reports CONSUMED rather than stale, and the wall refused this change with
+/// `30 CONSUMED ADMISSION(S) DUE FOR DELETION ON THIS ROSTER-TOUCH` -- the roster-touch obligation
+/// the entry below predicted for itself, coming due on the first change to touch this file.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the entry below
+/// says in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
+/// against MAIN's tree by its own (module, in_declaration, spelling, target) tuple: 30 of 30 name a
+/// spelling DECLARED in `gunbc.scm.proposal`, none open. ROWS CHECKED EQUALS ROWS IN LABEL EQUALS
+/// THE COUNT THE WALL REPORTED -- 30 = 30 = 30 -- so the subject was not silently narrowed.
+///
+/// THE JOIN WAS BUILT TO SURVIVE THIS FILE'S OWN TWO RECORDED FAILURE MODES, and one of them fired.
+/// `RequireBinding` and `RequireBindingAbsent` are COPRODUCT VARIANTS, not `data`/`fn`/`type`
+/// declarations, so an index reading only line-start declarations would have answered "not found"
+/// for both -- in a shape indistinguishable from "not declared", which is exactly the defect the
+/// TWENTY-NINTH DISSOLUTION records catching on its second pass. The join resolves variants and
+/// fields as well as declarations. It was also calibrated rather than trusted: `MergeCommit`,
+/// `ObjectStore` and a fabricated name all answer NOT DECLARED against the same module, so a
+/// uniform "found" was not available to it.
+///
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
+/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
+/// exact head is the proof.
+///
 /// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
 /// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
 /// supersession -- what the module does -- and two-commit merging, which it does not do and which
@@ -1135,20 +1161,47 @@ pub struct TransitionAdmission {
 /// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
 /// are recorded there, and confirmable only by the wall itself.
 ///
-/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
-/// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
-/// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
-/// `v2.std.fn_index`, where `callees_from_node` already needed it to exclude a declaration's own
-/// parameter names from its callee set. Two `TargetChanged` deltas follow, one per consuming lens,
-/// and they are enumerated below by identity rather than admitted by a spelling wildcard, because a
-/// wildcard would also admit a THIRD consumer nobody reviewed.
+/// TWENTY-THIRD TRANSITION (2026-09-04, gunbc#10350): the kernel-identity predicate's relocation.
 ///
-/// ITS CONSUMPTION IS DECIDABLE ON THE ORDINARY RULE: once this merges, the base binds the spelling
-/// to `v2.std.fn_index` in both modules, the deltas stop being producible, and these two rows are
-/// owed deletion by the next roster-touching change.
+/// `resolved_node_is_kernel_identity_for_name` moved from `v1.compiler.infer_env` -- where it was
+/// declared, never called, and sat ABOVE the module whose `kernel_span` mints the span it tests --
+/// down into `v1.std.core` beside that minter. Its two callers therefore bind the same spelling to
+/// a different declaring module, which is a `TargetChanged` binding delta by construction and
+/// exactly the motion this wall exists to make visible rather than silent.
 ///
-/// THE ORDINAL IS THE NEXT UNUSED ONE. TWENTIETH is the highest transition in use on main, so this
-/// is TWENTY-FIRST.
+/// THE MOTION IS THE POINT OF THE CHANGE, NOT A SIDE EFFECT OF IT, which is what makes these rows
+/// admissions rather than an excuse. The old site re-derived kernel identity by inlining
+/// `concat("<kernel:", name, ">")` -- a SECOND authority for the span FORMAT that `kernel_span`
+/// already owns -- so the relocation is a §3 single-authority consolidation whose entire content is
+/// that these two bindings now resolve to the minter's module.
+///
+/// THE ORDINAL IS TWENTY-THIRD, AND IT WAS TWENTY-SEVENTH ON THIS BRANCH'S PREVIOUS HEAD. That
+/// number was chosen against a base carrying the 255 `gunbc#10358` rows and their entries, which
+/// #10355 has since dissolved. Renumbering against the base that actually exists is what the
+/// TWENTY-SECOND TRANSITION prescribes one paragraph above, for the reason it gives there: an entry
+/// must stay citable by a name that means one thing.
+///
+/// THIS ENTRY WAS RE-APPLIED ACROSS THAT MERGE RATHER THAN CARRIED, and the entry above is why the
+/// distinction is written down: it records its own predecessor being LOST when a conflict was
+/// resolved by taking main's file whole. Main's file was taken whole here too -- the conflicting
+/// hunk was a misaligned array head, and hand-editing the markers would have spliced this cohort's
+/// rows onto the SCM cohort's body -- so the delta was re-derived against the merge base at ROW
+/// IDENTITY grain and re-applied: two rows added, none removed, against main's 254 removals and 29
+/// additions. The merged array is main's rows plus these two, and no row of either side is dark.
+///
+/// TRIGGER, AND IT IS THE ROWS' OWN DEATH: these two rows go when gunbc#10350 merges. Once the
+/// relocation is on main, merge commit and base both carry it, no run can produce these deltas, and
+/// both report CONSUMED rather than stale -- the state the TWENTY-SECOND TRANSITION corrects an
+/// earlier draft of itself on, coming due on this roster's own next touch and not on unrelated
+/// pull requests. Deleting them is the fix and not housekeeping. Adjudicate the deletion by the
+/// declaring-module join that entry describes, joining each row against main's tree by its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
+/// trigger sentence is not evidence that the trigger fired -- and because that join's own two
+/// recorded failure modes, an unseen row and an unseen coproduct variant, both answer "not found"
+/// in a shape indistinguishable from "not declared".
+const KERNEL_IDENTITY_RELOCATION_LABEL: &str =
+    "kernel-identity predicate relocation gunbc#10350 2026-09-04";
+
 /// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
 /// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
 /// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
@@ -1178,6 +1231,26 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "carriers_from_reachable_decls",
             spelling: "param_names_of",
             target: "v2.std.fn_index",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer",
+            in_declaration: "ancestry_binding_is_kernel_identity",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: KERNEL_IDENTITY_RELOCATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "import_name_resolves_to_host_realized_kernel_scalar",
+            spelling: "resolved_node_is_kernel_identity_for_name",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
