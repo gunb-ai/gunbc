@@ -800,6 +800,11 @@ data gunbc_ci_heal_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main_wet",
 }
 
+data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "main",
+}
+
 data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/repo/repo_local_git_config.dag",
   function: "converge",
@@ -837,7 +842,7 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 22 declarations, 22 entries. That equality is the thing nothing checks.
+// Counted at authoring: 25 declarations, 25 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
@@ -862,6 +867,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
+    gunbc_ci_heal_verify_target,
     gunbc_ci_heal_repo_local_git_config_target,
     gunbc_ci_heal_dispatch_target
   ]
@@ -1522,10 +1528,20 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-// THE HEAL REGEN INVOKE: `gunbc run` on the generated-artifact drift gate's `main_wet`, which
-// writes each `committed_generated_artifacts()` projection to its path -- a fail-closed fold, so a
-// write error stops the line and never leaves a partial commit. It runs on the same
-// `witness_layer_roots` and released `gunbc` binary the deploy job consumes. Idempotent by
+// THE HEAL REGEN INVOKE IS TWO CALLS BECAUSE WORKFLOW AND CORPUS HAVE DIFFERENT REVISION
+// AUTHORITIES. GitHub takes this workflow from the pull request's merge ref, while heal deliberately
+// checks out, builds, mutates, and pushes the branch head. Therefore a function added with a newer
+// workflow cannot be required to exist in an older head corpus: doing that with
+// `main_wet_verified` made every open pull request predating that declaration fail
+// `NoSuchFunction` before heal could inspect an artifact.
+//
+// The merge-ref workflow instead composes two entry points that predate this compatibility
+// boundary. `main_wet` writes each `committed_generated_artifacts()` projection to its path -- a
+// fail-closed fold, so a write error stops the line and never leaves a partial commit. Only if that
+// succeeds, `main` independently observes the written bytes, generates every expected body again,
+// and refuses typed and located before commit if any byte is not the generator's fixed point. Both
+// invocations run against the branch-head `witness_layer_roots` with the branch-head-built `gunbc`,
+// preserving the binary/corpus identity whose earlier violation is recorded below. Idempotent by
 // construction: on a tree already at the fixed point the writes are byte-identical, the downstream
 // commit-push step sees no git diff and pushes nothing, and the loop terminates in one heal.
 //
@@ -1562,13 +1578,29 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 // population the heal touches is the population the phase adjudicates. And the loop has no runner
 // today regardless -- the heal job went with `ci.yml` at the same cut, so `.github/workflows`
 // carries fleet-converge, fleet-desired and witnesses, and none of them heals.
+// `gunbc_run_step_script` returns a whole-step body with no trailing newline. The separator below
+// is therefore part of this composition: without it the second ROOT assignment is appended to the
+// first invocation's function word, so the authority drifts from the two-command workflow and the
+// generated command itself is not executable.
 fn gunbc_ci_heal_regen_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_regen_target.entry,
-    function: gunbc_ci_heal_regen_target.function,
-    claim_run: false,
-    receipt_rel: none
+  concat(
+    concat(
+      gunbc_run_step_script(
+        source_roots: witness_layer_roots,
+        entry: gunbc_ci_heal_regen_target.entry,
+        function: gunbc_ci_heal_regen_target.function,
+        claim_run: false,
+        receipt_rel: none
+      ),
+      "\n"
+    ),
+    gunbc_run_step_script(
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_heal_verify_target.entry,
+      function: gunbc_ci_heal_verify_target.function,
+      claim_run: false,
+      receipt_rel: none
+    )
   )
 }
 

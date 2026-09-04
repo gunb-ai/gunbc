@@ -528,6 +528,8 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main
       - name: Converge repository-local git config
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -616,6 +618,7 @@ jobs:
           path: heal-author-commit-required
           if-no-files-found: error
           retention-days: 14
+          include-hidden-files: true
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   witnesses:
     runs-on: [self-hosted, linux, arm64]

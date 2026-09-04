@@ -885,82 +885,313 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
-/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
-/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
-/// because the type module cannot import the rows back without a cycle. Two bindings in
-/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
-/// one of the auto-admitted dispositions.
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
+/// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
+/// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
+/// the declaration tail and the roster tail, so row lanes conflicted with each other by
+/// construction. The direction is forced by acyclicity rather than chosen -- a row module imports
+/// `GuaranteeStall` from the type module, so the type module cannot import the rows back -- which
+/// is why the enumeration leaves for `gunbc.guarantee_stall.roster` and each row for
+/// `gunbc.guarantee_stall.<row>`.
 ///
-/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
-/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
-/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
-/// second route around the adjudicator, and there is none: the whole point of the row is to make
-/// the transition adjudicated rather than silent.
+/// TEN DELTAS, TEN ROWS, ENUMERATED BY IDENTITY AND NOT MATCHED BY PATTERN, on the rule the
+/// eighteenth transition states: a wildcard over "anything that moved under
+/// gunbc.guarantee_stall" would also admit the next relocation nobody reviewed. All ten are
+/// bindings in ONE consumer, `test.claim.guarantee_stall_witness_test`, and they split two ways --
+/// six whose spelling now resolves to the roster module (`all_guarantee_stalls`,
+/// `restored_stalls`, `every_restored_stall_is_rostered_once`), four whose spelling now resolves to
+/// one row module (`next_rung_trigger_enforcement_stall`). The three folds that take a
+/// `List<GuaranteeStall>` PARAMETER did not move and produce no delta, which is the check on the
+/// claim: had they moved too, this ledger would be showing thirteen.
 ///
-/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
-/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
-/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
-/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
-/// forget; the required run reports them as consumed admissions due for deletion on that change.
+/// THE MEMBERSHIP ADDITIONS ARE NOT HERE AND THAT IS NOT AN OMISSION. The witness reaching the two
+/// new modules classified `ExplicitlyEvaluatedZeroDelta` and auto-admits; only `TargetChanged`
+/// refuses. A row for an auto-admitted disposition would be a decoration that later reports stale.
 ///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY -- no branch, no dispatch,
+/// no code path; the mechanism that reads them is unchanged. What would be a scaffold is a second
+/// route around the adjudicator, and there is none.
+///
+/// DISSOLVE-ON is gunbc#10328 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, base and head both have it and NO RUN CAN PRODUCE THESE
+/// TEN DELTAS. They will report CONSUMED rather than stale, born consumed like the #10206, SJT-1
+/// and DCH-1 cohorts, because a row authored in the same PR that performs its own move is satisfied
+/// at the BASE of every later run. Their deletion is charged to WHOEVER NEXT TOUCHES THIS ROSTER,
+/// which is this module's standing convention and not a follow-up PR anyone could forget.
+///
+/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
+///
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
+///
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
+///
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
+///
+/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
+/// `physical_asset_identity_eq` was authored privately inside
+/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
+/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
+/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
+/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
+/// a specific product's helper to obtain an equality would invert the layering. The spelling is
+/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
+/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
+/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
+/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
+/// deletion by the next roster-touching change.
+///
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04), PAID ON THE RULE THE TWENTY-THIRD JUST WROTE DOWN. The
+/// one `gunbc#10218 identity-equality re-home` row is deleted, and its consumption was READ FROM
+/// THE BASE rather than waited on: main declares `physical_asset_identity_eq` in
+/// `product.placement_supply` (dag/gunbc/product/placement_supply.dag) and
+/// `product.printed_chassis.manufacturing_manifest` imports it from there by name, so the base
+/// already binds that spelling to that target and the delta is not producible. That is exactly the
+/// check the entry above says costs a required run whenever it is guessed instead.
+///
+/// THE SIX ROWS THIS BRANCH ALSO DELETED ARE NOT RECORDED TWICE. An earlier head of this branch
+/// removed the four `gunbc#10028` and two `gunbc#10206` rows and wrote its own dissolution entry
+/// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
+/// event, one record: my entry is dropped in favour of main's, because a second narration of the
+/// same deletion is the double-record this ledger already refuses once above.
+/// TWENTY-FIFTH DISSOLUTION (2026-09-04), PAID ON THE SAME RULE AND READ THE SAME WAY. The
+/// `gunbc#10328 guarantee_stall split` rows arriving with this merge are CONSUMED: main's
+/// `dag/test/claim/guarantee_stall_witness_test.dag` imports `all_guarantee_stalls` from
+/// `gunbc.guarantee_stall.roster` by name, so the base already binds that spelling to that target
+/// and no run can produce those deltas. Deleted here rather than carried, because carrying them
+/// costs a required run to rediscover -- the history the rule above is written from, and which this
+/// branch paid once already by unioning an earlier merge instead of reading the tree.
+/// TWENTIETH TRANSITION (2026-09-04, gunbc#10254). Authored as SEVENTEENTH against a base whose
+/// highest ordinal was SIXTEENTH; main landed SEVENTEENTH, EIGHTEENTH and NINETEENTH while this
+/// branch was open, so the merge renumbers rather than minting a fourth duplicate -- the ordinal
+/// exists to make an entry citable by its own name. The DGX Spark first-boot wizard's INTERFACE
+/// vocabulary -- screen routes, headings, controls, advance gates, validation rules and the
+/// client's username admission -- moved from `gunbc.spark.oobe_screen_observation` to
+/// `extdeps.systems.nvidia_dgx_spark_setup`, which already owned the `OobeSetupField` roster for
+/// that same wizard. DESIGN §3 external upstream decomposition: what NVIDIA's product PRESENTS is
+/// NVIDIA's authority, and what this repository MEASURED stays a receipt in the observing layer.
+///
+/// EVERY ROW IS A PURE RELOCATION. No declaration below changes what it denotes; the observing
+/// module and its witness now bind the same spellings through the vendor authority, so the wall
+/// reports `TargetChanged` at each binding site. A binding whose MEANING had moved would refuse on
+/// its own row rather than be covered here, and the rows are enumerated by exact identity rather
+/// than matched by the module pair, because a pattern would admit a genuine rebind that happened to
+/// land in the same two modules.
+///
+/// TRIGGER: these rows go when #10254 merges. Once the consolidation is on main, merge commit and
+/// base both carry it, no run can produce these deltas, and all of them report stale -- which
+/// refuses every unrelated PR, the shape recorded for the 53 and the 314 above. The shrink is the
+/// fix, not housekeeping.
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04, gunbc#10197), PAID ON THE SAME RULE, READ THE SAME WAY,
+/// AND AT FULL IDENTITY GRAIN RATHER THAN ON THE TRIGGER SENTENCE. All 142
+/// `spark OOBE vendor-interface consolidation gunbc#10254` rows are deleted, and the
+/// SPARK_OOBE_VENDOR_INTERFACE_LABEL that named them goes with them, because a label with no rows
+/// is a second name for an empty set.
+///
+/// The entry directly above states the trigger -- "these rows go when #10254 merges" -- and #10254
+/// merged as deb3c86b96e, which is this branch's merge base. That sentence is NOT what authorized
+/// the deletion. Each of the 142 rows was joined against main's tree by its own (module, spelling,
+/// target) triple: for every row, the named module's source at deb3c86b96e already imports that
+/// spelling from `extdeps.systems.nvidia_dgx_spark_setup` -- 14 rows in
+/// gunbc.spark.oobe_screen_observation and 128 in
+/// test.claim.spark.spark_oobe_screen_observation_witness, zero rows unbound. Base and head
+/// therefore agree on all 142, no run can produce those deltas, and a surviving row could only be
+/// stale.
+///
+/// THE FIRST RUN OF THAT JOIN REPORTED 128 UNBOUND AND WAS WRONG, and it is recorded because the
+/// failure is silent by construction. The witness module's path was guessed from its module path as
+/// `.../spark_oobe_screen_observation_witness.dag`; the real file is
+/// `..._witness_test.dag`. Reading a path that does not exist returns empty, and empty reads exactly
+/// like "the import is absent" -- the answer that would have had me CARRY 128 consumed rows.
+/// The repair is that a source read asserts the file is non-empty before its absence is allowed to
+/// mean anything.
+///
+/// MY OWN TWENTY-FOURTH ENTRY IS DROPPED IN FAVOUR OF MAIN'S. Both sides deleted the one
+/// `gunbc#10218` row, independently and on the same base check, so the deletion is taken once and
+/// narrated once -- the rule main's TWENTY-FOURTH states for the six rows before it, applied to the
+/// entry that would otherwise double-record it.
+///
+const RUNG_DROP_PER_ROW_SPLIT_LABEL: &str = "rung-drop per-row file split gunbc#10197 2026-09-03";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_blocks)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
             module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
+            in_declaration: "rung_drop_blocks",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10206 recurring_failure_mode split: the roster moves to its own module (failure_mode_preamble_blocks)",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.design_ledgers",
-            in_declaration: "failure_mode_preamble_blocks",
-            spelling: "recurring_failure_mode_roster",
-            target: "gunbc.recurring_failure_mode.roster",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "green_drop_on_dark_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): collect_pattern_rc_variant_guards",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "collect_pattern_rc_variant_guards",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "test.claim.deleted_cadence_reference_census_witness_test",
+            in_declaration: "red_drop_on_live_cadence",
+            spelling: "deleted_cadence_reference_drop",
+            target: "gunbc.rung_drop.deleted_cadence_reference_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): emit_typed_match_arm_strs",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_typed_match_arm_strs",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_refuses_the_off_ladder_question",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_arm_has_refutable_plain_field",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_arm_has_refutable_plain_field",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "a_prose_declaration_renders_as_its_paragraph",
+            spelling: "floor_cut_heal",
+            target: "gunbc.rung_drop.floor_cut_heal",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10028 irrefutability-predicate dissolution (review 59122): rc_pattern_preludes",
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rc_pattern_preludes",
-            spelling: "match_pattern_is_irrefutable",
-            target: "v1.std.core",
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_discriminates_between_rows",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "rung_drop_message_names_subject_and_trigger",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_declaration_witness_test",
+            in_declaration: "source_root_ingest_gate_drop_is_off_ladder",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_consolidated_typed_row_is_still_rostered",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "every_prose_declaration_agrees_with_its_closed_arm",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "cited_symbol_census",
+            target: "gunbc.rung_drop.cited_symbol_census",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "standing_list_excludes_every_retired_drop",
+            spelling: "standing_rung_drops",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "rung_drop_roster",
+            target: "gunbc.rung_drop.roster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.rung_drop_standing_partition_witness_test",
+            in_declaration: "the_roster_carries_both_declaration_arms",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: RUNG_DROP_PER_ROW_SPLIT_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "tools.ci_gates",
+            in_declaration: "run_spec_gate",
+            spelling: "source_root_ingest_gate_rung_drop",
+            target: "gunbc.rung_drop.source_root_ingest_gate_rung_drop",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
