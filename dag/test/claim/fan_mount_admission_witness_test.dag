@@ -7,7 +7,7 @@ import extdeps.fans.arctic { arctic_p8_mounting_pattern }
 import product.printed_chassis.coupon { OpThroughHole }
 import product.printed_chassis.fan_mount {
   FanMountAdmission, FanMountAdmitted, FanMountBoreReachesMountingHoles,
-  FanMountPlateSmallerThanPattern, FanMountBoreWiderThanPlate, admit_fan_mount,
+  FanMountPlateSmallerThanPattern, FanMountBoreNotEnclosedByPlate, admit_fan_mount,
   arctic_p8_mount_plate_edge, arctic_p8_mount_plate_thickness, arctic_p8_mount_bore,
 }
 
@@ -26,7 +26,7 @@ fn w_the_declared_arctic_mount_is_admitted() -> Bool {
     FanMountAdmitted { geometry: g } => true
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
 
@@ -42,7 +42,7 @@ fn w_the_admitted_mount_carries_four_screw_holes() -> Bool {
     FanMountAdmitted { geometry: g } => length(list: g.mounting_holes) == 4
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
 
@@ -64,7 +64,7 @@ fn w_a_bore_that_reaches_the_screw_holes_refuses() -> Bool {
       micrometer_count(m: r) == 52000 && micrometer_count(m: c) == 35750
     FanMountAdmitted { geometry: g } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
 
@@ -84,7 +84,7 @@ fn w_the_bore_refusal_is_exactly_at_the_boundary_not_approximate() -> Bool {
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => true
     FanMountAdmitted { geometry: g } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
   let under = match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern, plate_edge: micrometer(count: 130000),
@@ -93,7 +93,7 @@ fn w_the_bore_refusal_is_exactly_at_the_boundary_not_approximate() -> Bool {
     FanMountAdmitted { geometry: g } => true
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
   over && under
 }
@@ -111,18 +111,18 @@ fn w_the_shipping_bore_is_measured_against_the_corner_not_the_axis() -> Bool {
     FanMountAdmitted { geometry: g } => true
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
 
 // A bore wider than the plate refuses on its own arm rather than being reported as screw-hole
 // interference, so the author is told which edge they actually hit.
-fn w_a_bore_wider_than_the_plate_refuses_on_its_own_arm() -> Bool {
+fn w_a_bore_not_enclosed_by_the_plate_refuses_on_its_own_arm() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern, plate_edge: arctic_p8_mount_plate_edge,
     plate_thickness: thickness(), bore_diameter: micrometer(count: 95000),
   ) {
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } =>
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } =>
       micrometer_count(m: bd) == 95000 && micrometer_count(m: pe) == 92000
     FanMountAdmitted { geometry: g } => false
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
@@ -143,7 +143,7 @@ fn w_a_plate_smaller_than_the_pattern_refuses() -> Bool {
       micrometer_count(m: e) == 60000 && micrometer_count(m: n) == 75900
     FanMountAdmitted { geometry: g } => false
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
 
@@ -160,7 +160,7 @@ fn w_a_plate_too_small_reports_the_plate_not_the_bore() -> Bool {
   ) {
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => true
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
     FanMountAdmitted { geometry: g } => false
   }
 }
@@ -189,6 +189,6 @@ fn w_the_screw_holes_follow_the_pattern_not_the_plate() -> Bool {
     }
     FanMountBoreReachesMountingHoles { bore_radius: r, hole_center_distance: c } => false
     FanMountPlateSmallerThanPattern { plate_edge: e, required_edge: n } => false
-    FanMountBoreWiderThanPlate { bore_diameter: bd, plate_edge: pe } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: bd, plate_edge: pe } => false
   }
 }
