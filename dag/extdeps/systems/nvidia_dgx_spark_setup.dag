@@ -571,16 +571,21 @@ data oobe_screen_eula: ObservedOobeScreen = ObservedOobeScreen {
 // the model rather than in the driver.
 //
 // WHAT THE VALIDATION ACTUALLY REQUIRES, and it is weaker than one would guess. The minimum
-// password length is SIX. Twelve lowercase letters with no digit, symbol or capital is accepted;
-// the only observed rejections are empty-required, under-six, and confirm-mismatch. Nothing here
-// enforces a complexity policy, so any policy this fleet wants is OUR obligation upstream of the
-// screen, not something the wizard will hold the line on.
+// password length is SIX. Twelve lowercase letters with no digit, symbol or capital was accepted,
+// which refutes the common complexity rules that value would violate -- it does not establish the
+// absence of EVERY possible rule, because one accepted value cannot. The rejections we observed are
+// empty-required, under-six, and confirm-mismatch. So any complexity policy this fleet wants is OUR
+// obligation upstream of the screen: not because the wizard is proven to have none, but because it
+// is proven not to have the ones that would have caught this password.
 //
 // AND THE FINDING THAT MATTERS MOST: THE CLIENT ADMITS THE USERNAME "root". Supplied as the
 // username with a valid password, the Continue control became ENABLED. That is a measured
-// non-rejection, not an absence of evidence -- we asked and the screen said yes. A workflow that
-// let an operator or a generator choose "root" here would be inviting a collision with uid 0 on
-// a device whose wizard will not stop it. The refusal has to be ours, and it has to sit upstream
+// non-rejection, not an absence of evidence -- we asked and the screen said yes. It is a CLIENT
+// admission and only that: the probe ended at the enabled control, so nothing here says the device
+// would have created the account, and no reserved-name or server-side check has been ruled out.
+// The client not stopping it is already enough to act on, because a workflow that lets an operator
+// or a generator choose "root" here would be inviting a collision with uid 0 on
+// a device whose wizard did not stop us. The refusal has to be ours, and it has to sit upstream
 // of the fill, because by the time the control is enabled the client has already agreed.
 // ------------------------------------------------------------------------------------------
 data oobe_screen_account: ObservedOobeScreen = ObservedOobeScreen {
