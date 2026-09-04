@@ -47,6 +47,12 @@ data comparison_discards_the_dimension_it_judges: RecurringFailureMode = Recurri
 
     "**NEXT-RUNG TRIGGER FOR THE CENSUS, STATED AS ONE CAPABILITY**: an AST-grain reader over the RESOLVED program that answers, for a site, both its producing expression and the branch conditions dominating it. Not a better classifier, not another predicate, and not a per-question tool -- the two failures above are one root, and a trigger naming either alone would be satisfied while the census stayed unmeasurable. The compiler already holds this tree; the gap is that the measurement was taken beside it instead of from it. ",
 
+    "**THE REPAIR IS TO MAKE THE PROOF UNNECESSARY, NOT TO MAKE IT VISIBLE** -- which is the whole content of the third repair kind and is easy to state backwards. Where a possibly-absent value reaches a required position behind a guard the checker cannot read, unwrapping discards a proof the author wrote, and exposing the guard to the type system is a larger project than the site deserves. Matching on the optional means NO PROOF IS NEEDED, because the absent case is decided rather than assumed. ",
+
+    "Executed on five sites in three files (`extdeps.version.semver` `semver_compare_identifiers`, `extdeps.container.oci.digest` `oci_wire_digest_parts`, `std.occurrence_identity` `occurrence_id_list_is_prefix_of`): the regen closure went from 11 diagnostics to 0, which is what let the enforcing check accept the corpus it runs over and released a bootstrap deadlock in which the check refused before emit and so blocked regeneration of its own fix. ",
+
+    "**AND A REPAIR THAT OBVIATES SOME CHECKS MUST PROVE SUBSUMPTION PER CHECK, BECAUSE ADJACENCY IS NOT SUBSUMPTION.** In `oci_wire_digest_parts` the matches prove NON-EMPTINESS while the neighbouring `length(parts) != 2` rejects three-or-more parts; removing it as newly-redundant would have been a silent widening wearing the costume of a simplification, arriving inside the safety repair itself. ",
+
     "**NOT ESTABLISHED HERE**: whether other checks in the tree prepare their operands the same way. This row names one class found at two seams; the general audit is the trigger's own subject and is not claimed by this row.",
   ],
 
