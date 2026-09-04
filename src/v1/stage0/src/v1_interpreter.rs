@@ -11735,6 +11735,172 @@ fn multi_module_compile_fixture_value(
     }
 }
 
+fn occurrence_category_value(
+    category: &crate::std_occurrence_identity::OccurrenceCategory,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_occurrence_identity::OccurrenceCategory;
+    Value::Variant {
+        type_name: ctx.sym("OccurrenceCategory"),
+        variant_name: ctx.sym(match category {
+            OccurrenceCategory::LexicalValueOccurrence => "LexicalValueOccurrence",
+            OccurrenceCategory::TypeOccurrence => "TypeOccurrence",
+            OccurrenceCategory::CallableOccurrence => "CallableOccurrence",
+            OccurrenceCategory::ConstructorOccurrence => "ConstructorOccurrence",
+            OccurrenceCategory::NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence",
+            OccurrenceCategory::FieldOccurrence => "FieldOccurrence",
+            OccurrenceCategory::MethodOccurrence => "MethodOccurrence",
+        }),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn reference_occurrence_binding_census_value(
+    census: crate::cli_run::ReferenceOccurrenceBindingCensus,
+    ctx: &InterpContext,
+) -> Value {
+    let denominator_value =
+        |row: crate::cli_run::ReferenceOccurrenceDenominatorRow| Value::Record {
+            type_name: ctx.sym("ReferenceOccurrenceDenominatorRow"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("occurrence"), Value::Int(row.occurrence)),
+                (ctx.sym("consumer_file"), str_value(row.consumer_file)),
+                (ctx.sym("consumer_module"), str_value(row.consumer_module)),
+                (ctx.sym("authored_name"), str_value(row.authored_name)),
+                (
+                    ctx.sym("category"),
+                    occurrence_category_value(&row.category, ctx),
+                ),
+                (
+                    ctx.sym("file_reference_ordinal"),
+                    Value::Int(row.file_reference_ordinal),
+                ),
+                (ctx.sym("span_start"), Value::Int(row.span_start)),
+            ])),
+        };
+    let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(match source {
+            crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+            crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+            crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        }),
+        fields: Rc::new(vec![]),
+    };
+    let disposition_value =
+        |disposition: crate::cli_run::ReferenceOccurrenceBindingDisposition| match disposition {
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Bound {
+                declaration_occurrence,
+                provider_module,
+                binding_source,
+            } => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceBound"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("declaration_occurrence"),
+                        Value::Int(declaration_occurrence),
+                    ),
+                    (ctx.sym("provider_module"), str_value(provider_module)),
+                    (ctx.sym("binding_source"), source_value(binding_source)),
+                ])),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Unresolved => Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceUnresolved"),
+                fields: Rc::new(vec![]),
+            },
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Ambiguous { candidates } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceAmbiguous"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("candidates"),
+                        list_value(candidates.into_iter().map(Value::Int).collect::<Vec<_>>()),
+                    )])),
+                }
+            }
+            crate::cli_run::ReferenceOccurrenceBindingDisposition::Refused { cause } => {
+                Value::Variant {
+                    type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                    variant_name: ctx.sym("ReferenceOccurrenceBindingRefused"),
+                    fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+                }
+            }
+        };
+    match census {
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingCensus::Observed {
+            source_digest,
+            compiler_digest,
+            denominator,
+            observations,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingCensus"),
+            variant_name: ctx.sym("ReferenceOccurrenceBindingCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+                (
+                    ctx.sym("denominator"),
+                    list_value(
+                        denominator
+                            .into_iter()
+                            .map(denominator_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("observations"),
+                    list_value(
+                        observations
+                            .into_iter()
+                            .map(|row| Value::Record {
+                                type_name: ctx.sym("ReferenceOccurrenceBindingRow"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (
+                                        ctx.sym("occurrence"),
+                                        Value::Int(row.denominator.occurrence),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_file"),
+                                        str_value(row.denominator.consumer_file),
+                                    ),
+                                    (
+                                        ctx.sym("consumer_module"),
+                                        str_value(row.denominator.consumer_module),
+                                    ),
+                                    (
+                                        ctx.sym("authored_name"),
+                                        str_value(row.denominator.authored_name),
+                                    ),
+                                    (
+                                        ctx.sym("category"),
+                                        occurrence_category_value(&row.denominator.category, ctx),
+                                    ),
+                                    (
+                                        ctx.sym("file_reference_ordinal"),
+                                        Value::Int(row.denominator.file_reference_ordinal),
+                                    ),
+                                    (
+                                        ctx.sym("span_start"),
+                                        Value::Int(row.denominator.span_start),
+                                    ),
+                                    (ctx.sym("disposition"), disposition_value(row.disposition)),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+    }
+}
+
 /// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct. Arms stay
 /// distinct to the substrate as `compile_diagnostic_census_value`'s do: `GateNotRun` must
 /// never arrive as a clean verdict — could-not-measure and passing are different facts with
@@ -17692,6 +17858,15 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.compile_dag_reference_occurrence_binding_census" { "compile_dag_reference_occurrence_binding_census" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(reference_occurrence_binding_census_value(
+                    crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
+                )))
+            },
+
             arm "free_call.observe_declared_import_closure_symbol_binding" { "observe_declared_import_closure_symbol_binding" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), $name)?;
                 let entry_path = expect_str($positional.get(1).copied(), $name)?;
@@ -17990,10 +18165,9 @@ pub enum OpaqueHostCallReach {
 }
 
 /// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
-/// AUTHORED SPELLING `free_call.<name>`, which is what
-/// `gunbc.v1_interpreter_opaque_host_call` rosters -- not the bare builtin name, because the
-/// roster deliberately carries both the `free_call.*` and `cli_run.*` spellings of one arm and
-/// matching on the bare name would collide them.
+/// AUTHORED SPELLING, which is the BARE dispatch key and is what
+/// `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
+/// the `free_call.*` arm identity, which is the join's INPUT and never its output.
 fn note_opaque_host_call_reach(name: &str) {
     BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
     BUILTIN_DISPATCH_LAST_NAME.with(|n| *n.borrow_mut() = Some(name.to_string()));
@@ -18002,12 +18176,40 @@ fn note_opaque_host_call_reach(name: &str) {
         let Some(surface) = borrowed.as_ref() else {
             return;
         };
-        let identity = format!("free_call.{name}");
-        if surface.iter().any(|op| op == &identity) {
+        // THE SURFACE PUBLISHES `authored_spelling`, WHICH IS THE BARE DISPATCH KEY, AND THIS
+        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1_interpreter_opaque_host_call`
+        // `opaque_host_call_surface` projects `roster_arms_for_identity(..) |> map(a =>
+        // a.authored_spelling)`, and `gunbc.v1_interpreter_primitive_surface` carries
+        // `authored_spelling: "compile_dag_rust_emit_check"` beside
+        // `identity: "free_call.compile_dag_rust_emit_check"`. This built the identity form and
+        // compared it to a list of spellings, so the two vocabularies never intersected and no
+        // claim could ever be recorded as reaching an opaque arm.
+        //
+        // MEASURED, NOT INFERRED: on run 33832137832 the published column read
+        // `cooperatively_pollable` for 3602 of 3602 claims including a witness authored to enter
+        // a listed arm, and gunbc#10336's probe then printed `dispatches=2
+        // last_builtin=compile_dag_rust_emit_check reach=cooperatively_pollable` -- the hook ran,
+        // saw the exact arm, and the identity test rejected it.
+        //
+        // THE BARE SPELLING IS THE CORRECT SIDE TO MOVE, AND NOT ONLY BECAUSE IT IS THE SMALLER
+        // DIFF. The whole `.dag` tower is authored in bare spellings -- the grandfather population
+        // in `v2.workflow.required_floor`, `claim_preemption_admission`, and the identity join
+        // `w_grandfather_population_matches_the_grounded_surface` that binds them -- so changing
+        // the projection would have reddened that wall and forked a vocabulary three authorities
+        // already agree on.
+        //
+        // WHAT MAKES THE BARE COMPARISON SAFE HERE IS THE CALL SITE, NOT THE STRING. An earlier
+        // note argued that matching a bare name could admit an arm the surface never listed,
+        // because the roster carries several spellings for one arm. That hazard is real for a
+        // comparison made anywhere; it cannot arise at THIS site. `eval_builtin_inner` is the
+        // free-call dispatch site and dispatches nothing else, and the grounded surface is
+        // all-`FreeCall` by construction -- `opaque_host_call_surface` refuses through
+        // `not_free_call` otherwise. So the form is fixed on both sides before the comparison.
+        if surface.iter().any(|op| op == name) {
             OPAQUE_HOST_CALL_REACHED.with(|r| {
                 let mut reached = r.borrow_mut();
-                if !reached.iter().any(|o| o == &identity) {
-                    reached.push(identity);
+                if !reached.iter().any(|o| o == name) {
+                    reached.push(name.to_string());
                 }
             });
         }
@@ -21453,11 +21655,14 @@ mod opaque_host_call_reach_tests {
     // The tests share one thread-local recorder, so each arms the surface it needs rather than
     // inheriting whatever ran before it. Serial by construction within a thread; the arming call
     // is itself the reset.
+    // THE SURFACE IS SPELLED THE WAY THE AUTHORITY SPELLS IT. `opaque_host_call_surface` projects
+    // `authored_spelling`, which is the BARE dispatch key, so these fixtures carry bare names. The
+    // previous fixtures armed the surface with `free_call.` identities, which is the join's INPUT
+    // vocabulary and never its output -- so they passed while the real surface could never match,
+    // and the column read `cooperatively_pollable` for 3602 of 3602 claims in production.
     #[test]
     fn a_listed_arm_is_recorded_and_an_unlisted_one_is_not() {
-        set_opaque_host_call_surface(Some(vec![
-            "free_call.compile_dag_rust_emit_check".to_string()
-        ]));
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
         note_opaque_host_call_reach("parse_stage0_cargo_manifest_bins");
         assert_eq!(
             opaque_host_call_reach(),
@@ -21468,25 +21673,32 @@ mod opaque_host_call_reach_tests {
         assert_eq!(
             opaque_host_call_reach(),
             OpaqueHostCallReach::OpaqueHostCallUnbounded {
-                operations: vec!["free_call.compile_dag_rust_emit_check".to_string()],
+                operations: vec!["compile_dag_rust_emit_check".to_string()],
             },
             "a listed arm must move the claim into the unbounded population, carrying the \
              operation rather than only the fact"
         );
     }
 
-    // THE IDENTITY COMPARED IS THE AUTHORED SPELLING, NOT THE BARE NAME. The roster carries both
-    // `free_call.X` and `cli_run...X` for one arm; matching on the bare name would collide them
-    // and admit an arm the surface never listed.
+    // THE REGRESSION CONTROL FOR THE DEFECT ITSELF, AND IT IS THE ONE THAT WOULD HAVE CAUGHT IT.
+    // A surface spelled the way the AUTHORITY spells it must move a claim out of the benign
+    // population. Under the previous comparison this went red: the hook built
+    // `free_call.compile_dag_rust_emit_check` and no bare-spelled surface could ever contain it,
+    // which is exactly the production reading. The old suite had the mirror of this test asserting
+    // that a bare surface must NOT match -- it enshrined the defect as the intended behaviour, so
+    // it is deleted rather than kept beside this one.
     #[test]
-    fn the_bare_builtin_name_does_not_match_a_free_call_identity() {
-        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
+    fn the_authoritys_own_spelling_moves_a_claim_out_of_the_benign_population() {
+        set_opaque_host_call_surface(Some(vec![
+            "compile_dag_rust_emit_check".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
+        ]));
         note_opaque_host_call_reach("compile_dag_rust_emit_check");
-        assert_eq!(
+        assert_ne!(
             opaque_host_call_reach(),
             OpaqueHostCallReach::CooperativelyPollable,
-            "a surface listing the BARE name must not match the `free_call.` identity — the \
-             roster's spellings are distinct and collapsing them would admit unlisted arms"
+            "a surface carrying the authority's own `authored_spelling` must record a reach; \
+             reporting the benign population here is the decoration this control exists to stop"
         );
     }
 
@@ -21506,10 +21718,25 @@ mod opaque_host_call_reach_tests {
     // Reach is per claim: the floor clears it between claims and the surface survives that.
     #[test]
     fn reset_clears_the_reach_but_leaves_the_surface_armed() {
-        set_opaque_host_call_surface(Some(vec![
-            "free_call.compile_dag_rust_emit_check".to_string()
-        ]));
+        // THE PRE-RESET ASSERTION IS THE HALF THIS TEST IS NAMED FOR, AND IT WAS DEAD. The
+        // fixture armed the surface with `free_call.compile_dag_rust_emit_check` -- the arm
+        // IDENTITY -- while the recorder compares the bare `authored_spelling` the authority
+        // publishes, so no reach was ever recorded and "reset CLEARS the reach" asserted nothing:
+        // the post-reset value would have been `CooperativelyPollable` whether reset ran or not.
+        // Only the surviving half, that the surface stays armed rather than going
+        // `SurfaceUnarmed`, was carrying any weight. A vocabulary change under a test leaves the
+        // test green and its name false, which is why the spelling is now taken from the
+        // authority and the cleared state is asserted against a reach that DEMONSTRABLY existed
+        // first.
+        set_opaque_host_call_surface(Some(vec!["compile_dag_rust_emit_check".to_string()]));
         note_opaque_host_call_reach("compile_dag_rust_emit_check");
+        assert_eq!(
+            opaque_host_call_reach(),
+            OpaqueHostCallReach::OpaqueHostCallUnbounded {
+                operations: vec!["compile_dag_rust_emit_check".to_string()],
+            },
+            "the reach must exist BEFORE the reset, or clearing it proves nothing"
+        );
         reset_opaque_host_call_reach();
         assert_eq!(
             opaque_host_call_reach(),
@@ -21524,8 +21751,8 @@ mod opaque_host_call_reach_tests {
     #[test]
     fn multiple_reached_operations_are_all_carried_and_deduplicated() {
         set_opaque_host_call_surface(Some(vec![
-            "free_call.compile_dag_rust_emit_check".to_string(),
-            "free_call.compile_dag_diagnostic_census".to_string(),
+            "compile_dag_rust_emit_check".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
         ]));
         note_opaque_host_call_reach("compile_dag_rust_emit_check");
         note_opaque_host_call_reach("compile_dag_diagnostic_census");
@@ -21534,8 +21761,8 @@ mod opaque_host_call_reach_tests {
             opaque_host_call_reach(),
             OpaqueHostCallReach::OpaqueHostCallUnbounded {
                 operations: vec![
-                    "free_call.compile_dag_rust_emit_check".to_string(),
-                    "free_call.compile_dag_diagnostic_census".to_string(),
+                    "compile_dag_rust_emit_check".to_string(),
+                    "compile_dag_diagnostic_census".to_string(),
                 ],
             },
             "both operations must appear, in first-reach order, without the repeat"

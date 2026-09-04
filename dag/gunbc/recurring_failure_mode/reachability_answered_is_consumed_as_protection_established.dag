@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protection_established
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data reachability_answered_is_consumed_as_protection_established: RecurringFailureMode = RecurringFailureMode {
+  identity: "reachability_answered_is_consumed_as_protection_established" as NonEmptyStr,
+
+  receipts: [
+    "**A type answers whether a mechanism COULD observe a subject, and an enforcement decision consumes that answer as though the mechanism DID observe it.** The type is not wrong; it answers a question the blocking decision is not asking, and the gap between the two is invisible at the call site because the same value satisfies both readings. ",
+
+    "MEASURED 2026-09-04 on the required floor. `v2.workflow.floor_terminal_ledger` `ClaimPreemptionReachability` is `CooperativelyPollable | OpaqueHostCallUnbounded`, and `v2.workflow.required_floor` treats the pollable arm as the case the two safety limits genuinely protect. The CPU deadline is polled in `v1_interpreter` `eval_expr` at `stride % 4096 == 0` -- a STEP stride, not a time stride. ",
+
+    "**273 OF 349 CLAIMS IN ONE FLOOR RUN NEVER REACH A SINGLE POLL**, because they take fewer than 4096 evaluator steps, so the stride condition is never true and the deadline cannot fire for them at all -- whichever arm they inhabit. `CooperativelyPollable` therefore means WOULD BE OBSERVED IF IT STRIDED, and it is consumed as WAS OBSERVED. ",
+
+    "**HARMLESS TODAY, AND THAT IS WHY IT IS FILED RATHER THAN FIXED IN PLACE.** The maximum cpu_ms across all 273 is under 100, against a 500ms ceiling: no crossing hides in that population now. A population that is cheap today is exactly the kind that stops being cheap with nobody re-checking the assumption that made it ignorable, and a row is the mechanism that forces the re-check where a note in a pull request is not. ",
+
+    "**THE SECOND CLAUSE IS UNESTABLISHED AND THE FIRST IS NOT ENOUGH.** For a completion past the limit to establish that the safety mechanism had a bounded opportunity to intervene, two things are needed: that the deadline observation DOMINATES continued execution, and that every execution segment BETWEEN observations is bounded. Exhaustiveness of the two arms gives domination. Nothing declares per-step cost bounded, so a bounded number of STEPS between observations is not a bounded number of MILLISECONDS. ",
+
+    "**AN ESTIMATOR THAT PRESUMES THE PROPOSITION IT ESTIMATES CANNOT BOUND IT, EVEN IN PRINCIPLE.** Estimating a claim's inter-poll segment as `cpu_ms / eval_steps * 4096` gives a maximum of 15.4ms across the 76 claims that actually stride -- but it ASSUMES UNIFORM PER-STEP COST, which is the exact proposition in question. Under non-uniform step cost a mean is not a bound of any kind, and a single expensive step is invisible to it and is the whole hazard. The figure earns only this: the bound is not obviously violated, and the trigger has a target. ",
+
+    "The 9947ms worst estimate in that same data is NOT an inter-poll segment: it belongs to a claim with fewer than 4096 steps, which has no inter-poll segment at all. A statistic computed over rows the quantity does not apply to is not a measurement of it. ",
+
+    "**A PARTIAL CLASSIFIER EXISTS TODAY, RETROACTIVELY, WITH NO NEW CODE AND NO NEW RUNS: EVER INTERRUPTED WITH `raised_by=cpu_deadline` IMPLIES PROVABLY `CooperativelyPollable`**, because an interrupt means a stride point fell inside the claim -- the poll fired, so it was reachable. ",
+
+    "**THE CONVERSE IS INVALID AND THE ASYMMETRY IS THE WHOLE POINT**: completing over the ceiling is consistent with EITHER arm, so this rule classifies one direction only and can never establish that a claim is opaque. Any reader can run it over a floor log they already have. ",
+
+    "APPLIED ACROSS THE SAVED LOGS OF TWO SESSIONS IT CLASSIFIES TWENTY IDENTITIES, AND THE TWENTIETH IS THE ONE THAT MATTERS: nineteen came from one lane's logs and contained no `v2.test.execution.*` member, which read as evidence that the execution family is uniformly opaque. It is not evidence -- it is a null over a denominator that STRUCTURALLY EXCLUDED THE REFUTING CASE, because `rust_emit_host_call_wrong_oracle_refuses_holds` is an execution-family interrupt that lived in a floor job that lane had not fetched. ",
+
+    "UNIONED, THE FAMILY-LEVEL CLAIM IS FALSE RATHER THAN WEAKLY SUPPORTED -- the family is MIXED, and family membership predicts nothing about any individual claim's arm. Recorded here because the under-powered form of that sentence is the one that would have been quoted onward without its caveat. ",
+
+    "**NEXT TRIGGER, NAMED AS THE CAPABILITY AND WITH WHAT IT MUST BE SUFFICIENT FOR:** either the deadline is observable for every claim REGARDLESS OF STEP COUNT, or the reachability vocabulary names the sub-stride case as its own arm -- sufficient for an enforcement decision being able to distinguish PROTECTED from UNOBSERVABLE without re-deriving step counts. A change that adds a third arm without the gate consuming it discharges nothing. ",
+
+  ],
+
+  evidence: [],
+}

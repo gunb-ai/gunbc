@@ -1,0 +1,104 @@
+module gunbc.rung_drop.roster
+
+// THE ROSTER IS THE ENUMERATION AND NOTHING ELSE, held apart from `gunbc.rung_drop` because the
+// import graph's one structural law is acyclicity: every row module imports the `RungDrop` type
+// from that module, so the module carrying the type cannot import the rows back. The type is the
+// shape, the files are the facts, and this module is the list -- three layers, one direction.
+//
+// THE ORDER HERE IS THE PROJECTION'S ORDER AND IT IS CARRIED VERBATIM FROM THE PRE-SPLIT FILE, not
+// rebuilt from the row files. `gunbc.design_ledgers` renders the ledger by folding this list, so the
+// list IS the document's order -- and the row files are in a directory, which has none. A transform
+// that regenerated this list from the files would reorder the whole projection while every
+// identity-grain check stayed green, because a set join cannot see an ordering. The line-grain
+// oracle for that is the regenerated projection diffed against main's, stated as an exact line
+// delta: a pure relocation must be 0/0.
+//
+// `standing_rung_drops` lives here rather than beside the type because it reads this list. It is the
+// one derivation over the roster; everything else in `gunbc.rung_drop` takes the rows as a parameter,
+// which is what lets the type module stay free of the enumeration.
+
+import std.types { List }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
+import gunbc.rung_drop.floor_cut_effect_gates { floor_cut_effect_gates }
+import gunbc.rung_drop.floor_cut_fmt_gate { floor_cut_fmt_gate }
+import gunbc.rung_drop.floor_cut_merge_admission_stamping { floor_cut_merge_admission_stamping }
+import gunbc.rung_drop.floor_cut_falsifier_cadence { floor_cut_falsifier_cadence }
+import gunbc.rung_drop.floor_cut_regen_second_generation_agreement { floor_cut_regen_second_generation_agreement }
+import gunbc.rung_drop.floor_cut_behavioural_regression_differential { floor_cut_behavioural_regression_differential }
+import gunbc.rung_drop.floor_cut_receipt_discriminating_arms { floor_cut_receipt_discriminating_arms }
+import gunbc.rung_drop.floor_cost_claim_qualification_unavailable { floor_cost_claim_qualification_unavailable }
+import gunbc.rung_drop.emitted_bytes_witness_required_lane { emitted_bytes_witness_required_lane }
+import gunbc.rung_drop.direct_call_arg_seam_v2_exemption { direct_call_arg_seam_v2_exemption }
+import gunbc.rung_drop.floor_cut { floor_cut }
+import gunbc.rung_drop.measurement_bankruptcy { measurement_bankruptcy }
+import gunbc.rung_drop.regen_producer { regen_producer }
+import gunbc.rung_drop.cited_symbol_census { cited_symbol_census }
+import gunbc.rung_drop.emit_stage_blocking { emit_stage_blocking }
+import gunbc.rung_drop.lens_enforcement_censuses { lens_enforcement_censuses }
+import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
+import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
+import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
+import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
+import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
+import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
+import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
+import gunbc.rung_drop.builtin_signature_arity_pairing_fabricates { builtin_signature_arity_pairing_fabricates }
+import gunbc.rung_drop.concat_binary_signature_exempt_from_arg_binding { concat_binary_signature_exempt_from_arg_binding }
+import gunbc.rung_drop.dashboard_merge_ready_semantic_admissibility { dashboard_merge_ready_semantic_admissibility }
+import gunbc.rung_drop.namespace_admission_consumed_row_deletion { namespace_admission_consumed_row_deletion }
+import gunbc.rung_drop.spark_serving_local_artifact_not_reproducible { spark_serving_local_artifact_not_reproducible }
+import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
+import gunbc.rung_drop.spark_serving_fleet_global_configuration_drop { spark_serving_fleet_global_configuration_drop }
+import gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop { witness_deferral_freeze_forward_rule_rung_drop }
+import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
+import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
+
+data rung_drop_roster: List<RungDrop> = [
+  floor_cut_heal,
+  floor_cut_effect_gates,
+  floor_cut_fmt_gate,
+  floor_cut_merge_admission_stamping,
+  floor_cut_falsifier_cadence,
+  floor_cut_regen_second_generation_agreement,
+  floor_cut_behavioural_regression_differential,
+  floor_cut_receipt_discriminating_arms,
+  floor_cost_claim_qualification_unavailable,
+  emitted_bytes_witness_required_lane,
+  direct_call_arg_seam_v2_exemption,
+  floor_cut,
+  measurement_bankruptcy,
+  regen_producer,
+  cited_symbol_census,
+  emit_stage_blocking,
+  lens_enforcement_censuses,
+  required_gate_bankruptcy,
+  text_boundary_identity_wall,
+  fabric_evidence_gating,
+  rust_unit_tests_off_the_merge_path,
+  emit_copy_qualification_without_a_consumer,
+  floor_cost_high_cpu_withheld,
+  spark_role_scoped_retirement_production_root,
+  builtin_signature_arity_pairing_fabricates,
+  concat_binary_signature_exempt_from_arg_binding,
+  dashboard_merge_ready_semantic_admissibility,
+  namespace_admission_consumed_row_deletion,
+  spark_serving_local_artifact_not_reproducible,
+  source_root_ingest_gate_rung_drop,
+  spark_serving_fleet_global_configuration_drop,
+  witness_deferral_freeze_forward_rule_rung_drop,
+  deleted_cadence_reference_drop,
+  floor_cost_debt_straddling_produced_decl,
+]
+
+// THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
+// standing arm is read AT THE ONE SITE THAT CONSUMES IT rather than through a reusable
+// RungDropStanding -> Bool accessor: a named predicate beside a coproduct is a second, weaker
+// spelling of the variant the row already carries, and every later caller reaches for the Bool
+// instead of the arm it came from.
+fn standing_rung_drops() -> List<RungDrop> {
+  filter(rung_drop_roster, d => match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => false
+  })
+}
