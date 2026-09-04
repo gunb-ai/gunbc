@@ -19,7 +19,7 @@ fn margin() -> Micrometer { micrometer(count: 8000) }
 fn thickness() -> Micrometer { micrometer(count: 3000) }
 
 // POSITIVE CONTROL. The shipping gauge admits on the real population and the real envelope.
-fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool {
+test fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } => true
     GaugeLocationNotEnumerated { requested: r } => false
