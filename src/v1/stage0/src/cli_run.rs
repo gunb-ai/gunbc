@@ -9503,7 +9503,14 @@ pub enum BudgetCompletion {
 // consumer should act on, and unifying that is what closed an earlier absorption. The split
 // here is on PASSED-VERSUS-INTERRUPTED, which that same note calls a real distinction because
 // IT DETERMINES THE REMEDY: an interrupted row produced no verdict and its elapsed figure is a
-// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is EXACT.
+// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is an UPPER
+// BOUND WITHIN ONE MILLISECOND -- the cost is known, and the rendered integer is its CEILING.
+// The two are still opposite readings and the distinction still determines the remedy: an
+// interrupted row's true cost is somewhere ABOVE its figure and unbounded, a completed row's is
+// somewhere BELOW its figure and within a millisecond of it. What a completed figure is NOT is
+// exact, and it must not say so: `crossing_figure_ms` rounds up so that a reported cost can
+// never tie the budget it is refused against, and an adjective asserting a precision the
+// arithmetic does not have is the same defect the rounding was landed to repair.
 // Rendering one as the other is what produced a ledger describing a single row three
 // inconsistent ways (`BUDGET-REFUSED`, `outcome=timed_out`, and "cost exactly 57193ms").
 //
@@ -9585,8 +9592,9 @@ impl ClaimOutcome {
                 budget_ms,
                 kind,
             } => Some(format!(
-                "{} budget {}ms EXCEEDED; cost={}ms EXACT — the witness ran to completion and \
-                 was then reclassified on cost, so this figure is a measurement of the row",
+                "{} budget {}ms EXCEEDED; cost={}ms CEILING — the witness ran to completion \
+                 and was then reclassified on cost, so its cost is known to within a millisecond \
+                 and this figure is that cost rounded UP, never a point measurement",
                 kind.label(),
                 budget_ms,
                 elapsed_ms
@@ -9605,6 +9613,11 @@ mod budget_figure_rendering_tests {
         budget_completion_outcome, wall_budget_completion_outcome, BudgetKind, ClaimOutcome,
     };
 
+    // THE FIELD SPELLING IS LOAD-BEARING AND STAYS `cost=` ON BOTH ARMS. Rendering the completed
+    // arm as `cost<=` to carry the ceiling reading would have been more literal and would have
+    // silently broken this very control, which splits on `cost=` — the honesty belongs in the
+    // adjective, where a reader looks, not in the field name, where a parser does.
+    //
     // THE FIELD, NOT THE CAVEAT. The defect this guards is not that the sentence lacked a
     // qualification — it carried "UNMEASURED" in capitals and three readers still read the
     // number as a cost, one of them while quoting that word. So the assertion is positional:
@@ -9660,7 +9673,16 @@ mod budget_figure_rendering_tests {
         .budget_figure_phrase()
         .expect("completed-over-budget rows render a budget figure");
         assert_eq!(cost_field(&phrase), "5002ms", "{phrase}");
-        assert!(phrase.contains("EXACT"), "{phrase}");
+        // THE ADJECTIVE IS ASSERTED, NOT INCIDENTAL. `crossing_figure_ms` rounds the figure UP,
+        // so a completed crossing reports a CEILING and the word EXACT would overclaim by up to a
+        // millisecond -- which is the same kind of defect as the truncation it replaced, a figure
+        // wrong HIGH still calling itself a measurement instead of one wrong LOW. This asserts
+        // both directions so neither word can drift back in.
+        assert!(phrase.contains("CEILING"), "{phrase}");
+        assert!(
+            !phrase.contains("EXACT"),
+            "a rounded-up figure must not call itself exact: {phrase}"
+        );
     }
 
     // THE FIGURE IS KEPT, IN ITS OWN FIELD. Dropping it would trade one wrong reading for a
