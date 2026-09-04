@@ -48,6 +48,7 @@ import gunbc.scm.object_store {
   store_corpus_manifest,
   CorpusManifestStored,
   CorpusManifestLocatorCollision,
+  CorpusManifestDuplicatePath,
   authored_source_target_of,
   find_authored_source_record,
   AuthoredSourceFound,
@@ -73,6 +74,7 @@ import gunbc.scm.object_table_json {
   ObjectTableEdgeTargetIsAuthoredSource,
   ObjectTableEdgeTargetIsCorpusManifest,
   ObjectTableManifestPathEmpty,
+  ObjectTableManifestDuplicatePath,
   ObjectTableManifestSourceUnresolved,
   ObjectTableManifestSourceIsSemanticNode,
   ObjectTableManifestSourceIsCorpusManifest,
@@ -102,6 +104,7 @@ fn ot_cause_tag(acc: DecodeAcc) -> String {
         ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
         ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
         ObjectTableManifestPathEmpty => "manifest_path_empty"
+        ObjectTableManifestDuplicatePath { path: _ } => "manifest_duplicate_path"
         ObjectTableManifestSourceUnresolved { reference: _ } => "manifest_source"
         ObjectTableManifestSourceIsSemanticNode { reference: _ } => "manifest_source_node"
         ObjectTableManifestSourceIsCorpusManifest { reference: _ } => "manifest_source_manifest"
@@ -450,6 +453,7 @@ test fn ot_a_manifest_survives_the_table() -> Bool {
         ],
       ) {
         CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        CorpusManifestDuplicatePath { path: _ } => false
         CorpusManifestStored { store: with_manifest, manifest: manifest } =>
           match ot_reencoded(store: with_manifest) {
             DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>

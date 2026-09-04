@@ -51,12 +51,14 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget, RepositoryEncodeTargetIsAuthoredSource,
   RepositoryEncodeCommitRootIsAuthoredSource,
+  RepositoryEncodeTargetIsCorpusManifest,
+  RepositoryEncodeCommitRootIsCorpusManifest,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
   RepositoryCommitParentNotPreviouslyAdmitted,
-  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryDecodeObjectTableRefused,
+  RepositoryDecodeRefusal, RepositoryDecodeObjectTableRefused,
   RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
@@ -537,7 +539,9 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => "target_is_authored_source"
+        RepositoryEncodeTargetIsCorpusManifest { target: _ } => "target_is_corpus_manifest"
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => "commit_root_is_authored_source"
+        RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => "commit_root_is_corpus_manifest"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
@@ -688,7 +692,9 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
+        RepositoryEncodeTargetIsCorpusManifest { target: _ } => false
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
+        RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => false
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
@@ -736,7 +742,6 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecoded { envelope: _ } => "decoded"
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
-        RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
         RepositoryDecodeObjectTableRefused { cause: _ } => "object_table"
         RepositoryMemberReadRefused { cause: _ } => "member_read"
         RepositoryFormatUnrecognized { found: _ } => "format"
@@ -809,11 +814,15 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
 }
 
 // THE MISATTRIBUTION THIS CLAIM EXISTS FOR, and it went uncovered until the member-read refusal got
-// its own authority. Dropping the envelope's OWN identity_rule member refused as
-// RepositoryDecodeClosureDocRefusal -- reported to an operator as "the closure document is
-// malformed" -- for a document whose closure was never reached, because the shared member reader
-// was homed in the closure-document module and carried that module's vocabulary. Nothing asserted
-// was false in either half; the arrow between them was invented, which is why review reads past it.
+// its own authority. Dropping the envelope's OWN identity_rule member refused as a CLOSURE DOCUMENT
+// refusal -- reported to an operator as "the closure document is malformed" -- for a document whose
+// closure was never reached, because the shared member reader was homed in the closure-document
+// module and carried that module's vocabulary. Nothing asserted was false in either half; the arrow
+// between them was invented, which is why review reads past it.
+//
+// THE ARM IT NAMED IS NOW DELETED OUTRIGHT, because a v3 repository embeds no closure document at
+// all, so nothing could produce it. This claim survives that deletion unchanged: it is written
+// against the cause TAG, and the tag it demands is member_read either way.
 //
 // The claim is written against the tag rather than the arm so it stays red for the right reason: a
 // decoder that refused for some unrelated cause reports that cause's own tag, not this one.

@@ -637,6 +637,7 @@ type SourceStoreOutcome
 
 type CorpusManifestStoreOutcome
   = CorpusManifestStored { store: ObjectStore, manifest: CorpusManifestObjectRef }
+  | CorpusManifestDuplicatePath { path: NonEmptyStr }
   | CorpusManifestLocatorCollision {
       identity: ObjectId,
       existing: ScmObject,
@@ -787,13 +788,24 @@ fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome
 data corpus_manifest_tag: NonEmptyStr = "gunbc.scm.corpus_manifest"
 data corpus_manifest_entry_tag: NonEmptyStr = "gunbc.scm.corpus_manifest.entry"
 
-// THE MANIFEST'S IDENTITY IS ITS ENTRIES, IN ORDER, EACH BOUND TO ITS PATH.
+// THE MANIFEST'S IDENTITY IS THE FUNCTION IT DENOTES, NOT THE ORDER SOMEBODY ENUMERATED IT IN.
 //
 // The entry digest combines the path with the source locator rather than hashing either alone, so
 // moving a file to a new path is a different manifest even though the bytes are untouched -- which
-// is the whole point of a manifest as opposed to a set of sources. Order is significant because the
-// carrier is a List and the caller authored it; a manifest that hashed order-insensitively would
-// claim a canonicalization this module does not perform.
+// is the whole point of a manifest as opposed to a set of sources.
+//
+// ORDER USED TO BE SIGNIFICANT, AND THAT WAS WRONG. This note said a manifest hashing
+// order-insensitively "would claim a canonicalization this module does not perform" -- an accurate
+// description of the code and the wrong conclusion about which side should move. The design
+// authority says a manifest is a canonical corpus path -> exact authored-source target, which
+// denotes a FUNCTION; an ordered list of pairs is a multimap, and the gap between them is
+// observable: the same associations enumerated in a different order had different identities, so a
+// host directory traversal order could change what a commit freezes.
+//
+// So the canonicalization is performed here, at the one place a manifest is built, rather than
+// declared absent. Entries sort by path, and two entries sharing a path REFUSE -- a path naming two
+// sources is not a function, and picking first or last would be the silent selection DESIGN section
+// 5 forbids. The same source at two distinct paths stays representable, because that is a function.
 // The locator needs no conversion: `ObjectId` is `Hash` is `Fnv1a64Structural`, so it is already
 // the structural digest this combines with. A conversion helper here would be a second name for the
 // identity function on that type.
@@ -820,15 +832,61 @@ fn corpus_manifest_identity(entries: List<CorpusManifestEntry>) -> ObjectId {
   )
 }
 
+// THE CANONICAL ORDER IS BY PATH, and it is applied before the identity is derived rather than
+// beside it, so no caller can obtain a manifest whose stored entries and hashed entries disagree.
+fn canonical_manifest_entries(entries: List<CorpusManifestEntry>) -> List<CorpusManifestEntry> {
+  sort_by(entries, fn(e) { e.path as String })
+}
+
+// A DUPLICATE PATH IS FOUND ON THE CANONICAL ORDER, so the comparison is against the immediately
+// preceding entry rather than against every earlier one -- the quadratic scan a set membership test
+// would need is bought by the sort that has already happened.
+type ManifestPathScan {
+  previous: String?
+  duplicate: NonEmptyStr?
+}
+
+fn manifest_path_step(acc: ManifestPathScan, entry: CorpusManifestEntry) -> ManifestPathScan {
+  match acc.duplicate {
+    Present { value: _ } => acc
+    Absent =>
+      match acc.previous {
+        Present { value: previous } =>
+          if previous == (entry.path as String) {
+            ManifestPathScan {
+              previous: Present { value: entry.path as String },
+              duplicate: Present { value: entry.path },
+            }
+          } else {
+            ManifestPathScan { previous: Present { value: entry.path as String }, duplicate: none }
+          }
+        Absent =>
+          ManifestPathScan { previous: Present { value: entry.path as String }, duplicate: none }
+      }
+  }
+}
+
+fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr? {
+  fold(
+    entries,
+    init: ManifestPathScan { previous: none, duplicate: none },
+    f: fn(acc, entry) { manifest_path_step(acc: acc, entry: entry) }
+  ).duplicate
+}
+
 fn store_corpus_manifest(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>
 ) -> CorpusManifestStoreOutcome {
+  let canonical = canonical_manifest_entries(entries: entries)
+  match a_duplicated_manifest_path(entries: canonical) {
+    Present { value: path } => CorpusManifestDuplicatePath { path: path }
+    Absent =>
   let reference = CorpusManifestObjectRef {
-    locator: corpus_manifest_identity(entries: entries),
+    locator: corpus_manifest_identity(entries: canonical),
   }
   let object = CorpusManifestObject(
-    CorpusManifestRecord { identity: reference, entries: entries },
+    CorpusManifestRecord { identity: reference, entries: canonical },
   )
   match insert_admission(store: store, object: object) {
     AdmitStored(next) => CorpusManifestStored { store: next, manifest: reference }
@@ -838,6 +896,7 @@ fn store_corpus_manifest(
         existing: existing,
         incoming: object,
       }
+  }
   }
 }
 

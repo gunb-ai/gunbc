@@ -42,6 +42,7 @@ import gunbc.scm.object_store {
   store_corpus_manifest,
   CorpusManifestStored,
   CorpusManifestLocatorCollision,
+  CorpusManifestDuplicatePath,
   authored_source_target_of,
   node_target_of,
 }
@@ -1123,6 +1124,8 @@ fn a_store_holding_a_manifest() -> ManifestFixture {
         ],
       ) {
         CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+          ManifestFixture { store: empty_store(), manifest: fallback_id(), source: fallback_id(), ok: false }
+        CorpusManifestDuplicatePath { path: _ } =>
           ManifestFixture { store: empty_store(), manifest: fallback_id(), source: fallback_id(), ok: false }
         CorpusManifestStored { store: with_manifest, manifest: manifest } =>
           ManifestFixture {

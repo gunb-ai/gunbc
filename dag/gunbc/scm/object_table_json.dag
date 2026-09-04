@@ -265,6 +265,7 @@ type ObjectTableDecodeRefusal
   | ObjectTableEdgeTargetIsAuthoredSource { reference: String }
   | ObjectTableEdgeTargetIsCorpusManifest { reference: String }
   | ObjectTableManifestPathEmpty
+  | ObjectTableManifestDuplicatePath { path: String }
   | ObjectTableManifestSourceUnresolved { reference: String }
   | ObjectTableManifestSourceIsSemanticNode { reference: String }
   | ObjectTableManifestSourceIsCorpusManifest { reference: String }
@@ -275,8 +276,9 @@ type ObjectTableDecodeRefusal
 // shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
 // the same rule from the other side -- a new format is a new classifier beside its own refusals.
 //
-// This match is exhaustive over the fourteen and assigns per cause, never per group. The collision arm is
-// the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
+// This match is exhaustive over the causes and assigns per cause, never per group. A transcribed
+// cardinality would be a second authority for something the coproduct already states, and it rots
+// the moment an arm lands. The collision arm is the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
 // permitting supersession.
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
   match cause {
@@ -298,6 +300,7 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
     ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => LoadDocumentMalformed
     ObjectTableManifestPathEmpty => LoadDocumentMalformed
+    ObjectTableManifestDuplicatePath { path: _ } => LoadDocumentMalformed
     ObjectTableManifestSourceUnresolved { reference: _ } => LoadDocumentMalformed
     ObjectTableManifestSourceIsSemanticNode { reference: _ } => LoadDocumentMalformed
     ObjectTableManifestSourceIsCorpusManifest { reference: _ } => LoadDocumentMalformed
@@ -470,13 +473,13 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
 // The key is the digest STRING rather than the ObjectId record, so lookup identity is exactly the
 // equality object_id_eq already defines, rather than whatever structural equality a record key would
 // impose.
-// TWO INDEXES, BECAUSE THE TABLE AND THE TARGETS ASK DIFFERENT QUESTIONS.
+// ONE INDEX PER KIND, BECAUSE EVERY TARGET ASKS ABOUT A KIND.
 //
-// `by_identity` is every object's position, and it must be, because the table emits every object and
-// a position is just its offset. `nodes_by_identity` holds ONLY semantic nodes, and it exists because
-// a CHILD TARGET asks something narrower: "does this document carry a PROGRAM at that locator".
+// A child target asks "does this document carry a PROGRAM at that locator"; a manifest entry asks
+// the same question about an AUTHORED SOURCE; a commit root asks it about a program again. None of
+// them is answered by "is this identity somewhere in the table".
 //
-// One map answered both, and that was the third leg of the wrong-kind defect. A file occupying a
+// One map answered all of them, and that was the third leg of the wrong-kind defect. A file occupying a
 // node's locator is in the object table, so a kind-blind lookup found it and encode_target emitted
 // the CONTAINED spelling -- bytes whose own decoder then refuses them, because decode resolves that
 // position to an authored source in a node position. The refusal was correct; the emission was not.
@@ -492,9 +495,20 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
 // reference to a file, because there is no entry to find; the carrier means no caller can hand the
 // writer a wrong-kind closure at all, so it cannot emit the UNCONTAINED spelling for one either --
 // which was the leak the index split moved the defect into rather than removed.
+//
+// THE KIND-BLIND MAP SURVIVED THAT CUT AND TOOK TWO MORE CONSUMERS WITH IT. `by_identity` stayed
+// beside the node map, and both callers that reached for it got a wrong answer from it: a
+// manifest entry whose source locator was occupied by a NODE encoded as a contained `at`, which the
+// decoder then refused as wrong-kind -- the writer emitting bytes its own reader rejects -- and a
+// commit root that was a manifest classified as an authored source, reporting a corpus as a file.
+//
+// A kind-blind index cannot be consulted correctly by a caller that needs a kind, and every caller
+// here needs one. Deleting it makes the wrong lookup unwritable rather than merely wrong, which is
+// what DESIGN section 5 asks for ahead of a check.
 type EncodePositions {
-  by_identity: Map<String, String>
   nodes_by_identity: Map<String, String>
+  sources_by_identity: Map<String, String>
+  manifests_by_identity: Map<String, String>
   next: Int
 }
 
@@ -506,8 +520,15 @@ fn object_id_key(identity: ObjectId) -> String {
   identity.digest as String
 }
 
-fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
-  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
+// The lookup a MANIFEST ENTRY'S SOURCE gets. Absent means this document carries no authored source
+// at that locator -- and, unlike the deleted kind-blind lookup, it stays Absent when a node or
+// another manifest sits there, so the encoder cannot spell such a target contained.
+fn source_position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.sources_by_identity, key: object_id_key(identity: identity))
+}
+
+fn manifest_position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.manifests_by_identity, key: object_id_key(identity: identity))
 }
 
 // The lookup a CHILD TARGET gets. Absent means this document carries no program at that locator --
@@ -610,7 +631,7 @@ fn encode_authored_source_content(content: AuthoredSourceContent) -> JsonValue {
 // so the index consulted differs; what stays constant is that the decoder re-checks the kind it
 // resolved rather than trusting the position.
 fn encode_source_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
-  match position_of(positions: positions, identity: target) {
+  match source_position_of(positions: positions, identity: target) {
     Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
     Absent =>
       json_object(
@@ -671,12 +692,23 @@ fn encode_step(acc: EncodeAcc, object: ScmObject) -> EncodeAcc {
   let reference = position_reference(n: acc.positions.next)
   EncodeAcc {
     positions: EncodePositions {
-      by_identity: map_insert(m: acc.positions.by_identity, key: key, value: reference),
       nodes_by_identity: match object {
         SemanticNodeObject(_) =>
           map_insert(m: acc.positions.nodes_by_identity, key: key, value: reference)
         AuthoredSourceObject(_) => acc.positions.nodes_by_identity
         CorpusManifestObject(_) => acc.positions.nodes_by_identity
+      },
+      sources_by_identity: match object {
+        SemanticNodeObject(_) => acc.positions.sources_by_identity
+        AuthoredSourceObject(_) =>
+          map_insert(m: acc.positions.sources_by_identity, key: key, value: reference)
+        CorpusManifestObject(_) => acc.positions.sources_by_identity
+      },
+      manifests_by_identity: match object {
+        SemanticNodeObject(_) => acc.positions.manifests_by_identity
+        AuthoredSourceObject(_) => acc.positions.manifests_by_identity
+        CorpusManifestObject(_) =>
+          map_insert(m: acc.positions.manifests_by_identity, key: key, value: reference)
       },
       next: acc.positions.next + 1,
     },
@@ -697,8 +729,9 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
     store_records_in_dependency_order(store: store),
     init: EncodeAcc {
       positions: EncodePositions {
-        by_identity: empty_map(),
         nodes_by_identity: empty_map(),
+        sources_by_identity: empty_map(),
+        manifests_by_identity: empty_map(),
         next: 0,
       },
       objects: [],
@@ -1385,6 +1418,11 @@ fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> Deco
               decode_acc_refused(
                 acc: acc,
                 cause: ObjectTableObjectCollision { identity: i },
+              )
+            CorpusManifestDuplicatePath { path: path } =>
+              decode_acc_refused(
+                acc: acc,
+                cause: ObjectTableManifestDuplicatePath { path: path as String },
               )
             CorpusManifestStored { store: next_store, manifest: manifest } =>
               DecodeAcc {

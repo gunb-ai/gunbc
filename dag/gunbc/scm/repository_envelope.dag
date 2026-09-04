@@ -93,7 +93,11 @@ import gunbc.scm.object_store {
   empty_store,
   find_node_record,
 }
-import gunbc.scm.commit_closure { table_unresolved_identities, table_source_occupied_identities }
+import gunbc.scm.commit_closure {
+  table_unresolved_identities,
+  table_source_occupied_identities,
+  table_manifest_occupied_identities,
+}
 // THE TABLE MACHINERY NOW COMES FROM THE TABLE'S OWN MODULE, which is what this import used to
 // contradict: a repository read its accumulators, positions and codec upward out of the commit
 // closure, a layer whose own header says the repository is the one above it. What still comes from
@@ -107,16 +111,15 @@ import gunbc.scm.object_table_json {
   EncodeAcc,
   encode_object_table,
   object_id_key,
-  position_of,
+  source_position_of,
+  manifest_position_of,
   node_position_of,
   decode_object_table,
   resolve_reference,
 }
 import gunbc.scm.commit_closure_json_v2 {
-  ClosureDocRefusal,
   encoded_root_reference,
   unexpected_member_key,
-  closure_document_load_standing,
 }
 import gunbc.scm.load_standing {
   LoadStanding,
@@ -267,8 +270,8 @@ type RepositoryEnvelope {
 // THE ENCODE DOMAIN CARRIES ONLY WHAT ENCODING CAN PRODUCE, and the arm this replaces is the same
 // dishonest-domain shape the codec carried one layer down.
 //
-// RepositoryEncodeClosureDocRefusal wrapped the WHOLE ClosureDocRefusal decode population -- fifteen
-// causes, of which encoding can produce exactly one. A reader could not tell from the type which of
+// RepositoryEncodeClosureDocRefusal wrapped the WHOLE closure-document decode population, of which
+// encoding can produce exactly one. A reader could not tell from the type which of
 // them were real, and a consumer matching it had to handle format-tag and unknown-connective causes
 // that no encode path can raise. The type was answering for a domain it does not own.
 //
@@ -283,7 +286,9 @@ type RepositoryEnvelope {
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
+  | RepositoryEncodeTargetIsCorpusManifest { target: ObjectId }
   | RepositoryEncodeCommitRootIsAuthoredSource { root: ObjectId }
+  | RepositoryEncodeCommitRootIsCorpusManifest { root: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
@@ -298,11 +303,14 @@ type RepositoryEncodeRefusal
 // reported as the embedded closure document being malformed. Now that the table owns its causes, the
 // repository names them as what they are.
 //
-// The closure arm stays, and stays first, because a repository document really does embed a closure
-// document and must be able to say when THAT is what refused.
+// THERE IS NO CLOSURE ARM, AND THE ONE THAT WAS HERE IS DELETED. It survived the object-table
+// extraction on a sentence -- "a repository document really does embed a closure document" -- which
+// stopped being true when v3 landed: a repository carries its own mixed object table and a commit's
+// root designation, never a nested closure document, so nothing on this head could produce the arm.
+// An unproducible arm in a closed result type is the dishonest domain this module refuses elsewhere,
+// and it forces every exhaustive consumer to answer a question the decoder cannot ask.
 type RepositoryDecodeRefusal
-  = RepositoryDecodeClosureDocRefusal { cause: ClosureDocRefusal }
-  | RepositoryDecodeObjectTableRefused { cause: ObjectTableDecodeRefusal }
+  = RepositoryDecodeObjectTableRefused { cause: ObjectTableDecodeRefusal }
   | RepositoryMemberReadRefused { cause: MemberReadRefusal }
   | RepositoryFormatUnrecognized { found: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
@@ -614,6 +622,21 @@ fn a_source_occupied_target(store: ObjectStore) -> ObjectId? {
   })
 }
 
+// THE MANIFEST-OCCUPIED POPULATION IS ITS OWN GUARD, AND IT WAS THE ONE THAT WENT UNREAD. The census
+// has separated three populations since the third object kind landed; this writer read two of them,
+// so a semantic edge whose locator holds a MANIFEST passed the checked writer and was published as
+// `uncontained` -- a fetchable absence for a locator that is occupied and can never be repaired by
+// fetching. Reading two of three populations is the same defect as reading one of two, which the
+// paragraph above this records catching a version ago.
+fn a_manifest_occupied_target(store: ObjectStore) -> ObjectId? {
+  fold(table_manifest_occupied_identities(store: store), init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: id }
+    }
+  })
+}
+
 fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
   fold(table_unresolved_identities(store: store), init: none, f: fn(acc, id) {
     match acc {
@@ -629,6 +652,10 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
     Present { value: target } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeTargetIsAuthoredSource { target: target } }
     Absent =>
+  match a_manifest_occupied_target(store: repo.store) {
+    Present { value: target } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeTargetIsCorpusManifest { target: target } }
+    Absent =>
   match an_uncontained_target(store: repo.store) {
     Present { value: target } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
@@ -638,6 +665,8 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
           RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
         CommitRootIsAuthoredSource { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsAuthoredSource { root: root } }
+        CommitRootIsCorpusManifest { root: root } =>
+          RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsCorpusManifest { root: root } }
         CommitRootResolved =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: reference } =>
@@ -662,6 +691,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
               }
           }
       }
+  }
   }
   }
 }
@@ -696,18 +726,28 @@ fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Co
 // kind in SOME store, not in every future one, and a repository may retain a commit while its store is
 // replaced. The table's source-occupied scan does not cover it either, because a commit root need not
 // be referenced by any ordinary edge.
+// THE MISS IS THREE-WAY, NOT TWO-WAY, and this type carried only two arms while a third kind existed.
+// After the node index missed, the old classifier asked a KIND-BLIND index and reported every hit as
+// an authored source -- so a commit whose root is a corpus manifest was published to an operator as
+// "your root is a source file". That is the partial observer this whole branch is about: a
+// well-formed answer of the right type about the wrong subject.
 type CommitRootStanding
   = CommitRootResolved
   | CommitRootAbsent { root: ObjectId }
   | CommitRootIsAuthoredSource { root: ObjectId }
+  | CommitRootIsCorpusManifest { root: ObjectId }
 
 fn commit_root_standing(acc: EncodeAcc, root: ObjectId) -> CommitRootStanding {
   match node_position_of(positions: acc.positions, identity: root) {
     Present { value: _ } => CommitRootResolved
     Absent =>
-      match position_of(positions: acc.positions, identity: root) {
+      match source_position_of(positions: acc.positions, identity: root) {
         Present { value: _ } => CommitRootIsAuthoredSource { root: root }
-        Absent => CommitRootAbsent { root: root }
+        Absent =>
+          match manifest_position_of(positions: acc.positions, identity: root) {
+            Present { value: _ } => CommitRootIsCorpusManifest { root: root }
+            Absent => CommitRootAbsent { root: root }
+          }
       }
   }
 }
@@ -721,6 +761,7 @@ fn unresolved_commit_root_step(
     CommitRootResolved => commit_root_standing(acc: acc, root: commit.root.locator)
     CommitRootAbsent { root: _ } => found
     CommitRootIsAuthoredSource { root: _ } => found
+    CommitRootIsCorpusManifest { root: _ } => found
   }
 }
 
@@ -1382,7 +1423,6 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
   match cause {
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryIdentityRuleUnrecognized { found: _ } => LoadUnsupportedProtocol
-    RepositoryDecodeClosureDocRefusal { cause: c } => closure_document_load_standing(cause: c)
     RepositoryDecodeObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     RepositoryMemberReadRefused { cause: c } =>
       match c {

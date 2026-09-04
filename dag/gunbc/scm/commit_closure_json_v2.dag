@@ -334,21 +334,24 @@ data closure_document_format_tag: String = "gunbc-scm-commit-closure-v4"
 // That is what the mixed encode_object below stopped being able to promise once a third object kind
 // existed: it has no refusal channel, so a manifest reaching it had no answer that was not a lie.
 //
-// ON THE DUPLICATED INDEX, declared rather than left to be discovered. EncodePositions carries both
-// by_identity and nodes_by_identity, and over a nodes-only table those two maps are equal by
-// construction -- one fact in two places, which is exactly what DESIGN section 2 prices. It survives
-// here only because the type is still shared with the mixed repository table, where the two maps
-// genuinely differ. It dissolves when the mixed node+source+manifest object-table codec is extracted
-// to repository grain and this module's positions carry node positions alone.
-// dissolve-on: the repository object-table codec owning its own object vocabulary and accumulator,
-// at which point by_identity leaves this module with it.
+// THE DUPLICATED INDEX IS GONE, AND ITS DECLARED TRIGGER IS WHAT RETIRED IT. This note used to
+// declare that EncodePositions carried a kind-blind `by_identity` beside `nodes_by_identity`, equal
+// by construction over a nodes-only table -- one fact in two places -- and named its dissolution
+// condition: the mixed object-table codec owning its own vocabulary. That codec now exists in
+// gunbc.scm.object_table_json, and the kind-blind map was deleted outright rather than merely moved,
+// because both of its remaining consumers were reading a kind out of an index that has none.
+//
+// What is left here is a source and manifest index that a node table never populates. That is not
+// the same duplication: the maps differ by kind rather than by nothing, and a node table's two empty
+// ones are the honest statement that it carries no object of those kinds.
 fn encode_node_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
   let key = object_id_key(identity: record.identity.locator)
   let reference = position_reference(n: acc.positions.next)
   EncodeAcc {
     positions: EncodePositions {
-      by_identity: map_insert(m: acc.positions.by_identity, key: key, value: reference),
       nodes_by_identity: map_insert(m: acc.positions.nodes_by_identity, key: key, value: reference),
+      sources_by_identity: acc.positions.sources_by_identity,
+      manifests_by_identity: acc.positions.manifests_by_identity,
       next: acc.positions.next + 1,
     },
     objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
@@ -360,8 +363,9 @@ fn encode_node_table(nodes: List<ObjectRecord>) -> EncodeAcc {
     nodes,
     init: EncodeAcc {
       positions: EncodePositions {
-        by_identity: empty_map(),
         nodes_by_identity: empty_map(),
+        sources_by_identity: empty_map(),
+        manifests_by_identity: empty_map(),
         next: 0,
       },
       objects: [],

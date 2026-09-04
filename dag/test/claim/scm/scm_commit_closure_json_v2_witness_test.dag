@@ -287,6 +287,7 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
             ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
             ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
             ObjectTableManifestPathEmpty => "manifest_path_empty"
+            ObjectTableManifestDuplicatePath { path: _ } => "manifest_duplicate_path"
             ObjectTableManifestSourceUnresolved { reference: _ } => "manifest_source"
             ObjectTableManifestSourceIsSemanticNode { reference: _ } => "manifest_source_node"
             ObjectTableManifestSourceIsCorpusManifest { reference: _ } => "manifest_source_manifest"

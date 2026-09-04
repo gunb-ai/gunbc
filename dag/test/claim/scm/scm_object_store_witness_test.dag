@@ -64,6 +64,18 @@ import gunbc.scm.object_store {
   empty_store,
   store_node,
   object_id_eq,
+  store_authored_source,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  AuthoredSourceObjectRef,
+  authored_source_target_of,
+  CorpusManifestEntry,
+  CorpusManifestStoreOutcome,
+  CorpusManifestStored,
+  CorpusManifestDuplicatePath,
+  CorpusManifestLocatorCollision,
+  store_corpus_manifest,
 }
 import gunbc.scm.checkout {
   Commit,
@@ -624,4 +636,162 @@ test fn store_node_identity_commutes_with_content_hash() -> Bool {
     && stored_identity_matches_content_hash(n: alpha_first())
     && stored_identity_matches_content_hash(n: beta_first())
     && stored_identity_matches_content_hash(n: minted_program_ab(base: 10))
+}
+
+
+// ── THE MANIFEST DENOTES A FUNCTION FROM PATH TO SOURCE ──
+//
+// Four claims, and they are written together because each is the control for the others. A manifest
+// that ignored order entirely would pass the first and fail the second; one that hashed order would
+// fail the first; one that deduplicated by picking a winner would pass the first three and be
+// exactly the silent selection DESIGN section 5 forbids, which is why the third asserts the REFUSAL
+// and not merely that no second entry survived.
+
+fn ms_two_sources() -> ObjectStore? {
+  match store_authored_source(store: empty_store(), text: "alpha\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+    SourceStored { store: one, source: _ } =>
+      match store_authored_source(store: one, text: "beta\n") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+        SourceStored { store: two, source: _ } => Present { value: two }
+      }
+  }
+}
+
+fn ms_source(text: String) -> AuthoredSourceObjectRef? {
+  match store_authored_source(store: empty_store(), text: text) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+    SourceStored { store: _, source: source } => Present { value: source }
+  }
+}
+
+fn ms_entry(path: NonEmptyStr, source: AuthoredSourceObjectRef) -> CorpusManifestEntry {
+  CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }
+}
+
+fn ms_stored_identity(entries: List<CorpusManifestEntry>) -> ObjectId? {
+  match ms_two_sources() {
+    Absent => none
+    Present { value: store } =>
+      match store_corpus_manifest(store: store, entries: entries) {
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => none
+        CorpusManifestDuplicatePath { path: _ } => none
+        CorpusManifestStored { store: _, manifest: manifest } =>
+          Present { value: manifest.locator }
+      }
+  }
+}
+
+fn ms_identities_agree(left: List<CorpusManifestEntry>, right: List<CorpusManifestEntry>) -> Bool {
+  match ms_stored_identity(entries: left) {
+    Absent => false
+    Present { value: a } =>
+      match ms_stored_identity(entries: right) {
+        Absent => false
+        Present { value: b } => object_id_eq(left: a, right: b)
+      }
+  }
+}
+
+// THE CANONICALIZATION CLAIM. A host directory traversal that enumerated the same associations in
+// the other order must not produce a different manifest, because the manifest is what a commit
+// freezes and the traversal order is not a fact about the corpus.
+test fn ms_enumeration_order_does_not_change_the_manifest() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      match ms_source(text: "beta\n") {
+        Absent => false
+        Present { value: beta } =>
+          ms_identities_agree(
+            left: [
+              ms_entry(path: "a.dag" as NonEmptyStr, source: alpha),
+              ms_entry(path: "b.dag" as NonEmptyStr, source: beta),
+            ],
+            right: [
+              ms_entry(path: "b.dag" as NonEmptyStr, source: beta),
+              ms_entry(path: "a.dag" as NonEmptyStr, source: alpha),
+            ],
+          )
+      }
+  }
+}
+
+// THE DISCRIMINATING CONTROL. Order-insensitivity must not have been bought by hashing the paths
+// and sources into a bag: which source a path names is the whole content of the function, so
+// swapping the two associations must change the identity.
+test fn ms_which_source_a_path_names_changes_the_manifest() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      match ms_source(text: "beta\n") {
+        Absent => false
+        Present { value: beta } =>
+          ms_identities_agree(
+            left: [
+              ms_entry(path: "a.dag" as NonEmptyStr, source: alpha),
+              ms_entry(path: "b.dag" as NonEmptyStr, source: beta),
+            ],
+            right: [
+              ms_entry(path: "a.dag" as NonEmptyStr, source: beta),
+              ms_entry(path: "b.dag" as NonEmptyStr, source: alpha),
+            ],
+          ) == false
+      }
+  }
+}
+
+// A PATH NAMING TWO SOURCES IS NOT A FUNCTION, and the answer is a refusal rather than a winner.
+// Asserted on the REFUSAL ARM and not on "the stored manifest has one entry", because deduplicating
+// by first or last would satisfy the latter while making the silent selection the refusal exists to
+// prevent.
+test fn ms_a_path_naming_two_sources_refuses() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      match ms_source(text: "beta\n") {
+        Absent => false
+        Present { value: beta } =>
+          match ms_two_sources() {
+            Absent => false
+            Present { value: store } =>
+              match store_corpus_manifest(
+                store: store,
+                entries: [
+                  ms_entry(path: "a.dag" as NonEmptyStr, source: alpha),
+                  ms_entry(path: "a.dag" as NonEmptyStr, source: beta),
+                ],
+              ) {
+                CorpusManifestDuplicatePath { path: path } => (path as String) == "a.dag"
+                CorpusManifestStored { store: _, manifest: _ } => false
+                CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// THE OTHER HALF OF "FUNCTION", and the claim that keeps the refusal above from being a refusal of
+// duplicate SOURCES. One source at two paths is a perfectly ordinary corpus -- two files with the
+// same bytes -- and must store.
+test fn ms_one_source_at_two_paths_is_admitted() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      match ms_two_sources() {
+        Absent => false
+        Present { value: store } =>
+          match store_corpus_manifest(
+            store: store,
+            entries: [
+              ms_entry(path: "a.dag" as NonEmptyStr, source: alpha),
+              ms_entry(path: "b.dag" as NonEmptyStr, source: alpha),
+            ],
+          ) {
+            CorpusManifestStored { store: _, manifest: _ } => true
+            CorpusManifestDuplicatePath { path: _ } => false
+            CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => false
+          }
+      }
+  }
 }
