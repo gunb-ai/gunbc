@@ -28,7 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_asset_identity { chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet_asset_identity { chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -159,6 +159,19 @@ data printer_01_asset: PhysicalAsset = PhysicalAsset {
     field: WholeDeclaration,
   },
   physical_serial: Present { value: "0300CA652201400" },
+  procurement: none,
+}
+
+// printer-02 was physically received and observed on the operator LAN on 2026-09-04. Its operator
+// label establishes the durable individuation; serial 0300CA660400324 corroborates that binding.
+data printer_02_asset: PhysicalAsset = PhysicalAsset {
+  identity: printer_02,
+  catalog: DeclarationRef {
+    module_path: "extdeps.printing.bambu_lab_a1_mini",
+    decl_name: "a1_mini_build_envelope",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "0300CA660400324" },
   procurement: none,
 }
 
