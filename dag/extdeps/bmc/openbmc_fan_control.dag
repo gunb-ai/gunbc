@@ -12,6 +12,7 @@ import extdeps.ssh.password_session {
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.languages.json.emit {
+  JsonValue,
   json_array,
   json_int,
   json_kv,
@@ -21,19 +22,51 @@ import extdeps.languages.json.emit {
 }
 import extdeps.tools.jq {
   JqInputStdin,
+  JqInputFile,
   JqInvocation,
   JqProgram,
   JqProgramExit,
   JqRawOutput,
+  JqJsonBinding,
+  JqBindingName,
+  JqLastResultExit,
   jq_authority,
   JqOutcome,
   JqOutputAbsent,
   JqOutputPresent,
   JqExecutionRefused,
+  JqAdmittedProcessPlan,
+  JqProcessStdin,
+  JqProcessNoStdin,
+  jq_admitted_plan_surface,
   jq_classify_observation,
   jq_execute_admitted_plan,
-  jq_invocation_process_plan
+  jq_invocation_process_plan,
+  jq_executable,
 }
+import gunbc.remote_shell_command {
+  RemoteExecCommand,
+  RemoteExecCommandInterpretation,
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  RemoteExecCommandRefusalCause,
+  RemoteExecInterpretationUnknown,
+  RemoteExecCommandLiveConfirmation,
+  RemoteExecCommandLiveConfirmationUnexecuted,
+  RemoteExecCommandLiveConfirmationObserved,
+  remote_exec_command_live_confirmation,
+  SimpleCommandArgvRefused,
+  Unknown,
+  openbmc_dropbear_interpretation,
+  remote_exec_command_rendered,
+  remote_exec_command_string,
+}
+import v2.std.compilers.cli_surface {
+  CliSurface,
+  cli_argument_text,
+  cli_surface_arguments,
+}
+import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.systemd.systemctl { systemctl_authority }
 import extdeps.bmc.openbmc_operation {
   OpenBmcCopyFilePreservingMetadata,
@@ -70,7 +103,6 @@ import extdeps.bmc.openbmc_operation {
   OpenBmcSensorServices,
   OpenBmcSensorThreshold,
   OpenBmcSensorValue,
-  OpenBmcStepwiseCount,
   OpenBmcSynchronizeFilesystems,
   OpenBmcSystemdIsActive,
   OpenBmcSystemdRestart,
@@ -493,14 +525,6 @@ fn openbmc_execute(
       }
     OpenBmcFanConfigScalar { config_path, query } =>
       match query {
-        OpenBmcStepwiseCount =>
-          openbmc.PasswordSshTransport.FanStepwiseCount(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
         OpenBmcMinimumDuty =>
           openbmc.PasswordSshTransport.FanMinimumDuty(
         host: session.host,
@@ -781,42 +805,6 @@ service openbmc.JsonProjection {
     }
   }
 
-  operation ObjectMapperServiceCount {
-    input { content: String }
-    output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["jq", "-er", ".data[0] | keys | length"]
-      stdin: content
-    }
-    exit {
-      0 => Unit
-      nonzero => String "ObjectMapper service count projection failed"
-    }
-  }
-
-  operation ObjectMapperServiceAt {
-    input { content: String, index: Int }
-    output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["jq", "-er", "--argjson", "index", "{index}", ".data[0] | keys | .[$index]"]
-      stdin: content
-    }
-    exit {
-      0 => Unit
-      nonzero => String "ObjectMapper service projection failed"
-    }
-  }
-
 }
 
 fn openbmc_read_file(
@@ -942,6 +930,126 @@ fn openbmc_sensor_integer_projection_result(
   }
 }
 
+// WAVE 1A, LANDED. The two ObjectMapper projections the sensor-service enumeration makes were
+// argv-spelled shell operations (["jq","-er","--argjson","index","{index}", ...] and
+// ["jq","-er",".data[0] | keys | length"]). Each is now a semantic JqInvocation whose flags and
+// bindings are derived: the program is the domain's, --argjson and --exit-status are jq's. The
+// callers below decode a JqOutcome and stop reading success/value/stderr.
+//
+// ServiceAt carries a typed JSON binding (index) through --argjson and reads under JqLastResultExit:
+// the program emits the service name at that index, or nothing/exit-1 for an out-of-range index.
+type OpenBmcServiceProjectionResult
+  = OpenBmcServiceObserved { service: NonEmptyStr }
+  | OpenBmcServiceProjectionRefused { reason: String }
+
+type OpenBmcServiceCountResult
+  = OpenBmcServiceCountObserved { count: Int }
+  | OpenBmcServiceCountRefused { reason: String }
+
+// `// empty` is load-bearing, not defensive: for an out-of-range index `.[$index]` yields NULL
+// (jq's array-index contract), and under JqLastResultExit a null last output is a legitimate
+// value -- exit 1 with stdout "null" -- which would decode as a service named "null". `null //
+// empty` turns the out-of-range arm into NO output, so the observation is absence (exit 4), the
+// missing-index refusal, never an observed service.
+data openbmc_object_mapper_service_at_program: String = ".data[0] | keys | .[$index] // empty"
+data openbmc_object_mapper_service_count_program: String = ".data[0] | keys | length"
+
+fn openbmc_object_mapper_service_at(content: String, index: Int) -> OpenBmcServiceProjectionResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_object_mapper_service_at_program },
+    bindings: [
+      JqJsonBinding {
+        name: JqBindingName { name: "index" },
+        value: json_int(n: index),
+      }
+    ],
+    input: JqInputStdin { content: content },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcServiceProjectionRefused {
+        reason: "ObjectMapper service projection could not be lowered to a jq invocation",
+      }
+    Accepted { value: plan, diagnostics: _ } => {
+      let observed = jq_execute_admitted_plan(plan: plan)
+      openbmc_object_mapper_service_at_result(
+        outcome: jq_classify_observation(plan: plan, observation: observed),
+      )
+    }
+  }
+}
+
+fn openbmc_object_mapper_service_at_result(
+  outcome: JqOutcome,
+) -> OpenBmcServiceProjectionResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcServiceProjectionRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcServiceProjectionRefused {
+        reason: "ObjectMapper has no service at this index",
+      }
+    JqOutputPresent { text: text } =>
+      match trim(text) {
+        Empty =>
+          OpenBmcServiceProjectionRefused {
+            reason: "ObjectMapper service name is blank",
+          }
+        non_empty => OpenBmcServiceObserved { service: non_empty as NonEmptyStr }
+      }
+  }
+}
+
+fn openbmc_object_mapper_service_count(content: String) -> OpenBmcServiceCountResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_object_mapper_service_count_program },
+    bindings: Empty,
+    input: JqInputStdin { content: content },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcServiceCountRefused {
+        reason: "ObjectMapper service count could not be lowered to a jq invocation",
+      }
+    Accepted { value: plan, diagnostics: _ } => {
+      let observed = jq_execute_admitted_plan(plan: plan)
+      openbmc_object_mapper_service_count_result(
+        outcome: jq_classify_observation(plan: plan, observation: observed),
+      )
+    }
+  }
+}
+
+fn openbmc_object_mapper_service_count_result(
+  outcome: JqOutcome,
+) -> OpenBmcServiceCountResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcServiceCountRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcServiceCountRefused {
+        reason: "ObjectMapper service count is absent",
+      }
+    JqOutputPresent { text: text } =>
+      match parse_int(s: trim(text)) {
+        Absent =>
+          OpenBmcServiceCountRefused {
+            reason: "ObjectMapper service count is not an integer",
+          }
+        Present { value: count } =>
+          if count < 0 {
+            OpenBmcServiceCountRefused {
+              reason: "ObjectMapper service count is negative",
+            }
+          } else {
+            OpenBmcServiceCountObserved { count: count }
+          }
+      }
+  }
+}
+
 type OpenBmcTachThresholdSource
   = OpenBmcWarningLowThreshold
   | OpenBmcCriticalLowThreshold
@@ -990,21 +1098,18 @@ fn openbmc_object_mapper_services_rec(
       services: openbmc_collection_from_values(values: built),
     }
   } else {
-    let projected = openbmc.JsonProjection.ObjectMapperServiceAt(
-      content: content,
-      index: index,
-    )
-    if !projected.success || trim(projected.value) == "" {
-      OpenBmcSensorServicesRefused {
-        reason: join(["ObjectMapper service projection failed: ", projected.stderr], ""),
-      }
-    } else {
-      openbmc_object_mapper_services_rec(
-        content: content,
-        index: index + 1,
-        count: count,
-        built: append(built, items: [trim(projected.value) as NonEmptyStr]),
-      )
+    match openbmc_object_mapper_service_at(content: content, index: index) {
+      OpenBmcServiceObserved { service: service } =>
+        openbmc_object_mapper_services_rec(
+          content: content,
+          index: index + 1,
+          count: count,
+          built: append(built, items: [service]),
+        )
+      OpenBmcServiceProjectionRefused { reason: reason } =>
+        OpenBmcSensorServicesRefused {
+          reason: join(["ObjectMapper service projection failed: ", reason], ""),
+        }
     }
   }
 }
@@ -1020,33 +1125,18 @@ fn openbmc_sensor_service(
   if !remote.success {
     OpenBmcSensorServicesRefused { reason: remote.stderr }
   } else {
-    let count_result = openbmc.JsonProjection.ObjectMapperServiceCount(
-      content: remote.stdout,
-    )
-    if !count_result.success {
-      OpenBmcSensorServicesRefused {
-        reason: join(["ObjectMapper service count failed: ", count_result.stderr], ""),
-      }
-    } else {
-      match parse_int(s: trim(count_result.value)) {
-        Absent =>
-          OpenBmcSensorServicesRefused {
-            reason: "ObjectMapper service count is not an integer",
-          }
-        Present { value: count } =>
-          if count < 0 {
-            OpenBmcSensorServicesRefused {
-              reason: "ObjectMapper service count is negative",
-            }
-          } else {
-            openbmc_object_mapper_services_rec(
-              content: remote.stdout,
-              index: 0,
-              count: count,
-              built: [],
-            )
-          }
-      }
+    match openbmc_object_mapper_service_count(content: remote.stdout) {
+      OpenBmcServiceCountRefused { reason: reason } =>
+        OpenBmcSensorServicesRefused {
+          reason: join(["ObjectMapper service count failed: ", reason], ""),
+        }
+      OpenBmcServiceCountObserved { count: count } =>
+        openbmc_object_mapper_services_rec(
+          content: remote.stdout,
+          index: 0,
+          count: count,
+          built: [],
+        )
     }
   }
 }
@@ -1275,6 +1365,198 @@ type OpenBmcFanControllerListResult
   | OpenBmcFanControllerListRefused { reason: String }
 
 type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
+
+// ---------------------------------------------------------------------------------------------
+// WAVE 2: THE REMOTE REALIZATION. The local vertical (Waves 1A/1B) executes a JqAdmittedProcessPlan
+// with jq.Process; the remote population runs jq on the BMC over the password-SSH transport, and
+// that is a SECOND language target (docs/plans/cli-invocation-emission-design.md §7, Wave 2). The
+// inner argv must travel as ONE RFC 4254 command string, quoted by the grammar-owned emitter
+// (gunbc.remote_shell_command remote_exec_command_string) -- never as append(ssh_prefix, inner.argv).
+//
+// FILE-INPUT-ONLY ADMISSION. Remote jq reads the config file itself on the BMC filesystem
+// (JqInputFile lowers to a file operand), so the remote realization accepts JqProcessNoStdin only.
+// A stdin-fed remote jq is a TYPED refusal, not an accidental limitation: sshpass -d 0 occupies
+// fd 0 with the password, so a remote stdin payload would collide with it (design §10, question 2).
+//
+// THE DECOMPOSITION IS PURE WHERE IT CAN BE. openbmc_remote_jq_command refuses stdin and emits the
+// RFC 4254 command string without touching the transport -- witnessable hermetically.
+// openbmc_remote_jq_execute runs the transport (no mock_response, so the hermetic floor refuses
+// it), which is why the witnesses below assert the pure halves and the refusal arm, and never
+// claim the transport executed.
+//
+// THE PRODUCTION CUTOVER IS GATED ON THE REMOTE-SHELL INTERPRETATION, AND NO LIVE TARGET HAS
+// CONFIRMED ONE (review 38602, REQUEST_CHANGES). Whether the far side hands the RFC 4254 command
+// string to a POSIX shell is an OBSERVED deployment fact (gunbc.remote_shell_command
+// remote_exec_command_interpretation_note). openbmc_dropbear_interpretation is the repo's
+// documented best understanding of OpenBMC, but it is UNVERIFIED until remote_exec_command_live_confirmation
+// runs against a live target -- and that receipt is declared Unexecuted. DESIGN 4b: external
+// reality is observed, refused, or mitigated at a declared boundary, never fabricated. DESIGN 5:
+// a failure arm must refuse, never widen -- and never emit a plausible guess. So the production
+// path passes Unknown and REFUSES until the live confirmation lands and supplies the observed
+// interpretation; the pure emitter remains witnessable by passing an interpretation explicitly.
+type OpenBmcRemoteJqRefusal
+  = OpenBmcRemoteJqStdinUnwired
+  | OpenBmcRemoteJqCommandStringRefused { cause: RemoteExecCommandRefusalCause }
+
+type OpenBmcRemoteJqCommandOutcome
+  = OpenBmcRemoteJqCommandBuilt { command: RemoteExecCommand }
+  | OpenBmcRemoteJqCommandRefused { cause: OpenBmcRemoteJqRefusal }
+
+// The remote words are the jq executable plus the already-emitted surface words -- the semantic
+// layer chose every flag, and this function adds only the executable identity (from jq's own
+// `jq_executable` row, never a literal), exactly as the local realization's handler does.
+fn openbmc_remote_jq_words(surface: CliSurface) -> List<NonEmptyStr> {
+  append(
+    [jq_executable],
+    items: cli_surface_arguments(surface: surface) |> map(arg => cli_argument_text(argument: arg) as NonEmptyStr),
+  )
+}
+
+fn openbmc_remote_jq_command(
+  plan: JqAdmittedProcessPlan,
+  interpretation: RemoteExecCommandInterpretation,
+) -> OpenBmcRemoteJqCommandOutcome {
+  match plan.process_input {
+    JqProcessStdin { content: _ } =>
+      OpenBmcRemoteJqCommandRefused { cause: OpenBmcRemoteJqStdinUnwired }
+    JqProcessNoStdin =>
+      match remote_exec_command_string(
+        argv: openbmc_remote_jq_words(surface: jq_admitted_plan_surface(plan: plan)),
+        interpretation: interpretation,
+      ) {
+        RemoteExecCommandRefused { cause: cause } =>
+          OpenBmcRemoteJqCommandRefused { cause: OpenBmcRemoteJqCommandStringRefused { cause: cause } }
+        RemoteExecCommandBuilt { command: command } =>
+          OpenBmcRemoteJqCommandBuilt { command: command }
+      }
+  }
+}
+
+type OpenBmcRemoteJqOutcome
+  = OpenBmcRemoteJqExecuted { observation: ProcessObservation }
+  | OpenBmcRemoteJqRefused { cause: OpenBmcRemoteJqRefusal }
+
+// The production remote-jq execution is DRIVEN by the live confirmation receipt.
+// remote_exec_command_live_confirmation is a module-scope data row whose variant determines
+// the interpretation:
+//
+//   - RemoteExecCommandLiveConfirmationObserved: the live check WAS RUN and confirmed a
+//     POSIX-shell interpretation. The path uses openbmc_dropbear_interpretation (the repo's
+//     documented best understanding, now corroborated by observation).
+//
+//   - RemoteExecCommandLiveConfirmationUnexecuted: the live check has NOT been run. The path
+//     passes Unknown and REFUSES with RemoteExecInterpretationUnknown (DESIGN 4b: external
+//     reality is observed, refused, or mitigated at a declared boundary, never fabricated).
+//
+// The receipt is LOAD-BEARING: observing and recording it genuinely unlocks execution, so the
+// design 4b(2) trigger is genuine (not a permanent stall wearing a trigger's clothes). When an
+// operator runs remote_exec_command_live_confirmation against a live target and records the
+// observation, this match resolves to the Observed arm and the path opens.
+
+// PURE DERIVATION: extract an interpretation from the confirmation receipt. Exists as a named
+// function so that witnesses can test BOTH arms with a fixture — the Observed arm returns
+// openbmc_dropbear_interpretation (the citation, not a bare constant), the Unexecuted arm
+// returns Unknown. No BMC is needed: a witness constructs the confirmation value as a fixture
+// and asserts the derived interpretation without ever touching the transport.
+fn openbmc_remote_jq_interpretation(confirmation: RemoteExecCommandLiveConfirmation) -> RemoteExecCommandInterpretation {
+  match confirmation {
+    RemoteExecCommandLiveConfirmationObserved { target: _, interpretation: interp } =>
+      interp
+    RemoteExecCommandLiveConfirmationUnexecuted { trigger: _ } =>
+      Unknown
+  }
+}
+
+fn openbmc_remote_jq_execute(
+  session: PasswordSshSession,
+  plan: JqAdmittedProcessPlan,
+) -> OpenBmcRemoteJqOutcome {
+  let interpretation = openbmc_remote_jq_interpretation(confirmation: remote_exec_command_live_confirmation)
+  match openbmc_remote_jq_command(plan: plan, interpretation: interpretation) {
+    OpenBmcRemoteJqCommandRefused { cause: cause } =>
+      OpenBmcRemoteJqRefused { cause: cause }
+    OpenBmcRemoteJqCommandBuilt { command: sealed } => {
+      let command = remote_exec_command_rendered(command: sealed)
+      let ran = openbmc.PasswordSshTransport.RunCommand(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        command: command,
+      )
+      OpenBmcRemoteJqExecuted {
+        observation: process_observation(exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr),
+      }
+    }
+  }
+}
+
+fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
+  match cause {
+    OpenBmcRemoteJqStdinUnwired =>
+      "remote jq over the password-SSH transport cannot carry stdin: sshpass -d 0 occupies fd 0 with the password"
+    OpenBmcRemoteJqCommandStringRefused { cause: cause } =>
+      match cause {
+        RemoteExecInterpretationUnknown =>
+          "remote jq cutover is gated on the remote-shell interpretation: the RFC 4254 command string must be single-quote encoded for a POSIX shell, but no live target has confirmed one -- run remote_exec_command_live_confirmation against a live OpenBMC/Dropbear target and supply the observed interpretation (DESIGN 4b/5: refuse rather than fabricate)"
+        SimpleCommandArgvRefused { cause: _ } =>
+          "remote jq command string could not be emitted by the grammar-owned shell encoder"
+      }
+  }
+}
+
+// THE FIRST SSH MIGRATION: OpenBmcStepwiseCount. The old FanStepwiseCount operation (raw argv
+// ["jq","-er","<program>","{config_path}"] behind the sshpass/ssh prefix) is DELETED at the root;
+// the caller now describes a semantic JqInvocation -- file input, raw output, last-result exit --
+// and the remote realization derives the flags and the RFC 4254 command string. The decode reads
+// JqOutcome, never success/stdout/stderr.
+data openbmc_fan_stepwise_count_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length"
+
+// LOSSY REFUSAL CARRIER: OpenBmcIntegerResult carries a rendered String (reason), not a typed
+// cause. openbmc_remote_jq_refusal_text converts the typed OpenBmcRemoteJqRefusal to prose at
+// this boundary, so every consumer downstream of this function is cause-blind for refusals --
+// they can test the prose or nothing. The typed cause is preserved through the execute layer
+// (OpenBmcRemoteJqRefused carries OpenBmcRemoteJqRefusal) and can be matched there.
+fn openbmc_fan_config_stepwise_count(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+) -> OpenBmcIntegerResult {
+  match jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: openbmc_fan_stepwise_count_program },
+    bindings: Empty,
+    input: JqInputFile { path: config_path },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcIntegerRefused { reason: "OpenBMC fan stepwise count could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } =>
+      match openbmc_remote_jq_execute(session: session, plan: plan) {
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          OpenBmcIntegerRefused { reason: openbmc_remote_jq_refusal_text(cause: cause) }
+        OpenBmcRemoteJqExecuted { observation: observation } =>
+          openbmc_fan_config_stepwise_count_result(
+            outcome: jq_classify_observation(plan: plan, observation: observation),
+          )
+      }
+  }
+}
+
+fn openbmc_fan_config_stepwise_count_result(outcome: JqOutcome) -> OpenBmcIntegerResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcIntegerRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcIntegerRefused { reason: "OpenBMC fan stepwise count is absent" }
+    JqOutputPresent { text: text } =>
+      match parse_int(s: trim(text)) {
+        Absent =>
+          OpenBmcIntegerRefused { reason: "OpenBMC fan stepwise count is not an integer" }
+        Present { value: count } =>
+          OpenBmcIntegerObserved { value: count }
+      }
+  }
+}
 
 fn openbmc_fan_config_raw(
   session: PasswordSshSession,
@@ -1643,10 +1925,9 @@ fn openbmc_fan_config_observe(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
 ) -> OpenBmcFanConfigObservationResult {
-  match openbmc_fan_config_integer(
+  match openbmc_fan_config_stepwise_count(
     session: session,
     config_path: config_path,
-    query: OpenBmcStepwiseCount,
   ) {
     OpenBmcIntegerRefused { reason } =>
       OpenBmcFanConfigObservationRefused { reason: reason }

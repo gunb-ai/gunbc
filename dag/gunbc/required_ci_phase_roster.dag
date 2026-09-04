@@ -58,6 +58,7 @@ type RequiredCiPhase
   | NamespaceWaveAdmissionPhase
   | RegenPhase
   | GeneratedArtifactPhase
+  | RegenFixedPointPhase
   | FloorPhase
 
 fn required_ci_phase_name(p: RequiredCiPhase) -> String {
@@ -66,6 +67,7 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     NamespaceWaveAdmissionPhase => "namespace-wave-admission"
     RegenPhase => "regen"
     GeneratedArtifactPhase => "generated-artifact"
+    RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
   }
 }
@@ -78,6 +80,7 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     NamespaceWaveAdmissionPhase => WitnessesLane
     RegenPhase => BuildLane
     GeneratedArtifactPhase => BuildLane
+    RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
   }
 }
@@ -91,6 +94,7 @@ data required_ci_phases: List<RequiredCiPhase> = [
   NamespaceWaveAdmissionPhase,
   RegenPhase,
   GeneratedArtifactPhase,
+  RegenFixedPointPhase,
   FloorPhase,
 ]
 

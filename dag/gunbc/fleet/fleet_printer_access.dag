@@ -1,0 +1,53 @@
+module gunbc.fleet_printer_access
+
+import std.types { NonEmptyStr }
+import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
+import gunbc.fleet_asset_identity { printer_01 }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+
+// WHERE THE PRINTER'S ACCESS CODE LIVES, NEVER WHAT IT IS.
+//
+// A Bambu printer in LAN Mode authenticates both its MQTT control channel and its FTPS file channel
+// with one operator-visible access code. That code is live credential material, so this module
+// carries its LOCUS and not its value -- the same split gunbc.fleet_known_hosts_anchor already makes
+// for SSH, and for the reason stated there: a forged locus is inert, because it names a host and a
+// path and nothing else, while a forged credential would be an authentication claim nobody made.
+//
+// The code is NOT in this repository and must not be added to it. Committing it would publish a live
+// credential to every clone and every fork of the history, where deleting it later does not unpublish
+// it. It is held at the path below, mode 0600, on the host that can actually reach the printer.
+//
+// THE LOCUS HOST IS NOT INCIDENTAL. product.network_topology network_reachability says ContainerRunner
+// cannot reach HostLan, and the printer sits on HostLan -- so the credential is held on srv2, which is
+// on the segment, rather than anywhere a session container could read it. The credential lives where
+// the transport that needs it will run.
+// THE PATH IS HOME-RELATIVE STRUCTURALLY, NOT A TILDE INSIDE A STRING.
+//
+// The first revision wrote path: "~/.printer-01-access-code". review 59854 is right that this is a
+// string a consumer must re-parse: `~` is a SHELL convention, and every process-launch API that does
+// not run a shell would open a literal directory named "~". Splitting the arm says which base the
+// remainder is relative to, so a consumer resolves it rather than pattern-matching a leading
+// character -- and an absolute path stays expressible for the case where there is no home to be
+// relative to.
+type CredentialFilePath
+  = UnderHomeOf { account: NonEmptyStr, relative_path: NonEmptyStr }
+  | AbsolutePath { path: NonEmptyStr }
+
+type PrinterAccessCodeLocus {
+  subject: PhysicalAssetIdentity
+  held_on: HostIdentity
+  path: CredentialFilePath
+}
+
+// KNOWN TO BE IN THE CONVERSATION THAT SET IT UP, AND THEREFORE DUE FOR ROTATION. The code was read
+// off the printer screen and relayed in an agent transcript on 2026-09-04 before it was written to
+// the path below. A transcript is durable and is not a secret store, so this code should be treated
+// as disclosed and regenerated -- toggling LAN Mode off and on issues a new one -- after which only
+// the file at this locus changes and no declaration here moves. Recording the disclosure is the point:
+// an undisclosed code and a disclosed one are different facts, and silence would report the weaker
+// state as the stronger one.
+data printer_01_access_code_locus: PrinterAccessCodeLocus = PrinterAccessCodeLocus {
+  subject: printer_01,
+  held_on: operator_host_srv2,
+  path: UnderHomeOf { account: "briansrls", relative_path: ".printer-01-access-code" },
+}
