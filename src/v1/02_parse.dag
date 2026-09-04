@@ -4555,6 +4555,10 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: item_mint.ctx, err: none }
 }
 
+// The pool census consumes a data declaration's name and type, never its value. Parsing an
+// initializer only to replace it with the same stand-in made every large authored ledger string a
+// transient Node tree during every entry resolve. The heads reading skips that value at token grain,
+// exactly as parse_item_block_body already skips function bodies.
 fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
@@ -4575,7 +4579,11 @@ fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr(tokens: r.tokens, ctx: ctx)
+  let r = if ctx.heads_only {
+    parse_data_value_heads_only(tokens: r.tokens, ctx: ctx)
+  } else {
+    parse_expr(tokens: r.tokens, ctx: ctx)
+  }
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
   let minted = mint_parsed_node_identity(ctx: r.ctx)
@@ -4669,6 +4677,58 @@ fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
 
 type HeadsBlockSkipResult { tokens: TokenStream, err: ErrorNode? }
 
+type HeadsDataValueSkipResult { tokens: TokenStream, err: ErrorNode? }
+
+fn heads_token_starts_item(tok: Token?) -> Bool {
+  tok_is_keyword(tok: tok, kw: "alias")
+    || tok_is_keyword(tok: tok, kw: "type")
+    || tok_is_keyword(tok: tok, kw: "fn")
+    || tok_is_keyword(tok: tok, kw: "func")
+    || tok_is_keyword(tok: tok, kw: "service")
+    || tok_is_keyword(tok: tok, kw: "resource")
+    || tok_is_keyword(tok: tok, kw: "data")
+    || tok_is_keyword(tok: tok, kw: "extern")
+    || tok_is_keyword(tok: tok, kw: "pattern")
+    || tok_is_keyword(tok: tok, kw: "interface")
+}
+
+fn heads_skip_data_value_tokens_at(tokens: TokenStream, offset: Int, braces: Int, parens: Int, brackets: Int, seen: Bool) -> HeadsDataValueSkipResult {
+  let tok = token_stream_peek(stream: tokens, offset: offset)
+  if tok_is_eof(tok: tok) {
+    if seen && braces == 0 && parens == 0 && brackets == 0 {
+      HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: none }
+    } else {
+      HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: Present { value: parse_error(msg: "heads-only parse: unterminated data value", span: token_span(tok: tok)) } }
+    }
+  } else if tok_is_newline(tok: tok) && braces == 0 && parens == 0 && brackets == 0
+    && (tok_is_eof(tok: token_stream_first(stream: skip_newlines(tokens: token_stream_advance(stream: tokens, n: offset))))
+      || heads_token_starts_item(tok: token_stream_first(stream: skip_newlines(tokens: token_stream_advance(stream: tokens, n: offset))))) {
+    if seen {
+      HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: none }
+    } else {
+      HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: Present { value: parse_error(msg: "heads-only parse: empty data value", span: token_span(tok: tok)) } }
+    }
+  } else {
+    match tok {
+      Absent => HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: Present { value: parse_error(msg: "heads-only parse: unterminated data value", span: no_span()) } }
+      Present { value: t } =>
+        let b = if is_lbrace_shape(shape: t.shape) { braces + 1 } else if is_rbrace_shape(shape: t.shape) { braces - 1 } else { braces }
+        let p = if is_lparen_shape(shape: t.shape) { parens + 1 } else if is_rparen_shape(shape: t.shape) { parens - 1 } else { parens }
+        let s = if is_lbracket_shape(shape: t.shape) { brackets + 1 } else if is_rbracket_shape(shape: t.shape) { brackets - 1 } else { brackets }
+        if b < 0 || p < 0 || s < 0 {
+          HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: Present { value: parse_error(msg: "heads-only parse: unmatched delimiter in data value", span: t.span) } }
+        } else {
+          heads_skip_data_value_tokens_at(tokens: tokens, offset: offset + 1, braces: b, parens: p, brackets: s, seen: true)
+        }
+    }
+  }
+}
+
+fn parse_data_value_heads_only(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let skipped = heads_skip_data_value_tokens_at(tokens: tokens, offset: 0, braces: 0, parens: 0, brackets: 0, seen: false)
+  ExprResult { expr: census_heads_body_stand_in(), tokens: skipped.tokens, ctx: ctx, err: skipped.err }
+}
+
 // Token-grain skip of one brace-delimited block, depth-counted. It reads only brace
 // SHAPES, which the tokenizer has already decided -- a brace inside a string literal
 // or an annotation is not a brace token, so the depth count is over the same
@@ -4706,7 +4766,7 @@ fn heads_skip_block_tokens(tokens: TokenStream, depth: Int) -> HeadsBlockSkipRes
   }
 }
 
-data census_heads_body_stand_in_message: String = "pool census heads-only: function body stripped -- refuse to interpret"
+data census_heads_body_stand_in_message: String = "pool census heads-only: declaration body/value stripped -- refuse to interpret"
 
 fn census_heads_body_stand_in() -> Node {
   make_expr_error_node(occurrence_identity: OccurrenceSynthetic,
