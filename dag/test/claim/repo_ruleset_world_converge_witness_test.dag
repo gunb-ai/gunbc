@@ -9,6 +9,7 @@ import extdeps.github.rulesets {
   RulesetBypassActor,
   RulesetActive,
   BranchTarget,
+  MergeQueueRule,
   ThisReaderCannotBypass,
   NoRequiredStatusChecksRule,
   NoMergeQueueRule,
@@ -25,7 +26,10 @@ import gunbc.repo_ruleset {
   RepositoryRulesetBypassRosterUnobservable,
   RepositoryRulesetObservedLiveBypassActors,
   RepositoryRulesetActuationRealizationUnbound,
+  RepositoryRulesetUnexpectedLiveRule,
+  RepositoryRulesetSignedPolicyProjectionUnrepresentable,
   repo_ruleset_actuation_admission,
+  repo_ruleset_observed_actuation_admission,
   desired_ruleset_rule_types,
   world_repo_ruleset_observation,
 }
@@ -111,6 +115,57 @@ test fn an_empty_roster_reaches_the_unbound_realization_cause() -> Bool {
     RepositoryRulesetActuationRefused {
       cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id },
     } => id == 4242
+    _ => false
+  }
+}
+
+
+// THE REMAINING TWO CAUSES, REACHED THROUGH THE SAME MAPPING PRODUCTION USES. The three claims above
+// vary the bypass roster, which is enough to discriminate the roster arms but leaves the rule and
+// signed-policy arms untouched: the fixture pins rule_types to the declared list, and the signed
+// arm is decided by a nullary read of module globals no observation can vary. Counting claims that
+// cross the join answers a cardinality question; these two answer the coverage one.
+//
+// They call `repo_ruleset_observed_actuation_admission`, which IS the mapping -- the production
+// admission holds no copy and delegates every observed case to it. The only thing supplied here
+// that production computes is the signed refusal, which is exactly the value the globals pin.
+
+// A live merge_queue rule is not in this repository's desired projection, and converge sends the
+// WHOLE ruleset, so actuating would DELETE it. The cause must name the rule, because an operator
+// reading "unexpected rule" without knowing WHICH one cannot tell a destructive write from a typo.
+test fn an_undeclared_live_rule_reaches_its_own_cause_and_names_the_rule() -> Bool {
+  match repo_ruleset_observed_actuation_admission(
+    ruleset_id: 4242,
+    bypass_roster: BypassRosterObserved { actors: [] },
+    rule_types: append(desired_ruleset_rule_types(), items: [MergeQueueRule]),
+    signed_projection_refusal: none,
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetUnexpectedLiveRule { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "merge_queue")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE SECOND INVERSION, and the arm that was wrong precisely while it was
+// unreachable: a signed-but-unprojectable policy was reported as NOT SIGNED, sending an operator to
+// sign what was already signed. The signed refusal is Present here -- the only state in which that
+// arm fires -- and the assertion is that the cause carries the projection deficit rather than a
+// sign-off demand. Its control is the empty-roster claim above, identical but for this value
+// reaching the terminal unbound cause instead, so an admission answering this arm unconditionally
+// fails there.
+test fn a_signed_but_unprojectable_policy_is_not_reported_as_unsigned() -> Bool {
+  match repo_ruleset_observed_actuation_admission(
+    ruleset_id: 4242,
+    bypass_roster: BypassRosterObserved { actors: [] },
+    rule_types: desired_ruleset_rule_types(),
+    signed_projection_refusal: Present {
+      value: "fixture projection deficit: the signed queue policy is not carried by the projected rules" as NonEmptyStr,
+    },
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "projection deficit")
     _ => false
   }
 }

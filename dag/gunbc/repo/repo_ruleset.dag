@@ -1122,6 +1122,78 @@ type RepositoryRulesetActuationAdmission
   = RepositoryRulesetActuationAdmitted
   | RepositoryRulesetActuationRefused { cause: RepositoryRulesetConvergenceRefusal }
 
+// THE ORDERED CAUSE MAPPING FOR AN OBSERVED RULESET, SPLIT OUT SO THAT EVERY ARM IS REACHABLE BY AN
+// EXECUTING CLAIM. This is not a second authority and not a test double: it is the mapping, and
+// `repo_ruleset_actuation_admission` above has no copy of it -- that function now only decides
+// readable-versus-unreadable and hands the observed case here. A fixture-only reimplementation
+// would have proved a duplicate rather than this.
+//
+// WHY THE SIGNED REFUSAL ARRIVES AS A PARAMETER AND THE REST DO NOT. The other three arms are
+// decided by values a caller already supplies through the observation, so a claim can reach them by
+// varying the observation. The signed-policy arm is not: `signed_desire_projection_refusal` is
+// nullary and folds two module-scope globals, so while this repository's merge queue is unsigned
+// that arm is unreachable through ANY observation and no claim could discriminate it.
+//
+// AN UNREACHABLE ARM IS EXACTLY THE ARM THAT NEEDS ONE. This branch was WRONG while it was
+// unreachable -- it reported a signed-but-unprojectable policy as "not signed", sending an operator
+// to sign what was already signed -- and it was unreachability that let the inversion sit. "The
+// source reads correctly today" is not a wall against the same inversion returning at the first
+// sign-off, which is the moment the arm goes live and the moment it is first read.
+//
+// The parameter is therefore the seam that makes the arm testable WITHOUT relocating the policy:
+// production passes `signed_desire_projection_refusal()` and nothing about which policy is signed
+// moves out of this module.
+fn repo_ruleset_observed_actuation_admission(
+  ruleset_id: Int,
+  bypass_roster: BypassActorRosterObservation,
+  rule_types: List<RulesetRuleType>,
+  signed_projection_refusal: NonEmptyStr?,
+) -> RepositoryRulesetActuationAdmission {
+  match bypass_roster {
+    BypassRosterUnavailable { reader: r, cause: rc } => RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetBypassRosterUnobservable {
+        ruleset_id: ruleset_id,
+        reader: r,
+        detail: rc,
+      },
+    }
+    BypassRosterObserved { actors: actors } =>
+      if length(actors) > 0 {
+        RepositoryRulesetActuationRefused {
+          cause: RepositoryRulesetObservedLiveBypassActors {
+            ruleset_id: ruleset_id,
+            detail: join(map(actors, a => concat(
+              concat(concat(a.actor_type, "/"), to_string(a.actor_id)),
+              concat(" mode=", a.bypass_mode),
+            )), "; ") as NonEmptyStr,
+          },
+        }
+      } else {
+        let unexpected = rule_unexpected_divergences(observed: rule_types)
+        if length(unexpected) > 0 {
+          RepositoryRulesetActuationRefused {
+            cause: RepositoryRulesetUnexpectedLiveRule {
+              ruleset_id: ruleset_id,
+              detail: render_divergences(ds: unexpected) as NonEmptyStr,
+            },
+          }
+        } else {
+          match signed_projection_refusal {
+            Present { value: detail } => RepositoryRulesetActuationRefused {
+              cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable {
+                ruleset_id: ruleset_id,
+                detail: detail,
+              },
+            }
+            Absent => RepositoryRulesetActuationRefused {
+              cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: ruleset_id },
+            }
+          }
+        }
+      }
+  }
+}
+
 // This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
 // later change swaps out. It decides ONE question -- may this tree actuate -- and it answers with
 // the fact that holds it, because for a refusal the cause IS the answer: an operator reads it to
@@ -1166,50 +1238,12 @@ fn repo_ruleset_actuation_admission(
       standing: _,
       merge_queue: _,
       bypass_roster: br,
-    } =>
-      match br {
-        BypassRosterUnavailable { reader: r, cause: rc } => RepositoryRulesetActuationRefused {
-          cause: RepositoryRulesetBypassRosterUnobservable {
-            ruleset_id: subject.ruleset_id,
-            reader: r,
-            detail: rc,
-          },
-        }
-        BypassRosterObserved { actors: actors } =>
-          if length(actors) > 0 {
-            RepositoryRulesetActuationRefused {
-              cause: RepositoryRulesetObservedLiveBypassActors {
-                ruleset_id: subject.ruleset_id,
-                detail: join(map(actors, a => concat(
-                  concat(concat(a.actor_type, "/"), to_string(a.actor_id)),
-                  concat(" mode=", a.bypass_mode),
-                )), "; ") as NonEmptyStr,
-              },
-            }
-          } else {
-            let unexpected = rule_unexpected_divergences(observed: rt)
-            if length(unexpected) > 0 {
-              RepositoryRulesetActuationRefused {
-                cause: RepositoryRulesetUnexpectedLiveRule {
-                  ruleset_id: subject.ruleset_id,
-                  detail: render_divergences(ds: unexpected) as NonEmptyStr,
-                },
-              }
-            } else {
-              match signed_desire_projection_refusal() {
-                Present { value: detail } => RepositoryRulesetActuationRefused {
-                  cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable {
-                    ruleset_id: subject.ruleset_id,
-                    detail: detail,
-                  },
-                }
-                Absent => RepositoryRulesetActuationRefused {
-                  cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: subject.ruleset_id },
-                }
-              }
-            }
-          }
-      }
+    } => repo_ruleset_observed_actuation_admission(
+      ruleset_id: subject.ruleset_id,
+      bypass_roster: br,
+      rule_types: rt,
+      signed_projection_refusal: signed_desire_projection_refusal(),
+    )
   }
 }
 
