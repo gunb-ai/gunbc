@@ -1,0 +1,136 @@
+module product.printed_chassis.fan_mount
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.fans.types { FanMountingPattern }
+import extdeps.fans.arctic { arctic_p8_mounting_pattern }
+import product.printed_chassis.coupon { PlateDimensions, plate_dimensions, CouponOperation, OpThroughHole }
+
+// A FAN MOUNT PLATE, DERIVED FROM THE FAN'S PATTERN RATHER THAN DRAWN AROUND IT.
+//
+// The four screw holes are the corners of a square of side hole_pitch centred on the plate, so their
+// positions have ONE degree of freedom and are computed from it. The bore is the airflow aperture and
+// is the only authored number here, because nothing about the fan determines it: a fan can be bolted
+// over a hole of any size that clears its blades, and the choice trades airflow against the stiffness
+// of the plate that remains.
+//
+// ON REUSING CouponOperation. Its name says coupon and this is not one, which is a naming defect
+// rather than a duplication: OpThroughHole { diameter, center_x, center_y } is a geometry operation
+// with nothing coupon-specific in it, and minting a second through-hole type for fan mounts would be
+// the nicknaming DESIGN section 3 forbids. The operation vocabulary belongs in a geometry module
+// rather than in coupon, and RELOCATION TRIGGER is the second non-coupon consumer -- this is the
+// first, so the move is owed once the standoff gauge lands beside it.
+type FanMountGeometry sole_constructor {
+  plate: PlateDimensions
+  bore: CouponOperation
+  mounting_holes: List<CouponOperation>
+}
+
+// THE BORE MAY NOT REACH THE SCREW HOLES, AND THIS IS WHERE THAT IS DECIDED.
+//
+// A bore large enough to intersect a mounting hole produces a plate with notches instead of holes: it
+// still slices, still prints, and cannot hold a fan. A bore that is not strictly enclosed by the plate
+// is the same failure against the outer edge. The comparison there is bore >= edge rather than
+// bore > edge, because a bore exactly as wide as the plate leaves ZERO material and is a hole where
+// the part was -- so the arm is named for enclosure, which is the property actually tested, rather
+// than for width, which would read as admitting the equality case.
+//
+// THE QUANTITY COMPARED IS A RADIAL DISTANCE, NOT AN AXIS OFFSET. The screw holes sit at the CORNERS
+// of the pitch square, so each centre is hole_pitch/2 out along BOTH axes and its distance from the
+// plate centre is that offset times the square root of two -- about 50.6 mm for a 71.5 mm pitch, not
+// 35.75 mm. An earlier form of this check compared the bore radius against the axis offset and so
+// refused a 76 mm bore, which is the aperture an ordinary 80 mm fan mount actually has. That is the
+// right refusal shape applied to the wrong quantity, and its positive control is what exposed it.
+//
+// The comparison is made on SQUARES to stay in exact integer micrometres. Requiring
+//     (bore_radius + clearance/2)^2  <  2 * offset^2
+// is equivalent to requiring the bore edge to stay inside the near edge of the screw hole, and needs
+// no square root, so there is no rounding to reason about.
+//
+// Both arms refuse rather than clamp. Silently shrinking an over-large bore would be the absorbing
+// fallback: the caller asked for an aperture, got a different one, and nothing said so.
+type FanMountAdmission
+  = FanMountAdmitted { geometry: FanMountGeometry }
+  | FanMountBoreReachesMountingHoles { bore_radius: Micrometer, hole_center_distance: Micrometer }
+  | FanMountBoreNotEnclosedByPlate { bore_diameter: Micrometer, plate_edge: Micrometer }
+
+  | FanMountPlateSmallerThanPattern { plate_edge: Micrometer, required_edge: Micrometer }
+
+fn hole_offset(pattern: FanMountingPattern) -> Nat {
+  micrometer_count(m: pattern.hole_pitch) / 2
+}
+
+// The plate must at least contain the screw circle plus material around it. Required edge is the
+// pitch plus one clearance diameter -- half a hole of material beyond each centre, which is the
+// minimum that leaves a closed ring rather than an open slot at the plate edge.
+fn required_plate_edge(pattern: FanMountingPattern) -> Nat {
+  micrometer_count(m: pattern.hole_pitch) + micrometer_count(m: pattern.hole_clearance_diameter)
+}
+
+fn admit_fan_mount(
+  pattern: FanMountingPattern,
+  plate_edge: Micrometer,
+  plate_thickness: Micrometer,
+  bore_diameter: Micrometer,
+) -> FanMountAdmission {
+  let edge = micrometer_count(m: plate_edge)
+  let need = required_plate_edge(pattern: pattern)
+  let bore_d = micrometer_count(m: bore_diameter)
+  let off = hole_offset(pattern: pattern)
+  let bore_r = bore_d / 2
+  let reach = bore_r + (micrometer_count(m: pattern.hole_clearance_diameter) / 2)
+  if edge < need {
+    FanMountPlateSmallerThanPattern {
+      plate_edge: plate_edge,
+      required_edge: micrometer(count: need),
+    }
+  } else {
+    if bore_d >= edge {
+      FanMountBoreNotEnclosedByPlate { bore_diameter: bore_diameter, plate_edge: plate_edge }
+    } else {
+      if (reach * reach) >= (2 * off * off) {
+        FanMountBoreReachesMountingHoles {
+          bore_radius: micrometer(count: bore_r),
+          hole_center_distance: micrometer(count: off),
+        }
+      } else {
+        let c = edge / 2
+        FanMountAdmitted {
+          geometry: FanMountGeometry {
+            plate: plate_dimensions(size_x: plate_edge, size_y: plate_edge, size_z: plate_thickness),
+            bore: OpThroughHole {
+              diameter: bore_diameter,
+              center_x: micrometer(count: c),
+              center_y: micrometer(count: c),
+            },
+            mounting_holes: [
+              OpThroughHole { diameter: pattern.hole_clearance_diameter,
+                              center_x: micrometer(count: c - off), center_y: micrometer(count: c - off) },
+              OpThroughHole { diameter: pattern.hole_clearance_diameter,
+                              center_x: micrometer(count: c + off), center_y: micrometer(count: c - off) },
+              OpThroughHole { diameter: pattern.hole_clearance_diameter,
+                              center_x: micrometer(count: c - off), center_y: micrometer(count: c + off) },
+              OpThroughHole { diameter: pattern.hole_clearance_diameter,
+                              center_x: micrometer(count: c + off), center_y: micrometer(count: c + off) },
+            ],
+          },
+        }
+      }
+    }
+  }
+}
+
+// THE FIRST PART TO PRINT. A 92 mm plate carries the 71.5 mm pattern with material to spare, 4 mm of
+// thickness is stiff enough to hold a fan without warping on a textured plate, and a 76 mm bore clears the
+// blades while staying well inside the 50.6 mm screw-hole circle.
+data arctic_p8_mount_plate_edge: Micrometer = micrometer(count: 92000)
+data arctic_p8_mount_plate_thickness: Micrometer = micrometer(count: 4000)
+data arctic_p8_mount_bore: Micrometer = micrometer(count: 76000)
+
+data arctic_p8_fan_mount: FanMountAdmission = admit_fan_mount(
+  pattern: arctic_p8_mounting_pattern,
+  plate_edge: arctic_p8_mount_plate_edge,
+  plate_thickness: arctic_p8_mount_plate_thickness,
+  bore_diameter: arctic_p8_mount_bore,
+)

@@ -57,20 +57,6 @@ import gunbc.emit_copy_qualification_fixture_gen {
   fixture_module_text, runner_main_text, shard_case_rows, driver_module_text
 }
 
-// ─ RELOCATED FROM THE END OF THIS FILE, VERBATIM (2026-09-04) ──────────────────────
-//
-// This block sat after the final declaration. A source annotation there names no module item, so
-// the parse refuses it -- 16 errors, ON MAIN, which fail the synthetic merge of every open PR and
-// so block the whole queue rather than one branch. Reproduced by compiling main's own copy from a
-// clean checkout of 97345e55d5, which is worth stating because merging main does NOT clear it:
-// main is where it comes from.
-//
-// The change that landed it deleted the three declarations this text described and kept the text.
-// That is the right instinct -- the account of WHY rows were removed is exactly what a later reader
-// needs -- and it only needed a subject. The content is a statement about THIS MODULE's standing,
-// not about any one declaration, so the module header is where it attaches. Not one word is
-// changed or dropped.
-
 // Hermetic floor witnesses for the EMIT-COST-QUAL-0 grid authority: roster totality and
 // denominator exactness, applicability and expectation derivation controls, growth-judgment
 // and join-arm discrimination, and generation-grain mutant discrimination. The wet transaction
