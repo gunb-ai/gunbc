@@ -436,16 +436,16 @@ test fn ecq_lint_discrimination_splits_the_carriers_holds() -> Bool {
 
 // ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
 //
-// Three rows stood here asserting the `emit-copy-qualification-battery` job's capability closure,
-// its inert `if_condition: "false"`, and that its argv named this module's wet entry. All three
-// had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no longer exists:
-// the operator spent the held activation token on DELETION rather than activation, so the job is
-// gone from the emitted workflow instead of having its "false" lifted.
+// Three rows stood at the end of this module asserting the `emit-copy-qualification-battery` job's
+// capability closure, its inert `if_condition: "false"`, and that its argv named this module's wet
+// entry. All three had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no
+// longer exists: the operator spent the held activation token on DELETION rather than activation, so
+// the job is gone from the emitted workflow instead of having its "false" lifted.
 //
 // WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
 // `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
-// calibration mutants below now have no executing consumer at all -- they are specification
-// without execution in the sense DESIGN section 5 names, and the rows above this comment establish
+// calibration mutants in this module now have no executing consumer at all -- they are specification
+// without execution in the sense DESIGN section 5 names, and those rows establish
 // nothing about a running system until one is restored. That is recorded at
 // `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
 // this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
