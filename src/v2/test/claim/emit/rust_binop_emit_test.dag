@@ -12,12 +12,14 @@ import v2.extdeps.languages.dag {
 }
 import v2.extdeps.languages.rust {
   rust_source_text,
-  rust_target_model_staging,
   rust_operator_realizations_catalog_node,
   rust_value_expression_projection,
   rust_fn_add_lex
 }
-import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
+import v2.extdeps.languages.rust_test {
+  rust_binop_target_model_staging,
+  rust_target_model_with_operators_and_lex
+}
 import v2.std.collection {
   Map
 }
@@ -190,7 +192,7 @@ fn rust_binop_vep_emit_differs_from_add(operation: CanonicalOperation) -> Bool {
 fn rust_binop_producer_emit_accepts(operator_token: Symbol, expected: String) -> Bool {
   match rust_binop_producer_emit(
     operator_token: operator_token,
-    target: rust_target_model_staging()
+    target: rust_binop_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == None)

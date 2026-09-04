@@ -10,6 +10,7 @@ pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
+pub use crate::v1_compiler_parse::parsed_item_carries_resource_entries;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::ModuleFilenameCollision;
@@ -766,7 +767,8 @@ pub fn is_type_alias_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (is_bare_leaf_item(item.clone())
+    ((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),
@@ -777,7 +779,8 @@ pub fn is_type_decl_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((is_bare_leaf_item(item.clone())
+    (((is_bare_leaf_item(item.clone())
+        && !crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()))
         && !is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
             source_indices.clone(),
