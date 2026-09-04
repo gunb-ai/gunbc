@@ -20,6 +20,7 @@ import gunbc.recurring_failure_mode.absorbing_fallback { absorbing_fallback }
 import gunbc.recurring_failure_mode.empty_observation_narrow { empty_observation_narrow }
 import gunbc.recurring_failure_mode.claim_forced_and_unbracketed { claim_forced_and_unbracketed }
 import gunbc.recurring_failure_mode.cache_impurity { cache_impurity }
+import gunbc.recurring_failure_mode.match_arm_escapes_the_declared_return_type { match_arm_escapes_the_declared_return_type }
 import gunbc.recurring_failure_mode.reflection_evidence_structural_proof { reflection_evidence_structural_proof }
 import gunbc.recurring_failure_mode.coercion_proven_by_normalized_round_trip { coercion_proven_by_normalized_round_trip }
 import gunbc.recurring_failure_mode.parallel_representation_debt { parallel_representation_debt }
@@ -118,6 +119,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   empty_observation_narrow,
   claim_forced_and_unbracketed,
   cache_impurity,
+  match_arm_escapes_the_declared_return_type,
   reflection_evidence_structural_proof,
   coercion_proven_by_normalized_round_trip,
   parallel_representation_debt,

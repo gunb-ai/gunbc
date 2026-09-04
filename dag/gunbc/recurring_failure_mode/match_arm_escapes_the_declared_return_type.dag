@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.match_arm_escapes_the_declared_return_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data match_arm_escapes_the_declared_return_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_arm_escapes_the_declared_return_type" as NonEmptyStr,
+
+  receipts: [
+    "a match arm's result is not checked against the function's declared return type, while a plain body is. ",
+    "INVALID STATE: `fn f(x: Shape) -> Int { match x { A { n } => n, B { s } => s } }` where `s: String` is Accepted. ",
+    "HARM: silent wrongness, which is not a rung but is outside the ladder (5). The function returns a String where Int was declared, and every downstream consumer reads a value of a type the signature says cannot occur. Nothing is located and nothing refuses. ",
+    "DISTINGUISHING FACT, and it is what makes this a floor defect rather than a missing feature: the SAME mismatch in a plain body IS refused, with a located diagnostic - `type mismatch: expected 'Primitive(Int)', got 'Primitive(String)'`. So the checker exists and holds; the match arm is simply not routed through it. One construct escapes a wall the language already has. ",
+    "RUNG FOUND AT: outside the ladder. 4b names `values inhabit declared types` as part of the ordinary compiler floor, and a failure there is a below-baseline safety regression rather than a missing differentiator. ",
+    "CEILING: structurally guaranteed. Membership is decidable and the authority already exists - the arm result and the declared return type are both modeled, and the plain-body path already performs exactly this check. This is a wall now, not a wall after grounding. ",
+    "NEXT TRIGGER: route match-arm results through the same return-type check the plain-body path uses, with a discriminating RED - an arm whose type differs from the declared return - enrolled as a permanent regression control. Per 4b(4) the control does not retire when the wall lands; it flips to guarding it. ",
+    "FOUND BY: a review of gunbc-private #35 flagged `conflicting_assessment_count(...) -> Int` returning `k1(...)`, a String, in one arm. The instance was a copy-paste from a key-projection function beside it. The instance is a private-repo defect and is fixed there; the CLASS is this one, and it is public. ",
+    "WHY IT SURVIVED REVIEW AND CI: the malformed arm was unreachable from its only caller, so every executing control passed. The type error was therefore invisible to execution, and the one mechanism that should not have needed execution to see it - the typechecker - did not look. An unreachable arm is precisely where this class hides, because reachable ones get caught by their values. ",
+  ],
+
+  evidence: [],
+}
