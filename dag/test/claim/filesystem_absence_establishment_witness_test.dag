@@ -1,6 +1,6 @@
 module test.claim.filesystem_absence_establishment_witness_test
 
-import std.types { String, Bool }
+import std.types { String, Bool, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
@@ -14,14 +14,18 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
   filesystem_entry_presence,
   FilesystemFileObservation,
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_file_observation,
   filesystem_established_absence_detail,
+  filesystem_established_absence_path,
+  FilesystemDirectorySubjectRefused,
   filesystem_listing_names_entry,
 }
 
@@ -64,6 +68,7 @@ fn presence_arm(p: FilesystemEntryPresence) -> String {
     FilesystemEntryAbsent(_) => "absent"
     FilesystemEntryListed { directory: _, name: _ } => "listed"
     FilesystemEntryPresenceIndeterminate { cause: _ } => "indeterminate"
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
   }
 }
 
@@ -73,6 +78,7 @@ fn observation_arm(o: FilesystemFileObservation) -> String {
     FilesystemFileRead { path: _, content: _ } => "read"
     FilesystemFileIndeterminate { cause: _ } => "indeterminate"
     FilesystemFileObservationsDisagree { path: _, cause: _ } => "disagree"
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
   }
 }
 
@@ -173,6 +179,7 @@ test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
         == "no marker.json is listed in /opt/gunbc/state"
     FilesystemEntryListed { directory: _, name: _ } => false
     FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
   }
 }
 
@@ -221,4 +228,183 @@ test fn a_disagreement_is_distinct_from_an_unmakeable_observation() -> Bool {
       name: "marker.json",
       read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
     )) == "indeterminate"
+}
+
+
+// THE DIRECTORY IS ADMITTED BEFORE ANYTHING IS ESTABLISHED ABOUT IT, and these are the cells that
+// go red on the construction this replaces. Measured on the prior body: an empty directory minted a
+// listing, an unnamed entry minted an absence, and the derived path rendered `/repo.json` -- an
+// absolute host-root target authorized by an absence about no directory.
+fn listing_arm(o: FilesystemListingObservation) -> String {
+  match o {
+    FilesystemDirectoryListed(_) => "listed"
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => "listing-refused"
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => "subject-refused"
+  }
+}
+
+fn observe_directory(directory: String, success: Bool) -> FilesystemListingObservation {
+  filesystem_listing_observation(
+    directory: directory, success: success, entries: "other.json", error: "Permission denied",
+  )
+}
+
+// The empty subject is refused on BOTH transport channels, which is what fixes the ordering: if
+// `success` were consulted first, an empty directory that also failed to list would land in the
+// host-error arm and carry the empty subject onward as an ordinary listing failure.
+test fn an_empty_directory_subject_is_refused_on_either_transport_channel() -> Bool {
+  listing_arm(o: observe_directory(directory: "", success: true)) == "subject-refused"
+    && listing_arm(o: observe_directory(directory: "", success: false)) == "subject-refused"
+}
+
+// THE POSITIVE CONTROLS, without which the cell above is satisfied by refusing everything. A real
+// directory still reaches both transport arms, and `/`, `..` and `.` are admitted rather than
+// refused -- containment is the caller's policy and no containment root exists at this layer.
+test fn an_admissible_directory_still_reaches_both_transport_arms() -> Bool {
+  listing_arm(o: observe_directory(directory: "/opt/gunbc/state", success: true)) == "listed"
+    && listing_arm(o: observe_directory(directory: "/opt/gunbc/state", success: false)) == "listing-refused"
+    && listing_arm(o: observe_directory(directory: "/", success: true)) == "listed"
+    && listing_arm(o: observe_directory(directory: "..", success: true)) == "listed"
+    && listing_arm(o: observe_directory(directory: ".", success: true)) == "listed"
+}
+
+// AND NO ABSENCE IS ESTABLISHED FOR A SUBJECT THAT WAS NEVER ADMITTED. Before the repair this
+// answered "absent", so a caller received a token authorizing a write derived from no directory.
+//
+// THE FIRST CUT OF THIS CELL ASSERTED "indeterminate" AND WAS WRONG, which is worth writing down
+// because the cell was GREEN and the fold it pinned was defective. Folding the subject refusal into
+// the indeterminate arm keeps the explanation for a human and discards the state for every program:
+// a consumer could tell "the caller named no directory" from "the host refused to list one" only by
+// parsing prose. A witness that pins that collapse as correct is not evidence -- it is the defect
+// with a green light on it.
+test fn an_inadmissible_subject_reaches_its_own_arm_rather_than_indeterminate() -> Bool {
+  presence_arm(p: filesystem_entry_presence(
+    listing: observe_directory(directory: "", success: true),
+    name: "repo.json",
+  )) == "subject-refused"
+}
+
+// AND THE ARM CARRIES THE TWO ARGUMENTS THAT NAME THE REMEDY. A refused subject is repaired by
+// fixing the CALLER'S ARGUMENT, so the arm has to say which argument; a cell that checked only the
+// tag would be satisfied by an arm that dropped both fields.
+test fn the_subject_refusal_names_the_directory_and_the_entry_it_was_asked_about() -> Bool {
+  match filesystem_entry_presence(
+    listing: observe_directory(directory: "", success: true),
+    name: "repo.json",
+  ) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: _ } =>
+      d == "" && n == "repo.json"
+    FilesystemEntryAbsent(_) => false
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+  }
+}
+
+// THE STATE SURVIVES THE SECOND FOLD, which is the half that makes it a carrier fact rather than a
+// local one. filesystem_file_observation is where consumers actually read, so a distinction that
+// died here would be invisible to every one of them.
+test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
+  observation_arm(o: filesystem_file_observation(
+    listing: observe_directory(directory: "", success: true),
+    name: "repo.json",
+    path: "/repo.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )) == "subject-refused"
+}
+
+// AND THE ARM ABOVE PROVES ONLY THE VARIANT, WHICH IS NOT THE THING CONSUMERS USE. `observation_arm`
+// reduces the value to a tag, so an edge that swapped the two fields and replaced the cause would
+// leave it GREEN -- and every production consumer then tells the operator to repair the wrong
+// argument, which is precisely the subject substitution this module exists to prevent.
+//
+// THE CHAIN IS CHECKED FROM THE LISTING REFUSAL, NOT FROM THE MIDDLE. An earlier cut of this cell
+// read the fields off `FilesystemEntrySubjectRefused` and compared them to
+// `FilesystemFileSubjectRefused`, which proves only the SECOND edge -- a first-edge mutation that
+// fabricated the cause stayed green, because the fabricated value became `ec` and the second edge
+// faithfully copied it into `fc`. Comparing the two derived values to each other cannot detect a
+// corruption they share. So this derives ONE listing refusal and requires the whole chain:
+//
+//   listing.directory == entry.directory == file.directory
+//   requested name    == entry.name      == file.name
+//   listing.cause     == entry.cause     == file.cause
+//
+// No diagnostic prose is duplicated: every comparison is against a value the fold itself produced,
+// so this cell does not go red when the wording of a cause is changed.
+test fn the_payload_survives_both_edges_unpermuted() -> Bool {
+  let listing = observe_directory(directory: "", success: true)
+  match listing {
+    FilesystemDirectorySubjectRefused { directory: ld, cause: lc } =>
+      match filesystem_entry_presence(listing: listing, name: "repo.json") {
+        FilesystemEntrySubjectRefused { directory: ed, name: en, cause: ec } =>
+          match filesystem_file_observation(
+            listing: listing,
+            name: "repo.json",
+            path: "/repo.json",
+            read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+          ) {
+            FilesystemFileSubjectRefused { directory: fd, name: fnm, cause: fc } =>
+              ld == ed && ed == fd && ld == ""
+                && en == "repo.json" && en == fnm
+                && lc == ec && ec == fc
+            FilesystemFileAbsent(_) => false
+            FilesystemFileRead { path: _, content: _ } => false
+            FilesystemFileIndeterminate { cause: _ } => false
+            FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+          }
+        FilesystemEntryAbsent(_) => false
+        FilesystemEntryListed { directory: _, name: _ } => false
+        FilesystemEntryPresenceIndeterminate { cause: _ } => false
+      }
+    FilesystemDirectoryListed(_) => false
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => false
+  }
+}
+
+// THE SEPARATING CONTROL. An ADMITTED directory whose listing failed is still ordinary
+// indeterminate, at BOTH folds. Without this cell the three above are satisfied by a fold that
+// answers "subject-refused" for every stop, which would erase the host-fault state instead of the
+// caller-argument one -- the same defect pointed the other way.
+test fn an_admitted_directory_that_fails_to_list_stays_indeterminate() -> Bool {
+  presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json"))
+      == "indeterminate"
+    && observation_arm(o: filesystem_file_observation(
+      listing: unlistable(),
+      name: "marker.json",
+      path: "/opt/gunbc/state/marker.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    )) == "indeterminate"
+}
+
+fn absence_path_for(directory: String, name: String) -> String {
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: directory, success: true, entries: "other.json", error: "",
+    ),
+    name: name,
+  ) {
+    FilesystemEntryAbsent(a) => filesystem_established_absence_path(absence: a) as String
+    FilesystemEntryListed { directory: _, name: _ } => "listed"
+    FilesystemEntryPresenceIndeterminate { cause: _ } => "indeterminate"
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => "subject-refused"
+  }
+}
+
+// THE PROJECTION NO LONGER MANUFACTURES A SEPARATOR THE CALLER DID NOT WRITE. The first two cells
+// are the measured defect: the prior body always inserted `/`, so `/` rendered `//repo.json` and
+// `w/` rendered `w//repo.json`. POSIX gives a pathname beginning with exactly two slashes an
+// implementation-defined interpretation, so the first of those could denote a different file.
+test fn the_derived_path_inserts_a_separator_only_when_one_is_absent() -> Bool {
+  absence_path_for(directory: "/", name: "repo.json") == "/repo.json"
+    && absence_path_for(directory: "w/", name: "repo.json") == "w/repo.json"
+    && absence_path_for(directory: "w", name: "repo.json") == "w/repo.json"
+    && absence_path_for(directory: "..", name: "repo.json") == "../repo.json"
+}
+
+// AND IT IS NOT NORMALIZATION, WHICH IS THE CHANGE THIS DELIBERATELY IS NOT. An authored `//` is
+// preserved: the obligation is to stop INTRODUCING a separator, not to choose a canonical spelling
+// of the subject the caller supplied. This cell goes red on a repair that collapses interior
+// slashes, which is how it separates the two.
+test fn an_authored_double_separator_is_preserved_rather_than_collapsed() -> Bool {
+  absence_path_for(directory: "//", name: "repo.json") == "//repo.json"
+    && absence_path_for(directory: "a//b", name: "repo.json") == "a//b/repo.json"
 }
