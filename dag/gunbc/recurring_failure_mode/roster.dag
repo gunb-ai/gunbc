@@ -123,6 +123,7 @@ import gunbc.recurring_failure_mode.discriminating_arm_built_but_never_enrolled 
 import gunbc.recurring_failure_mode.head_landed_by_hand_before_its_own_verification_reported { head_landed_by_hand_before_its_own_verification_reported }
 import gunbc.recurring_failure_mode.duplicate_declaration_arrives_through_a_clean_merge { duplicate_declaration_arrives_through_a_clean_merge }
 import gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant { verdict_stale_at_the_merge_instant }
+import gunbc.recurring_failure_mode.container_status_read_as_a_claim_about_its_members { container_status_read_as_a_claim_about_its_members }
 import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_its_own_denominator }
 import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
 
@@ -239,6 +240,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   head_landed_by_hand_before_its_own_verification_reported,
   duplicate_declaration_arrives_through_a_clean_merge,
   verdict_stale_at_the_merge_instant,
+  container_status_read_as_a_claim_about_its_members,
   roster_is_its_own_denominator,
   instrument_answers_outside_its_domain,
 ]
