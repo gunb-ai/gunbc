@@ -1126,6 +1126,8 @@ fn ct_coercion_tests() -> String {
     ct_render_rust_applied_type_qualified_base_test(),
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
+    ct_instantiation_unavailable_refuses_fallback_test(),
+    ct_record_lit_domain_selection_tests(),
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_resource_item_is_not_a_type_item_test())
@@ -1139,6 +1141,146 @@ fn ct_coercion_tests() -> String {
 // the instantiated parameter is `Optional<Node>` and the unwrap strips exactly the Option the
 // return type demands. Arm 2 holds the other direction: a CONCRETE non-optional parameter still
 // takes the unwrap, so a repair that simply stopped injecting would go red here.
+// THE FIFTH FIXTURE CELL, AND IT LIVES HERE BECAUSE compiler_tests.rs IS A GENERATED MIRROR.
+// It was first hand-written into the mirror, where required-regen would have deleted it on the next
+// run -- evidence that disappears exactly when someone regenerates is the "holds until the next
+// edit" failure it exists to prevent.
+//
+// The seam has THREE outcomes and the original four cells asserted two, so the undetermined arm
+// shipped with no discriminating RED. The assertion is three-way ON PURPOSE: a cell checking only
+// that "some diagnostic is emitted" would have passed the silent code this replaced, because the
+// sibling arm still accused at every other site. It must go red when the arm emits the ACCUSATION
+// (the false positive returning) and red when it emits NOTHING (the silent admission returning).
+// Both directions were verified by mutation before this was enrolled.
+//
+// It is the only artifact that will tell a future reader the decline must stay OBSERVABLE:
+// optional_narrowing_refuses and optional_into_required_error were both deleted by the climb, so no
+// production code carries that history any more.
+// THE AMBIGUITY CELL IS REQUIRED EVEN THOUGH THE LIVE CORPUS HAS NO BOTH-OWNER MEMBER, and that is
+// the point rather than a caveat. The refusal arm exists so that resolution order never decides a
+// genuine ambiguity; a corpus that happens not to contain one today is not evidence the arm works,
+// and an arm with no discriminating RED is a decoration that will be cited as coverage (DESIGN 4b).
+// The fixture AUTHORS the both-owner case, which is authorable here precisely because a compiler's
+// regression probes are invalid programs.
+//
+// The four cells are one matrix over the selection fold: element-only selects, outer-only selects,
+// neither is not-found, both refuses. Each of the first three is also the GREEN CONTROL for the
+// fourth -- without them, a resolver that refused every record literal would pass the ambiguity
+// cell, and "the wall fired" would be indistinguishable from "this path refuses everything".
+fn ct_record_lit_domain_selection_tests() -> String {
+  concat(
+    "    fn diags_matching(src: &str, needle: &str) -> usize {\n",
+    "        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "            path: \"probe.dag\".to_string(),\n",
+    "            content: src.to_string(),\n",
+    "        });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(\n",
+    "            std::rc::Rc::new(im::vector![source]),\n",
+    "            crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "        );\n",
+    "        result\n",
+    "            .diagnostics\n",
+    "            .iter()\n",
+    "            .filter(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains(needle))\n",
+    "            .count()\n",
+    "    }\n",
+    "\n",
+    "    #[test]\n",
+    "    fn a_constructor_reachable_by_two_routes_refuses_and_names_every_owner() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let both = \"module probe\\ntype Colour = | Cons { head: Int } | Red\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Cons { head: 1 } } }\\n\";\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(both, \"constructor of more than one type reachable from this position\"),\n",
+    "                    1,\n",
+    "                    \"THE AMBIGUITY ARM WENT SILENT. `Cons` here is a constructor of BOTH Colour (reached as the element type of the expected collection) and FreeMonoid (reached as the target of List's alias). Selecting either by route order is the absorbing fallback this arm exists to refuse. A zero here means some route stopped enumerating -- check that both CollectionElement and AliasTarget still produce a domain -- and a two means the position is being judged twice\"\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    diags_matching(both, \"Colour\") >= 1 && diags_matching(both, \"FreeMonoid\") >= 1,\n",
+    "                    \"THE REFUSAL DID NOT NAME BOTH OWNERS. A refusal that says a name is ambiguous without saying between WHAT leaves the author no move except guessing, which is the remedy-less refusal class: the wall fires correctly and routes the compliant reader nowhere\"\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"a_constructor_reachable_by_two_routes_refuses_and_names_every_owner panicked\");\n",
+    "    }\n",
+    "\n",
+    "    #[test]\n",
+    "    fn exactly_one_matching_route_selects_and_does_not_refuse() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(\"module probe\\ntype Colour = | Red | Green { shade: Int }\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Green { shade: 3 } } }\\n\", \"reachable from this position\"),\n",
+    "                    0,\n",
+    "                    \"ELEMENT-ONLY SELECTION REFUSED. `Green` is a variant of Colour and of nothing else reachable here, so the element route is the unique match and the position must SELECT rather than refuse. A refusal here means the fold is counting a domain that carries no such constructor\"\n",
+    "                );\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(\"module probe\\ntype Colour = | Red | Green { shade: Int }\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Cons { head: Red } } }\\n\", \"reachable from this position\"),\n",
+    "                    0,\n",
+    "                    \"OUTER-ONLY SELECTION REFUSED. `Cons` is a constructor of FreeMonoid, which List aliases, and Colour has no such variant -- so the alias route is the unique match. This is the 9-site Cons population that the element-only resolver could not see at all, and it must now select without refusing\"\n",
+    "                );\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(\"module probe\\ntype Colour = | Red | Green { shade: Int }\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Absent } }\\n\", \"reachable from this position\"),\n",
+    "                    0,\n",
+    "                    \"A NAME MATCHING NO ROUTE PRODUCED AN AMBIGUITY. Zero matching domains is not-found, which is a different answer from more-than-one, and collapsing them would make the ambiguity arm fire on ordinary unresolved names\"\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"exactly_one_matching_route_selects_and_does_not_refuse panicked\");\n",
+    "    }\n\n",
+  )
+}
+
+
+fn ct_instantiation_unavailable_refuses_fallback_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {\n",
+    "        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;\n",
+    "        use crate::v1_compiler_infer::RecordLitUnavailableCause as RLUC;\n",
+    "        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {\n",
+    "            cause: std::rc::Rc::new(RLUC::GenericArityDisagreement),\n",
+    "        });\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),\n",
+    "            \"SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced\"\n",
+    "        );\n",
+    "        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(\n",
+    "            unavailable.clone(),\n",
+    "            false,\n",
+    "            named_type_node(\"Thing\"),\n",
+    "            crate::v1_std_core::no_span(),\n",
+    "            \"probe.module\".to_string(),\n",
+    "            std::rc::Rc::new(HashMap::new()),\n",
+    "        );\n",
+    "        assert_eq!(\n",
+    "            diags.len(),\n",
+    "            1,\n",
+    "            \"SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place\"\n",
+    "        );\n",
+    "        match &*diags[0].diagnostic {\n",
+    "            crate::v1_std_core::CompilerDiagnostic::RecordLitInstantiationUndetermined { .. } => {}\n",
+    "            other => panic!(\"the unavailable arm emitted an unexpected diagnostic: {:?}\", other),\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::InstantiationNotApplicable\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer\"\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
+
 fn ct_generic_param_declines_fail_closed_unwrap_test() -> String {
   concat(
     "    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",

@@ -1142,6 +1142,48 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope)
 }
 
+// WHY THE RECORD-LITERAL DECLINE HAS ITS OWN DIAGNOSTIC RATHER THAN BORROWING ONE.
+// This cut previously emitted its decline through the optional-narrowing diagnostic, and carried a
+// `cause` field to keep the two apart. That carrier was a MITIGATION for a fork, not a fix: one
+// variant answered for two subjects, so a dissolution trigger written for the argument seam
+// reached a reader whose position failed for an entirely different reason. The construction the
+// carrier was standing in for is a separate variant per subject (DESIGN section 3, one meaning one
+// name), which is what this now is. The cause coproduct stays, because it still distinguishes the
+// FOUR ways instantiation can be unavailable within this one subject.
+//
+// ONE VARIANT MAY NOT ANSWER FOR TWO CAUSES. The undetermined diagnostic named a dissolution
+// trigger specific to builtin generic formals at the ARGUMENT seam, while the record-field seam
+// emits the same variant for an instantiation fallback -- so one of the two consumers necessarily
+// received a false remedy. The cause is therefore carried, and the rendered message derives its
+// trigger from the cause instead of asserting one.
+// WHY THIS IS A COPRODUCT AND NOT THE String IT REPLACED. The cause used to be free-form text, and
+// record_lit_instantiation_undetermined_diags handed that text to the borrowed narrowing diagnostic's
+// `declared` field -- the field the renderer describes as HOW THE POSITION IS RENDERED. So a real
+// diagnostic told the reader that a position was rendered "declared generic arity does not match
+// the supplied type arguments". Two different facts had been packed into one String and then put in
+// the wrong field, which no amount of rewording fixes: the cause and the declared type are separate
+// facts and need separate carriers.
+//
+// Closing the coproduct also makes the arms countable. A String cause can be spelled three ways at
+// three sites and read as three causes, or spelled one way and read as one when it is not.
+type RecordLitUnavailableCause
+  = DeclarationLookupUnavailable
+  | GenericArityDisagreement
+  | FieldTemplateSelectionFailed
+  | AmbiguousVariantOwners { owners: List<String> }
+
+fn record_lit_unavailable_cause_text(c: RecordLitUnavailableCause) -> String {
+  match c {
+    DeclarationLookupUnavailable =>
+      "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here"
+    GenericArityDisagreement =>
+      "the declared generic arity does not match the number of supplied type arguments"
+    FieldTemplateSelectionFailed =>
+      "the record-literal field template could not be selected for this type name"
+    AmbiguousVariantOwners { owners: os } =>
+      concat(concat("this literal name is a constructor of more than one type reachable from this position -- ", join(os, separator: "; and ")), " -- so which coproduct it constructs is not determined by the position. Name the intended one explicitly rather than letting route order decide")
+  }
+}
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1316,60 +1358,266 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
   }
 }
 
-fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
+// TWO COPRODUCTS CAN ANSWER FOR ONE LITERAL NAME, AND ONLY ONE OF THEM WAS EVER CONSULTED.
+// A record literal in a position expecting `List<Cap>` may legitimately name a variant of the
+// ELEMENT (`Cap`s own variants) or a constructor of the OUTER type (`Cons`/`Empty` of FreeMonoid).
+// The prior resolver took the element branch for every element-collection and never asked the outer
+// one, so `Cons { .. }` at a `List<RustCapability>` position searched RustCapability's variants,
+// missed, and reported the template unselectable. Measured across the corpus that was 25 sites:
+// 9 naming `Cons` against FreeMonoid and 16 naming `Present` against Optional or a List container.
+//
+// The population is stated as CONSTRUCTOR OF THE OUTER TYPE rather than as those two names on
+// purpose. Keying the repair on `Cons` and `Present` would hardcode today's corpus and the next
+// wrapper family would reopen the identical defect. Those two populations are ACCEPTANCE CONTROLS
+// for this authority, never a roster it consults.
+//
+// WHY THIS RETURNS CANDIDATES WITH ROUTES AND NOT ONE CANONICAL NODE, WHICH IS THE WHOLE DESIGN.
+// The obvious repair is a single function answering "the canonical expected type here", and it
+// would REBUILD THE DEFECT UNDER A BETTER NAME. The defect is not that the old read picked the
+// wrong node; it is that it picked ONE node and discarded the path it took to reach it, so outer,
+// element and wrapper became interchangeable discoveries a later reader may safely reorder.
+// Canonicalization may erase spelling differences. It may not erase semantic path or multiplicity.
+//
+// So the authority enumerates every route the expected type offers, each candidate carrying the
+// route that produced it, and the CONSTRUCTOR LOOKUP owns the fold: zero domains is a typed
+// unavailability, exactly one selects, and more than one REFUSES while naming every owner. The
+// route is not decoration and not a diagnostic nicety -- it is what stops the collapse from
+// happening again, because a candidate that cannot say how it was reached cannot be distinguished
+// from one reached another way.
+type ExpectedTypeRoute
+  = WholeExpectedType
+  | CardinalityOptionalWrapper
+  | NominalOptionalWrapper
+  | CollectionElement
+  | AliasTarget
+
+fn expected_type_route_text(r: ExpectedTypeRoute) -> String {
+  match r {
+    WholeExpectedType => "the expected type itself"
+    CardinalityOptionalWrapper => "the Optional wrapper carried by this position's cardinality marker"
+    NominalOptionalWrapper => "the explicitly spelled Optional wrapper"
+    CollectionElement => "the element type of the expected collection"
+    AliasTarget => "the target of the expected type's alias"
+  }
+}
+
+type ExpectedConstructorDomain {
+  owner: Node
+  owner_name: String
+  route: ExpectedTypeRoute
+}
+
+type ExpectedConstructorDomainCause
+  = NoExpectedTypeAtPosition
+  | ExpectedTypeCarriesNoConstructorDomain
+
+fn expected_constructor_domain_cause_text(c: ExpectedConstructorDomainCause) -> String {
+  match c {
+    NoExpectedTypeAtPosition =>
+      "this position supplies no expected type, so there is no coproduct in which to look this constructor up"
+    ExpectedTypeCarriesNoConstructorDomain =>
+      "the expected type reaches no coproduct by any modeled route, so it offers no constructor domain at all"
+  }
+}
+
+type ExpectedConstructorDomainResult
+  = ExpectedConstructorDomains { candidates: List<ExpectedConstructorDomain> }
+  | ExpectedConstructorDomainUnavailable { cause: ExpectedConstructorDomainCause }
+
+fn record_lit_expected_resolved(expected: Node?, scope: InferScope) -> Node? {
   match expected {
     Present { value: exp } =>
-      let resolved = match lookup_type_for(env: scope.type_env, node: exp) {
-        Present { value: r } => r
-        Absent => exp
+      match lookup_type_for(env: scope.type_env, node: exp) {
+        Present { value: r } => Present { value: r }
+        Absent => Present { value: exp }
       }
-      let nominal = if node_is_element_collection(n: resolved, source_indices: scope.type_env.source_indices) {
-        match resolved.children |> first {
+    Absent => none
+  }
+}
+
+fn expected_node_is_optional_wrapper(n: Node, scope: InferScope) -> Bool {
+  qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n)) == "Optional"
+}
+
+fn expected_node_resolved_or_self(n: Node, scope: InferScope) -> Node {
+  match lookup_type_for(env: scope.type_env, node: n) {
+    Present { value: r } => r
+    Absent => n
+  }
+}
+
+// DEDUPLICATION IS BY OWNER IDENTITY, AND IT IS LOAD-BEARING RATHER THAN TIDINESS. Two routes can
+// reach the SAME declaration -- a `List<T>` reaches FreeMonoid as both its alias target and, once
+// resolved, as the whole expected type. Counting that owner twice would manufacture an ambiguity
+// out of one coproduct and refuse a position that has exactly one honest answer, which is the
+// accusing failure this authority exists to remove. The FIRST route to reach an owner is the one
+// recorded, so the enumeration order below decides only which route is REPORTED for a shared
+// owner, never which owner wins -- there is no winning, because a second owner is a refusal.
+fn expected_domain_push(acc: List<ExpectedConstructorDomain>, n: Node?, route: ExpectedTypeRoute, scope: InferScope) -> List<ExpectedConstructorDomain> {
+  match n {
+    Present { value: cand } =>
+      if (cand.connective == Disj) {
+        let nm = authored_name_at(source_indices: scope.type_env.source_indices, node: cand)
+        if (acc |> filter(d => d.owner_name == nm) |> count) > 0 {
+          acc
+        } else {
+          concat(acc, [ExpectedConstructorDomain { owner: cand, owner_name: nm, route: route }])
+        }
+      } else { acc }
+    Absent => acc
+  }
+}
+
+fn expected_route_whole(expected: Node?, scope: InferScope) -> Node? {
+  match record_lit_expected_resolved(expected: expected, scope: scope) {
+    Present { value: r } =>
+      if expected_node_is_optional_wrapper(n: r, scope: scope) { none } else { Present { value: r } }
+    Absent => none
+  }
+}
+
+fn expected_route_nominal_optional(expected: Node?, scope: InferScope) -> Node? {
+  match record_lit_expected_resolved(expected: expected, scope: scope) {
+    Present { value: r } =>
+      if expected_node_is_optional_wrapper(n: r, scope: scope) { Present { value: r } } else { none }
+    Absent => none
+  }
+}
+
+// THE CARDINALITY MARKER AND THE NOMINAL SPELLING ARE TWO CARRIERS OF ONE FACT, AND BOTH ARE
+// ROUTES HERE RATHER THAN ONE NORMALIZED CASE. `T?` carries optionality in return_cardinality and
+// `Optional<T>` carries it in the type name; a `Present { value: .. }` literal is a constructor of
+// the Optional coproduct under either spelling. The owner is looked up as a DECLARATION rather than
+// decided by comparing the literal's name against "Present" and "Absent", because a spelling test
+// is the fork this file already carries in two other places and a third would make it a habit.
+fn expected_route_cardinality_optional(expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Present { value: exp } =>
+      if (exp.return_cardinality == CardOptional) {
+        lookup_type_by_name(env: scope.type_env, name: "Optional")
+      } else { none }
+    Absent => none
+  }
+}
+
+fn expected_route_collection_element(expected: Node?, scope: InferScope) -> Node? {
+  match record_lit_expected_resolved(expected: expected, scope: scope) {
+    Present { value: r } =>
+      if node_is_element_collection(n: r, source_indices: scope.type_env.source_indices) {
+        match r.children |> first {
           Present { value: elem } =>
-            let elem_ty = child_type_node(ch: elem)
-            match lookup_type_for(env: scope.type_env, node: elem_ty) {
-              Present { value: r } => Present { value: r }
-              Absent => Present { value: elem_ty }
-            }
+            Present { value: expected_node_resolved_or_self(n: child_type_node(ch: elem), scope: scope) }
           Absent => none
         }
-      } else {
-        Present { value: resolved }
-      }
-      match nominal {
-        Present { value: n } =>
-          if (n.connective == Disj) { Present { value: n } } else { none }
+      } else { none }
+    Absent => none
+  }
+}
+
+fn expected_route_alias_target(expected: Node?, scope: InferScope) -> Node? {
+  match record_lit_expected_resolved(expected: expected, scope: scope) {
+    Present { value: r } =>
+      match lookup_type_by_name(env: scope.type_env, name: authored_name_at(source_indices: scope.type_env.source_indices, node: r)) {
+        Present { value: decl } =>
+          match decl.inferred {
+            Present { value: Resolved { node: target } } =>
+              Present { value: expected_node_resolved_or_self(n: target, scope: scope) }
+            _ => none
+          }
         Absent => none
       }
     Absent => none
+  }
+}
+
+fn expected_constructor_domains(expected: Node?, scope: InferScope) -> ExpectedConstructorDomainResult {
+  match expected {
+    Absent => ExpectedConstructorDomainUnavailable { cause: NoExpectedTypeAtPosition }
+    Present { value: _ } =>
+      let acc0 = expected_domain_push(acc: [], n: expected_route_whole(expected: expected, scope: scope), route: WholeExpectedType, scope: scope)
+      let acc1 = expected_domain_push(acc: acc0, n: expected_route_nominal_optional(expected: expected, scope: scope), route: NominalOptionalWrapper, scope: scope)
+      let acc2 = expected_domain_push(acc: acc1, n: expected_route_cardinality_optional(expected: expected, scope: scope), route: CardinalityOptionalWrapper, scope: scope)
+      let acc3 = expected_domain_push(acc: acc2, n: expected_route_collection_element(expected: expected, scope: scope), route: CollectionElement, scope: scope)
+      let acc4 = expected_domain_push(acc: acc3, n: expected_route_alias_target(expected: expected, scope: scope), route: AliasTarget, scope: scope)
+      if (acc4 |> count) == 0 {
+        ExpectedConstructorDomainUnavailable { cause: ExpectedTypeCarriesNoConstructorDomain }
+      } else {
+        ExpectedConstructorDomains { candidates: acc4 }
+      }
+  }
+}
+
+// THE THIRD ARM IS A REFUSAL, NOT A PREFERENCE. Where a name inhabits more than one domain, taking
+// either by enumeration order would decide a genuine ambiguity by which route happened to be
+// written first -- an absorbing fallback repaired by installing a quieter one. Every matching owner
+// is named, with the route that reached it, and the position refuses.
+type RecordLitVariantSelection
+  = VariantSelected { variant: Node, owner: Node, owner_name: String, route: ExpectedTypeRoute }
+  | VariantNotFound
+  | VariantAmbiguous { owners: List<String> }
+
+fn expected_domain_variant_named(d: ExpectedConstructorDomain, tn: String, scope: InferScope) -> Node? {
+  d.owner.children
+    |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == qualified_last_segment(name: tn))
+    |> first
+}
+
+fn expected_domain_owner_label(d: ExpectedConstructorDomain, scope: InferScope) -> String {
+  concat(concat(concat("'", d.owner_name), "' reached as "), expected_type_route_text(r: d.route))
+}
+
+fn record_lit_variant_selection(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitVariantSelection {
+  match type_name {
+    Absent => VariantNotFound
+    Present { value: tn } =>
+      match expected_constructor_domains(expected: expected, scope: scope) {
+        ExpectedConstructorDomainUnavailable { cause: _ } => VariantNotFound
+        ExpectedConstructorDomains { candidates: cands } =>
+          let matching = cands |> filter(d => expected_domain_variant_named(d: d, tn: tn, scope: scope) != none)
+          if (matching |> count) > 1 {
+            VariantAmbiguous { owners: matching |> map(d => expected_domain_owner_label(d: d, scope: scope)) }
+          } else {
+            match matching |> first {
+              Present { value: d } =>
+                match expected_domain_variant_named(d: d, tn: tn, scope: scope) {
+                  Present { value: v } => VariantSelected { variant: v, owner: d.owner, owner_name: d.owner_name, route: d.route }
+                  Absent => VariantNotFound
+                }
+              Absent => VariantNotFound
+            }
+          }
+      }
   }
 }
 
 // When lookup_variant_parent_enum and variant_owner_node miss under composed symbol
-// index (#7836 per-entry assembly), derive parent_enum from expected coproduct
-// evidence: stamp only if record_lit_variant_from_expected proves the variant arm
-// exists in the expected type's coproduct — refuses on miss, never guesses.
+// index (#7836 per-entry assembly), derive parent_enum from the selection -- stamp only if the
+// selection proves the variant arm exists, and refuse on miss rather than guessing.
+//
+// THIS USED TO ASK THE QUESTION TWICE AND COULD ANSWER ITSELF INCONSISTENTLY. It confirmed the
+// variant through one function and then re-derived the OWNER through a second, independent
+// canonicalizing descent, so the name it stamped was not necessarily the owner the variant was
+// actually found in -- two reads of one unresolved fact, free to diverge. The selection now carries
+// its own owner, so the arm that found the variant is the arm that names it.
 fn record_lit_parent_enum_from_expected(type_name: String, expected: Node?, scope: InferScope) -> String? {
-  match record_lit_variant_from_expected(type_name: Present { value: type_name }, expected: expected, scope: scope) {
-    Present { value: _ } =>
-      match record_lit_expected_coproduct(expected: expected, scope: scope) {
-        Present { value: coproduct } =>
-          Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: coproduct) }
-        Absent => none
-      }
-    Absent => none
+  match record_lit_variant_selection(type_name: Present { value: type_name }, expected: expected, scope: scope) {
+    VariantSelected { variant: _, owner: _, owner_name: on, route: _ } => Present { value: on }
+    VariantNotFound => none
+    VariantAmbiguous { owners: _ } => none
   }
 }
 
+// A PROJECTION OF THE THREE-ARM SELECTION, and it collapses the ambiguous arm to Absent ON PURPOSE.
+// Its callers want "is there a single variant this literal names"; an ambiguous name has no single
+// answer, so Absent -- not-selected -- is the honest projection. The ambiguity is NOT lost by that
+// collapse: record_lit_instantiated_fields consults the selection directly and reports
+// AmbiguousVariantOwners, so the refusal reaches a diagnostic through that path rather than this
+// one. This function must never be the place ambiguity is decided.
 fn record_lit_variant_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
-  match type_name {
-    Present { value: tn } =>
-      match record_lit_expected_coproduct(expected: expected, scope: scope) {
-        Present { value: coproduct } =>
-          coproduct.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == qualified_last_segment(name: tn)) |> first
-        Absent => none
-      }
-    Absent => none
+  match record_lit_variant_selection(type_name: type_name, expected: expected, scope: scope) {
+    VariantSelected { variant: v, owner: _, owner_name: _, route: _ } => Present { value: v }
+    VariantNotFound => none
+    VariantAmbiguous { owners: _ } => none
   }
 }
 
@@ -1417,20 +1665,83 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 // This is why the fabricated value was worse than a refusal (DESIGN section 5): error_type is a
 // plausible-looking Node, so it substituted silently and the loss surfaced stages later as an
 // unresolvable method on a receiver nobody could point back to a declaration.
-fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
+// FIVE MATERIALLY DIFFERENT STATES WERE ANSWERING `none`, AND THE CALLER READ EVERY ONE AS
+// PERMISSION TO PROCEED to the raw declaration fields: (a) no generic arguments, so instantiation
+// is INAPPLICABLE and the legacy path is correct; (b) the expected type is absent; (c) the type
+// lookup failed; (d) declared and supplied generic arity disagreed; (e) variant-template selection
+// failed. Only (a) and (b) are "nothing to do here". (c), (d) and (e) are "the answer is UNKNOWN",
+// and returning the same `none` for both is the absorbing fallback at the type level -- an optional
+// used as a verdict, where Absent means both nothing-to-report and could-not-tell.
+//
+// Split at the SOURCE rather than at the one caller, because struct_fields has other consumers and
+// each of them inherited the same conflation.
+//
+// WHY THE THREE CONSTRUCTORS ARE NOT TWO, which is the part the arms alone do not say:
+// NotApplicable and Unavailable are OPPOSITE dispositions, not two shades of "no answer".
+// NotApplicable means the question does not arise -- a record literal naming a variant is not a
+// generic instantiation and never was. Unavailable means the question DOES arise and cannot be
+// answered from the evidence present. Collapsing them is what an optional-as-verdict did before
+// the split, and any Bool projection over this type re-creates that collapse at the consumer,
+// which is where the distinction actually has to survive.
+//
+// This annotation deliberately states no enforcement. An earlier version of it asserted that only
+// NotApplicable could reach the legacy fallback, three lines above a gate that admitted
+// Unavailable too -- a prose claim standing where a wall was needed. No Accepted program can read
+// an annotation, so an annotation can explain WHY a shape is what it is and can never be evidence
+// that a rule HOLDS: if the rule holds the arms already say so, and if it does not, the sentence
+// is the only thing carrying it.
+type RecordLitInstantiation =
+  | InstantiationNotApplicable
+  | Instantiated { fields: List<Node> }
+  | InstantiationUnavailable { cause: RecordLitUnavailableCause }
+
+// A record-literal type name that does not resolve on the TYPE axis is NOT
+// UNAVAILABLE, and the distinction cost 15 silent admissions. A record literal
+// names a VARIANT far more often than a generic type, and lookup_type_for asks
+// the TYPE axis -- so `CurrentCgroupObserved { .. }` fails that lookup as a
+// matter of course, because it is a variant and not a type. That is not "the
+// answer is unknown"; it is "instantiation has nothing to say here, and the
+// variant path is the legitimate handler". Classifying it Unavailable withdrew
+// the fallback from the ordinary variant route and, with no decline wired into
+// the named-type branch, a required field taking an optional value emitted
+// NOTHING on either arm. The genuinely unknown cases are arity disagreement and
+// failed template selection -- where a generic type WAS found and its
+// instantiation could not be completed.
+// A declaration with ZERO generic parameters has nothing to instantiate, so it is
+// InstantiationNotApplicable and never Unavailable -- even when the expected node
+// carries children. `exp.children` is only "the supplied type arguments" for a
+// generic type; on a resolved non-generic coproduct the children are its VARIANTS,
+// so comparing that count against `decl.params` was reading two different axes and
+// declined on 16 ordinary zero-field constructions (`NotAdmissionBearingReference {}`,
+// `EscapeProcessingRefused`, `CliProgramOperand`). The arity question is only
+// meaningful once the declaration actually declares parameters.
+// THE LOOKUP MISS IS NOT EVIDENCE OF A VARIANT, so it is no longer spelled like one. The type-axis
+// Absent arm below used to return NotApplicable for every lookup_type_for miss, justified by 15
+// measured cases that turned out to be coproduct variants. Those cases establish that SOME misses
+// are variants; they do not establish that every miss is. A miss also occurs when neither the node
+// identity nor the authored name resolves at all, which is the OPPOSITE disposition -- the question
+// arises and cannot be answered.
+//
+// Repairing the 15 by authorizing the fallback for every miss would have traded a MEASURED false
+// negative for an UNMEASURED silent fallback on a genuine miss: a known 15 for an unknown N, in the
+// direction that hides. So the variant is identified AFFIRMATIVELY through
+// record_lit_variant_from_expected -- the authority that already answers this question -- and only
+// a miss that is NOT a variant is reported as DeclarationLookupUnavailable.
+fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) == false {
-            none
-          } else if exp.children |> count == 0 {
-            none
+          if exp.children |> count == 0 {
+            InstantiationNotApplicable
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {
               Present { value: decl } =>
-                if (decl.params |> count) != (exp.children |> count) {
-                  none
+                if (decl.params |> count) == 0 {
+                  InstantiationNotApplicable
+                }
+                else if (decl.params |> count) != (exp.children |> count) {
+                  InstantiationUnavailable { cause: GenericArityDisagreement }
                 } else {
                   let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                     let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
@@ -1439,26 +1750,94 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       Absent => acc
                     }
                   )
-                  let template_fields = decl.children
-                  Present { value: template_fields |> map(sf =>
-                    Node {
-                      occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
-                      children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
-                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
-                      transport: sf.transport, properties: sf.properties,
-                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
-                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
-                      expr_data: sf.expr_data
-                    }
-                  ) }
+                  match record_lit_instantiation_template_fields(tn: tn, exp: exp, decl: decl, scope: scope) {
+                    Absent => InstantiationUnavailable { cause: FieldTemplateSelectionFailed }
+                    Present { value: template_fields } =>
+                      Instantiated { fields: template_fields |> map(sf =>
+                        Node {
+                          occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                          children: sf.children, connective: sf.connective, params: sf.params,
+                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
+                          return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                          transport: sf.transport, properties: sf.properties,
+                          type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                          has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                          expr_data: sf.expr_data
+                        }
+                      ) }
+                  }
                 }
-              Absent => none
+              Absent =>
+                match record_lit_variant_selection(type_name: type_name, expected: expected, scope: scope) {
+                  VariantSelected { variant: _, owner: _, owner_name: _, route: _ } => InstantiationNotApplicable
+                  VariantAmbiguous { owners: os } =>
+                    InstantiationUnavailable { cause: AmbiguousVariantOwners { owners: os } }
+                  VariantNotFound => InstantiationUnavailable { cause: DeclarationLookupUnavailable }
+                }
             }
           }
-        Absent => none
+        Absent => InstantiationNotApplicable
       }
-    Absent => none
+    Absent => InstantiationNotApplicable
+  }
+}
+
+// The two dispositions the legacy path may take. NotApplicable is the only one that means
+// "instantiation had nothing to say here"; Unavailable means the answer is unknown and must not be
+// spelled the same way.
+fn record_lit_instantiation_fields(v: RecordLitInstantiation) -> List<Node>? {
+  match v {
+    Instantiated { fields: f } => Present { value: f }
+    InstantiationNotApplicable => none
+    InstantiationUnavailable { cause: _ } => none
+  }
+}
+
+// THE DECLINE MUST BE EMITTED HERE TOO. Gating the fallback on may_fall_back stopped Unavailable
+// from proceeding to the raw declaration fields -- correct -- but produced NO expectation and NO
+// diagnostic, so 13 corpus positions simply went quiet. That is the silent admission arriving inside
+// the repair for the silent admission: refusing to answer is only honest when the refusal is
+// OBSERVABLE. Unavailable now emits the undetermined disposition, carrying the instantiation's own
+// typed cause, at the record-field seam.
+// THE DECLARED TYPE AND THE CAUSE ARE TWO FACTS AND NOW SIT IN TWO FIELDS. This function used to
+// pass the unavailable cause STRING as `declared`, which the renderer describes as how the position
+// is rendered -- so a real diagnostic read "the position is rendered 'declared generic arity does
+// not match the supplied type arguments'". It is rendered through node_type_shape, the same
+// authority the direct-call seam uses, so both seams describe a position the same way.
+fn record_lit_instantiation_undetermined_diags(v: RecordLitInstantiation, judged: Bool, declared: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  match v {
+    InstantiationNotApplicable => []
+    Instantiated { fields: _ } => []
+    InstantiationUnavailable { cause: c } =>
+      if judged { [] }
+      else {
+        [make_error_node(
+          diagnostic: RecordLitInstantiationUndetermined {
+            declared: node_type_shape(n: declared, source_indices: source_indices),
+            cause: record_lit_unavailable_cause_text(c: c),
+            span: span
+          },
+          module_name: module_name
+        )]
+      }
+  }
+}
+fn record_lit_instantiation_may_fall_back(v: RecordLitInstantiation) -> Bool {
+  match v {
+    InstantiationNotApplicable => true
+    InstantiationUnavailable { cause: _ } => false
+    Instantiated { fields: _ } => false
+  }
+}
+fn record_lit_instantiation_template_fields(tn: String, exp: Node, decl: Node, scope: InferScope) -> List<Node>? {
+  if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) {
+    Present { value: decl.children }
+  } else {
+    match record_lit_variant_selection(type_name: Present { value: tn }, expected: Present { value: exp }, scope: scope) {
+      VariantSelected { variant: variant, owner: _, owner_name: _, route: _ } => Present { value: variant.children }
+      VariantNotFound => none
+      VariantAmbiguous { owners: _ } => none
+    }
   }
 }
 
@@ -7799,12 +8178,34 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
 // declares no fields, so `SingleAuthority { reason: "..." }` supplies one that does not exist. The
 // ambiguity guard is shared with MissingField for the same reason it exists there -- an ambiguous
 // name has not been resolved to a type, so neither half may judge its fields.
+// ONLY NotApplicable MAY FALL BACK HERE. An Unavailable instantiation used to spell itself `none`,
+// and was therefore indistinguishable at this call from "no generics to instantiate", so a failed
+// lookup, an arity disagreement or a failed template selection all silently proceeded to the raw
+// declaration fields as though instantiation had simply not applied. may_fall_back is the gate.
+//
+// THE GATE HAS FOUR ROUTES AND ONLY THREE WERE CLOSED, WHICH LEFT THE ORIGINAL FALLBACK INTACT
+// BEHIND THE REPAIRED ONE. expected_struct_fields, expected_variant_node and alias_struct_expansion
+// each consult may_fall_back; the record_lit_expected_fields calls inside struct_fields did not. So
+// an Unavailable instantiation could still be handed RAW DECLARATION FIELDS by that fourth route --
+// exactly the terminal the three-way split exists to keep it away from.
+//
+// The suppression is what made it invisible rather than merely wrong. The undetermined diagnostic
+// is emitted with judged: (struct_fields |> count) > 0, so the raw fields the ungated route supplied
+// RECLASSIFIED the position as judged and deleted the decline. The fallback fed the very counter
+// that silenced the complaint about the fallback, which is why the Boolean gate looked repaired
+// while the behaviour it gates was unchanged: a check whose own evidence is destroyed by the defect
+// it is checking for.
+//
+// All four routes now consult the gate, so a refusal to fall back yields NO fields on any of them
+// and the position stays unjudged and therefore audible.
 fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
-  let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
-  let expected_struct_fields = if instantiated_struct_fields == none {
+  let instantiation = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
+  let instantiated_struct_fields = record_lit_instantiation_fields(v: instantiation)
+  let may_fall_back = record_lit_instantiation_may_fall_back(v: instantiation)
+  let expected_struct_fields = if may_fall_back {
     record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
   } else { none }
-  let expected_variant_node = if instantiated_struct_fields == none && expected_struct_fields == none {
+  let expected_variant_node = if may_fall_back && expected_struct_fields == none {
     match type_name {
       Present { value: _ } => record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope)
       Absent => none
@@ -7812,7 +8213,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   } else { none }
   let alias_struct_expansion = match type_name {
     Present { value: tn } =>
-      if instantiated_struct_fields == none && expected_struct_fields == none && expected_variant_node == none && expected == none {
+      if may_fall_back && expected_struct_fields == none && expected_variant_node == none && expected == none {
         record_lit_alias_struct_expansion(type_name: tn, scope: scope)
       } else { none }
     Absent => none
@@ -7829,14 +8230,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
                 Present { value: variant_node } => variant_node.children
                 Absent =>
               match expected {
-                Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
+                Present { value: _ } =>
+                  if may_fall_back { record_lit_expected_fields(type_name: type_name, scope: scope) } else { [] }
                 Absent =>
                   match alias_struct_expansion {
                     Present { value: expansion } =>
                       if expansion.resolved.connective == Conj && expansion.resolved.children |> count > 0 {
                         expansion.resolved.children
-                      } else { record_lit_expected_fields(type_name: type_name, scope: scope) }
-                    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+                      } else if may_fall_back { record_lit_expected_fields(type_name: type_name, scope: scope) } else { [] }
+                    Absent =>
+                      if may_fall_back { record_lit_expected_fields(type_name: type_name, scope: scope) } else { [] }
                   }
               }
               }
@@ -8069,7 +8472,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, alias_struct_diags)
+      diagnostics: concat(concat(fi_diags, alias_struct_diags),
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, declared: anon_node, span: span, module_name: scope.module_name, source_indices: scope.type_env.source_indices))
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
@@ -8089,9 +8493,10 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           Present { value: local_node } =>
             lookup_type_for(env: scope.type_env, node: local_node)
           Absent =>
-            match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
-              Present { value: _ } => record_lit_expected_coproduct(expected: expected, scope: scope)
-              Absent => Absent
+            match record_lit_variant_selection(type_name: type_name, expected: expected, scope: scope) {
+              VariantSelected { variant: _, owner: o, owner_name: _, route: _ } => Present { value: o }
+              VariantNotFound => Absent
+              VariantAmbiguous { owners: _ } => Absent
             }
         }
     }
@@ -8144,7 +8549,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags),
+        record_lit_instantiation_undetermined_diags(v: instantiation, judged: (struct_fields |> count) > 0, declared: resolved_node, span: span, module_name: scope.module_name, source_indices: scope.type_env.source_indices))
     }
   }
 }
