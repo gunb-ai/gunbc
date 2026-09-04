@@ -987,15 +987,30 @@ pub struct TransitionAdmission {
 ///   15  gunbc.fleet_physical_inventory        -> gunbc.fleet_asset_identity
 ///    4  test.claim.cooling_qualification_witness -> gunbc.fleet_asset_identity
 ///
-/// The fifteen resolve directly: main's `fleet_physical_inventory` imports `chassis_srv1` and its
-/// twelve siblings from `gunbc.fleet_asset_identity` by name, so every admitted spelling binds to the
-/// admitted target in a singleton set.
+/// A COUNT HERE IS OCCURRENCES, NOT CONSTANTS, and saying it the other way is how the previous
+/// draft of this paragraph went wrong a second time. The admission key is
+/// `(module, in_declaration, spelling)`, so one constant referenced from two declarations is two
+/// rows. The fifteen are 10 DISTINCT SPELLINGS ACROSS 8 DECLARATIONS, not fifteen constants and not
+/// "`chassis_srv1` and its twelve siblings": `cooler_srv3` alone contributes three rows
+/// (`installed_cooler_containments`, `installed_cooling_realizations`, `srv3_cooler_asset`) and
+/// `chassis_srv1` two (`fleet_host_spatial_facts`, `srv1_chassis_asset`). Main's
+/// `fleet_physical_inventory` imports each of those ten names from `gunbc.fleet_asset_identity`, so
+/// every admitted spelling binds to the admitted target in a singleton set. The label's own
+/// "13 PhysicalAssetIdentity constants" is the MOVED POPULATION, not this cohort: all ten admitted
+/// spellings are among the thirteen, and the three that never appear here -- `ams_01`,
+/// `pi_controller`, `printer_01` -- moved with the others but are referenced by no admitted
+/// occurrence. So 13, 10 and 15 count three different things (constants moved, names referenced,
+/// occurrences admitted) and none is a restatement of another.
 ///
 /// The four resolve THROUGH A RE-EXPORT CHAIN and are worth stating separately, because they look
-/// like a different target until the channel is read correctly. The cooling witness imports
-/// `cooler_srv3` from `gunbc.fleet_physical_inventory`, not from the asset authority -- but the
-/// binding channel follows the chain to the module that actually DECLARES the name, which is
-/// `gunbc.fleet_asset_identity`. Same admitted target, one hop further out.
+/// like a different target until the channel is read correctly. All four are the SAME spelling,
+/// `cooler_srv3`, in four different declarations of the cooling witness
+/// (`srv3_installed_cooling`, `duplicate_cooling_ab`, `duplicate_cooling_ba`, and
+/// `catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence`) -- which is the occurrence grain
+/// again, from the opposite direction: one name, four rows. That witness imports `cooler_srv3` from
+/// `gunbc.fleet_physical_inventory`, not from the asset authority -- but the binding channel follows
+/// the chain to the module that actually DECLARES the name, which is `gunbc.fleet_asset_identity`.
+/// Same admitted target, one hop further out.
 ///
 /// Neither consumer file is in this diff, so base equals head for both and
 /// `admission_consumed_at_base` holds on all nineteen.
