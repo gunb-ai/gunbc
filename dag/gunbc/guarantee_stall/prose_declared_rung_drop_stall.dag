@@ -44,6 +44,8 @@ data prose_declared_rung_drop_stall: GuaranteeStall = GuaranteeStall {
       "gunbc.rung_drop required_gate_bankruptcy",
       "gunbc.rung_drop text_boundary_identity_wall",
       "gunbc.rung_drop fabric_evidence_gating",
+      "gunbc.rung_drop rust_unit_tests_off_the_merge_path",
+      "gunbc.rung_drop emit_copy_qualification_without_a_consumer",
       "gunbc.rung_drop emitted_bytes_witness_required_lane",
       "gunbc.rung_drop direct_call_arg_seam_v2_exemption",
       "gunbc.rung_drop floor_cost_claim_qualification_unavailable",
