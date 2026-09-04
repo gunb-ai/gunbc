@@ -45,6 +45,7 @@ provisioning/srv2/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv3/gunbc-ghrunner.sudoers merge=generated-artifact
 provisioning/srv4/gunbc-ghrunner.sudoers merge=generated-artifact
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
+src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
 tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact
@@ -61,6 +62,7 @@ src/v1/stage0/src/data_initializer_identity.rs !merge
 src/v1/stage0/src/declaration_index.rs !merge
 src/v1/stage0/src/derived_realization_schedule.rs !merge
 src/v1/stage0/src/emitted_closure_compile_host.rs !merge
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
 src/v1/stage0/src/main.rs !merge
 src/v1/stage0/src/memory_governor.rs !merge
@@ -68,6 +70,7 @@ src/v1/stage0/src/namespace_wave_admission.rs !merge
 src/v1/stage0/src/partition_crate_boundary_host.rs !merge
 src/v1/stage0/src/phase_profile.rs !merge
 src/v1/stage0/src/pre_push.rs !merge
+src/v1/stage0/src/process_group.rs !merge
 src/v1/stage0/src/recorded_fixture.rs !merge
 src/v1/stage0/src/required_regen_host.rs !merge
 src/v1/stage0/src/resolved_graph_cache.rs !merge
