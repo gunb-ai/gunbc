@@ -202,13 +202,11 @@ test fn remote_jq_execute_opens_under_observed_confirmation() -> Bool {
   let unexecuted: RemoteExecCommandLiveConfirmation = RemoteExecCommandLiveConfirmationUnexecuted {
     trigger: "hermetic test trigger",
   }
-  // Under Observed, the interpretation must be PosixShellInterpreted (drives the emitter).
   let observed_interp = openbmc_remote_jq_interpretation(confirmation: observed)
   let observed_is_posix = match observed_interp {
     PosixShellInterpreted => true
     Unknown => false
   }
-  // Under Unexecuted, the interpretation must be Unknown (triggers the gate refusal).
   let unexecuted_interp = openbmc_remote_jq_interpretation(confirmation: unexecuted)
   let unexecuted_is_unknown = match unexecuted_interp {
     PosixShellInterpreted => false
