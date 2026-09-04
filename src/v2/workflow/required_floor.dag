@@ -583,7 +583,8 @@ fn required_gate_prefixes() -> List<String> {
 // 635,645ms versus 630,511ms (+5,134ms, an adjacent-run observation rather than a causal claim).
 // The four newly planned claims cost 1ms, 54ms, and at least 507ms and 510ms CPU respectively; the
 // latter two were right-censored by the 500ms claim ceiling and are narrowed at their typed
-// producers in the same change. The next green receipt supplies their uncensored execution price.
+// producers in the same change. The green receipt from run 33907907019 prices the resulting four
+// executions at 1ms, 59ms, 457ms, and 451ms CPU; all four were planned and passed.
 
 // test.claim.memory_stall_refusal_witness JOINS THE SAME FAMILY BY THE SAME TEST: it judges
 // the arm that stops a resolve which is thrashing instead of computing (gunbc.
