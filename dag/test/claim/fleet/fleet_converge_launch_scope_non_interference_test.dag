@@ -1,6 +1,9 @@
 module test.claim.fleet_converge_launch_scope_non_interference
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import std.content_hash { serialize_content_hash }
+import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
@@ -9,6 +12,24 @@ import gunbc.compile_diagnostic_census {
   census_blocking_rows,
   census_total_count,
 }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_converge_plan {
+  FleetConvergeRequest,
+  FullHostConverge,
+  FleetConvergePlanArtifact,
+  fleet_converge_plan_artifact_of_request,
+  fleet_converge_plan_artifact_hash,
+  fleet_converge_apply_terminal_wire,
+  fleet_converge_apply_terminal,
+  FullyApplied,
+  PartiallyApplied,
+  fleet_converge_scope_wire,
+  fleet_converge_desired_caps,
+}
+import gunbc.spark.serving_execution_schedule { scheduled_rows_empty }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.
@@ -162,4 +183,124 @@ test fn the_seven_foreign_axis_constructors_are_refused_at_all_twenty_fields() -
          expected_d: observed_caps_field_not_found,
          expected_e: observed_fabric_cells_field_not_found,
        )
+}
+
+// THE OWNING-SCOPE CONTROLS REMAIN RUNTIME CLAIMS. The construction wall proves that foreign axes
+// cannot enter LaunchEnvironmentConverge; these four independently prove that the same populations
+// remain live where FullHostConverge owns them. Without this half, a planner that stopped reading an
+// axis everywhere would be observationally indistinguishable from launch-scope non-interference.
+
+data host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+
+fn srv1_surplus_slot_names() -> List<String> {
+  [
+    "jit-runner.sh", "runner-liveness-reconcile.sh",
+    "srv1-22", "srv1-23", "srv1-24", "srv1-25", "srv1-26", "srv1-27", "srv1-28", "srv1-29",
+    "srv1-30", "srv1-31", "srv1-32", "srv1-33", "srv1-34", "srv1-35", "srv1-36", "srv1-37",
+    "srv1-38", "srv1-39", "srv1-40", "srv1-41", "srv1-42", "srv1-43", "srv1-44", "srv1-45",
+    "srv1-46", "srv1-47", "srv1-48", "srv1-49", "srv1-50",
+  ]
+}
+
+fn srv1_production_shaped_slots() -> List<RunnerSlotMember> {
+  map(srv1_surplus_slot_names(), nm => runner_slot_member_from_instance_name(instance_name: nm as NonEmptyStr))
+}
+
+fn artifact_signature(a: FleetConvergePlanArtifact) -> String {
+  join(
+    [
+      "host:", a.subject.host as String,
+      "\nscope:", fleet_converge_scope_wire(scope: a.subject.scope),
+      "\nmember_set:", serialize_content_hash(hash: a.subject.member_set_fingerprint) as String,
+      "\nprior_generation:", to_string(a.prior_generation),
+      "\nlease_key:", a.plan_lease.epoch.lease_key as String,
+      "\nlease_resource:", serialize_content_hash(hash: a.plan_lease.epoch.resource_fingerprint) as String,
+      "\nlease_owner:", serialize_content_hash(hash: a.plan_lease.epoch.owner_fingerprint) as String,
+      "\nlease_generation:", to_string(a.plan_lease.epoch.generation),
+      "\nterminal:", fleet_converge_apply_terminal_wire(terminal: a.apply_terminal),
+      "\nbaseline_hex:", a.observed_baseline_hex as String,
+      "\nbundle:", match fleet_converge_plan_artifact_hash(artifact: a) {
+        Present { value: h } => h as String
+        Absent => "UNCOMPUTABLE"
+      },
+      "\nplan_body:\n", a.plan_body,
+      "\napply_shell:\n", a.apply_shell,
+    ],
+    "",
+  )
+}
+
+fn signature_of(request: FleetConvergeRequest) -> String {
+  artifact_signature(
+    a: fleet_converge_plan_artifact_of_request(
+      request: request,
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ),
+  )
+}
+
+fn projections_differ(a: FleetConvergeRequest, b: FleetConvergeRequest) -> Bool {
+  let sa = signature_of(request: a)
+  string_contains(s: sa, pattern: "# apply-terminal:") && sa != signature_of(request: b)
+}
+
+fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: host_srv1,
+    observed_timers: [],
+    observed_caps: fleet_converge_desired_caps(),
+    observed_spark: [],
+    observed_slots: slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  }
+}
+
+test fn the_same_thirty_one_slot_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(a: full_host_srv1(slots: []), b: full_host_srv1(slots: srv1_production_shaped_slots()))
+}
+
+test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Bool {
+  match fleet_converge_apply_terminal(request: full_host_srv1(slots: [])) {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, detail: d } => string_contains(s: d, pattern: "activation=2")
+  }
+}
+
+test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(
+    a: full_host_srv1(slots: []),
+    b: FullHostConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_caps: [],
+      observed_spark: [],
+      observed_slots: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    },
+  )
+}
+
+test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
+  string_contains(
+    s: fleet_converge_plan_artifact_of_request(
+      request: FullHostConverge {
+        host: operator_host_srv3 as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+        observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      },
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ).plan_body,
+    pattern: "REFUSED-OBSERVATION fabric-cell",
+  )
 }
