@@ -1339,8 +1339,10 @@ data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
 data repo_ruleset_verify_function: String = "verify"
 
 // The repository binding is read-only until the separately signed ruleset proposal can preserve
-// every live bypass actor. Drift reaches RepositoryRulesetActuationHeld; there is no mutating entry
-// point beside the world-convergence root.
+// every live bypass actor. Drift reaches one of the five located causes of
+// RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetActuationRealizationUnbound
+// when nothing more specific holds; there is no mutating entry point beside the world-convergence
+// root.
 func verify() -> ProcessExit {
   match world_converge(
     subject: RepositoryRulesetConvergenceSubject {
