@@ -2932,6 +2932,66 @@ pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn where_refinement_has_brand_predicate(
+    preds: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for p in preds.iter().cloned() {
+            if (where_predicate_canonical_name(where_predicate_name_at(
+                p.clone(),
+                source_indices.clone(),
+            )) == "Brand".to_string())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn where_refinement_brand_declaration_key(
+    ty: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match ty.ident_span.clone() {
+        Some(span) => v1_rt::concat(
+            v1_rt::concat(span.file.clone(), "#".to_string()),
+            crate::v1_std_core::authored_name_at(source_indices.clone(), ty.clone()),
+        ),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn where_refinement_brand_nominal_mismatch(
+    formal_resolved: Rc<Node>,
+    actual_resolved: Rc<Node>,
+    formal_preds: Rc<Vec<Rc<Node>>>,
+    actual_preds: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (where_refinement_has_brand_predicate(formal_preds.clone(), source_indices.clone())
+        && where_refinement_has_brand_predicate(actual_preds.clone(), source_indices.clone()))
+    {
+        {
+            let formal_key = where_refinement_brand_declaration_key(
+                formal_resolved.clone(),
+                source_indices.clone(),
+            );
+            let actual_key = where_refinement_brand_declaration_key(
+                actual_resolved.clone(),
+                source_indices.clone(),
+            );
+            (((formal_key.clone() != "".to_string()) && (actual_key.clone() != "".to_string()))
+                && (formal_key.clone() != actual_key.clone()))
+        }
+    } else {
+        false
+    }
+}
+
 pub fn where_refinement_mismatch_diags(
     formal: Rc<Node>,
     value_expr: Rc<Node>,
@@ -2966,38 +3026,59 @@ pub fn where_refinement_mismatch_diags(
                     actual_resolved.clone(),
                     type_env.clone(),
                 );
-                if where_refinement_predicates_covered(
+                if where_refinement_brand_nominal_mismatch(
+                    formal_resolved.clone(),
+                    actual_resolved.clone(),
                     preds.clone(),
                     actual_preds.clone(),
                     source_indices.clone(),
                 ) {
-                    Rc::new(vec![])
+                    Rc::new(vec![type_mismatch_error(
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            formal_resolved.clone(),
+                            source_indices.clone(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            actual_resolved.clone(),
+                            source_indices.clone(),
+                        ),
+                        span.clone(),
+                        module_name.clone(),
+                    )])
                 } else {
-                    {
-                        let formal_checked =
-                            crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                formal_resolved.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                            );
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for pred in preds.iter().cloned() {
-                                __result.extend(
-                                    (*where_refinement_diags_for_predicate(
-                                        pred.clone(),
-                                        formal_checked.clone(),
-                                        value_for_refinement.clone(),
-                                        span.clone(),
-                                        module_name.clone(),
-                                        source_indices.clone(),
-                                    ))
-                                    .iter()
-                                    .cloned(),
+                    if where_refinement_predicates_covered(
+                        preds.clone(),
+                        actual_preds.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Rc::new(vec![])
+                    } else {
+                        {
+                            let formal_checked =
+                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                    formal_resolved.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
                                 );
-                            }
-                            __result
-                        })
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for pred in preds.iter().cloned() {
+                                    __result.extend(
+                                        (*where_refinement_diags_for_predicate(
+                                            pred.clone(),
+                                            formal_checked.clone(),
+                                            value_for_refinement.clone(),
+                                            span.clone(),
+                                            module_name.clone(),
+                                            source_indices.clone(),
+                                        ))
+                                        .iter()
+                                        .cloned(),
+                                    );
+                                }
+                                __result
+                            })
+                        }
                     }
                 }
             }

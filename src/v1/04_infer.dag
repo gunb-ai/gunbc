@@ -2125,6 +2125,73 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
 // 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink
 // is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.
 
+// BRAND IDENTITY IS THE DECLARATION, NOT THE LITERAL. where_refinement_predicates_equivalent
+// dispatches Brand to where_predicate_literal_string_args_match, so two independently declared types
+// sharing a spelling compared EQUAL and the cast between them was not merely unenforced -- it was
+// not a cast at all. That is DESIGN section 3's meaning fork: one name silently merging two
+// concepts. The collision was authored here once already (gunbc.fleet fleet_site_locale records a
+// second HostIdentity minted beside product.placement_supply's, and states that it did not surface
+// as a duplicate-declaration diagnostic), so this is an incident, not a hypothetical.
+
+fn where_refinement_has_brand_predicate(
+  preds: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  preds |> any(p =>
+    where_predicate_canonical_name(
+      pred_name: where_predicate_name_at(pred: p, source_indices: source_indices)
+    ) == "Brand"
+  )
+}
+
+// THE KEY IS THE DECLARING IDENT SPAN AND DELIBERATELY NOT THE OCCURRENCE. Node.occurrence_identity
+// would make the collision refuse and would ALSO make a type stop being itself when reached from a
+// second use site -- silent in the opposite direction -- and occurrence identity is itself the live
+// subject of the namespace/type-occurrence cutover. The declaring ident span is stable across
+// occurrences by construction: one declaration has one, and two declarations never share one.
+
+fn where_refinement_brand_declaration_key(
+  ty: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  match ty.ident_span {
+    Present { value: span } =>
+      concat(
+        concat(span.file, "#"),
+        authored_name_at(source_indices: source_indices, node: ty)
+      )
+    Absent => ""
+  }
+}
+
+// REFUSE ONLY WHEN BOTH SIDES CARRY A BRAND AND THE DECLARATIONS ARE PROVABLY DIFFERENT. When the
+// actual side carries NO brand the value is being constructed from its base -- `s as UserId` -- which
+// is what `as` exists to express and what no brand check can verify; blocking that would refuse
+// every legitimate construction site in the corpus while distinguishing none of them from a
+// violation. That arm keeps its existing deferred advisory and is asserted green by the CONSTRUCT
+// control in test.claim.brand_nominal_identity_witness_test.
+
+fn where_refinement_brand_nominal_mismatch(
+  formal_resolved: Node,
+  actual_resolved: Node,
+  formal_preds: List<Node>,
+  actual_preds: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if where_refinement_has_brand_predicate(preds: formal_preds, source_indices: source_indices)
+    && where_refinement_has_brand_predicate(preds: actual_preds, source_indices: source_indices) {
+    let formal_key = where_refinement_brand_declaration_key(
+      ty: formal_resolved, source_indices: source_indices
+    )
+    let actual_key = where_refinement_brand_declaration_key(
+      ty: actual_resolved, source_indices: source_indices
+    )
+    formal_key != "" && actual_key != "" && formal_key != actual_key
+  } else {
+    false
+  }
+}
+
 fn where_refinement_mismatch_diags(
   formal: Node,
   value_expr: Node,
@@ -2148,7 +2215,20 @@ fn where_refinement_mismatch_diags(
       Absent => actual_raw
     }
     let actual_preds = type_where_refinement_predicates_transitive(ty: actual_resolved, type_env: type_env)
-    if where_refinement_predicates_covered(
+    if where_refinement_brand_nominal_mismatch(
+      formal_resolved: formal_resolved,
+      actual_resolved: actual_resolved,
+      formal_preds: preds,
+      actual_preds: actual_preds,
+      source_indices: source_indices
+    ) {
+      [type_mismatch_error(
+        expected: node_type_shape(n: formal_resolved, source_indices: source_indices),
+        got: node_type_shape(n: actual_resolved, source_indices: source_indices),
+        span: span,
+        module_name: module_name
+      )]
+    } else if where_refinement_predicates_covered(
       formal_preds: preds,
       actual_preds: actual_preds,
       source_indices: source_indices
