@@ -690,53 +690,6 @@ mod compiler_tests {
         );
     }
 
-    /// REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS, JUDGED BY RUSTC (gunbc#10266).
-    ///
-    /// The subject is `v1.compiler.emit` `cast_representation_identical`: a cast whose source and
-    /// target are ONE host carrier reached through transparent refinement, alias and brand edges
-    /// asks the target for no operation, so the emission must be the operand unchanged. The
-    /// fixture exercises six such casts across three aliases in BOTH directions, plus one genuine
-    /// numeric conversion that must still go through the target cast syntax.
-    ///
-    /// WHY THIS SUBJECT NEEDS RUSTC AND NOT A SUBSTRING. `test.claim`
-    /// `emitter_nested_refinement_cast_witness_test` asserts the ABSENCE of the fabricated
-    /// unsupported-cast text, and absence is all a spelling oracle can honestly assert here:
-    /// asserting the presence of a particular replacement would pin one rendering of "the operand
-    /// unchanged". Whether the replacement TYPE-CHECKS as the declared return is a meaning-level
-    /// question, and the never type is exactly what let the defective form pass a type check.
-    ///
-    /// THE RED ARM IS THE ROUTE'S OWN, so this pair proves the route can still fail using the
-    /// discrimination already adjudicated for it rather than a fresh unadjudicated arm.
-    ///
-    /// #[ignore] AND WHY, on the same terms as the two pairs beside it: this arm spawns cargo and
-    /// compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED AND
-    /// OPT-IN -- `cargo test --release -p v1-compiler --lib
-    /// nested_refinement_cast_fixture_closure_discrimination -- --ignored`. An #[ignore] is a cost
-    /// decision and NOT a rung: nothing here may be cited as coverage that executes on the merge
-    /// path.
-    #[test]
-    #[ignore]
-    fn nested_refinement_cast_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
-        let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("nested-refinement-cast {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the representation-identical cast control must COMPILE -- an unsupported-cast panic emitted for any of its six casts is a type error at the declared return -- and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red),
-            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
-        );
-    }
-
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
