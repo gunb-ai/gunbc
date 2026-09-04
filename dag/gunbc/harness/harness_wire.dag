@@ -11,6 +11,7 @@ import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member, json_document_gap_text,
 }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_chat_reasoning_field, deepseek_v4_chat_reasoning_field_vllm_alias }
 import extdeps.llm.anthropic_messages_api {
   AnthropicToolDefinition,
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
@@ -259,22 +260,41 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
 // here would be three literals standing where three authorities already answer, and each would rot
 // independently -- the address when the operator re-reserves it, which has already happened once
 // when both units moved to the wireless SSID.
+// THE WIRE SHAPE IS A REALIZATION OF ONE INTERFACE. Both shapes decode to the same HarnessWireBlock
+// list and the same HarnessResponseRead, and both are encoded from them; what differs is transport
+// vocabulary. The choice is a config fact because it is a property of the serving fleet, measured:
+// on this fleet vLLM's Anthropic-shaped endpoint accepts a replayed thinking block and renders none
+// of it, while the chat completions shape renders a replayed reasoning_content (extdeps.deepseek
+// deepseek_v4_replay_rendering_*). A tool-using harness that wants the encoder's retention rule
+// therefore speaks the chat shape here.
+type HarnessWireShape = AnthropicMessagesShape | OpenAiChatCompletionsShape
+
 data harness_messages_path: String = "/v1/messages"
+// The path extdeps.llm.openai_rest ChatCompletion declares; spelled here as the route this harness
+// posts to, cited rather than derived because that operation's path lives inside its transport row.
+data harness_chat_completions_path: String = "/v1/chat/completions"
 
-fn harness_backend_url_on_port(address: String, port: Int) -> String {
-  join(["http://", address, ":", to_string(value: port), harness_messages_path], "")
+fn harness_backend_path(shape: HarnessWireShape) -> String {
+  match shape {
+    AnthropicMessagesShape => harness_messages_path
+    OpenAiChatCompletionsShape => harness_chat_completions_path
+  }
 }
 
-fn harness_backend_url(address: String) -> String {
-  harness_backend_url_on_port(address: address, port: ollama_default_port)
+fn harness_backend_url_on_port(address: String, port: Int, shape: HarnessWireShape) -> String {
+  join(["http://", address, ":", to_string(value: port), harness_backend_path(shape: shape)], "")
 }
 
-fn harness_srv6_backend_url() -> String {
-  harness_backend_url(address: srv6_host_lan_endpoint.address)
+fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
+  harness_backend_url_on_port(address: address, port: ollama_default_port, shape: shape)
 }
 
-fn harness_srv5_backend_url() -> String {
-  harness_backend_url(address: srv5_host_lan_endpoint.address)
+fn harness_srv6_backend_url(shape: HarnessWireShape) -> String {
+  harness_backend_url(address: srv6_host_lan_endpoint.address, shape: shape)
+}
+
+fn harness_srv5_backend_url(shape: HarnessWireShape) -> String {
+  harness_backend_url(address: srv5_host_lan_endpoint.address, shape: shape)
 }
 
 // THE SECOND PAIR, AS ADDRESSES RATHER THAN HOST IDENTITIES, and the distinction is the whole
@@ -323,12 +343,12 @@ data harness_operator_directed_backend_primary: String = "192.168.1.226"
 
 data harness_operator_directed_backend_secondary: String = "192.168.1.233"
 
-fn harness_primary_backend_url() -> String {
-  harness_backend_url(address: harness_operator_directed_backend_primary)
+fn harness_primary_backend_url(shape: HarnessWireShape) -> String {
+  harness_backend_url(address: harness_operator_directed_backend_primary, shape: shape)
 }
 
-fn harness_secondary_backend_url() -> String {
-  harness_backend_url(address: harness_operator_directed_backend_secondary)
+fn harness_secondary_backend_url(shape: HarnessWireShape) -> String {
+  harness_backend_url(address: harness_operator_directed_backend_secondary, shape: shape)
 }
 
 // THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
@@ -411,6 +431,121 @@ data harness_router_admission_cap: TokenCount = token_count(count: 1048576)
 
 data harness_router_context_window: TokenCount = token_count(count: 200000)
 
-fn harness_router_backend_url() -> String {
-  harness_backend_url_on_port(address: harness_router_address, port: harness_router_port)
+fn harness_router_backend_url(shape: HarnessWireShape) -> String {
+  harness_backend_url_on_port(address: harness_router_address, port: harness_router_port, shape: shape)
+}
+
+// THE CHAT COMPLETIONS DECODER, to the same carrier the messages decoder fills. finish_reason maps
+// onto the stop vocabulary the harness already consumes: stop is an end of turn, tool_calls is a
+// tool use, length is the token ceiling, content_filter is a refusal. Reasoning is read from the
+// guide's field and vLLM's alias; content may still carry the inline closer when the server has no
+// reasoning parser, and the turn loop's split handles that after decode exactly as it does for the
+// messages shape. Tool-call arguments arrive as a JSON STRING and are parsed here into the same
+// JsonValue input the messages shape delivers, so the tool dispatcher sees one shape.
+fn harness_chat_finish_reason(wire: String) -> HarnessStopReasonRead {
+  if wire == "stop" {
+    StopReasonRead { reason: EndTurn }
+  } else if wire == "tool_calls" {
+    StopReasonRead { reason: ToolUse }
+  } else if wire == "length" {
+    StopReasonRead { reason: MaxTokens }
+  } else if wire == "content_filter" {
+    StopReasonRead { reason: Refusal }
+  } else {
+    StopReasonUnrecognized { wire: wire }
+  }
+}
+
+fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
+  match json_object_unique_member(v: v, key: "function") {
+    JsonMemberFound { value: f } =>
+      match harness_member_string(doc: f, key: "name") {
+        Absent => none
+        Present { value: name } =>
+          Present { value: WireToolUseBlock {
+            id: match harness_member_string(doc: v, key: "id") { Present { value: i } => i  Absent => "" },
+            name: name,
+            input: match harness_member_string(doc: f, key: "arguments") {
+              Absent => json_object([])
+              Present { value: args } =>
+                match parse_json_document(s: args) {
+                  JsonDocumentParsed { value: a } => a
+                  JsonDocumentUnreadable { gap: _ } => json_object([])
+                }
+            },
+          } }
+      }
+    _ => none
+  }
+}
+
+fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
+  let reasoning = match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field as String) {
+    Present { value: r } => [WireThinkingBlock { thinking: r }]
+    Absent =>
+      match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field_vllm_alias as String) {
+        Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
+        Absent => []
+      }
+  }
+  let text = match harness_member_string(doc: msg, key: "content") {
+    Present { value: c } => if c == "" { [] } else { [WireTextBlock { text: c }] }
+    Absent => []
+  }
+  let calls = match json_object_unique_member(v: msg, key: "tool_calls") {
+    JsonMemberFound { value: tc } =>
+      match tc {
+        JsonArray { elements: es } => flat_map(es, e => match harness_chat_tool_call_block(v: e) { Present { value: b } => [b]  Absent => [] })
+        _ => []
+      }
+    _ => []
+  }
+  concat(concat(reasoning, text), calls)
+}
+
+fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "choices") {
+        JsonMemberFound { value: JsonArray { elements: choices } } =>
+          match choices.first() {
+            Absent => HarnessResponseUnreadable { cause: "chat completion carries no choices" }
+            Present { value: choice } =>
+              match harness_member_string(doc: choice, key: "finish_reason") {
+                Absent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
+                Present { value: fr } =>
+                  match harness_chat_finish_reason(wire: fr) {
+                    StopReasonUnrecognized { wire: w } =>
+                      HarnessResponseUnreadable { cause: join(["chat completion carries an unrecognized finish_reason '", w, "'"], "") }
+                    StopReasonRead { reason: r } =>
+                      HarnessResponseParsed {
+                        blocks: match json_object_unique_member(v: choice, key: "message") {
+                          JsonMemberFound { value: m } => harness_chat_message_blocks(msg: m)
+                          _ => []
+                        },
+                        stop_reason: r,
+                        input_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "prompt_tokens")
+                          _ => 0
+                        },
+                        output_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "completion_tokens")
+                          _ => 0
+                        },
+                      }
+                  }
+              }
+          }
+        _ => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
+      }
+  }
+}
+
+fn harness_decode_for_shape(shape: HarnessWireShape, body: String) -> HarnessResponseRead {
+  match shape {
+    AnthropicMessagesShape => harness_decode_response(body: body)
+    OpenAiChatCompletionsShape => harness_decode_chat_completion(body: body)
+  }
 }

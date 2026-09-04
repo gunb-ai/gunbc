@@ -2,6 +2,7 @@ module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
+import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
@@ -57,6 +58,15 @@ data harness_default_step_budget: Int = 8
 // harness's own endpoint -- proven honored there -- and not as the Anthropic thinking field, which
 // vLLM's messages endpoint ignores for this model (probed: it answered cold).
 data harness_reasoning_mode: DeepseekV4ReasoningMode = DeepseekV4ThinkMax
+
+// THE WIRE SHAPE THIS FLEET NEEDS, MEASURED. The harness spoke the Anthropic messages shape until
+// 2026-09-04; on this fleet's vLLM that endpoint accepts a replayed thinking block and renders none
+// of it (prompt_tokens 104 with, 104 without), while the chat completions shape renders a replayed
+// reasoning_content (365 -> 404). The encoder retains reasoning on every assistant turn when tools
+// are defined, so a tool-using harness that wants the model to see its own prior deliberation must
+// speak the chat shape here. The messages realization stays available and witnessed; it is not
+// the default because on this fleet it silently discards half of every turn.
+data harness_default_wire_shape: HarnessWireShape = OpenAiChatCompletionsShape
 
 // THE OUTPUT BUDGET, DERIVED FROM WHAT THE MODEL ACTUALLY DECLARES -- which is that it declares no
 // output ceiling at all. extdeps.deepseek.deepseek_v4 records the research: no primary source
@@ -140,10 +150,11 @@ data harness_context_budget: TokenCount = harness_router_context_window
 
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_router_backend_url(),
+    backend_url: harness_router_backend_url(shape: harness_default_wire_shape),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
@@ -218,10 +229,11 @@ fn harness_worker_config(
   events_path: FilePath,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_router_backend_url(),
+    backend_url: harness_router_backend_url(shape: harness_default_wire_shape),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
     system_prompt: harness_worker_system_prompt,
     request_scratch_path: request_scratch_path,
     events_path: events_path,

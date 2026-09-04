@@ -1,0 +1,107 @@
+module test.claim.harness_chat_shape
+
+import std.types { Bool, String, Int, List }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
+import gunbc.harness.harness_wire {
+  HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock,
+  HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
+  HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
+  harness_decode_chat_completion, harness_backend_path,
+}
+import gunbc.harness.harness_turn {
+  HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
+  harness_user_text_message_json,
+}
+
+// THE CHAT SHAPE IS A SECOND REALIZATION OF ONE INTERFACE. These witnesses decode a fixture chat
+// completion into the same blocks the messages shape yields, and encode the same blocks back into
+// the chat shape's envelopes. The fixture's reasoning_content is the field the encoder re-renders
+// when tools are defined; its tool call carries arguments as the JSON STRING vLLM emits.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn fixture_completion() -> String {
+  "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"Listing now.\",\"reasoning_content\":\"The user wants files, so list them.\",\"tool_calls\":[{\"id\":\"chatcmpl-tool-1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":365,\"completion_tokens\":41}}"
+}
+
+test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
+  match harness_decode_chat_completion(body: fixture_completion()) {
+    HarnessResponseUnreadable { cause: _ } => false
+    HarnessResponseParsed { blocks, stop_reason, input_tokens, output_tokens } =>
+      list_length(items: blocks) == 3
+        && (match blocks.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("wants files")  _ => false })
+        && (match blocks.last() { Present { value: WireToolUseBlock { id, name, input: _ } } => id == "chatcmpl-tool-1" && name == "run_command"  _ => false })
+        && (match stop_reason { ToolUse => true  _ => false })
+        && input_tokens == 365 && output_tokens == 41
+  }
+}
+
+// THE ARGUMENTS STRING IS PARSED INTO THE SAME INPUT SHAPE THE MESSAGES DECODER DELIVERS, so the
+// tool dispatcher reads command off one JsonValue regardless of wire.
+test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool {
+  match harness_decode_chat_completion(body: fixture_completion()) {
+    HarnessResponseParsed { blocks, stop_reason: _, input_tokens: _, output_tokens: _ } =>
+      match blocks.last() {
+        Present { value: WireToolUseBlock { id: _, name: _, input } } => serialize_json(v: input).contains("\"command\": \"ls\"")
+        _ => false
+      }
+    HarnessResponseUnreadable { cause: _ } => false
+  }
+}
+
+// AN UNRECOGNISED finish_reason REFUSES rather than reading as completion.
+test fn an_unknown_finish_reason_is_unreadable() -> Bool {
+  match harness_decode_chat_completion(body: "{\"choices\":[{\"finish_reason\":\"banana\",\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}") {
+    HarnessResponseUnreadable { cause: c } => c.contains("banana")
+    HarnessResponseParsed { blocks: _, stop_reason: _, input_tokens: _, output_tokens: _ } => false
+  }
+}
+
+// THE REPLAY CARRIES REASONING AS reasoning_content AND THE CALL WITH ITS ARGUMENTS RE-SERIALIZED.
+test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
+  let wire = serialize_json(v: harness_assistant_message_json(shape: OpenAiChatCompletionsShape, blocks: [
+    WireThinkingBlock { thinking: "think first" },
+    WireTextBlock { text: "Listing now." },
+    WireToolUseBlock { id: "chatcmpl-tool-1", name: "run_command", input: json_object([json_kv(key: "command", value: json_string(s: "ls"))]) },
+  ]))
+  wire.contains("\"reasoning_content\": \"think first\"")
+    && wire.contains("\"content\": \"Listing now.\"")
+    && wire.contains("\"tool_calls\"") && wire.contains("\"arguments\"") && wire.contains("run_command")
+}
+
+// THE MESSAGES-SHAPE REPLAY IS UNCHANGED BY THE NEW REALIZATION: a thinking block still rides as a
+// thinking block, and no reasoning_content key appears.
+test fn the_messages_replay_is_untouched() -> Bool {
+  let wire = serialize_json(v: harness_assistant_message_json(shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
+  wire.contains("\"type\": \"thinking\"") && !wire.contains("reasoning_content")
+}
+
+// TOOL RESULTS ARE role=tool MESSAGES KEYED BY THE CALL ID, FOLLOWED BY THE BUDGET NOTICE.
+test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool {
+  let msgs = harness_tool_result_messages_json(
+    shape: OpenAiChatCompletionsShape,
+    results: [HarnessToolResult { tool_use_id: "chatcmpl-tool-1", text: "a b c\n[exit 0]", is_error: false }],
+    steps_remaining: 7,
+  )
+  list_length(items: msgs) == 2
+    && (match msgs.first() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"tool\"") && serialize_json(v: m).contains("chatcmpl-tool-1")  Absent => false })
+    && (match msgs.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("7")  Absent => false })
+}
+
+test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool {
+  list_length(items: harness_tool_result_messages_json(
+    shape: AnthropicMessagesShape,
+    results: [HarnessToolResult { tool_use_id: "t1", text: "x", is_error: false }],
+    steps_remaining: 7,
+  )) == 1
+}
+
+test fn the_brief_is_a_plain_string_on_the_chat_shape() -> Bool {
+  serialize_json(v: harness_user_text_message_json(shape: OpenAiChatCompletionsShape, text: "do it")).contains("\"content\": \"do it\"")
+    && serialize_json(v: harness_user_text_message_json(shape: AnthropicMessagesShape, text: "do it")).contains("\"type\": \"text\"")
+}
+
+test fn each_shape_posts_to_its_own_path() -> Bool {
+  harness_backend_path(shape: OpenAiChatCompletionsShape) == "/v1/chat/completions"
+    && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
+}

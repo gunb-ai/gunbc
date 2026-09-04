@@ -114,6 +114,26 @@ data deepseek_v4_vllm_reasoning_effort_kwarg: NonEmptyStr = "reasoning_effort" a
 // it is handing the model a transcript that was never produced.
 data deepseek_v4_tool_use_requires_reasoning_replay: Bool = true
 
+// THE COMPLETION FORMAT IS DECODABLE BY A CLIENT, AND THE VENDOR SHIPS THE DECODER. In thinking
+// mode a completion is reasoning up to the end token, then speech up to EOS or the DSML tool-calls
+// marker; parse_message_from_completion_text in the same encoder file performs exactly that split,
+// and ASSERTS "Invalid thinking format" when thinking was requested and the end token is absent.
+// A serving runtime's reasoning parser, where one exists for the model, is one realization of
+// (the fleet's vLLM build reportedly ships deepseek_r1 and deepseek_v3 parsers and none for v4);
+// this parse; a client performing it is another. Neither is a workaround for the other, because
+// the format is the encoder's, not the runtime's. What IS invalid is a thinking-mode completion
+// with no closer, or with more than one.
+data deepseek_v4_completion_closer_is_the_thinking_end_token: Bool = true
+data deepseek_v4_missing_closer_under_thinking_is_invalid_format: Bool = true
+
+// WITH TOOLS DEFINED, REASONING IS RETAINED ON EVERY ASSISTANT TURN. encode_messages drops earlier
+// turns' reasoning by default (drop_thinking=True keeps it only after the last user message), but
+// sets effective_drop_thinking = False the moment any message defines tools. A tool-using harness
+// therefore replays every prior thinking block, and the replay template is
+// {reasoning}{content}{tool_calls} per assistant turn. This refines the API guide's rule above with
+// the encoder's exact condition.
+data deepseek_v4_tools_force_reasoning_retention: Bool = true
+
 // THE CANONICAL PROMPT ENCODER, CITED BY FILE AND REVISION. The release ships no Jinja chat
 // template: tokenizer_config.json carries no chat_template key and the model card says so
 // directly, providing encoding/encoding_dsv4.py instead. Every fact below is read from that file at
@@ -213,3 +233,61 @@ fn deepseek_v4_rendering_distinguishes_max(o: DeepseekV4EffortRenderingObservati
     && o.prompt_tokens_thinking_high == o.prompt_tokens_thinking_off
     && o.prompt_tokens_thinking_unknown_effort == o.prompt_tokens_thinking_off
 }
+
+// WHETHER A SERVING ENDPOINT RENDERS REPLAYED REASONING IS A MEASURED FACT PER ENDPOINT, and on
+// this fleet the two shapes disagree. Measured 2026-09-04 with tools defined (so the encoder's
+// retention rule applies) by prompt_tokens on a one-token completion: vLLM's Anthropic-shaped
+// /v1/messages ACCEPTS a prior assistant thinking block with a 200 and renders nothing of it --
+// 104 tokens with the block, 104 without -- so the acceptance is a silent drop. vLLM's
+// OpenAI-shaped /v1/chat/completions renders a prior reasoning_content: 365 tokens without, 404
+// with. A tool-using client that wants the encoder's retention must therefore speak the chat
+// completions shape to this fleet; on the messages shape its replay is discarded without error,
+// which is the fabricated-plausible-output failure at the transport: a 200 that did not do what
+// it was asked.
+type DeepseekV4ReplayRenderingObservation {
+  endpoint_path: NonEmptyStr
+  prompt_tokens_without_prior_reasoning: Int
+  prompt_tokens_with_prior_reasoning: Int
+  provenance: DeepseekV4RenderingProvenance
+}
+
+data deepseek_v4_replay_rendering_messages_endpoint: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/messages" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 104,
+  prompt_tokens_with_prior_reasoning: 104,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T06:20Z" as NonEmptyStr },
+}
+
+data deepseek_v4_replay_rendering_chat_completions_endpoint: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/chat/completions" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 365,
+  prompt_tokens_with_prior_reasoning: 404,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T06:25Z" as NonEmptyStr },
+}
+
+// THE TOOL-LOOP SHAPE, MEASURED SEPARATELY, because a peer session found retention absent in a
+// loop where tool results were merged into a USER message -- which places the assistant turn before
+// the last user index, the position the encoder's drop_thinking excludes. gunbc's loop sends tool
+// results as role=tool and follows them with its budget notice as a user message; measured on the
+// harness's own round-two request against the fleet router, with tools defined: 684 prompt tokens
+// without the replayed reasoning_content and 718 with it, and 683/717 with the trailing notice
+// folded into the tool message. Retention on this shape is real and the notice does not disturb it.
+// The two sessions' numbers describe two loop shapes, not one contested fact.
+data deepseek_v4_replay_rendering_chat_tool_loop: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/chat/completions (assistant+tool_calls -> role=tool -> user notice)" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 684,
+  prompt_tokens_with_prior_reasoning: 718,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T07:05Z" as NonEmptyStr },
+}
+
+fn deepseek_v4_endpoint_renders_replayed_reasoning(o: DeepseekV4ReplayRenderingObservation) -> Bool {
+  o.prompt_tokens_with_prior_reasoning > o.prompt_tokens_without_prior_reasoning
+}
+
+// ON THE CHAT COMPLETIONS SHAPE, PRIOR REASONING RIDES ON THE ASSISTANT MESSAGE AS reasoning_content.
+// That is the field the official Thinking Mode guide names for both directions, and it is not an
+// OpenAI field -- the OpenAI authority in extdeps.llm.openai carries no such member -- so it is
+// declared here as DeepSeek's extension of that shape. vLLM's response additionally exposes the
+// same text under "reasoning"; both are read, the guide's name is what is written back.
+data deepseek_v4_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+data deepseek_v4_chat_reasoning_field_vllm_alias: NonEmptyStr = "reasoning" as NonEmptyStr

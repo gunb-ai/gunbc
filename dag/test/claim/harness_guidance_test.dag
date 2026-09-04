@@ -15,7 +15,10 @@ import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
 import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
-import gunbc.harness.harness_turn { harness_stop_reason_truncated, harness_reasoning_kwargs, harness_text_carries_leaked_reasoning, harness_wire_block_json }
+import gunbc.harness.harness_turn {
+  harness_stop_reason_truncated, harness_reasoning_kwargs, harness_wire_block_json,
+  harness_split_inline_reasoning, harness_thinking_format_cause, HarnessInlineReasoning, InlineReasoningSplit, InlineReasoningMultipleClosers,
+}
 import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax }
 import extdeps.languages.json.emit { json_object, serialize_json }
@@ -182,25 +185,52 @@ test fn non_think_emits_no_kwargs() -> Bool {
   list_length(items: harness_reasoning_kwargs(mode: DeepseekV4NonThink)) == 0
 }
 
-// REASONING IN A TEXT BLOCK IS DETECTED BY THE MODEL'S OWN CLOSING TAG. Probed 2026-09-04 against
-// the live serving units: with thinking on and no --reasoning-parser, the chain of thought arrives
-// inline and ends in </think>. This is the discriminating input the refusal fires on.
-test fn text_carrying_a_think_closer_is_leaked_reasoning() -> Bool {
-  harness_text_carries_leaked_reasoning(blocks: [
+// INLINE REASONING SPLITS INTO A THINKING BLOCK AND SPEECH. This is the encoder's completion format
+// decoded client-side: everything before the closer is reasoning, everything after is what the
+// model said. Probed 2026-09-04 against the live units, which carry no reasoning parser.
+test fn inline_reasoning_splits_into_thinking_and_speech() -> Bool {
+  match harness_split_inline_reasoning(blocks: [
     WireTextBlock { text: "We need 17*23. 17*20=340, 17*3=51, total 391.</think>391" },
-  ])
+  ]) {
+    InlineReasoningMultipleClosers { count: _ } => false
+    InlineReasoningSplit { blocks: b } =>
+      list_length(items: b) == 2
+        && (match b.first() { Present { value: WireThinkingBlock { thinking: r } } => r.contains("17*20=340")  _ => false })
+        && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "391"  _ => false })
+  }
 }
 
-// THE CONTROL: a real thinking block, as a parser-equipped server returns it, is NOT a leak -- and
-// neither is ordinary text. A detector that fired on any reasoning would refuse the exact state the
-// server flag produces.
-test fn a_thinking_block_and_plain_text_are_not_leaks() -> Bool {
-  !harness_text_carries_leaked_reasoning(blocks: [
-    WireThinkingBlock { thinking: "We need 17*23." },
-    WireTextBlock { text: "391" },
-  ])
+// THE CONTROL: a thinking block from a parser-equipped server, and plain text, pass through
+// untouched -- the split must not fire on well-formed input.
+test fn a_thinking_block_and_plain_text_pass_through_the_split() -> Bool {
+  match harness_split_inline_reasoning(blocks: [
+    WireThinkingBlock { thinking: "We need 17*23." }, WireTextBlock { text: "391" },
+  ]) {
+    InlineReasoningSplit { blocks: b } => list_length(items: b) == 2
+    InlineReasoningMultipleClosers { count: _ } => false
+  }
 }
 
+// THE ENCODER'S FIRST INVALID SHAPE: more than one closer.
+test fn multiple_closers_are_an_invalid_format() -> Bool {
+  harness_thinking_format_cause(
+    blocks: [WireTextBlock { text: "a</think>b</think>c" }], mode: DeepseekV4ThinkMax,
+  ).contains("2 end-of-thinking closers")
+}
+
+// THE ENCODER'S SECOND INVALID SHAPE: thinking requested, no closer, no thinking block.
+test fn a_missing_closer_under_thinking_is_an_invalid_format() -> Bool {
+  harness_thinking_format_cause(blocks: [WireTextBlock { text: "391" }], mode: DeepseekV4ThinkMax)
+    .contains("no end-of-thinking closer")
+}
+
+// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, and a
+// well-formed inline completion under Think Max is well-formed too. A cause that fired on either
+// would refuse every ordinary round.
+test fn a_closerless_text_is_valid_under_non_think_and_a_split_one_under_think_max() -> Bool {
+  harness_thinking_format_cause(blocks: [WireTextBlock { text: "391" }], mode: DeepseekV4NonThink) == ""
+    && harness_thinking_format_cause(blocks: [WireTextBlock { text: "r</think>391" }], mode: DeepseekV4ThinkMax) == ""
+}
 
 // THINK HIGH SENDS THE THINKING SWITCH AND NO EFFORT KEY. Measured on the live artifact: with
 // thinking on, an effort of "high" leaves prompt_tokens at 5 while "max" raises it to 84 -- only max

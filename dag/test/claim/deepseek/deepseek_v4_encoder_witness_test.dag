@@ -7,6 +7,7 @@ import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_encoder_effort_values, DeepseekV4EncoderThinkingMode, EncoderChat, EncoderThinking,
   deepseek_v4_encoder_prefill, deepseek_v4_thinking_start_token, deepseek_v4_thinking_end_token,
   deepseek_v4_effort_rendering_iq3s_split_vllm, deepseek_v4_rendering_distinguishes_max,
+  deepseek_v4_replay_rendering_chat_tool_loop, deepseek_v4_replay_rendering_messages_endpoint, deepseek_v4_endpoint_renders_replayed_reasoning,
 }
 
 // These pin a TRANSCRIPTION against the shape the source has. The preamble is read from the cited
@@ -48,4 +49,14 @@ test fn the_iq3s_split_realization_renders_max_and_only_max() -> Bool {
 test fn the_wire_label_for_think_max_is_max() -> Bool {
   (deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ThinkMax) as String) == "max"
     && (deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ThinkHigh) as String) == "high"
+}
+
+
+// THE CONTESTED FACT, PINNED BOTH WAYS: the chat shape's tool-loop replay renders reasoning (with >
+// without), and the messages shape's replay does not (with == without). A peer session measured the
+// opposite for a loop that merges tool results into a user message; that is a different shape and
+// is not what this row records.
+test fn the_tool_loop_replay_is_retained_on_chat_and_dropped_on_messages() -> Bool {
+  deepseek_v4_endpoint_renders_replayed_reasoning(o: deepseek_v4_replay_rendering_chat_tool_loop)
+    && !deepseek_v4_endpoint_renders_replayed_reasoning(o: deepseek_v4_replay_rendering_messages_endpoint)
 }
