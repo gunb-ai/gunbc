@@ -1,6 +1,7 @@
 module gunbc.spark.oobe_execution_placement
 
 import std.types { NonEmptyStr, Bool, List, Int }
+import std.decl_ref { decl_ref }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, HostByName, HostByAddress, host_by_ipv4 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
@@ -14,7 +15,12 @@ import gunbc.fleet_intent_network {
   operator_host_srv4,
 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
-import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
+import gunbc.spark.oobe_screen_observation {
+  ObservedUnitAccessPointSsid,
+  OobeScreenObservationRun,
+  dgx_spark_0c75_oobe_account_run,
+}
 import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdmission,
   ForwardingAdmitted,
@@ -69,6 +75,19 @@ type RadioInterfaceName = NonEmptyStr where brand("RadioInterfaceName")
 // why one type cannot carry both facts.
 type PlaywrightBrowserCacheEntry = NonEmptyStr where brand("PlaywrightBrowserCacheEntry")
 
+// THE PROVISIONED BROWSER CARRIES BOTH FACTS SEPARATELY, because they are established by different
+// evidence. The cache entry comes from listing a directory; the build comes from a binary that
+// reported its version while it rendered. srv1 has the first and not the second, and no fold over
+// these rows may quietly upgrade one into the other.
+type RendererBrowserBuildIdentity
+  = ChromiumBuildIdentified { build: ChromiumBuild }
+  | ChromiumBuildUnidentified
+
+type ProvisionedBrowser {
+  cache_entry: PlaywrightBrowserCacheEntry
+  build_identity: RendererBrowserBuildIdentity
+}
+
 // ------------------------------------------------------------------------------------------
 // A LOCUS THAT MAY NOT BE A FLEET HOST.
 //
@@ -117,7 +136,7 @@ type RendererPackageObservation
   | PlaywrightPackageUnobserved
 
 type RendererBrowserObservation
-  = PlaywrightBrowserPresent { cache_entry: PlaywrightBrowserCacheEntry }
+  = PlaywrightBrowserPresent { browser: ProvisionedBrowser }
   | PlaywrightBrowserAbsent
   | PlaywrightBrowserUnobserved
 
@@ -130,20 +149,18 @@ type RendererObservation {
   browser: RendererBrowserObservation
 }
 
-// THE SUCCESS CARRIER IS SEPARATE AND CANNOT HOLD A REFUSAL. This is the defect that mattered most
-// in the first revision: its placement record carried the broad standing coproducts, so a value
-// naming an incapable renderer, a relay with no radio, a released lease and refused secret traffic
-// composed into PlacementReady with nothing to stop it. A ready session must be constructible only
-// from the successful payloads, which is what these narrowed carriers are for.
-type QualifiedRenderer sole_constructor {
-  host: HostIdentity
-  account: PosixLoginName
-  architecture: Architecture
-  node_runtime: NodeRuntimeVersion
-  playwright: PlaywrightBuild
-  browser_cache_entry: PlaywrightBrowserCacheEntry
-}
-
+// THERE IS NO QUALIFIED-RENDERER CARRIER HERE, AND ITS ABSENCE IS THE POINT.
+//
+// Earlier heads declared one, then sealed it with sole_constructor, then added an admit_callers mint
+// so only a selector could produce it. Each step was a correct answer to the previous review. The
+// step none of them took was to ask what could SPEND one -- and nothing can, because the route and
+// lease that would consume a qualified renderer are not built. Sealing a capability nothing can
+// spend preserves a capability with no consumer, which is the defect this PR removed at three
+// smaller grains and then reproduced at the top.
+//
+// So this tranche produces ASSESSMENTS, which are unspendable by construction: a verdict says what
+// the evidence shows and confers nothing. The sealed carrier returns in the route tranche, with the
+// consumer that makes it spendable and with the mint sealed in the same change.
 // WHICH AXIS WAS UNOBSERVED IS THE ACTIONABLE PART, and the previous head threw it away one layer
 // below where it repaired the same defect. The selector was fixed to preserve every cause it
 // considered -- but the per-row admission had already collapsed three different missing
@@ -164,11 +181,17 @@ type RendererRefusalCause
   | RendererHasNoNodeRuntime { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoPlaywrightPackage { machine: ObservedMachineIdentity, account: PosixLoginName }
   | RendererHasNoProvisionedBrowser { machine: ObservedMachineIdentity, account: PosixLoginName }
-  | NoRendererQualifiedInPopulation { considered: Int, causes: List<RendererRefusalCause> }
 
-type RendererAdmission
-  = RendererQualified { renderer: QualifiedRenderer }
-  | RendererDeclined { cause: RendererRefusalCause }
+type RendererAssessment
+  = RendererMeetsRequirements {
+      host: HostIdentity,
+      account: PosixLoginName,
+      architecture: Architecture,
+      node_runtime: NodeRuntimeVersion,
+      playwright: PlaywrightBuild,
+      browser: ProvisionedBrowser,
+    }
+  | RendererAssessmentDeclined { cause: RendererRefusalCause }
 
 // ------------------------------------------------------------------------------------------
 // RELAY CAPABILITY STOPS AT THE RADIO. An earlier revision carried forwarding_permission here,
@@ -188,23 +211,18 @@ type RadioRelayObservation
   | RelayHasNoRadioInterface { machine: ObservedMachineIdentity }
   | RelayRadioNotAssociated { machine: ObservedMachineIdentity, radio_interface: RadioInterfaceName }
 
-// The relay success carrier requires an ALLOCATED host, so an unallocated observation cannot reach
-// it. That is the constraint the first revision dissolved by writing "pi1" as HostIdentity.
-type ReadyRadioRelay sole_constructor {
-  host: HostIdentity
-  radio_interface: RadioInterfaceName
-  associated_ssid: ObservedUnitAccessPointSsid
-}
-
 type RelayRefusalCause
   = RelayIdentityUnallocated { observed_label: NonEmptyStr }
   | RelayCarriesNoRadio { machine: ObservedMachineIdentity }
   | RelayRadioUnassociated { machine: ObservedMachineIdentity, radio_interface: RadioInterfaceName }
-  | NoRelayQualifiedInPopulation { considered: Int, causes: List<RelayRefusalCause> }
 
-type RelayAdmission
-  = RelayReady { relay: ReadyRadioRelay }
-  | RelayDeclined { cause: RelayRefusalCause }
+type RelayAssessment
+  = RelayMeetsRequirements {
+      host: HostIdentity,
+      radio_interface: RadioInterfaceName,
+      associated_ssid: ObservedUnitAccessPointSsid,
+    }
+  | RelayAssessmentDeclined { cause: RelayRefusalCause }
 
 // ------------------------------------------------------------------------------------------
 // THE PAYLOAD CLASS IS THE REQUEST; THE DECISION IS THE ANSWER. Splitting them is what lets one
@@ -228,30 +246,26 @@ type SecretTrafficRefusalCause
   = ProxyLocusNotAdmittedForCredentials { proxy_locus: ForwarderLocus }
   | TransportNotConfidential { unit_endpoint: SocketAddress }
 
-// SEALED WITH sole_constructor, WHICH IS THE DIFFERENCE BETWEEN RUNG 3 AND RUNG 4. Splitting the
-// success payloads into their own records stopped a refusal from INHABITING a ready session, but it
-// left every one of them freely constructible by any module -- so the guarantee was only that THIS
-// module's admission path would not build a bad one, which is a proof about a path and not the
-// absence of a constructor. §4b's top rung is the latter.
-//
-// sole_constructor is the cross-module construction refusal (std.durable_compare_and_set names it
-// as the wall that lets only the store mint its bound). With it, the admission functions in this
-// module are the only things in the corpus that can produce a QualifiedRenderer, a ReadyRadioRelay,
-// an AdmittedForwardingUse, an EstablishedForwardingLease or a ready session. A caller wanting one
-// must go through the decision that earns it.
-//
 // THE ADMITTED PAYLOAD IS ITS OWN CARRIER, and it exists because the first draft of this repair
 // declared every session field success-only and then typed the use field as the WHOLE decision --
 // so ForwardingUseRefused still inhabited the ready state, and the comment asserting otherwise was
 // the only thing standing where a constructor should have been. §4b's top rung is that the invalid
 // state has NO CONSTRUCTOR; a sentence claiming it does not occur is not one.
-type AdmittedForwardingUse sole_constructor {
+// AN OBSERVATION, NOT A SPENDABLE ADMISSION, and the change is subject binding rather than naming.
+// The previous carrier named a payload class and a set of loci and said nothing about WHICH route,
+// run or endpoint it described -- so a lookup by payload class alone would hand a future, never
+// assessed route the disposition measured on the one we actually drove. Carrying the observation
+// run makes the subject explicit, and demotes the value from something a caller can spend to
+// something a later route admission must consume as evidence.
+type ObservedForwardingUse {
+  observed_through: ForwarderLocus
+  route_subject: ForwardingAdmissionSubject
+  attested_by: OobeScreenObservationRun
   payload: ForwardingPayloadClass
-  admitted_loci: List<ForwarderLocus>
 }
 
 type ForwardingUseDecision
-  = ForwardingUseAdmitted { admitted: AdmittedForwardingUse }
+  = ForwardingUseObserved { observed: ObservedForwardingUse }
   | ForwardingUseRefused { payload: ForwardingPayloadClass, cause: SecretTrafficRefusalCause }
 
 // ------------------------------------------------------------------------------------------
@@ -328,7 +342,12 @@ data renderer_srv4_briansrls: RendererObservation = RendererObservation {
   architecture: Aarch64,
   runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
   package: PlaywrightPackagePresent { build: playwright_1_62_1 },
-  browser: PlaywrightBrowserPresent { cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry },
+  browser: PlaywrightBrowserPresent {
+    browser: ProvisionedBrowser {
+      cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+      build_identity: ChromiumBuildIdentified { build: chromium_151_0_7922_34 },
+    },
+  },
 }
 
 // THE ROW THAT CORRECTS A CLAIM THIS SESSION MADE. srv1 was reported as a renderer candidate on
@@ -341,7 +360,12 @@ data renderer_srv1_briansrls: RendererObservation = RendererObservation {
   architecture: Aarch64,
   runtime: NodeRuntimeUnobserved,
   package: PlaywrightPackageAbsent,
-  browser: PlaywrightBrowserPresent { cache_entry: "chromium-1217" as PlaywrightBrowserCacheEntry },
+  browser: PlaywrightBrowserPresent {
+    browser: ProvisionedBrowser {
+      cache_entry: "chromium-1217" as PlaywrightBrowserCacheEntry,
+      build_identity: ChromiumBuildUnidentified,
+    },
+  },
 }
 
 data renderer_srv2_ubuntu: RendererObservation = RendererObservation {
@@ -444,10 +468,12 @@ data pi1_local_forward_to_unit_admission: ForwardingAdmission = ForwardingAdmitt
 // once. Recording only the refusal, as the first revision did, left the observation admission in
 // prose; recording only the admission would let the eventual FillSecretControl inherit an
 // observation route's success as permission.
-data measured_observation_use: ForwardingUseDecision = ForwardingUseAdmitted {
-  admitted: AdmittedForwardingUse {
+data measured_observation_use: ForwardingUseDecision = ForwardingUseObserved {
+  observed: ObservedForwardingUse {
+    observed_through: gunbc.spark.oobe_execution_placement.measured_proxy_locus,
+    route_subject: gunbc.spark.oobe_execution_placement.pi1_local_forward_to_unit_subject,
+    attested_by: gunbc.spark.oobe_screen_observation.dgx_spark_0c75_oobe_account_run,
     payload: ObservationPayload,
-    admitted_loci: [gunbc.spark.oobe_execution_placement.measured_proxy_locus],
   },
 }
 
@@ -475,40 +501,38 @@ data measured_route_use_decisions: List<ForwardingUseDecision> = [
 // unallocated machine cannot be qualified no matter what software it holds. Then UNOBSERVED before
 // ABSENT on every axis, so an axis nobody measured is never reported as a measured deficit -- the
 // distinction §4b keeps off the ladder as "outside the modeled guarantee".
-fn renderer_admission(obs: RendererObservation) -> RendererAdmission {
+fn renderer_assessment(obs: RendererObservation) -> RendererAssessment {
   match obs.machine {
     UnallocatedMachineObservation { observed_label: l } =>
-      RendererDeclined { cause: RendererIdentityUnallocated { observed_label: l } }
+      RendererAssessmentDeclined { cause: RendererIdentityUnallocated { observed_label: l } }
     FleetAllocatedMachine { host: h } => match obs.runtime {
-      NodeRuntimeUnobserved => RendererDeclined {
+      NodeRuntimeUnobserved => RendererAssessmentDeclined {
         cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: RuntimeAxis },
       }
-      NodeRuntimeAbsent => RendererDeclined {
+      NodeRuntimeAbsent => RendererAssessmentDeclined {
         cause: RendererHasNoNodeRuntime { machine: obs.machine, account: obs.account },
       }
       NodeRuntimePresent { version: v } => match obs.package {
-        PlaywrightPackageUnobserved => RendererDeclined {
+        PlaywrightPackageUnobserved => RendererAssessmentDeclined {
           cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: PackageAxis },
         }
-        PlaywrightPackageAbsent => RendererDeclined {
+        PlaywrightPackageAbsent => RendererAssessmentDeclined {
           cause: RendererHasNoPlaywrightPackage { machine: obs.machine, account: obs.account },
         }
         PlaywrightPackagePresent { build: b } => match obs.browser {
-          PlaywrightBrowserUnobserved => RendererDeclined {
+          PlaywrightBrowserUnobserved => RendererAssessmentDeclined {
             cause: RendererAxisUnobserved { machine: obs.machine, account: obs.account, axis: BrowserAxis },
           }
-          PlaywrightBrowserAbsent => RendererDeclined {
+          PlaywrightBrowserAbsent => RendererAssessmentDeclined {
             cause: RendererHasNoProvisionedBrowser { machine: obs.machine, account: obs.account },
           }
-          PlaywrightBrowserPresent { cache_entry: c } => RendererQualified {
-            renderer: QualifiedRenderer {
-              host: h,
-              account: obs.account,
-              architecture: obs.architecture,
-              node_runtime: v,
-              playwright: b,
-              browser_cache_entry: c,
-            },
+          PlaywrightBrowserPresent { browser: c } => RendererMeetsRequirements {
+            host: h,
+            account: obs.account,
+            architecture: obs.architecture,
+            node_runtime: v,
+            playwright: b,
+            browser: c,
           }
         }
       }
@@ -516,17 +540,16 @@ fn renderer_admission(obs: RendererObservation) -> RendererAdmission {
   }
 }
 
-fn relay_admission(obs: RadioRelayObservation) -> RelayAdmission {
+fn relay_assessment(obs: RadioRelayObservation) -> RelayAssessment {
   match obs {
-    RelayHasNoRadioInterface { machine: m } => RelayDeclined { cause: RelayCarriesNoRadio { machine: m } }
+    RelayHasNoRadioInterface { machine: m } => RelayAssessmentDeclined { cause: RelayCarriesNoRadio { machine: m } }
     RelayRadioNotAssociated { machine: m, radio_interface: iface } =>
-      RelayDeclined { cause: RelayRadioUnassociated { machine: m, radio_interface: iface } }
+      RelayAssessmentDeclined { cause: RelayRadioUnassociated { machine: m, radio_interface: iface } }
     RadioAssociated { machine: m, radio_interface: iface, associated_ssid: ssid } => match m {
       UnallocatedMachineObservation { observed_label: l } =>
-        RelayDeclined { cause: RelayIdentityUnallocated { observed_label: l } }
-      FleetAllocatedMachine { host: h } => RelayReady {
-        relay: ReadyRadioRelay { host: h, radio_interface: iface, associated_ssid: ssid },
-      }
+        RelayAssessmentDeclined { cause: RelayIdentityUnallocated { observed_label: l } }
+      FleetAllocatedMachine { host: h } =>
+        RelayMeetsRequirements { host: h, radio_interface: iface, associated_ssid: ssid }
     }
   }
 }
@@ -549,59 +572,60 @@ fn relay_population_size() -> Int {
   fold(observed_relays, init: 0, f: (n, _r) => n + 1)
 }
 
-// THE REFUSAL CARRIES EVERY CAUSE IT CONSIDERED, and that is a correction made by execution rather
-// than by review. The first draft of this selector folded to a bare count, which discarded the one
-// fact a caller needs -- WHY the closest candidate failed -- and left "nothing qualified" as the
-// only answer for a population whose single radio-bearing member fails for a fixable reason. That
-// is §5's absorbing fallback in miniature: a refusal that widens instead of locating. Carrying the
-// causes costs one list and keeps the remedy reachable.
+// THE REFUSAL CARRIES EVERY CAUSE IT CONSIDERED, a correction made by execution rather than review:
+// the first draft folded to a bare count, discarding the one fact a caller needs -- WHY the closest
+// candidate failed -- which is §5's absorbing fallback in miniature, a refusal that widens instead
+// of locating.
 fn renderer_refusal_causes() -> List<RendererRefusalCause> {
   fold(observed_renderers, init: [],
-    f: (acc, obs) => match renderer_admission(obs: obs) {
-      RendererQualified { renderer: _ } => acc
-      RendererDeclined { cause: c } => append(acc, c)
+    f: (acc, obs) => match renderer_assessment(obs: obs) {
+      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => acc
+      RendererAssessmentDeclined { cause: c } => append(acc, c)
     })
 }
 
-fn select_renderer() -> RendererAdmission {
-  fold(observed_renderers,
-    init: RendererDeclined {
-      cause: NoRendererQualifiedInPopulation {
-        considered: renderer_population_size(),
-        causes: renderer_refusal_causes(),
-      },
-    },
-    f: (acc, obs) => match acc {
-      RendererQualified { renderer: q } => RendererQualified { renderer: q }
-      RendererDeclined { cause: aggregate } => match renderer_admission(obs: obs) {
-        RendererQualified { renderer: q } => RendererQualified { renderer: q }
-        RendererDeclined { cause: _ } => RendererDeclined { cause: aggregate }
-      }
-    })
+// THERE IS NO SELECTOR HERE, AND REMOVING IT CLOSED A FINDING THAT THREE ROUNDS OF POLICY COULD
+// NOT HAVE. The earlier selectors kept the FIRST candidate whose evidence was complete, which made
+// list order an undeclared placement policy: appending a second capable renderer changed nothing,
+// inserting one before srv4 changed the answer, and no decision explained the difference.
+//
+// The deeper half is that choosing participants INDEPENDENTLY is wrong regardless of the ordering
+// rule. A renderer and a relay that are each complete may have no route between them while a
+// different pair does, so a selector picking each alone can report no composable placement while a
+// composable one exists. Selection is a decision over renderer x relay x route, and this tranche has
+// no route -- so it has nothing to select with, and says so by not selecting.
+//
+// What it publishes instead is the FULL ASSESSED POPULATION. A later route tranche chooses from it
+// under a stated policy; a reader today can see every candidate and every gap.
+fn renderer_assessments() -> List<RendererAssessment> {
+  fold(observed_renderers, init: [], f: (acc, obs) => append(acc, renderer_assessment(obs: obs)))
+}
+
+fn relay_assessments() -> List<RelayAssessment> {
+  fold(observed_relays, init: [], f: (acc, obs) => append(acc, relay_assessment(obs: obs)))
 }
 
 fn relay_refusal_causes() -> List<RelayRefusalCause> {
   fold(observed_relays, init: [],
-    f: (acc, obs) => match relay_admission(obs: obs) {
-      RelayReady { relay: _ } => acc
-      RelayDeclined { cause: c } => append(acc, c)
+    f: (acc, obs) => match relay_assessment(obs: obs) {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => acc
+      RelayAssessmentDeclined { cause: c } => append(acc, c)
     })
 }
 
-fn select_relay() -> RelayAdmission {
-  fold(observed_relays,
-    init: RelayDeclined {
-      cause: NoRelayQualifiedInPopulation {
-        considered: relay_population_size(),
-        causes: relay_refusal_causes(),
-      },
-    },
-    f: (acc, obs) => match acc {
-      RelayReady { relay: r } => RelayReady { relay: r }
-      RelayDeclined { cause: aggregate } => match relay_admission(obs: obs) {
-        RelayReady { relay: r } => RelayReady { relay: r }
-        RelayDeclined { cause: _ } => RelayDeclined { cause: aggregate }
-      }
+fn renderers_with_complete_evidence() -> Int {
+  fold(observed_renderers, init: 0,
+    f: (n, obs) => match renderer_assessment(obs: obs) {
+      RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => n + 1
+      RendererAssessmentDeclined { cause: _ } => n
+    })
+}
+
+fn relays_with_complete_evidence() -> Int {
+  fold(observed_relays, init: 0,
+    f: (n, obs) => match relay_assessment(obs: obs) {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => n + 1
+      RelayAssessmentDeclined { cause: _ } => n
     })
 }
 
@@ -623,7 +647,7 @@ type ForwardingUseSelection
 
 fn decision_payload(d: ForwardingUseDecision) -> ForwardingPayloadClass {
   match d {
-    ForwardingUseAdmitted { admitted: a } => a.payload
+    ForwardingUseObserved { observed: o } => o.payload
     ForwardingUseRefused { payload: p, cause: _ } => p
   }
 }
@@ -658,18 +682,35 @@ fn use_decision_for(want: ForwardingPayloadClass) -> ForwardingUseSelection {
 // the one standing today and the one an operator can act on: pi1 carries the only radio in reach of
 // the fleet and has no ratified fleet identity, so every Spark that has never joined the LAN is
 // unreachable. A renderer refusal is a provisioning problem; this is a decision problem.
-type ParticipantAdmissionRefusal
-  = NoQualifiedRenderer { cause: RendererRefusalCause }
-  | NoReadyRelay { cause: RelayRefusalCause }
-  | ParticipantsAdmittedRouteUnbuilt { renderer: HostIdentity, relay: HostIdentity }
+// NAMED FOR WHAT IT RETURNS. An earlier spelling was oobe_participant_admission, whose codomain was
+// refusal-only -- honest in type and misleading in name, since "admission" promises that an admitted
+// result is among the possibilities. Nothing here admits anything.
+type ParticipantGap
+  = NoRendererHasCompleteEvidence { causes: List<RendererRefusalCause> }
+  | NoRelayHasCompleteEvidence { causes: List<RelayRefusalCause> }
+  | ParticipantEvidenceCompleteRouteUnbuilt { renderers: Int, relays: Int }
 
-fn oobe_participant_admission() -> ParticipantAdmissionRefusal {
-  match select_relay() {
-    RelayDeclined { cause: c } => NoReadyRelay { cause: c }
-    RelayReady { relay: r } => match select_renderer() {
-      RendererDeclined { cause: rc } => NoQualifiedRenderer { cause: rc }
-      RendererQualified { renderer: q } =>
-        ParticipantsAdmittedRouteUnbuilt { renderer: q.host, relay: r.host }
+// THE SEAL PROBES ARE GONE WITH THE CARRIERS THEY GUARDED. With no sole_constructor type left in
+// this module they would exercise a mechanism the module does not use -- coverage that cannot go red
+// for any change to this file, which is the decoration this PR has spent four rounds deleting.
+//
+// THEY RETURN WITH THE ROUTE TRANCHE, and they return with a THIRD control they did not have here:
+// the same foreign fixture WITHOUT the seal must be ACCEPTED. The pair shipped earlier was
+// owner-accepted plus foreign-refused, which cannot separate the modifier from an unrelated
+// diagnostic -- and that mattered, because the first version of the refusal probe WAS green for an
+// unrelated diagnostic (an unresolvable std.types import the harness cannot supply). I ran the third
+// arm by hand while debugging that and did not enrol it.
+fn current_oobe_participant_gaps() -> ParticipantGap {
+  if (relays_with_complete_evidence() == 0) {
+    NoRelayHasCompleteEvidence { causes: relay_refusal_causes() }
+  } else {
+    if (renderers_with_complete_evidence() == 0) {
+      NoRendererHasCompleteEvidence { causes: renderer_refusal_causes() }
+    } else {
+      ParticipantEvidenceCompleteRouteUnbuilt {
+        renderers: renderers_with_complete_evidence(),
+        relays: relays_with_complete_evidence(),
+      }
     }
   }
 }
