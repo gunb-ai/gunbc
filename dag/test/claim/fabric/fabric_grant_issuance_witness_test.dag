@@ -22,7 +22,8 @@ import product.fabric.execution {
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 import product.fabric.grant_issue {
   GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal,
-  AttemptNamesAnotherWork, OfferNotFungibleForWork, OfferCapacityExhausted,
+  AttemptNamesAnotherWork, AttemptPrincipalIsNotTheWorkPrincipal,
+  OfferNotFungibleForWork, OfferCapacityExhausted,
   GrantAlreadyIssuedForAttempt, MoneyReservationRefused, ResourceReservationRefused,
   derive_grant_key, issue_grant,
 }
@@ -104,6 +105,17 @@ data misdirected_attempt: Attempt<NonEmptyStr> = Attempt {
   work: other_work.id,
   lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: "gunbc", key: "demand-1" } },
   created_at: "2026-09-04T00:06:00Z",
+}
+
+// The isolating fixture for the second principal relation. It names the SUBJECT Work, so
+// attempt.work == work.id holds and the work-mismatch wall does not fire; only the principal on
+// the attempt's OWN identity differs. Varying both relations at once, as foreign_attempt below
+// does, cannot establish which one refused.
+data sponsored_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: foreign_principal, key: "attempt-1" },
+  work: subject_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: owning_principal, key: "demand-1" } },
+  created_at: "2026-09-04T00:08:00Z",
 }
 
 data foreign_attempt: Attempt<NonEmptyStr> = Attempt {
@@ -224,6 +236,7 @@ fn outcome_label(o: GrantIssue<NonEmptyStr, Count, One>) -> NonEmptyStr {
     GrantRefused { refusal: r } =>
       match r {
         AttemptNamesAnotherWork { attempt_work: _, subject_work: _ } => "attempt-names-another-work"
+        AttemptPrincipalIsNotTheWorkPrincipal { attempt: _, subject_work: _ } => "attempt-principal-is-not-the-work-principal"
         OfferNotFungibleForWork { fungibility: _ } => "offer-not-fungible"
         OfferCapacityExhausted { offer: _, quantity_bound: _, grants_outstanding: _ } => "offer-capacity-exhausted"
         GrantAlreadyIssuedForAttempt { existing: _ } => "grant-already-issued"
@@ -441,6 +454,105 @@ test fn a_different_lease_derives_a_different_grant_key() -> Bool {
     offer: admitted_offer.id,
     lease: LeaseIdentity {
       lease_key: "lease-attempt-1-regenerated",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 10,
+    },
+  )
+}
+
+// The second principal relation, isolated. attempt.work equals the subject Work, so the
+// work-mismatch wall is not what refuses here; the attempt's own principal is.
+test fn an_attempt_whose_own_principal_is_foreign_is_refused() -> Bool {
+  outcome_label(o: issue(
+    work: subject_work,
+    attempt: sponsored_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "attempt-principal-is-not-the-work-principal"
+}
+
+// The refusal above is not the work-mismatch wall wearing another name: this fixture agrees with
+// the subject Work on the very comparison that fires for foreign_attempt.
+test fn the_two_principal_relations_refuse_by_different_names() -> Bool {
+  outcome_label(o: issue(
+    work: subject_work,
+    attempt: sponsored_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) != outcome_label(o: issue(
+    work: subject_work,
+    attempt: misdirected_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+}
+
+// SAME OFFER KEY, DIFFERENT SUPPLIER. The grant's own identity carries the GRANTEE principal, so
+// it cannot also account for the supplier's; without the supplier principal in the material, two
+// suppliers posting one offer key derive one grant key and the duplicate check reads two
+// authorizations as one.
+test fn one_offer_key_under_two_suppliers_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: FabricIdentity { principal: "supplier-a", key: "offer-1" },
+    lease: fixture_lease,
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: FabricIdentity { principal: "supplier-b", key: "offer-1" },
+    lease: fixture_lease,
+  )
+}
+
+// SAME LEASE KEY, DIFFERENT SLOT. The fingerprint names the exact reserved claim rather than the
+// host, which is what keeps two admitted slices of one machine distinguishable at the fence.
+test fn one_lease_key_over_two_slots_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 9,
+    },
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-8"),
+      generation: 9,
+    },
+  )
+}
+
+// SAME LEASE KEY AND SLOT, DIFFERENT GENERATION -- the fence alone. The lease witness below varies
+// the key and the generation together, so it cannot establish that the generation participates.
+test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 9,
+    },
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
       resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
       generation: 10,
     },

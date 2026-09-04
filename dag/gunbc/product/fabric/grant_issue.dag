@@ -37,8 +37,31 @@ import extdeps.accounting.encumbrance {
 // So issuance is confined here, and the confinement is the whole point rather than tidiness. The
 // grant's key is derived, never supplied; its principal is READ OFF the Work rather than accepted
 // as a parameter; and the reservations it carries can only be a value this module built from two
-// ledgers that both admitted. A caller holding an offer, an attempt and a pile of strings cannot
-// produce an ExecutionGrant that this module did not issue.
+// ledgers that both admitted.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED MORE THAN THE CODE ESTABLISHES AND THE CLAIM IS
+// WITHDRAWN HERE RATHER THAN QUIETLY DROPPED. It read that a caller holding an offer, an attempt
+// and a pile of strings cannot produce an ExecutionGrant this module did not issue. That is false:
+// ExecutionGrant is an ordinary record, not sole_constructor, so the record literal is writable by
+// anyone who can name its fields, and five test modules already write one. What this module
+// establishes is the NARROWER and still real claim: the tree now has ONE PRODUCTION ISSUER, and
+// within it the grantee principal is not a free parameter. It does NOT establish that every grant
+// reaching a production effect passed through here.
+//
+// That distinction is this repository's own permit rule turned on its author. A permit type
+// carries no safety property because one safe constructor exists; the property lives in the
+// absence of the unsafe ones. Sealing CommittedReservations protects the PRECONDITION along the
+// safe path, and leaves the permit itself unsealed.
+//
+// RUNG FOUND AT: mitigatable -- one issuer exists and a reviewer can read the call sites, which is
+// a lens over the current corpus rather than a construction. CEILING: structurally impossible; the
+// state is decidable and fully modeled. NEXT-RUNG TRIGGER, a CAPABILITY and not this module's
+// cleanup: the carrier a production effect ACCEPTS must be constructible only from a successful
+// issuance -- ExecutionGrant sealed, or an issuer-minted wrapper carrying an unforgeable issuance
+// proof -- SUFFICIENT FOR every effect-facing signature to name that carrier, at which point a
+// caller-selected grantee has no spelling anywhere rather than no spelling here. Test fixtures
+// then need an issuer-owned constructor or a synthetic carrier that cannot inhabit the production
+// input; that is why the seal is its own change and not a line in this one.
 
 // A PERMIT DECISION IS VALID ONLY AFTER THE EXACT WORK HAS BEEN JOINED TO THE PRINCIPAL WHOSE
 // POLICY GOVERNS IT.
@@ -58,6 +81,10 @@ import extdeps.accounting.encumbrance {
 type GrantIssueRefusal<P, Q, S>
   = AttemptNamesAnotherWork {
       attempt_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | AttemptPrincipalIsNotTheWorkPrincipal {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
       subject_work: FabricIdentity<P, WorkKey>,
     }
   | OfferNotFungibleForWork { fungibility: OfferFungibility }
@@ -143,29 +170,49 @@ fn commit_reservations<Q, S>(
 // name one authorization twice, or one twice as two, and no consumer downstream could tell.
 //
 // The material concatenates FIXED-WIDTH serialized hashes rather than raw components, so no
-// component can carry a payload that moves a boundary: ["a", "b"] and ["ab", ""] hash to
-// different fixed-width pairs, and a delimiter has nothing to collapse. The principal does not
-// appear because it is not a coordinate of the key -- it is the other half of the identity PAIR
-// the key sits in, and folding it into the key would make dropping the principal an ordinary
-// string comparison again.
+// component can carry a payload that moves a boundary: a delimiter has nothing to collapse when
+// every field occupies the same width.
+//
+// EVERY COORDINATE ENTERS AS ITS WHOLE IDENTITY, NOT AS ITS KEY HALF. An earlier revision hashed
+// work.key, attempt.key, offer.key and lease.lease_key, and that projection contradicted the
+// identity authority it was built on: product.fabric.identity defines identity as the PAIR
+// (principal, key) precisely so that identical keys under different principals cannot collapse,
+// and the roles differ per carrier -- the Work principal is the accounting and security scope,
+// the SupplierOffer principal is the SUPPLIER. The grant's own FabricIdentity carries the
+// grantee principal and can account for the Work's; it cannot also carry the supplier's. So two
+// suppliers posting the same offer key derived ONE grant key, and the duplicate check would have
+// read two distinct authorizations as one authorization presented twice.
+//
+// The lease enters WHOLE for the same reason one layer down. LeaseIdentity is three fields and
+// receipt admission treats the resource fingerprint and the generation as load-bearing -- the
+// fingerprint names the exact reserved claim rather than the host, so two admitted slices of one
+// machine are distinguishable, and the generation is the fence. A projection to lease_key alone
+// gave one identity to a re-fenced lease and to a different slot.
+//
+// The attempt principal is NOT a free coordinate here, and that is a decision rather than an
+// omission: issuance refuses below when it disagrees with the Work's, so it is proven equal to a
+// principal already carried. It is hashed anyway, because a coordinate whose invariance depends
+// on a sibling refusal staying in place is one edit away from silently leaving the identity.
 fn grant_identity_material<P>(
   work: FabricIdentity<P, WorkKey>,
   attempt: FabricIdentity<P, ExecutionAttemptKey>,
   offer: FabricIdentity<P, OfferKey>,
   lease: LeaseIdentity,
 ) -> NonEmptyStr {
-  concat(
-    "gunbc.fabric.grant:",
-    concat(
-      serialize_content_hash(hash: content_hash_of_value(value: work.key)),
-      concat(
-        serialize_content_hash(hash: content_hash_of_value(value: attempt.key)),
-        concat(
-          serialize_content_hash(hash: content_hash_of_value(value: offer.key)),
-          serialize_content_hash(hash: content_hash_of_value(value: lease.lease_key))
-        )
-      )
-    )
+  fold(
+    [
+      content_hash_of_value(value: work.principal),
+      content_hash_of_value(value: work.key),
+      content_hash_of_value(value: attempt.principal),
+      content_hash_of_value(value: attempt.key),
+      content_hash_of_value(value: offer.principal),
+      content_hash_of_value(value: offer.key),
+      content_hash_of_value(value: lease.lease_key),
+      lease.resource_fingerprint,
+      content_hash_of_value(value: lease.generation),
+    ],
+    init: "gunbc.fabric.grant:",
+    f: (acc, part) => concat(acc, serialize_content_hash(hash: part)),
   )
 }
 
@@ -217,6 +264,29 @@ type GrantIssue<P, Q, S>
 // that is one try authorized twice, spending twice against one authorization, which is the
 // duplicate-grant mutation FCI-2 names.
 //
+// AN ATTEMPT CARRIES TWO PRINCIPAL RELATIONS AND MATCHING THE WORK CLOSES ONLY ONE OF THEM.
+//
+// attempt.work == work.id compares the Work identity an attempt names. It says nothing about the
+// principal on the ATTEMPT'S OWN identity, which product.fabric.identity defines as the account
+// the try is authorized and charged under. Those are separate fields, and Attempt is an ordinary
+// record, so an attempt naming the subject Work while carrying a foreign principal on its own id
+// passed the comparison. Issuance then produced a grant whose id and work were the owning
+// principal and whose context.attempt was the foreign one -- and receipt admission compares a
+// receipt's whole attempt identity against context.attempt, so a receipt under the foreign
+// principal matched a grant issued to the owner.
+//
+// THE SECOND RELATION IS THEREFORE REFUSED RATHER THAN LEFT UNADJUDICATED. Nothing in this
+// repository models delegated or sponsored execution: no relation says one principal may hold the
+// attempt for another's Work, and no policy witness exists to evaluate if it did. A
+// caller-selected attempt principal is not a delegation, it is an unadjudicated one, so the two
+// coherent readings -- must equal, or must present a delegation witness -- are not both open. The
+// second becomes available by MODELING the relation, at which point this refusal is replaced by a
+// check on that witness rather than deleted.
+//
+// This is principal selection before policy evaluation recurring one carrier down: the Work
+// principal was joined structurally by reading it off the Work, and the attempt principal entering
+// the same permit was still caller-chosen.
+//
 // WHAT THIS DOES NOT ESTABLISH, STATED SO NO READER BUDGETS FOR IT.
 //
 // The five FabricGrantEvidence references are taken as a parameter and are NOT verified here.
@@ -251,6 +321,10 @@ fn issue_grant<P, Q, S>(
   if !fabric_identity_eq(left: attempt.work, right: work.id) {
     GrantRefused {
       refusal: AttemptNamesAnotherWork { attempt_work: attempt.work, subject_work: work.id },
+    }
+  } else if attempt.id.principal != work.id.principal {
+    GrantRefused {
+      refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
     }
   } else {
     let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
