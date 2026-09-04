@@ -24,8 +24,10 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 // -- it has a subject, a cause and a discharge condition, and removing it is a deliberate act by
 // someone who has read why it is there.
 //
-// THIS IS NOT THE FIT GATE AND MUST NOT BE MISTAKEN FOR IT. gunbc.model.choice decides whether a
-// candidate fits a host's memory. This decides whether a host may receive serving convergence AT ALL
+// THIS IS NOT THE FIT GATE AND MUST NOT BE MISTAKEN FOR IT. gunbc.model.ollama_choice decides
+// whether an OLLAMA candidate fits a host's memory -- and the qualifier now says so in its name,
+// which sharpens rather than weakens the distinction this paragraph draws: that gate cannot speak
+// to a vLLM realization at all. This decides whether a host may receive serving convergence AT ALL
 // while the corpus cannot describe what is already running on it. The two are independent: a
 // candidate that fits perfectly still must not be installed over an unmodelled realization, and a
 // host carrying no withholding still has to pass the fit gate.
