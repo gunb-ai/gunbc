@@ -87,6 +87,17 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // noticed it -- it is premise contamination, and a reader planning against it plans against a
 // CI shape that has not existed for six weeks.
 //
+// AND THAT CORRECTION HAS ITSELF EXPIRED (2026-09-04), WHICH IS THE SECOND TIME THIS PARAGRAPH HAS
+// TURNED OVER AND THE REASON IT IS NOW WRITTEN AS A POINTER RATHER THAN A FACT. The
+// runner-capacity ruling deleted the `rust-unit-tests` job, so `repo_self_test_command` runs on NO
+// CI path again -- the 2026-07-11 sentence this paragraph corrected is accidentally true once
+// more, and it is still the wrong thing to rely on, because it was never the tests' absence that
+// decided anything here. DO NOT WRITE THE CURRENT SHAPE DOWN A THIRD TIME: read
+// `gunbc.witness_floor_workflow` `witness_floor_lane_jobs` for which jobs exist, and
+// `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path` for what the deletion cost. WHAT SURVIVES
+// EVERY TURNOVER, and is the only load-bearing claim below: nothing under `#[cfg(test)]` may be
+// cited as coverage that executes on the merge path.
+//
 // WHAT IS TRUE, AT THE GRAIN THE DISTINCTION ACTUALLY HAS, because the corrected sentence is
 // weaker than it first looks and the weakness is the point. The fixture discriminator
 // (`fixture_closure_rustc_discrimination`, authored in `v1.compiler.compiler_tests_rust` and
@@ -97,9 +108,12 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // THE EVIDENCE IS THEREFORE CANDIDATE EVIDENCE -- reviewable on demand, no wall -- and an
 // `#[ignore]` is a COST DECISION AND NOT A RUNG. THAT RESTS ON THE `#[ignore]` ALONE. A second
 // clause stood here until gunbc#10078 and is REMOVED rather than softened: it said
-// `rust-unit-tests` is not a `needs` of the required aggregate. It is one now, so the un-ignored
-// case is no longer merely visible -- it would BLOCK. Un-ignoring this test is by itself
-// sufficient to move this evidence onto the acceptance path. Nothing here may be cited as
+// `rust-unit-tests` is not a `needs` of the required aggregate. It became one at gunbc#10078, so
+// the un-ignored case would have BLOCKED -- and the 2026-09-04 deletion of that job removed the
+// lane altogether, so un-ignoring this test now moves it onto NO path at all. Both edits are
+// recorded rather than collapsed because the pair is the lesson: this clause has been true, then
+// false, then true again in three weeks, which is why the conclusion below deliberately does not
+// rest on it. Nothing here may be cited as
 // coverage that executes on the merge path, which is what the false sentence above got right for
 // the wrong reason.
 //
@@ -167,8 +181,9 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // pull request. The evidence is therefore CANDIDATE EVIDENCE -- reviewable on demand, NO WALL --
 // and an `#[ignore]` is a cost decision and NOT a rung. THE `#[ignore]` IS THE WHOLE OF IT: a
 // second clause stood here until gunbc#10078, saying `rust-unit-tests` is additionally not a
-// `needs` of the required aggregate. That is false now and is removed rather than weakened,
-// because two clauses read as two protections and only one was ever load-bearing here. It
+// `needs` of the required aggregate. That went false at #10078 and true again when the 2026-09-04
+// ruling deleted the job; it stays removed rather than restored, because two clauses read as two
+// protections and only one was ever load-bearing here -- the `#[ignore]`. It
 // discharges no next-rung trigger naming this capability: the capability exists, the evidence
 // does not execute. Nothing here claims a rung for the
 // text-boundary class, which stays exactly where its own row puts it.
@@ -208,9 +223,19 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // rests on the `#[ignore]` alone. What is NEWLY DECIDED: do not un-ignore.
 //
 // AND THE REASON IS THE OPPOSITE OF THE ONE THIS ROW ASSUMED. `rust-unit-tests` is not comfortably
-// under the floor lane; it is ON the critical path. The aggregate WAITS FOR THE SLOWEST of the
-// three required lanes, so what decides the cost of un-ignoring is not the suite's own growth but
-// where that growth lands it against `required-witnesses-floor`. Re-derive with `gh api
+// under the floor lane; it is ON the critical path. THE VERDICT SURVIVES ITS OWN REASONING'S
+// EXPIRY (2026-09-04): the lane was deleted for that contention, so there is no suite on any CI
+// path to un-ignore into. The answer is still NO, now for the stronger reason that un-ignoring
+// would buy nothing -- and restoring the lane to make it buy something is not this row's to do,
+// it needs the operator sign-off `witness_floor_lane_jobs` requires.
+//
+// THE 2026-09-03 REASONING THAT PRODUCED THAT VERDICT IS PRESERVED WHOLE BELOW, IN ITS OWN TENSE,
+// and every count in it is of that tree rather than this one -- there were three required lanes
+// then and there are two now. It is not corrected in place: the measurement is what makes the
+// verdict re-derivable, and a number edited to match a later roster is no longer the number
+// anything was decided on. The aggregate WAITED FOR THE SLOWEST of the three required lanes, so
+// what decided the cost of un-ignoring was not the suite's own growth but
+// where that growth landed it against `required-witnesses-floor`. Re-derive with `gh api
 // repos/OWNER/REPO/actions/workflows/witnesses.yml/runs?status=completed` then
 // `/actions/runs/<id>/jobs`, successful jobs only, and compare the two lanes at the SAME quantile.
 // As dated evidence for the RELATION and nothing more -- the figures belong to the tree and the
@@ -304,7 +329,8 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // function_value_adapter_fixture_closure_discrimination -- --ignored`, DOES NOT EXECUTE BY DEFAULT
 // on push or pull request. CANDIDATE EVIDENCE, NO WALL, ON THE `#[ignore]` ALONE -- the second
 // clause that stood here, that `rust-unit-tests` is not a `needs` of the required aggregate, was
-// made false by gunbc#10078 and is removed rather than softened. An #[ignore] is a cost decision
+// made false by gunbc#10078, made true again by the 2026-09-04 deletion of that job, and stays
+// removed rather than softened through both. An #[ignore] is a cost decision
 // and NOT a rung, so this establishes NO rung for the adapter and discharges NO next-rung trigger
 // naming it: the evidence exists and does not execute on the acceptance path. The reversal
 // condition is the one that row already carries and is not re-minted here -- and it HAS FIRED, so
