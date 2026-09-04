@@ -6,7 +6,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_test { rust_minimal_smoked_target_model_staging }
 import v2.extdeps.languages.python { python_target_model }
 import v2.extdeps.languages.go { go_target_model }
 import v2.extdeps.languages.typescript { ts_target_model }
@@ -23,7 +23,7 @@ type EmitHostTargetCoverageRow {
 }
 
 data emit_host_coverage_row_rust: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
-  target: rust_target_model(),
+  target: rust_minimal_smoked_target_model_staging(),
   host_smoked: true
 }
 
