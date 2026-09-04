@@ -69,12 +69,12 @@ use v1_compiler::std_occurrence_identity::{
     OccurrenceTransport, ReferenceOccurrence,
 };
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_compiler_infer_env::{
-    lookup_type_by_name, resolved_node_is_kernel_identity_for_name,
-};
+use v1_compiler::v1_compiler_infer_env::lookup_type_by_name;
 use v1_compiler::v1_compiler_parse::{parse_with_table, parse_with_table_ready_module_path};
 use v1_compiler::v1_compiler_tokenize::tokenize;
-use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table};
+use v1_compiler::v1_std_core::{
+    build_newline_index, empty_intern_table, resolved_node_is_kernel_identity_for_name,
+};
 
 /// One census class. `key` is the printed identity; classes are declared here rather than
 /// minted at the match site so the closing sum is over a fixed roster.

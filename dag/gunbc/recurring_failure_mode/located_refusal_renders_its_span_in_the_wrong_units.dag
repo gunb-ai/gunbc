@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.located_refusal_renders_its_span_in_the_wrong_units
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data located_refusal_renders_its_span_in_the_wrong_units: RecurringFailureMode = RecurringFailureMode {
+  identity: "located_refusal_renders_its_span_in_the_wrong_units" as NonEmptyStr,
+
+  receipts: [
+    "A located refusal renders a CORRECT span in units the reader cannot know, so the location is authoritative, specific, and points at nothing. DESIGN section 5 requires every failure to be a typed, LOCATED diagnostic; this row is about the location surviving the trip to the reader, which the typed-and-located requirement does not by itself secure. ",
+
+    "RECEIPT, 2026-09-04, gunbc#10350, and it is recorded with both readers because the two failures are the point. The module index refused with `dag/gunbc/type_reference_decl_file_occurrence_census.dag:15713-15714: expected expression, found Colon`. That file is 526 lines in origin/main, in the PR head, and in the merge result. ",
+
+    "THE FIRST READER -- this lane's manager -- did the correct diligence and was defeated by it. They checked the cited file in all three trees, confirmed no line 15713 exists in any of them, and additionally confirmed the file is not a generated artifact, so they were not reading a pre-regeneration copy. They then declined to guess and named two candidate causes: a wrong PATH attribution, or a line index global across the concatenated corpus. Both were wrong, and neither could have been eliminated from the log. ",
+
+    "THE ACTUAL ANSWER IS A THIRD THING NEITHER CANDIDATE COVERS: 15713 is a BYTE OFFSET into that file, and the file name is exactly right. `head -c 15760 <file> | tail -c 220` lands on the opening quote of the unterminated literal. The span was never wrong -- only its rendering, which presents a byte offset in the `path:N-M` shape every reader parses as `path:line-line`. ",
+
+    "WHY THE UNITS ARE UNRECOVERABLE FROM THE ARTIFACT, which is what makes this structural rather than a typo. `path:N-M` is well-formed under both readings, and for any file long enough the byte reading and the line reading are BOTH plausible; the two only visibly diverge when the offset exceeds the line count, which is precisely the case that reads as a corrupt or mislocated diagnostic rather than as a unit mismatch. So a short file hides the defect entirely and a long file misdirects silently. The reader has no way to tell which they are holding. ",
+
+    "WHAT IT COST, stated because the harm is reader time and would otherwise be invisible: three whole-tree checks by the manager, two candidate mechanisms authored and both false, and an explicit instruction to another session not to chase the line number. The underlying defect -- raw double quotes inside a .dag String literal -- was a one-character-class fix once the file was believed. ",
+
+    "THIS IS THE FABRICATED-PLAUSIBLE-OUTPUT SHAPE APPLIED TO A DIAGNOSTIC'S OWN SPAN. DESIGN section 5 forbids a fabricated plausible answer on the success path; a span rendered in undeclared units is the same failure on the REFUSAL path, and it is worse than an unlocated refusal rather than better. An unlocated refusal makes the reader search and they know they are searching. A confidently mislocated one makes them verify the location, find it absent, and doubt the path or the tool -- so the strongest-looking part of the diagnostic is the part that misleads. ",
+
+    "RECOGNITION RULE: when a diagnostic's cited position does not exist in the cited file, check the UNITS before doubting the PATH. Compare the cited number against the file's byte length as well as its line count -- if it falls inside the byte length and outside the line count, it is an offset, and the path is probably correct. The tell that generalises past this instance: a position rendered without a unit is a position that cannot be checked, and `path:N-M` declares no unit. ",
+
+    "WHAT IS NOT CLAIMED. One receipt is not a rate, and this row does not claim the corpus renders spans in the wrong units generally -- several diagnostic surfaces in this tree do render real line and column numbers, and the note in gunbc.namespace_cut_replacement_plan recording that a pinned compiler prints `msg (file:start-end)` while a current one prints `error[file:line:col]` shows the two renderings coexisting across instruments. The claim is narrower and sufficient: at least one refusal path renders byte offsets in a shape that reads as lines, and nothing in the artifact discloses which. ",
+
+    "CEILING AND WHY THIS ROW IS FILED RATHER THAN REPAIRED HERE. The class is decidable and therefore has a wall available: a span carrying its unit in its TYPE -- a byte offset and a line-column position as distinct constructors rather than two readings of one integer pair -- makes the ambiguity unwritable, which is DESIGN section 4b rung 4 and section 5's construction-over-validation. That is a change to the diagnostic span carrier and its every renderer, not a fix to the file that surfaced it, so it is filed at the grain it must be repaired at. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a span type whose constructors distinguish byte offsets from line-column positions, with the renderers deriving their format from the constructor instead of choosing one. ",
+
+    "A SIBLING INSTANCE FROM THE SAME NIGHT, ESTABLISHED INDEPENDENTLY BY ANOTHER LANE, which is what lifts this from an anecdote to a class. jolly-ferret-412 (gunbc#10352) found the floor rendering `cost=500ms EXACT` from an integer-truncated NANOSECOND measurement: the comparison and the refusal were both correct, and the rendering was the defect. Two diagnostics in one night where the VALUE was right, the RENDERING was wrong, and the rendering recruited readers into filing against a correct component -- there against the comparator, here against the path. The two arrived from unrelated subjects and neither reader was looking for this shape. ",
+
+    "THE GENERAL RULE THE PAIR SUPPORTS, and it is the operative half of this row: WHEN A LOCATED DIAGNOSTIC POINTS SOMEWHERE IMPOSSIBLE, DISTRUST THE UNITS OF THE LOCATION BEFORE DISTRUSTING THE LOCATION. The impossible-looking component is usually the correct one being rendered in a unit nobody declared. ",
+
+    "STANDING BESIDE THIS AND NOT DUPLICATING IT: DESIGN section 3's rule is cite the SYMBOL, not the position, because a position decays silently when anything above it moves. This row is the complementary failure -- the position was not stale, it was in undeclared units -- and both point the same way. A position is the weakest form of citation available, and where one is unavoidable it must at minimum say what it is measuring. ",
+  ],
+
+  evidence: [],
+}
