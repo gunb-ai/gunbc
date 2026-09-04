@@ -36,6 +36,12 @@ struct VersionedRequiredCiMeasurementReceipt {
     receipt: RequiredCiMeasurementReceipt,
 }
 
+fn completed_required_ci_measurement_receipt(
+    blockers: Vec<RequiredCiBlocker>,
+) -> RequiredCiMeasurementReceipt {
+    RequiredCiMeasurementReceipt::MeasurementCompleted { blockers }
+}
+
 fn write_required_ci_measurement_receipt(
     path: &str,
     receipt: RequiredCiMeasurementReceipt,
@@ -515,7 +521,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
-        let mut measurement_unreached: Option<String> = None;
         let mut ran: Vec<&'static str> = Vec::new();
         // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
         // the index the parse phase built rather than acquiring the corpus again; holding it
@@ -931,7 +936,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 Err(e) => {
                     eprintln!("required-ci: floor refused: {e}");
                     phase_failures.push(format!("floor refused: {e}"));
-                    measurement_unreached = Some(e);
                 }
             }
             ran.push("floor");
@@ -1001,12 +1005,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                     });
                 }
             }
-            let receipt = match measurement_unreached {
-                Some(cause) => RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
-                None => RequiredCiMeasurementReceipt::MeasurementCompleted {
-                    blockers: measurement_blockers,
-                },
-            };
+            // Reaching this branch means the measurement process returned after running every
+            // selected phase. A phase refusal is therefore a completed measurement carrying
+            // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
+            // outer finalizer only when this process cannot return a receipt at all (for example,
+            // a failed instrument build or a killed process).
+            let receipt = completed_required_ci_measurement_receipt(measurement_blockers);
             if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
                 eprintln!("required-ci: measurement REFUSED {e}");
                 return Err(ExitCode::from(1));
@@ -2043,6 +2047,25 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_returned_subject_refusal_is_a_completed_measurement() {
+        let blocker = RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: "fixture.subject_refusal".to_string(),
+            cause: "type mismatch".to_string(),
+        };
+        assert_eq!(
+            completed_required_ci_measurement_receipt(vec![blocker]),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: "fixture.subject_refusal".to_string(),
+                    cause: "type mismatch".to_string(),
+                }],
+            }
+        );
+    }
 
     #[test]
     fn blocking_measurement_round_trips_with_the_planted_identity_and_refuses() {
