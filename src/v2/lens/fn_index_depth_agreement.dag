@@ -7,6 +7,8 @@ import v2.std.collection { Absent, List, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count }
+import v2.std.node_query { call_callee_target, node_is_call }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.text { String }
 import v2.std.fn_index {
   FnArrowDecl,
@@ -38,18 +40,24 @@ import v2.std.fn_index {
 // values, non-path literals) is not measurable here for the same reason it is not excludable --
 // the skeleton gives it no distinguishing shape.
 //
-// NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live`, the zero-arity
-// whole-tree acquisition whose cost is the standing blocker recorded in
+// NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live` over the two
+// source roots the required lanes pass, and that whole-tree cost is the standing blocker recorded in
 // v2.test.claim.enforcement.determinism_transitive_witness; enrolling a whole-corpus subject on the
 // per-subject line would repeat exactly the finding that file documents. The grain claims are held
 // at the floor by fixture rows there; this is the re-derivation entry point for the corpus numbers.
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever
 }
 
 data empty_symbol_list: List<Symbol> = []
+data empty_string_list: List<String> = []
 data no_terminal_callees: List<String> = []
+
+// THE SUBJECT IS CALLER-NAMED SINCE gunbc#10245, so this instrument states the pools it measures
+// rather than inheriting whatever the acquisition used to walk. These are the two source roots the
+// required lanes pass, which is the population every claim in this repository is judged over.
+data agreement_pool_roots: List<String> = ["dag", "src/v2"]
+data agreement_pool_files: List<String> = []
 
 fn agreement_symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
@@ -109,6 +117,71 @@ fn param_collides_with_a_declaration(
   )
 }
 
+// THE CALL-CHANNEL READER THE #10282 CARRIER MADE POSSIBLE, measured beside the atom scan rather
+// than swapped in on the strength of the trigger having fired. The counts below are the sharpest
+// form of the question review 60065 asks: how many nodes of a LIVE fn-arrow skeleton does
+// `node_is_call` accept at all, and of those, how many yield a callee lexeme through
+// `call_callee_target`. A zero in the first column is not a small over-approximation traded for a
+// small under-approximation -- it is a reader that cannot see any edge on this substrate.
+//
+// COUNTED AS Int, NOT COLLECTED AS A LIST, deliberately. The first form of this measurement
+// deduplicated lexemes with a linear `contains` inside a per-node fold, which is quadratic in the
+// accumulated list over a 60k-node corpus and did not terminate in twenty minutes. A cost shape
+// that bad is fixed rather than tolerated even in an instrument (DESIGN section 6, bare minimum
+// cost), and the distinct-callee refinement buys nothing a raw count does not already decide.
+type ChannelState {
+  node: Node
+  call_nodes: Int
+  resolved_callees: Int
+}
+
+fn channel_init(n: Node) -> ChannelState {
+  ChannelState { node: n, call_nodes: 0, resolved_callees: 0 }
+}
+
+fn node_is_call_shaped(node: Node) -> Int {
+  match node_is_call(node: node) {
+    true => 1
+    false => 0
+  }
+}
+
+fn resolved_callee_count(node: Node) -> Int {
+  if node_is_call(node: node) {
+    match call_callee_target(node: node) {
+      Accepted { value: callee, diagnostics: _ } =>
+        match node_atom_identity_optional(node: callee) {
+          Present { value: _sym } => 1
+          Absent => 0
+        }
+      Rejected { diagnostics: _ } => 0
+    }
+  } else {
+    0
+  }
+}
+
+fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelState {
+  let below_resolved = acc.resolved_callees + child.resolved_callees
+  ChannelState {
+    node: acc.node,
+    call_nodes: acc.call_nodes + child.call_nodes + node_is_call_shaped(node: child.node),
+    resolved_callees: below_resolved + resolved_callee_count(node: child.node)
+  }
+}
+
+fn channel_subtree(node: Node) -> ChannelState {
+  let below = fold_node(
+    n: node,
+    algebra: NodeFold { init: channel_init, step: channel_step }
+  )
+  ChannelState {
+    node: node,
+    call_nodes: below.call_nodes + node_is_call_shaped(node: node),
+    resolved_callees: below.resolved_callees + resolved_callee_count(node: node)
+  }
+}
+
 type DepthAgreementTally {
   decls: Int
   disagreeing_with_legacy: Int
@@ -116,6 +189,11 @@ type DepthAgreementTally {
   subtree_atom_total: Int
   root_callees_lost_to_depth_one: Int
   param_collisions: Int
+  channel_call_shaped_total: Int
+  channel_callee_total: Int
+  atom_callee_total: Int
+  decls_channel_finds_fewer: Int
+  decls_channel_finds_none_atom_some: Int
   subtree_node_total: Int
 }
 
@@ -126,6 +204,11 @@ data empty_tally: DepthAgreementTally = DepthAgreementTally {
   subtree_atom_total: 0,
   root_callees_lost_to_depth_one: 0,
   param_collisions: 0,
+  channel_call_shaped_total: 0,
+  channel_callee_total: 0,
+  atom_callee_total: 0,
+  decls_channel_finds_fewer: 0,
+  decls_channel_finds_none_atom_some: 0,
   subtree_node_total: 0
 }
 
@@ -144,6 +227,8 @@ fn tally_decl(
   let depth_one = length(xs: atom_identities_in_node(node: decl.output))
   let legacy = length(xs: legacy_atoms(node: decl.output))
   let subtree = length(xs: atom_identities_in_subtree(node: decl.output))
+  let channel = channel_subtree(node: decl.output)
+  let channel_count = channel.resolved_callees
   let deep_callees = length(
     xs: callees_from_node(
       node: decl.output,
@@ -167,12 +252,26 @@ fn tally_decl(
       count: acc.param_collisions,
       flag: param_collides_with_a_declaration(decl: decl, decls: decls)
     ),
+    channel_call_shaped_total: acc.channel_call_shaped_total + channel.call_nodes,
+    channel_callee_total: acc.channel_callee_total + channel_count,
+    atom_callee_total: acc.atom_callee_total + deep_callees,
+    decls_channel_finds_fewer: bump_when(
+      count: acc.decls_channel_finds_fewer,
+      flag: channel_count < deep_callees
+    ),
+    decls_channel_finds_none_atom_some: bump_when(
+      count: acc.decls_channel_finds_none_atom_some,
+      flag: channel_count == 0 && deep_callees > 0
+    ),
     subtree_node_total: acc.subtree_node_total + node_subtree_count(n: decl.output)
   }
 }
 
 fn fn_index_depth_agreement_tally() -> DepthAgreementTally {
-  let decls = fn_arrow_decl_facts_live()
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
   fold_list(
     xs: decls,
     empty: empty_tally,
