@@ -10,6 +10,7 @@ import extdeps.standards.micro_atx {
 }
 import product.printed_chassis.coupon { OpThroughHole }
 import product.printed_chassis.standoff_gauge {
+  LocationLookup, LocationFound, LocationAbsent, LocationDuplicated, location_scan,
   StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationsCoincide,
   GaugeExceedsBuildEnvelope, GaugeLocationDuplicated, admit_standoff_gauge, gauge_edge_margin, gauge_thickness,
   altrad8ud_standoff_gauge,
@@ -29,18 +30,61 @@ test fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool {
   }
 }
 
-// THE SPAN COMES FROM THE STANDARD, NOT FROM THIS FILE.
+// THE SPAN IS CHECKED AGAINST AN INDEPENDENT TRANSCRIPTION OF THE SPECIFICATION.
 //
-// LocF sits at 6350 along the rear edge and LocC at 163830, so the span is 157480 um; their depths
-// are 33020 and 10160, so the depth span is 22860. These are read back from the admitted geometry.
-// If the gauge ever restated its own coordinates instead of deriving them, editing
-// micro_atx_mounting_locations would leave this green -- which is why the foreign-population witness
-// below exists as well.
+// An earlier form asserted == 157480 and == 22860 directly. Review 60129 called that a measurement
+// copied from the current tree, and the decisive test is the one section 5 states: automating the
+// literal's update collapses the assertion to measure() == measure(), because the only way to
+// recompute it is the same lookup-and-subtract the gauge itself performs. It would have been a
+// change detector.
+//
+// The literals were not invented, though -- they are the difference of two coordinates a person read
+// off the microATX Motherboard Interface Specification. That reading is the real oracle, so it is
+// now written as one: spec_read_locf_* and spec_read_locc_* are a SECOND, INDEPENDENT transcription
+// of the same document, and the witness requires the live population, the fixture, and the emitted
+// part to agree.
+//
+// This is strictly stronger than either alternative. Deleting the literals would have left nothing
+// tying the gauge to the specification's actual numbers; keeping them bare would have compared the
+// tree to itself. Comparing against a separate transcription catches a corruption of
+// micro_atx_mounting_locations, which neither of the others could see.
+data spec_read_locf_along: Micrometer = micrometer(count: 6350)
+data spec_read_locf_depth: Micrometer = micrometer(count: 33020)
+data spec_read_locc_along: Micrometer = micrometer(count: 163830)
+data spec_read_locc_depth: Micrometer = micrometer(count: 10160)
+
+fn spec_read_span_along() -> Nat {
+  micrometer_count(m: spec_read_locc_along) - micrometer_count(m: spec_read_locf_along)
+}
+
+fn spec_read_span_depth() -> Nat {
+  micrometer_count(m: spec_read_locf_depth) - micrometer_count(m: spec_read_locc_depth)
+}
+
+// The live population must match the independent transcription, coordinate by coordinate. This is
+// the arm that would go red if micro_atx_mounting_locations were corrupted, and it is the reason the
+// span comparison below is not circular.
+test fn w_the_live_population_matches_an_independent_reading_of_the_spec() -> Bool {
+  match location_scan(rows: micro_atx_mounting_locations, id: LocF) {
+    LocationFound { location: f } => match location_scan(rows: micro_atx_mounting_locations, id: LocC) {
+      LocationFound { location: c } =>
+        micrometer_count(m: f.along_rear_edge) == micrometer_count(m: spec_read_locf_along) &&
+        micrometer_count(m: f.depth_from_rear_edge) == micrometer_count(m: spec_read_locf_depth) &&
+        micrometer_count(m: c.along_rear_edge) == micrometer_count(m: spec_read_locc_along) &&
+        micrometer_count(m: c.depth_from_rear_edge) == micrometer_count(m: spec_read_locc_depth)
+      LocationAbsent => false
+      LocationDuplicated { count: n } => false
+    }
+    LocationAbsent => false
+    LocationDuplicated { count: n } => false
+  }
+}
+
 test fn w_the_span_is_the_standards_own_separation() -> Bool {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } =>
-      micrometer_count(m: g.span_along_rear_edge) == 157480 &&
-      micrometer_count(m: g.span_in_depth) == 22860
+      micrometer_count(m: g.span_along_rear_edge) == spec_read_span_along() &&
+      micrometer_count(m: g.span_in_depth) == spec_read_span_depth()
     GaugeLocationNotEnumerated { requested: r } => false
     GaugeLocationsCoincide { requested: r } => false
     GaugeExceedsBuildEnvelope { fit: f } => false
