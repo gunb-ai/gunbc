@@ -27,6 +27,9 @@ import v2.lens.module_graph {
   path_matches_touched
 }
 
+// This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
+data no_declared_pool_files: List<String> = []
+
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -411,7 +414,7 @@ fn live_read_selection_manifest_over(
   })
 }
 
-data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
+data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. THE COVERAGE PREMISE IS NO LONGER UNPROVEN, and this sentence records the change rather than sitting beside it. It previously read that the mint site was a construction wall around an unproven premise, because fn_arrow_decl_facts_live answered from the calling context's resolved closure and no control showed a declaration outside that closure in its population. gunbc#10156 clause 2 gave the producer a caller-named subject: this mint site passes the SAME pool_roots to all three producers, so the population is the declared roots by construction, and dag/test/claim/fn_arrow_decl_facts_live_subject_witness_test shows by execution that a declaration outside the calling closure appears when its root is named and disappears when it is not. What the caller still owes is a truthful root list, and a root that contributes nothing refuses. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 
 fn live_read_selection_manifest_live(
   requests: List<LiveReadSelectionRequest>,
@@ -428,7 +431,7 @@ fn live_read_selection_manifest_live(
       exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots),
-    decls: fn_arrow_decl_facts_live()
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files)
   )
 }
 
@@ -612,24 +615,26 @@ fn live_read_selection_projection_from_facts(
 
 fn live_read_selection_projection_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadSelectionProjection {
   live_read_selection_projection_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files),
     carrier_homes: live_read_carrier_homes_v0
   )
 }
 
 fn live_read_classification_g2_from_facts_v0(
   entry_module: String,
+  pool_roots: List<String>,
   facts: List<ModuleImportFact>
 ) -> LiveReadClassification {
   live_read_classification_g2_from_facts(
     entry_module: entry_module,
     facts: facts,
-    decls: fn_arrow_decl_facts_live(),
+    decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files),
     carrier_homes: live_read_carrier_homes_v0
   )
 }
