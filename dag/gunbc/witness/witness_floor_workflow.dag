@@ -6,7 +6,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_test_command, repo_self_clippy_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -205,8 +205,6 @@ data witness_floor_workflow_job_id: String = "witnesses"
 data floor_lane_job_id: String = "required-witnesses-floor"
 
 data build_lane_job_id: String = "required-witnesses-build"
-
-data fabric_evidence_job_id: String = "fabric-evidence"
 
 data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 
@@ -936,36 +934,6 @@ fn build_lane_run_step() -> Step {
   }
 }
 
-// FCI-EVIDENCE-0 is enrolled in its own parallel fabric lane, after that lane builds the
-// exact-tree gunbc and before any later wet fabric gate can cite its run-boundary contract.
-// The shell is the manager-approved
-// sequencing carrier; its dissolve-on is modeled lifecycle actuation sufficient to sequence a
-// wet gate from .dag. Fabric facts remain ProcessExit assertions and named Filesystem.Write values.
-// The 55-minute step bound is derived from the executed 13-row roster and the worst observed
-// per-row wall interval of 169 seconds: 13 * 169 * 1.5 = 3295.5 seconds, rounded up. Distinct
-// gunbc host processes are the process-edge subject, so reducing their count would remove the
-// boundary rather than reduce the cost of observing it.
-data fabric_ci_evidence_calibration_timeout_minutes: Int = 55
-
-// Checkout, isolated toolchain setup and the exact-tree release build took 3.5 minutes on the
-// measured warm run. Fifteen minutes is that observation rounded up and given more than fourfold
-// cold-run headroom; the job cap derives it beside the calibration wall rather than overriding it.
-data fabric_ci_evidence_prelude_allowance_minutes: Int = 15
-
-fn fabric_ci_evidence_calibration_step() -> Step {
-  RunStep {
-    name: Present { value: "Calibrate fabric CI evidence boundary" },
-    id: none,
-    run: "bash tools/fabric_ci_evidence_calibration.sh\n",
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: witness_floor_precondition() },
-    continue_on_error: none,
-    timeout_minutes: Present { value: fabric_ci_evidence_calibration_timeout_minutes }
-  }
-}
-
 fn witness_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "D0-MEASURE: witnesses lane" },
@@ -1616,6 +1584,11 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "Required CI: build lane (phases named by the run, not by this label)",
       },
       WitnessFloorBoundStep {
+        step: rust_clippy_all_targets_step(),
+        role: consumes_only(capabilities: [CargoCapability]),
+        step_name: "clippy, all targets",
+      },
+      WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
@@ -1749,63 +1722,27 @@ data witness_floor_lane_timeout: Minute = minute(count: 180)
 // -- regen's receipt is consumed by nothing outside its own process, and the floor's three TSVs
 // are written and uploaded inside the witnesses job -- so there is nothing an ordering edge could
 // protect.
-// THE RUST UNIT TESTS, NOW A REQUIRED LANE. The 774 `#[test]`s under src/v1/stage0 ran on no CI
-// path at all before this job existed, then ran on every push and pull request while GATING
-// NOTHING -- and that gap produced exactly the harm it predicts: #9886 landed two failing tests on
-// main with every required check green. This job is a member of `required_lanes_roster`, so its
-// result is read by the aggregate's verdict and a failure here blocks.
+// THE ALL-TARGETS LINT PASS, NOW A STEP ON THE BUILD LANE RATHER THAN A JOB OF ITS OWN.
 //
-// PROMOTED UNDER THE 2026-08-29 OPERATOR RULING'S OWN TERMS -- "add the rust unit tests but keep
-// them in a separate job FOR NOW", conditioned on its wall clock being measured on the fleet
-// runner. It is still a separate JOB; what changed is that the aggregate now reads it.
+// It arrived inside a `rust-unit-tests` job that also ran the unit tests. That job is
+// gone under the 2026-09-04 operator ruling on runner capacity: seven jobs against a fleet that
+// could not serve them, each paying its own checkout, toolchain install and release build for one
+// tree. THE UNIT TESTS WENT WITH IT and are a declared drop -- `gunbc.rung_drop`
+// `rust_unit_tests_off_the_merge_path` carries the previous rung, the bounded population and the
+// restoration trigger, and is the row to read before concluding those tests are covered.
 //
-// THE COST IS ZERO ON THE CRITICAL PATH, and the reason is a comparison rather than a bound. The
-// lanes run in PARALLEL with the aggregate only waiting, so promotion adds nothing unless this
-// becomes the SLOWEST lane -- and measured across 120 witnesses runs it sits BELOW
-// `required-witnesses-floor` at every quantile. Re-derive with
-// `gh api repos/OWNER/REPO/actions/runs/<id>/jobs` over a stated window rather than trusting a
-// remembered figure: the numbers move, the comparison is the claim, and a timeout-headroom
-// argument would have been the wrong one -- headroom says nothing about what the aggregate waits
-// for.
+// THE LINT DID NOT GO WITH IT, and that asymmetry is the whole of this comment. Deleting it would
+// have been the below-floor regression DESIGN section 4b forbids: `repo_self_clippy_command` is
+// the only command on any CI path that compiles the INTEGRATION-TEST AND EXAMPLE targets, which is
+// how twelve of them sat red on main (2026-08-30) behind a green required run. A reader tempted to
+// finish the job's removal by taking this step too would be re-opening a measured hole, not
+// tidying a leftover.
 //
-// WHAT THE PROMOTION WAITED ON WAS NEVER THE EDIT SIZE, and all three conditions were discharged
-// before this landed rather than argued away. Main had to be GREEN, because a promotion whose
-// first act blocks every open pull request on a defect already fixed elsewhere is a self-inflicted
-// outage -- and that was not hypothetical: while this was held, #10036 was blocked by
-// `shell_service_unmodeled_output_key_refuses`, main's own defect, whose fix its author had
-// already landed under another number. The FLEET had to be healthy, because a lane that cannot be
-// delivered its admitted memory or toolchain produces reds carrying no information about the diff,
-// and gating on it converts an uninformative signal into repository-wide blocking authority. And
-// the required floor's per-claim COST ACCOUNTING had to be understood, for the same reason one
-// layer down -- `gunbc.recurring_failure_mode` `recurrence_ledger_scoped_below_the_recurrence`.
-//
-// THAT LAST CONDITION IS THE ONE A LATER READER WILL BE TEMPTED TO DROP, so it is stated as the
-// rule and not as history: A LANE MAY BE PROMOTED ONLY WHEN A RED IN IT DISCRIMINATES. Wall clock
-// is the cheap question; whether the lane's failures are ABOUT THE DIFF is the load-bearing one,
-// and a lane that reds for shared or host reasons is worse promoted than unpromoted, because it
-// converts a known-uninformative signal into a merge block nobody can act on.
-data rust_unit_tests_job_id: String = "rust-unit-tests"
-
-fn rust_unit_tests_step() -> Step {
-  RunStep {
-    name: Present { value: "v1-compiler unit tests" },
-    id: Present { value: "rust_unit_tests" },
-    run: concat(repo_self_test_command(), "\n"),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-// THE ALL-TARGETS LINT PASS, IN THE SAME JOB. `cargo clippy --all-targets -- -D warnings` is the
-// check DESIGN names, and until this step it ran on no CI path either: the required build lane
-// builds `--bins` and the partition crates, the unit-test step compiles `--lib`, and the
-// integration-test and example targets were compiled by nobody -- which is how twelve of them
-// sat red on main (2026-08-30) behind a green required run. Ordered after the unit tests so a
-// red test verdict is never hidden behind a lint verdict in the same job.
+// WHY THE BUILD LANE AND NOT THE FLOOR. The floor lane is the longer of the two, so it owns the
+// required check's wall clock; a step added there is added to that clock, and one added to the
+// build lane is absorbed by its headroom. That is the same argument, and the same instrument, as
+// the binary-population standing above -- re-derive both lane durations from the runs before
+// moving it, rather than trusting this sentence to still be true.
 data rust_clippy_all_targets_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.")
 
 fn rust_clippy_all_targets_step() -> Step {
@@ -1824,236 +1761,6 @@ fn rust_clippy_all_targets_step() -> Step {
     timeout_minutes: none
   }
 }
-
-fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
-  [
-    WitnessFloorBoundStep {
-      step: witness_toolchain_filesystem_start_probe_step(),
-      role: capability_neutral,
-      step_name: "Record runner filesystem at job start",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_checkout_step(),
-      role: capability_neutral,
-      step_name: "Checkout",
-    },
-    heal_revalidation_preflight_bound_step(),
-    WitnessFloorBoundStep {
-      step: toolchain_home_isolation_step(),
-      role: capability_neutral,
-      step_name: "Isolate toolchain homes",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [
-        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
-      ]),
-      step_name: "Install Rust toolchain",
-    },
-    WitnessFloorBoundStep {
-      step: toolchain_pin_rustup_default_step(),
-      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
-      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-    },
-    WitnessFloorBoundStep {
-      step: rust_unit_tests_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: "v1-compiler unit tests",
-    },
-    WitnessFloorBoundStep {
-      step: rust_clippy_all_targets_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: "clippy, all targets",
-    },
-    WitnessFloorBoundStep {
-      step: witness_toolchain_filesystem_end_probe_step(),
-      role: capability_neutral,
-      step_name: "Record runner filesystem at job end",
-    },
-  ]
-}
-
-fn rust_unit_tests_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: rust_unit_tests_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-      )
-    ),
-  )
-}
-
-fn rust_unit_tests_job() -> Job {
-  Job {
-    id: rust_unit_tests_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: list_map(xs: rust_unit_tests_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: 60,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
-}
-
-fn fabric_evidence_bound_steps() -> List<WitnessFloorBoundStep> {
-  append(
-    prepared_bound_steps(build_script: witness_floor_build_script()),
-    items: [
-      WitnessFloorBoundStep {
-        step: fabric_ci_evidence_calibration_step(),
-        role: capability_neutral,
-        step_name: "Calibrate fabric CI evidence boundary",
-      },
-      WitnessFloorBoundStep {
-        step: witness_toolchain_filesystem_end_probe_step(),
-        role: capability_neutral,
-        step_name: "Record runner filesystem at job end",
-      },
-    ],
-  )
-}
-
-fn fabric_evidence_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: fabric_evidence_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-      )
-    ),
-  )
-}
-
-fn fabric_evidence_job() -> Job {
-  Job {
-    id: fabric_evidence_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: list_map(xs: fabric_evidence_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: fabric_ci_evidence_calibration_timeout_minutes + fabric_ci_evidence_prelude_allowance_minutes,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
-}
-
-// ── EMIT-COST-QUAL-0 battery job (AUTHORED INERT — activation is not this lane's to take) ────
-//
-// The wet copy/share qualification battery (gunbc.emit_copy_qualification_wet_battery over
-// tools.emit_copy_qualification_transport): per carrier shard, production `gunbc compile` of the
-// generated fixture, clippy with the clone lint armed machine-readably, one cargo build, one
-// serial runner with per-case allocator windows, the interpreted driver, and the typed
-// qualification join — plus the five instrument-falsifier mutants. This job is the battery's
-// executing consumer once activated; it reruns on every push/PR like the other lanes
-// (UNCONDITIONED by design: change-conditioning without the floor's own selection machinery
-// would be a hand-rolled second path — a follow-up proposal, not an if-expression here).
-//
-// WHY if_condition IS "false": ROOT-N division ruling 2026-08-31 — EMIT-COST-QUAL-0 is
-// model-ahead evidence; enrollment/activation happens only when the operator allocates the one
-// activation slot (held by ROOT-N for #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2).
-// Lifting the literal "false" IS the activation edit; nothing else changes. Until then the job
-// renders in the emitted workflow as permanently skipped — visible, costless, and not a gate.
-//
-// WHY THE BATTERY IS NOT A *_test.dag MODULE YET: v2.workflow.floor_changed_witness blocks any
-// changed witness identity without a terminal floor verdict, and these wet transactions
-// route-gap hermetically (IsExecutable, NoMockResponse) — so the battery lands as plain claim
-// functions named here explicitly, and the activation edit also converts the module to
-// floor-enrolled witnesses.
-data emit_copy_qualification_job_id: String = "emit-copy-qualification-battery"
-
-data emit_copy_qualification_inert_standing: DissolutionCondition = unbound_dissolution(description: "emit-copy-qualification-battery ships if_condition 'false' under the ROOT-N division ruling 2026-08-31 (model-ahead evidence; one activation token, held for the #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2 chain). DISSOLVES WHEN the operator allocates the activation slot to this battery: the closing edit deletes the 'false' condition (and this row) AND converts gunbc.emit_copy_qualification_wet_battery to floor-enrolled *_test.dag witnesses in the same motion, so this row and the unconverted module cannot outlive each other; until then the job's explicit claim_batch --functions line is that module's only sanctioned consumer. The job then becomes an ordinary always-on lane; its measured first-run receipt prices any follow-up conditioning proposal.")
-
-// Declared budget for the whole job, minutes. The shard transactions share the repo target dir,
-// so the first shard pays the fixture-crate dependency build and later shards are incremental;
-// the bound is provisional until the first activated run's own receipt replaces it.
-data emit_copy_qualification_timeout_minutes: Int = 60
-
-data emit_copy_qualification_required_bins: List<String> = ["gunbc", "claim_batch"]
-
-fn emit_copy_qualification_build_script() -> String {
-  repo_self_build_command(bins: emit_copy_qualification_required_bins)
-}
-
-fn emit_copy_qualification_run_script() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "cd \"$ROOT\"\n",
-      "target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds\n"
-    )
-  )
-}
-
-fn emit_copy_qualification_run_step() -> Step {
-  RunStep {
-    name: Present { value: "EMIT-COST-QUAL-0: wet copy/share qualification battery" },
-    id: none,
-    run: emit_copy_qualification_run_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn emit_copy_qualification_bound_steps() -> List<WitnessFloorBoundStep> {
-  append(
-    prepared_bound_steps(build_script: emit_copy_qualification_build_script()),
-    items: [
-      WitnessFloorBoundStep {
-        step: emit_copy_qualification_run_step(),
-        role: consumes_only(capabilities: [CargoCapability]),
-        step_name: "EMIT-COST-QUAL-0: wet copy/share qualification battery",
-      },
-      WitnessFloorBoundStep {
-        step: witness_toolchain_filesystem_end_probe_step(),
-        role: capability_neutral,
-        step_name: "Record runner filesystem at job end",
-      },
-    ],
-  )
-}
-
-fn emit_copy_qualification_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(
-      steps: list_map(
-        xs: emit_copy_qualification_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-      )
-    ),
-  )
-}
-
-fn emit_copy_qualification_battery_job() -> Job {
-  Job {
-    id: emit_copy_qualification_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: list_map(xs: emit_copy_qualification_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: Present { value: "false" },
-    timeout_minutes: emit_copy_qualification_timeout_minutes,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
-}
-
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE HEAL JOB, RESTORED AS AN EMISSION OF THIS AUTHORITY (gunbc.rung_drop floor_cut_heal).
@@ -2556,7 +2263,6 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
-data required_lanes_gate_unit_var: String = "UNIT"
 
 // THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
 //
@@ -2581,11 +2287,6 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
         job_id: floor_lane_job_id,
         label: "floor",
         var_name: required_lanes_gate_floor_var
-      },
-      RequiredLane {
-        job_id: rust_unit_tests_job_id,
-        label: "unit",
-        var_name: required_lanes_gate_unit_var
       }
     ]
   }
@@ -2688,14 +2389,15 @@ fn required_lanes_aggregate_step() -> Step {
 // bound is an order of magnitude above anything that can take, and stops a stuck aggregator from
 // holding a runner for the inherited six hours.
 //
-// TWO RESULTS AND NOT THREE, AND THE THIRD IS A DECLARED DROP RATHER THAN AN OVERSIGHT. #9704 made
-// `fabric-evidence` a needs edge here and bound its result into the verdict fold. That edge is
-// withdrawn under `gunbc.rung_drop` `fabric_evidence_gating`, which carries the measurement, the
-// previous and temporary rungs, the bounded population and the restoration trigger. The JOB is
-// untouched and still runs on every push and pull request; only its authority to block a merge is
-// suspended. A reader who wants to restore the edge should read that row first, because the
-// trigger it names is a capability -- one evidence process resolving its entry without re-paying
-// the whole-tree census -- and not a pull request.
+// TWO RESULTS AND NOT THREE OR FOUR, AND EACH ABSENCE IS A DECLARED DROP RATHER THAN AN OVERSIGHT.
+// #9704 made `fabric-evidence` a needs edge here; #10036-era work made `rust-unit-tests` a third
+// required lane. Neither job exists now. `fabric-evidence` lost its edge under `gunbc.rung_drop`
+// `fabric_evidence_gating` and then lost the job itself under the 2026-09-04 runner-capacity
+// ruling recorded in that same row; the unit tests left the merge path under
+// `rust_unit_tests_off_the_merge_path`. A reader who wants either lane back should read the row
+// first: both name a CAPABILITY as the trigger -- an evidence process that resolves its entry
+// without re-paying the whole-tree census, and runner supply that admits a lane at all -- and
+// neither is retired by a pull request that merely re-adds the job.
 fn required_lanes_aggregate_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -2787,6 +2489,34 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
   ]
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// ADDING A JOB TO THIS LIST REQUIRES OPERATOR SIGN-OFF. IT IS NOT AN ORDINARY EDIT.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// A job here is not a line of configuration, it is a standing claim on a runner that someone pays
+// for, on every push and every pull request, forever. This list was SEVEN on 2026-09-04 and the
+// fleet could not serve seven: the required check's wall is the max over its lanes, so jobs that
+// gated nothing were displacing the ones that do, and the queue -- not any lane's own cost -- was
+// what people waited on. The 2026-09-04 operator ruling cut `rust-unit-tests`, `fabric-evidence`
+// and `emit-copy-qualification-battery` on that basis; the drop rows carry what each cut cost.
+//
+// SO THE ROSTER IS CLOSED TO GROWTH BY DEFAULT, and an author proposing a new lane owes the
+// operator three things BEFORE the edit, not in review of it: the MEASURED wall of the job on a
+// fleet runner (not an estimate, and not a timeout, which says nothing about what the aggregate
+// waits for); what its RED DISCRIMINATES -- a lane that reds for host or shared reasons is worse
+// added than absent, because it converts a known-uninformative signal into repository-wide noise;
+// and why the check cannot be a STEP on a lane that already checks out and builds this tree, which
+// is where every one of these jobs' preludes is otherwise paid a second time.
+//
+// THAT LAST QUESTION IS THE ONE THAT ACTUALLY SHRINKS THIS LIST. A separate job buys isolation and
+// a separate verdict, and it costs a whole checkout, toolchain install and release build of the
+// same tree. `rust_clippy_all_targets_step` is the worked example: it kept its step id, its
+// verdict and its coverage, and stopped costing a job, by moving onto `required-witnesses-build`.
+//
+// THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
+// it records WHY the roster is small so the next author meets the reasoning rather than
+// rediscovering the outage. The construction that would make an over-budget roster unwritable is
+// a runner-wall budget refused at emit time, and it is not built; until it is, this is diligence.
+//
 // THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
 // the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
 // and the aggregate joined that population only as something to filter back out.
@@ -2794,9 +2524,6 @@ fn witness_floor_lane_jobs() -> List<Job> {
   [
     build_lane_job(),
     witness_floor_job(),
-    rust_unit_tests_job(),
-    fabric_evidence_job(),
-    emit_copy_qualification_battery_job(),
     heal_generated_artifacts_job()
   ]
 }
@@ -2849,7 +2576,7 @@ data witness_floor_workflow: Workflow = {
 // whole-workflow closure would be the wrong shape, and checking only the job that existed first
 // would leave the new one guarded by nothing while the emission still refused on its behalf.
 // That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
-data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and every job capability closure, including the independent fabric-evidence lane; adding a job without adding its conjunct would emit that job unchecked."
+data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and every job capability closure, one conjunct per member of witness_floor_lane_jobs; adding a job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
@@ -2932,7 +2659,7 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && emit_copy_qualification_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() {
         WitnessFloorGenerated {
           content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
         }
