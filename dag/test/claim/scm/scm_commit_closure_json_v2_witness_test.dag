@@ -123,7 +123,7 @@ import gunbc.scm.load_standing {
   LoadUnsupportedProtocol,
   LoadDocumentMalformed,
   LoadIdentityCollision,
-  LoadRequiresNodeAtAuthoredSource,
+  LoadRequiresNodeAtWrongKind,
 }
 import gunbc.scm.role_requirement_integration {
   RoleRequirementIntegrationOutcome,
@@ -157,7 +157,6 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocFormatUnrecognized,
   ClosureDocRootPositionUnresolved,
-  ClosureDocRootIsAuthoredSource,
   closure_document_load_standing,
   ClosureDocMemberReadRefused,
   ClosureDocUnexpectedMember,
@@ -277,8 +276,6 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
         ClosureDocMemberReadRefused { cause: _ } => "member_read"
         ClosureDocFormatUnrecognized { found: _ } => "format"
         ClosureDocRootPositionUnresolved { reference: _ } => "root_position"
-        ClosureDocRootIsAuthoredSource { reference: _ } => "root_source"
-        ClosureDocRootIsCorpusManifest { reference: _ } => "root_manifest"
         ClosureDocObjectTableRefused { cause: t } =>
           match t {
             ObjectTableUnknownKindTag { found: _ } => "kind"
@@ -479,7 +476,7 @@ test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -
         LoadPartial => false
         LoadDocumentMalformed => false
         LoadIdentityCollision => false
-        LoadRequiresNodeAtAuthoredSource => false
+        LoadRequiresNodeAtWrongKind => false
       }
   }
 }
@@ -1098,50 +1095,6 @@ fn scm_image_checkout_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
   }
 }
 
-// THE REFUSAL MOVED, AND THAT MOVE IS THE CLIMB THIS CLAIM NOW WITNESSES.
-//
-// It used to assert that the document LOADED and the CHECKOUT then refused naming the file. That was
-// the honest reading of a model in which `StoredEdge.target` was an untyped locator: nothing at
-// decode could tell a node's child from a file, so the store was built with the file wired into a
-// child edge and the fault surfaced one layer later, at the consumer.
-//
-// A child edge now carries a SemanticNodeTarget, whose resolved arm is a SemanticNodeObjectRef, so the
-// decoder cannot write the file there at all -- it has to resolve the position, discover an authored
-// entry, and refuse. So the cause is `ObjectTableEdgeTargetIsAuthoredSource`, owned by the layer
-// reading the document, and the store that would have carried the lie is never built. The claim goes
-// red against a decoder that resolves without discriminating (it would report "authored_source" from
-// checkout, the old behaviour) and equally red against one that reports "edge_target", the
-// not-present cause, for an entry that is right there.
-test fn scm_image_a_child_edge_naming_a_file_refuses_at_decode() -> Bool {
-  scm_image_cause_tag(
-    loaded: decode_closure_document(v: scm_image_program_over_a_file_document())
-  ) == "edge_target_source"
-}
-
-// THE ROOT POSITION IS THE SECOND PLACE A DOCUMENT CAN NAME A FILE WHERE A PROGRAM IS REQUIRED, and
-// it has its own cause because it has its own remedy -- a wrong root is not a wrong edge. The
-// document is the file alone, with the root naming its position: well-formed by the format's rules,
-// and refused for what it says rather than for how it is written.
-test fn scm_image_a_root_naming_a_file_refuses_at_decode() -> Bool {
-  scm_image_cause_tag(
-    loaded: decode_closure_document(
-      v: json_object(
-        members: [
-          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
-          json_kv(
-            key: "objects",
-            value: json_array(elements: [scm_image_authored_entry()])
-          ),
-          json_kv(
-            key: "root",
-            value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])
-          ),
-        ]
-      )
-    )
-  ) == "root_source"
-}
-
 // CONTROL, and it is the one that makes the claim above about the FILE rather than about the
 // document shape: the identical document with a node at position 0 instead of a file checks out.
 // Without it, a decoder that refused this shape for any reason would satisfy the claim above.
@@ -1208,80 +1161,6 @@ fn scm_image_document_with_object_entry(entry: JsonValue) -> JsonValue {
 
 fn scm_image_entry_cause_tag(entry: JsonValue) -> String {
   scm_image_cause_tag(loaded: decode_closure_document(v: scm_image_document_with_object_entry(entry: entry)))
-}
-
-// A null `source` is a WRONG-SHAPED source member, not an absent one.
-test fn scm_image_a_null_source_is_a_wrong_shaped_source() -> Bool {
-  scm_image_entry_cause_tag(
-    entry: json_object(members: [json_kv(key: "source", value: json_null())])
-  ) == "member_read"
-}
-
-// A DUPLICATED `source` refuses as duplicated rather than being read last-wins or reclassified as a
-// node. This is the arm a naive reader accepts while holding two answers.
-test fn scm_image_a_duplicated_source_refuses() -> Bool {
-  scm_image_entry_cause_tag(
-    entry: json_object(
-      members: [
-        json_kv(key: "source", value: json_string(s: "one")),
-        json_kv(key: "source", value: json_string(s: "two")),
-      ]
-    )
-  ) == "member_read"
-}
-
-// AN ENTRY CARRYING BOTH SHAPES IS NOT ONE ARM. The source read succeeds, so the member set is
-// checked against the authored-source set and `kind`/`children` are unexpected there.
-test fn scm_image_an_entry_carrying_both_shapes_refuses() -> Bool {
-  scm_image_entry_cause_tag(
-    entry: json_object(
-      members: [
-        json_kv(key: "source", value: json_string(s: "text")),
-        json_kv(
-          key: "kind",
-          value: json_object(
-            members: [
-              json_kv(key: "kind", value: json_string(s: "type")),
-              json_kv(key: "connective", value: json_string(s: "conj")),
-            ]
-          )
-        ),
-        json_kv(key: "children", value: json_array(elements: [])),
-      ]
-    )
-  ) == "unexpected_member"
-}
-
-// CONTROL, and it is what makes the three claims above about the SOURCE MEMBER rather than about
-// this document scaffold: an ordinary authored-source entry loads.
-//
-// It carries its own scaffold rather than reusing the one above, because that one roots the document
-// AT the entry -- which, for a source entry, is now the refused root-names-a-file case. So the file
-// sits at position 0 and an empty node at position 1 carries the root: the source entry is decoded
-// and stored, and nothing puts it in a position that requires a program.
-test fn scm_image_an_ordinary_source_entry_loads() -> Bool {
-  scm_image_cause_tag(
-    loaded: decode_closure_document(
-      v: json_object(
-        members: [
-          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
-          json_kv(
-            key: "objects",
-            value: json_array(
-              elements: [
-                json_object(members: [json_kv(key: "source", value: json_string(s: "text"))]),
-                scm_image_empty_node_entry(),
-              ]
-            )
-          ),
-          json_kv(
-            key: "root",
-            value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
-          ),
-        ]
-      )
-    )
-  ) == "loaded"
 }
 
 fn scm_image_empty_node_entry() -> JsonValue {
@@ -1557,60 +1436,10 @@ fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -
   }
 }
 
-test fn scm_image_an_authored_source_survives_the_wire_in_both_arms() -> Bool {
-  let fx = scm_image_source_round_trip_fixture()
-  fx.ok
-    && match scm_image_reload_through_text(store: fx.store, root: fx.root) {
-      Absent => false
-      Present { value: ClosureDocRefused { cause: _ } } => false
-      Present { value: ClosureDocLoaded { store: back, root: _ } } =>
-        (store_object_count(store: back) == store_object_count(store: fx.store))
-          && scm_image_content_matches(store: back, locator: fx.empty_locator, text: "")
-          && scm_image_content_matches(
-            store: back,
-            locator: fx.text_locator,
-            text: "a \"quoted\" file\n",
-          )
-    }
-}
-
-// THE DISCRIMINATOR THE CLAIM ABOVE NEEDS, and it is about the two arms rather than about presence.
-// The empty file and a nonempty one are DIFFERENT objects with different locators, so a codec that
-// collapsed the arms -- decoding every source as empty, or the empty one as some fixed text -- would
-// satisfy a claim that merely found two objects. This asserts the arms are distinguished on the way
-// back: the locator that went in as empty comes back as AuthoredSourceEmpty, and the other as
-// AuthoredSourceText.
-test fn scm_image_the_two_authored_arms_stay_distinct_across_the_wire() -> Bool {
-  let fx = scm_image_source_round_trip_fixture()
-  fx.ok
-    && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
-    && match scm_image_reload_through_text(store: fx.store, root: fx.root) {
-      Absent => false
-      Present { value: ClosureDocRefused { cause: _ } } => false
-      Present { value: ClosureDocLoaded { store: back, root: _ } } =>
-        match scm_image_content_at(store: back, locator: fx.empty_locator) {
-          Absent => false
-          Present { value: empty_content } =>
-            match scm_image_content_at(store: back, locator: fx.text_locator) {
-              Absent => false
-              Present { value: text_content } =>
-                match empty_content {
-                  AuthoredSourceEmpty =>
-                    match text_content {
-                      AuthoredSourceText(_) => true
-                      AuthoredSourceEmpty => false
-                    }
-                  AuthoredSourceText(_) => false
-                }
-            }
-        }
-    }
-}
-
 // ------------------------------------------------------------------------------------------------
 // THE WRONG-KIND STANDING, EXECUTED AGAINST A REAL DOCUMENT.
 //
-// LoadRequiresNodeAtAuthoredSource had an implementation, exhaustive plumbing at every consumer, and
+// LoadRequiresNodeAtWrongKind had an implementation, exhaustive plumbing at every consumer, and
 // NO executed evidence that an external document actually reaches it rather than LoadPartial. That is
 // the shape DESIGN section 5 names: a typed carrier and a tag are not a consumer.
 //
@@ -1686,20 +1515,6 @@ fn scm_image_source_digest(text: String) -> String {
 
 fn scm_image_standing_of(v: JsonValue) -> LoadStanding {
   closure_document_standing(outcome: decode_closure_document(v: v))
-}
-
-// THE DISCRIMINATING CLAIM. A node requiring a program at a locator this document fills with a FILE
-// is not partial, and must not be told to fetch.
-test fn scm_image_a_requirement_over_a_carried_file_is_not_partial() -> Bool {
-  let digest = scm_image_source_digest(text: "a carried file\n")
-  let doc = scm_image_two_object_document(
-    first: scm_image_source_entry(text: "a carried file\n"),
-    second: scm_image_node_over_uncontained(digest: digest),
-  )
-  match scm_image_standing_of(v: doc) {
-    LoadRequiresNodeAtAuthoredSource => !standing_loaded(standing: LoadRequiresNodeAtAuthoredSource)
-    _ => false
-  }
 }
 
 // CONTROL ONE, one fact apart: nothing at that locator. A genuine absence IS partial, and IS loaded.
@@ -1783,32 +1598,73 @@ fn scm_image_generation(tag: Symbol) -> ObjectId {
   }
 }
 
-test fn scm_image_a_wrong_kind_document_cannot_supersede_a_head_slot() -> Bool {
-  let slot = scm_image_slot()
-  let standing = scm_image_standing_of(v: scm_image_wrong_kind_document())
-  match supersede_head_slot(
-    slot: slot,
-    evidence: observe_generation(
-      slot: slot,
-      examined_root: slot.generation,
-      schema_identity: closure_document_format_tag,
-      standing: standing,
-      authority: decl_ref(
-        module_path: "test.claim.scm_commit_closure_json_v2_witness",
-        decl_name: "scm_image_a_wrong_kind_document_cannot_supersede_a_head_slot",
-      ),
+// ---------------------------------------------------------------------------
+// A v4 contained root can only be a node, and these three say why
+// ---------------------------------------------------------------------------
+
+// THE ROOT WRONG-KIND REFUSALS ARE GONE, AND THAT IS A CLAIM ABOUT THE TYPE RATHER THAN ABOUT
+// COVERAGE. ClosureDocRootIsAuthoredSource and its manifest sibling used to guard the arm where a
+// contained root resolved to something that was not a node. The v4 table's positions are
+// Map<String, SemanticNodeObjectRef>, so that state has no constructor and the guard had nothing
+// left to refuse -- an arm in a closed result type that no producer could produce.
+//
+// Deleting a refusal is exactly the move that deserves suspicion, because "nobody reached it" and
+// "it cannot be reached" look identical from the outside and only one of them is a wall. These three
+// separate the two by distinguishing the three fates a root reference can now have, and the middle
+// one is the control that keeps the other two from being satisfied by a decoder that refuses
+// everything.
+
+fn scm_image_document_with_entries_and_root(entries: List<JsonValue>, at: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(key: "objects", value: json_array(elements: entries)),
+      json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: at))])),
+    ]
+  )
+}
+
+// ONE. A NON-NODE ENTRY REFUSES BEFORE ROOT RESOLUTION EVER RUNS. This is what makes the deletion
+// safe rather than lucky: a `{source}` entry never becomes a decoded position at all, so root
+// resolution is never handed one to be wrong about. The cause is the node entry's own member set --
+// `source` is not in {kind, children} -- and NOT a root cause, which is the whole point.
+test fn scm_image_a_source_entry_refuses_before_root_resolution() -> Bool {
+  scm_image_cause_tag(
+    loaded: decode_closure_document(
+      v: scm_image_document_with_entries_and_root(
+        entries: [json_object(members: [json_kv(key: "source", value: json_string(s: "text"))])],
+        at: "0",
+      )
+    )
+  ) == "table_unexpected_member"
+}
+
+// TWO, THE CONTROL. An ordinary node entry at position 0 with a root naming it still loads. Without
+// this the claim above and the one below are satisfied by a decoder that refuses every document, and
+// the deletion would have been measured against nothing.
+test fn scm_image_a_node_position_is_a_valid_contained_root() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_closure_document(
+      v: scm_image_document_with_entries_and_root(
+        entries: [scm_image_empty_node_entry()],
+        at: "0",
+      )
     ),
-    proposed_generation: scm_image_generation(tag: ^scm_image_proposed),
-  ) {
-    SupersessionApplied { slot: _, warrant: _ } => false
-    SupersessionRefused { cause: c } =>
-      match c {
-        StandingDoesNotPermit { standing: s } =>
-          match s {
-            LoadRequiresNodeAtAuthoredSource => true
-            _ => false
-          }
-        _ => false
-      }
-  }
+    expected: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
+  )
+}
+
+// THREE. A position nothing defined is UNRESOLVED, and it is a separate claim from the first because
+// the collapse this branch keeps re-committing would merge them: reporting a wrong-kind position as
+// unresolved reads exactly like this. With the wrong-kind state unconstructible, "unresolved" now
+// means only what it says -- no position, rather than the wrong thing at one.
+test fn scm_image_a_root_naming_no_position_is_unresolved() -> Bool {
+  scm_image_cause_tag(
+    loaded: decode_closure_document(
+      v: scm_image_document_with_entries_and_root(
+        entries: [scm_image_empty_node_entry()],
+        at: "999",
+      )
+    )
+  ) == "root_position"
 }

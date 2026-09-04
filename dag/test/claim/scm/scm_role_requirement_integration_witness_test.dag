@@ -54,6 +54,7 @@ import gunbc.scm.role_requirement_integration {
   TargetRootIsAuthoredSource,
   TargetRootIsCorpusManifest,
   TargetChildIsAuthoredSource,
+  TargetChildIsCorpusManifest,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForRoleRequirementIntegration,
   ResolvedRole,
@@ -201,6 +202,7 @@ fn refusal_locates(
         TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
         DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: _ } => false
       }
@@ -327,6 +329,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
@@ -527,6 +530,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
@@ -672,14 +676,18 @@ fn integration_witness_source_fixture() -> Fixture {
   }
 }
 
-// WHERE THE CHILD ARM IS WITNESSED, AND WHY NOT HERE. A proposal cannot reach
-// TargetChildIsAuthoredSource: `RequireBinding` carries a `Node`, so every role value a proposal
-// supplies is stored through store_node and is a semantic node by construction. The only way a role
-// value names a file is for the TARGET ROOT's own child edge to point at one, and the only producer
-// of that shape is the decoder resolving an edge position into an authored entry. So that claim lives
-// beside the document builder, in test.claim.scm_commit_closure_json_v2_witness, where the input can
-// actually be constructed -- rather than here, where it would need a constructor the model correctly
-// does not offer.
+// WHERE THE CHILD ARMS ARE WITNESSED, AND WHY NOT HERE. A proposal cannot reach
+// TargetChildIsAuthoredSource or TargetChildIsCorpusManifest: `RequireBinding` carries a `Node`, so
+// every role value a proposal supplies is stored through store_node and is a semantic node by
+// construction. The only way a role value names a file or a manifest is for the TARGET ROOT's own
+// child edge to point at one, and the only producer of that shape is a decoder resolving an edge
+// position into a non-node entry.
+//
+// That producer is now the OBJECT TABLE, not the commit closure. This note used to send a reader to
+// test.claim.scm_commit_closure_json_v2_witness, which was right while a closure document carried a
+// mixed table; under v4 that document admits nodes only and cannot construct the input at all. The
+// claims live in test.claim.scm_object_table_json_witness, where the mixed table is the subject --
+// rather than here, where they would need a constructor the model correctly does not offer.
 fn integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
   match o {
     RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => "integrated"
@@ -691,6 +699,7 @@ fn integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
         TargetRootIsCorpusManifest { identity: _ } => "root_manifest"
         TargetChildMissing { role: _, identity: _ } => "child_missing"
         TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
+        TargetChildIsCorpusManifest { role: _, identity: _ } => "child_manifest"
         BindingLocatorCollision { role: _, identity: _ } => "collision"
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
         DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: _ } => "kind"

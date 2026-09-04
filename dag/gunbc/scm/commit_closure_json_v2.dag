@@ -34,6 +34,7 @@ import gunbc.scm.commit_closure {
   closure_is_complete,
   closure_census,
   ClosureCensus,
+  wrong_kind_identities,
   WellKindedClosure,
   WellKindedAdmission,
   WellKinded,
@@ -48,22 +49,22 @@ import gunbc.scm.object_table_json {
   object_table_load_standing,
   EncodePositions,
   EncodeAcc,
-  DecodeAcc,
+  NodeDecodeAcc,
+  NodeDecodePositions,
+  node_decode_acc_refused,
+  decode_node_entry_into_node_table,
   encode_record,
   encode_target,
   encode_object,
   object_id_key,
   position_reference,
-  resolve_reference,
-  decode_object_members,
-  decode_acc_refused,
   table_member_set_refusal,
 }
 import gunbc.scm.load_standing {
   LoadStanding,
   LoadComplete,
   LoadPartial,
-  LoadRequiresNodeAtAuthoredSource,
+  LoadRequiresNodeAtWrongKind,
   LoadUnsupportedProtocol,
   LoadDocumentMalformed,
   LoadIdentityCollision,
@@ -220,8 +221,6 @@ type ClosureDocRefusal
   = ClosureDocMemberReadRefused { cause: MemberReadRefusal }
   | ClosureDocFormatUnrecognized { found: String }
   | ClosureDocRootPositionUnresolved { reference: String }
-  | ClosureDocRootIsAuthoredSource { reference: String }
-  | ClosureDocRootIsCorpusManifest { reference: String }
   | ClosureDocUnexpectedMember { key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
@@ -478,7 +477,22 @@ fn encode_closure_document(image: WellKindedClosure) -> JsonValue {
   )
 }
 
-// THE CLOSURE'S OWN TABLE DECODE, WHICH IS WHERE v4 REFUSES A SOURCE.
+// THE CLOSURE'S OWN TABLE DECODE, WHICH IS WHERE v4 REFUSES A SOURCE -- AND WHERE ITS POSITIONS STOP
+// BEING ABLE TO HOLD ONE.
+//
+// The accumulator is NodeDecodeAcc, whose position map is Map<String, SemanticNodeObjectRef>. That
+// type is what retired ClosureDocRootIsAuthoredSource and ClosureDocRootIsCorpusManifest: a contained
+// root resolves against these positions, and the carrier has no constructor for a source or a
+// manifest, so the wrong-kind refusals had nothing left to refuse. They were arms in a closed result
+// type that no producer could produce -- the dishonest-domain class this module's encode/decode split
+// already closed once -- and they are deleted rather than kept as defence, which would have forced
+// closure_document_load_standing and every exhaustive consumer to answer for states outside the
+// decoder's domain.
+//
+// The alternative of resolving the root against the decoded STORE was considered and refused: an
+// ObjectStore is deliberately mixed, so it cannot prove the proposition, and it would turn an
+// intrinsic document-local fact -- "the object at this position is my root" -- into a store-relative
+// observation, blurring the one distinction the uncontained arm exists to keep.
 //
 // It is a separate step rather than a flag on the mixed one because the two formats have genuinely
 // different closed member sets: a commit-closure entry is {kind, children} and nothing else, while a
@@ -491,7 +505,7 @@ fn encode_closure_document(image: WellKindedClosure) -> JsonValue {
 // name the wrong defect -- the not-applicable-rendered-as-malformed failure this module's header
 // already records, which is precisely what a caller pointing a v4 reader at a v3 document or a
 // repository table would hit first.
-fn decode_node_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+fn decode_node_step(acc: NodeDecodeAcc, object_value: JsonValue) -> NodeDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -500,16 +514,16 @@ fn decode_node_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
         allowed: ["kind", "children"],
         context: ObjectTableSemanticNodeMembers
       ) {
-        Present { value: set_cause } => decode_acc_refused(acc: acc, cause: set_cause)
-        Absent => decode_object_members(acc: acc, object_value: object_value)
+        Present { value: set_cause } => node_decode_acc_refused(acc: acc, cause: set_cause)
+        Absent => decode_node_entry_into_node_table(acc: acc, object_value: object_value)
       }
   }
 }
 
-fn decode_node_table(object_values: List<JsonValue>) -> DecodeAcc {
+fn decode_node_table(object_values: List<JsonValue>) -> NodeDecodeAcc {
   fold(
     object_values,
-    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    init: NodeDecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
     f: fn(acc, object_value) { decode_node_step(acc: acc, object_value: object_value) }
   )
 }
@@ -541,7 +555,7 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
     MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
       match decode_node_table(object_values: object_values) {
-        DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
+        NodeDecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
             Present { value: c } => ClosureDocRefused { cause: ClosureDocObjectTableRefused { cause: c } }
             Absent =>
@@ -554,13 +568,9 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
                     TargetUncontained { digest: root } =>
                       ClosureDocLoaded { store: store, root: SemanticNodeTarget { locator: root } }
                     TargetContainedAt { reference: reference } =>
-                      match resolve_reference(positions: positions, reference: reference) {
-                        Present { value: SemanticNodeRef(root) } =>
+                      match map_lookup(m: positions, key: reference) {
+                        Present { value: root } =>
                           ClosureDocLoaded { store: store, root: node_target_of(reference: root) }
-                        Present { value: AuthoredSourceRef(_) } =>
-                          ClosureDocRefused { cause: ClosureDocRootIsAuthoredSource { reference: reference } }
-                        Present { value: CorpusManifestRef(_) } =>
-                          ClosureDocRefused { cause: ClosureDocRootIsCorpusManifest { reference: reference } }
                         Absent =>
                           ClosureDocRefused { cause: ClosureDocRootPositionUnresolved { reference: reference } }
                       }
@@ -636,8 +646,6 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
       }
     ClosureDocUnexpectedMember { key: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocRootIsAuthoredSource { reference: _ } => LoadDocumentMalformed
-    ClosureDocRootIsCorpusManifest { reference: _ } => LoadDocumentMalformed
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } => target_reference_load_standing(cause: c)
   }
@@ -650,11 +658,18 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 // THREE ANSWERS, BECAUSE "NOT COMPLETE" IS TWO DIFFERENT FACTS. This asked closure_is_complete and
 // answered LoadPartial for every false, which reported "fetch the named identities and this completes"
 // for a closure whose requirement sits on a file -- unfetchable, because the locator is occupied. The
-// census already separates the two populations; this now reads both instead of collapsing them.
+// census already separates the populations; this reads them all instead of collapsing them.
+//
+// IT READS THE WRONG-KIND POPULATIONS THROUGH wrong_kind_identities RATHER THAN NAMING ONE, which is
+// the repair for a defect this same change introduced. When the census grew a THIRD population for a
+// corpus manifest at a semantic requirement, this still asked only source_occupied -- so a manifest
+// there answered LoadComplete or LoadPartial, telling a reader to fetch an object that is not
+// missing. The compiler could not catch it: adding a field to a record breaks no match. Asking the
+// census for its whole wrong-kind population means a fourth kind cannot reintroduce it either.
 fn loaded_closure_standing(store: ObjectStore, root: SemanticNodeTarget) -> LoadStanding {
   let census = closure_census(closure: CommitClosure { store: store, root: root })
-  if list_length(items: census.source_occupied) > 0 {
-    LoadRequiresNodeAtAuthoredSource
+  if list_length(items: wrong_kind_identities(census: census)) > 0 {
+    LoadRequiresNodeAtWrongKind
   } else {
     if list_length(items: census.absent) == 0 {
       LoadComplete

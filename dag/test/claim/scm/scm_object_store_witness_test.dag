@@ -52,6 +52,7 @@ import gunbc.scm.object_store {
   NodeRecordFound,
   NodeRecordAbsent,
   NodeRecordIsAuthoredSource,
+  NodeRecordIsCorpusManifest,
   find_node_record,
   store_contains,
   store_object_count,
@@ -69,6 +70,7 @@ import gunbc.scm.checkout {
   CheckoutRefusal,
   MissingObject,
   ObjectIsAuthoredSource,
+  ObjectIsCorpusManifest,
   commit_of_root,
   checkout,
   CheckedOut,
@@ -197,6 +199,7 @@ fn refusal_names(store: ObjectStore, commit: Commit, expected: ObjectId) -> Bool
       match cause {
         MissingObject { identity: identity } => object_id_eq(left: identity, right: expected)
         ObjectIsAuthoredSource { identity: _ } => false
+        ObjectIsCorpusManifest { identity: _ } => false
       }
   }
 }
@@ -365,10 +368,13 @@ fn same_record(left: ObjectStore, right: ObjectStore, identity: ObjectId) -> Boo
   match find_node_record(store: left, identity: identity) {
     NodeRecordAbsent { identity: _ } => false
     NodeRecordIsAuthoredSource { identity: _ } => false
+    NodeRecordIsCorpusManifest { identity: _ } => false
     NodeRecordFound(l) =>
       match find_node_record(store: right, identity: identity) {
         NodeRecordAbsent { identity: _ } => false
         NodeRecordIsAuthoredSource { identity: _ } => false
+        NodeRecordIsCorpusManifest { identity: _ } => false
+    NodeRecordIsCorpusManifest { identity: _ } => false
         NodeRecordFound(r) => (l.kind == r.kind) && (l.children == r.children)
       }
   }

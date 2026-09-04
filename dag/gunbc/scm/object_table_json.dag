@@ -176,7 +176,7 @@ import gunbc.scm.load_standing {
   LoadIdentityCollision,
   LoadComplete,
   LoadPartial,
-  LoadRequiresNodeAtAuthoredSource,
+  LoadRequiresNodeAtWrongKind,
   LoadUnsupportedProtocol,
 }
 import std.content_hash {
@@ -927,63 +927,164 @@ type EdgeAcc {
 // mentioned. The arm-count comment in gunbc.scm.target_reference asserted the opposite was already
 // (found by review, and the witness that now executes it is the reason the claim is worth anything).
 //
-fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+// THE SYNTAX IS SHARED; THE RESOLUTION IS NOT, AND THAT IS THE WHOLE SEAM.
+//
+// Reading an edge -- its label, and whether its target is a position or a digest -- is one schema in
+// both tables, so it is decoded once. RESOLVING a contained position is not one question: it is a
+// question about the position universe being referenced, and the two universes differ in what they
+// can contain. A v4 node table's positions hold nodes and nothing else; a repository's hold nodes,
+// authored sources and manifests. Sharing the resolution would force one of them to answer for
+// states the other cannot reach.
+//
+// So a pending edge carries the target reference UNRESOLVED, and each table resolves it against its
+// own positions. Neither resolver is a mode of the other, and neither takes a resolver as an
+// argument -- a higher-order parameter would make "node-only positions" a property of what a caller
+// happened to pass rather than of the decoder's construction, which is the distinction this branch
+// keeps having to re-establish.
+type PendingEdge {
+  label: EdgeLabel
+  target: TargetReference
+}
+
+type PendingEdgeAcc {
+  edges: List<PendingEdge>
+  refusal: ObjectTableDecodeRefusal?
+}
+
+fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match decode_label(edge_value: edge_value) {
-        LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+        LabelDecodeFailed { cause: c } =>
+          PendingEdgeAcc { edges: acc.edges, refusal: Present { value: c } }
         LabelDecoded { label: label } =>
           match read_member(v: edge_value, key: "target") {
             MemberFailed { cause: c } =>
-              EdgeAcc { edges: acc.edges, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
+              PendingEdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ObjectTableMemberReadRefused { cause: c } },
+              }
             MemberObject { value: target_value } =>
               match decode_target_reference(target_value: target_value) {
                 TargetReferenceRefused { cause: c } =>
-                  EdgeAcc {
+                  PendingEdgeAcc {
                     edges: acc.edges,
                     refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
                   }
-                TargetUncontained { digest: identity } =>
-                  EdgeAcc {
-                    edges: concat(
-                      [StoredEdge { label: label, target: SemanticNodeTarget { locator: identity } }],
-                      acc.edges,
-                    ),
+                resolved =>
+                  PendingEdgeAcc {
+                    edges: concat(acc.edges, [PendingEdge { label: label, target: resolved }]),
                     refusal: acc.refusal,
-                  }
-                TargetContainedAt { reference: reference } =>
-                  match resolve_reference(positions: positions, reference: reference) {
-                    Present { value: SemanticNodeRef(node) } =>
-                      EdgeAcc {
-                        edges: concat(
-                          [StoredEdge { label: label, target: node_target_of(reference: node) }],
-                          acc.edges,
-                        ),
-                        refusal: acc.refusal,
-                      }
-                    Present { value: AuthoredSourceRef(_) } =>
-                      EdgeAcc {
-                        edges: acc.edges,
-                        refusal: Present { value: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } },
-                      }
-                    Present { value: CorpusManifestRef(_) } =>
-                      EdgeAcc {
-                        edges: acc.edges,
-                        refusal: Present { value: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } },
-                      }
-                    Absent =>
-                      EdgeAcc {
-                        edges: acc.edges,
-                        refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
-                      }
                   }
               }
             _ =>
+              PendingEdgeAcc {
+                edges: acc.edges,
+                refusal: Present {
+                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "target" } }
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE MIXED TABLE'S RESOLVER, WHICH KEEPS THE WRONG-KIND REFUSALS BECAUSE IT CAN REACH THEM. A
+// repository position may hold an authored source or a manifest, and a child edge requires a node,
+// so these two arms are live evidence rather than defence.
+fn resolve_edge_in_object_table(
+  positions: DecodePositions,
+  acc: EdgeAcc,
+  pending: PendingEdge
+) -> EdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match pending.target {
+        TargetUncontained { digest: identity } =>
+          EdgeAcc {
+            edges: concat(
+              [StoredEdge { label: pending.label, target: SemanticNodeTarget { locator: identity } }],
+              acc.edges,
+            ),
+            refusal: acc.refusal,
+          }
+        TargetContainedAt { reference: reference } =>
+          match resolve_reference(positions: positions, reference: reference) {
+            Present { value: SemanticNodeRef(node) } =>
+              EdgeAcc {
+                edges: concat(
+                  [StoredEdge { label: pending.label, target: node_target_of(reference: node) }],
+                  acc.edges,
+                ),
+                refusal: acc.refusal,
+              }
+            Present { value: AuthoredSourceRef(_) } =>
               EdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "target" } } },
+                refusal: Present { value: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } },
               }
+            Present { value: CorpusManifestRef(_) } =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ObjectTableEdgeTargetIsCorpusManifest { reference: reference } },
+              }
+            Absent =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
+              }
+          }
+        TargetReferenceRefused { cause: c } =>
+          EdgeAcc {
+            edges: acc.edges,
+            refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
+          }
+      }
+  }
+}
+
+// THE NODE TABLE'S RESOLVER, AND THE ABSENCE OF A WRONG-KIND ARM IS THE CLAIM. Its positions carrier
+// has no constructor for a source or a manifest, so there is no wrong-kind state to refuse and no
+// arm that could quietly report one as unresolved.
+fn resolve_edge_in_node_table(
+  positions: NodeDecodePositions,
+  acc: EdgeAcc,
+  pending: PendingEdge
+) -> EdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match pending.target {
+        TargetUncontained { digest: identity } =>
+          EdgeAcc {
+            edges: concat(
+              [StoredEdge { label: pending.label, target: SemanticNodeTarget { locator: identity } }],
+              acc.edges,
+            ),
+            refusal: acc.refusal,
+          }
+        TargetContainedAt { reference: reference } =>
+          match map_lookup(m: positions, key: reference) {
+            Present { value: node } =>
+              EdgeAcc {
+                edges: concat(
+                  [StoredEdge { label: pending.label, target: node_target_of(reference: node) }],
+                  acc.edges,
+                ),
+                refusal: acc.refusal,
+              }
+            Absent =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ObjectTableEdgeTargetUnresolved { reference: reference } },
+              }
+          }
+        TargetReferenceRefused { cause: c } =>
+          EdgeAcc {
+            edges: acc.edges,
+            refusal: Present { value: ObjectTableTargetReferenceRefused { cause: c } },
           }
       }
   }
@@ -1328,75 +1429,149 @@ fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
   }
 }
 
+// THE ENTRY SHAPE, DECODED ONCE FOR BOTH TABLES. Everything here is syntax -- the kind, the children
+// array, each edge's label and target spelling -- and every bit of it is the same schema in a v4
+// closure document and a repository object table. What it deliberately does NOT do is resolve a
+// contained position, because that is the one question whose answer depends on which table is asking.
+type NodeEntryShape
+  = NodeEntryShapeRefused { cause: ObjectTableDecodeRefusal }
+  | NodeEntryShapeDecoded { kind: NodeKind, edges: List<PendingEdge> }
+
+fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
+  match read_member(v: object_value, key: "kind") {
+    MemberFailed { cause: c } =>
+      NodeEntryShapeRefused { cause: ObjectTableMemberReadRefused { cause: c } }
+    MemberObject { value: kind_value } =>
+      match decode_kind(kind_value: kind_value) {
+        KindDecodeFailed { cause: c } => NodeEntryShapeRefused { cause: c }
+        KindDecoded { kind: kind } =>
+          match read_member(v: object_value, key: "children") {
+            MemberFailed { cause: c } =>
+              NodeEntryShapeRefused { cause: ObjectTableMemberReadRefused { cause: c } }
+            MemberArray { elements: child_values } =>
+              match fold(
+                child_values,
+                init: PendingEdgeAcc { edges: [], refusal: none },
+                f: fn(edge_acc, edge_value) {
+                  decode_pending_edge(acc: edge_acc, edge_value: edge_value)
+                }
+              ) {
+                PendingEdgeAcc { edges: edges, refusal: refusal } =>
+                  match refusal {
+                    Present { value: c } => NodeEntryShapeRefused { cause: c }
+                    Absent => NodeEntryShapeDecoded { kind: kind, edges: edges }
+                  }
+              }
+            _ =>
+              NodeEntryShapeRefused {
+                cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+              }
+          }
+      }
+    _ =>
+      NodeEntryShapeRefused {
+        cause: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+      }
+  }
+}
+
+// THE MIXED TABLE'S ENTRY FOLD. Its positions record an ScmObjectRef, because a later entry in this
+// table may legitimately be a source or a manifest.
 fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match read_member(v: object_value, key: "kind") {
-        MemberFailed { cause: c } =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
-        MemberObject { value: kind_value } =>
-          match decode_kind(kind_value: kind_value) {
-            KindDecodeFailed { cause: c } =>
-              DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
-            KindDecoded { kind: kind } =>
-              match read_member(v: object_value, key: "children") {
-                MemberFailed { cause: c } =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ObjectTableMemberReadRefused { cause: c } } }
-                MemberArray { elements: child_values } =>
-                  match fold(
-                    child_values,
-                    init: EdgeAcc { edges: [], refusal: none },
-                    f: fn(edge_acc, edge_value) {
-                      decode_edge_step(positions: acc.positions, acc: edge_acc, edge_value: edge_value)
-                    }
-                  ) {
-                    EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
-                      match edge_refusal {
-                        Present { value: c } =>
-                          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
-                        Absent =>
-                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
-                            LocatorCollision { identity: i, existing: _, incoming: _ } =>
-                              DecodeAcc {
-                                store: acc.store,
-                                positions: acc.positions,
-                                next: acc.next,
-                                refusal: Present { value: ObjectTableObjectCollision { identity: i } },
-                              }
-                            Stored { store: next_store, node: node } =>
-                              DecodeAcc {
-                                store: next_store,
-                                positions: map_insert(
-                                  m: acc.positions,
-                                  key: position_reference(n: acc.next),
-                                  value: SemanticNodeRef(node),
-                                ),
-                                next: acc.next + 1,
-                                refusal: acc.refusal,
-                              }
-                          }
+      match decode_node_entry_shape(object_value: object_value) {
+        NodeEntryShapeRefused { cause: c } => decode_acc_refused(acc: acc, cause: c)
+        NodeEntryShapeDecoded { kind: kind, edges: pending } =>
+          match fold(
+            pending,
+            init: EdgeAcc { edges: [], refusal: none },
+            f: fn(edge_acc, edge) {
+              resolve_edge_in_object_table(positions: acc.positions, acc: edge_acc, pending: edge)
+            }
+          ) {
+            EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+              match edge_refusal {
+                Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+                Absent =>
+                  match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                      decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
+                    Stored { store: next_store, node: node } =>
+                      DecodeAcc {
+                        store: next_store,
+                        positions: map_insert(
+                          m: acc.positions,
+                          key: position_reference(n: acc.next),
+                          value: SemanticNodeRef(node),
+                        ),
+                        next: acc.next + 1,
+                        refusal: acc.refusal,
                       }
-                  }
-                _ =>
-                  DecodeAcc {
-                    store: acc.store,
-                    positions: acc.positions,
-                    next: acc.next,
-                    refusal: Present {
-                      value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
-                    },
                   }
               }
           }
-        _ =>
-          DecodeAcc {
-            store: acc.store,
-            positions: acc.positions,
-            next: acc.next,
-            refusal: Present {
-              value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
-            },
+      }
+  }
+}
+
+// THE NODE TABLE'S ENTRY FOLD, AND ITS POSITIONS CARRY A SemanticNodeObjectRef RATHER THAN AN
+// ScmObjectRef. That single type difference is what makes a v4 commit closure's contained root
+// unable to designate anything but a node -- not a check that passes, but a position map with no
+// constructor for the state, so the refusal that used to guard it has nothing left to refuse.
+type NodeDecodePositions = Map<String, SemanticNodeObjectRef>
+
+type NodeDecodeAcc {
+  store: ObjectStore
+  positions: NodeDecodePositions
+  next: Int
+  refusal: ObjectTableDecodeRefusal?
+}
+
+fn node_decode_acc_refused(acc: NodeDecodeAcc, cause: ObjectTableDecodeRefusal) -> NodeDecodeAcc {
+  NodeDecodeAcc {
+    store: acc.store,
+    positions: acc.positions,
+    next: acc.next,
+    refusal: Present { value: cause },
+  }
+}
+
+fn decode_node_entry_into_node_table(acc: NodeDecodeAcc, object_value: JsonValue) -> NodeDecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match decode_node_entry_shape(object_value: object_value) {
+        NodeEntryShapeRefused { cause: c } => node_decode_acc_refused(acc: acc, cause: c)
+        NodeEntryShapeDecoded { kind: kind, edges: pending } =>
+          match fold(
+            pending,
+            init: EdgeAcc { edges: [], refusal: none },
+            f: fn(edge_acc, edge) {
+              resolve_edge_in_node_table(positions: acc.positions, acc: edge_acc, pending: edge)
+            }
+          ) {
+            EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+              match edge_refusal {
+                Present { value: c } => node_decode_acc_refused(acc: acc, cause: c)
+                Absent =>
+                  match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                      node_decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
+                    Stored { store: next_store, node: node } =>
+                      NodeDecodeAcc {
+                        store: next_store,
+                        positions: map_insert(
+                          m: acc.positions,
+                          key: position_reference(n: acc.next),
+                          value: node,
+                        ),
+                        next: acc.next + 1,
+                        refusal: acc.refusal,
+                      }
+                  }
+              }
           }
       }
   }
