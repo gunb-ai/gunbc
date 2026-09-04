@@ -12,6 +12,9 @@ import gunbc.harness.harness_guidance {
   harness_worker_guidance, harness_probe_guidance,
 }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+import std.measure { token_count_value, second_count }
+import gunbc.harness.harness_wire { harness_router_context_window, harness_router_admission_cap }
+import gunbc.harness.harness_cli { harness_default_max_tokens, harness_request_deadline }
 
 // WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
 //
@@ -110,4 +113,31 @@ test fn worker_prose_names_the_tool_by_its_wire_name() -> Bool {
 // PROJECTION. A measured count reaches the prose as that count, not as a rounded or authored one.
 test fn a_rounds_premise_projects_its_measured_count() -> Bool {
   harness_guidance_prose(rows: [is_worker(), at(premise: RoundsRemaining { rounds: 7 })]).contains("7")
+}
+
+// THE WORKING WINDOW MUST STAY UNDER THE ENGINE'S ADMISSION CEILING. Authorable red: raise the
+// window past the cap and this goes false, which is the state where every request is rejected by
+// the serving side rather than merely being slow. The two rows are separate facts that move for
+// different reasons (client entitlement vs server limit), so nothing structural keeps them ordered
+// -- which is exactly the case where a check earns its place rather than decorating a guarantee the
+// carrier already gives.
+test fn the_working_window_stays_under_the_engine_admission_cap() -> Bool {
+  token_count_value(t: harness_router_context_window)
+    <= token_count_value(t: harness_router_admission_cap)
+}
+
+// A RESPONSE CANNOT BE LARGER THAN THE WINDOW IT IS GENERATED INTO. Also authorable red, and it is
+// the relationship that was actually violated in spirit before today: a 65,536-token ceiling is not
+// wrong against a 1M window, but it became wrong the moment the window dropped to 200k without
+// anything relating the two.
+test fn one_response_fits_inside_the_working_window() -> Bool {
+  harness_default_max_tokens < token_count_value(t: harness_router_context_window)
+}
+
+// THE DERIVED DEADLINE IS READ BACK, not assumed. Integer division is the whole reason this witness
+// exists: 8192/24 truncates to 341, and a language that rounded or carried a remainder differently
+// would move the deadline without moving anything an author wrote. Pinning the arithmetic here means
+// the value is measured by the interpreter rather than by the author's mental model of it.
+test fn the_request_deadline_derives_to_the_expected_seconds() -> Bool {
+  second_count(s: harness_request_deadline) == 641
 }

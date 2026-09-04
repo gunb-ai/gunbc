@@ -387,7 +387,29 @@ data harness_router_model: String = "deepseek-v4-flash:iq3s-split"
 // hand-run router, the window becomes a property of the served work contract and this row's
 // consumer moves with it -- the sparks are not stable enough for that today, which is why the
 // router exists at all.
-data harness_router_context_window: TokenCount = token_count(count: 1048576)
+// THE ENGINE'S ADMISSION CAP AND THE HARNESS'S WORKING WINDOW ARE TWO NUMBERS, NOT ONE, and this
+// row is the second. The serving side admits up to 1,048,576 tokens deliberately; that ceiling is a
+// LIMIT, not an allowance, and a client that adopts it as its working window is not respecting the
+// cap -- it is spending the whole pool. The KV pool holds roughly 4.1M tokens, so four sessions at
+// the cap exhaust it exactly and every further request queues on capacity rather than on compute.
+// That queueing is the pathology behind this deployment's slow-token measurements: rounds whose
+// duration tracked router occupancy instead of request size, a 17 KB request taking 480s while a
+// 50 KB one took 60s.
+//
+// 200k IS THE OPERATOR'S NUMBER (router owner, 2026-09-04), from a stated 100k-250k band. It is not
+// derived here from pool-divided-by-slots, and deliberately so: that arithmetic would give ~1M and
+// would be wrong, because the pool is shared with everything else the engine is doing and the
+// divisor is not a constant this module can see.
+// THE ENGINE'S ADMISSION CEILING, carried so the working window above can be checked against it.
+// This is the number the serving side actually enforces; the row above is what this client chooses
+// to spend. They are recorded separately because they answer different questions and move for
+// different reasons -- the cap moves when the engine is reconfigured, the window moves when this
+// harness decides how much of a shared pool it is entitled to. A single row would have made the
+// client's choice indistinguishable from the server's limit, which is precisely the confusion that
+// put 1,048,576 in the window field in the first place.
+data harness_router_admission_cap: TokenCount = token_count(count: 1048576)
+
+data harness_router_context_window: TokenCount = token_count(count: 200000)
 
 fn harness_router_backend_url() -> String {
   harness_backend_url_on_port(address: harness_router_address, port: harness_router_port)

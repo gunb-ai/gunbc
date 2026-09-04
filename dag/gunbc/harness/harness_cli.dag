@@ -69,7 +69,38 @@ data harness_default_step_budget: Int = 8
 //
 // DISSOLVES ON: a measured distribution of output tokens across attempts that COMPLETE a task, at
 // which point this is derived from that distribution instead of chosen against a ceiling.
-data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 65536))
+// WHAT ONE RESPONSE MAY GENERATE. It was 65,536, raised earlier from 2,048 on an instruction to use
+// the maximum the model allows -- which was the wrong reading of "allows": the engine ADMITS that
+// many, it does not produce them quickly. vLLM's KV cache is paged and commits blocks per token
+// actually generated, so a large ceiling reserves nothing; the cost is entirely in the tail. At the
+// measured decode floor below, 65,536 tokens is roughly forty-five minutes of generation, so one
+// legitimate long answer exceeded any deadline this harness could carry -- which is a far better
+// explanation of the observed hangs than router state was.
+data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 8192))
+
+// THE SLOWEST DECODE THIS DEPLOYMENT IS EXPECTED TO SUSTAIN, in tokens per second. It is a declared
+// policy floor rather than a measurement of any one run: observed rates here span 2.4 tok/s under
+// contention to 16.59 on the fastest rounds, and the router reports ~40 tok/s serving four to five
+// concurrent sessions. The floor is set at 24 because a deadline derived from an optimistic rate
+// kills healthy generations, and one derived from the worst contended reading would never fire.
+data harness_decode_floor_tokens_per_second: Int = 24
+
+// TIME TO FIRST TOKEN IS NOT DECODE TIME, so it is a separate term. A 200k working window prefills
+// at the rates this deployment measured (up to ~1800 tok/s once fixed overhead amortizes), which is
+// on the order of two minutes; 300s carries that with margin for a cold or contended round.
+data harness_request_prefill_allowance_seconds: Int = 300
+
+// THE DEADLINE IS DERIVED, NOT AUTHORED BESIDE THE BUDGET IT MUST COVER. This is the repair for the
+// exact defect the router owner identified: a flat 900s and a 65,536-token ceiling were two
+// independent numbers, and nothing related them, so raising the token budget silently created a
+// generation the deadline could not admit. Here the deadline is a FUNCTION of the budget, so the
+// two cannot drift: change max_tokens and the deadline follows. A refusal now means the backend
+// genuinely failed to sustain the declared floor, which is a real fault, rather than meaning the
+// model was answering at a perfectly ordinary rate for longer than a hand-written constant allowed.
+data harness_request_deadline: Second = second(
+  count: (harness_default_max_tokens / harness_decode_floor_tokens_per_second)
+    + harness_request_prefill_allowance_seconds,
+)
 
 data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
@@ -97,18 +128,6 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // runs against a different serving surface by being handed a different number, not by importing a
 // different authority.
 data harness_context_budget: TokenCount = harness_router_context_window
-
-// HOW LONG ONE MODEL CALL MAY HANG BEFORE IT IS A FAILURE RATHER THAN A SLOW ANSWER. The number is
-// chosen against measured rounds on this deployment, not picked for feel: completed POSTs here have
-// run from 13 seconds to 480, so a deadline at or below eight minutes would kill rounds this
-// backend genuinely completes, and the observed wedge held one request open past thirty minutes
-// with no arm to end it. Fifteen minutes sits above every success actually observed and well below
-// the wedge, so it separates the two populations that exist rather than splitting either.
-//
-// IT IS ONE ROW BECAUSE IT IS EXPECTED TO MOVE. A faster engine or a less contended router makes
-// this generous, and the edit is here rather than inside an argv where a reader would have to know
-// curl to find it.
-data harness_request_deadline: Second = second(count: 900)
 
 fn harness_macbook_config() -> HarnessTurnConfig {
   HarnessTurnConfig {
