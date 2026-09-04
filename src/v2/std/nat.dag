@@ -125,7 +125,7 @@ fn nat_lte(a: Nat, b: Nat) -> Bool {
 // v2.lens.cost.valuation does exactly that.
 //
 // That two Nat authorities exist at all is the real defect, and it is tracked as a guarantee stall
-// rather than narrated here: gunbc.guarantee_stall two_nat_authorities_stall carries the rung,
+// rather than narrated here: gunbc.guarantee_stall.two_nat_authorities_stall carries the rung,
 // ceiling and next-rung trigger. This annotation records only why the fork is not closable from a
 // max function.
 fn nat_max(a: Nat, b: Nat) -> Nat {
