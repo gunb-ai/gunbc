@@ -899,6 +899,21 @@ pub struct TransitionAdmission {
 /// branch does not own is the destructive direction of this rule, and "they are probably consumed"
 /// is the guess the entry above says costs a required run. The check that licensed it is one grep
 /// per module, and it is cheaper than the run either mistake would have cost.
+///
+/// TWENTY-SEVENTH DISSOLUTION (2026-09-04), SAME RULE, THIRD COHORT IN A ROW. The
+/// `rung_drop per-row split` rows arriving with this merge are deleted, joined against the NEW base
+/// per subject rather than per cohort: merged main carries `dag/gunbc/rung_drop/` as split modules,
+/// and every module those rows name already binds its spelling to the split target --
+/// `gunbc.design_ledgers` imports `rung_drop_roster` from `gunbc.rung_drop.roster`,
+/// `tools.ci_gates` imports `source_root_ingest_gate_rung_drop` from its own module, and the three
+/// witness modules import from `gunbc.rung_drop.*` likewise. None of those deltas is producible, so
+/// every one of the rows is consumed.
+///
+/// THE SAME JOIN WAS RUN IN THE OTHER DIRECTION ON THIS BRANCH'S OWN TWO ROWS, which is the half
+/// that is easy to skip when the incoming side is the interesting one. Merged main still DECLARES
+/// `param_names_of` inside `v2.lens.effect_reach`, so the base still binds that spelling to the
+/// lens and the delta this branch makes is still producible. The rows stay because the base says
+/// they are open, not because this branch authored them.
 /// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
 /// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
 /// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
