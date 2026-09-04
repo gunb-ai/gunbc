@@ -269,13 +269,19 @@ func main_wet() -> ProcessExit {
 // concurrent projection retain the one-pass command, while heal-generated-artifacts binds the
 // stronger actuator-plus-proof because it is about to write a commit without a human inspecting
 // the bytes. Both passes preserve committed_generated_artifacts() source order; there is no sort.
-// WHERE THE DECLARATION HAS TO BE TAKEN, AND WHY IT CANNOT BE TAKEN LATER. main_wet_verified WRITES
-// and then verifies, so by the time its verify pass runs the projection agrees with its authority BY
-// CONSTRUCTION -- the second pass is structurally incapable of seeing what the first pass repaired.
-// Anything downstream of the write, including the commit step itself, is looking at a tree in which
-// the defect no longer exists. So the only moment this fact is observable is BEFORE the actuator
-// runs, which is why this is its own entry invoked ahead of the regeneration rather than a field on
-// the verified result.
+// WHERE THE DECLARATION HAS TO BE TAKEN, AND WHY IT CANNOT BE TAKEN LATER. The actuator OVERWRITES
+// every committed projection from this checkout's authorities, so once it has run the tree agrees
+// with its authority BY CONSTRUCTION and nothing downstream -- a verify pass, the commit step, a
+// later reader -- can see what the write repaired. The defect is gone and so is the evidence it
+// existed. So the only moment this fact is observable is BEFORE the actuator runs, which is why
+// this is its own entry invoked ahead of the regeneration rather than a field on any result the
+// regeneration produces.
+//
+// THE STEP IS ORDERED AGAINST THE WRITE, NOT AGAINST A PARTICULAR ENTRY NAME, and that is
+// deliberate: gunbc.ci_spec has already repointed the heal job's regeneration step from
+// main_wet_verified to main_wet once. A rationale written against whichever entry heal happens to
+// invoke would have quietly become false at that change while still reading as current. What this
+// step requires is only that it run before ANY entry that writes the projections.
 //
 // IT WRITES A FILE RATHER THAN RETURNING A REASON because a ProcessExit reason is rendered only on
 // FAILURE, and this observation is taken on the path where heal is about to succeed. Reporting it

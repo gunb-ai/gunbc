@@ -15,7 +15,8 @@ import gunbc.generated_artifact {
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
-import gunbc.rung_drop { RungDrop, rung_drop_roster, rung_drop_declaration_message }
+import gunbc.rung_drop { RungDrop, rung_drop_declaration_message }
+import gunbc.rung_drop.roster { rung_drop_roster }
 
 // WHY A BYTE DIFFERENCE ON A LEDGER NEEDED ITS OWN NAME, MEASURED RATHER THAN ARGUED.
 //
@@ -260,18 +261,13 @@ fn render_ledger_repair_trailers(path: String, c: LedgerRowCoherence) -> String 
 fn parse_ledger_repair_judged(message: String) -> List<String> {
   fold(split(s: message, delimiter: ledger_repair_judged_token), init: [], f: fn(acc, chunk) {
     let line = fold(split(s: chunk, delimiter: "\n"), init: "", f: fn(a, l) { if a == "" { l } else { a } })
-    let scan = scan_trailer_fields(fields: trailer_payload_fields(line: line))
-    if scan.n == 1 { concat(acc, [scan.path]) } else { acc }
+    match scan_trailer_fields(fields: trailer_payload_fields(line: line)) {
+      TrailerPathOnly { path } => concat(acc, [path])
+      TrailerFieldsEmpty => acc
+      TrailerPathAndIdentity { path: _, identity: _ } => acc
+      TrailerOverlong => acc
+    }
   })
-}
-
-// THE SCAN CARRIES ITS OWN POSITION so the parse needs no indexed access into the field list, and a
-// malformed line cannot silently yield a half-built declaration: `n` must be exactly 2 for a
-// declaration to be emitted, so a line with one field or three is DROPPED rather than guessed at.
-type TrailerScan {
-  n: Int
-  path: String
-  identity: String
 }
 
 // THE TOKENS ARE STRIPPED BEFORE SCANNING, and this is a repair rather than a refinement. The first
@@ -290,16 +286,31 @@ fn trailer_payload_fields(line: String) -> List<String> {
   )
 }
 
+// THE SHAPE OF A TRAILER LINE IS A COPRODUCT, NOT A COUNT. An earlier revision carried
+// `TrailerScan { n: Int, path: String, identity: String }` and keyed every consumer on `n == 1` or
+// `n == 2` -- an in-band discriminator with the arms living in the predicates that read it rather
+// than in the type. DESIGN section 2 and section 3 both refuse that: the arity IS the classification,
+// so representing it as an Int meant every reader re-derived the same case analysis, `identity` was
+// present-but-meaningless in the path-only case, and nothing stopped a fourth caller inventing its
+// own reading of `n == 3`.
+//
+// As a coproduct the arms are the type. A path-only line cannot carry an identity field to
+// misread, an overlong line is a NAMED arm rather than a number nobody handles, and the match in
+// each parser is exhaustive -- so a new trailer shape forces every reader to decide, which is the
+// same construction property ledger_rows gets from exhausting GeneratedArtifact.
+type TrailerScan
+  = TrailerFieldsEmpty
+  | TrailerPathOnly { path: String }
+  | TrailerPathAndIdentity { path: String, identity: String }
+  | TrailerOverlong
+
 fn scan_trailer_fields(fields: List<String>) -> TrailerScan {
-  fold(fields, init: TrailerScan { n: 0, path: "", identity: "" }, f: fn(a, x) {
-    if a.n == 0 {
-      TrailerScan { n: 1, path: x, identity: "" }
-    } else {
-      if a.n == 1 {
-        TrailerScan { n: 2, path: a.path, identity: x }
-      } else {
-        TrailerScan { n: 3, path: a.path, identity: a.identity }
-      }
+  fold(fields, init: TrailerFieldsEmpty, f: fn(a, x) {
+    match a {
+      TrailerFieldsEmpty => TrailerPathOnly { path: x }
+      TrailerPathOnly { path } => TrailerPathAndIdentity { path: path, identity: x }
+      TrailerPathAndIdentity { path: _, identity: _ } => TrailerOverlong
+      TrailerOverlong => TrailerOverlong
     }
   })
 }
@@ -311,11 +322,12 @@ fn scan_trailer_fields(fields: List<String>) -> TrailerScan {
 fn parse_ledger_repair_trailers(message: String) -> List<LedgerRepairDeclaration> {
   fold(split(s: message, delimiter: ledger_repair_trailer_token), init: [], f: fn(acc, chunk) {
     let line = fold(split(s: chunk, delimiter: "\n"), init: "", f: fn(a, l) { if a == "" { l } else { a } })
-    let scan = scan_trailer_fields(fields: trailer_payload_fields(line: line))
-    if scan.n == 2 {
-      concat(acc, [LedgerRepairDeclaration { path: scan.path, identity: scan.identity }])
-    } else {
-      acc
+    match scan_trailer_fields(fields: trailer_payload_fields(line: line)) {
+      TrailerPathAndIdentity { path, identity } =>
+        concat(acc, [LedgerRepairDeclaration { path: path, identity: identity }])
+      TrailerFieldsEmpty => acc
+      TrailerPathOnly { path: _ } => acc
+      TrailerOverlong => acc
     }
   })
 }

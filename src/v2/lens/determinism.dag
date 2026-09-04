@@ -241,38 +241,42 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // its own entry file, which is both the substrate declaration and what makes it unskippable by
 // affected-set selection; it reads exactly the roots it names, since fn_arrow_decl_facts_live now
 // takes pool_roots and the same roots bind the closure it walks; and it is an ordinary
-// required-floor row, not a long-lane or cadence one. IT HAS NO FAILURE THAT REACHES ANYTHING,
-// because through this substrate it cannot fail at all, and a consumer that cannot fail does not
-// discharge a clause about where its failure lands.
+// required-floor row, not a long-lane or cadence one. THE FOURTH -- that its failure reaches the
+// floor -- WAS UNMET FOR THE STRONGEST POSSIBLE REASON UNTIL gunbc#10282: through this substrate it
+// could not fail at all, and a consumer that cannot fail does not discharge a clause about where
+// its failure lands. That reason is gone; what remains open is stated two paragraphs down and is a
+// reachability question rather than a representation one.
 //
-// THE MECHANISM, named at the symbols rather than described, because "the wall is dark" is the kind
-// of claim that has to be checkable. `v1_compiler.coproduct_reflection` `marshal_skeleton` returns
-// `conj_record` at both of its return sites, and `conj_record` builds every node as
-// `TypeNode { connective: Conj }`. `v2.std.node_query` `node_is_call` matches
-// `ComputationNode { behavior: Transform }` and answers false on everything else. A Conj TypeNode
-// cannot satisfy that match, so `node_callee_symbol` is Absent at every node of every fn-arrow body
-// skeleton, `local_determinism_axis` returns Deterministic unconditionally, and
-// `determinism_transitive_holds` over a `fn_arrow_decl_facts_live` population is GREEN BY
-// CONSTRUCTION. This is DESIGN §4b's own question asked too late: the check's RED is not authorable
-// over this subject shape, so the row carries no information while looking exactly like coverage.
+// THE MECHANISM THAT MADE IT UNFAILABLE, named at the symbols, AND THE REPAIR THAT CLOSED IT.
+// `v1_compiler.coproduct_reflection` `marshal_skeleton` returned `conj_record` at both of its
+// return sites, and `conj_record` builds every node as `TypeNode { connective: Conj }`.
+// `v2.std.node_query` `node_is_call` matches `ComputationNode { behavior: Transform }` and answers
+// false on everything else. A Conj TypeNode cannot satisfy that match, so `node_callee_symbol` was
+// Absent at every node of every fn-arrow body skeleton, `local_determinism_axis` returned
+// Deterministic unconditionally, and `determinism_transitive_holds` over a
+// `fn_arrow_decl_facts_live` population was GREEN BY CONSTRUCTION -- DESIGN §4b's own question
+// asked too late, a row carrying no information while looking exactly like coverage.
 //
-// THIS IS NOT A §4b(3) DECLARED DROP, and calling it one would be its own dishonesty. Nothing
-// regressed. Both symbols above predate gunbc#10245 unchanged, so the wall was never lit through
-// this path -- and a capability that was never real is not a capability that was dropped. The
-// honest instruments are §4b(1) and §4b(2): the class's rung is the MINIMUM across its in-scope
-// paths, and through the live path it is none, so the fixture rows' rung does not stand in for it;
-// and the stall is tracked by naming the NEXT-RUNG TRIGGER AS A CAPABILITY -- the fn-arrow body
-// skeleton represents a call at a shape `node_is_call` accepts. Re-shaping `conj_record` is a
-// corpus-wide cut, since every lens reading these skeletons consumes that shape, and it is tracked
-// as its own item rather than carried here.
+// THE §4b(2) STALL FILED HERE NAMED THE CAPABILITY AND THE CAPABILITY LANDED, SO THE STALL IS
+// RETIRED BY ITS TRIGGER RATHER THAN BY THIS PARAGRAPH BEING REWRITTEN. The trigger read: the
+// fn-arrow body skeleton represents a call at a shape `node_is_call` accepts. gunbc#10282 reshaped
+// the PRODUCER -- `marshal_generic` emits `ComputationNode { behavior: Transform }` for an
+// `ExprCall` with a non-empty authored name, whose first positional child is already the callee
+// identity leaf -- rather than widening this lens to accept the Conj spelling, which would have
+// left the substrate with two definitions of a call. It was NOT the corpus-wide cut this paragraph
+// anticipated: every other skeleton consumer reads atoms or folds kind-agnostically, and the single
+// consumer that matched on the kind was a private fork of `node_is_call` in
+// `v2.lens.no_dual_representation_test.scan`, which the same change deleted in favour of the
+// authority.
 //
-// THE STALL IS RETIRED BY EXECUTION, NOT BY MEMORY. The two-arm discriminator in
-// v2.test.claim.enforcement.determinism_transitive_witness holds the gap open: one synthetic Node
-// shaped `ComputationNode { behavior: Transform }` and one shaped `TypeNode { connective: Conj }`,
-// same callee atom, asserting that this lens FIRES on the first and is BLIND to the second. Both
-// arms pass today, which is the executing record that the lens is correct and live while the
-// subject shape cannot express what it detects. When the capability lands, the blind arm reds and
-// names itself for removal.
+// WHAT THAT DOES AND DOES NOT DISCHARGE, kept apart because the difference is the whole of clause 2.
+// It discharges the SHAPE half: this lens's refusal is now authorable over the live substrate, so
+// the live consumer's green is a statement about its closure rather than about the representation.
+// It does NOT establish that a live RED is constructible end-to-end today, and no such claim is
+// made here. `v2.std.fn_index` `atom_identities_in_node` reads callees at DEPTH ONE from
+// `decl.output`, so a call inside a block body sits below the horizon `call_reachable_decls` seeds
+// from; whether that narrows the live path is undecided by execution and is tracked at work item
+// adhoc-6af6a225-11d. Clause 2 therefore stands on the reachability question, not on the shape one.
 //
 // WHAT gunbc#10245 DID BUY, stated without letting it stand in for the clause. The acquisition had
 // no caller-named subject, so no live-tree consumer of this producer could reach the floor's
