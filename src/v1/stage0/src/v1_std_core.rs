@@ -4036,6 +4036,13 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
     })
 }
 
+pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
+    match node.ident_span.clone() {
+        Some(sp) => (sp.file.clone() == kernel_span(name.clone()).file.clone()),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance> {
     match item.ident_span.clone() {
         std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
@@ -4043,7 +4050,7 @@ pub fn declaration_provenance_of(item: Rc<Node>) -> Rc<TypeDeclarationProvenance
             if (sp.file.clone() == "".to_string()) {
                 Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
             } else {
-                if (sp.file.clone() == kernel_span(item.name.clone()).file.clone()) {
+                if resolved_node_is_kernel_identity_for_name(item.clone(), item.name.clone()) {
                     Rc::new(TypeDeclarationProvenance::KernelMinted {
                         minted_name: item.name.clone(),
                     })

@@ -191,7 +191,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    resolved_node_is_kernel_identity_for_name, type_reference_declaration_ref,
+    type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_kind;
@@ -294,11 +294,11 @@ pub use crate::v1_std_core::{
     match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
     module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
-    service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
-    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
-    transport_env, transport_has_auth, transport_headers, transport_method,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
+    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
+    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
+    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
     with_required_cardinality,
@@ -12390,7 +12390,7 @@ pub fn import_name_resolves_to_host_realized_kernel_scalar(
             match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
                 std::option::Option::None => false,
                 Some(n) => {
-                    ((crate::v1_compiler_infer_env::resolved_node_is_kernel_identity_for_name(
+                    ((crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
                         n.clone(),
                         name.clone(),
                     ) && (n.connective.clone() == Connective::NoConnective))
