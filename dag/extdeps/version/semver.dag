@@ -52,19 +52,25 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Orderi
 }
 
 fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
-  if a.count() == 0 && b.count() == 0 { Equal }
-
-  else if a.count() == 0 { Less }
-  else if b.count() == 0 { Greater }
-  else {
-    match semver_compare_identifier(a: a.first(), b: b.first()) {
-      Equal =>
-        semver_compare_identifiers(
-          a: a.skip(n: 1),
-          b: b.skip(n: 1)
-        )
-      other => other
-    }
+  match a.first() {
+    Absent =>
+      match b.first() {
+        Absent => Equal
+        Present { value: _ } => Less
+      }
+    Present { value: ah } =>
+      match b.first() {
+        Absent => Greater
+        Present { value: bh } =>
+          match semver_compare_identifier(a: ah, b: bh) {
+            Equal =>
+              semver_compare_identifiers(
+                a: a.skip(n: 1),
+                b: b.skip(n: 1)
+              )
+            other => other
+          }
+      }
   }
 }
 

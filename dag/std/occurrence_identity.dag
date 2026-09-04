@@ -446,23 +446,28 @@ fn occurrence_id_list_is_prefix_of(
     f: (acc, expected) =>
       if !acc.ok {
         acc
-      } else if (acc.path_remaining |> count) == 0 {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: [],
-          ok: false,
-        }
-      } else if occurrence_id_eq(
-        left: acc.path_remaining.first(),
-        right: expected,
-      ) {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: acc.path_remaining.skip(n: 1),
-          ok: true,
-        }
       } else {
-        OccurrenceIdListPrefixAcc {
-          path_remaining: acc.path_remaining,
-          ok: false,
+        match acc.path_remaining.first() {
+          Absent =>
+            OccurrenceIdListPrefixAcc {
+              path_remaining: [],
+              ok: false,
+            }
+          Present { value: head } =>
+            if occurrence_id_eq(
+              left: head,
+              right: expected,
+            ) {
+              OccurrenceIdListPrefixAcc {
+                path_remaining: acc.path_remaining.skip(n: 1),
+                ok: true,
+              }
+            } else {
+              OccurrenceIdListPrefixAcc {
+                path_remaining: acc.path_remaining,
+                ok: false,
+              }
+            }
         }
       },
   ).ok

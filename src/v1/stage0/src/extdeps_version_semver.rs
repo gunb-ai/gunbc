@@ -88,27 +88,34 @@ pub fn semver_compare_identifiers(
     mut b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
-        if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
-            break Ordering::Equal;
-        } else {
-            if ((a.clone().len() as i64) == 0) {
-                break Ordering::Less;
-            } else {
-                if ((b.clone().len() as i64) == 0) {
-                    break Ordering::Greater;
-                } else {
-                    match semver_compare_identifier(a.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of semver_compare_identifier (empty Optional at runtime)"), b.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of semver_compare_identifier (empty Optional at runtime)")) {
-    Ordering::Equal => { {
-                        let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-a = __tco_0;
-b = __tco_1;
-continue;
-} },
-    other => { break other.clone(); },
-}
+        match a.clone().first().cloned() {
+            std::option::Option::None => match b.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Ordering::Equal;
                 }
-            }
+                Some(_) => {
+                    break Ordering::Less;
+                }
+            },
+            Some(ah) => match b.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Ordering::Greater;
+                }
+                Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
+                    Ordering::Equal => {
+                        let __tco_0 =
+                            Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_1 =
+                            Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        a = __tco_0;
+                        b = __tco_1;
+                        continue;
+                    }
+                    other => {
+                        break other.clone();
+                    }
+                },
+            },
         }
     }
 }
