@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_live_authority_name_carries_a_superseded_claim
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_live_authority_name_carries_a_superseded_claim: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_live_authority_name_carries_a_superseded_claim" as NonEmptyStr,
+
+  receipts: [
+    "a live authority name carries a superseded claim. A rename or authority replacement sweeps prose for the NAME, every occurrence is updated, every updated occurrence resolves -- and the PROPOSITION each name was embedded in is never re-read. The citation is now current and the sentence around it is false. ",
+
+    "**THIS IS NOT A STALE CITATION AND THE DIFFERENCE IS THE WHOLE CLASS.** A stale name is visibly stale: it fails to resolve, or it names something a reader can see is gone. A REFRESHED name is worse, because the refresh is itself an attestation -- it tells the reader that someone recently looked at this sentence and found it correct. The sweep supplies that signal without having supplied the reading. Neighbouring classes differ at the referent, not here: `positional_citation` and `stable_citation_mutable_referent` are about the pointer decaying underneath a claim that stayed true, and this is the exact inverse -- the pointer is repaired and the claim is what died. ",
+
+    "**RECEIPT (eager-pike-541, 2026-09-04, gunbc#10358).** The PR renamed `gunbc.model.choice` to `gunbc.model.ollama_choice` and updated the citation in `docs/plans/spark-fleet-hand-edit-gap-analysis.md` section 7 accordingly. The updated paragraph continued to state that serving configuration identity derives from the runner's argv -- a mechanism `ObservedOllamaLaunchConfiguration` had ALREADY REPLACED before the rename was proposed. The rename was correct, the new name was correct, and the sentence carrying it had been false since a prior change. Found by external review as REQUEST_CHANGES (`review 59866`), not by any mechanism in the tree. ",
+
+    "**WHY NO EXISTING WALL SEES IT, stated as a boundary rather than a gap to be closed by the neighbour.** gunbc's namespace-wave admission (`gunbc.namespace_wave_admission`) enumerates AUTHORED NAME OCCURRENCES resolved per module and adjudicates every changed binding -- on this same PR it correctly demanded 255 `TargetChanged` rows. It does not inspect prose, and it is not supposed to: DESIGN section 4c makes annotations invisible to every semantic pass, and a `.md` plan is further out still. So a fully green namespace wave is positive evidence about the executable binding surface and NO evidence about whether the prose describing that authority remains true. The two are complementary walls, not a strong and a weak version of one wall. ",
+
+    "**RUNG: MITIGATABLE.** External review caught this instance; nothing in the tree can. The ceiling is not structural impossibility: the truth of an arbitrary proposition about a mechanism is not decidable from the Node tree, so the honest ceiling is MECHANICALLY PREVENTABLE. **NEXT-RUNG TRIGGER: a claim census** -- an instrument that takes the prose citations a rename or authority replacement TOUCHED and surfaces, for adjudication, the proposition each one sits inside, refusing the change until each is dispositioned. That is a real instrument and it does not exist; naming it here is the trigger, not a claim of coverage. ",
+
+    "**RECOGNITION RULE: any diff that updates a name inside prose it did not otherwise read.** The tell is a citation-only hunk -- one identifier changed, the surrounding sentence untouched. The obligation is that a sweep which refreshes a name has adopted the claim: re-read the proposition, and either confirm it against the current mechanism or mark it superseded. Updating the name alone is not the cheap half of the job, it is the half that manufactures the false attestation.",
+  ],
+
+  evidence: [],
+}
