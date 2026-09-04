@@ -4,7 +4,7 @@ import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixtur
 import v2.compiler.emit_produced { emit_produced_decl, emit_produced_module }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.cpp { cpp_target_model }
-import v2.extdeps.languages.rust_test { rust_produced_decl_emit_target_model_staging }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -57,17 +57,17 @@ fn tt_refuses(target: TargetModel, fn_name: Symbol) -> Bool {
 // cross-golden arms are the discriminating RED: neither target can produce the
 // other's text, so a seam that had kept order in the compiler would fail here.
 test fn produced_decl_two_targets_render_own_order() -> Bool {
-  tt_emits(target: rust_produced_decl_emit_target_model_staging(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
+  tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
     && tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_c_golden)
     && !tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_rust_golden)
-    && !tt_emits(target: rust_produced_decl_emit_target_model_staging(), fn_name: ^rust_binding_fn_add, golden: two_target_c_golden)
+    && !tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_c_golden)
 }
 
 // A target that declared no rendering rows still refuses, typed and located, after the
 // seam moved onto the carrier. Keeps the fail-closed property from regressing.
 test fn produced_decl_unwired_target_still_refuses() -> Bool {
   tt_refuses(target: cpp_target_model(), fn_name: ^rust_binding_fn_add)
-    && tt_emits(target: rust_produced_decl_emit_target_model_staging(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
+    && tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
 }
 
 // emit_produced_module is the module-level fold, and this PR changed its signature
@@ -117,13 +117,13 @@ fn tt_module_matches(
 // that failed to thread the target through, cannot satisfy both arms.
 test fn produced_decl_module_folds_declarations_in_order() -> Bool {
   tt_module_matches(
-    target: rust_produced_decl_emit_target_model_staging(),
+    target: rust_target_model(),
     first: ^rust_binding_fn_add,
     second: ^rust_binding_fn_add2,
     golden: two_target_rust_module_golden
   )
     && !tt_module_matches(
-      target: rust_produced_decl_emit_target_model_staging(),
+      target: rust_target_model(),
       first: ^rust_binding_fn_add2,
       second: ^rust_binding_fn_add,
       golden: two_target_rust_module_golden
