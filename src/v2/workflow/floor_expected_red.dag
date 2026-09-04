@@ -1109,8 +1109,7 @@ fn floor_expected_red_chunk_24() -> List<String> {
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_plain_record_at_a_declared_return_is_refused", tail: Empty {} } } } } } } }
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } } } } } }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
