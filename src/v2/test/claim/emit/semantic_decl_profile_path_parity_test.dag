@@ -87,10 +87,10 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
 
 // Parity control: the serialized profile bundle (rust_semantic_decl_serialize_profile_bundle_node)
 // agrees with the profile derived from the emission. Every lex row (12 token classes) and every
-// binding spelling (6 keys) is compared, so a perturbation to any production lex row or binding
-// spelling that the bundle carries but the emission must encode it at the same spelling would go
-// red. This witness pays a full serialize+decode cost itself on a single identity, which is
-// acceptable; the consumers it guards derive the profile from the staging fixture (~130 steps).
+// binding spelling (6 keys) is compared, so perturbing either representation of a row turns this
+// claim red. The two are authored separately and nothing else holds them to the same content.
+// The witness pays a full serialize+decode on this one identity, which is the reason the
+// consumers do not: they derive the profile from the staging fixture instead.
 test fn all_bundle_rows_match_emission_profile() -> Bool {
   match decode_semantic_decl_serialize_profile_bundle(
     bundle: rust_semantic_decl_serialize_profile_bundle_node()
