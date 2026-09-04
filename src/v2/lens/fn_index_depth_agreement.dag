@@ -247,6 +247,79 @@ fn first_decl_channel() -> FirstDeclChannel {
   fold_list(xs: decls, empty: empty_first_decl_channel, cons: pick_first_decl)
 }
 
+// THE BOUNDED COMPARISON, AND WHY IT IS BOUNDED RATHER THAN CORPUS-WIDE. Running the call-channel
+// reader beside the atom reader over all live declarations did not finish in 85 minutes, against a
+// 2-minute baseline for the same tally without it. That 40x is not an artifact of collecting: the
+// list-collecting form was already replaced by Int counts, and `call_callee_target` is already
+// gated behind `node_is_call`. The cost is `node_is_call` itself, per node, over 60k nodes -- and
+// that is not merely an inconvenience for this instrument, it is a fact about what review 60065
+// proposes, because routing production `callees_from_node` through the same predicate imports the
+// same per-node cost into every consumer of call reachability.
+//
+// SO THE COMPARISON IS TAKEN OVER A FIXED PREFIX OF THE LIVE CORPUS. The population is stated in
+// the result rather than assumed, and `compared` beside `channel_fewer` is what makes a zero
+// readable: zero disagreements over zero declarations is an empty run, and zero over a stated
+// population is the finding.
+type BoundedChannelCompare {
+  compared: Int
+  atom_callee_total: Int
+  channel_call_shaped_total: Int
+  channel_callee_total: Int
+  channel_fewer: Int
+  channel_none_atom_some: Int
+}
+
+data empty_bounded_compare: BoundedChannelCompare = BoundedChannelCompare {
+  compared: 0,
+  atom_callee_total: 0,
+  channel_call_shaped_total: 0,
+  channel_callee_total: 0,
+  channel_fewer: 0,
+  channel_none_atom_some: 0
+}
+
+data bounded_compare_limit: Int = 150
+
+fn bounded_compare_step(
+  acc: BoundedChannelCompare,
+  decl: FnArrowDecl
+) -> BoundedChannelCompare {
+  if acc.compared >= bounded_compare_limit {
+    acc
+  } else {
+    let channel = channel_subtree(node: decl.output)
+    let atom = length(
+      xs: callees_from_node(
+        node: decl.output,
+        terminal_callee_symbols: no_terminal_callees,
+        param_names: param_names_of(decl: decl)
+      )
+    )
+    BoundedChannelCompare {
+      compared: acc.compared + 1,
+      atom_callee_total: acc.atom_callee_total + atom,
+      channel_call_shaped_total: acc.channel_call_shaped_total + channel.call_nodes,
+      channel_callee_total: acc.channel_callee_total + channel.resolved_callees,
+      channel_fewer: bump_when(
+        count: acc.channel_fewer,
+        flag: channel.resolved_callees < atom
+      ),
+      channel_none_atom_some: bump_when(
+        count: acc.channel_none_atom_some,
+        flag: channel.resolved_callees == 0 && atom > 0
+      )
+    }
+  }
+}
+
+fn bounded_channel_compare() -> BoundedChannelCompare {
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: agreement_pool_roots,
+    pool_files: agreement_pool_files
+  )
+  fold_list(xs: decls, empty: empty_bounded_compare, cons: bounded_compare_step)
+}
+
 type DepthAgreementTally {
   decls: Int
   disagreeing_with_legacy: Int
@@ -374,6 +447,10 @@ fn fn_index_depth_agreement() -> ProcessExit {
   } else if tally.param_collisions == 0 {
     exit_failure(
       reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_node excludes nothing"
+    )
+  } else if bounded_channel_compare().channel_none_atom_some == 0 {
+    exit_failure(
+      reason: "the call-channel reader no longer loses whole declarations to the atom reader, so the refusal to switch callees_from_node onto node_is_call is stale and should be revisited"
     )
   } else {
     ExitSuccess
