@@ -315,7 +315,7 @@ data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
 // converge is not the queue being configured either. The route that works is signing this row.)
 data desired_merge_queue: MergeQueueDesire = MergeQueueUnsigned {
   proposal: gunbc_merge_queue_proposal,
-  awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes actuated desired state and a live ruleset without the rule is a divergence converge repairs. Until then the proposal is declared and diffed and never written, and converge REFUSES to actuate at all while the live ruleset carries a merge_queue rule this projection cannot express -- see merge_queue_projection_refusal."),
+  awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes actuated desired state and a live ruleset without the rule is a divergence converge repairs. Until then the proposal is declared and diffed and never written, and converge REFUSES to actuate at all while the live ruleset carries a merge_queue rule this projection cannot express -- see merge_queue_projection_refusal. AND SIGNING THIS ROW DOES NOT BY ITSELF MAKE CONVERGE ACTUATE: the bypass-actor gate is checked first and, under the credential available to this repository, returns BypassRosterUnavailable on every live read -- GitHub omits bypass_actors both when the roster is empty and when the reader may not see it -- so converge is unconditionally held today for a reason that has nothing to do with this ruling. Discharging it needs a credential whose ruleset GET returns bypass_actors; a retry does not, because the observation is a property of the credential and not of the moment. See bypass_roster_projection_refusal."),
 }
 
 fn desired_merge_queue_policy() -> MergeQueuePolicy? {
@@ -752,6 +752,17 @@ fn signed_desire_projection_refusal() -> NonEmptyStr? {
 // credential may not see it -- so an apply would either delete nothing or delete an unknown number
 // of grants, and the observation cannot say which. Treating unavailable as empty here would be the
 // empty-observation narrow deciding a destructive write, so it is refused instead.
+//
+// THE OPERATIONAL CONSEQUENCE, WHICH IS NOT THE MECHANISM ABOVE: every live read taken from this
+// repository so far has returned `BypassRosterUnavailable`, because GitHub omits `bypass_actors`
+// both when the roster is empty AND when the reading credential may not see it, and the credential
+// available here is the second case. So this is not a rare arm guarding an unlikely world -- it is
+// the arm that fires EVERY TIME, and converge is therefore UNCONDITIONALLY HELD today, before any
+// question about the merge_queue rule is even reached. A reader who takes this for a defensive
+// branch will read a held converge as a transient and retry it; retrying changes nothing, because
+// the observation is a property of the credential and not of the moment. THE REMEDY IS AN
+// AUTHORIZED BYPASS-ROSTER READ -- a credential whose ruleset GET returns `bypass_actors` -- and
+// nothing else discharges it: not a retry, not a wait, and not signing the row below.
 fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> NonEmptyStr? {
   match roster {
     BypassRosterUnavailable { reader: r, cause: _ } =>

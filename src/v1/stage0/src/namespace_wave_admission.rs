@@ -885,28 +885,46 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
-/// NINETEENTH TRANSITION (2026-09-03), gunbc#10206. `recurring_failure_mode_roster` moves out of
-/// `gunbc.recurring_failure_mode` into its own module `gunbc.recurring_failure_mode.roster`,
-/// because the type module cannot import the rows back without a cycle. Two bindings in
-/// `gunbc.design_ledgers` therefore resolve to a new target, which is `TargetChanged` and is not
-/// one of the auto-admitted dispositions.
+/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
+/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
+/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
 ///
-/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY. They add no branch, no
-/// dispatch and no code path; the mechanism that reads them is unchanged and every namespace
-/// rebind in this repository is declared exactly this way. What would be a scaffold here is a
-/// second route around the adjudicator, and there is none: the whole point of the row is to make
-/// the transition adjudicated rather than silent.
+/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
+/// each was checked against the base before the deletion rather than after a run reported it:
 ///
-/// DISSOLVE-ON is gunbc#10206 merging, and the trigger names the CAPABILITY rather than an
-/// artifact: once main carries the split, no run can produce these two deltas, so the rows become
-/// stale and a stale row refuses unrelated changes. By this module's own rule the deletion is
-/// charged to WHOEVER NEXT TOUCHES THIS ROSTER, not to me and not to a follow-up PR I could
-/// forget; the required run reports them as consumed admissions due for deletion on that change.
+/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
+///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
+///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
+/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
+///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
+///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
 ///
+/// In both cases the base already binds the spelling to the target, so the delta is not producible
+/// and the row can only be stale.
+///
+/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
+/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
+/// should be kept, and each cost a required run to discover they were closed. The rule was right
+/// both times and its INPUT was guessed.
+///
+/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
+/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
+/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
+/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
+/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
+///
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04). The `gunbc#10218` row is removed by that same rule,
+/// decided against the base rather than after a run: #10218 merged as 95cf3959a2a, main declares
+/// `physical_asset_identity_eq` in product.placement_supply (dag/gunbc/product/placement_supply.dag)
+/// and product.printed_chassis.manufacturing_manifest imports it from there, so the base already
+/// binds the spelling to the target and the delta is no longer producible.
+
 /// TWENTIETH TRANSITION (2026-09-04), gunbc#10324. `host_converge_for_identity` moves out of
 /// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
 /// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
-/// `TargetChanged` and is not auto-admitted.
+/// `TargetChanged` and is not auto-admitted. Measured from required run 33830830910 on 91354f99fd,
+/// which reported exactly three unadjudicated deltas: these two, plus one NewUnresolvedness that
+/// was a real defect in the change and is repaired rather than admitted.
 ///
 /// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
 /// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
@@ -914,19 +932,18 @@ pub struct TransitionAdmission {
 /// that type's declaration, in another file. Two callers had each privately worked around this with
 /// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
 /// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it, so
-/// the move is the §3 repair and these two rows are its measured cost.
+/// the move is the section 3 repair and these two rows are its measured cost.
 ///
-/// DISSOLVE-ON is gunbc#10324 merging, and the trigger names the capability: once main carries the
-/// wrapper in `gunbc.host_converge`, base and head agree and no run can produce these deltas. Their
-/// deletion is charged to whoever next touches this roster, per this module's own rule.
+/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN: two deltas, two rows, each naming its module,
+/// its declaration and the exact spelling whose target moved.
 ///
-/// SIX ROWS ARE DELETED HERE, WHICH IS THAT SAME RULE BEING PAID RATHER THAN DEFERRED. The two
-/// gunbc#10206 rows and the four gunbc#10028 rows were reported CONSUMED by the required run at
-/// this base -- satisfied by their own merges -- and this roster's convention charges their removal
-/// to its next toucher. That is this change.
+/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
+/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
+/// stale, and their deletion is owed by whoever next touches this roster.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type (converge_cli_codex_runtime_knob_registered_for_host)",
+        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
+                its type (converge_cli_codex_runtime_knob_registered_for_host)",
         subject: AdmissionSubject::Binding {
             module: "gunbc.fleet_converge_cli",
             in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
@@ -936,7 +953,8 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type (converge_cli_run_host_knobs)",
+        label: "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside \
+                its type (converge_cli_run_host_knobs)",
         subject: AdmissionSubject::Binding {
             module: "gunbc.fleet_converge_cli",
             in_declaration: "converge_cli_run_host_knobs",
