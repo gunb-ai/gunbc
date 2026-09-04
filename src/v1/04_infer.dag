@@ -1170,10 +1170,38 @@ fn optional_into_required_error(declared: Node, span: SourceSpan, scope: InferSc
 // explicitly-spelled Optional<T> VALUE flowing into a required position is a real defect too, and
 // widening to catch it would enlarge a population that has not been measured. Stated rather than
 // implied so the gap is inspectable.
-fn optional_into_required_mismatch(declared: Node, produced: Node) -> Bool {
+// THREE ANSWERS, NOT TWO. node_carries_optional answers `false` for a declared position whose type
+// is still an UNSUBSTITUTED type parameter -- the same `false` it gives a genuinely required
+// position -- so a Bool result conflated "proved required" with "could not tell", and the
+// conflation fired in the ACCUSING direction. That is the absorbing fallback of DESIGN §5 exactly:
+// the arm that cannot compute its answer substituted the widest one instead of refusing, and
+// because the widening produced a located diagnostic it read as the check working. Declining to
+// judge is not a weaker check -- it is the only honest verdict available before substitution, and
+// it keeps the deficit visible as an unjudged position rather than burying it in a false positive.
+type OptionalNarrowing = NarrowsToRequired | ConformsOrWidens | NarrowingUndetermined
+
+fn declared_optionality_undetermined(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: i } => is_type_variable(inferred: i)
+    Absent => false
+  }
+}
+
+fn optional_into_required_mismatch(declared: Node, produced: Node) -> OptionalNarrowing {
   match produced.return_cardinality {
-    CardOptional => node_carries_optional(n: declared) == false
-    Required => false
+    Required => ConformsOrWidens
+    CardOptional =>
+      if declared_optionality_undetermined(n: declared) { NarrowingUndetermined }
+      else if node_carries_optional(n: declared) { ConformsOrWidens }
+      else { NarrowsToRequired }
+  }
+}
+
+fn optional_narrowing_refuses(v: OptionalNarrowing) -> Bool {
+  match v {
+    NarrowsToRequired => true
+    ConformsOrWidens => false
+    NarrowingUndetermined => false
   }
 }
 
@@ -1451,9 +1479,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) == false {
-            none
-          } else if exp.children |> count == 0 {
+          if exp.children |> count == 0 {
             none
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {
@@ -1468,7 +1494,9 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       Absent => acc
                     }
                   )
-                  let template_fields = decl.children
+                  match record_lit_instantiation_template_fields(tn: tn, exp: exp, decl: decl, scope: scope) {
+                  Absent => none
+                  Present { value: template_fields } =>
                   Present { value: template_fields |> map(sf =>
                     Node {
                       occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
@@ -1481,6 +1509,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       expr_data: sf.expr_data
                     }
                   ) }
+                  }
                 }
               Absent => none
             }
@@ -1488,6 +1517,25 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
         Absent => none
       }
     Absent => none
+  }
+}
+
+// TEMPLATE FIELDS FOR A GENERIC INSTANTIATION, WHICH MUST HANDLE VARIANTS AS WELL AS STRUCTS.
+// A record literal names either the type itself (a struct) or one of its VARIANTS -- `Accepted { .. }`
+// against an expected `Outcome<Symbol?>`. The instantiation used to compare the literal's name to the
+// expected type's name and give up when they differed, so every variant literal fell through to the
+// UNSUBSTITUTED field list and every consumer downstream saw the raw type parameter instead of its
+// instantiation. Refusing here rather than answering with raw `T` is the point: a caller that judges
+// a declared type cannot tell an unsubstituted parameter from a concrete one, so an unsubstituted
+// answer is a wrong answer wearing the shape of a right one.
+fn record_lit_instantiation_template_fields(tn: String, exp: Node, decl: Node, scope: InferScope) -> List<Node>? {
+  if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) {
+    Present { value: decl.children }
+  } else {
+    match record_lit_variant_from_expected(type_name: Present { value: tn }, expected: Present { value: exp }, scope: scope) {
+      Present { value: variant } => Present { value: variant.children }
+      Absent => none
+    }
   }
 }
 
@@ -4473,7 +4521,7 @@ fn direct_call_arg_mismatch_diags(
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           if expr_is_bare_none_reference(texpr: actual_expr, source_indices: source_indices) == false
-            && optional_into_required_mismatch(declared: app.formal_subst, produced: actual_raw) {
+            && optional_narrowing_refuses(v: optional_into_required_mismatch(declared: app.formal_subst, produced: actual_raw)) {
             [make_error_node(
               diagnostic: OptionalValueInRequiredPosition {
                 declared: node_type_shape(n: app.formal_subst, source_indices: source_indices),
@@ -7799,7 +7847,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
           if expr_is_bare_none_reference(texpr: ar_typed, source_indices: scope.type_env.source_indices) == false
-            && optional_into_required_mismatch(declared: expected_node, produced: got_node) {
+            && optional_narrowing_refuses(v: optional_into_required_mismatch(declared: expected_node, produced: got_node)) {
             [optional_into_required_error(declared: expected_node, span: ar_typed.span, scope: scope)]
           } else if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
