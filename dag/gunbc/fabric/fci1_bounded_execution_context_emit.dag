@@ -45,9 +45,12 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
       Fci1BoundedExecutionContextEmissionRefused {
         reason: join(["FCI-1 MemoryHigh is not finite-positive: ", to_string(value)], ""),
       }
-    Fci1MemoryHighExceedsMax { high_bytes: high, max_bytes: max } =>
+    Fci1MemoryHighExceedsMax { high: high, max: max } =>
       Fci1BoundedExecutionContextEmissionRefused {
-        reason: join(["FCI-1 MemoryHigh exceeds MemoryMax: high=", to_string(high), " max=", to_string(max)], ""),
+        reason: join([
+          "FCI-1 MemoryHigh exceeds MemoryMax: high=", to_string(finite_byte_size_count(size: high)),
+          " max=", to_string(finite_byte_size_count(size: max)),
+        ], ""),
       }
     Fci1BoundedExecutionContextBuilt { context: context } =>
       match context.memory_high {

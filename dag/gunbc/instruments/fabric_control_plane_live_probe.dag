@@ -64,7 +64,9 @@ import gunbc.fabric_required_build_cell {
   AllocationSlotUnreadable, AllocationSlotUndecodable,
   AllocationStoreRestoration, AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationStoreRestorationRefused,
-  fci1_allocation_slot_available, fci1_exact_allocation_restoration,
+  AllocationSlotAdmitted, AllocationSlotRefusedHeld, AllocationSlotRefusedUnreadable,
+  AllocationSlotRefusedUndecodable,
+  fci1_allocation_slot_admission, fci1_exact_allocation_restoration,
   observe_required_build_cell_wet, required_build_cell_lifetime_sample,
   required_build_cell_lifetime_sample_wire, decode_required_build_cell_lifetime_sample,
   required_build_cell_lifetime_verdict, required_build_cell_lifetime_verdict_wire,
@@ -854,14 +856,12 @@ func fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessEx
 }
 
 func fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
-  let prestate = fci1_allocation_prestate(root: root)
-  if fci1_allocation_slot_available(prestate: prestate) { ExitSuccess } else { match prestate {
-    AllocationSlotAbsent { path: _ } => ExitSuccess
-    AllocationSlotFree { path: _, generation: _ } => ExitSuccess
-    AllocationSlotHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
-    AllocationSlotUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation slot unreadable")
-    AllocationSlotUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot undecodable")
-  } }
+  match fci1_allocation_slot_admission(prestate: fci1_allocation_prestate(root: root)) {
+    AllocationSlotAdmitted { path: _ } => ExitSuccess
+    AllocationSlotRefusedHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
+    AllocationSlotRefusedUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation slot unreadable")
+    AllocationSlotRefusedUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot undecodable")
+  }
 }
 
 fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
@@ -1184,14 +1184,19 @@ func fci1_grade_and_write_allocation_receipt(
 // Pure controls run before host effects. Their rejecting counterparts are enrolled in the witness
 // corpus; the disposable-store mutation in the live driver exercises the production CAS mechanism.
 func fci1_assert_slot_absent_admitted() -> ProcessExit {
-  if fci1_allocation_slot_available(prestate: AllocationSlotAbsent { path: "/run/fci1-control" }) { ExitSuccess }
-  else { exit_failure(reason: "FCI-1 absent slot was not admitted") }
+  match fci1_allocation_slot_admission(prestate: AllocationSlotAbsent { path: "/run/fci1-control" }) {
+    AllocationSlotAdmitted { path: _ } => ExitSuccess
+    _ => exit_failure(reason: "FCI-1 absent slot was not admitted")
+  }
 }
 
+// This now asserts the exact refusal CAUSE rather than mere inadmissibility: an unreadable slot that
+// began refusing for some other reason would previously have passed this control.
 func fci1_assert_unreadable_slot_refused() -> ProcessExit {
-  if fci1_allocation_slot_available(prestate: AllocationSlotUnreadable { path: "/run/fci1-control" }) {
-    exit_failure(reason: "FCI-1 unreadable slot was admitted")
-  } else { ExitSuccess }
+  match fci1_allocation_slot_admission(prestate: AllocationSlotUnreadable { path: "/run/fci1-control" }) {
+    AllocationSlotRefusedUnreadable { path: _ } => ExitSuccess
+    _ => exit_failure(reason: "FCI-1 unreadable slot was admitted")
+  }
 }
 
 func fci1_assert_exact_absent_to_free_control() -> ProcessExit {

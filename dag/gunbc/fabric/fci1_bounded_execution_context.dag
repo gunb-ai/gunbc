@@ -27,7 +27,7 @@ type Fci1BoundedExecutionContextBuild
   = Fci1BoundedExecutionContextBuilt { context: Fci1BoundedExecutionContext }
   | Fci1MemoryMaxNonPositive { observed: Int }
   | Fci1MemoryHighNonPositive { observed: Int }
-  | Fci1MemoryHighExceedsMax { high_bytes: Int, max_bytes: Int }
+  | Fci1MemoryHighExceedsMax { high: FiniteByteSize, max: FiniteByteSize }
 
 data fci1_driver_unit: NonEmptyStr = "fci1-bounded-driver.service"
 
@@ -48,10 +48,7 @@ fn fci1_bounded_execution_context(checkout_root: FilePath) -> Fci1BoundedExecuti
           Fci1MemoryHighNonPositive { observed: high }
         FiniteByteSizeBuilt { size: high } =>
           if finite_byte_size_count(size: high) > finite_byte_size_count(size: max) {
-            Fci1MemoryHighExceedsMax {
-              high_bytes: finite_byte_size_count(size: high),
-              max_bytes: finite_byte_size_count(size: max),
-            }
+            Fci1MemoryHighExceedsMax { high: high, max: max }
           } else {
             Fci1BoundedExecutionContextBuilt { context: Fci1BoundedExecutionContext {
               checkout_root: checkout_root,

@@ -70,13 +70,30 @@ type AllocationStoreRestoration
   | AllocationSlotFreeReturnedFree { path: NonEmptyStr, pre_generation: Int, held_generation: Int, post_generation: Int }
   | AllocationStoreRestorationRefused { path: NonEmptyStr }
 
-func fci1_allocation_slot_available(prestate: AllocationSlotPrestate) -> Bool {
+// WHETHER A SLOT IS ADMISSIBLE AND WHY IT IS NOT ARE ONE FACT, so this folds the prestate once into
+// a typed disposition rather than collapsing it to a Bool. A Bool discards the cause at the only
+// point it is known, and every caller that must report a refusal then has to re-derive it by
+// matching the prestate a second time -- which is exactly what the previous shape forced, and that
+// second match carried two arms that could never fire, because the predicate had already answered
+// true for Absent and Free. Two representations of one decision, the dead arms being the proof
+// (DESIGN section 5: a check that re-states a constraint the model already carries is a second
+// representation of it, and construction is preferred to validation).
+//
+// The refusal arms carry the generation where the prestate has one, so a caller reporting a held or
+// undecodable slot cites the observed generation rather than re-reading the store.
+type AllocationSlotAdmission
+  = AllocationSlotAdmitted { path: NonEmptyStr }
+  | AllocationSlotRefusedHeld { path: NonEmptyStr, generation: Int }
+  | AllocationSlotRefusedUnreadable { path: NonEmptyStr }
+  | AllocationSlotRefusedUndecodable { path: NonEmptyStr, generation: Int }
+
+func fci1_allocation_slot_admission(prestate: AllocationSlotPrestate) -> AllocationSlotAdmission {
   match prestate {
-    AllocationSlotAbsent { path: _ } => true
-    AllocationSlotFree { path: _, generation: _ } => true
-    AllocationSlotHeld { path: _, generation: _ } => false
-    AllocationSlotUnreadable { path: _ } => false
-    AllocationSlotUndecodable { path: _, generation: _ } => false
+    AllocationSlotAbsent { path: p } => AllocationSlotAdmitted { path: p }
+    AllocationSlotFree { path: p, generation: _ } => AllocationSlotAdmitted { path: p }
+    AllocationSlotHeld { path: p, generation: g } => AllocationSlotRefusedHeld { path: p, generation: g }
+    AllocationSlotUnreadable { path: p } => AllocationSlotRefusedUnreadable { path: p }
+    AllocationSlotUndecodable { path: p, generation: g } => AllocationSlotRefusedUndecodable { path: p, generation: g }
   }
 }
 
