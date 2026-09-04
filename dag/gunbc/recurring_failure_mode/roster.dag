@@ -109,6 +109,7 @@ import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_ce
 import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
 import gunbc.recurring_failure_mode.receipt_subject_surface_outlives_its_own_production_time { receipt_subject_surface_outlives_its_own_production_time }
 import gunbc.recurring_failure_mode.trigger_satisfied_before_the_row_was_written { trigger_satisfied_before_the_row_was_written }
+import gunbc.recurring_failure_mode.summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in { summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   censored_estimator_drops_its_own_tail,
@@ -209,4 +210,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   guard_precondition_discharged_by_the_route_that_uses_it,
   receipt_subject_surface_outlives_its_own_production_time,
   trigger_satisfied_before_the_row_was_written,
+  summary_counters_aggregate_over_a_disposition_set_the_verdict_is_not_in,
 ]
