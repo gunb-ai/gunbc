@@ -885,6 +885,40 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+/// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
+/// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
+/// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
+/// the declaration tail and the roster tail, so row lanes conflicted with each other by
+/// construction. The direction is forced by acyclicity rather than chosen -- a row module imports
+/// `GuaranteeStall` from the type module, so the type module cannot import the rows back -- which
+/// is why the enumeration leaves for `gunbc.guarantee_stall.roster` and each row for
+/// `gunbc.guarantee_stall.<row>`.
+///
+/// TEN DELTAS, TEN ROWS, ENUMERATED BY IDENTITY AND NOT MATCHED BY PATTERN, on the rule the
+/// eighteenth transition states: a wildcard over "anything that moved under
+/// gunbc.guarantee_stall" would also admit the next relocation nobody reviewed. All ten are
+/// bindings in ONE consumer, `test.claim.guarantee_stall_witness_test`, and they split two ways --
+/// six whose spelling now resolves to the roster module (`all_guarantee_stalls`,
+/// `restored_stalls`, `every_restored_stall_is_rostered_once`), four whose spelling now resolves to
+/// one row module (`next_rung_trigger_enforcement_stall`). The three folds that take a
+/// `List<GuaranteeStall>` PARAMETER did not move and produce no delta, which is the check on the
+/// claim: had they moved too, this ledger would be showing thirteen.
+///
+/// THE MEMBERSHIP ADDITIONS ARE NOT HERE AND THAT IS NOT AN OMISSION. The witness reaching the two
+/// new modules classified `ExplicitlyEvaluatedZeroDelta` and auto-admits; only `TargetChanged`
+/// refuses. A row for an auto-admitted disposition would be a decoration that later reports stale.
+///
+/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY -- no branch, no dispatch,
+/// no code path; the mechanism that reads them is unchanged. What would be a scaffold is a second
+/// route around the adjudicator, and there is none.
+///
+/// DISSOLVE-ON is gunbc#10328 merging, and the trigger names the CAPABILITY rather than an
+/// artifact: once main carries the split, base and head both have it and NO RUN CAN PRODUCE THESE
+/// TEN DELTAS. They will report CONSUMED rather than stale, born consumed like the #10206, SJT-1
+/// and DCH-1 cohorts, because a row authored in the same PR that performs its own move is satisfied
+/// at the BASE of every later run. Their deletion is charged to WHOEVER NEXT TOUCHES THIS ROSTER,
+/// which is this module's standing convention and not a follow-up PR anyone could forget.
+///
 /// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
 /// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
 /// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
@@ -927,22 +961,35 @@ pub struct TransitionAdmission {
 /// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
 /// spelling to product.placement_supply, the delta stops being producible, and this row is owed
 /// deletion by the next roster-touching change.
-
-/// SIXTH CONFLICT ON THIS ROSTER (2026-09-04, gunbc#10300), AND THE FIRST WHERE THE RULE ABOVE WAS
-/// APPLIED WITH ITS INPUT READ RATHER THAN GUESSED. The incoming row was gunbc#10218's
-/// `physical_asset_identity_eq`, and the paragraph above predicted its own discharge: "once
-/// gunbc#10218 merges, the base binds the spelling to product.placement_supply, the delta stops
-/// being producible, and this row is owed deletion by the next roster-touching change." This is
-/// that change, and the base was read rather than assumed --
-/// `product.printed_chassis.manufacturing_manifest` imports `physical_asset_identity_eq` from
-/// `product.placement_supply` on main today. The delta is not producible, the row is consumed, and
-/// it is deleted here. Nothing about this branch made that true; #10218 merging did.
 ///
-/// WHAT SURVIVES IS WHAT THIS BRANCH AUTHORED AND STILL OWES: the two `param_names_of` rows below,
-/// whose transition is open because #10300 has not merged. That is the rule's other half, and the
-/// wave-admission phase is the control on both directions at once -- carrying a consumed row makes
-/// it report stale, and dropping an open one makes its delta unadjudicated. Neither is a judgement
-/// call a reader has to trust.
+/// TWENTY-FOURTH DISSOLUTION (2026-09-04), PAID ON THE RULE THE TWENTY-THIRD JUST WROTE DOWN. The
+/// one `gunbc#10218 identity-equality re-home` row is deleted, and its consumption was READ FROM
+/// THE BASE rather than waited on: main declares `physical_asset_identity_eq` in
+/// `product.placement_supply` (dag/gunbc/product/placement_supply.dag) and
+/// `product.printed_chassis.manufacturing_manifest` imports it from there by name, so the base
+/// already binds that spelling to that target and the delta is not producible. That is exactly the
+/// check the entry above says costs a required run whenever it is guessed instead.
+///
+/// THE SIX ROWS THIS BRANCH ALSO DELETED ARE NOT RECORDED TWICE. An earlier head of this branch
+/// removed the four `gunbc#10028` and two `gunbc#10206` rows and wrote its own dissolution entry
+/// for them; main removed the same six independently and recorded it as the TWENTY-THIRD. One
+/// event, one record: my entry is dropped in favour of main's, because a second narration of the
+/// same deletion is the double-record this ledger already refuses once above.
+///
+/// TWENTY-FIFTH DISSOLUTION (2026-09-04), SAME RULE, INCOMING SIDE. The ten `gunbc#10328
+/// guarantee_stall split` rows arriving with this merge are deleted, and again the base was read
+/// rather than assumed: main carries `dag/gunbc/guarantee_stall/` and
+/// `test.claim.guarantee_stall_witness_test` imports `all_guarantee_stalls` from
+/// `gunbc.guarantee_stall.roster` and `next_rung_trigger_enforcement_stall` from its own module, so
+/// every one of those ten deltas is already bound at the base and none is producible. Born
+/// consumed, on the reasoning the fourth transition established.
+///
+/// AND THE ENTRY THIS BRANCH WROTE FOR THE #10218 DELETION IS DROPPED, on main's instruction above
+/// and this ledger's own refusal of double-recording. Both sides deleted that row and both read the
+/// base to justify it; main's TWENTY-FOURTH is the record, and a second narration of one event is
+/// the defect the SEVENTEENTH entry already names. What this branch keeps is only what it authored
+/// and still owes: the two `param_names_of` rows.
+
 /// TWENTIETH TRANSITION (2026-09-04), gunbc#10300, AND IT IS THE EIGHTEENTH'S REMAINDER.
 /// `param_names_of` existed byte-identically in `v2.lens.effect_reach` and
 /// `v2.lens.live_read_classification` -- the same duplication #10156 grounded for the rest of the

@@ -2,7 +2,7 @@ module extdeps.filesystem.filesystem_io
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, Int, List, String }
+import std.types { Bool, FilePath, Int, List, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -81,6 +81,40 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 // exposed as before. RUNG: mitigatable, and structurally guaranteed only for adopting consumers.
 // NEXT-RUNG TRIGGER: `filesystem_entry_presence` and the path-joining sites take
 // `FilesystemEntryName` rather than `String`, at which point a raw name cannot reach either.
+//
+// THAT TRIGGER IS STILL OPEN AND THE CHANGE BELOW DID NOT CLOSE IT, which is stated here because
+// the adjacent DIRECTORY half just landed and the two are easy to read as one. What landed is the
+// directory subject: it is admitted once and carried as `FilePath`. The name half is untouched, so
+// `name: "a/b.json"` still introduces a level the listing was never asked about.
+//
+// RESIDUE AT IDENTITY GRAIN, named rather than counted -- five identities:
+//   1. `filesystem_entry_presence`'s `name` parameter
+//   2. `FilesystemEstablishedAbsence.name`
+//   3. `filesystem_established_absence_path`'s composition of an unadmitted component
+//   4. `filesystem_file_observation`'s `name` parameter
+//   5. `filesystem_file_observation`'s `path` parameter
+//
+// (4) AND (5) ARE TWO INDEPENDENT INGRESSES ON ONE SIGNATURE, which is why migrating (1) alone
+// would not close anything: `filesystem_file_observation` stays directly callable with an arbitrary
+// name and keeps forwarding it into `filesystem_entry_presence`. And its `path` is supplied
+// independently of the listing and returned unexamined on the read-succeeded arm --
+// `FilesystemReadSucceeded { content: c } => FilesystemFileRead { path: path, content: c }` --
+// so a caller may hand in a listing for `work/repo.json` together with a successful read of
+// `/some/other/file` and receive one `FilesystemFileRead` carrying the unrelated path and its bytes.
+// That is the same subject-substitution class the absence half closed by DERIVING its path from the
+// carrier, and it predates this change.
+//
+// SCOPE OF THAT ROSTER, stated so it is not read as an unqualified module-wide census: it covers the
+// TWO PRODUCTION FOLDS through which consumers observe, and nothing else. The low-level helper
+// `filesystem_listing_names_entry` is deliberately NOT on it -- it is the membership predicate the
+// folds call, its migration is not required to close the ingress, and listing it would inflate the
+// population with an identity this trigger does not speak for.
+//
+// None of the five is blocked on anything external -- `admit_filesystem_entry_name` above already
+// refuses the spelling, and the path half is derivable from the listing exactly as the absence path
+// is. It is a replacement migration over `filesystem_entry_presence`'s and
+// `filesystem_file_observation`'s whole caller population, which is why it is its own change rather
+// than smuggled into this one.
 type FilesystemEntryName sole_constructor {
   name: String
 }
@@ -210,52 +244,131 @@ fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
 // execution of a wall whose corpus-wide arms nothing currently re-runs. It is the fixture-boundary
 // red section 4b asks for, taken once, not a standing gate.
 
+// AND THE DIRECTORY IS A SUBJECT, NOT A DECORATION, WHICH THE `String` FIELDS DID NOT SAY.
+// Measured on this tree before the repair, by executing the fold rather than by reading it:
+// `filesystem_listing_observation(directory: "", success: true, ...)` minted a listing, an entry
+// that was not named minted an absence, and `filesystem_established_absence_path` rendered it as
+// `/repo.json` -- an ABSOLUTE path at the host root, for an absence established about no directory
+// at all. The control that this is not simply a broken projection is the same call with
+// `directory: "workdir"`, which renders `workdir/repo.json`. So a caller that supplies no directory
+// receives a token authorizing a write to `/`, and nothing in either signature refused it.
+//
+// THE ADMISSION IS AT THE ONE RAW INGRESS AND THE ADMITTED VALUE TRAVELS. Guarding only inside
+// `filesystem_listing_observation` while the carriers kept `directory: String` would establish that
+// THIS function happened to check, which is a control-flow fact; a later constructor, decoder or
+// fixture could mint the same carrier without it and no signature would change. Carrying `FilePath`
+// makes it a fact about the VALUE, so every arm derived from one listing holds the same admitted
+// path and no arm recasts or re-admits it.
+//
+// THE CARRIER IS `std.types.FilePath` AND NOT A NEW `FilesystemDirectoryPath`. The whole law this
+// part is missing is nonemptiness, which `FilePath = String where non_empty` already owns and which
+// every neighbouring dependency already spells that way for `workdir` and `root`. A second type
+// whose only additional rule was nonemptiness would be section 3 nicknaming, and its name would
+// additionally fuse the lexical path fact with the directory-KIND fact that the surrounding
+// `FilesystemDirectoryListed` arm already carries.
+//
+// WHAT IS DELIBERATELY NOT REFUSED, ruled on review of the five measured specimens: `/`, `..` and
+// `.` are admitted. `/` is the process root and `..` is a real directory; refusing them here would
+// inject a CONTAINMENT POLICY into a generic filesystem observation, and no containment root is
+// represented by any type in this module. A consumer that requires containment admits a contained
+// directory before calling this layer. The filesystem fact and the caller policy are two questions.
+type FilesystemDirectoryPathAdmission
+  = FilesystemDirectoryPathAdmitted { path: FilePath }
+  | FilesystemDirectoryPathRefused { directory: String, cause: String }
+
+fn admit_filesystem_directory_path(directory: String) -> FilesystemDirectoryPathAdmission {
+  if directory == "" {
+    FilesystemDirectoryPathRefused {
+      directory: directory,
+      cause: join([
+        "a directory subject is empty, so it denotes no directory -- and every path derived from ",
+        "it would be joined to the host root instead",
+      ], ""),
+    }
+  } else {
+    FilesystemDirectoryPathAdmitted { path: directory as FilePath }
+  }
+}
+
 type FilesystemDirectoryListing sole_constructor {
-  directory: String
+  directory: FilePath
   entries: String
 }
 
 type FilesystemEstablishedAbsence sole_constructor {
-  directory: String
+  directory: FilePath
   name: String
 }
 
+// THE MALFORMED SUBJECT IS ITS OWN ARM AND IS NOT LAUNDERED THROUGH THE HOST-ERROR ONE. A refused
+// subject and a failed listing have different remedies -- fix the caller versus look at the host --
+// and reusing `FilesystemDirectoryListingRefused` would have required FABRICATING an `error` string
+// the host never produced, which is exactly the fabricated-plausible-output section 5 forbids.
 type FilesystemListingObservation
   = FilesystemDirectoryListed(FilesystemDirectoryListing)
-  | FilesystemDirectoryListingRefused { directory: String, error: String }
+  | FilesystemDirectoryListingRefused { directory: FilePath, error: String }
+  | FilesystemDirectorySubjectRefused { directory: String, cause: String }
 
+// ADMISSION PRECEDES CONSULTING `success`, WHICH IS THE ORDERING THAT CARRIES THE GUARANTEE. If
+// `success` were read first, an empty directory with `success: false` would land in the host-error
+// arm and the empty subject would still be carried onward as a listing-shaped fact. Deciding the
+// subject first means BOTH `success` values for an inadmissible directory reach the same subject
+// refusal, and only an admitted directory reaches either transport-observation arm.
 fn filesystem_listing_observation(
   directory: String,
   success: Bool,
   entries: String,
   error: String,
 ) -> FilesystemListingObservation {
-  if success {
-    FilesystemDirectoryListed(
-      FilesystemDirectoryListing { directory: directory, entries: entries },
-    )
-  } else {
-    FilesystemDirectoryListingRefused { directory: directory, error: error }
+  match admit_filesystem_directory_path(directory: directory) {
+    FilesystemDirectoryPathRefused { directory: d, cause: c } =>
+      FilesystemDirectorySubjectRefused { directory: d, cause: c }
+    FilesystemDirectoryPathAdmitted { path: admitted } =>
+      if success {
+        FilesystemDirectoryListed(
+          FilesystemDirectoryListing { directory: admitted, entries: entries },
+        )
+      } else {
+        FilesystemDirectoryListingRefused { directory: admitted, error: error }
+      }
   }
 }
 
 // A REFUSED LISTING IS NOT AN EMPTY ONE, WHICH IS THE HALF A `Bool` CANNOT HOLD. The refusal arm
 // carries the directory and the host error rather than a name-not-found, so a consumer that widens
 // on it has to write the widening down -- it cannot inherit it from a false.
+//
+// AND A REFUSED SUBJECT IS NOT AN UNMAKEABLE OBSERVATION EITHER, WHICH IS THE ARM THE FIRST CUT OF
+// THIS CHANGE GOT WRONG. That cut carried the subject refusal only as far as the listing carrier and
+// then folded it into the indeterminate arm with an explanatory `cause`. That preserves the
+// explanation for a HUMAN and discards the state for every PROGRAM: a consumer could separate "the
+// caller supplied no valid directory subject" from "the host refused to list an admitted directory"
+// only by parsing prose. Ruled on review of this module: the same argument that justifies that
+// collapse would equally have justified folding the subject refusal into
+// `FilesystemDirectoryListingRefused` one layer up, which this module refuses -- a distinction
+// cannot be mandatory at one layer and expendable at the next when no intervening consumer has made
+// a policy decision. The remedies differ and that is what makes them different arms: a refused
+// subject is repaired by fixing the CALLER'S ARGUMENT, an indeterminate one by investigating the
+// host, its permissions or its transport. Some consumers will end up taking the same stop action for
+// both, and that is fine -- but the collapse then happens VISIBLY at the policy-owning consumer
+// rather than invisibly inside a generic filesystem fold.
 type FilesystemEntryPresence
   = FilesystemEntryAbsent(FilesystemEstablishedAbsence)
-  | FilesystemEntryListed { directory: String, name: String }
+  | FilesystemEntryListed { directory: FilePath, name: String }
   | FilesystemEntryPresenceIndeterminate { cause: String }
+  | FilesystemEntrySubjectRefused { directory: String, name: String, cause: String }
 
 fn filesystem_entry_presence(
   listing: FilesystemListingObservation,
   name: String,
 ) -> FilesystemEntryPresence {
   match listing {
+    FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
+      FilesystemEntrySubjectRefused { directory: d, name: name, cause: c }
     FilesystemDirectoryListingRefused { directory: d, error: e } =>
       FilesystemEntryPresenceIndeterminate {
         cause: join([
-          "the directory ", d, " could not be listed, so the absence of ", name,
+          "the directory ", d as String, " could not be listed, so the absence of ", name,
           " is not established -- ", e,
         ], ""),
       }
@@ -297,13 +410,32 @@ fn filesystem_entry_presence(
 // answers" have different remedies, and collapsing them is the state-space conflation this
 // repository keeps finding.
 //
+// AND THE SUBJECT REFUSAL TRAVELS THIS FAR FOR THE SAME REASON IT LEFT THE LISTING CARRIER. It is
+// not folded into the indeterminate arm here either. Its remedy is the caller's argument, and the
+// arm carries the directory and the name so a consumer can say WHICH argument.
+//
+// WHAT THIS ARM DOES NOT CLAIM, and an earlier draft of this very annotation claimed it falsely.
+// It does NOT say the host operations did not run. This fold and `filesystem_listing_observation`
+// are PURE over outcomes the caller already obtained: `gunbc.scm.init.initialize_repository_at`
+// executes `Filesystem.List` and `Filesystem.Read` unconditionally and then hands their channels
+// here, so on that path the host was already asked. Refusing an inadmissible subject at a pure fold
+// cannot un-run a call that has already happened. The guarantee that IS true, and is the whole one
+// this arm carries: the supplied outcomes establish no admitted listing, no established absence and
+// no file observation for that subject, so nothing downstream is authorized by them -- in
+// particular no create, because the create arm is reachable only from an established absence.
+// Preventing the host calls themselves would require admission ahead of `Filesystem.List` and
+// `Filesystem.Read`, at every caller or at their operation boundary; that is a separate migration
+// and this module does not claim it.
+//
 // THE ARMS ARE THE ACTIONS: proceed as if nothing is there, consume the bytes, stop because the
-// observation could not be made, or stop because the subject moved while it was being made.
+// observation could not be made, stop because the subject moved while it was being made, or stop
+// because there was no subject to observe.
 type FilesystemFileObservation
   = FilesystemFileAbsent(FilesystemEstablishedAbsence)
   | FilesystemFileRead { path: String, content: String }
   | FilesystemFileIndeterminate { cause: String }
   | FilesystemFileObservationsDisagree { path: String, cause: String }
+  | FilesystemFileSubjectRefused { directory: String, name: String, cause: String }
 
 fn filesystem_file_observation(
   listing: FilesystemListingObservation,
@@ -312,6 +444,8 @@ fn filesystem_file_observation(
   read: FilesystemReadOutcome,
 ) -> FilesystemFileObservation {
   match filesystem_entry_presence(listing: listing, name: name) {
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+      FilesystemFileSubjectRefused { directory: d, name: n, cause: c }
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       FilesystemFileIndeterminate { cause: join([c, " (at ", path, ")"], "") }
     FilesystemEntryAbsent(established) =>
@@ -346,7 +480,7 @@ fn filesystem_file_observation(
 // find; reading the two fields off an established absence is exactly that, and it is the reason the
 // carrier holds them rather than being a token.
 fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) -> String {
-  join(["no ", absence.name, " is listed in ", absence.directory], "")
+  join(["no ", absence.name, " is listed in ", absence.directory as String], "")
 }
 
 // AND THE SUBJECT IT ESTABLISHED IS THE ONLY PATH IT CAN AUTHORIZE. A consumer that takes an
@@ -357,8 +491,26 @@ fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) 
 // established for one subject could coexist with a write to another. Deriving the path HERE, from
 // the carrier's own fields, is what makes consuming the token mean something: there is no second
 // target to disagree with.
-fn filesystem_established_absence_path(absence: FilesystemEstablishedAbsence) -> String {
-  join([absence.directory, "/", absence.name], "")
+//
+// AND THE JOIN IS SEPARATOR-AWARE BECAUSE UNCONDITIONAL INSERTION MANUFACTURED A DIFFERENT PATH.
+// The prior body always inserted `/`, so an authored `/` rendered `//repo.json` and an authored
+// `w/` rendered `w//repo.json`. POSIX gives a pathname beginning with exactly two slashes
+// implementation-defined interpretation, so the first of those is not cosmetic noise: this module
+// created a two-slash prefix the caller never wrote. The repair inserts the separator only when the
+// prefix does not already end in one.
+//
+// THIS IS NOT SEPARATOR NORMALIZATION, WHICH IS A DIFFERENT AND REJECTED CHANGE. It does not
+// rewrite the directory, resolve `..`, collapse interior slashes, or choose a canonical spelling --
+// an authored `//` still renders `//repo.json`, because preserving the subject the caller supplied
+// is the whole point of admitting it. The obligation discharged here is only that this projection
+// stop INTRODUCING a separator that was already present.
+fn filesystem_established_absence_path(absence: FilesystemEstablishedAbsence) -> FilePath {
+  let directory = absence.directory as String
+  if ends_with(s: directory, suffix: "/") {
+    join([directory, absence.name], "") as FilePath
+  } else {
+    join([directory, "/", absence.name], "") as FilePath
+  }
 }
 
 data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
