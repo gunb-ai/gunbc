@@ -337,6 +337,12 @@ type CpuCoreCount = Measure<Count, One, Nat>
 // that axis once per upstream that happens to count something.
 type MergeQueueEntryCount = Measure<Count, One, Nat>
 
+// A count of included power cords or other basic physical accessories. On the Count axis alongside
+// its siblings (HardwareThreadCount, CpuCoreCount, MergeQueueEntryCount), typed here so a product
+// module (extdeps.network.mikrotik_crs812) consumes it rather than re-minting a local alias for the
+// same axis. Added 2026-09-04.
+type PowerCordCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -1012,6 +1018,14 @@ fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
 }
 
 fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+  measure_count(c)
+}
+
+fn power_cord_count(count: Nat) -> PowerCordCount {
+  Measure { count: count }
+}
+
+fn power_cord_count_value(c: PowerCordCount) -> Nat {
   measure_count(c)
 }
 
