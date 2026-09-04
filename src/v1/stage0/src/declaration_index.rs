@@ -2542,6 +2542,7 @@ mod import_binding_authority_tests {
 
         let target = match &*semantics {
             CallSemantics::PlainCallSemantics { target } => target.clone(),
+            CallSemantics::ResolvedDirectCallSemantics { target, .. } => target.clone(),
             CallSemantics::LookupCallSemantics { target } => target.clone(),
             CallSemantics::FunctionValueCallSemantics => return ObservedTarget::FunctionValueCall,
         };
@@ -2657,10 +2658,15 @@ mod import_binding_authority_tests {
     /// choice -- it is the specimen carrying `DivergentProjection` fidelity, which is the condition
     /// `declared_candidate_rivals_the_builtin` requires.
     fn parent_env_declaring_map_get() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
-        use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+        use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig};
         let sig = Rc::new(ResolvedFuncSig {
             name: "map_get".to_string(),
             params: crate::v1_std_core::empty_node_list(),
+            // This synthetic declaration deliberately has no parameters. Its empty formal
+            // population is kernel-grounded, not awaiting a module-context resolution pass.
+            resolved_formals: Rc::new(ResolvedFormals::KernelGroundedFormals {
+                formals: Rc::new(im::Vector::new()),
+            }),
             inferred: crate::v1_std_core::unit_type(),
             is_async: false,
             output_provenance: Rc::new(im::Vector::new()),

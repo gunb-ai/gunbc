@@ -37895,6 +37895,11 @@ mod sigs_env_flat_parents {
         Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
             name: fn_name.to_string(),
             params: Rc::new(im::vector![]),
+            resolved_formals: Rc::new(
+                crate::v1_compiler_infer_sigs::ResolvedFormals::KernelGroundedFormals {
+                    formals: Rc::new(im::vector![]),
+                },
+            ),
             inferred: crate::v1_std_core::leaf_node_with_span(
                 std::rc::Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,

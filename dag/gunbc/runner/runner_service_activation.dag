@@ -75,6 +75,73 @@ type RunnerActivationReadiness
     }
   | ActivationReadinessUnobserved { reason: NonEmptyStr }
 
+// WHAT THE HOST SAYS ABOUT EACH DESIRED UNIT, READ BEFORE ANY TRANSITION IS PLANNED.
+//
+// The planner used to enumerate every desired unit and ask readiness to admit enable and start for
+// all of them, so a host whose five units were already enabled and running planned two refusals
+// about work that did not exist -- and the terminal counted them. That is the empty-observation
+// narrow in its planning form: not reading the unit's state was rendered as "every unit needs
+// both transitions". Standing is the observed pair per unit; a unit that is already enabled needs
+// no enable, one already active needs no start, and readiness is consulted ONLY for the units that
+// still need a transition. Unobserved standings degrade to the old shape -- every unit needs
+// everything -- which is the fail-closed direction, since it plans a refusal rather than silence.
+type RunnerUnitStanding {
+  unit: NonEmptyStr
+  active: Bool
+  enabled: Bool
+}
+
+type RunnerUnitStandings
+  = UnitStandingsObserved { units: List<RunnerUnitStanding> }
+  | UnitStandingsUnobserved { reason: NonEmptyStr }
+
+data runner_unit_standings_unobserved_no_transaction: RunnerUnitStandings = UnitStandingsUnobserved {
+  reason: "no unit-state observation was taken for this host, so every desired unit is planned as needing both transitions" as NonEmptyStr,
+}
+
+fn runner_unit_standing_wire(standing: RunnerUnitStanding) -> String {
+  join([
+    "unit:", standing.unit as String, "=",
+    if standing.active { "active" } else { "inactive" }, ",",
+    if standing.enabled { "enabled" } else { "disabled" },
+  ], "")
+}
+
+fn runner_unit_standings_baseline_rows(standings: RunnerUnitStandings) -> List<String> {
+  match standings {
+    UnitStandingsObserved { units: us } => map(us, u => runner_unit_standing_wire(standing: u))
+    UnitStandingsUnobserved { reason: _ } => ["units:unobserved"]
+  }
+}
+
+fn runner_unit_standing_needs(transition: RunnerServiceTransition, standing: RunnerUnitStanding) -> Bool {
+  match transition {
+    RunnerEnableTransition => !standing.enabled
+    RunnerStartTransition => !standing.active
+  }
+}
+
+// THE UNITS A TRANSITION STILL HAS TO TOUCH. A desired unit with no observed standing row is
+// treated as needing the transition: an observation that named only some of the desired units has
+// not answered for the rest, and answering "converged" for a unit nobody looked at would be the
+// narrow this module exists to remove.
+fn runner_units_needing_transition(
+  transition: RunnerServiceTransition,
+  units: List<NonEmptyStr>,
+  standings: RunnerUnitStandings,
+) -> List<NonEmptyStr> {
+  match standings {
+    UnitStandingsUnobserved { reason: _ } => units
+    UnitStandingsObserved { units: observed } =>
+      filter(units, u =>
+        match first(filter(observed, o => (o.unit as String) == (u as String))) {
+          Present { value: standing } => runner_unit_standing_needs(transition: transition, standing: standing)
+          Absent => true
+        }
+      )
+  }
+}
+
 type RunnerTransitionPlan
   = TransitionAdmitted {
       transition: RunnerServiceTransition
@@ -85,6 +152,10 @@ type RunnerTransitionPlan
       host_label: NonEmptyStr
       reason: NonEmptyStr
       affected_units: List<NonEmptyStr>
+    }
+  | TransitionConverged {
+      transition: RunnerServiceTransition
+      units: List<NonEmptyStr>
     }
 
 fn runner_transition_verb_label(transition: RunnerServiceTransition) -> String {
@@ -187,18 +258,33 @@ fn admit_runner_transition(
 // preference: a unit started before it is enabled serves until the next boot and then silently
 // stops being capacity, which is the state this whole lane was dispatched to remove. The list is
 // the emission order.
+fn runner_host_transition_plan(
+  transition: RunnerServiceTransition,
+  admission: RunnerActivationAdmission,
+  units: List<NonEmptyStr>,
+  standings: RunnerUnitStandings,
+) -> RunnerTransitionPlan {
+  let needing = runner_units_needing_transition(transition: transition, units: units, standings: standings)
+  if list_length(items: needing) == 0 {
+    TransitionConverged { transition: transition, units: units }
+  } else {
+    admit_runner_transition(transition: transition, admission: admission, units: needing)
+  }
+}
+
 fn runner_host_transition_plans(
   host_admission: RunnerHostAdmission,
   readiness: RunnerActivationReadiness,
   units: List<NonEmptyStr>,
+  standings: RunnerUnitStandings,
 ) -> List<RunnerTransitionPlan> {
   let admission = runner_activation_admission_from_readiness(
     host_admission: host_admission,
     readiness: readiness,
   )
   [
-    admit_runner_transition(transition: RunnerEnableTransition, admission: admission, units: units),
-    admit_runner_transition(transition: RunnerStartTransition, admission: admission, units: units),
+    runner_host_transition_plan(transition: RunnerEnableTransition, admission: admission, units: units, standings: standings),
+    runner_host_transition_plan(transition: RunnerStartTransition, admission: admission, units: units, standings: standings),
   ]
 }
 
@@ -206,11 +292,13 @@ fn runner_activation_plans_for_deploy(
   host_admission: RunnerHostAdmission,
   deploy: RunnerHostDeploy,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<RunnerTransitionPlan> {
   runner_host_transition_plans(
     host_admission: host_admission,
     readiness: readiness,
     units: runner_host_activation_units(deploy: deploy),
+    standings: standings,
   )
 }
 
@@ -273,6 +361,13 @@ fn runner_transition_apply_lines(plan: RunnerTransitionPlan) -> List<String> {
           ),
         ),
       ]
+    TransitionConverged { transition: t, units: us } =>
+      [
+        concat(
+          concat("# runner-service ", runner_transition_verb_label(transition: t)),
+          concat(": converged", runner_transition_affected_population_render(units: us)),
+        ),
+      ]
   }
 }
 
@@ -293,6 +388,11 @@ fn runner_transition_plan_line(plan: RunnerTransitionPlan) -> String {
             concat(" ", r as String),
           ),
         ),
+      )
+    TransitionConverged { transition: t, units: us } =>
+      concat(
+        concat("CONVERGED runner-service ", runner_transition_verb_label(transition: t)),
+        runner_transition_affected_population_render(units: us),
       )
   }
 }
@@ -316,6 +416,7 @@ fn runner_transition_plan_transition(plan: RunnerTransitionPlan) -> RunnerServic
   match plan {
     TransitionAdmitted { transition: t, operations: _ } => t
     TransitionRefused { transition: t, host_label: _, reason: _, affected_units: _ } => t
+    TransitionConverged { transition: t, units: _ } => t
   }
 }
 
@@ -334,6 +435,7 @@ fn runner_transition_is_refused(plan: RunnerTransitionPlan) -> Bool {
   match plan {
     TransitionAdmitted { transition: _, operations: _ } => false
     TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => true
+    TransitionConverged { transition: _, units: _ } => false
   }
 }
 
@@ -349,6 +451,7 @@ fn runner_activation_admitted_operation_count(plans: List<RunnerTransitionPlan>)
       match p {
         TransitionAdmitted { transition: _, operations: ops } => acc + list_length(items: ops)
         TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => acc
+        TransitionConverged { transition: _, units: _ } => acc
       },
   )
 }
