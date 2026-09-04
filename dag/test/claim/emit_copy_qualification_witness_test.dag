@@ -57,6 +57,39 @@ import gunbc.emit_copy_qualification_fixture_gen {
   fixture_module_text, runner_main_text, shard_case_rows, driver_module_text
 }
 
+// ─ RELOCATED FROM THE END OF THIS FILE, VERBATIM (2026-09-04) ──────────────────────
+//
+// This block sat after the final declaration. A source annotation there names no module item, so
+// the parse refuses it -- 16 errors, ON MAIN, which fail the synthetic merge of every open PR and
+// so block the whole queue rather than one branch. Reproduced by compiling main's own copy from a
+// clean checkout of 97345e55d5, which is worth stating because merging main does NOT clear it:
+// main is where it comes from.
+//
+// The change that landed it deleted the three declarations this text described and kept the text.
+// That is the right instinct -- the account of WHY rows were removed is exactly what a later reader
+// needs -- and it only needed a subject. The content is a statement about THIS MODULE's standing,
+// not about any one declaration, so the module header is where it attaches. Not one word is
+// changed or dropped.
+//
+// ── THE WORKFLOW JOB THAT CARRIED THIS BATTERY IS DELETED (2026-09-04 runner-capacity ruling) ──
+//
+// Three rows stood here asserting the `emit-copy-qualification-battery` job's capability closure,
+// its inert `if_condition: "false"`, and that its argv named this module's wet entry. All three
+// had `gunbc.witness_floor_workflow` symbols as their subject, and that subject no longer exists:
+// the operator spent the held activation token on DELETION rather than activation, so the job is
+// gone from the emitted workflow instead of having its "false" lifted.
+//
+// WHAT THAT COSTS, STATED HERE RATHER THAN LEFT TO BE INFERRED FROM AN ABSENCE. The job's explicit
+// `claim_batch --functions` line was this module's ONLY SANCTIONED CONSUMER, so the wet shards and
+// calibration mutants below now have no executing consumer at all -- they are specification
+// without execution in the sense DESIGN section 5 names, and the rows above this comment establish
+// nothing about a running system until one is restored. That is recorded at
+// `gunbc.rung_drop` `emit_copy_qualification_without_a_consumer`; read it before citing any row in
+// this file as coverage. It is NOT retired by re-adding a job, which the roster comment in
+// `witness_floor_workflow` now requires operator sign-off for, but by converting these functions
+// to floor-enrolled `*_test.dag` witnesses -- the same conversion the deleted job's dissolution
+// row demanded, now with nothing else holding the module up.
+
 // Hermetic floor witnesses for the EMIT-COST-QUAL-0 grid authority: roster totality and
 // denominator exactness, applicability and expectation derivation controls, growth-judgment
 // and join-arm discrimination, and generation-grain mutant discrimination. The wet transaction
