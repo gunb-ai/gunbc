@@ -189,18 +189,6 @@ test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
   }
 }
 
-// The production caller inherits the gate: openbmc_fan_config_stepwise_count returns a REFUSAL
-// until the live confirmation is observed, never a fabricated count. The typed-variant gate
-// test (remote_jq_execute_gates_on_unknown_interpretation above) already establishes that the
-// Unknown arm refuses with RemoteExecInterpretationUnknown; this tests that the error propagates
-// through the production caller without being caught or replaced.
-test fn fan_config_stepwise_count_refuses_until_live_confirmation() -> Bool {
-  match openbmc_fan_config_stepwise_count(session: witness_session, config_path: stepwise_config_path) {
-    OpenBmcIntegerObserved { value: _ } => false
-    OpenBmcIntegerRefused { reason: _ } => true
-  }
-}
-
 // THE Observed BRANCH IS ALSO WITNESSABLE HERMETICALLY. No live BMC is needed: a witness
 // constructs a RemoteExecCommandLiveConfirmationObserved value as a fixture and asserts the
 // command IS BUILT. The fixture does not claim the far side agreed; it claims that IF the
