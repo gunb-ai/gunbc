@@ -1,244 +1,607 @@
 module test.claim.spark.spark_oobe_execution_placement_witness
 
-import std.types { Bool, List, Int }
+import std.types { Bool, List, Int, NonEmptyStr }
+import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.access.posix { PosixLoginName }
+import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_network_host }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv7 }
 import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdmission,
   ForwardingAdmitted,
   ForwardingAdministrativelyProhibited,
   ForwardingAdmissionUnobserved,
-  ForwardingAdmissionSubject,
-  SshAuthenticatedPrincipal,
   SshLoginPrincipal,
   SshCertificatePrincipal,
+  ForwardDirection,
   LocalForward,
   RemoteForward,
   forward_flag,
+  exit_on_forward_failure_option,
+  batch_mode_option,
 }
-import extdeps.network.endpoint { SocketAddress, HostByName, host_by_ipv4 }
-import extdeps.network.ipv4 { ipv4_address }
-import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
-import extdeps.access.posix { PosixLoginName }
-import extdeps.toolchain.types { Architecture, Aarch64 }
-import product.placement_supply { HostIdentity }
-import gunbc.spark.oobe_screen_observation { ObservedUnitAccessPointSsid }
+import extdeps.ssh.client_options {
+  SshClientOption,
+  BatchMode,
+  ExitOnForwardFailure,
+  serialize_ssh_client_option,
+}
+import gunbc.spark.oobe_screen_observation {
+  ObservedUnitAccessPointSsid,
+  OobeWalkTermination,
+  WalkHaltedAwaitingOperatorAuthority,
+  WalkReachedFlowCompletion,
+}
 import gunbc.spark.oobe_execution_placement {
-  RendererCapabilityStanding,
-  RendererCapable,
-  RendererRuntimeUnavailable,
-  RendererPlaywrightPackageUnavailable,
-  RadioRelayStanding,
-  RadioRelayReady,
+  ObservedMachineIdentity,
+  FleetAllocatedMachine,
+  UnallocatedMachineObservation,
+  RendererObservation,
+  RendererRuntimeObservation,
+  NodeRuntimePresent,
+  NodeRuntimeAbsent,
+  NodeRuntimeUnobserved,
+  NodeRuntimeVersion,
+  RendererPackageObservation,
+  PlaywrightPackagePresent,
+  PlaywrightPackageAbsent,
+  PlaywrightPackageUnobserved,
+  RendererBrowserObservation,
+  PlaywrightBrowserPresent,
+  PlaywrightBrowserAbsent,
+  PlaywrightBrowserUnobserved,
+  PlaywrightBrowserCacheEntry,
+  ProvisionedBrowser,
+  RendererBrowserBuildIdentity,
+  ChromiumBuildIdentified,
+  ChromiumBuildUnidentified,
+  RendererAssessment,
+  RendererMeetsRequirements,
+  RendererAssessmentDeclined,
+  RendererRefusalCause,
+  RendererIdentityUnallocated,
+  RendererAxisUnobserved,
+  RendererHasNoNodeRuntime,
+  RendererHasNoPlaywrightPackage,
+  RendererHasNoProvisionedBrowser,
+  RadioRelayObservation,
+  RadioAssociated,
   RelayHasNoRadioInterface,
   RelayRadioNotAssociated,
   RadioInterfaceName,
-  renderer_is_capable,
-  relay_is_ready,
-  renderer_host_of,
-  relay_host_of,
-  capable_renderer_count,
-  ready_relay_count,
-  host_is_capable_renderer,
-  host_is_ready_relay,
-  some_host_holds_both_roles,
-  observed_renderer_standings,
-  observed_relay_standings,
-  renderer_srv1_briansrls,
-  renderer_srv4_briansrls,
-  renderer_pi1_briansrls,
-  relay_pi1,
-  relay_srv4,
+  RelayAssessment,
+  RelayMeetsRequirements,
+  RelayAssessmentDeclined,
+  RelayRefusalCause,
+  RelayIdentityUnallocated,
+  RelayCarriesNoRadio,
+  RelayRadioUnassociated,
+  ObservedLegUse,
+  ForwardingPayloadStanding,
+  PayloadObservedInUse,
+  PayloadRefusedInUse,
+  ForwardingAdmissionSubject,
+  measured_leg_use,
+  ForwardingPayloadClass,
+  ObservationPayload,
+  SecretBearingPayload,
+  ForwarderLocus,
+  FleetHostForwarder,
+  EphemeralAttemptForwarder,
+  ParticipantGap,
+  NoRendererHasCompleteEvidence,
+  NoRelayHasCompleteEvidence,
+  ParticipantEvidenceCompleteRouteUnbuilt,
+  current_oobe_participant_gaps,
+  renderers_with_complete_evidence,
+  relays_with_complete_evidence,
+  renderer_assessment,
+  renderer_assessments,
+  relay_assessments,
+  participant_gaps_over,
+  NeitherParticipantHasCompleteEvidence,
+  RendererBrowserBuildUnidentified,
+  ChromiumBuild,
+  chromium_151_0_7922_34,
+  relay_assessment,
+  use_decision_for,
+  ForwardingUseSelection,
+  ForwardingUseDecisionMissing,
+  ForwardingUseDecisionUnique,
+  ForwardingUseDecisionAmbiguous,
+  RendererObservationAxis,
+  RuntimeAxis,
+  PackageAxis,
+  BrowserAxis,
+  observed_renderers,
+  observed_relays,
+  machine_pi1,
   pi1_local_forward_to_unit_admission,
   pi1_local_forward_to_unit_subject,
-  measured_route_use,
-  ForwardingUseStanding,
-  ObservationTrafficAdmitted,
-  SecretBearingTrafficAdmitted,
-  SecretBearingTrafficRefused,
-  SecretTrafficRefusalCause,
-  ProxyLocusNotAdmittedForCredentials,
-  TransportNotConfidential,
+  machine_srv4,
+  relay_pi1,
+  renderer_srv1_briansrls,
+  renderer_srv4_briansrls,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE CLAIM THE WHOLE PLACEMENT MODEL RESTS ON, and it is derived rather than asserted: no host is
-// both a capable renderer and a ready relay. That is why the actuator needs a composition at all.
+// ==========================================================================================
+// THESE WITNESSES ENTER THROUGH THE ASSESSMENT FUNCTIONS. The header this replaces still named
+// renderer_admission, relay_admission, select_* and oobe_session_admission -- four functions this
+// PR deleted -- which is the same defect the diff exists to remove: a claim describing machinery
+// that is not there. Every witness below enters through renderer_assessment, relay_assessment,
+// participant_gaps_over, or use_decision_for.
+// ==========================================================================================
+
+// THE HEADLINE GAP, PINNED TO THE EXACT ARM. Today no relay has complete evidence, and the reason
+// is pi1's missing fleet identity -- a decision only the operator can take, not a provisioning task.
+// Pinning the arm is what makes ratifying pi1 turn this witness: a witness asserting merely "some
+// gap exists" would stay green through a regression that refused for an unrelated reason and would
+// tell nobody what to build next.
 //
-// THE DISCRIMINATING RED: mark pi1 RendererCapable, or give srv4 a radio, and this goes red -- which
-// is exactly right, because either change would mean the composition is no longer forced and the
-// model should be re-derived rather than kept as a habit.
-test fn w_no_single_host_is_both_a_capable_renderer_and_a_ready_relay() -> Bool {
-  !some_host_holds_both_roles()
-    && host_is_capable_renderer(h: "srv4" as HostIdentity)
-    && host_is_ready_relay(h: "pi1" as HostIdentity)
-    && !host_is_ready_relay(h: "srv4" as HostIdentity)
-    && !host_is_capable_renderer(h: "pi1" as HostIdentity)
+// It asserts over the WHOLE published cause population rather than a selected representative, so
+// appending a relay cannot quietly change which refusal this reads.
+test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
+  match current_oobe_participant_gaps() {
+    ParticipantEvidenceCompleteRouteUnbuilt { renderers: _, relays: _ } => false
+    NoRendererHasCompleteEvidence { causes: _ } => false
+    NeitherParticipantHasCompleteEvidence { renderer_causes: _, relay_causes: _ } => false
+    NoRelayHasCompleteEvidence { causes: cs } =>
+      fold(cs, init: false, f: (acc, rcause) => acc || match rcause {
+        RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+        RelayCarriesNoRadio { machine: _ } => false
+        RelayRadioUnassociated { machine: _, radio_interface: _ } => false
+      })
+  }
 }
 
-// The arity is defended separately from the membership, for the reason this repository keeps
-// relearning: naming srv4 and pi1 says nothing about whether a third row quietly became capable.
-test fn w_exactly_one_capable_renderer_and_one_ready_relay_were_measured() -> Bool {
-  capable_renderer_count() == 1
-    && ready_relay_count() == 1
-    && length(observed_renderer_standings) == 5
-    && length(observed_relay_standings) == 5
+// THE POSITIVE CONTROL FOR THAT REFUSAL. Without this, the witness above is satisfied by an
+// admission function that can NEVER be ready, which would make it a permanently-green decoration
+// rather than a wall. The same relay observation with an ALLOCATED machine has complete evidence, so the
+// refusal is attributable to the allocation and to nothing else.
+test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> Bool {
+  match relay_assessment(obs: RadioAssociated {
+    machine: FleetAllocatedMachine { host: operator_host_srv7 },
+    radio_interface: "wlan0" as RadioInterfaceName,
+    associated_ssid: "spark-0c75" as ObservedUnitAccessPointSsid,
+  }) {
+    RelayMeetsRequirements { host: h, radio_interface: _, associated_ssid: ssid } =>
+      h == operator_host_srv7 && ssid == "spark-0c75"
+    RelayAssessmentDeclined { cause: _ } => false
+  }
 }
 
-// THE CORRECTION THIS MODULE LANDS, DEFENDED. srv1 was reported as a renderer candidate on the
-// strength of its browser cache. It is refused for a MISSING PACKAGE while the artifact IS
-// present, and those two halves are asserted together: an arm that recorded the refusal but lost
-// the artifact flag would describe a bare host and mis-state what has to be installed.
-test fn w_srv1_is_refused_for_the_package_and_not_for_the_browser_artifact() -> Bool {
-  !renderer_is_capable(r: renderer_srv1_briansrls)
-    && match renderer_srv1_briansrls {
-      RendererPlaywrightPackageUnavailable { host: h, account: _, browser_artifact_present: p } =>
-        h == "srv1" && p
-      RendererCapable { host: _, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => false
-      RendererRuntimeUnavailable { host: _, account: _ } => false
+// pi1 AS MEASURED IS DECLINED FOR ITS IDENTITY, NOT FOR ITS RADIO, and the distinction is the
+// whole content: the radio is present and associated to the unit's access point. What is missing is
+// operator ratification of adopting a support host into the fleet identity authority. A previous
+// head asserted the opposite here, having promoted pi1 to allocated while its own receipt recorded
+// the ratification as outstanding.
+test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Bool {
+  match relay_assessment(obs: relay_pi1) {
+    RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => false
+    RelayAssessmentDeclined { cause: c } => match c {
+      RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+      RelayCarriesNoRadio { machine: _ } => false
+      RelayRadioUnassociated { machine: _, radio_interface: _ } => false
     }
-}
-
-// pi1 is declined as a renderer for the RUNTIME, which is a different remedy from srv1's and must
-// not collapse into one "unavailable". It also carries no claim about the hardware: the arm says
-// no node runtime is present, not that this host could never render.
-test fn w_pi1_is_declined_for_a_missing_runtime_not_a_missing_package() -> Bool {
-  match renderer_pi1_briansrls {
-    RendererRuntimeUnavailable { host: h, account: _ } => h == "pi1"
-    RendererPlaywrightPackageUnavailable { host: _, account: _, browser_artifact_present: _ } => false
-    RendererCapable { host: _, account: _, architecture: _, node_runtime: _, playwright_package: _, browser_artifact: _ } => false
   }
 }
 
-// THE CAPABILITY IS PER ACCOUNT AND THE ROWS SAY SO. srv4's renderer row is briansrls, and srv2's
-// and srv3's could only be measured as ubuntu because those hosts refuse the operator account.
-// Asserting the account here is what stops a later edit from attaching one host's login to
-// another host's observation, which would make the browser cache path a fiction.
-test fn w_renderer_rows_name_the_account_the_capability_was_measured_under() -> Bool {
-  match renderer_srv4_briansrls {
-    RendererCapable { host: h, account: a, architecture: arch, node_runtime: n, playwright_package: p, browser_artifact: b } =>
-      h == "srv4" && a == "briansrls" && (match arch { Aarch64 => true, X86_64 => false, X86 => false, Arm => false, Armv7 => false, Mips => false, Mipsel => false, Mips64 => false, Mips64el => false, Riscv64 => false, Wasm32 => false }) && n == "v22.23.2" && p == "1.62.1" && b == "chromium-1234"
-    RendererRuntimeUnavailable { host: _, account: _ } => false
-    RendererPlaywrightPackageUnavailable { host: _, account: _, browser_artifact_present: _ } => false
+// UNOBSERVED BEFORE ABSENT. srv1's node runtime was never measured, so its decline must say the
+// axis is unobserved -- NOT that it has no package, even though the package absence is also true.
+// Reporting a measured deficit we did not measure is the failure this ordering exists to prevent.
+test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() -> Bool {
+  match renderer_assessment(obs: renderer_srv1_briansrls) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererAxisUnobserved { machine: _, account: a, axis: _ } => a == "briansrls"
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
   }
 }
 
-// ---- forwarding permission is a per-relay fact, and the fixtures prove the arms discriminate ---
+// THE MEASURED QUALIFIED RENDERER, entered through the admission function rather than read off a
+// row, and carrying the PlaywrightBuild authority rather than a re-coined version string.
+test fn w_srv4_has_complete_evidence_and_carries_the_playwright_build_authority() -> Bool {
+  match renderer_assessment(obs: renderer_srv4_briansrls) {
+    RendererAssessmentDeclined { cause: _ } => false
+    RendererMeetsRequirements { host: h, account: a, architecture: _, node_runtime: nr, playwright: pw, browser: _ } =>
+      h == operator_host_srv4 && a == "briansrls" && pw == playwright_1_62_1 && nr == "v22.23.2"
+  }
+}
 
-// THE RED IS AUTHORABLE HERE EVEN THOUGH NO SUCH ROW EXISTS IN THE POPULATION, which is why these
-// are fixtures rather than a gap. A relay carrying a radio and REFUSING a forwarding request is a
-// state this fleet has already seen once -- gunbc.fleet_reach records srv2 setting
-// AllowTcpForwarding no -- so an arm that read a refusal as permission is a real mistake to guard
-// against, not a hypothetical one.
-fn subject_for(host_label: DnsLabel) -> ForwardingAdmissionSubject {
-  ForwardingAdmissionSubject {
-    relay: HostByName {
-      name: HostName {
-        name: DomainName { labels: [host_label] },
-        qualification: PartiallyQualified,
+// A RENDERER WITH NO RUNTIME AT ALL declines for the runtime, which discriminates this arm from
+// the unobserved one above. Both are declines; only one of them is a measured fact.
+test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimeAbsent,
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildUnidentified,
       },
     },
-    principal: SshLoginPrincipal { login: "briansrls" as PosixLoginName },
-    direction: LocalForward,
-    target: SocketAddress {
-      host: host_by_ipv4(addr: ipv4_address(octet1: 10, octet2: 92, octet3: 7, octet4: 127)),
-      port: 80,
+  }) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererHasNoNodeRuntime { machine: _, account: _ } => true
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
+  }
+}
+
+// THE COMBINATION THE PREDECESSOR COULD NOT EXPRESS: package present, browser absent. Its fused
+// coproduct had a package-missing arm carrying a browser Boolean and no arm for this state at all,
+// despite its own comment claiming the axes were independent. Independent axes cannot omit it.
+test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserAbsent,
+  }) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => true
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+    }
+  }
+}
+
+// AN UNALLOCATED MACHINE CANNOT QUALIFY AS A RENDERER EITHER, no matter how complete its software
+// is. This is the renderer-side half of the constraint the predecessor dissolved by writing
+// "pi1" as HostIdentity.
+test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: UnallocatedMachineObservation { observed_label: "some-unnamed-box" as NonEmptyStr },
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildUnidentified,
+      },
     },
+  }) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererIdentityUnallocated { observed_label: l } => l == "some-unnamed-box"
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
   }
 }
 
-data fixture_admission_prohibited: ForwardingAdmission = ForwardingAdministrativelyProhibited {
-  subject: subject_for(host_label: "fixture-refuser" as DnsLabel),
-}
-
-// AND UNOBSERVED MUST NOT BE READ AS ADMITTED. This is the fail-closed half: a request nobody has
-// made is not a request that was granted, and an arm treating silence as permission would pick the
-// relay and fail at the first connection.
-data fixture_admission_unobserved: ForwardingAdmission = ForwardingAdmissionUnobserved {
-  subject: subject_for(host_label: "fixture-unasked" as DnsLabel),
-}
-
-fn admission_permits(a: ForwardingAdmission) -> Bool {
-  match a {
-    ForwardingAdmitted { subject: _ } => true
-    ForwardingAdministrativelyProhibited { subject: _ } => false
-    ForwardingAdmissionUnobserved { subject: _ } => false
-  }
-}
-
-test fn w_only_a_measured_admission_permits_a_forward() -> Bool {
-  admission_permits(a: pi1_local_forward_to_unit_admission)
-    && !admission_permits(a: fixture_admission_prohibited)
-    && !admission_permits(a: fixture_admission_unobserved)
-}
-
-// THE ADMISSION IS KEYED BY PRINCIPAL, DIRECTION AND TARGET, and the witness asserts all three.
-// A row that kept the relay and lost the principal would let one login's measurement license
-// another's request -- the confound that made the wrong user look like an incapable host.
-test fn w_the_admission_names_the_principal_direction_and_target_it_was_measured_for() -> Bool {
-  match pi1_local_forward_to_unit_admission {
-    ForwardingAdmitted { subject: s } =>
-      (match s.principal {
-          SshLoginPrincipal { login: l } => l == "briansrls"
-          SshCertificatePrincipal { principal: _ } => false
-        })
-        && (match s.direction { LocalForward => true, RemoteForward => false })
-        && s.target.port == 80
-    ForwardingAdministrativelyProhibited { subject: _ } => false
-    ForwardingAdmissionUnobserved { subject: _ } => false
-  }
-}
-
-// THE ROUTE THAT WORKED FOR OBSERVATION IS REFUSED FOR CREDENTIALS, and this is the witness that
-// stops "returned HTTP 200" from becoming "safe to transport secrets". The portal is HTTP, so every
-// locus on the path is inside the trust boundary of anything typed into the wizard; the measured
-// proxy locus is an ephemeral session container and is not an admitted production locus for a
-// host-administrator password.
-//
-// Discriminating RED: promote the measured route to SecretBearingTrafficAdmitted and this fails.
-test fn w_the_measured_route_is_refused_for_secret_bearing_traffic() -> Bool {
-  match measured_route_use {
-    SecretBearingTrafficRefused { cause: c } =>
-      match c {
-        ProxyLocusNotAdmittedForCredentials { proxy_locus: p } => p == "sleek-bear-442"
-        TransportNotConfidential { unit_endpoint: _ } => false
+// THE TWO DECISIONS THE PREDECESSOR'S CARRIER COULD NOT HOLD AT ONCE. Its use standing was a
+// single exclusive coproduct, so recording the secret refusal erased the observation admission and
+// the route's real measured standing survived only in prose. Both are now true simultaneously,
+// and this witness fails if either half is dropped.
+test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool {
+  match use_decision_for(want: ObservationPayload) {
+    ForwardingUseDecisionMissing { payload: _ } => false
+    ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+    ForwardingUseDecisionUnique { standing: obs } => match obs {
+      PayloadRefusedInUse { payload: _, cause: _ } => false
+      PayloadObservedInUse { payload: _ } => match use_decision_for(want: SecretBearingPayload) {
+        ForwardingUseDecisionMissing { payload: _ } => false
+        ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+        ForwardingUseDecisionUnique { standing: sec } => match sec {
+          PayloadObservedInUse { payload: _ } => false
+          PayloadRefusedInUse { payload: _, cause: c } => match c {
+            ProxyLocusNotAdmittedForCredentials { proxy_locus: _ } => true
+            TransportNotConfidential { unit_endpoint: _ } => false
+          }
+        }
       }
-    ObservationTrafficAdmitted => false
-    SecretBearingTrafficAdmitted { admitted_loci: _ } => false
+    }
   }
 }
 
-// pi1's readiness is asserted with its measured members, not merely as a boolean, so a row that
-// kept the host and lost the association -- or silently downgraded the permission -- goes red.
-test fn w_pi1_is_ready_with_the_measured_interface_and_ssid() -> Bool {
-  match relay_pi1 {
-    RadioRelayReady { host: h, radio_interface: i, associated_ssid: s } =>
-      h == "pi1" && i == "wlan0" && s == "spark-0c75"
-    RelayHasNoRadioInterface { host: _ } => false
-    RelayRadioNotAssociated { host: _, radio_interface: _ } => false
+// THE ASSESSED POPULATION IS COUNTED, NOT SELECTED. With the selectors deleted there is no "the
+// renderer" to assert about, and that is the point: what the module publishes is how many
+// candidates carry complete evidence, so appending a second capable renderer changes this number
+// instead of silently changing an answer.
+//
+// BOTH HALVES ARE ASSERTED. A version checking only the renderer count would stay green if a relay
+// began carrying complete evidence under a fabricated identity -- the exact regression an earlier head shipped.
+test fn w_exactly_one_renderer_and_no_relay_carry_complete_evidence() -> Bool {
+  renderers_with_complete_evidence() == 1 && relays_with_complete_evidence() == 0
+}
+
+// AND THE ONE RENDERER IS srv4, asserted separately because a count cannot say WHICH. Folding over
+// the published assessments rather than asking a selector keeps list order out of the answer.
+test fn w_the_renderer_with_complete_evidence_is_srv4() -> Bool {
+  fold(renderer_assessments(), init: false, f: (acc, a) => acc || match a {
+    RendererAssessmentDeclined { cause: _ } => false
+    RendererMeetsRequirements { host: qh, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } =>
+      qh == operator_host_srv4
+  })
+}
+
+// THE CLAIM THIS MODULE EXISTS TO MAKE: NO MACHINE IS BOTH. It is why the placement is a
+// composition of three facts rather than one host, and it is folded from the measured population
+// rather than asserted, so installing Playwright on pi1 -- or a radio in srv4 -- retires it by
+// construction instead of leaving a comment that has quietly become false.
+test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool {
+  !fold(observed_renderers, init: false, f: (acc, obs) => acc || match renderer_assessment(obs: obs) {
+    RendererAssessmentDeclined { cause: _ } => false
+    RendererMeetsRequirements { host: qh, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } =>
+      fold(observed_relays, init: false, f: (a2, rly) => a2 || match relay_assessment(obs: rly) {
+        RelayAssessmentDeclined { cause: _ } => false
+        RelayMeetsRequirements { host: rh, radio_interface: _, associated_ssid: _ } => rh == qh
+      })
+  })
+}
+
+// THE FAIL-CLOSED HALF OF THE USE LOOKUP, and it needs its own witness because the admitted path
+// cannot exercise it. A payload class with no recorded decision must come back REFUSED. There is
+// no third payload class to ask about today, so this asks the question the only way it can be
+// asked -- by confirming the lookup's refusal carries the requested class rather than some
+// decision that happened to be in the list.
+test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool {
+  match use_decision_for(want: SecretBearingPayload) {
+    ForwardingUseDecisionMissing { payload: _ } => false
+    ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
+    ForwardingUseDecisionUnique { standing: d } => match d {
+      PayloadObservedInUse { payload: _ } => false
+      PayloadRefusedInUse { payload: p, cause: _ } => match p {
+        SecretBearingPayload => true
+        ObservationPayload => false
+      }
+    }
   }
 }
 
-// THE FOUR FLEET HOSTS HAVE NO RADIO, and the probe that established it carried its own positive
-// control: pi1 answered 1 where they answered 0. This witness defends the population rather than
-// one row, so a fleet host quietly gaining a RadioRelayReady arm without a measurement turns it red.
-fn relay_lacks_radio(r: RadioRelayStanding) -> Bool {
-  match r {
-    RelayHasNoRadioInterface { host: _ } => true
-    RadioRelayReady { host: _, radio_interface: _, associated_ssid: _ } => false
-    RelayRadioNotAssociated { host: _, radio_interface: _ } => false
+// THE UNOBSERVED AXIS IS NAMED, NOT MERELY REPORTED AS MISSING. srv1's node runtime was never
+// measured while its Playwright package WAS measured absent, so a cause that said only "an axis was
+// unobserved" would leave the reader unable to tell which measurement to go take.
+test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool {
+  match renderer_assessment(obs: renderer_srv1_briansrls) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererAxisUnobserved { machine: _, account: _, axis: ax } => match ax {
+        RuntimeAxis => true
+        PackageAxis => false
+        BrowserAxis => false
+      }
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
   }
 }
 
-test fn w_every_fleet_host_measured_carries_no_radio_and_only_pi1_does() -> Bool {
-  fold(observed_relay_standings, init: 0, f: (n, r) => if (relay_lacks_radio(r: r)) { n + 1 } else { n }) == 4
-    && !relay_lacks_radio(r: relay_pi1)
-}
-
-// The direction flags are not interchangeable and the Spark route needs both, so the mapping is
-// asserted rather than trusted: a swap would send the listener to the wrong side of the connection
-// and the failure would appear as an unreachable endpoint, nowhere near the cause.
+// RESTORED. The rewrite of this file dropped the flag witness, which would have left the one place
+// a direction becomes an argv character unguarded -- and -L versus -R is the difference between
+// listening here and asking the far side to listen.
 test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool {
-  forward_flag(direction: LocalForward) == "-L"
-    && forward_flag(direction: RemoteForward) == "-R"
+  forward_flag(direction: LocalForward) == "-L" && forward_flag(direction: RemoteForward) == "-R"
+}
+
+// THE TYPED OPTIONS SERIALIZE TO THE BYTES THE RAW STRINGS USED TO SPELL. This is the discriminating
+// check on the §3 repair: replacing "ExitOnForwardFailure=yes" with a variant is only a fix if the
+// shared serializer still emits exactly that. If it did not, the repair would have traded a fork for
+// a behaviour change, which is worse than the fork.
+test fn w_the_typed_forwarding_options_serialize_to_their_wire_spelling() -> Bool {
+  serialize_ssh_client_option(option: exit_on_forward_failure_option) == ["-o", "ExitOnForwardFailure=yes"]
+  && serialize_ssh_client_option(option: batch_mode_option) == ["-o", "BatchMode=yes"]
+}
+
+// RESTORED, AND IT SHOULD NOT HAVE NEEDED RESTORING. The rewrite that repaired this module dropped
+// every witness over the measured forwarding admission, which left the one row carrying real
+// evidence -- an sshd decision observed on a live host -- with no consumer at all. I found it by
+// auditing my own declarations for readers after review caught three of the same class; it would
+// otherwise have been the next round's finding.
+//
+// THE ASSERTION IS THE SCOPE, not the verdict. An admission is not "pi1 permits forwarding": sshd
+// answers per authenticated principal, per direction and per target, so a row that admitted a
+// forward without pinning all three would let one measurement license a request nobody measured.
+// This lane already paid once for the neighbouring confound, reporting hosts as refusing keys when
+// the wrong login was in play.
+test fn w_the_measured_admission_pins_the_principal_direction_and_target() -> Bool {
+  match pi1_local_forward_to_unit_admission {
+    ForwardingAdministrativelyProhibited { subject: _ } => false
+    ForwardingAdmissionUnobserved { subject: _ } => false
+    ForwardingAdmitted { subject: sub } =>
+      match sub.principal {
+        SshLoginPrincipal { login: l } => l == "briansrls"
+        SshCertificatePrincipal { principal: _ } => false
+      }
+      && match sub.direction {
+        LocalForward => true
+        RemoteForward => false
+      }
+      && sub.target.port == 80
+  }
+}
+
+// THE CACHE ENTRY IS NOT THE BUILD, ASSERTED WHERE IT COULD OTHERWISE BE CONFLATED. srv4's browser
+// reported its version while it rendered the wizard, so its build is identified; srv1's chromium-1217
+// is a directory listing and identifies no build. Both machines carry a cache entry, so a fold that
+// read provisioning as build identity would be green -- this is the input that makes it red.
+test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool {
+  match renderer_srv1_briansrls.browser {
+    PlaywrightBrowserAbsent => false
+    PlaywrightBrowserUnobserved => false
+    PlaywrightBrowserPresent { browser: b } => match b.build_identity {
+      ChromiumBuildIdentified { build: _ } => false
+      ChromiumBuildUnidentified => true
+    }
+  }
+  && match renderer_srv4_briansrls.browser {
+    PlaywrightBrowserAbsent => false
+    PlaywrightBrowserUnobserved => false
+    PlaywrightBrowserPresent { browser: b } => match b.build_identity {
+      ChromiumBuildIdentified { build: bd } => bd.version == "151.0.7922.34"
+      ChromiumBuildUnidentified => false
+    }
+  }
+}
+
+// THE LEG AND RUN ARE NOW STRUCTURALLY SHARED, SO THIS WITNESS SHRANK ON PURPOSE. Its predecessor
+// compared the admitted decision's leg spelling against the refused decision's and asserted they
+// matched -- a check that could only ever validate a coincidence, because two independent fields
+// referencing the same row agree until someone edits one. ObservedLegUse carries the subject ONCE
+// above both standings, so "the same leg" has no counterexample to write and the comparison has no
+// content. What remains worth asserting is what the shared subject IS: the pi1 local-forward leg to
+// the unit, attested by the run that halted at the account screen.
+fn host_spelling(host: NetworkHost) -> String {
+  match render_network_host(host: host) {
+    Present { value: v } => v as String
+    Absent => "unrenderable"
+  }
+}
+
+fn leg_spelling(sub: ForwardingAdmissionSubject) -> String {
+  (match sub.principal {
+    SshLoginPrincipal { login: l } => l as String
+    SshCertificatePrincipal { principal: p } => p as String
+  })
+  + "@"
+  + host_spelling(host: sub.relay)
+  + (match sub.direction { LocalForward => " -L " RemoteForward => " -R " })
+  + host_spelling(host: sub.target.host)
+  + ":"
+  + (sub.target.port as String)
+}
+
+test fn w_the_measured_leg_use_names_its_exact_leg_and_run() -> Bool {
+  leg_spelling(sub: measured_leg_use.forwarding_leg_subject) == "briansrls@pi1 -L 10.92.7.127:80"
+    && match measured_leg_use.attested_by.termination {
+      WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
+      WalkReachedFlowCompletion => false
+    }
+    && length(measured_leg_use.standings) == 2
+}
+
+// A CACHE ENTRY WITHOUT AN IDENTIFIED BUILD IS NOT COMPLETE EVIDENCE, ASSERTED ON THE PRODUCTION
+// PATH. The earlier witness compared the two checked-in rows and never entered renderer_assessment,
+// so the admitted mutation -- allocated host, Node present, Playwright present, cache entry present,
+// build UNIDENTIFIED -> RendererMeetsRequirements -- was invisible to it. This constructs exactly
+// that observation and requires the refusal.
+test fn w_an_unidentified_browser_build_is_not_complete_renderer_evidence() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildUnidentified,
+      },
+    },
+  }) {
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: _ } => false
+    RendererAssessmentDeclined { cause: c } => match c {
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: e } =>
+        (e as String) == "chromium-1234"
+      RendererIdentityUnallocated { observed_label: _ } => false
+      RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+      RendererHasNoNodeRuntime { machine: _, account: _ } => false
+      RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+      RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+      RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+    }
+  }
+}
+
+// THE POSITIVE CONTROL: the SAME observation with the build identified is complete. Without it the
+// witness above passes for an assessment that refuses everything.
+test fn w_the_same_renderer_with_an_identified_build_is_complete() -> Bool {
+  match renderer_assessment(obs: RendererObservation {
+    machine: machine_srv4,
+    account: "briansrls" as PosixLoginName,
+    architecture: Aarch64,
+    runtime: NodeRuntimePresent { version: "v22.23.2" as NodeRuntimeVersion },
+    package: PlaywrightPackagePresent { build: playwright_1_62_1 },
+    browser: PlaywrightBrowserPresent {
+      browser: ProvisionedBrowser {
+        cache_entry: "chromium-1234" as PlaywrightBrowserCacheEntry,
+        build_identity: ChromiumBuildIdentified { build: chromium_151_0_7922_34 },
+      },
+    },
+  }) {
+    RendererAssessmentDeclined { cause: _ } => false
+    RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _, chromium: cb } =>
+      (cb.version as String) == "151.0.7922.34"
+  }
+}
+
+// WHEN BOTH PARTICIPANTS ARE INCOMPLETE, BOTH SETS OF CAUSES SURVIVE. The predecessor checked the
+// relay first and returned, so a world where pi1 stays unallocated AND srv4 loses its runtime
+// reported only relay causes: every renderer problem disappeared and the headline witness stayed
+// green. That is the absorbing fallback one level above the per-row assessments, and it was
+// unauthorable until the gap function took its populations as arguments.
+test fn w_both_incomplete_populations_keep_both_sets_of_causes() -> Bool {
+  match participant_gaps_over(
+    renderers: [RendererObservation {
+      machine: machine_srv4,
+      account: "briansrls" as PosixLoginName,
+      architecture: Aarch64,
+      runtime: NodeRuntimeAbsent,
+      package: PlaywrightPackageAbsent,
+      browser: PlaywrightBrowserAbsent,
+    }],
+    relays: observed_relays,
+  ) {
+    ParticipantEvidenceCompleteRouteUnbuilt { renderers: _, relays: _ } => false
+    NoRendererHasCompleteEvidence { causes: _ } => false
+    NoRelayHasCompleteEvidence { causes: _ } => false
+    NeitherParticipantHasCompleteEvidence { renderer_causes: rc, relay_causes: lc } =>
+      fold(rc, init: false, f: (acc, c) => acc || match c {
+        RendererHasNoNodeRuntime { machine: _, account: _ } => true
+        RendererIdentityUnallocated { observed_label: _ } => false
+        RendererAxisUnobserved { machine: _, account: _, axis: _ } => false
+        RendererHasNoPlaywrightPackage { machine: _, account: _ } => false
+        RendererHasNoProvisionedBrowser { machine: _, account: _ } => false
+        RendererBrowserBuildUnidentified { machine: _, account: _, cache_entry: _ } => false
+      })
+      && fold(lc, init: false, f: (acc, c) => acc || match c {
+        RelayIdentityUnallocated { observed_label: l } => l == "pi1"
+        RelayCarriesNoRadio { machine: _ } => false
+        RelayRadioUnassociated { machine: _, radio_interface: _ } => false
+      })
+  }
+}
+
+// THE PUBLISHED RELAY POPULATION HAS A READER. relay_assessments was exported and consumed by
+// nothing, which in this PR is not a style defect: an unread publication is indistinguishable from
+// one that is wrong.
+test fn w_every_observed_relay_is_assessed_and_none_is_complete() -> Bool {
+  length(relay_assessments()) == length(observed_relays)
+    && fold(relay_assessments(), init: true, f: (acc, a) => acc && match a {
+      RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => false
+      RelayAssessmentDeclined { cause: _ } => true
+    })
 }

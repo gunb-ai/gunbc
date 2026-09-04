@@ -885,6 +885,20 @@ pub struct TransitionAdmission {
 /// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
 /// have made the entry uncitable by its own name -- which is what an ordinal is for.
 
+///
+/// TWENTY-SIXTH DISSOLUTION (2026-09-04), SAME RULE, LARGEST INCOMING COHORT YET. The 142
+/// `spark OOBE vendor-interface consolidation gunbc#10254` rows arriving with this merge are
+/// deleted, and the base was read for BOTH modules they name rather than sampled from one: on main
+/// `gunbc.spark.oobe_screen_observation` and `test.claim.spark.spark_oobe_screen_observation_witness`
+/// each import their spellings from `extdeps.systems.nvidia_dgx_spark_setup`, which is the target
+/// every one of those rows names -- the only other target in the region is this branch's own
+/// `v2.std.fn_index`. So every one of the 142 deltas is already bound at the base and none is
+/// producible. Born consumed, like every cohort before them.
+///
+/// THE SIZE IS WHY THE READING IS STATED, not the row count. Deleting 142 rows of a transition this
+/// branch does not own is the destructive direction of this rule, and "they are probably consumed"
+/// is the guess the entry above says costs a required run. The check that licensed it is one grep
+/// per module, and it is cheaper than the run either mistake would have cost.
 /// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
 /// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
 /// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at

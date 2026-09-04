@@ -110,6 +110,7 @@ type SshClientOption
   | VerifyHostKeyDNS { value: VerifyHostKeyDnsValue }
   | UpdateHostKeys { value: UpdateHostKeysValue }
   | BatchMode { enabled: Bool }
+  | ExitOnForwardFailure { enabled: Bool }
   | ConnectTimeout { seconds: Second }
   | ConfigFile { path: NonEmptyStr }
   | IdentityFile { path: NonEmptyStr }
@@ -131,6 +132,7 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     VerifyHostKeyDNS { value: _ } => "VerifyHostKeyDNS"
     UpdateHostKeys { value: _ } => "UpdateHostKeys"
     BatchMode { enabled: _ } => "BatchMode"
+    ExitOnForwardFailure { enabled: _ } => "ExitOnForwardFailure"
     ConnectTimeout { seconds: _ } => "ConnectTimeout"
     ConfigFile { path: _ } => "ConfigFile"
     IdentityFile { path: _ } => "IdentityFile"
@@ -178,6 +180,7 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
     UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
+    ExitOnForwardFailure { enabled: e } => if e { "yes" } else { "no" }
     ConnectTimeout { seconds: s } => to_string(second_count(s: s))
     ConfigFile { path: p } => p as String
     IdentityFile { path: p } => p as String
@@ -333,6 +336,7 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     VerifyHostKeyDNS { value: _ } => serialize_ssh_client_option(option: option)
     UpdateHostKeys { value: _ } => serialize_ssh_client_option(option: option)
     BatchMode { enabled: _ } => serialize_ssh_client_option(option: option)
+    ExitOnForwardFailure { enabled: _ } => serialize_ssh_client_option(option: option)
     ConnectTimeout { seconds: _ } => serialize_ssh_client_option(option: option)
     IdentityFile { path: _ } => serialize_ssh_client_option(option: option)
     IdentitiesOnly { enabled: _ } => serialize_ssh_client_option(option: option)
