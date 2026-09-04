@@ -151,7 +151,7 @@ fn hardware_axis_cell(standing: HardwareStanding, detail: String) -> List<Fragme
 fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
   el_class("div", "hardware-row", concat(
     [el_class("span", "hardware-subject", [txt(dimm_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt(hardware_axis_labels().first())])],
+     el_class("span", "hardware-axis", [txt(hardware_axis_memory_label())])],
     hardware_axis_cell(
       standing: dimm_standing(verdict: verdict),
       detail: dimm_detail(verdict: verdict),
@@ -162,7 +162,7 @@ fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
 fn processor_row(verdict: ProcessorReconcileVerdict) -> Fragment {
   el_class("div", "hardware-row", concat(
     [el_class("span", "hardware-subject", [txt(processor_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt(hardware_axis_labels().skip(n: 1).first())])],
+     el_class("span", "hardware-axis", [txt(hardware_axis_processor_label())])],
     hardware_axis_cell(
       standing: processor_standing(verdict: verdict),
       detail: processor_detail(verdict: verdict),
@@ -244,7 +244,17 @@ fn hardware_longest_len(labels: List<String>) -> Int {
 // wrong one; today that is merely wrong-looking, and it would silently truncate or over-reserve the
 // moment either population moved. The axis words now come from one list that both the rows and the
 // reservation read, so a third axis widens the column by derivation rather than by anyone noticing.
-fn hardware_axis_labels() -> List<String> { ["memory", "processor"] }
+// The two axis labels are NAMED rather than indexed out of the list. Reaching a row's label as
+// labels().first() / labels().skip(n: 1).first() made the list's ORDER the authority for which
+// axis a row is on -- a positional naming scheme for something the axis already names, and one
+// that silently mislabels every row if the list is ever reordered.
+fn hardware_axis_memory_label() -> String { "memory" }
+
+fn hardware_axis_processor_label() -> String { "processor" }
+
+fn hardware_axis_labels() -> List<String> {
+  [hardware_axis_memory_label(), hardware_axis_processor_label()]
+}
 
 fn hardware_axis_reserved_width() -> String {
   let widest = hardware_longest_len(labels: hardware_axis_labels()) + hardware_column_ch_gutter

@@ -474,31 +474,49 @@ pub fn occurrence_id_list_is_prefix_of(
     prefix: Rc<Vec<OccurrenceId>>,
     path: Rc<Vec<OccurrenceId>>,
 ) -> bool {
-    prefix.iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: path.clone(),
-    ok: true,
-}), |acc: _, expected: OccurrenceId| if !acc.ok.clone() {
-        acc.clone()
-    } else {
-        if ((acc.path_remaining.clone().len() as i64) == 0) {
+    prefix
+        .iter()
+        .cloned()
+        .fold(
             Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(vec![]),
-    ok: false,
-})
-        } else {
-            if occurrence_id_eq(acc.path_remaining.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of occurrence_id_eq (empty Optional at runtime)"), expected.clone()) {
-                Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: Rc::new(acc.path_remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()),
-    ok: true,
-})
-            } else {
-                Rc::new(OccurrenceIdListPrefixAcc {
-    path_remaining: acc.path_remaining.clone(),
-    ok: false,
-})
-            }
-        }
-    }).ok.clone()
+                path_remaining: path.clone(),
+                ok: true,
+            }),
+            |acc: _, expected: OccurrenceId| {
+                if !acc.ok.clone() {
+                    acc.clone()
+                } else {
+                    match acc.path_remaining.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(OccurrenceIdListPrefixAcc {
+                            path_remaining: Rc::new(vec![]),
+                            ok: false,
+                        }),
+                        Some(head) => {
+                            if occurrence_id_eq(head.clone(), expected.clone()) {
+                                Rc::new(OccurrenceIdListPrefixAcc {
+                                    path_remaining: Rc::new(
+                                        acc.path_remaining
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
+                                    ok: true,
+                                })
+                            } else {
+                                Rc::new(OccurrenceIdListPrefixAcc {
+                                    path_remaining: acc.path_remaining.clone(),
+                                    ok: false,
+                                })
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        .ok
+        .clone()
 }
 
 pub fn occurrence_containment_ancestors_are_prefix_of(

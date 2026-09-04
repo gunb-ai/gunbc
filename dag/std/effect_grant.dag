@@ -185,15 +185,14 @@ fn grant_coverage_fold<T>(
 // fail-closed.
 
 fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
-  if grants.count() == 0 {
-    GrantNotCovered { verb: verb, target: target }
-  } else {
-    let g = grants.first()
-    if grant_covers(grant: g, verb: verb, target: target) {
-      GrantCoveredBy { grant: g }
-    } else {
-      grant_coverage_go(grants: grants.skip(n: 1), verb: verb, target: target)
-    }
+  match grants.first() {
+    Absent => GrantNotCovered { verb: verb, target: target }
+    Present { value: g } =>
+      if grant_covers(grant: g, verb: verb, target: target) {
+        GrantCoveredBy { grant: g }
+      } else {
+        grant_coverage_go(grants: grants.skip(n: 1), verb: verb, target: target)
+      }
   }
 }
 
@@ -282,22 +281,20 @@ fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessD
 }
 
 fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
-  if parent_grants.count() == 0 {
-    false
-  } else {
-    let pg = parent_grants.first()
-    (verb_eq(a: grant_verb(g: pg), b: grant_verb(g: child_grant)) && position_under(target: grant_root(g: child_grant), root: grant_root(g: pg)))
-      || parent_covers_grant(parent_grants: parent_grants.skip(n: 1), child_grant: child_grant)
+  match parent_grants.first() {
+    Absent => false
+    Present { value: pg } =>
+      (verb_eq(a: grant_verb(g: pg), b: grant_verb(g: child_grant)) && position_under(target: grant_root(g: child_grant), root: grant_root(g: pg)))
+        || parent_covers_grant(parent_grants: parent_grants.skip(n: 1), child_grant: child_grant)
   }
 }
 
 fn all_child_grants_bounded(child_grants: List<Grant>, parent_grants: List<Grant>) -> Bool {
-  if child_grants.count() == 0 {
-    true
-  } else {
-    let cg = child_grants.first()
-    parent_covers_grant(parent_grants: parent_grants, child_grant: cg)
-      && all_child_grants_bounded(child_grants: child_grants.skip(n: 1), parent_grants: parent_grants)
+  match child_grants.first() {
+    Absent => true
+    Present { value: cg } =>
+      parent_covers_grant(parent_grants: parent_grants, child_grant: cg)
+        && all_child_grants_bounded(child_grants: child_grants.skip(n: 1), parent_grants: parent_grants)
   }
 }
 

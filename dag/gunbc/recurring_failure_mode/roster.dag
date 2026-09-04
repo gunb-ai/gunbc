@@ -25,6 +25,7 @@ import gunbc.recurring_failure_mode.coercion_proven_by_normalized_round_trip { c
 import gunbc.recurring_failure_mode.parallel_representation_debt { parallel_representation_debt }
 import gunbc.recurring_failure_mode.internal_review_finds_missing_tests_external { internal_review_finds_missing_tests_external }
 import gunbc.recurring_failure_mode.unmarked_workaround { unmarked_workaround }
+import gunbc.recurring_failure_mode.declared_type_inhabitance_unchecked_by_position { declared_type_inhabitance_unchecked_by_position }
 import gunbc.recurring_failure_mode.self_authorized_dissolution { self_authorized_dissolution }
 import gunbc.recurring_failure_mode.positional_citation { positional_citation }
 import gunbc.recurring_failure_mode.bound_shaped_closure { bound_shaped_closure }
@@ -106,6 +107,10 @@ import gunbc.recurring_failure_mode.content_digest_makes_annotations_semanticall
 import gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters { subject_and_its_digest_as_independent_parameters }
 import gunbc.recurring_failure_mode.a_written_row_is_not_a_firing_mechanism { a_written_row_is_not_a_firing_mechanism }
 import gunbc.recurring_failure_mode.required_evidence_absent_reads_as_evidence_of_pass { required_evidence_absent_reads_as_evidence_of_pass }
+import gunbc.recurring_failure_mode.comparison_discards_the_dimension_it_judges { comparison_discards_the_dimension_it_judges }
+import gunbc.recurring_failure_mode.source_text_census_counts_its_own_documentation { source_text_census_counts_its_own_documentation }
+import gunbc.recurring_failure_mode.instrument_renders_one_scope_while_adjudicating_another { instrument_renders_one_scope_while_adjudicating_another }
+import gunbc.recurring_failure_mode.result_that_confirms_the_hypothesis_exactly { result_that_confirms_the_hypothesis_exactly }
 import gunbc.recurring_failure_mode.right_censored_cost_read_as_exact { right_censored_cost_read_as_exact }
 import gunbc.recurring_failure_mode.guard_precondition_discharged_by_the_route_that_uses_it { guard_precondition_discharged_by_the_route_that_uses_it }
 import gunbc.recurring_failure_mode.reachability_answered_is_consumed_as_protection_established { reachability_answered_is_consumed_as_protection_established }
@@ -136,6 +141,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   parallel_representation_debt,
   internal_review_finds_missing_tests_external,
   unmarked_workaround,
+  declared_type_inhabitance_unchecked_by_position,
   self_authorized_dissolution,
   positional_citation,
   bound_shaped_closure,
@@ -217,6 +223,10 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   subject_and_its_digest_as_independent_parameters,
   a_written_row_is_not_a_firing_mechanism,
   required_evidence_absent_reads_as_evidence_of_pass,
+  comparison_discards_the_dimension_it_judges,
+  source_text_census_counts_its_own_documentation,
+  instrument_renders_one_scope_while_adjudicating_another,
+  result_that_confirms_the_hypothesis_exactly,
   right_censored_cost_read_as_exact,
   guard_precondition_discharged_by_the_route_that_uses_it,
   reachability_answered_is_consumed_as_protection_established,

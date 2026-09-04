@@ -174,7 +174,10 @@ fn read_remote_main_hex() -> RemoteRefRead {
     if line == "" {
       RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match (match split(s: line, delimiter: "\t").first() {
+               Absent => none
+               Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+             }) {
         Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
         Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
       }
@@ -207,10 +210,27 @@ fn transition_text(s: ActuationStanding) -> String {
   }
 }
 
-fn deployed_tree_hexes(o: DeployedTreeObservation) -> List<String> {
+// The two hexes are a NAMED PAIR, not a two-element list. As a list the caller reached them with
+// .first() and .last(), so the LIST ORDER decided which hex was the revision and which the tree --
+// a positional naming scheme for two things the observation already names, and one that reports a
+// tree hex as a revision if the pair is ever built in the other order.
+type DeployedTreeHexes {
+  revision_hex: String
+  tree_hex: String
+}
+
+fn deployed_tree_hexes(o: DeployedTreeObservation) -> DeployedTreeHexes {
   match o {
-    DeployedTreeObserved { revision: r, tree: t, content: _ } => [git_object_id_wire_hex(oid: r) as String, git_object_id_wire_hex(oid: t) as String]
-    DeployedTreeUnobservable { cause: c } => [join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], ""), "unobserved"]
+    DeployedTreeObserved { revision: r, tree: t, content: _ } =>
+      DeployedTreeHexes {
+        revision_hex: git_object_id_wire_hex(oid: r) as String,
+        tree_hex: git_object_id_wire_hex(oid: t) as String,
+      }
+    DeployedTreeUnobservable { cause: c } =>
+      DeployedTreeHexes {
+        revision_hex: join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], ""),
+        tree_hex: "unobserved",
+      }
   }
 }
 
@@ -252,8 +272,8 @@ func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardI
   WindowSnapshot {
     main_hex: remote_ref_text(r: read_remote_main_hex()),
     desired_hex: remote_ref_text(r: read_desired_hex()),
-    deployed_revision_hex: hexes.first(),
-    deployed_tree_hex: hexes.last(),
+    deployed_revision_hex: hexes.revision_hex,
+    deployed_tree_hex: hexes.tree_hex,
     running_release_hex: running_release_hex_routed(base: routed_base),
     transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
     active_instance: active_instance_text_routed(base: routed_base),

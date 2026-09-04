@@ -15,8 +15,8 @@ fn serialize_value_doc(knobs: SerializationKnobs, v: SerialValue) -> Doc {
   match v {
     ScalarValue { text: t } =>
       match knobs.value_quote {
-        null => doc_text(text: t)
-        q => doc_text(text: concat(concat(q, t), q))
+        Absent => doc_text(text: t)
+        Present { value: q } => doc_text(text: concat(concat(q, t), q))
       }
     RecordValue { fields: fields } =>
       serialize_record_doc(knobs: knobs, fields: fields)

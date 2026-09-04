@@ -233,7 +233,16 @@ pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
         if ((parts.clone().len() as i64) != 2) {
             std::option::Option::None
         } else {
-            Some(oci_wire_digest_parts_from_split(parts.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_wire_digest_parts_from_split (empty Optional at runtime)"), parts.clone().iter().cloned().skip(1 as usize).next().expect("fail-closed: an optional value flowed into non-optional parameter 1 of oci_wire_digest_parts_from_split (empty Optional at runtime)")))
+            match parts.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(algorithm) => match parts.clone().iter().cloned().skip(1 as usize).next() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(encoded) => Some(oci_wire_digest_parts_from_split(
+                        algorithm.clone(),
+                        encoded.clone(),
+                    )),
+                },
+            }
         }
     }
 }

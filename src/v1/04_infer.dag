@@ -1141,6 +1141,179 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope)
 }
 
+// DESIGN section 4b names "values inhabit declared types" as part of the ORDINARY COMPILER FLOOR,
+// and this is the position where that floor was open. Both seams below normalize the DECLARED side
+// with with_required_cardinality and then compare KERNELS, so the cardinality dimension was never
+// judged at all: a field declared String accepted a value typed Optional<String> with no
+// diagnostic. That is not a narrow gap. It made a method's declared return type NON-LOAD-BEARING at
+// every assignment and argument position -- so changing first()'s declared return type broke sites
+// at RUNTIME, in the evaluator, instead of at the check (gunbc#10187, extdeps/git/git.dag:629,
+// where `remote: String` received `parts.first()` and the failure surfaced as
+// "cannot concat on Variant" two calls later).
+//
+// The judgment is deliberately ONE-DIRECTIONAL. Required-into-optional is widening and is fine:
+// an Optional<T> position accepting a T loses nothing. Optional-into-required is the narrowing that
+// drops the absent case on the floor, and it is the only case decided here.
+// BOTH SIDES NOW READ THE SAME AUTHORITY, and this paragraph used to say otherwise. It described a
+// deliberate asymmetry -- declared side recognizes both spellings, produced side tests cardinality
+// only -- and listed the explicitly-spelled Optional<T> VALUE reaching a required position as an
+// inspectable gap. That gap is CLOSED: both operands are read through node_carries_optional, which
+// recognizes the cardinality marker and the nominal Optional coproduct alike, so the asymmetry the
+// sentence defended no longer exists.
+//
+// The correction is recorded rather than silently deleted because of how it survived: the
+// implementation moved and this prose stayed byte-stable, so a reader consulting the comment would
+// have been told a real repair was absent. Nothing refused, because no Accepted program reads a
+// comment. The same sentence had been duplicated into std.core beside node_carries_optional and had
+// to be corrected there too -- one claim in two places, which is why it outlived its subject.
+// THREE ANSWERS, NOT TWO. node_carries_optional answers `false` for a declared position whose type
+// is still an UNSUBSTITUTED type parameter -- the same `false` it gives a genuinely required
+// position -- so a Bool result conflated "proved required" with "could not tell", and the
+// conflation fired in the ACCUSING direction. That is the absorbing fallback of DESIGN §5 exactly:
+// the arm that cannot compute its answer substituted the widest one instead of refusing, and
+// because the widening produced a located diagnostic it read as the check working. Declining to
+// judge is not a weaker check -- it is the only honest verdict available before substitution, and
+// it keeps the deficit visible as an unjudged position rather than burying it in a false positive.
+type OptionalNarrowingCause = DeclaredFormalUnsubstituted | ProducedTypeUnsubstituted
+
+fn optional_narrowing_cause_text(c: OptionalNarrowingCause) -> String {
+  match c {
+    DeclaredFormalUnsubstituted =>
+      "the DECLARED type at this position is an unsubstituted type parameter. Dissolves when builtin generic formals are substituted at the argument seam."
+    ProducedTypeUnsubstituted =>
+      "the PRODUCED value's type is an unsubstituted type parameter, so its cardinality is not yet established. Dissolves when call-site instantiation reaches this position."
+  }
+}
+
+type OptionalNarrowing = NarrowsToRequired | ConformsOrWidens | NarrowingUndetermined { cause: OptionalNarrowingCause }
+
+// Either operand may fail to carry the dimension, so the predicate is named for the QUESTION it
+// answers rather than for one side of it. Reusing it on both sides is the whole content of the
+// produced-side repair below.
+// TWO CARRIERS OF "THIS IS A TYPE PARAMETER", AND READING ONLY THE FIRST ACCUSED CORRECT CODE.
+// A type parameter occurrence is stamped `inferred: TypeVariable` where the stamping pass reaches
+// it, and arrives as a BARE NAMED LEAF where it does not -- a declared field whose type is the
+// parameter itself, supplied from a raw declaration rather than an instantiated template. The leaf
+// renders `Primitive(T)`, carries no optionality, and therefore read as REQUIRED, so an optional
+// value flowing into it took the accusing arm. Measured: 7 sites in v2.compiler.resolve and
+// v2.compiler.translate, all `Outcome<T> { value: T }` positions where T substitutes to `Symbol?`
+// and the honest verdict is ConformsOrWidens.
+//
+// THE SECOND CARRIER IS TESTED POSITIVELY, AGAINST THE ENCLOSING DECLARATION'S OWN FORMALS.
+// The tempting test is absence -- "this leaf resolves to no declared type, so it must be a
+// parameter" -- and it is a fail-open wearing a repair's clothes: a leaf also resolves to nothing
+// when it is a typo, an undeclared type, or a missing import, so the rule would silently stop
+// declining genuinely undeclared names. The justification for it is circular besides ("within an
+// Accepted program names resolve" is a property of the accepted corpus, asserted inside the
+// mechanism that decides membership).
+//
+// A hardcoded spelling list is the other wrong answer and already exists here as
+// is_type_variable_name (`name == "T" || "K" || "V" || ...`). It is wrong for `Elem` or `Acc` and
+// spreads the spelling-keyed fork that several defects on this branch share a root with.
+//
+// So the discriminator is declaration structure: a name is an unsubstituted parameter IFF IT IS A
+// DECLARED FORMAL of the declaration supplying this position. Three arms, and the third is what
+// keeps the repair from being a fail-open: resolves to a declared type -> ordinary judgment; is a
+// formal -> undetermined, defer; NEITHER -> an unresolved name, which keeps refusing.
+fn node_names_enclosing_formal(n: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  if nm == "" { false } else { (formals |> filter(f => f == nm) |> count) > 0 }
+}
+
+fn optionality_undetermined_with_formals(n: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: i } => is_type_variable(inferred: i)
+    Absent => node_names_enclosing_formal(n: n, formals: formals, source_indices: source_indices)
+  }
+}
+
+fn optionality_undetermined(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: i } => is_type_variable(inferred: i)
+    Absent => false
+  }
+}
+
+// THE PRODUCED SIDE IS TESTED FIRST, AND THAT ORDER IS THE REPAIR. Matching on
+// produced.return_cardinality first let `Required` short-circuit to ConformsOrWidens, so an
+// unsubstituted PRODUCED type parameter -- whose cardinality is Required only because nothing has
+// instantiated it yet -- was admitted without any unknown ever being considered. That is the
+// false-negative twin of the declared-side defect: same conflation of "proved required" with
+// "carries no answer", surviving on the other operand because the arms were ordered so it could
+// never be reached. When that T instantiates to an optional at a required destination, the check
+// was silent.
+// THE PRODUCED-SIDE REPAIR IS A SPELLING WIDENING, NOT A TYPE-VARIABLE FLAG, AND THE FIRST ATTEMPT
+// GOT THAT WRONG BY A FACTOR OF FOURTEEN. Flagging every produced TYPE VARIABLE as undetermined
+// conflated two unrelated facts: a type variable says nothing about OPTIONALITY, and a value of type
+// T at Required cardinality is fully determinate -- `witness_from_optional<T>` binds the already
+// narrowed payload and produces a `T`, which is correct generic code, not an unjudgeable position.
+// Measured over dag + src/v2 that arm fired at 219 sites; the review finding it was meant to close
+// concerns produced T INSTANTIATED to an optional at a required destination, which is a concrete
+// post-substitution state, not the uninstantiated one.
+//
+// The real gap is the one this seam already documented: the produced side tested
+// return_cardinality ALONE, so an optional spelled NOMINALLY -- the Optional coproduct rather than
+// the cardinality marker -- reached a required position unjudged. node_carries_optional is the
+// existing single authority that recognizes BOTH spellings, and reading the produced side through
+// it closes the false negative without inventing an unknown.
+fn optional_into_required_mismatch_with_formals(declared: Node, produced: Node, formals: List<String>, source_indices: Map<String, NewlineIndex>) -> OptionalNarrowing {
+  if node_carries_optional(n: produced) {
+    if optionality_undetermined_with_formals(n: declared, formals: formals, source_indices: source_indices) {
+      NarrowingUndetermined { cause: DeclaredFormalUnsubstituted }
+    }
+    else if node_carries_optional(n: declared) { ConformsOrWidens }
+    else { NarrowsToRequired }
+  } else {
+    ConformsOrWidens
+  }
+}
+
+fn optional_into_required_mismatch(declared: Node, produced: Node) -> OptionalNarrowing {
+  if node_carries_optional(n: produced) {
+    if optionality_undetermined(n: declared) {
+      NarrowingUndetermined { cause: DeclaredFormalUnsubstituted }
+    }
+    else if node_carries_optional(n: declared) { ConformsOrWidens }
+    else { NarrowsToRequired }
+  } else {
+    ConformsOrWidens
+  }
+}
+
+// The third value must REACH A CONSUMER or it is decoration. Collapsing it to a Bool here was the
+// absorbing fallback a second time and in the more dangerous direction: `NarrowingUndetermined =>
+// false` admitted the position with no diagnostic, no count and no trace, trading a LOUD false
+// positive for a SILENT one. The false positive accused correct code, but it announced itself and
+// was found in one read; a silent admission has no artifact to notice, so the deficit stops ranking
+// for repair. Below the ladder, not low on it.
+//
+// So the decline is EMITTED. Its diagnostic is deliberately a different variant from the accusation:
+// it attributes the deficit to THE SEAM (an unsubstituted formal the checker cannot judge) rather
+// than to the code at the position, and it is countable in the same log the population census
+// already parses.
+fn optional_narrowing_diags(v: OptionalNarrowing, declared: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  match v {
+    ConformsOrWidens => []
+    NarrowsToRequired =>
+      [make_error_node(
+        diagnostic: OptionalValueInRequiredPosition {
+          declared: node_type_shape(n: declared, source_indices: source_indices),
+          span: span
+        },
+        module_name: module_name
+      )]
+    NarrowingUndetermined { cause: c } =>
+      [make_error_node(
+        diagnostic: OptionalNarrowingUndetermined {
+          declared: node_type_shape(n: declared, source_indices: source_indices),
+          cause: optional_narrowing_cause_text(c: c),
+          span: span
+        },
+        module_name: module_name
+      )]
+  }
+}
+
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
@@ -1225,10 +1398,13 @@ fn field_type_admits_bare_none(ft: Node, scope: InferScope) -> Bool {
   ft.return_cardinality == CardOptional || declares_none_variant
 }
 
-fn expr_is_bare_none_reference(texpr: Node, scope: InferScope) -> Bool {
+// Takes source_indices rather than an InferScope because that is all it reads, and narrowing it is
+// what lets the direct-call argument seam -- which has no InferScope -- call THIS function instead
+// of keeping a second copy that must be hand-kept in agreement with it (DESIGN section 3).
+fn expr_is_bare_none_reference(texpr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
-      expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices) == "None"
+      expr_var_name_at(texpr: texpr, source_indices: source_indices) == "None"
     _ => false
   }
 }
@@ -1244,7 +1420,7 @@ fn bare_none_field_construction_diags(
     Absent => []
     Present { value: ft } =>
       let value_expr = field_init_node_value(n: fi)
-      if expr_is_bare_none_reference(texpr: value_expr, scope: scope)
+      if expr_is_bare_none_reference(texpr: value_expr, source_indices: scope.type_env.source_indices)
         && field_declared_type_is_identified(ft: ft, scope: scope)
         && field_type_admits_bare_none(ft: ft, scope: scope) == false {
         [make_error_node(
@@ -1266,6 +1442,26 @@ fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
     Absent => with_required_cardinality(n: ft)
   }
   ft.return_cardinality == CardOptional && inner.connective == Disj
+}
+
+// THE FORMALS COME FROM THE DECLARATION THAT SUPPLIED THE FIELDS, which is the type itself when the
+// literal names a type and the VARIANT OWNER when it names a variant -- `Accepted { value: .. }`
+// is a variant of `Outcome<T>`, and T is declared on the owner, not on the arm.
+fn record_lit_enclosing_formals(type_name: String?, scope: InferScope) -> List<String> {
+  match type_name {
+    Present { value: tn } =>
+      match lookup_type_by_name(env: scope.type_env, name: tn) {
+        Present { value: decl } =>
+          decl.params |> map(pn => authored_name_at(source_indices: scope.type_env.source_indices, node: pn))
+        Absent =>
+          match variant_owner_node(scope: scope, name: tn) {
+            Present { value: parent } =>
+              parent.params |> map(pn => authored_name_at(source_indices: scope.type_env.source_indices, node: pn))
+            Absent => []
+          }
+      }
+    Absent => []
+  }
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
@@ -2527,7 +2723,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
     equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false)
   } else {
     let peeled = normalize_access_type_node(n: n)
-    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
+    if node_carries_optional(n: peeled) {
       equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -4481,7 +4677,14 @@ fn direct_call_arg_mismatch_diags(
           } else {
           let actual_raw = resolved_type(n: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if direct_call_arg_type_mismatch(
+          let narrowing_diags = optional_narrowing_diags(
+            v: optional_into_required_mismatch(declared: app.formal_subst, produced: actual_raw),
+            declared: app.formal_subst, span: actual_expr.span,
+            module_name: module_name, source_indices: source_indices)
+          if expr_is_bare_none_reference(texpr: actual_expr, source_indices: source_indices) == false
+            && (narrowing_diags |> count) > 0 {
+            narrowing_diags
+          } else if direct_call_arg_type_mismatch(
             formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
@@ -7798,7 +8001,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
           let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
           let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
-          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
+          let narrowing_diags = optional_narrowing_diags(
+            v: optional_into_required_mismatch_with_formals(declared: expected_node, produced: got_node,
+                 formals: record_lit_enclosing_formals(type_name: type_name, scope: scope),
+                 source_indices: scope.type_env.source_indices),
+            declared: expected_node, span: ar_typed.span,
+            module_name: scope.module_name, source_indices: scope.type_env.source_indices)
+          if expr_is_bare_none_reference(texpr: ar_typed, source_indices: scope.type_env.source_indices) == false
+            && (narrowing_diags |> count) > 0 {
+            narrowing_diags
+          } else if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),

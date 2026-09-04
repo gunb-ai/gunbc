@@ -185,11 +185,19 @@ fn oci_wire_digest_parts(raw: String) -> OciWireDigestParts? {
   if length(parts) != 2 {
     none
   } else {
-    Present {
-      value: oci_wire_digest_parts_from_split(
-        algorithm: parts.first(),
-        encoded: parts.skip(n: 1).first(),
-      )
+    match parts.first() {
+      Absent => none
+      Present { value: algorithm } =>
+        match parts.skip(n: 1).first() {
+          Absent => none
+          Present { value: encoded } =>
+            Present {
+              value: oci_wire_digest_parts_from_split(
+                algorithm: algorithm,
+                encoded: encoded,
+              )
+            }
+        }
     }
   }
 }

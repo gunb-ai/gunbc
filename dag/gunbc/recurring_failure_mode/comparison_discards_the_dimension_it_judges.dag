@@ -1,0 +1,72 @@
+module gunbc.recurring_failure_mode.comparison_discards_the_dimension_it_judges
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data comparison_discards_the_dimension_it_judges: RecurringFailureMode = RecurringFailureMode {
+  identity: "comparison_discards_the_dimension_it_judges" as NonEmptyStr,
+
+  receipts: [
+    "**a check that normalizes away the very dimension it exists to judge** (the range is complete, the operands are the right two, and the comparison is lossy -- so the check is correct everywhere a reader looks and answers the wrong question at every site. ",
+
+    "Recognition rule, keyed on the shape rather than on any one check: for any comparison, name what it COMPARES and what it DISCARDED before comparing, then ask whether the property being judged survives the discard. ",
+
+    "**Reading the logic of the check cannot find this**, which is why it survived: the comparison itself is right, and the defect is upstream of it in the operand preparation. ",
+
+    "**NOT `total_at_the_level_examined_blind`, which is the nearest neighbour and has the opposite information state.** There the deciding distinction is PRESENT in the value being matched and the match declines to descend into the arm holding it, so the repair is to descend; here the dimension has been REMOVED from the operands before the comparison runs, so descending finds nothing and the repair is to stop discarding. ",
+
+    "**NOT `check_subject_narrower_than_its_declared_claim`** either, whose recognition rule asks which sites, files and spellings the implementation VISITS: this class has a complete range -- both seams visit exactly the right positions -- so asking what population the check visited cannot find it. ",
+
+    "**SPECIMEN** (gunbc#10187, `v1.compiler.infer`): `direct_call_arg_type_mismatch` at argument position and `field_type_diags` at record-literal field init each apply `with_required_cardinality` to the DECLARED side and then compare KERNELS, so cardinality -- the dimension deciding whether an optional may flow into a required position -- is normalized out of both operands before the comparison. ",
+
+    "A field declared `String` accepted a value typed `Optional<String>` with no diagnostic, which made a method's declared return type NON-LOAD-BEARING at every assignment and argument position. ",
+
+    "**Executed, at two sites with two symptoms and one root**, which is also why one reproduction was not the population: changing `first()`'s declared return type broke `extdeps.git` at runtime in the evaluator with \"cannot concat on Variant\" two calls downstream, and `extdeps.bmc` with `NoSuchField` on `Optional`. ",
+
+    "**Rung found at: below the ladder.** DESIGN section 4b names \"values inhabit declared types\" as part of the ordinary compiler floor, and a failure there is a below-baseline safety regression never compensated by higher-order capability. ",
+
+    "**Ceiling: structural**, because the judgment is decidable -- compare the cardinality dimension instead of discarding it -- and the repair is one predicate wired at both seams, one-directional because required-into-optional is widening and loses nothing. ",
+
+    "**Next-rung trigger, as a capability**: both position seams judging every dimension their operands carry, rather than a kernel projection of them. ",
+
+    "**THE DIAGNOSTIC IS THE FREE EVIDENCE, AND IT IS THE EASIEST THING TO READ PAST**: a diagnostic renders WHAT THE CHECKER ACTUALLY COMPARED, not what the source says, so a rendering that disagrees with the declaration visible in the source is primary evidence about the INSTRUMENT'S INPUTS rather than about the subject. ",
+
+    "Here the message rendered a formal declared `ProbeS?` as `Coproduct(ProbeS)` in every instance, which is the peeled operand confessing itself; it was read past twice because it is dressed as a statement about the program. When a declared type renders without the dimension being judged, the disagreement IS the finding. ",
+
+    "**THE CLASS REACHED ITS OWN AUTHOR WITHIN HOURS OF BEING FILED**, which is evidence about how easy it is to reach rather than about any one lane: the repair for this very class was written with its argument seam judging `app.formal`, where `formal` is `peel_nominal_alias_identity(formal_subst)` -- so the check built to judge the cardinality dimension discarded that dimension from its own declared operand. ",
+
+    "It was found by a four-cell fixture (each seam crossed with declared-optional and declared-required) rather than by any count, and exactly one cell was wrong while both true-positive cells fired -- the pairing that distinguishes a broken operand from a vacuous check. ",
+
+    "**A DERIVED EXCLUSION MASKED IT**: bare-`none` values were excluded at both seams by deriving the predicate from its existing owner, which is correct by DESIGN section 3 and still treated a symptom -- with the declared side read correctly the excluded sites are not mismatches at all, so the exclusion had no work to do and its presence is why nobody asked why the check believed the wrong thing. ",
+
+    "**THE CENSUS OF THIS CLASS IS ITSELF BLOCKED ON ONE MISSING CAPABILITY, AND IT IS THE SAME ROOT TWICE.** Measuring the population required naming, per site, which expression PRODUCED the possibly-absent value and whether a preceding branch already proved it present. Both were attempted over SOURCE TEXT and both failed in the same way. ",
+
+    "Producer naming failed on 32 of 118 sites because the diagnostic span points at the ENCLOSING expression rather than the call, so the read begins mid-token or at a lambda head; the sites were counted into a declared unclassified bucket rather than dropped, which is the only reason the shortfall is visible at all. ",
+
+    "Guard detection failed in the other direction and by an unbounded amount: a narrow predicate answered 50 guarded of 118 and a wider one 85, disagreeing on 35 sites, because each was keyed to remembered spellings of a proof -- `count() == 0` found, `length(parts) != 2` missed at `extdeps.container.oci.digest`, `count(segs) >= 2` missed at `gunbc.roadmap.roadmap_dispatch_actuator`. Enumerating spellings is not the repair; each new form is discovered only by reading a site the predicate got wrong. ",
+
+    "**NEXT-RUNG TRIGGER FOR THE CENSUS, STATED AS ONE CAPABILITY**: an AST-grain reader over the RESOLVED program that answers, for a site, both its producing expression and the branch conditions dominating it. Not a better classifier, not another predicate, and not a per-question tool -- the two failures above are one root, and a trigger naming either alone would be satisfied while the census stayed unmeasurable. The compiler already holds this tree; the gap is that the measurement was taken beside it instead of from it. ",
+
+    "**THE REPAIR IS TO MAKE THE PROOF UNNECESSARY, NOT TO MAKE IT VISIBLE** -- which is the whole content of the third repair kind and is easy to state backwards. Where a possibly-absent value reaches a required position behind a guard the checker cannot read, unwrapping discards a proof the author wrote, and exposing the guard to the type system is a larger project than the site deserves. Matching on the optional means NO PROOF IS NEEDED, because the absent case is decided rather than assumed. ",
+
+    "Executed on five sites in three files (`extdeps.version.semver` `semver_compare_identifiers`, `extdeps.container.oci.digest` `oci_wire_digest_parts`, `std.occurrence_identity` `occurrence_id_list_is_prefix_of`): the regen closure went from 11 diagnostics to 0, which is what let the enforcing check accept the corpus it runs over and released a bootstrap deadlock in which the check refused before emit and so blocked regeneration of its own fix. ",
+
+    "**AND A REPAIR THAT OBVIATES SOME CHECKS MUST PROVE SUBSUMPTION PER CHECK, BECAUSE ADJACENCY IS NOT SUBSUMPTION.** In `oci_wire_digest_parts` the matches prove NON-EMPTINESS while the neighbouring `length(parts) != 2` rejects three-or-more parts; removing it as newly-redundant would have been a silent widening wearing the costume of a simplification, arriving inside the safety repair itself. ",
+
+    "**THE SECOND SPECIMEN IS THE SAME CLASS WITH A DIFFERENT WAY OF LOSING THE DIMENSION, AND IT IS THE MORE DANGEROUS ONE.** The first specimen PEELED the declared operand, discarding cardinality that was present. The second reads a declared operand on which cardinality was never established at all: a formal whose type is still an UNSUBSTITUTED type parameter. `node_carries_optional` answers `false` for it -- the identical `false` it gives a genuinely required position -- so the two are indistinguishable at the comparison, and the check concluded REQUIRED from an operand that carried no answer. ",
+
+    "Peeled-formal and unsubstituted-formal are one class and not two, because in both the comparison ran on an operand that did not carry the dimension being judged; they differ only in whether the dimension was stripped or never arrived. Filing them separately would have produced two narrow repairs and no rule. ",
+
+    "**AND THE SECOND SPECIMEN IS ALSO AN ABSORBING FALLBACK (DESIGN section 5), WHICH THE FIRST WAS NOT.** A two-valued result has nowhere to put a could-not-tell, so the unknowable case took the accusing arm -- the mechanism that cannot compute its answer substituted the widest one -- and because the widening emitted a LOCATED, TYPED diagnostic it read as the check working. That is the failure arm wearing the costume of the success arm. The repair is a third value: the judgment now answers `NarrowsToRequired | ConformsOrWidens | NarrowingUndetermined`, and the undetermined case declines to judge rather than concluding not-optional. ",
+
+    "**THE SAME DEFECT PREDICTS FALSE NEGATIVES, WHICH IS WHY A CLEAN AFTER-MEASUREMENT WOULD BE THE ALARMING RESULT.** An operand that cannot carry optionality also cannot carry it where it genuinely IS optional, so the pre-repair check was silent at real defects as well as noisy at non-defects. A before/after identity join over the firing sites must therefore report NEWLY-APPEARING as its own cell: cleared-and-surviving alone cannot distinguish a repair from a silencer, and a newly-appearing count of zero after a substitution repair is evidence the fix did not reach the cell it was aimed at -- not evidence of a clean result. ",
+
+    "**A TRIAGE CORRECTION BELONGS HERE FOR THE SAME REASON THE DIAGNOSTIC DOES.** Two sites were bucketed as generic-substitution artifacts because their declared type RENDERED EMPTY. Reading them (`extdeps.transports.rest`, the `RestFixtureScan` construction) shows a let-bound `first()` whose field is then accessed through the optional base: real defects of the guarded-let shape, with a degraded RENDERING. The rendering defect and the judgment defect are different faults, and collapsing them moved two true positives into an artifact bucket -- the artifact population is 8, not 10. ",
+
+    "**THE PREDICATE IS WIRED AT BOTH SEAMS AND A NARROWER QUESTION IS STILL OPEN AT ONE OF THEM, WHICH IS A DIFFERENT SENTENCE AND MUST NOT BE COLLAPSED INTO THIS ONE.** Both the direct-call argument seam and the record-literal field seam now judge the cardinality dimension instead of discarding it, and both derive the same bare-`none` exclusion, so the class this row names is repaired at its full measured range. What is NOT settled at the field seam is the prior question of WHICH declared field the position expects when the record-literal instantiation cannot be classified at all -- an operand that was never established rather than one that was stripped. That is a separate subject with its own classification, cause carrier and fixtures, separately routed, and the fixtures here are deliberately confined to positions whose required type is already known so that a green cannot be read as covering it.\n",
+
+    "**NOT ESTABLISHED HERE**: whether other checks in the tree prepare their operands the same way. This row names one class found at two seams; the general audit is the trigger's own subject and is not claimed by this row.",
+  ],
+
+  evidence: [],
+}

@@ -277,9 +277,11 @@ fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
         }
       }
     )
-    if scan.unknown.length() != 0 {
-      EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: scan.unknown.first() } }
-    } else if envelope.ladder_holes.length() == 0 {
+    match scan.unknown.first() {
+      Present { value: received } =>
+        EnvelopeRefused { refusal: EnvelopeOperationUnknown { received: received } }
+      Absent =>
+    if envelope.ladder_holes.length() == 0 {
       EnvelopeRefused { refusal: EnvelopeCarriesNoOperations }
     } else {
       EnvelopeDecodedV0 {
@@ -297,6 +299,7 @@ fn decode_envelope(envelope: RawRealizationEnvelope) -> EnvelopeAdmission {
           ),
         },
       }
+    }
     }
   }
 }

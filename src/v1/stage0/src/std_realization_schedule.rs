@@ -745,59 +745,56 @@ pub fn schedule_witness_entry_roster_contains(
         })
 }
 
-pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
-    loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
-            break false;
-        } else {
-            if ((left.clone().len() as i64) == 0) {
-                break true;
-            } else {
-                if (left.clone().first().cloned().as_deref()
-                    != right.clone().first().cloned().as_deref())
-                {
-                    break false;
-                } else {
-                    {
-                        let __tco_0 =
-                            Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                        let __tco_1 =
-                            Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                        left = __tco_0;
-                        right = __tco_1;
-                        continue;
-                    }
+pub fn list_eq_by<T: Clone>(
+    left: Rc<Vec<T>>,
+    right: Rc<Vec<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match left.clone().first().cloned() {
+            std::option::Option::None => match right.clone().first().cloned() {
+                std::option::Option::None => true,
+                Some(_) => false,
+            },
+            Some(l) => match right.clone().first().cloned() {
+                std::option::Option::None => false,
+                Some(r) => {
+                    (eq(l.clone(), r.clone())
+                        && list_eq_by(
+                            Rc::new(
+                                left.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                right
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            eq.clone(),
+                        ))
                 }
-            }
+            },
         }
-    }
+    })
+}
+
+pub fn string_list_eq(left: Rc<Vec<String>>, right: Rc<Vec<String>>) -> bool {
+    list_eq_by(left.clone(), right.clone(), |a, b| (a.clone() == b.clone()))
 }
 
 pub fn schedule_witness_entry_list_eq(
-    mut left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    mut right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
 ) -> bool {
-    loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
-            break false;
-        } else {
-            if ((left.clone().len() as i64) == 0) {
-                break true;
-            } else {
-                if !schedule_witness_entry_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_witness_entry_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of schedule_witness_entry_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
-continue;
-}
-}
-            }
-        }
-    }
+    list_eq_by(left.clone(), right.clone(), |a, b| {
+        schedule_witness_entry_eq(a.clone(), b.clone())
+    })
 }
 
 pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
@@ -866,55 +863,16 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
     }
 }
 
-pub fn runnable_batch_eq(
-    mut left: Rc<Vec<Rc<Runnable>>>,
-    mut right: Rc<Vec<Rc<Runnable>>>,
-) -> bool {
-    loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
-            break false;
-        } else {
-            if ((left.clone().len() as i64) == 0) {
-                break true;
-            } else {
-                if !runnable_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of runnable_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of runnable_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
-continue;
-}
-}
-            }
-        }
-    }
+pub fn runnable_batch_eq(left: Rc<Vec<Rc<Runnable>>>, right: Rc<Vec<Rc<Runnable>>>) -> bool {
+    list_eq_by(left.clone(), right.clone(), |a, b| {
+        runnable_eq(a.clone(), b.clone())
+    })
 }
 
-pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
-    loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
-            break false;
-        } else {
-            if ((left.clone().len() as i64) == 0) {
-                break true;
-            } else {
-                if !runnable_batch_eq(left.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of runnable_batch_eq (empty Optional at runtime)"), right.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of runnable_batch_eq (empty Optional at runtime)")) {
-                    break false;
-} else {
-                    {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-left = __tco_0;
-right = __tco_1;
-continue;
-}
-}
-            }
-        }
-    }
+pub fn schedule_eq(left: Schedule, right: Schedule) -> bool {
+    list_eq_by(left.clone(), right.clone(), |a, b| {
+        runnable_batch_eq(a.clone(), b.clone())
+    })
 }
 
 pub fn schedule_generates_identical_schedule<S>(

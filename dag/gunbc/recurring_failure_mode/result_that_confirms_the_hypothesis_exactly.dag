@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.result_that_confirms_the_hypothesis_exactly
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data result_that_confirms_the_hypothesis_exactly: RecurringFailureMode = RecurringFailureMode {
+  identity: "result_that_confirms_the_hypothesis_exactly" as NonEmptyStr,
+
+  receipts: [
+    "**A CHANGE THAT CLEARS ITS ENTIRE POPULATION IS EVIDENCE THE INSTRUMENT STOPPED MEASURING, NOT THAT THE FIX WORKED.** The failure mode is not a wrong number; it is a number that is wrong in the shape the author was hoping for, which suppresses the one check that would catch it. A result matching the hypothesis exactly is the result to distrust FIRST. ",
+
+    "**MEASURED** (gunbc, 2026-09-04, repairing the optional-into-required check): three consecutive runs reported CLEARED=103 of 103 with NEWLY-APPEARING=0 -- a perfect clearance, exactly what the hypothesis predicted -- and all three were instrument failures with three DIFFERENT causes. Run one invoked a subcommand spelled with a hyphen that does not exist. Run two invoked it with an underscore, which also does not exist, because it is a separate BINARY and not a subcommand at all. Run three reached the real binary and ran the real lane, and then grep silently switched to binary mode on a NUL byte in the log, emitting no lines while grep -c on the same file kept counting. The true answer was 1. ",
+
+    "**THE THREE CAUSES SHARE NO MECHANISM, WHICH IS THE POINT**: two were argument errors and one was an encoding behaviour in a downstream text tool. What made them one failure mode is that each produced ZERO EXTRACTED SITES, and zero extracted sites renders as total success for a repair. Every instrument in the chain fails toward the answer the author wants. ",
+
+    "**THE DISCRIMINATOR IS A POSITIVE CONTROL COUNTING THE SUBJECT AT ITS COARSEST GRAIN** -- here, diagnostics of ANY kind in the same log. At 0 it exposed runs one and two as never having compiled anything. At 206 beside an extracted 0 it exposed run three as an EXTRACTION fault rather than a compiler result, which is a distinction the numerator alone cannot carry. One line of instrument, three defects caught. ",
+
+    "**A NON-ZERO EXIT WAS PRESENT AND READ PAST TWICE.** Runs one and two exited 2, and this same lane had recorded hours earlier that RC=2 from this binary family is a USAGE error rather than a verdict. A status code disagreeing with a plausible result loses to the result, because the result is the thing being looked for. The log's first five lines said unrecognized subcommand the entire time. ",
+
+    "**THE MIRROR-IMAGE INSTANCE IS SUBTLER AND ARRIVED THE SAME HOUR**: a SMALL, NON-ZERO delta is more dangerous than a perfect one. The same lane edited `src/v1/04_infer.dag` without regenerating the stage0 seed that cargo actually compiles, measured a 103 -> 102 change, and attributed the single cleared site to a construct the binary did not contain (7 occurrences in the `.dag`, 0 in `v1_compiler_infer.rs`). A zero delta would have prompted a check; a small believable one did not. ",
+
+    "**RECOGNITION RULE**: before reporting that a change cleared a population, ask what the instrument would print if it had not run at all -- and if that is indistinguishable from the reported result, the run establishes nothing. Then require, in the same output, a coarse-grained count that must be NON-ZERO for the fine-grained count to be readable. ",
+
+    "**NEXT-RUNG TRIGGER**: a measurement harness that emits its subject-population count and its extraction count as one typed receipt, so an extraction yielding zero over a non-empty subject REFUSES rather than reporting a clean sweep. Until that exists this is mitigatable-by-discipline only, and the discipline is the positive control. ",
+
+    "**NOT ESTABLISHED**: whether other lanes' before/after reports in this repo carry the same defect. This row names the class and its discriminator; auditing existing published deltas for uncompiled changes and empty extractions is a separate subject.",
+  ],
+
+  evidence: [],
+}

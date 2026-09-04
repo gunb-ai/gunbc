@@ -209,11 +209,22 @@ fn session_slice_line(host: HostIdentity, ceiling: ByteSize) -> Doc {
               ),
               " oom_pressure_kill=true"
             ),
-            concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+            session_slice_pressure_limit_segment(limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)
           ),
           concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
         )
       ))
+  }
+}
+
+// The rendered line MIRRORS the knob list: oomd declares this limit optional, so a policy that
+// states no limit renders no segment rather than a segment carrying an invented percentage. The
+// renderer and gunbc.host_converge session_host_pressure_limit_knobs must agree on that, because a
+// line describing a knob that is not emitted is a receipt for work that never happens.
+fn session_slice_pressure_limit_segment(limit: Percent?) -> String {
+  match limit {
+    Absent => ""
+    Present { value: p } => concat(" oom_pressure_limit_pct=", to_string(percent_count(p: p)))
   }
 }
 

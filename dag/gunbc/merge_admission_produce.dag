@@ -120,13 +120,22 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
   } else if match lines.skip(n: 5).first() { Present { value: field } => field == ""  Absent => true } {
     none
   } else {
-    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
+    match lines.skip(n: 1).first() {
+      Absent => none
+      Present { value: attempt_raw } =>
+    match walk_attempt_id(raw: attempt_raw) {
       Absent => none
       Present { value: attempt } =>
-            match parse_check_conclusion(raw: lines.skip(n: 3).first()) {
+        match lines.skip(n: 3).first() {
+          Absent => none
+          Present { value: conclusion_raw } =>
+            match parse_check_conclusion(raw: conclusion_raw) {
               Absent => none
               Present { value: conclusion } =>
-                match parse_gate_roster_hash_wire(line: lines.skip(n: 2).first()) {
+                match lines.skip(n: 2).first() {
+                  Absent => none
+                  Present { value: gate_hash_raw } =>
+                match parse_gate_roster_hash_wire(line: gate_hash_raw) {
                   Absent => none
                   Present { value: gate_roster_hash } =>
                     match lines.skip(n: 4).first() {
@@ -163,7 +172,10 @@ fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
                         }
                     }
                 }
+                }
             }
+        }
+    }
     }
   }
 }
@@ -219,10 +231,9 @@ fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
 }
 
 fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
-  if length(lines) >= 5 {
-    parse_int(s: lines.skip(n: 4).first())
-  } else {
-    none
+  match lines.skip(n: 4).first() {
+    Absent => none
+    Present { value: pr_raw } => parse_int(s: pr_raw)
   }
 }
 
@@ -231,26 +242,42 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
   if length(lines) < 4 {
     none
   } else {
-    match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
+    match lines.skip(n: 2).first() {
+      Absent => none
+      Present { value: conclusion_raw } =>
+    match parse_check_conclusion(raw: conclusion_raw) {
       Present { value: conclusion } =>
-        match git_object_id_from_untagged_hex(hex: lines.first()) {
+        match lines.first() {
+          Absent => none
+          Present { value: base_hex } =>
+        match git_object_id_from_untagged_hex(hex: base_hex) {
           Present { value: base_tree_hash } =>
-            match parse_gate_roster_hash_wire(line: lines.skip(n: 1).first()) {
+            match lines.skip(n: 1).first() {
+              Absent => none
+              Present { value: gate_hash_raw } =>
+            match parse_gate_roster_hash_wire(line: gate_hash_raw) {
               Absent => none
               Present { value: gate_roster_hash } =>
+                match lines.skip(n: 3).first() {
+                  Absent => none
+                  Present { value: head_sha_line } =>
                 Present {
                   value: MergeAdmissionReceipt {
                     pr_number: wire_pr_number_from_lines(lines: lines),
-                    head_sha: lines.skip(n: 3).first(),
+                    head_sha: head_sha_line,
                     base_tree_hash: base_tree_hash,
                     gate_roster_hash: gate_roster_hash,
                     conclusion: conclusion,
                   }
                 }
+                }
+            }
             }
           Absent => none
         }
+        }
       Absent => none
+    }
     }
   }
 }

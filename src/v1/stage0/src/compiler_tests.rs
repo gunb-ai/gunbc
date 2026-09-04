@@ -3533,6 +3533,155 @@ mod compiler_tests {
         );
     }
 
+    fn type_variable_declared_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = named_type_node("T");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::TypeVariable {
+                    id: "T".to_string(),
+                },
+            )),
+            ..(*base).clone()
+        })
+    }
+
+    fn optional_produced_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let base = named_type_node("String");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            ..(*base).clone()
+        })
+    }
+
+    #[test]
+    fn an_unsubstituted_formal_declines_visibly_and_emits_neither_accusation_nor_silence() {
+        use crate::v1_std_core::CompilerDiagnostic;
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let declared = type_variable_declared_node();
+        let produced = optional_produced_node();
+        let verdict = crate::v1_compiler_infer::optional_into_required_mismatch(
+            declared.clone(),
+            produced.clone(),
+        );
+        assert!(
+            matches!(&*verdict, crate::v1_compiler_infer::OptionalNarrowing::NarrowingUndetermined { .. }),
+            "an unsubstituted type parameter establishes optionality NEITHER way, so the judgment must decline rather than conclude required"
+        );
+        let diags = crate::v1_compiler_infer::optional_narrowing_diags(
+            verdict,
+            declared.clone(),
+            crate::v1_std_core::no_span(),
+            "probe.module".to_string(),
+            source_indices.clone(),
+        );
+        assert_eq!(
+            diags.len(),
+            1,
+            "SILENT ADMISSION RETURNED: the undetermined arm emitted nothing, which is the absorbing fallback -- no artifact to notice, so the deficit stops ranking for repair"
+        );
+        match &*diags[0].diagnostic {
+            CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => {}
+            CompilerDiagnostic::OptionalValueInRequiredPosition { .. } => panic!(
+                "FALSE POSITIVE RETURNED: the arm accused a position whose declared type is a type variable"
+            ),
+            other => panic!("undetermined arm emitted an unexpected diagnostic: {:?}", other),
+        }
+        let concrete_required = named_type_node("String");
+        assert!(
+            matches!(
+                &*crate::v1_compiler_infer::optional_into_required_mismatch(
+                    concrete_required,
+                    produced.clone()
+                ),
+                crate::v1_compiler_infer::OptionalNarrowing::NarrowsToRequired
+            ),
+            "a CONCRETE required declared type still narrows and must still be accused"
+        );
+        assert!(
+            matches!(
+                &*crate::v1_compiler_infer::optional_into_required_mismatch(
+                    optional_produced_node(),
+                    produced.clone()
+                ),
+                crate::v1_compiler_infer::OptionalNarrowing::ConformsOrWidens
+            ),
+            "optional into optional conforms and must stay silent"
+        );
+    }
+
+    fn narrowing_refusals_for(src: &str) -> usize {
+        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: "probe.dag".to_string(),
+            content: src.to_string(),
+        });
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(im::vector![source]),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        result
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                matches!(
+                    &*d.diagnostic,
+                    crate::v1_std_core::CompilerDiagnostic::OptionalValueInRequiredPosition { .. }
+                )
+            })
+            .count()
+    }
+
+    #[test]
+    fn optional_into_required_refuses_through_direct_call_application() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\nfn needs_required(t: Thing) -> Int { t.n }\nfn opt_source() -> Thing? { none }\nfn call_with_optional() -> Int { needs_required(t: opt_source()) }\n"),
+                    1,
+                    "SEAM STOPPED CONSUMING THE JUDGMENT: authored source passing an optional-returning call into a REQUIRED formal produced no optional-into-required refusal. The helper answering correctly in isolation does not establish that direct-call application inference still asks it or still keeps the answer"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\nfn needs_required(t: Thing) -> Int { t.n }\nfn req_source() -> Thing { Thing { n: 1 } }\nfn call_with_required() -> Int { needs_required(t: req_source()) }\n"),
+                    0,
+                    "GREEN CONTROL FAILED: the same call shape with a REQUIRED-returning callee was refused, so the fixture above cannot distinguish a working wall from a path that refuses everything"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("optional_into_required_refuses_through_direct_call_application panicked");
+    }
+
+    #[test]
+    fn optional_into_required_refuses_through_record_literal_inference() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Holder { t: Thing }\nfn opt_source() -> Thing? { none }\nfn build() -> Holder { Holder { t: opt_source() } }\n"),
+                    1,
+                    "SEAM STOPPED CONSUMING THE JUDGMENT: an optional value in a REQUIRED record-literal field produced no refusal through record-literal structural inference"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Box<A> { held: A }\nfn opt_source() -> Thing? { none }\nfn build_generic() -> Box<Thing> { Box { held: opt_source() } }\n"),
+                    1,
+                    "GENERIC INSTANTIATION ROUTE LOST ITS JUDGMENT: the same defect inside a GENERIC record literal went unrefused, which is the instantiated path failing to hand the substituted field type to the narrowing check"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Thing { n: Int }\ntype Holder { t: Thing }\nfn req_source() -> Thing { Thing { n: 1 } }\nfn build_ok() -> Holder { Holder { t: req_source() } }\n"),
+                    0,
+                    "GREEN CONTROL FAILED: a required value in the same required field was refused, so the two fixtures above cannot distinguish a working wall from a path that refuses everything"
+                );
+                assert_eq!(
+                    narrowing_refusals_for("module probe\ntype Colour = | Red | Green { shade: Int }\nfn variant_lit() -> Colour { Green { shade: 3 } }\n"),
+                    0,
+                    "VARIANT ROUTE FALSE POSITIVE: a coproduct variant literal is NOT a generic instantiation, and accusing it is the regression that withdrawing the fallback from the ordinary variant route caused before"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("optional_into_required_refuses_through_record_literal_inference panicked");
+    }
+
     #[test]
     fn witness_carrier_declines_a_non_witness_expected_type() {
         let source_indices = std::rc::Rc::new(HashMap::new());

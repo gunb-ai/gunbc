@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.instrument_renders_one_scope_while_adjudicating_another
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data instrument_renders_one_scope_while_adjudicating_another: RecurringFailureMode = RecurringFailureMode {
+  identity: "instrument_renders_one_scope_while_adjudicating_another" as NonEmptyStr,
+
+  receipts: [
+    "**one run carries two different scopes and prints only one of them**, under a header bearing the run's own name -- so a reader who takes the printed roster as the scope of the number they are computing is reading a TRUE statement about a DIFFERENT phase. ",
+
+    "**SPECIMEN** (gunbc, 2026-09-04): the required witnesses lane announces `phase parse (.dag: src/v1, dag, src/v2)`, rendering `v1.cli_run` `DAG_PARSE_SWEEP_ROOTS`, a hardcoded three-element constant that `run_dag_parse_sweep` consumes WITHOUT reading `--source-root` at all. Every other phase in the same run is scoped by the argv's two roots, `dag` and `src/v2`. Both rosters are correct; only one is printed. ",
+
+    "**IT MISLED TWO READERS IN OPPOSITE DIRECTIONS ON ONE EVENING, WHICH IS WHAT MAKES IT A CLASS RATHER THAN A SLIP.** One read the printed roster and concluded the enforcing check's population included `src/v1` -- wrong, because that check is resolution-scoped to the argv roots. The other grepped the workflow for `--source-root`, found six flags naming two roots, and concluded the lane never touches `src/v1` -- also wrong, because a phase with a hardcoded roster is invisible to that grep. ",
+
+    "**THE DIRECT READING WAS THE CORRECT ONE AND IT LOST TO THE CONFIDENT INFERENCE.** The first reader had the log line in front of them; the second had an inference from a different file and stated it with certainty, and the first retracted a true observation. So the residual harm was not the scope error at all -- it was a correct measurement withdrawn under someone else's confidence, which no amount of care by the retracting party would have prevented. ",
+
+    "**RECOGNITION RULE**: whenever an instrument prints a scope, a root list, a roster or a population, ask whether the PHASE THAT PRODUCED YOUR NUMBER is the phase that printed it. A header names the run; it does not name the subject of every figure inside the run. And grepping the invocation for scope flags finds only argv-driven scopes -- a hardcoded roster is a scope the invocation cannot show you. ",
+
+    "**RUNG FOUND AT: 1 (mitigatable)** -- careful readers can cross-check the per-phase roster against the source, and here two did and disagreed. **CEILING: structural**: the run already holds each phase's effective roster at the moment it announces the phase, so rendering it is construction rather than validation. ",
+
+    "**NEXT-RUNG TRIGGER, AS A CAPABILITY**: every announced phase rendering its OWN effective roster, so that no printed scope can belong to a phase other than the one it labels. Not a corrected constant and not a documentation note -- the defect is that one roster is rendered for a run carrying several.",
+  ],
+
+  evidence: [],
+}

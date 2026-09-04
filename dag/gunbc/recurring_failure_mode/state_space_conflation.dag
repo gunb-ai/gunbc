@@ -155,7 +155,25 @@ data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
 
     "The guard's state space has no cell for content divergence, so its count is the same either way. ",
 
-    "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent.",
+    "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent. ",
+
+    "**A FORM WITH THE OPPOSITE RUNG FROM THE FOURTH, WHICH IS WHY IT IS FILED SEPARATELY** (gunbc, 2026-09-02/03): `v1.compiler.infer` `field_summary_for_type` has an arm matching `field == \"value\"` on a normalized optional that claims `OptionalUnwrap` plus `PlainValue` BY SPELLING, with no inspection of whether the inner type declares its own `value` field -- and `Outcome` and `EvalResult` both do. ",
+
+    "The fourth form is the same carrier and the same optional spellings but REFUSES with `NoSuchField`, which that row calls the whole of the good news; **this arm ANSWERS**. ",
+
+    "The unwrap yields `Value::Null`, and `LiteralValue::LitNull` evaluating to `Value::Null` makes `null` an AUTHORABLE literal, so the fabricated result is not a similar spelling but THE SAME VALUE -- it hashes alike, prints as \"null\", and serializes to `PortableValue::Null`. ",
+
+    "No downstream consumer, however careful, can separate \"the unwrap had nothing\" from \"the author wrote null\": absence of signal is recoverable by asking again, a valid-looking wrong value is not, which is DESIGN section 5 silent wrongness rather than a low rung. ",
+
+    "**The repair is not inside the arm**, because the arm cannot distinguish the two nulls -- the information was destroyed upstream where `PlainValue` was claimed for an unverified spelling, and a fix inside the arm would have to GUESS which null it holds, which is the absorbing-fallback shape wearing a different hat. ",
+
+    "Rung found at 1, and only because a corpus annotation documents it; **ceiling structural**, since membership is decidable by inspecting the inner type before claiming the payload, and the distance between decidable and mitigatable is the whole argument for this receipt. ",
+
+    "**Next-rung trigger as a capability**: `field_summary_for_type` resolving `.value` on an optional by consulting the inner type's declared fields and refusing or preferring the inner field where both could answer -- not merely adding a check. ",
+
+    "Reached independently three times, which is evidence about the DEFECT rather than about diligence -- easy to reach and hard to see is the pair that ranks a class for climbing: twice by two lanes reading the arm for unrelated questions, and once as `extdeps.bmc` `pid_control_decode`, a pre-existing minimal reproduction already in the corpus and measured both ways. ",
+
+    "**Deliberately NOT repaired by the `first()`/`last()` change that found it**, which preserves the pre-existing null result rather than widening its own subject.",
   ],
 
   evidence: [],

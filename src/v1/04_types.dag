@@ -1184,17 +1184,22 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
   }
 }
 
+// The two arms are the two authored carriers of one fact, and node_carries_optional is the single
+// authority that decides which (DESIGN section 3). The arms stay distinct because they PEEL
+// differently -- cardinality is dropped in place, a named Optional<T> is unwrapped to its child.
 fn extract_optional_inner_node(n: Node) -> Node {
-  let is_optional = n.return_cardinality == CardOptional
-  if is_optional {
-    with_required_cardinality(n: n)
-  } else if n.name == "Optional" && n.children |> count == 1 {
-
-    match n.children |> first {
-      Present { value: inner } => inner
-      Absent => n
+  if node_carries_optional(n: n) == false {
+    n
+  } else {
+    match n.return_cardinality {
+      CardOptional => with_required_cardinality(n: n)
+      Required =>
+        match n.children |> first {
+          Present { value: inner } => inner
+          Absent => n
+        }
     }
-  } else { n }
+  }
 }
 
 fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {

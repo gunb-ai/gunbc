@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.source_text_census_counts_its_own_documentation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data source_text_census_counts_its_own_documentation: RecurringFailureMode = RecurringFailureMode {
+  identity: "source_text_census_counts_its_own_documentation" as NonEmptyStr,
+
+  receipts: [
+    "**a source-text census over this corpus counts the prose that DOCUMENTS a construct as instances OF that construct** -- and the effect is structural here rather than incidental, because DESIGN section 4c requires prose to live in TYPED CARRIERS, and those carriers are `.dag` data rows in the same syntax as code. ",
+
+    "So a receipt quoting a defect verbatim is, to any matcher that reads bytes, indistinguishable from the defect. The corpus documents itself in its own language, which is exactly the property that makes the documentation reviewable and the census wrong. ",
+
+    "**THE LEDGER IS THE DENSEST CONTAMINATOR, WHICH INVERTS THE USUAL EXPECTATION**: `gunbc.recurring_failure_mode` exists to quote defects precisely, so the file most committed to accurate citation is the one that most corrupts a count of the thing cited. The floor is not fixed -- it GROWS as the ledger grows, so a census re-run later is more contaminated, not less. ",
+
+    "**MEASURED** (gunbc, 2026-09-03, censusing `first()`/`last()` over the roots DESIGN's Building-and-checks section declares -- `--source-root dag --source-root src/v2`): 660 raw matches, of which **19 sat inside string literals** and 641 were code positions, a 2.9% overstatement. Densest carriers: `state_space_conflation` 6, `gunbc.roadmap.roadmap_publish` 4, `extdeps.languages.rust.emit` 2, `std.languages` 2. ",
+
+    "**THE SELF-REFERENCE IS THE SHARP EDGE**: two of the contaminating receipts were filed BY THE SAME LANE ON THE SAME NIGHT as the census they inflated. Writing up a defect measurably increases the measured population of that defect, so a lane diligently recording what it found makes its own next measurement worse, and nothing in either activity signals the interaction. ",
+
+    "It surfaced only as a 3-occurrence disagreement between two independently built instruments, and it was attributed to merge drift first -- the commits were checked and carried none of the shape, which is what forced the real cause out. A single instrument would have reported the inflated number with no disagreement to investigate. ",
+
+    "**RUNG FOUND AT: 1 (mitigatable)** -- a reviewer can split string-literal spans from code positions by hand, and this row is the only thing that would prompt them to. **CEILING: structural**, since the distinction is fully decided by the resolved program: a string literal and a call are different nodes, and the compiler already holds that tree. ",
+
+    "**NEXT-RUNG TRIGGER, AS A CAPABILITY**: an AST-grain reader over the resolved program that answers population questions from nodes rather than bytes. Not a smarter regex and not a per-census exclusion list -- the same capability that the enclosing-span and guard-detection failures of `comparison_discards_the_dimension_it_judges` name, which is the third independent arrival at one missing tool. ",
+
+    "**RECOGNITION RULE**: before publishing any population derived from matching source text in this repository, ask what fraction of the hits are inside string literals, and report the split. If the subject of the census is a defect class, expect the failure-mode ledger to be among the top contaminators, and expect the fraction to be worst for the classes most carefully documented.",
+  ],
+
+  evidence: [],
+}

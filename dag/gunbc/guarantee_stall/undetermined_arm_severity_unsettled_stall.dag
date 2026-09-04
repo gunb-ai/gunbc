@@ -1,0 +1,29 @@
+module gunbc.guarantee_stall.undetermined_arm_severity_unsettled_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+
+// NOT SILENT IS NOT THE SAME AS BLOCKING, and conflating the two is what this row exists to stop.
+// A counted, located, reported advisory is already not silent: it is visible, it has a population,
+// and nobody can cite it as coverage. BLOCKING is the stronger claim that the program may not be
+// built while this position is undecided.
+//
+// Blocking on "I cannot determine" has a consequence that was MEASURED, not argued. A candidate
+// substitution-aware decline was built and run over the whole corpus. It declined 59 positions,
+// 114 of its 120 diagnostic lines rendered 'Node(fn)', every one of the 59 had previously passed,
+// and the first of them refused gunbc.generated_artifact_emit outright at std.key_relation:136, so
+// regeneration could not complete. It repaired none of the 17 positions it was built for.
+//
+// That is the inverse of fail-closed. Fail-closed refuses when the PROGRAM is wrong; this refused
+// because the CHECKER was unsure, which moves the checker's own limitation onto legitimately
+// generic code. The candidate was therefore NOT landed, which is why this row's population is
+// honestly unenumerable: the 59 is a measurement of an experiment that does not exist in the tree,
+// and quoting it as a live population would be a number without a producer anyone can re-run.
+data undetermined_arm_severity_unsettled_stall: GuaranteeStall = GuaranteeStall {
+  subject: "whether an undetermined optional-narrowing position should BLOCK the build or be counted and reported is unsettled, and the two have been treated as one decision because both are correctly described as not-silent -- so a future reach improvement can arrive as a build-stopping refusal over legitimately generic code without that severity choice ever having been made",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "a determination good enough that undetermined is RARE and each remaining instance is a real gap -- at which point blocking is the honest arm, and until which counting is" },
+  population: UncountedNotEnumerable { reason: "the subject is the set of positions an undetermined arm would refuse, which depends on a determination that does not exist in the tree. The 59 measured by the unlanded candidate is evidence about THAT candidate and is not offered as this population, because the candidate was withdrawn and nobody can re-derive the number from the committed corpus" },
+  next_rung_trigger: "the undetermined arm's severity is DERIVED from its measured rate on the real corpus rather than chosen -- blocking where undetermined is rare and counted where it is not -- sufficient for a reach improvement to be landable without silently converting passing generic code into refusals, demonstrated by a run reporting the undetermined count on a corpus that still builds. A reach improvement that lands with a blocking arm and no measured rate does NOT retire this row, it is the exact event the row exists to catch"
+}

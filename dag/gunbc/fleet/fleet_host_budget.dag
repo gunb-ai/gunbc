@@ -134,11 +134,15 @@ fn gunbc_fleet_oomd_evidence_for(host: HostIdentity) -> OomdEnforcementEvidence 
   match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
     Absent => OomdUnverified
     Present { value: ceiling } =>
-      gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds {
-        per_session_cap: ceiling,
-        parent_slice_cap: session_reservation_bytes(host: host),
-        pressure_limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit,
-      })
+      match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
+        Absent => OomdUnverified
+        Present { value: pressure_limit } =>
+          gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds {
+            per_session_cap: ceiling,
+            parent_slice_cap: session_reservation_bytes(host: host),
+            pressure_limit: pressure_limit,
+          })
+      }
   }
 }
 

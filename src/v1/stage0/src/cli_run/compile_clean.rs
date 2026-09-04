@@ -766,6 +766,15 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
+        CompilerDiagnostic::OptionalValueInRequiredPosition { .. } => {
+            "OptionalValueInRequiredPosition"
+        }
+        // A DISTINCT histogram class on purpose. This diagnostic counts the CHECK'S OWN deficit --
+        // a formal the checker cannot judge because it is still an unsubstituted type parameter --
+        // and not a defect in the code at that position. Folding it into the accusation above would
+        // make the repair population look like it grew when what actually happened is that a
+        // previously silent arm started reporting.
+        CompilerDiagnostic::OptionalNarrowingUndetermined { .. } => "OptionalNarrowingUndetermined",
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
         CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
         CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
@@ -847,6 +856,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             name.clone()
         }
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
+        CompilerDiagnostic::OptionalValueInRequiredPosition { declared, .. } => declared.clone(),
+        CompilerDiagnostic::OptionalNarrowingUndetermined { declared, .. } => declared.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
         CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),

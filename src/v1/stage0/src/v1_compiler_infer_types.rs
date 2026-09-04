@@ -35,6 +35,7 @@ pub use crate::std_types::{
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::node_carries_optional;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -2987,21 +2988,15 @@ pub fn method_receiver_element_node(
 }
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
-        } else {
-            if ((n.name.clone() == "Optional".to_string())
-                && ((n.children.clone().len() as i64) == 1))
-            {
-                match n.children.clone().first().cloned() {
-                    Some(inner) => inner.clone(),
-                    std::option::Option::None => n,
-                }
-            } else {
-                n
-            }
+    if (node_carries_optional(n.clone()) == false) {
+        n.clone()
+    } else {
+        match n.return_cardinality.clone() {
+            Cardinality::CardOptional => crate::v1_std_core::with_required_cardinality(n.clone()),
+            Cardinality::Required => match n.children.clone().first().cloned() {
+                Some(inner) => inner.clone(),
+                std::option::Option::None => n.clone(),
+            },
         }
     }
 }

@@ -202,3 +202,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/v2-complexity-capability-parity.md
 /docs/plans/v2-corpus-self-host.md
 /docs/plans/import-namespace-program.md
+
+# scratch probe corpora — never part of the tree under measurement
+.probe_src/
+.probe_wt/

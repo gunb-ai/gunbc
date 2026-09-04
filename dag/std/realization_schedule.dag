@@ -584,28 +584,37 @@ fn schedule_witness_entry_roster_contains(
   fold(xs, init: false, f: fn(found, x) { found || schedule_witness_entry_eq(a: x, b: w) })
 }
 
-fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
-  if left.count() != right.count() {
-    false
-  } else if left.count() == 0 {
-    true
-  } else if left.first() != right.first() {
-    false
-  } else {
-    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+// ONE FOLD FOR FOUR LIST EQUALITIES, AND THE REASON IT MATCHES RATHER THAN ASSERTS.
+// Four functions here were the same recursion modulo the element comparison, each opening with
+// a count()-pair guard and then calling first() on both sides. That shape is why the optional
+// arrives at a required position: first() is total and returns an Optional, the emptiness proof
+// lives in a branch the type checker cannot read, and every copy reproduced the same unread proof.
+// Unwrapping would have discarded the author's proof four times over; matching CONSUMES the
+// optional, so the absent case is decided rather than assumed and no proof is needed.
+// It is also cheaper: the count() pair was recomputed at every level, so the old shape paid a
+// linear scan per element.
+fn list_eq_by<T>(left: List<T>, right: List<T>, eq: fn(T, T) -> Bool) -> Bool {
+  match left.first() {
+    Absent =>
+      match right.first() {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: l } =>
+      match right.first() {
+        Absent => false
+        Present { value: r } =>
+          eq(l, r) && list_eq_by(left: left.skip(n: 1), right: right.skip(n: 1), eq: eq)
+      }
   }
 }
 
+fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
+  list_eq_by(left: left, right: right, eq: (a, b) => a == b)
+}
+
 fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<ScheduleWitnessEntry>) -> Bool {
-  if left.count() != right.count() {
-    false
-  } else if left.count() == 0 {
-    true
-  } else if !schedule_witness_entry_eq(a: left.first(), b: right.first()) {
-    false
-  } else {
-    schedule_witness_entry_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
+  list_eq_by(left: left, right: right, eq: (a, b) => schedule_witness_entry_eq(a: a, b: b))
 }
 
 fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
@@ -636,27 +645,11 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
 }
 
 fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
-  if left.count() != right.count() {
-    false
-  } else if left.count() == 0 {
-    true
-  } else if !runnable_eq(left: left.first(), right: right.first()) {
-    false
-  } else {
-    runnable_batch_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
+  list_eq_by(left: left, right: right, eq: (a, b) => runnable_eq(left: a, right: b))
 }
 
 fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
-  if left.count() != right.count() {
-    false
-  } else if left.count() == 0 {
-    true
-  } else if !runnable_batch_eq(left: left.first(), right: right.first()) {
-    false
-  } else {
-    schedule_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
+  list_eq_by(left: left, right: right, eq: (a, b) => runnable_batch_eq(left: a, right: b))
 }
 
 fn schedule_generates_identical_schedule<S>(plan: RealizationPlan<S>, schedule: Schedule) -> Bool {

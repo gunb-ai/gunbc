@@ -292,14 +292,21 @@ fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
 }
 
 fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
-  let sample = access.privileged_commands.first()
-  concat(
-    concat(
-      concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
-      concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
-    ),
-    deploy_access_sudoers_line(access: access, cmd: sample)
-  )
+  match access.privileged_commands.first() {
+    Absent =>
+      concat(
+        deploy_access_refusal_prefix,
+        " — a sudo -n preflight miss was reported for a DeployAccess that declares no privileged commands at all, so there is no sudoers line to add; the miss and the policy disagree about whether privilege was ever required"
+      )
+    Present { value: sample } =>
+      concat(
+        concat(
+          concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
+          concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
+        ),
+        deploy_access_sudoers_line(access: access, cmd: sample)
+      )
+  }
 }
 
 fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
