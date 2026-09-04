@@ -15,12 +15,13 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // serial route happens to fit is not a repair: the age axis bounds unmodeled executor and toolchain
 // drift, so weakening it would turn an expired external observation into current evidence.
 //
-// THE CENSUSES ARE ENTRY POINTS, NOT LITERALS. The complete derivability population is produced by
-// `gunbc test //gunbc/instruments:behavioral-receipt-census`. The required population is produced
-// by `claim_executor --required-floor --source-root dag --source-root src/v2`, whose terminal
-// ledger enumerates route_gap_held identities. They answer different questions and are not
-// interchangeable denominators. In particular, the former title's figures are not copied here:
-// both populations move with the activation revision and must be re-derived there.
+// THE CENSUSES ARE ENTRY POINTS, NOT MEMBERS. The complete derivability census is produced by
+// `gunbc test //gunbc/instruments:behavioral-receipt-census`; it supplies context for the possible
+// self-host surface but is not this row's denominator. The affected population below is exactly
+// the route_gap_held identity set emitted by the activation-revision run of
+// `claim_executor --required-floor --source-root dag --source-root src/v2`. It is enumerated rather
+// than replaced by either producer's name. A later activation must re-derive the set and update
+// this row when membership moves; the former title's figures are not copied here.
 data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall {
   subject: "the self-host behavioral route_gap_held population has no executing route family whose evidence remains spendable through production, publication, and exact-head consumption",
   current: Mitigatable,
@@ -30,8 +31,51 @@ data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall
   },
   population: BoundedPopulation {
     members: [
-      "the activation-revision route_gap_held identity population emitted by claim_executor --required-floor",
-      "the activation-revision derivable behavioral population emitted by //gunbc/instruments:behavioral-receipt-census",
+      "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds",
+      "test.claim.namespace_structural_root_exposure_generated_witness_test.namespace_structural_root_exposure_generated_witness_holds",
+      "test.claim.parse_test.parse_witness_floor_holds",
+      "test.claim.parse_test.parse_witness_perf_holds",
+      "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds",
+      "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds",
+      "test.claim.self_host_02_parse_behavioral_witness.self_host_02_parse_behavioral_receipt_holds",
+      "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
+      "test.claim.self_host_03_normalize_behavioral_witness.self_host_03_normalize_behavioral_receipt_holds",
+      "test.claim.self_host_03_resolve_behavioral_witness.self_host_03_resolve_behavioral_receipt_holds",
+      "test.claim.self_host_04_infer_behavioral_witness.self_host_04_infer_behavioral_receipt_holds",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.a_real_cargo_build_materializes_through_the_real_digest",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.a_target_the_build_never_produced_refuses_and_does_not_materialize",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.changing_only_the_source_bytes_names_exactly_the_artifact_axis",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.rebuilding_identical_source_in_place_moves_no_axis",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file",
+      "test.claim.self_host_artifact_materialization_real_execution_witness.the_materialized_path_is_the_one_the_real_cargo_stream_named",
+      "test.claim.self_host_body_producer_behavioral_witness.self_host_body_producer_behavioral_receipt_holds",
+      "test.claim.self_host_discovery_enumeration_behavioral_witness.self_host_discovery_enumeration_behavioral_receipt_holds",
+      "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
+      "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
+      "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
+      "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds",
+      "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds",
+      "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds",
+      "test.claim.self_host_target_carriers_behavioral_witness.self_host_target_carriers_behavioral_receipt_holds",
+      "test.claim.self_host_use_site_verdict_behavioral_witness.self_host_use_site_verdict_behavioral_receipt_holds",
+      "test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses",
+      "v2.test.claim.auth_declared_but_unwired_witness.auth_declared_but_unwired_witness_keystone_holds",
+      "v2.test.claim.bootstrap.bootstrap_witness_keystone_holds",
+      "v2.test.claim.dag_acceptance_rustc_wet.rustc_accepts_valid_target_source",
+      "v2.test.claim.dag_acceptance_rustc_wet.rustc_diagnoses_invalid_target_source",
+      "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_dispatch_change_cold_rebuild_holds",
+      "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_member_change_cold_rebuild_holds",
+      "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_one_build_members_warm_holds",
+      "v2.test.execution.emit_on_demand_field_access_family_witness.emit_on_demand_field_access_native_one_build_holds",
+      "v2.test.execution.emit_on_demand_variant_construct_family_witness.emit_on_demand_variant_construct_native_one_build_holds",
+      "v2.test.execution.floor_diff_observe_witness.witness_ci_policy_name_status_observation_succeeds",
+      "v2.test.execution.floor_diff_observe_witness.witness_ci_policy_observation_succeeds",
+      "v2.test.execution.floor_diff_observe_witness.witness_invalid_base_fails_closed",
+      "v2.test.execution.floor_diff_observe_witness.witness_invalid_base_name_status_fails_closed",
+      "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cold_warm_equivalence_holds",
+      "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_discriminating_red_holds",
+      "v2.test.execution.proactive_verification_ledger_overlap_execution.proactive_verification_ledger_overlap_execution_holds",
+      "v2.test.claim.infer_semantics_witness.infer_semantics_witness_keystone_holds",
     ],
   },
   next_rung_trigger: "an executing route family that derives its identity roster from the activation revision, executes every routed identity with the real effects its assertion requires, publishes a subject-bound terminal receipt automatically, and has that receipt consumed on the same exact candidate before its modeled expiry. Completeness is an identity join in both directions; a missing, expired, foreign-subject, failed, or no-verdict row refuses. The enrolled evidence includes a positive execution and a planted behavioral divergence that makes the real consumer red. A longer expiry, a hand-carried receipt, a roster-only lane, or a receipt produced on a pull-request merge ref pinned before a later main repair does not satisfy this trigger"
