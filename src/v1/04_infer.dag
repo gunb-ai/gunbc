@@ -3756,16 +3756,18 @@ fn structured_application_site_type_mismatch_with_peeled(
 // SEED WALKER DISPOSITION (DESIGN section 6): this is one instance of the v1 seed's existing
 // self-recursive Node collector idiom, not a new substrate traversal authority. v1 cannot import
 // v2's fold_node/node_query without inverting the bootstrap (v1 compiles v2). Its bounded depth is
-// explicit here, and it dissolves with the sibling seed walkers when v2 self-host replaces v1.
+// explicit here and returns no identity at the ceiling, so the caller declines alias admission
+// and leaves the mismatch loud rather than accepting a shallower nickname. It dissolves with the
+// sibling seed walkers when v2 self-host replaces v1.
 // Generalizing only these carrier reads would add a second traversal shape rather than remove one.
 fn carried_structural_type_name(n: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   let here = authored_name_at(source_indices: source_indices, node: n)
-  if depth >= 16 { here }
+  if depth >= 16 { "" }
   else {
     match n.inferred {
       Present { value: Resolved { node: target } } =>
         let deeper = carried_structural_type_name(n: target, source_indices: source_indices, depth: depth + 1)
-        if deeper == "" { here } else { deeper }
+        deeper
       _ => here
     }
   }

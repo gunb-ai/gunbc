@@ -5249,7 +5249,7 @@ pub fn carried_structural_type_name(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (depth.clone() >= 16) {
-            here
+            "".to_string()
         } else {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
@@ -5258,11 +5258,7 @@ pub fn carried_structural_type_name(
                         source_indices.clone(),
                         (depth.clone() + 1),
                     );
-                    if (deeper.clone() == "".to_string()) {
-                        here
-                    } else {
-                        deeper.clone()
-                    }
+                    deeper
                 }
                 _ => here,
             }
