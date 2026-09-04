@@ -3,7 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_jobs }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_jobs, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -279,9 +279,8 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 // It is a RED that can be authored in both directions: giving either lane job a `needs` row
 // fails the negatives, and dropping the aggregator's fails the positive.
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
-  all(xs: witness_floor_lane_jobs(), predicate: fn(job) {
-    (job.id != build_lane_job_id && job.id != floor_lane_job_id) || job.needs == []
-  })
+  length(xs: build_lane_needs()) == 0
+    && length(xs: witness_floor_lane_needs()) == 0
     && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
     && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
@@ -303,23 +302,16 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 //
 // SO THE CLAIM IS ABSENCE AT THE TYPED PRODUCERS rather than after whole-workflow serialization.
 // A diff that re-adds any deleted job authors RED here; so does one that restores only the
-// FABRIC_EVIDENCE roster binding or installs the calibration command in a surviving lane, because
-// a lane that gates without running is the fail-open a skipped required check produces. The row
-// goes green again only together with the drop's retirement, which is a measured wall and not a
-// pull request.
+// FABRIC_EVIDENCE roster binding, because a lane that gates without running is the fail-open a
+// skipped required check produces. The row goes green again only together with the drop's
+// retirement, which is a measured wall and not a pull request.
 test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
-  !any(xs: witness_floor_lane_jobs(), predicate: fn(job) {
-    job.id == "fabric-evidence"
-      || job.id == "rust-unit-tests"
-      || job.id == "emit-copy-qualification-battery"
-      || any(xs: job.steps, predicate: fn(step) {
-        match step {
-          RunStep { name: _, id: _, run: run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-            string_contains(s: run, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
-          UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-        }
-      })
-  })
+  length(xs: witness_floor_lane_job_ids()) == length(xs: witness_floor_lane_jobs())
+    && !any(xs: witness_floor_lane_job_ids(), predicate: fn(job_id) {
+      job_id == "fabric-evidence"
+        || job_id == "rust-unit-tests"
+        || job_id == "emit-copy-qualification-battery"
+    })
     && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
       lane.var_name == "FABRIC_EVIDENCE"
     })

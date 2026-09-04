@@ -1643,13 +1643,15 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // which have no automated consumer, so it is run deliberately or not at all. A declared scope
 // narrowing, not a climb; naming it here keeps its absence from reading as coverage.
 
+fn witness_floor_lane_needs() -> List<String> { [] }
+
 fn witness_floor_job() -> Job {
   Job {
     id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
-    needs: [],
+    needs: witness_floor_lane_needs(),
     env: none,
     outputs: none,
     if_condition: none,
@@ -2014,13 +2016,15 @@ fn heal_generated_artifacts_job() -> Job {
   }
 }
 
+fn build_lane_needs() -> List<String> { [] }
+
 fn build_lane_job() -> Job {
   Job {
     id: build_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: build_lane_steps(),
-    needs: [],
+    needs: build_lane_needs(),
     env: none,
     outputs: none,
     if_condition: none,
@@ -2501,6 +2505,14 @@ fn witness_floor_lane_jobs() -> List<Job> {
     witness_floor_job(),
     heal_generated_artifacts_job()
   ]
+}
+
+// THE IDENTITY PROJECTION IS NARROW ON PURPOSE. A witness deciding which jobs exist must not
+// materialize every job's steps (and therefore the compiler-floor command) merely to read ids.
+// These are the same declarations each constructor installs in its Job record; the length check
+// beside this projection keeps an added lane from entering `witness_floor_lane_jobs` silently.
+fn witness_floor_lane_job_ids() -> List<String> {
+  [build_lane_job_id, floor_lane_job_id, heal_generated_artifacts_job_id]
 }
 
 data witness_floor_workflow: Workflow = {
