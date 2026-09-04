@@ -16,7 +16,7 @@ import product.printed_chassis.fan_mount {
 fn thickness() -> Micrometer { micrometer(count: 4000) }
 
 // POSITIVE CONTROL. The shipping numbers admit.
-fn w_the_declared_arctic_mount_is_admitted() -> Bool {
+test fn w_the_declared_arctic_mount_is_admitted() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern,
     plate_edge: arctic_p8_mount_plate_edge,
@@ -32,7 +32,7 @@ fn w_the_declared_arctic_mount_is_admitted() -> Bool {
 
 // The admitted geometry must carry FOUR screw holes plus the bore, not some other count. A refusal
 // arm that fired correctly while the accepted arm emitted three holes would still print a bad part.
-fn w_the_admitted_mount_carries_four_screw_holes() -> Bool {
+test fn w_the_admitted_mount_carries_four_screw_holes() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern,
     plate_edge: arctic_p8_mount_plate_edge,
@@ -53,7 +53,7 @@ fn w_the_admitted_mount_carries_four_screw_holes() -> Bool {
 // 50.6 mm, so the outer edge is always hit first. The state is nonetheless perfectly authorable as a
 // fixture, so the wall is enrolled against one -- a 130 mm plate carrying the same 71.5 mm pattern,
 // where a 104 mm bore fits the plate and still reaches the holes.
-fn w_a_bore_that_reaches_the_screw_holes_refuses() -> Bool {
+test fn w_a_bore_that_reaches_the_screw_holes_refuses() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern,
     plate_edge: micrometer(count: 130000),
@@ -76,7 +76,7 @@ fn w_a_bore_that_reaches_the_screw_holes_refuses() -> Bool {
 // admits. The one-micrometre pair is the whole point: it pins the wall to a coordinate rather than to
 // a neighbourhood, and it is where an off-by-one in the comparison would show up. Asserting only the refusing side would leave a blanket
 // refusal of the whole neighbourhood indistinguishable from a wall placed at the right coordinate.
-fn w_the_bore_refusal_is_exactly_at_the_boundary_not_approximate() -> Bool {
+test fn w_the_bore_refusal_is_exactly_at_the_boundary_not_approximate() -> Bool {
   let over = match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern, plate_edge: micrometer(count: 130000),
     plate_thickness: thickness(), bore_diameter: micrometer(count: 96718),
@@ -103,7 +103,7 @@ fn w_the_bore_refusal_is_exactly_at_the_boundary_not_approximate() -> Bool {
 // The shipping 76 mm bore must ADMIT. An implementation that compares the bore radius against the
 // axis offset (35750) instead of the corner distance (50558) refuses it, which is exactly what the
 // first form of this check did. This witness is the one that caught it and it stays enrolled.
-fn w_the_shipping_bore_is_measured_against_the_corner_not_the_axis() -> Bool {
+test fn w_the_shipping_bore_is_measured_against_the_corner_not_the_axis() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern, plate_edge: arctic_p8_mount_plate_edge,
     plate_thickness: thickness(), bore_diameter: micrometer(count: 76000),
@@ -117,7 +117,7 @@ fn w_the_shipping_bore_is_measured_against_the_corner_not_the_axis() -> Bool {
 
 // A bore wider than the plate refuses on its own arm rather than being reported as screw-hole
 // interference, so the author is told which edge they actually hit.
-fn w_a_bore_not_enclosed_by_the_plate_refuses_on_its_own_arm() -> Bool {
+test fn w_a_bore_not_enclosed_by_the_plate_refuses_on_its_own_arm() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern, plate_edge: arctic_p8_mount_plate_edge,
     plate_thickness: thickness(), bore_diameter: micrometer(count: 95000),
@@ -132,7 +132,7 @@ fn w_a_bore_not_enclosed_by_the_plate_refuses_on_its_own_arm() -> Bool {
 
 // DISCRIMINATING RED 2. A plate too small to hold the pattern refuses, and says what it needed.
 // Required edge is pitch + one clearance diameter = 71500 + 4400 = 75900 um.
-fn w_a_plate_smaller_than_the_pattern_refuses() -> Bool {
+test fn w_a_plate_smaller_than_the_pattern_refuses() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern,
     plate_edge: micrometer(count: 60000),
@@ -151,7 +151,7 @@ fn w_a_plate_smaller_than_the_pattern_refuses() -> Bool {
 // hold the pattern has no meaningful screw circle to measure a bore against. This 60 mm plate with a
 // 70 mm bore violates all three conditions at once, and must report the plate -- the one an author
 // can act on first.
-fn w_a_plate_too_small_reports_the_plate_not_the_bore() -> Bool {
+test fn w_a_plate_too_small_reports_the_plate_not_the_bore() -> Bool {
   match admit_fan_mount(
     pattern: arctic_p8_mounting_pattern,
     plate_edge: micrometer(count: 60000),
@@ -169,7 +169,7 @@ fn w_a_plate_too_small_reports_the_plate_not_the_bore() -> Bool {
 // axes. The holes must be placed from the PATTERN, not from the plate. A foreign pattern with a
 // different pitch must move them; if the implementation centred them on the plate by a constant
 // instead of deriving the offset, this goes red.
-fn w_the_screw_holes_follow_the_pattern_not_the_plate() -> Bool {
+test fn w_the_screw_holes_follow_the_pattern_not_the_plate() -> Bool {
   let narrow = fan_mounting_pattern(
     frame_edge: micrometer(count: 60000),
     hole_pitch: micrometer(count: 50000),
