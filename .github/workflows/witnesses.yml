@@ -175,12 +175,35 @@ jobs:
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
         if: "!cancelled()"
-      - name: "Required CI: witnesses lane (parse, witness floor)"
+      - name: "D0-MEASURE: witnesses lane"
+        id: required_ci_measure
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'witnesses'
+          'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'witnesses' '--measurement-receipt' 'required_ci_measurement_receipt.json'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+        continue-on-error: true
+      - name: "D0-MEASURE: seal an unreached receipt when the instrument did not return"
+        run: |
+          if '[' '!' '-f' 'required_ci_measurement_receipt.json' ']'; then if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '=' 'success' ']'; then 'target/release/claim_executor' '--measurement-unreached-receipt' 'required_ci_measurement_receipt.json' '--measurement-unreached-cause' 'measurement process exited before producing a receipt'; fi; if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '!=' 'success' ']'; then 'printf' '%s\n' '{"version": 1, "receipt": {"standing": "measurement_unreached", "cause": "instrument could not be built"}}' > 'required_ci_measurement_receipt.json'; fi; fi
+        env:
+          REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
+        if: always() && !cancelled()
+      - name: "D0-PUBLISH: upload the required CI measurement receipt"
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-ci-measurement-receipt
+          path: required_ci_measurement_receipt.json
+          if-no-files-found: error
+          retention-days: 14
+        if: always() && !cancelled()
+      - name: "D0-ADJUDICATE: consume the published measurement receipt"
+        run: |
+          if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '=' 'success' ']'; then 'target/release/claim_executor' '--adjudicate-measurement-receipt' 'required_ci_measurement_receipt.json'; fi
+          if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '!=' 'success' ']'; then 'echo' 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2; exit 1; fi
+        env:
+          REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
+        if: always() && !cancelled()
       - name: Upload the floor's admission roster
         uses: actions/upload-artifact@v4
         with:
@@ -504,7 +527,7 @@ jobs:
       - name: Regenerate every committed generated artifact
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet_verified
       - name: Converge repository-local git config
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -593,6 +616,7 @@ jobs:
           path: heal-author-commit-required
           if-no-files-found: error
           retention-days: 14
+          include-hidden-files: true
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   witnesses:
     runs-on: [self-hosted, linux, arm64]

@@ -378,6 +378,78 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
+/// Read the grounded opaque-host-call surface, or refuse.
+///
+/// RETURNS THE OPERATIONS, NEVER AN EMPTY VEC ON FAILURE. `opaque_host_call_surface()` answers a
+/// coproduct whose ungrounded arm carries WHY the join broke (`unresolved` / `not_free_call`),
+/// and both of those are reported here rather than collapsed into one sentence, because they
+/// have different repairs: an unresolved identity is a roster row pointing at nothing, while a
+/// not-free-call arm is an identity whose dispatch shape the criterion does not admit.
+pub(crate) fn floor_required_opaque_host_call_surface(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<String>, String> {
+    let qualified = "gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface";
+    let value = v1_interpreter::run_in_context(ctx, qualified, false)
+        .map_err(|e| format!("{qualified}: {e}"))?;
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(format!(
+            "{qualified}: expected an OpaqueHostCallSurface variant, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "OpaqueHostCallSurfaceGrounded" => {
+            let operations = floor_decode_list(ctx, ctx.field(fields, "operations"))?;
+            operations
+                .into_iter()
+                .map(|v| match v {
+                    v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "{qualified}: operations carries a non-string member: {}",
+                        floor_value_shape(Some(other))
+                    )),
+                })
+                .collect()
+        }
+        "OpaqueHostCallSurfaceUngrounded" => Err(format!(
+            "{qualified}: the opaque-host-call surface is UNGROUNDED, so which arms are \
+             unpollable is unreadable and no claim's preemption reachability can be observed. \
+             The floor refuses rather than arming an empty surface, which would report every \
+             completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
+             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?}",
+            floor_value_shape(ctx.field(fields, "unresolved")),
+            floor_value_shape(ctx.field(fields, "not_free_call")),
+        )),
+        other => Err(format!(
+            "{qualified}: unknown OpaqueHostCallSurface arm {other:?}"
+        )),
+    }
+}
+
+/// The published spelling of a claim's observed `ClaimPreemptionReachability`.
+///
+/// THE OPERATIONS ARE CARRIED, NOT JUST THE ARM. A reader asking "why could the deadline not
+/// fire here" needs the operation name to act, and re-deriving it from the claim body is the
+/// positional citation DESIGN §3 forbids. They are joined with `+` because a claim may reach
+/// more than one opaque arm and reporting only the first would under-state the surface a repair
+/// has to cover.
+pub(crate) fn preemption_reachability_label(reach: &v1_interpreter::OpaqueHostCallReach) -> String {
+    match reach {
+        v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed => "surface_unarmed".to_string(),
+        v1_interpreter::OpaqueHostCallReach::CooperativelyPollable => {
+            "cooperatively_pollable".to_string()
+        }
+        v1_interpreter::OpaqueHostCallReach::OpaqueHostCallUnbounded { operations } => {
+            format!("opaque_host_call_unbounded:{}", operations.join("+"))
+        }
+    }
+}
+
 pub fn run_claim_measured(
     ctx: &v1_interpreter::InterpContext,
     closure_subject_digest: &str,
@@ -387,6 +459,10 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    // PER-CLAIM, NOT PER-RUN: reach is a fact about THIS claim's evaluation, so it is cleared
+    // here beside the profile and the subject rather than at floor start. The armed surface
+    // survives the reset -- disarming per claim would make every claim report `SurfaceUnarmed`.
+    v1_interpreter::reset_opaque_host_call_reach();
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
@@ -966,7 +1042,16 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
     changed_witness_identities_from_edited_test_fns(
         &process_workspace_root(),
         &edits.edited_test_fns,
+        &quarantine_probe_admitted_pairs(),
     )
+}
+
+/// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
+/// changed-witness selection decides at. Read once from the one function-grain authority.
+fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, String)> {
+    crate::cli_run::quarantine_probe_admission_pairs()
+        .into_iter()
+        .collect()
 }
 
 /// The identity spelling, separated from the observation so it is testable against fixture
@@ -974,12 +1059,35 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
 /// header — the same two facts the disposition loop joins into `RequiredFloorDispositionRow`'s
 /// identity. A touched file that declares a test fn but no module header refuses: an identity
 /// cannot be spelled for it, and dropping it would silently exempt exactly the malformed case.
+///
+/// A WITNESS CARRYING A `QuarantineProbeExpectRed` ADMISSION IS NOT SELECTED, and this is the one
+/// place that decision belongs. Editing a quarantined witness's file does not un-quarantine it --
+/// its dissolution trigger does -- so the override must not outrank an admission that already
+/// answered whether this row is scheduled per-PR.
+///
+/// THE DEFECT THIS CLOSES, found by gunbc#10245 giving four such witnesses a declared subject. The
+/// four `production_qualification_origin_probe_witness` frontier rows are admitted RED with
+/// declared dissolutions and are declined by the ordinary floor. Touching their entry file planned
+/// them anyway; they then failed exactly as admitted and were counted as UNEXPECTED failures,
+/// refusing the floor (run 33793591024, `claims_failed=5`). The hold could not save them and must
+/// not be taught to: `floor_expected_red_roster` means RUN-AND-EXPECT-RED while this admission
+/// means DO-NOT-RUN-PER-PR, and making one consumer read the other's carrier is a §3 meaning fork.
+/// The row was never supposed to execute here, so the repair is on the SELECTION side.
+///
+/// IT IS KEYED ON THE ADMISSION, NEVER ON THE LANE. Excluding by long-home prefix would wave a
+/// touched witness through by virtue of the lane it happens to sit in, which is precisely what the
+/// changed-witness override exists to prevent. A long-home witness with no quarantine admission is
+/// selected, executes, and reds the floor exactly as before.
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
+    quarantine_probe_admitted: &std::collections::HashSet<(String, String)>,
 ) -> Result<Vec<String>, String> {
     let mut identities: Vec<String> = Vec::new();
     for (file, function) in edited_test_fns {
+        if quarantine_probe_admitted.contains(&(file.clone(), function.clone())) {
+            continue;
+        }
         let content = std::fs::read_to_string(base.join(file))
             .map_err(|e| format!("changed-witness identity derivation: read {file}: {e}"))?;
         let module = extract_module_path(&content).ok_or_else(|| {
@@ -4423,6 +4531,23 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
+    // ARM THE OPAQUE-HOST-CALL SURFACE FROM ITS ONE AUTHORITY, AND REFUSE IF IT IS UNGROUNDED.
+    //
+    // The roster is NOT restated in Rust: it is read out of
+    // `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
+    // §4b drop's bounded population is derived from, so the seed and the model cannot drift into
+    // two answers about which arms are unpollable.
+    //
+    // THE UNGROUNDED ARM REFUSES RATHER THAN ARMING AN EMPTY SURFACE. An empty roster would
+    // classify every crossing as `cooperatively_pollable` -- a mere overshoot -- which is the
+    // reassuring direction and precisely the absorbing fallback DESIGN §5 forbids: the run would
+    // report a population it never observed and the deficit would stop being visible at the
+    // moment the join broke. So a broken join stops the line here, typed and located, and the
+    // remedy is named rather than left to the reader.
+    let opaque_surface_frame =
+        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+    let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
+    v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
@@ -6032,11 +6157,16 @@ pub fn run_required_floor(
             identity: claim.qualified.clone(),
             module_path: claim.module_path.clone(),
             outcome: witness_execution_outcome_label(&result).to_string(),
-            wall_nanos: receipt.wall_nanos,
-            cpu_nanos: receipt.cpu_nanos,
+            // MINT THE READING FROM THE TERMINALITY, not from the receipt. The receipt's two
+            // clocks are the same numbers either way; what `claim_terminality` adds — and what
+            // reading them straight off the receipt DISCARDED — is whether a deadline preempted
+            // the subject, which is the only thing that decides if those numbers are
+            // measurements or lower bounds.
+            reading: ClaimCostReading::of(&terminality),
             eval_steps: receipt.eval_steps,
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
+            preemption_reachability: preemption_reachability_label(&receipt.opaque_host_call_reach),
         });
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the
@@ -6569,12 +6699,54 @@ pub fn run_required_floor(
                 let figure = result
                     .budget_figure_phrase()
                     .unwrap_or_else(|| format!("{result:?}"));
+                // WHICH POPULATION THIS CROSSING IS IN, NAMED IN THE SENTENCE THAT BLOCKS.
+                //
+                // The two are different facts with different remedies and they were arriving
+                // here as one bucket. For a `cooperatively_pollable` claim the deadline had
+                // every stride point available and the claim finished anyway, so the crossing is
+                // an overshoot between two polls -- a charge. For an
+                // `opaque_host_call_unbounded` claim no stride point falls inside the operation,
+                // so the deadline OBSERVED NOTHING and the crossing is a missed interrupt, which
+                // is the case `claim_safety_outcome_blocks` exists for.
+                //
+                // BOTH STILL BLOCK, IDENTICALLY. This names the population; it does not decide
+                // admission, and no arm below returns early or skips the push. Whether the
+                // pollable population should keep blocking is the open question this column
+                // exists to make answerable with counts instead of argument -- it stays with the
+                // operator, and `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable`
+                // stays standing until then.
+                let reachability = outcome
+                    .claim_cost
+                    .iter()
+                    .find(|row| row.identity == claim.qualified)
+                    .map(|row| row.preemption_reachability.clone())
+                    .unwrap_or_else(|| "surface_unarmed".to_string());
+                let population = if reachability.starts_with("opaque_host_call_unbounded") {
+                    format!(
+                        "MISSED INTERRUPT: the deadline could not fire — this claim's cost \
+                         accrued inside {}, where no stride poll lands, so completing under the \
+                         ceiling was never something the limit could enforce",
+                        reachability
+                            .strip_prefix("opaque_host_call_unbounded:")
+                            .unwrap_or(&reachability)
+                    )
+                } else if reachability == "cooperatively_pollable" {
+                    "OVERSHOOT: every stride poll was reachable and the claim completed anyway, \
+                     so the deadline missed nothing — what this crossing reports is a charge, \
+                     not a failed interrupt"
+                        .to_string()
+                } else {
+                    "REACHABILITY UNOBSERVED: the opaque-host-call surface was not armed for \
+                     this run, so which population this crossing belongs to is unknown and is \
+                     NOT assumed to be the benign one"
+                        .to_string()
+                };
                 outcome.completed_over_cost_requirement.push(format!(
-                    "{} reached its verdict and then exceeded its budget. {}. The cost is \
+                    "{} reached its verdict and then exceeded its budget. {}. {}. The cost is \
                      therefore known and actionable. This is a cost debt only — it is not a \
                      defect and it does not belong on the expected-red roster, which asserts an \
                      expected FAILURE this row does not exhibit.",
-                    claim.qualified, figure
+                    claim.qualified, figure, population
                 ))
             }
             // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic
@@ -7229,7 +7401,16 @@ pub fn run_required_floor(
     let over_cost_members: Vec<&WitnessExecutionOccurrence> = outcome
         .claim_cost
         .iter()
-        .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
+        // `exact_cost_ms` IS THE FILTER'S OWN REFUSAL. It answers `None` for a right-censored
+        // row, so a bound cannot reach the comparison at all — where the predicate previously
+        // relied on the `verdict_reached` conjunct being remembered, the type now supplies it.
+        // The conjunct stays because it is a DIFFERENT fact (an unwound claim has an exact cost
+        // and no completion to judge), and dropping it would judge a panicked row against a
+        // completion line.
+        .filter(|row| {
+            row.verdict_reached
+                && exact_cost_ms(row, cost_basis).is_some_and(|cost| cost > row.cost_line_ms)
+        })
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
     // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
@@ -7256,14 +7437,34 @@ pub fn run_required_floor(
     // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
     // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
     let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
-    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    // Every member reached the filter above through `Some`, so this cannot rank a bound; the
+    // `unwrap_or(0)` is unreachable rather than a substituted figure, and it sorts such a row to
+    // the BOTTOM where it would be visible rather than into the actionable head.
+    ranked.sort_by_key(|row| std::cmp::Reverse(exact_cost_ms(row, cost_basis).unwrap_or(0)));
     const OVER_COST_PRINT_LIMIT: usize = 25;
     for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
+        // NAMED `observed_*`, and destructured rather than accessed, for the same reason the
+        // artifact's columns are disjoint: this listing is a COMPLETED-cost ranking, and the
+        // former `cpu_ms=` label was a slot a censored figure could be dropped into by a later
+        // edit without anything reading differently. The censored arm is unreachable here — every
+        // member passed `exact_cost_ms` — and it renders the bound's own field names rather than
+        // a cost if that ever stops being true.
+        let (observed_wall_ms, observed_cpu_ms) = match &row.reading {
+            ClaimCostReading::Observed {
+                observed_cpu_ms,
+                observed_wall_ms,
+            } => (observed_wall_ms.to_string(), observed_cpu_ms.to_string()),
+            ClaimCostReading::RightCensored(reading) => (
+                format!("at_least_{}", reading.elapsed_wall_at_least_ms),
+                format!("at_least_{}", reading.elapsed_cpu_at_least_ms),
+            ),
+        };
         eprintln!(
-            "[over-cost] {} wall_ms={} cpu_ms={} eval_steps={} line_ms={} outcome={}",
+            "[over-cost] {} observed_wall_ms={} observed_cpu_ms={} eval_steps={} line_ms={} \
+             outcome={}",
             row.identity,
-            row.wall_nanos / 1_000_000,
-            row.cpu_nanos / 1_000_000,
+            observed_wall_ms,
+            observed_cpu_ms,
             row.eval_steps,
             row.cost_line_ms,
             row.outcome
@@ -7298,11 +7499,28 @@ pub fn run_required_floor(
         // column is inclusive of callees and therefore NOT additive. Without it the first thing a
         // reader does is sum the column, which on the first artifact gave ~14x the run's entire
         // claim-side CPU.
+        // SUMMED OVER OBSERVED ROWS ONLY, AND THE EXCLUSION IS COUNTED RATHER THAN SILENT. A
+        // right-censored row has no cost to contribute: adding its lower bound would understate
+        // the total by an unbounded amount while the figure kept reading as a ceiling, which is
+        // the one direction this value must not fail in — it exists so a reader can tell that the
+        // census's inclusive-of-callees column has been over-summed, and a ceiling that is itself
+        // too low cannot do that job. Excluding them makes the ceiling a ceiling ON THE MEASURED
+        // POPULATION, so the count travels beside it and the label below says which population.
         let claim_cpu_total_ms: u128 = outcome
             .claim_cost
             .iter()
-            .map(|row| row.cpu_nanos / 1_000_000)
+            .filter_map(|row| match &row.reading {
+                ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                } => Some(*observed_cpu_ms as u128),
+                ClaimCostReading::RightCensored(_) => None,
+            })
             .sum();
+        let claim_cpu_censored_rows = outcome
+            .claim_cost
+            .iter()
+            .filter(|row| matches!(row.reading, ClaimCostReading::RightCensored(_)))
+            .count();
         // A COPY, SORTED FOR A READER. The artifact leaves in identity order; this preview
         // orders by cross-claim recomputation and says so in band, so no consumer can read a
         // log head as the census's own ranking or as a candidate roster.
@@ -7312,12 +7530,16 @@ pub fn run_required_floor(
         eprintln!(
             "[cross-claim-demand] claims_absorbed={} retained_keys={} shared_keys={} \
              omitted_under_floor={} omitted_under_floor_ms={} key_cap_overflow={} \
-             absorb_ms={} absorb_max_ms={} claim_cpu_total_ms={} (observation only; nothing \
+             absorb_ms={} absorb_max_ms={} claim_cpu_observed_total_ms={} \
+             claim_cpu_censored_rows_excluded={} (observation only; nothing \
              refuses on these figures. The absorb runs AFTER each claim's measurement returns, so \
              it is outside every claim's charged window and cannot trip the deadline; absorb_ms \
              is what this instrument cost the run in total. DO NOT SUM THE COST COLUMN: durations \
              are inclusive of callees, so a producer and its callees overlap and the sum counts \
-             the same nanoseconds once per level of nesting -- claim_cpu_total_ms is the ceiling \
+             the same nanoseconds once per level of nesting -- claim_cpu_observed_total_ms is \
+             the ceiling over the MEASURED rows only, with the censored rows counted beside it \
+             because their cost is a lower bound and summing bounds into a ceiling would push \
+             the ceiling down; it is the ceiling \
              any true total must sit under.)",
             disclosure.claims_absorbed,
             rows.len(),
@@ -7327,7 +7549,8 @@ pub fn run_required_floor(
             disclosure.overflow_keys,
             disclosure.absorb_ns_total / 1_000_000,
             disclosure.absorb_ns_max / 1_000_000,
-            claim_cpu_total_ms
+            claim_cpu_total_ms,
+            claim_cpu_censored_rows
         );
         const CROSS_CLAIM_DEMAND_PRINT_LIMIT: usize = 25;
         eprintln!(
@@ -7369,6 +7592,7 @@ pub fn run_required_floor(
                 &rows,
                 &disclosure,
                 claim_cpu_total_ms,
+                claim_cpu_censored_rows,
             )?;
         }
     }
@@ -8258,12 +8482,148 @@ mod changed_witness_projection_tests {
         let mut edited = std::collections::HashSet::new();
         edited.insert(("added_test.dag".to_string(), "added_holds".to_string()));
         let identities =
-            changed_witness_identities_from_edited_test_fns(&dir, &edited).expect("identities");
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect("identities");
         assert_eq!(
             identities,
             vec!["fixture.changed_witness_spelling.added_holds".to_string()]
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE FOUR CONTROLS ON QUARANTINE-KEYED SELECTION, and (a) is deliberately written first
+    // because it is the arm that stops this degrading into holding everything.
+    //
+    // The subject is `changed_witness_identities_from_edited_test_fns`, whose output IS the
+    // selection: an identity it returns is planned, one it omits is not. So these assert
+    // NOT-SCHEDULED rather than not-failing, which are different claims and only the first is
+    // what the admission promises.
+
+    /// Build a two-witness fixture in one file: both are long-home, only one is admitted.
+    fn quarantine_selection_fixture(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-quarantine-selection-{tag}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::write(
+            dir.join("probe_test.dag"),
+            "module v2.test.long.quarantine_selection_fixture
+
+             test fn admitted_reds() -> Bool { false }
+             test fn unadmitted_reds() -> Bool { false }
+",
+        )
+        .expect("fixture write");
+        dir
+    }
+
+    fn edited(pairs: &[(&str, &str)]) -> std::collections::HashSet<(String, String)> {
+        pairs
+            .iter()
+            .map(|(f, n)| (f.to_string(), n.to_string()))
+            .collect()
+    }
+
+    /// (a) A LONG-HOME WITNESS WITH NO ADMISSION IS STILL SELECTED. This is the discriminating
+    /// RED for the whole change: an exclusion keyed on the lane rather than on the admission
+    /// would drop this row too, and the floor would stop noticing a failing witness the PR
+    /// touched. Sitting in `v2.test.long.` earns nothing by itself.
+    #[test]
+    fn an_unadmitted_long_home_witness_is_still_selected_as_a_changed_witness() {
+        let dir = quarantine_selection_fixture("unadmitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "unadmitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert_eq!(
+            identities,
+            vec!["v2.test.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
+            "a long-home witness with no quarantine admission must still be planned"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (b) AN ADMITTED WITNESS THE DIFF EDITED IS NOT SELECTED. Not merely "does not fail" —
+    /// it is absent from the identities, so nothing plans it.
+    #[test]
+    fn a_quarantine_admitted_witness_is_not_selected_even_when_edited() {
+        let dir = quarantine_selection_fixture("admitted");
+        let admitted: std::collections::HashSet<(String, String)> =
+            [("probe_test.dag".to_string(), "admitted_reds".to_string())]
+                .into_iter()
+                .collect();
+        let identities = changed_witness_identities_from_edited_test_fns(
+            &dir,
+            &edited(&[("probe_test.dag", "admitted_reds")]),
+            &admitted,
+        )
+        .expect("identities");
+        assert!(
+            identities.is_empty(),
+            "an edited quarantine-admitted witness must not be scheduled: {identities:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// (c) THE KEY IS THE EXACT CADENCE, NOT "HAS AN ADMISSION". A row admitted under a
+    /// different cadence is a different obligation, so it is absent from the quarantine set and
+    /// stays selected. Asserted through the real authority rather than the fixture set, since
+    /// the cadence read is where a widened head would leak.
+    #[test]
+    fn only_quarantine_probe_cadence_rows_reach_the_selection_exclusion() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let all: std::collections::HashSet<(String, String)> =
+            crate::cli_run::explicit_witness_admission_pairs()
+                .into_iter()
+                .collect();
+        assert!(
+            !quarantine.is_empty(),
+            "fixture drift: the authority declares quarantine probes"
+        );
+        assert!(
+            quarantine.is_subset(&all),
+            "every quarantine row is an admission row"
+        );
+        // The positive control: some admitted row is NOT a quarantine probe. Without this a
+        // reader that returned every admission would satisfy the subset check above.
+        assert!(
+            all.len() > quarantine.len(),
+            "the authority carries admissions under other cadences; if this ever became an \
+             equality the exclusion would have widened to every admitted witness"
+        );
+        std::fs::remove_dir_all(std::env::temp_dir().join("gunbc-quarantine-noop")).ok();
+    }
+
+    /// The four rows that produced the incident are actually in the set this reads — an exclusion
+    /// keyed on a head that parsed nothing would pass every test above while changing nothing.
+    #[test]
+    fn the_origin_probe_frontier_rows_are_read_as_quarantine_admissions() {
+        let quarantine: std::collections::HashSet<(String, String)> =
+            crate::cli_run::quarantine_probe_admission_pairs()
+                .into_iter()
+                .collect();
+        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag";
+        for f in [
+            "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+            "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+            "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+            "witness_live_structural_fixture_mint_site_discovered_reds",
+        ] {
+            assert!(
+                quarantine.contains(&(entry.to_string(), f.to_string())),
+                "{f} must be read as a quarantine admission"
+            );
+        }
     }
 
     /// A touched file declaring a test fn without a module header REFUSES — the identity
@@ -8282,8 +8642,9 @@ mod changed_witness_projection_tests {
         .expect("fixture write");
         let mut edited = std::collections::HashSet::new();
         edited.insert(("bare_test.dag".to_string(), "nameless".to_string()));
-        let err = changed_witness_identities_from_edited_test_fns(&dir, &edited)
-            .expect_err("headerless file must refuse");
+        let err =
+            changed_witness_identities_from_edited_test_fns(&dir, &edited, &Default::default())
+                .expect_err("headerless file must refuse");
         assert!(err.contains("no module header"), "cause named: {err}");
         std::fs::remove_dir_all(&dir).ok();
     }

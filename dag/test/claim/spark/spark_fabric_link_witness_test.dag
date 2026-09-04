@@ -2,15 +2,19 @@ module test.claim.spark.spark_fabric_link_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { ByteSize, byte_size }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 {
   Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr,
   PrefixLength, ipv4_same_network, ipv4_address_eq,
 }
-import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_link_desired {
   FabricEndpoint, FabricLink, fabric_endpoint, fabric_link, fabric_endpoint_on,
   spark_fabric_links, spark_fabric_endpoints_on, fabric_prefix, fabric_mtu_bytes,
+  SparkFabricPair, SparkFabricRail, FabricLinkIdentity, fabric_link_identity,
+  fabric_link_identity_eq, render_fabric_link_identity,
+  SparkFabricLinkLookup, spark_fabric_link,
+  SparkFabricEndpointAnswer, spark_fabric_endpoint,
 }
 
 data w_mtu: ByteSize = byte_size(count: 9000)
@@ -22,8 +26,14 @@ fn w_end(host: HostIdentity, iface: NonEmptyStr, o3: Int, o4: Int) -> FabricEndp
     prefix: 24, mtu: w_mtu)
 }
 
+// THE HELPER NAMES Srv7Srv8 DELIBERATELY, because every caller below uses srv7/srv8 endpoints. With
+// Srv5Srv6 here the five negative controls would still be red -- but for PAIR MISMATCH rather than
+// for the condition each one exists to discriminate, and the positive control would be red outright.
+// A negative that fails for the wrong reason is not a control, it is a coincidence.
 fn w_built(a: FabricEndpoint, b: FabricEndpoint) -> Bool {
-  match fabric_link(name: "w-link" as NonEmptyStr, endpoint_a: a, endpoint_b: b) {
+  match fabric_link(
+    identity: fabric_link_identity(pair: Srv7Srv8, rail: Rail0),
+    endpoint_a: a, endpoint_b: b) {
     Present { value: _ } => true
     Absent => false
   }
@@ -100,15 +110,116 @@ test fn w_a_prefix_the_comparison_cannot_answer_refuses() -> Bool {
 // that the interface names were CROSSED between the hosts, and reading the durable /etc/netplan on
 // both machines showed they are not -- the crossed state existed, had been applied by hand, and was
 // a defect rather than the convention. The witness that encoded it would have locked the defect in.
-// Two rails, each naming one interface at both ends, and the two rails naming different ones.
+//
+// THE DISTINCT-INTERFACE HALF IS SCOPED TO A HOST, NOT TO THE FLEET, and that correction was forced
+// by evidence rather than noticed by reading. The clause used to say no two rails anywhere name the
+// same interface, which held only while ONE pair was modeled. Both Spark pairs run the identical NIC
+// naming -- enp1s0f0np0 and enP2p1s0f0np0 on all four machines -- so authoring the first pair turned
+// it red against rows that are correct. What must never happen is one HOST carrying two rails on one
+// NIC; two different machines using the same NIC name is not a collision, it is the convention.
+//
+// Written as: for any two distinct rails that touch a common host, their interfaces differ. That is
+// the property the original clause was reaching for, expressed at the grain that owns it, so it stays
+// discriminating for every pair added later instead of needing another edit per pair.
+fn w_links_share_a_host(x: FabricLink, y: FabricLink) -> Bool {
+  host_identity_eq(a: x.endpoint_a.host, b: y.endpoint_a.host)
+    || host_identity_eq(a: x.endpoint_a.host, b: y.endpoint_b.host)
+    || host_identity_eq(a: x.endpoint_b.host, b: y.endpoint_a.host)
+    || host_identity_eq(a: x.endpoint_b.host, b: y.endpoint_b.host)
+}
+
+// IDENTITY IS DECIDED WHERE THE LINK IS RESOLVED, SO THIS IS A LOOKUP MATRIX, NOT A STRING CHECK.
+//
+// The previous head of this file asserted that four authored link NAMES were pairwise distinct, and
+// used a name inequality to mean "two different rails" inside the interface-collision clause. Two
+// things were wrong with that and both are closed by construction now rather than by these witnesses.
+// The clause skipped any pair whose names collided -- a failure arm that widened instead of refusing
+// -- and the identity itself was a caller-authored string, so the assertion could be satisfied by
+// editing the literals while nothing downstream resolved a link at all.
+//
+// `spark_fabric_link` now decides uniqueness on every call over a closed `FabricLinkIdentity`, so
+// what is left to witness is that its arms are REACHABLE and DISCRIMINATING.
+test fn w_every_declared_rail_resolves_to_exactly_one_link() -> Bool {
+  all([
+    fabric_link_identity(pair: Srv5Srv6, rail: Rail0),
+    fabric_link_identity(pair: Srv5Srv6, rail: Rail1),
+    fabric_link_identity(pair: Srv7Srv8, rail: Rail0),
+    fabric_link_identity(pair: Srv7Srv8, rail: Rail1),
+  ], id =>
+    match spark_fabric_link(identity: id) {
+      FoundExactlyOne { link: l } => fabric_link_identity_eq(a: l.identity, b: id)
+      FabricLinkMissing { identity: _ } => false
+      FabricLinkIdentityDuplicated { identity: _, count: _ } => false
+    })
+    && length(spark_fabric_links()) == 4
+}
+
+// AN IDENTITY WHOSE ENDPOINTS NAME THE OTHER PAIR HAS NO CONSTRUCTOR. This is the witness that makes
+// the identity load-bearing: without the pair-membership condition, `Srv5Srv6` would happily wrap the
+// srv7/srv8 endpoints and the identity would be a label the constructor never read.
+test fn w_a_link_whose_endpoints_are_not_the_pair_it_names_refuses() -> Bool {
+  match fabric_link(
+    identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0),
+    endpoint_a: w_end(host: operator_host_srv7, iface: "enp1s0f0np0" as NonEmptyStr, o3: 100, o4: 10),
+    endpoint_b: w_end(host: operator_host_srv8, iface: "enp1s0f0np0" as NonEmptyStr, o3: 100, o4: 11)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+    && match fabric_link(
+      identity: fabric_link_identity(pair: Srv7Srv8, rail: Rail0),
+      endpoint_a: w_end(host: operator_host_srv7, iface: "enp1s0f0np0" as NonEmptyStr, o3: 100, o4: 10),
+      endpoint_b: w_end(host: operator_host_srv8, iface: "enp1s0f0np0" as NonEmptyStr, o3: 100, o4: 11)) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+// AND THE CONSUMER OPERATION THE MODULE'S OWN INSTRUCTION POINTS AT. The srv6 front door is selected
+// through the identity, never through an interface name or a roster position, and a host that is not
+// an end of the rail gets a located refusal rather than an address.
+test fn w_the_srv6_endpoint_is_selected_through_its_rail_identity() -> Bool {
+  match spark_fabric_endpoint(
+    identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0),
+    host: operator_host_srv6) {
+    FabricEndpointFound { endpoint: e } =>
+      host_identity_eq(a: e.host, b: operator_host_srv6)
+        && (render_ipv4_address(addr: e.address) as String) == "192.168.102.10"
+    FabricEndpointHostNotOnLink { identity: _, host: _ } => false
+    FabricEndpointLinkUnresolved { lookup: _ } => false
+  }
+    && match spark_fabric_endpoint(
+      identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0),
+      host: operator_host_srv7) {
+      FabricEndpointFound { endpoint: _ } => false
+      FabricEndpointHostNotOnLink { identity: _, host: _ } => true
+      FabricEndpointLinkUnresolved { lookup: _ } => false
+    }
+}
+
+// AND THE RENDERING IS DERIVED FROM THE IDENTITY RATHER THAN AUTHORED BESIDE IT.
+test fn w_the_link_name_is_a_projection_of_its_identity() -> Bool {
+  render_fabric_link_identity(
+    identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0)) == "srv5-srv6-rail0"
+    && render_fabric_link_identity(
+      identity: fabric_link_identity(pair: Srv7Srv8, rail: Rail1)) == "srv7-srv8-rail1"
+}
+
 test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
-  length(spark_fabric_links()) == 2
+  length(spark_fabric_links()) == 4
     && all(spark_fabric_links(), l =>
       (l.endpoint_a.interface as String) == (l.endpoint_b.interface as String))
     && !any(spark_fabric_links(), x =>
       any(spark_fabric_links(), y =>
-        (x.name as String) != (y.name as String)
+        !fabric_link_identity_eq(a: x.identity, b: y.identity)
+          && w_links_share_a_host(x: x, y: y)
           && (x.endpoint_a.interface as String) == (y.endpoint_a.interface as String)))
+}
+
+// AND THE SAME NIC NAME ON THE OTHER PAIR IS NOT A COLLISION -- the positive control for the scoping
+// above. Without it, re-tightening the clause to fleet-wide would pass every other claim here.
+test fn w_two_pairs_may_share_a_nic_name_on_different_machines() -> Bool {
+  length(filter(spark_fabric_links(), l =>
+    (l.endpoint_a.interface as String) == "enp1s0f0np0")) == 2
 }
 
 // AND EACH HOST OWNS ONE ENDPOINT ON EACH LINK -- two apiece, on different interfaces. A host that
@@ -116,6 +227,8 @@ test fn w_each_rail_names_one_interface_at_both_ends() -> Bool {
 test fn w_each_fabric_host_owns_one_endpoint_per_link() -> Bool {
   length(spark_fabric_endpoints_on(host: operator_host_srv7)) == 2
     && length(spark_fabric_endpoints_on(host: operator_host_srv8)) == 2
+    && length(spark_fabric_endpoints_on(host: operator_host_srv5)) == 2
+    && length(spark_fabric_endpoints_on(host: operator_host_srv6)) == 2
     && length(spark_fabric_endpoints_on(host: "srv1" as HostIdentity)) == 0
     && all(spark_fabric_links(), l =>
       match fabric_endpoint_on(link: l, host: "srv1" as HostIdentity) {
@@ -140,7 +253,12 @@ test fn w_all_spark_fabric_claims_hold() -> Bool {
     && w_a_rail_that_could_not_carry_collective_traffic_has_no_constructor()
     && w_the_two_rails_are_not_one_network()
     && w_a_prefix_the_comparison_cannot_answer_refuses()
+    && w_every_declared_rail_resolves_to_exactly_one_link()
+    && w_a_link_whose_endpoints_are_not_the_pair_it_names_refuses()
+    && w_the_srv6_endpoint_is_selected_through_its_rail_identity()
+    && w_the_link_name_is_a_projection_of_its_identity()
     && w_each_rail_names_one_interface_at_both_ends()
+    && w_two_pairs_may_share_a_nic_name_on_different_machines()
     && w_each_fabric_host_owns_one_endpoint_per_link()
     && w_the_cidr_rendering_matches_the_durable_netplan_spelling()
 }

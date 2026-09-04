@@ -18,6 +18,7 @@ import tools.emission_entry_instrument {
   measure_entry_emission
 }
 import extdeps.github.actions_environment {
+  ActionsRunEnvironmentObservations,
   ActionsRunCoordinate,
   ActionsRunCoordinateObserved,
   ActionsRunCoordinateMissing,
@@ -263,9 +264,11 @@ fn run_coordinate(variable: String) -> ActionsRunCoordinate {
 fn current_observation_binding(subjects: List<EmissionMeasurementSubject>) -> ObservationBinding {
   observation_binding(
     subjects: subjects,
-    run_identity: run_coordinate(variable: github_run_id_variable_name),
-    run_attempt: run_coordinate(variable: github_run_attempt_variable_name),
-    runner_binding: run_coordinate(variable: github_runner_name_variable_name)
+    observations: ActionsRunEnvironmentObservations {
+      run_identity: run_coordinate(variable: github_run_id_variable_name),
+      run_attempt: run_coordinate(variable: github_run_attempt_variable_name),
+      runner: run_coordinate(variable: github_runner_name_variable_name)
+    }
   )
 }
 
