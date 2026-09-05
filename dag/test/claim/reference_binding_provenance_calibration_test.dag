@@ -78,6 +78,13 @@ test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
     && cell_render(kind: DistinctHomonymKind, arm: ProductionRefusedArm) == t
 }
 
-test fn no_cell_is_sound_and_the_instrument_refuses() -> Bool {
-  list_length(items: unsound_cells(cells: calibration_cells())) == 28
+// THE ORACLE IS THE REFUSAL FIRING, NOT A CELL COUNT. This asserted == 28 and that was a count
+// standing where a check belonged: a repair of ONE cell would have failed it with "expected 28",
+// which reports a genuine improvement as a regression and tells the next author to restore the
+// defect. The count also has no independent referent -- it is this run's own measurement compared
+// to itself. What must stay true is that the instrument's refusal path is REACHED, which is a
+// property of the refusal and not of how much is currently broken; the specific collapse is carried
+// by the discriminating controls above, where a repair makes exactly the right row go red.
+test fn the_instrument_reaches_its_refusal_path() -> Bool {
+  list_length(items: unsound_cells(cells: calibration_cells())) > 0
 }
