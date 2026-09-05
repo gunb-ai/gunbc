@@ -1,0 +1,115 @@
+module v2.extdeps.languages.rust_emit_small_test
+
+import std.algebra { Cons, Empty }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model {
+  FixedToken,
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, TypeNode, Atom, Conj, Edge }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.optional { Absent, Optional }
+
+import v2.extdeps.languages.rust {
+  rust_lex_rule,
+  rust_binding_param_x,
+  rust_binding_param_y,
+  rust_token_closure_pipe,
+  rust_token_closure_nop,
+  rust_token_comma,
+  rust_token_lbrace,
+  rust_token_rbrace,
+  rust_token_kw_let,
+  rust_token_equal,
+  rust_token_semicolon,
+  rust_token_kw_true,
+  rust_token_kw_false,
+  rust_token_unwired_loop,
+  rust_token_never_spelled_anywhere
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// =====================================================================
+// LEX: minimal lex rule set for value-expression token classes.
+// Only the token classes that the value-expression emit path actually reads.
+// =====================================================================
+
+fn small_emit_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
+    rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
+    rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
+    rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+    rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
+    rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+    rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
+    rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
+  ]
+}
+
+fn small_emit_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: small_emit_lex_rules() } }
+}
+
+// =====================================================================
+// BINDING SPELLINGS: only the binding refs the value-expression tests use.
+// =====================================================================
+
+fn small_emit_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_param_x, "x")
+  map_insert(m0, ^rust_binding_param_y, "y")
+}
+
+// =====================================================================
+// TARGET MODEL: minimal fixture for value-expression emit tests.
+// The value-expression emit path (serialize_concrete_syntax_tokens_to_source_string)
+// only accesses target.lex and target.binding_spellings. All other fields are
+// set to their most minimal possible values.
+// =====================================================================
+
+fn small_emit_target_model() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: small_emit_lex(),
+    binding_spellings: small_emit_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// =====================================================================
+// SPECIALIZED: fixture for rust_production_closure_let_emit_test.
+// Same base as small_emit_target_model but uses the same binding
+// spellings and lex rules already defined above.
+// This alias exists to make the import/usage cleaner in the test file.
+// =====================================================================
+
+fn closure_let_emit_target_model() -> TargetModel {
+  small_emit_target_model()
+}
+
+// =====================================================================
+// SPECIALIZED: fixture for bool_literal_projection_emit_test.
+// Bool literal emit only emits FixedToken using true_token/false_token
+// from the projection, so it only needs lex rules for those token classes.
+// binding_spellings is technically not accessed but including the same
+// minimal set keeps the fixture general.
+// =====================================================================
+
+fn bool_lit_emit_target_model() -> TargetModel {
+  small_emit_target_model()
+}
