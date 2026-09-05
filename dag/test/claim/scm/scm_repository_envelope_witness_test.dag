@@ -290,6 +290,15 @@ fn scm_env_commit_count(outcome: RepositoryDecodeOutcome) -> Int {
 // THE INSPECTED COMMIT IS THE ONE THE MINT'S OWN RETURNED REFERENCE NAMES, not the last row of the
 // list -- reading by position would assert the same thing the fixture chose rather than the thing
 // the producer returned.
+//
+// AND THE RETURNED REFERENCE HAS TO BE ESTABLISHED AS THE REQUESTED COMMIT BEFORE ITS PARENT MEANS
+// ANYTHING. C already descends from B in this specimen -- it has to, to make C the last existing
+// commit while B is the supplied parent -- so an implementation that returned C UNCHANGED, having
+// minted nothing at all, satisfies "the returned reference resolves", "it descends from B" and "the
+// selection is still A". Every one of those is true of C. So the claim first requires that the
+// returned reference did NOT exist in the input population, and that the commit it names freezes the
+// requested D root. Population GROWTH is not a substitute for either: an operation could append D and
+// still return C. What this witness inspects is the returned subject.
 test fn scm_env_the_mint_records_the_supplied_parent_and_leaves_the_selection() -> Bool {
   let a = scm_env_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
   let b = scm_env_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
@@ -328,12 +337,17 @@ test fn scm_env_the_mint_records_the_supplied_parent_and_leaves_the_selection() 
       parent: Present { value: scm_env_ref(ordinal: 1) },
     ) {
       RepositoryCommitMinted { repository: minted, reference: reference } =>
-        match commit_at_reference(commits: minted.commits, reference: reference) {
-          Absent => false
-          Present { value: fresh } =>
-            match fresh.ancestry {
-              RootCommit => false
-              DescendsFrom { parent: parent } => parent.identity.ordinal == 1
+        match commit_at_reference(commits: selected_a.commits, reference: reference) {
+          Present { value: _ } => false
+          Absent =>
+            match commit_at_reference(commits: minted.commits, reference: reference) {
+              Absent => false
+              Present { value: fresh } =>
+                object_id_eq(left: fresh.root.locator, right: d.identity.locator)
+                  && match fresh.ancestry {
+                    RootCommit => false
+                    DescendsFrom { parent: parent } => parent.identity.ordinal == 1
+                  }
             }
         }
           && match minted.checked_out {

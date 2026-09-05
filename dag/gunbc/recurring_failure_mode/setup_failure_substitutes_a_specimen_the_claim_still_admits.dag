@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.setup_failure_substitutes_a_specimen_the_claim_still_admits
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data setup_failure_substitutes_a_specimen_the_claim_still_admits: RecurringFailureMode = RecurringFailureMode {
+  identity: "setup_failure_substitutes_a_specimen_the_claim_still_admits" as NonEmptyStr,
+
+  receipts: [
+    "**a fixture step fails, hands back a well-formed but DIFFERENT state, and the claim asserts its property of that substitute** (INVALID STATE: a green claim whose executed specimen is not the specimen its own setup describes, reached because a fallible construction step has a success-shaped failure arm. ",
+
+    "THE ARM IS ALWAYS THE SAME SHAPE AND IT ALWAYS LOOKS CONSERVATIVE: a builder whose operation refused returns the repository, the tree, the config it was GIVEN. Nothing is fabricated, nothing is malformed, and the author's stated reason is that a broken fixture will surface as a failed claim. That reason is the defect. Returning the input is not an error channel -- it is a second, silent success meaning `kept the previous state`, indistinguishable at every later step from `built the requested one`. ",
+
+    "DISTINCT FROM `absorbing_fallback`, and the difference is the direction rather than the domain: that arm WIDENS to a superset when it cannot compute an answer, so it at least does visible work on a larger population. This arm SUBSTITUTES a neighbouring state of the same shape, and the substitute is usually a PREFIX of the intended one -- the state that existed one step earlier -- which is exactly the state most likely to still satisfy a loosely written assertion. ",
+
+    "WHY IT SURVIVES A CAREFUL REVIEW OF THE CLAIM: the assertion is read against the setup PROSE, which describes the intended specimen, and the prose is accurate about intent. Nothing in the claim body is wrong. The failure is that the claim never establishes that the described state was reached, and no reviewer reading the assertion can see that, because the missing fact is in a code path that did not execute. ",
+
+    "**SPECIMEN (deep-carp-676, gunbc#10602, 2026-09-05), found by review and then reproduced by execution.** Two witness builders composed the SCM object store's insertion and the envelope's commit mint, returning their input repository when a step refused. The suite's three checkout controls built a two-commit specimen -- C1 freezing { a.dag }, C2 freezing { a.dag, b.dag } -- and checked out back to C1 to assert the candidate re-derives from the new base. With the insertion of b.dag silently skipped, the next mint still produced a DISTINCT commit over the UNCHANGED root, so C1 and C2 froze the same snapshot, the checkout had nothing to re-derive, and the assertion `one path, a.dag = A0, standing clean` was satisfied by a specimen that never contained b.dag. Measured: reintroducing that skipped step turns all three controls red under the repaired builders and left all three GREEN under the old ones. ",
+
+    "THE COMPANION DEFECT IN THE SAME SPECIMEN, because they are how the class hides: those controls also asserted the STANDING and the commit count after checkout without asserting the SELECTION. A checkout that returned its input unchanged is likewise standing clean on a corpus it can read -- it is simply standing on the wrong commit -- so the positive control for a refusal was satisfiable by a no-op. A substituted specimen and an under-specified assertion are separately survivable and jointly invisible. ",
+
+    "RECOGNITION RULE, TWO QUESTIONS, BOTH ANSWERED FROM THE FIXTURE RATHER THAN THE ASSERTION: (1) can any setup step fail without failing the claim? If a builder's type is the same on success and failure, the answer is yes and the shape is present regardless of whether it has fired. (2) Which fact makes this specimen DISTINGUISHING, and is that fact checked? A two-commit specimen is only observable across a checkout because the two roots DIFFER; if nothing asserts the difference, the specimen degenerates silently into one the claim still admits. ",
+
+    "THE REPAIR IS A TYPE, NOT A CONVENTION: setup failure gets its own value carrying no subject, so it propagates through every later step and every claim must eliminate it before asserting. There is then no arm in which a claim runs against a substitute -- construction over validation, DESIGN section 5. Asserting the distinguishing fact inside the builder makes the second question decidable at one site rather than at every claim that shares the specimen. ",
+
+    "RUNG FOUND AT: outside the ladder -- the gap is invisible from the claim's own result, exactly as `check_subject_narrower_than_its_declared_claim` describes for a guard's range, and this row is its witness-grain sibling rather than a restatement: there the RANGE is too narrow, here the SPECIMEN is a different member. CEILING: structurally impossible, because a fallible builder that cannot return a subject on failure makes the substitute unwritable. NEXT TRIGGER: the witness harness supplying that fallible-construction vocabulary, so a per-suite type is not each author's rediscovery.",
+  ],
+
+  evidence: [],
+}
