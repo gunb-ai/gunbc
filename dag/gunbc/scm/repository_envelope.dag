@@ -613,7 +613,7 @@ fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
 }
 
 fn encode_repository_v4(repo: RepositoryEnvelope) -> JsonValue {
-  encode_repository_v3_over_table(repo: repo, acc: encode_object_table(store: repo.store))
+  encode_repository_v4_over_table(repo: repo, acc: encode_object_table(store: repo.store))
 }
 
 // THE ADMITTED ENVELOPE IS ASSEMBLED OVER THE TABLE ITS ADMISSION WAS DECIDED ON. The checked writer
@@ -622,7 +622,7 @@ fn encode_repository_v4(repo: RepositoryEnvelope) -> JsonValue {
 // object to produce, by construction, the identical accumulator. Taking the table as a parameter is
 // what lets one derivation serve both the decision and the document; encode_repository_v4 keeps its
 // store-only shape for the unchecked callers, which have no accumulator to hand it.
-fn encode_repository_v3_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> JsonValue {
+fn encode_repository_v4_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
@@ -801,7 +801,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
                       next_ordinal: repo.commit_allocator.next_ordinal,
                     }
                   }
-                Absent => RepositoryEncoded { value: encode_repository_v3_over_table(repo: repo, acc: acc) }
+                Absent => RepositoryEncoded { value: encode_repository_v4_over_table(repo: repo, acc: acc) }
               }
           }
       }

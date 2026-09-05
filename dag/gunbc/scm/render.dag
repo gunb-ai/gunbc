@@ -73,9 +73,9 @@ import gunbc.scm.log {
   CommitLogRows,
   CommitLogRow,
   LoggedCommitStanding,
-  LoggedCommitRootHeld,
+  LoggedCommitManifestHeld,
   LoggedCommitRootIsAuthoredSource,
-  LoggedCommitRootIsCorpusManifest,
+  LoggedCommitRootIsSemanticNode,
   LoggedCommitRootMissingFromStore,
 }
 import gunbc.scm.status {
@@ -109,12 +109,18 @@ fn text_lines_document(lines: List<String>) -> Document {
 // `gunbc.scm.log` reports this per row because the envelope can decide it, and a row whose program
 // is missing CANNOT BE CHECKED OUT. Rendering it identically to an ordinary row would present an
 // unusable commit as usable -- the reader's next action differs, so the rendering must.
+// THE HELD ROW RENDERS EMPTY, AND THAT IS NOT A CLAIM THAT IT CHECKS OUT. `LoggedCommitManifestHeld`
+// says this store holds the manifest, not that it holds every source the manifest names, so the
+// suffix says nothing rather than saying "checkoutable" -- advertising held-ness as recoverability
+// would be a larger claim than the observation supports. Whether the sources are present is a
+// separate walk (gunbc.scm.checkout recover_corpus), and when a surface wants to report it, it
+// reports THAT observation rather than borrowing this one.
 fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
   match standing {
-    LoggedCommitRootHeld => ""
-    LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
-    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a program -- cannot be checked out)"
-    LoggedCommitRootIsCorpusManifest => "  (root is a corpus manifest, not a program -- cannot be checked out)"
+    LoggedCommitManifestHeld => ""
+    LoggedCommitRootMissingFromStore => "  (snapshot not held -- cannot be checked out)"
+    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a corpus snapshot -- cannot be checked out)"
+    LoggedCommitRootIsSemanticNode => "  (root is a program node, not a corpus snapshot -- cannot be checked out)"
   }
 }
 

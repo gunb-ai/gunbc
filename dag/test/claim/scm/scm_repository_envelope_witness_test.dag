@@ -63,7 +63,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget, RepositoryEncodeTargetIsAuthoredSource,
   RepositoryEncodeCommitRootIsAuthoredSource,
   RepositoryEncodeTargetIsCorpusManifest,
-  RepositoryEncodeCommitRootIsCorpusManifest,
+  RepositoryEncodeCommitRootIsSemanticNode,
   RepositoryEncodeManifestSourceIsSemanticNode,
   RepositoryEncodeManifestSourceIsCorpusManifest,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
@@ -77,7 +77,7 @@ import gunbc.scm.repository_envelope {
   RepositoryTargetReferenceRefused,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryCommitRootNotInObjectTable, RepositoryCommitRootIsAuthoredSource,
-  RepositoryCommitRootIsCorpusManifest,
+  RepositoryCommitRootIsSemanticNode,
   RepositoryDecodedManifestSourceIsSemanticNode,
   RepositoryDecodedManifestSourceIsCorpusManifest,
   RepositoryDecodedTargetIsAuthoredSource,
@@ -187,7 +187,7 @@ fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
-    RepositoryCommitMintRootIsCorpusManifest { root: _ } => repo
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
   }
 }
 
@@ -562,7 +562,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => "target_is_authored_source"
         RepositoryEncodeTargetIsCorpusManifest { target: _ } => "target_is_corpus_manifest"
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => "commit_root_is_authored_source"
-        RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => "commit_root_is_corpus_manifest"
+        RepositoryEncodeCommitRootIsSemanticNode { root: _ } => "commit_root_is_semantic_node"
         RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => "manifest_source_is_node"
         RepositoryEncodeManifestSourceIsCorpusManifest { source: _ } => "manifest_source_is_manifest"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
@@ -847,7 +847,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
         RepositoryEncodeTargetIsCorpusManifest { target: _ } => false
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
-        RepositoryEncodeCommitRootIsCorpusManifest { root: _ } => false
+        RepositoryEncodeCommitRootIsSemanticNode { root: _ } => false
         RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => false
         RepositoryEncodeManifestSourceIsCorpusManifest { source: _ } => false
         RepositoryCommitRootNotInStore { root: _ } => false
@@ -970,7 +970,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
         RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
-        RepositoryCommitRootIsCorpusManifest { root: _ } => "commit_root_manifest"
+        RepositoryCommitRootIsSemanticNode { root: _ } => "commit_root_semantic_node"
         RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => "decoded_manifest_source_node"
         RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => "decoded_manifest_source_manifest"
         RepositoryDecodedTargetIsAuthoredSource { target: _ } => "decoded_target_source"
@@ -1345,7 +1345,7 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
-    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => false
   }
 }
 
@@ -1428,7 +1428,7 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
-    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => false
   }
 }
 
@@ -1475,7 +1475,7 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
       ) {
         RepositoryCommitMintRootIsAuthoredSource { root: r } =>
           object_id_eq(left: r, right: file.locator)
-        RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
+        RepositoryCommitMintRootIsSemanticNode { root: _ } => false
         RepositoryCommitMinted { repository: _, reference: _ } => false
         RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
         RepositoryCommitMintParentMissing { parent: _ } => false
@@ -1497,7 +1497,7 @@ test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
   ) {
     RepositoryCommitMinted { repository: _, reference: _ } => true
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
-    RepositoryCommitMintRootIsCorpusManifest { root: _ } => false
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => false
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
