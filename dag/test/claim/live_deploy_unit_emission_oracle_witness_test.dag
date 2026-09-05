@@ -249,13 +249,13 @@ fn belt_service_unit() -> ServiceUnitFile {
 
 fn belt_service_directives() -> List<SystemdServiceDirective> {
   match belt_service_unit() {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
 fn belt_unit_directives() -> List<SystemdUnitDirective> {
   match belt_service_unit() {
-    ServiceUnitFile { unit: u, .. } => u
+    ServiceUnitFile { unit: u, service: _, install: _ } => u
   }
 }
 
@@ -319,7 +319,7 @@ test fn belt_service_has_unit_directives() -> Bool {
 // DECISION: the belt unit is NOT installable (no [Install] section).
 test fn belt_service_is_not_installable() -> Bool {
   match belt_service_unit() {
-    ServiceUnitFile { install: NotInstallable, .. } => true
+    ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
     _ => false
   }
 }
@@ -341,13 +341,13 @@ fn belt_timer_unit() -> TimerUnitFile {
 
 fn belt_timer_directives() -> List<SystemdTimerDirective> {
   match belt_timer_unit() {
-    TimerUnitFile { timer: t, .. } => t
+    TimerUnitFile { unit: _, timer: t, install: _ } => t
   }
 }
 
 fn belt_timer_unit_directives() -> List<SystemdUnitDirective> {
   match belt_timer_unit() {
-    TimerUnitFile { unit: u, .. } => u
+    TimerUnitFile { unit: u, timer: _, install: _ } => u
   }
 }
 
@@ -378,7 +378,7 @@ test fn belt_timer_has_description() -> Bool {
 // DECISION: the timer is installable as WantedBy=timers.target.
 test fn belt_timer_is_installable_as_timers_target() -> Bool {
   match belt_timer_unit() {
-    TimerUnitFile { install: Installable { directives: ds }, .. } =>
+    TimerUnitFile { unit: _, timer: _, install: Installable { directives: ds } } =>
       has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
     _ => false
   }
@@ -405,13 +405,13 @@ fn serve_unit() -> ServiceUnitFile {
 
 fn serve_service_directives() -> List<SystemdServiceDirective> {
   match serve_unit() {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
 fn serve_unit_directives() -> List<SystemdUnitDirective> {
   match serve_unit() {
-    ServiceUnitFile { unit: u, .. } => u
+    ServiceUnitFile { unit: u, service: _, install: _ } => u
   }
 }
 
@@ -481,7 +481,7 @@ test fn serve_unit_has_unit_directives() -> Bool {
 // DECISION: the serve unit is installable as WantedBy=multi-user.target.
 test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
   match serve_unit() {
-    ServiceUnitFile { install: Installable { directives: ds }, .. } =>
+    ServiceUnitFile { unit: _, service: _, install: Installable { directives: ds } } =>
       has_directive_install(dirs: ds, target: WantedBy { target: "multi-user.target" as NonEmptyStr })
     _ => false
   }
@@ -505,13 +505,13 @@ fn tree_sync_unit() -> ServiceUnitFile {
 
 fn tree_sync_service_directives() -> List<SystemdServiceDirective> {
   match tree_sync_unit() {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
 fn tree_sync_unit_directives() -> List<SystemdUnitDirective> {
   match tree_sync_unit() {
-    ServiceUnitFile { unit: u, .. } => u
+    ServiceUnitFile { unit: u, service: _, install: _ } => u
   }
 }
 
@@ -551,7 +551,7 @@ test fn tree_sync_type_is_oneshot() -> Bool {
 // DECISION: the tree sync unit is NotInstallable.
 test fn tree_sync_is_not_installable() -> Bool {
   match tree_sync_unit() {
-    ServiceUnitFile { install: NotInstallable, .. } => true
+    ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
     _ => false
   }
 }
@@ -579,7 +579,7 @@ fn slice_unit() -> SliceUnitFile {
 
 fn slice_directives() -> List<SystemdSliceDirective> {
   match slice_unit() {
-    SliceUnitFile { slice: s, .. } => s
+    SliceUnitFile { unit: _, slice: s, install: _ } => s
   }
 }
 
@@ -587,7 +587,7 @@ fn slice_directives() -> List<SystemdSliceDirective> {
 test fn slice_description_names_the_unit() -> Bool {
   let spec = live_spec()
   match slice_unit() {
-    SliceUnitFile { unit: [Description { text: d }], .. } =>
+    SliceUnitFile { unit: [Description { text: d }], slice: _, install: _ } =>
       d == join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "")
     _ => false
   }
@@ -603,7 +603,7 @@ test fn slice_memory_bounds_match_runner_slot() -> Bool {
 // DECISION: the slice unit has NotInstallable (no [Install] section).
 test fn slice_unit_is_not_installable() -> Bool {
   match slice_unit() {
-    SliceUnitFile { install: NotInstallable, .. } => true
+    SliceUnitFile { unit: _, slice: _, install: NotInstallable } => true
     _ => false
   }
 }
@@ -672,19 +672,19 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
 
 fn belt_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
   match live_deploy_belt_service_unit_file(spec: spec) {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
 fn serve_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
   match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
 fn tree_sync_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
   match live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String) {
-    ServiceUnitFile { service: s, .. } => s
+    ServiceUnitFile { unit: _, service: s, install: _ } => s
   }
 }
 
