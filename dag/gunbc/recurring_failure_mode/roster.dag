@@ -145,6 +145,7 @@ import gunbc.recurring_failure_mode.a_branch_property_falsified_by_a_derived_pus
 import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_its_own_denominator }
 import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
 import gunbc.recurring_failure_mode.discriminating_evidence_authored_into_the_operational_population { discriminating_evidence_authored_into_the_operational_population }
+import gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that_prints_it { printed_remedy_is_mangled_by_the_medium_that_prints_it }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -281,4 +282,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   roster_is_its_own_denominator,
   instrument_answers_outside_its_domain,
   discriminating_evidence_authored_into_the_operational_population,
+  printed_remedy_is_mangled_by_the_medium_that_prints_it,
 ]
