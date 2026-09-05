@@ -16,13 +16,14 @@ use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
-pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
+use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ExprData, InferredNode, NewlineIndex, Node};
+pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -47,29 +48,32 @@ pub struct ServiceMethodResult {
     pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
+pub fn service_receiver_resolved_name(
+    receiver: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match (*receiver.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: Some(bk),
+            ..
+        } => match (*bk.clone()).clone() {
+            VarBindingKind::ServiceValueBinding => Some(crate::v1_std_core::expr_var_name_at(
+                receiver.clone(),
+                source_indices.clone(),
+            )),
+            _ => std::option::Option::None,
+        },
+        _ => std::option::Option::None,
+    }
+}
+
 pub fn is_typed_service_call_receiver(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match (*receiver.expr_data.clone()).clone() {
-        ExprData::ExprFieldAccess { summary: _, .. } => {
-            let f =
-                crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
-            match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-                    .first()
-                    .cloned()
-                {
-                    Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
-                    std::option::Option::None => false,
-                },
-                _ => false,
-            }
-        }
-        _ => false,
+    match service_receiver_resolved_name(receiver.clone(), source_indices.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
     }
 }
 
@@ -77,27 +81,7 @@ pub fn extract_typed_service_name(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match (*receiver.expr_data.clone()).clone() {
-        ExprData::ExprFieldAccess { summary: _, .. } => {
-            let f =
-                crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
-            match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let ns =
-                        crate::v1_std_core::expr_var_name_at(b.clone(), source_indices.clone());
-                    Some(v1_rt::concat(
-                        v1_rt::concat(ns.clone(), ".".to_string()),
-                        f.clone(),
-                    ))
-                }
-                _ => std::option::Option::None,
-            }
-        }
-        _ => std::option::Option::None,
-    }
+    service_receiver_resolved_name(receiver.clone(), source_indices.clone())
 }
 
 pub fn collect_typed_service_calls(
