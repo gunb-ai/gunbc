@@ -30,7 +30,9 @@ import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   SourceStored, SourceLocatorCollision,
   SemanticNodeTarget, node_target_locator,
+  CorpusManifestTarget, corpus_manifest_target_locator,
   AuthoredSourceTarget,
+  authored_source_target_of,
   CorpusManifestEntry,
   CorpusManifestStored,
   CorpusManifestDuplicatePath,
@@ -72,7 +74,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
   RepositoryCommitParentNotPreviouslyAdmitted,
   RepositoryDecodeRefusal, RepositoryDecodeObjectTableRefused,
-  RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
+  RepositoryMemberReadRefused, RepositoryFormatUnrecognized, RepositoryFormatRetired,
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
@@ -167,6 +169,35 @@ fn scm_env_put(store: ObjectStore, n: Node) -> ScmEnvPut {
   }
 }
 
+// A COMMIT ROOT IS AN AUTHORED SNAPSHOT NOW, so the fixtures freeze one. Real bytes and a real
+// manifest naming them: several claims below discriminate on what the store holds, and a manifest
+// over a dangling source would make the held arms unreachable.
+type ScmEnvSnapshot { store: ObjectStore, identity: CorpusManifestTarget }
+
+fn scm_env_snapshot(store: ObjectStore, path: NonEmptyStr, text: String) -> ScmEnvSnapshot {
+  match store_authored_source(store: store, text: text) {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmEnvSnapshot { store: store, identity: CorpusManifestTarget { locator: i } }
+    SourceStored { store: with_source, source: source } =>
+      match store_corpus_manifest(
+        store: with_source,
+        entries: [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }]
+      ) {
+        CorpusManifestDuplicatePath { path: _ } =>
+          ScmEnvSnapshot {
+            store: with_source,
+            identity: CorpusManifestTarget {
+              locator: authored_source_target_locator(target: authored_source_target_of(reference: source)),
+            },
+          }
+        CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+          ScmEnvSnapshot { store: with_source, identity: CorpusManifestTarget { locator: i } }
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          ScmEnvSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+      }
+  }
+}
+
 fn scm_env_ref(ordinal: Int) -> RepositoryCommitRef {
   RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
 }
@@ -180,7 +211,7 @@ fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn scm_env_minted_or(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
@@ -192,8 +223,8 @@ fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message
 }
 
 fn scm_env_two_commit_repository() -> RepositoryEnvelope {
-  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
-  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let first = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
+  let second = scm_env_snapshot(store: first.store, path: "two.dag" as NonEmptyStr, text: "module two")
   let first_commit = scm_env_minted_or(
     repo: scm_env_repository_with_store(store: second.store),
     root: first.identity,
@@ -334,7 +365,7 @@ test fn scm_env_two_commits_share_one_object_population() -> Bool {
 // by a function that always answers 4. A one-commit repository over program_one has two objects --
 // the shared atom and its root.
 test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool {
-  let only = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let only = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
   scm_env_encoded_object_count(
     v: encode_repository(
       repo: scm_env_minted_or(
@@ -718,8 +749,8 @@ test fn scm_env_a_manifest_source_this_store_lacks_is_not_a_refusal() -> Bool {
 // store, never in THIS one, so this is exactly the residual the brand leaves open and exactly what
 // the encode-side check is for.
 fn scm_env_absent_root_repository() -> RepositoryEnvelope {
-  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
-  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let orphan = scm_env_snapshot(store: empty_store(), path: "two.dag" as NonEmptyStr, text: "module two")
+  let held = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
   let minted = scm_env_minted_or(
     repo: scm_env_repository_with_store(store: orphan.store),
     root: orphan.identity,
@@ -739,8 +770,8 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
 // the next write -- and "the table does not carry it" is a different cause, with a different remedy,
 // from "the table carries a FILE there".
 fn scm_env_rewritten_root_document() -> JsonValue {
-  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
-  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let orphan = scm_env_snapshot(store: empty_store(), path: "two.dag" as NonEmptyStr, text: "module two")
+  let held = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
   let valid = scm_env_minted_or(
     repo: scm_env_repository_with_store(store: held.store),
     root: held.identity,
@@ -755,7 +786,7 @@ fn scm_env_rewritten_root_document() -> JsonValue {
       value: json_object(members: [
         json_kv(
           key: "uncontained",
-          value: json_string(s: node_target_locator(target: orphan.identity).digest as String),
+          value: json_string(s: corpus_manifest_target_locator(target: orphan.identity).digest as String),
         ),
       ]),
     ),
@@ -769,7 +800,7 @@ test fn scm_env_a_commit_root_absent_from_the_object_table_refuses_to_decode() -
 
 // CONTROL, one fact apart: the same document with its root left alone decodes.
 test fn scm_env_the_same_document_with_its_own_root_decodes() -> Bool {
-  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let held = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
   let valid = scm_env_minted_or(
     repo: scm_env_repository_with_store(store: held.store),
     root: held.identity,
@@ -781,8 +812,8 @@ test fn scm_env_the_same_document_with_its_own_root_decodes() -> Bool {
 
 // A checkout naming an object that IS in the store but is NOT any commit's root.
 fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
-  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
-  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let first = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
+  let second = scm_env_snapshot(store: first.store, path: "two.dag" as NonEmptyStr, text: "module two")
   let valid = scm_env_minted_or(
     repo: scm_env_repository_with_store(store: second.store),
     root: first.identity,
@@ -809,10 +840,11 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
 // uncontained population, which is the property the type change was for: an identity left as text is
 // one nobody can resolve back, and a tag-only claim could not tell the two apart.
 test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
-  let full = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let snapshot = scm_env_snapshot(store: empty_store(), path: "two.dag" as NonEmptyStr, text: "module two")
+  let full = scm_env_put(store: snapshot.store, n: scm_env_program_two())
   let grafted = match copy_object(
     from: full.store,
-    to: empty_store(),
+    to: snapshot.store,
     identity: node_target_locator(target: full.identity),
   ) {
     Copied { store: s, reference: _ } => s
@@ -822,8 +854,8 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
   let repo = RepositoryEnvelope {
     store: grafted,
     commits: scm_env_minted_or(
-      repo: scm_env_repository_with_store(store: full.store),
-      root: full.identity,
+      repo: scm_env_repository_with_store(store: snapshot.store),
+      root: snapshot.identity,
       message: "grafted",
       parent: none,
     ).commits,
@@ -835,6 +867,15 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
     && scm_env_named_target_is_uncontained(outcome: outcome, store: grafted)
 }
 
+// WHY THE FIXTURE ABOVE CHANGED SHAPE WHEN THE COMMIT ROOT DID, recorded because the obvious edit was
+// wrong. It used to graft the COMMIT ROOT without its children. Once a root is a manifest, grafting a
+// manifest without the sources it names produces a document that ENCODES -- measured, not assumed --
+// and that is CORRECT: a manifest legitimately names sources this store may not hold, and a
+// historical commit can identify an exact snapshot whose sources are partially unavailable.
+// Refusing there would broaden the codec's partial-corpus policy by accident. Unrecoverability is
+// reported where it is observed, at checkout (gunbc.scm.checkout CheckoutCorpusUnrecoverable), not by
+// the encoder. So the fixture keeps this claim's real subject -- an uncontained SEMANTIC NODE edge --
+// by grafting a node whose children were never copied, while the commit root stays a held snapshot.
 fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: ObjectStore) -> Bool {
   match outcome {
     RepositoryEncoded { value: _ } => false
@@ -966,6 +1007,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryDecodeObjectTableRefused { cause: _ } => "object_table"
         RepositoryMemberReadRefused { cause: _ } => "member_read"
         RepositoryFormatUnrecognized { found: _ } => "format"
+        RepositoryFormatRetired { found: _ } => "format_retired"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
@@ -1327,7 +1369,7 @@ fn scm_env_forward_commit(c: JsonValue, index: Int) -> JsonValue {
 // The internal constructor cannot author a dangling or forward parent: it accepts only a key already
 // held by the repository. That same construction order makes an internal cycle have no spelling.
 test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Bool {
-  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let first = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
   let base = RepositoryEnvelope {
     store: first.store,
     commits: [],
@@ -1416,7 +1458,7 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     commit_allocator: repo.commit_allocator,
     checked_out: none,
   }
-  let second_root = scm_env_put(store: first_only.store, n: scm_env_program_two()).identity
+  let second_root = scm_env_snapshot(store: first_only.store, path: "two.dag" as NonEmptyStr, text: "module two").identity
   match mint_repository_commit(
     repository: first_only,
     root: second_root,
@@ -1469,7 +1511,7 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
     SourceStored { store: store, source: file } =>
       match mint_repository_commit(
         repository: scm_env_repository_with_store(store: store),
-        root: SemanticNodeTarget { locator: file.locator },
+        root: CorpusManifestTarget { locator: file.locator },
         message: "root is a file",
         parent: none,
       ) {
@@ -1484,15 +1526,37 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
   }
 }
 
-// THE CONTROL, ONE FACT APART. Same shape, same store construction, same message; the root is a
-// stored NODE instead of a stored file. It must mint. Without this, a mint that refused everything
-// would satisfy the claim above.
-test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
+// A COMMIT ROOT THAT IS A PROGRAM NODE NOW REFUSES, AND THIS CLAIM INVERTED WHEN THE ROOT CHANGED
+// SUBJECT. It used to assert that a node root MINTS -- correct while a commit froze a semantic root,
+// and wrong now that it freezes an authored snapshot. The wrong-kind population did not shrink when
+// the subject moved; it swapped members, and this is where that is executed rather than asserted in
+// prose. It names the arm AND the locator, so a mint that refused everything would not satisfy it.
+test fn env_a_commit_root_that_is_a_semantic_node_refuses() -> Bool {
   let put = scm_env_put(store: empty_store(), n: scm_env_atom(identity: "program"))
   match mint_repository_commit(
     repository: scm_env_repository_with_store(store: put.store),
-    root: put.identity,
+    root: CorpusManifestTarget { locator: node_target_locator(target: put.identity) },
     message: "root is a program",
+    parent: none,
+  ) {
+    RepositoryCommitMintRootIsSemanticNode { root: r } =>
+      object_id_eq(left: r, right: node_target_locator(target: put.identity))
+    RepositoryCommitMinted { repository: _, reference: _ } => false
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+    RepositoryCommitMintParentMissing { parent: _ } => false
+    RepositoryCommitMintRootMissing { root: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR BOTH REFUSALS: a root that IS a corpus manifest mints. Without it, the two
+// wrong-kind claims above are satisfied by a mint that refuses everything.
+test fn env_a_commit_root_that_is_a_corpus_manifest_mints() -> Bool {
+  let snapshot = scm_env_snapshot(store: empty_store(), path: "one.dag" as NonEmptyStr, text: "module one")
+  match mint_repository_commit(
+    repository: scm_env_repository_with_store(store: snapshot.store),
+    root: snapshot.identity,
+    message: "root is a snapshot",
     parent: none,
   ) {
     RepositoryCommitMinted { repository: _, reference: _ } => true
