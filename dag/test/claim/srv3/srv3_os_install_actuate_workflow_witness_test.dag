@@ -12,6 +12,7 @@ fn witness_srv3_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
   match srv3_boot_once_cd_operator_granted_approval {
     AuthorizationGranted { grant: g, claim: _ } => g
     AuthorizationPending { request: _ } => witness_unreachable_grant()
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => witness_unreachable_grant()
   }
 }
 
