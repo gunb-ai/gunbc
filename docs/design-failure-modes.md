@@ -121,6 +121,7 @@ The exact `RecurringFailureMode.identity` population, which no other projection 
 - `verdict_stale_at_the_merge_instant`
 - `container_status_read_as_a_claim_about_its_members`
 - `a_live_authority_name_carries_a_superseded_claim`
+- `instruction_and_subject_resolved_from_different_revisions`
 
 ---
 
