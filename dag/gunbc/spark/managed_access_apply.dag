@@ -10,6 +10,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
@@ -25,6 +27,7 @@ import gunbc.fleet_known_hosts_anchor {
   PortableRemoteWord,
   portable_remote_words,
   shape_fleet_ssh_exec,
+  shape_fleet_ssh_password_exec,
 }
 import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -157,18 +160,24 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
 // writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
 // requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
+fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
+}
+
 fn privileged_leg(
   context: FleetSshExecutionContext,
   host: String,
   admin_principal: String,
   admin_credential: Secret,
+  admin_credential_file: NonEmptyStr,
   script: String,
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } => {
-      let r = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(
+      let r = password_file_ssh_exec_portable_words_with_stdin(
+        password_file: admin_credential_file,
+        client_args: shape_fleet_ssh_password_exec(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
@@ -388,19 +397,23 @@ fn spark_managed_access_apply_with_resolved_credentials(
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
           let admin_principal = spark_operator_bootstrap_login
+          match with_materialized_ssh_key_file(
+            identity_file_name: spark_admin_credential_file_name(attempt: attempt),
+            secret_bytes: admin_credential,
+            use: fn(admin_credential_file) {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: create_managed_account_script(admitted: managed_word),
           )
           let key = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
           )
           let inference = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
+            admin_credential: admin_credential, admin_credential_file: admin_credential_file,
             script: create_inference_identity_script(admitted: inference_word),
           )
           let proof = managed_principal_leg(
@@ -413,6 +426,12 @@ fn spark_managed_access_apply_with_resolved_credentials(
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
               SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
             ],
+          }
+            },
+          ) {
+            MaterializedSshKeyFileBracketCompleted { value: report } => report
+            MaterializedSshKeyFileBracketRefused { cause: cause } =>
+              ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran: ", cause as String], "") }
           }
             }
           }
