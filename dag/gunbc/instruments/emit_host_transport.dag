@@ -7,6 +7,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.python
+import extdeps.go
 import extdeps.gunbc
 import extdeps.communication.medium { Lossless, Medium }
 import std.measure { byte_size_count }
@@ -44,20 +45,38 @@ import gunbc.retained_shell_script { retained_foreign }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-// run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per
-// the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove,
-// Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile,
-// gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to
-// CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a
-// count check with wrong content; the expected string is built in-substrate from the same
-// stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the
+// run_rust_smoke, run_python_smoke, and run_go_smoke are runtime-present sites: gunbc invokes each
+// step, so per the shell-emission-model rule they are typed service operations
+// (shell.Mktemp/Mkdir/Remove, Filesystem.Write, cargo.Build.BuildManifest, python.Interpreter.RunFile,
+// go.Toolchain.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count
+// check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable
+// output could pass a count check with wrong content; the expected string is built in-substrate from
+// the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the
 // transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked
-// the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke
-// provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org
-// official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide
-// node install still pass emit_host_gate_passes.
+// the tempdir on mid-script failure).
+//
+// run_go_smoke WAS migrated from inline bash to typed ops (2026-09-05). The previous provisioning
+// conditional (if ! command -v go; then curl go.dev tarball ...) was a DESIGN section 5 WIDEN:
+// instead of refusing when the precondition is unmet, it reached out to the network, fetched a pinned
+// go1.22.5 tarball, mutated PATH, and carried on. A failure arm must refuse, never widen; every
+// degradation is a typed, located, countable diagnostic. The conditional also carried version rot (the
+// go version was pinned in a bash string where nothing adjudicates it). The typed go.Toolchain.RunFile
+// does not provision — if go is absent the operation fails with success: false, which propagates as a
+// correct RED. CI runners always have go; a failure here on a bare host is a correct signal of
+// misconfiguration, not a regression.
+//
+// run_ts_smoke and run_node_http_serve_smoke are NOT yet migrated. Their shared
+// emit_host_node_bootstrap_script carrier (below) provisions node the same way — a section 5 widen
+// with pinned versions (nodejs.org v22.22.3 linux tarball). run_ts_smoke additionally needs a
+// TypeScript compilation authority (npx -y -p typescript@5.9.2 tsc), which is itself a runtime network
+// fetch — the same widen class. run_node_http_serve_smoke needs process lifecycle management (start
+// background server, probe, kill) which is a genuinely larger concept. Both are left with the
+// `emit_host_node_bootstrap_script` string carrier and the two triggers below naming the specific
+// missing capabilities.
 
-data emit_host_node_bootstrap_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: emit_host_node_bootstrap_script — concat-interpolated bash fragment (curl/tar nodejs.org linux tarball into WORKDIR/nodeboot) spliced into run_ts_smoke and run_node_http_serve_smoke via toolchain_provision_shell_exec; transport scaffold parallel to run_go_smoke's inline go.dev tarball provision. DISSOLVES WHEN emit_host TS/node smokes route through typed extdeps ops like run_rust_smoke/run_python_smoke (shell.Mktemp/Mkdir, modeled curl/tar or node runtime provision row) and this string carrier retires from dag/gunbc/instruments/emit_host_transport.dag.")
+data emit_host_ts_compilation_missing_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_ts_smoke — concat-interpolated bash fragment splices emit_host_node_bootstrap_script (node provision) and npx -y -p typescript@5.9.2 tsc (runtime network fetch = section 5 widen) into one heredoc body. Two capabilities are missing: (1) a TypeScript compilation authority that compiles .ts to .js without fetching packages at runtime; (2) a node execution operation (like go.Toolchain.RunFile or python.Interpreter.RunFile) to run the compiled output. The provision widen was decided against (section 5, precedent: run_rust_smoke/run_python_smoke/run_go_smoke do not provision). The compile widen remains open until a typed tsc authority exists. DISSOLVES WHEN run_ts_smoke routes through typed extdeps ops (shell.Mktemp/Mkdir, Filesystem.Write, TypeScript.Compile, Node.RunFile, shell.Remove) and the emit_host_node_bootstrap_script carrier retires.")
+
+data emit_host_node_serve_process_lifecycle_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_node_http_serve_smoke — concat-interpolated bash fragment splices emit_host_node_bootstrap_script (node provision = section 5 widen) and a background server lifecycle ($!, $, trap, kill, rm) into one heredoc body. Unlike the other smokes, this is not a single-run-then-capture operation: it starts a server process, computes a port, installs signal handlers, probes with an HTTP retry loop, and cleans up. Process lifecycle is a genuinely larger concept than a language runner and cannot be modeled inside this lane. The provision widen was decided against (section 5, precedent: run_rust_smoke/run_python_smoke/run_go_smoke). DISSOLVES WHEN process lifecycle management (background start, liveness probe, resource cleanup) is available as typed extdeps ops and run_node_http_serve_smoke routes through them (shell.Mktemp/Mkdir, Filesystem.Write, Node.RunFile, http.Client.Probe, process management, shell.Remove) and the emit_host_node_bootstrap_script carrier retires.")
 
 data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-$NODEARCH.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
 
@@ -134,19 +153,12 @@ fn emit_host_smoke_holds(harness_ok: Bool, reported_stdout: String, expected_tex
 }
 
 fn run_go_smoke() -> Bool {
-  let expected = byte_size_count(stdout_byte_count)
-  let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\nprintf '%s' \"$BYTES\""
-  let reported = shell.Exec.Run(
-    script: retained_foreign(
-      body: script,
-      reason: "emit_host go smoke: provision toolchain, run fixture, report its octet count"
-    )
-  )
-  emit_host_smoke_holds(
-    harness_ok: reported.success,
-    reported_stdout: reported.stdout,
-    expected_text: "{expected}"
-  )
+  let dir = shell.Mktemp.Dir()
+  let main_go = Filesystem.Write(path: concat(dir.path, "/main.go"), content: go_stdout_fixture_source)
+  let run = go.Toolchain.RunFile(workdir: dir.path, script_path: concat(dir.path, "/main.go"))
+  let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && main_go.success && run.success && cleanup.success
+    && (run.stdout == expected_stdout_nul_run())
 }
 
 fn run_ts_smoke() -> Bool {
