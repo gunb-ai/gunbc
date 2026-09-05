@@ -356,12 +356,54 @@ mod tests {
             entries.len(), refused_entries, entries.len() - refused_entries);
     }
 
+    // Invoked only as a child of the paired audit. A fresh process makes an
+    // execution deadline enforceable without interrupting compiler state in place.
+    #[test]
+    #[ignore = "isolated paired-audit worker; requires input and output paths"]
+    fn scanner_compile_audit_program() {
+        let input = std::env::var("SCANNER_COMPILE_PROGRAM_INPUT").unwrap();
+        let output = std::env::var("SCANNER_COMPILE_PROGRAM_OUTPUT").unwrap();
+        let paths: Vec<String> = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+        let sources: Vec<_> = paths
+            .into_iter()
+            .map(|path| {
+                let content = std::fs::read_to_string(workspace_root().join(&path)).unwrap();
+                Rc::new(SourceFile { path, content })
+            })
+            .collect();
+        assert!(v1_compiler_compile::default_compile_pipeline_options()
+            .census_only_sources
+            .is_empty());
+        let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+        let passes = result.graph.is_some()
+            && !result.diagnostics.iter().any(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            });
+        let diagnostics: BTreeSet<_> = result
+            .diagnostics
+            .iter()
+            .map(|d| serde_json::to_string(d).expect("typed diagnostic serialization"))
+            .collect();
+        std::fs::write(output, serde_json::to_vec(&(passes, diagnostics)).unwrap()).unwrap();
+    }
+
     #[test]
     #[ignore = "paired source-compilation audit; requires SCANNER_COMPILE_AUDIT_REPORT"]
     fn real_corpus_withholding_scanner_additions_compiles_both_subjects() {
         use std::io::Write;
         let report_path = std::env::var("SCANNER_COMPILE_AUDIT_REPORT").expect("audit output path");
-        let mut report = std::fs::File::create(report_path).unwrap();
+        let mut report = std::fs::File::create(&report_path).unwrap();
+        let budget = |name| {
+            let seconds: u64 = std::env::var(name)
+                .expect("explicit audit budget")
+                .parse()
+                .unwrap();
+            assert!(seconds > 0, "zero execution budget");
+            std::time::Duration::from_secs(seconds)
+        };
+        let program_budget = budget("SCANNER_COMPILE_PROGRAM_BUDGET_SECONDS");
+        let audit_budget = budget("SCANNER_COMPILE_AUDIT_BUDGET_SECONDS");
+        let audit_started = std::time::Instant::now();
         let roots = ["dag", "src/v2"]
             .map(|root| workspace_root().join(root).to_string_lossy().into_owned());
         let index = build_multi_entry_index_primary_precedence(&roots);
@@ -380,34 +422,110 @@ mod tests {
             "state": "Started", "indexed_modules": entries.len(),
             "boundary": "source compile_to_resolved through resolve/type/ownership/complexity; graph present and no is_interpreter_blocking_diagnostic; no external census; NOT emitted-Rust cargo acceptance",
             "diagnostic_identity": "serialized ErrorNode: full CompilerDiagnostic variant/payload and module_name",
+            "program_budget_seconds": program_budget.as_secs(), "audit_budget_seconds": audit_budget.as_secs(),
+            "execution_refusals_are_compilation_failures": false,
         })).unwrap();
 
         // Entries can demand the same complete program (in particular through
         // scanner cycles). Within this immutable source index those are one
         // compilation, even though each entry retains its own comparison row.
-        let mut programs =
-            std::collections::HashMap::<Vec<String>, (bool, BTreeSet<String>)>::new();
+        let mut programs = std::collections::HashMap::<
+            Vec<String>,
+            (usize, Option<(bool, BTreeSet<String>)>),
+        >::new();
+        let scratch = workspace_root()
+            .join("target")
+            .join(format!("scanner-program-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).unwrap();
+        let input = scratch.join("input.json");
+        let output = scratch.join("output.json");
+        let log = std::fs::File::create(format!("{report_path}.programs.log")).unwrap();
+        let mut program_report = report.try_clone().unwrap();
         let mut compile = |sources: Vec<Rc<SourceFile>>| {
             let key: Vec<_> = sources.iter().map(|source| source.path.clone()).collect();
             if let Some(observed) = programs.get(&key) {
                 return observed.clone();
             }
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-            let passes = result.graph.is_some()
-                && !result.diagnostics.iter().any(|d| {
-                    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
-                });
-            let diagnostics: BTreeSet<_> = result
-                .diagnostics
-                .iter()
-                .map(|d| serde_json::to_string(d).expect("typed diagnostic serialization"))
-                .collect();
-            let observed = (passes, diagnostics);
+            let program = programs.len();
+            writeln!(
+                program_report,
+                "{}",
+                serde_json::json!({
+                    "state": "ProgramRequested", "program": program, "sources": key,
+                })
+            )
+            .unwrap();
+            program_report.flush().unwrap();
+            let mut observation = None;
+            let mut exit_status = None;
+            let cause;
+            if audit_started.elapsed() >= audit_budget {
+                cause = "NotAttemptedWithinAuditBudget";
+            } else {
+                std::fs::write(&input, serde_json::to_vec(&key).unwrap()).unwrap();
+                if output.exists() {
+                    std::fs::remove_file(&output).unwrap();
+                }
+                let started = std::time::Instant::now();
+                let mut program_log = log.try_clone().unwrap();
+                writeln!(program_log, "PROGRAM {program} sources={}", key.len()).unwrap();
+                program_log.flush().unwrap();
+                let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "cli_run::scanner_closure_refusal::tests::scanner_compile_audit_program",
+                        "--ignored",
+                        "--nocapture",
+                        "--test-threads=1",
+                    ])
+                    .env("SCANNER_COMPILE_PROGRAM_INPUT", &input)
+                    .env("SCANNER_COMPILE_PROGRAM_OUTPUT", &output)
+                    .stdout(log.try_clone().unwrap())
+                    .stderr(log.try_clone().unwrap())
+                    .spawn()
+                    .unwrap();
+                loop {
+                    if let Some(status) = child.try_wait().unwrap() {
+                        exit_status = Some(status.to_string());
+                        if status.success() && output.exists() {
+                            observation = Some(
+                                serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap(),
+                            );
+                            cause = "Observed";
+                        } else {
+                            cause = "ProgramExecutionFailed";
+                        }
+                        break;
+                    }
+                    if started.elapsed() >= program_budget
+                        || audit_started.elapsed() >= audit_budget
+                    {
+                        // An exit can race the deadline observation; waiting still reaps it.
+                        let _ = child.kill();
+                        exit_status = Some(child.wait().unwrap().to_string());
+                        cause = "ProgramExecutionTimedOut";
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+            writeln!(program_report, "{}", serde_json::json!({
+                "state": "ProgramExecution", "program": program, "cause": cause, "exit_status": exit_status, "observation": observation,
+            })).unwrap();
+            program_report.flush().unwrap();
+            let observed = (program, observation);
             programs.insert(key, observed.clone());
             observed
         };
         let mut pairs = 0;
-        let mut partitions = std::collections::BTreeMap::<&str, usize>::new();
+        let mut partitions = std::collections::BTreeMap::from([
+            ("BothPass", 0usize),
+            ("FailureExposedByWithholding", 0),
+            ("BothFailIdentically", 0),
+            ("BothFailDifferently", 0),
+            ("HistoricalScannerClosureOnlyFails", 0),
+            ("UnobservedComparison", 0),
+        ]);
         for entry in &entries {
             let mut imports = resolve_transitively(
                 vec![entry.clone()],
@@ -471,25 +589,33 @@ mod tests {
             old_sources.sort_by(|a, b| a.path.cmp(&b.path));
             let old_count = old_sources.len();
             let import_count = imports.len();
-            let (withheld_passes, withheld_diagnostics) = compile(imports);
-            let (historical_passes, historical_diagnostics) = compile(old_sources);
-            let partition = match (historical_passes, withheld_passes) {
-                (true, false) => "FailureExposedByWithholding",
-                (true, true) => "BothPass",
-                (false, false) if historical_diagnostics == withheld_diagnostics => {
-                    "BothFailIdentically"
-                }
-                (false, false) => "BothFailDifferently",
-                (false, true) => "HistoricalScannerClosureOnlyFails",
+            let (withheld_program, withheld) = compile(imports);
+            let (historical_program, historical) = compile(old_sources);
+            let partition = match (&historical, &withheld) {
+                (Some((true, _)), Some((false, _))) => "FailureExposedByWithholding",
+                (Some((true, _)), Some((true, _))) => "BothPass",
+                (Some((false, a)), Some((false, b))) if a == b => "BothFailIdentically",
+                (Some((false, _)), Some((false, _))) => "BothFailDifferently",
+                (Some((false, _)), Some((true, _))) => "HistoricalScannerClosureOnlyFails",
+                _ => "UnobservedComparison",
             };
             pairs += 1;
             *partitions.entry(partition).or_default() += 1;
+            let differences = match (&historical, &withheld) {
+                (Some((_, historical_diags)), Some((_, withheld_diags))) => {
+                    Some(serde_json::json!({
+                        "new_when_withheld": withheld_diags.difference(historical_diags).collect::<Vec<_>>(),
+                        "removed_when_withheld": historical_diags.difference(withheld_diags).collect::<Vec<_>>(),
+                    }))
+                }
+                _ => None,
+            };
             writeln!(report, "{}", serde_json::json!({
                 "entry": workspace_relative_repo_path(&entry.path), "partition": partition,
                 "import_closure_modules": import_count, "historical_scanner_closure_modules": old_count,
-                "withheld_diagnostic_identities": withheld_diagnostics, "historical_diagnostic_identities": historical_diagnostics,
-                "new_when_withheld": withheld_diagnostics.difference(&historical_diagnostics).collect::<Vec<_>>(),
-                "removed_when_withheld": historical_diagnostics.difference(&withheld_diagnostics).collect::<Vec<_>>(),
+                "withheld_program": withheld_program, "historical_program": historical_program,
+                "withheld_observation": withheld, "historical_observation": historical,
+                "diagnostic_differences": differences,
             })).unwrap();
             report.flush().unwrap();
             if pairs % 25 == 0 {
@@ -498,17 +624,21 @@ mod tests {
                 );
             }
         }
-        assert!(pairs > 0, "no scanner-addition candidate was compiled");
+        assert!(pairs > 0, "no scanner-addition candidate was enumerated");
+        let unobserved = partitions.get("UnobservedComparison").copied().unwrap_or(0);
         assert_eq!(partitions.values().sum::<usize>(), pairs);
         writeln!(
             report,
             "{}",
             serde_json::json!({
-            "state": "Completed", "indexed_modules": entries.len(),
-            "compared_entry_pairs": pairs, "compiled_distinct_programs": programs.len(), "partitions": partitions,
+            "state": if unobserved == 0 { "Completed" } else { "IncompleteExecutionCoverage" }, "indexed_modules": entries.len(),
+            "candidate_entry_pairs": pairs, "compared_entry_pairs": pairs - unobserved,
+            "unobserved_entry_pairs": unobserved, "requested_distinct_programs": programs.len(),
+            "observed_distinct_programs": programs.values().filter(|(_, result)| result.is_some()).count(), "partitions": partitions,
             })
         )
         .unwrap();
-        eprintln!("SCANNER_COMPILE_AUDIT indexed_modules={} compared_entry_pairs={pairs} partitions={partitions:?}", entries.len());
+        std::fs::remove_dir_all(scratch).unwrap();
+        eprintln!("SCANNER_COMPILE_AUDIT indexed_modules={} candidate_pairs={pairs} compared_pairs={} unobserved_pairs={unobserved} partitions={partitions:?}", entries.len(), pairs - unobserved);
     }
 }
