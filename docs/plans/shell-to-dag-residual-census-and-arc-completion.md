@@ -433,7 +433,7 @@ Exhaustive site list, verified on `origin/main` @ `efe67794cd` (enclosing fn in 
 | `:742` | **`srv3_transport_test_executable`** | `test -x <path>` | A5-deferred (srv3) |
 | `:752` | **`srv3_apt_tool_present`** | `command -v <tool>` | A5-deferred (srv3) |
 | `:775` | **`srv3_tool_bin_path`** | `command -v <tool>` | A5-deferred (srv3) |
-| `:821`, `:822` | **`srv3_chown_directory_to_current_user`** | `id -u` / `id -g` | A5-deferred (srv3) |
+| ~~`:821`, `:822`~~ | ~~**`srv3_chown_directory_to_current_user`**~~ **RENAMED+CLIMBED #8796** | ~~`id -u` / `id -g`~~ | **CASE 4** — successor is `gunbc.host_effect_realize.srv3_ensure_directory_owned_by_current_user`. New name has a stronger guarantee (readback-based, not chown exit-status). |
 | `:1169` | **`run_shell_transport`** | `ssh_session_exec_script(script: script.body)` | **NOT srv3** — this is the realization core's `RetainedShellScript` → SSH path, i.e. the §5.E counted frontier's own transport. It dissolves when the frontier empties, not by a per-site migration. Do not edit under a 4.D brief |
 
 The original table's rows are retained below for provenance:
