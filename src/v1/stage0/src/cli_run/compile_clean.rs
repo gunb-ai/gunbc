@@ -816,6 +816,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
             "ReferenceDerivedImportExportUnproven"
         }
+        CompilerDiagnostic::RecordLitInstantiationUndetermined { .. } => {
+            "RecordLitInstantiationUndetermined"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -874,6 +877,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name, .. } => name.clone(),
+        CompilerDiagnostic::RecordLitInstantiationUndetermined { declared, .. } => declared.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),

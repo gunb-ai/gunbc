@@ -1207,6 +1207,9 @@ fn ct_coercion_tests() -> String {
     ct_render_rust_applied_type_qualified_base_test(),
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
+    ct_instantiation_unavailable_refuses_fallback_test(),
+    ct_template_selection_keeps_the_ambiguity_cause_test(),
+    ct_record_lit_domain_selection_tests(),
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_resource_item_is_not_a_type_item_test())
@@ -1220,6 +1223,232 @@ fn ct_coercion_tests() -> String {
 // the instantiated parameter is `Optional<Node>` and the unwrap strips exactly the Option the
 // return type demands. Arm 2 holds the other direction: a CONCRETE non-optional parameter still
 // takes the unwrap, so a repair that simply stopped injecting would go red here.
+// THE FIFTH FIXTURE CELL, AND IT LIVES HERE BECAUSE compiler_tests.rs IS A GENERATED MIRROR.
+// It was first hand-written into the mirror, where required-regen would have deleted it on the next
+// run -- evidence that disappears exactly when someone regenerates is the "holds until the next
+// edit" failure it exists to prevent.
+//
+// The seam has THREE outcomes and the original four cells asserted two, so the undetermined arm
+// shipped with no discriminating RED. The assertion is three-way ON PURPOSE: a cell checking only
+// that "some diagnostic is emitted" would have passed the silent code this replaced, because the
+// sibling arm still accused at every other site. It must go red when the arm emits the ACCUSATION
+// (the false positive returning) and red when it emits NOTHING (the silent admission returning).
+// Both directions were verified by mutation before this was enrolled.
+//
+// It is the only artifact that will tell a future reader the decline must stay OBSERVABLE:
+// optional_narrowing_refuses and optional_into_required_error were both deleted by the climb, so no
+// production code carries that history any more.
+// THE AMBIGUITY CELL IS REQUIRED EVEN THOUGH THE LIVE CORPUS HAS NO BOTH-OWNER MEMBER, and that is
+// the point rather than a caveat. The refusal arm exists so that resolution order never decides a
+// genuine ambiguity; a corpus that happens not to contain one today is not evidence the arm works,
+// and an arm with no discriminating RED is a decoration that will be cited as coverage (DESIGN 4b).
+// WHERE THAT ARM IS ACTUALLY COVERED, stated exactly because this comment previously overclaimed:
+// the SYNTHETIC cell the_selector_refuses_many_owners_instead_of_choosing_one covers 0/1/many by
+// calling matching_owner_decision directly. The SOURCE-LEVEL fixture below does NOT reach the
+// many-owner arm -- that was measured, not assumed -- so nothing here establishes that authored
+// source can drive a genuine both-owner ambiguity through the real selection fold. That reach is
+// unestablished, and this comment says so rather than letting "the fixture authors it" be read as
+// coverage it does not provide.
+//
+// The four cells are one matrix over the selection fold: element-only selects, outer-only selects,
+// neither is not-found, both refuses. Each of the first three is also the GREEN CONTROL for the
+// fourth -- without them, a resolver that refused every record literal would pass the ambiguity
+// cell, and "the wall fired" would be indistinguishable from "this path refuses everything".
+fn ct_record_lit_domain_selection_tests() -> String {
+  concat(
+    "    fn diags_matching(src: &str, needle: &str) -> usize {\n",
+    "        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "            path: \"probe.dag\".to_string(),\n",
+    "            content: src.to_string(),\n",
+    "        });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(\n",
+    "            std::rc::Rc::new(im::vector![source]),\n",
+    "            crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "        );\n",
+    "        result\n",
+    "            .diagnostics\n",
+    "            .iter()\n",
+    "            .filter(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains(needle))\n",
+    "            .count()\n",
+    "    }\n",
+    "\n",
+    "    #[test]\n",
+    "    fn the_element_route_selects_and_a_name_no_route_reaches_declines() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let selects = \"module probe\\ntype Colour = | Red | Green { shade: Int }\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Green { shade: 3 } } }\\n\";\n",
+    "                let declines = \"module probe\\ntype Colour = | Red | Green { shade: Int }\\ntype Holder { items: List<Colour> }\\nfn probe() -> Holder { Holder { items: Gruen { shade: 3 } } }\\n\";\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(selects, \"cannot select the field template\"),\n",
+    "                    0,\n",
+    "                    \"THE ELEMENT ROUTE STOPPED SELECTING. `Green` is a variant of Colour, which is the element type of the expected collection, so the element route supplies the one matching candidate and the position must SELECT. This half is weak ALONE -- a zero is also what a broken compile returns -- which is why it is asserted only as one arm of the pair below\"\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    diags_matching(declines, \"unresolved type\") >= 1,\n",
+    "                    \"THE PAIRED MUTATION WENT GREEN, WHICH MAKES THE ARM ABOVE VACUOUS. The two sources differ in exactly one identifier, and `Gruen` names no variant of any candidate, so the program must be REFUSED. If this stops reporting, the passing arm above is no longer evidence that selection happened -- it is evidence that nothing was judged\"\n",
+    "                );\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(declines, \"cannot select the field template\"),\n",
+    "                    0,\n",
+    "                    \"THE SEAM ACCUSED A POSITION IT DOES NOT OWN. A name no route reaches is refused by UnresolvedType, which is the authority for an unknown name and says so. This seam DECLINING as well would add a second, vaguer refusal for one fault -- and it is what made ten correct List positions look like defects. The refusal must stay at exactly one wall\"\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"the_element_route_selects_and_a_name_no_route_reaches_declines panicked\");\n",
+    "    }\n\n",
+    "    // THE PRODUCTION REACH OF InstantiationUnavailable, from authored source rather than a\n",
+    "    // constructed value. `Zed` is a variant of another type entirely, so at an Out<Int> position\n",
+    "    // the expected name does not match the literal and no candidate carries that constructor --\n",
+    "    // which is FieldTemplateSelectionFailed, reached through the real seam. The control beside it\n",
+    "    // differs by ONE identifier and must stay silent, so neither half can pass vacuously.\n",
+    "    #[test]\n",
+    "    fn a_field_template_that_cannot_be_selected_declines_from_authored_source() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let unselectable = \"module probe\\ntype Out<T> = | Acc { value: T } | Rej\\ntype Other = | Zed { q: Int }\\ntype Holder { r: Out<Int> }\\nfn probe() -> Holder { Holder { r: Zed { q: 1 } } }\\n\";\n",
+    "                let selectable = \"module probe\\ntype Out<T> = | Acc { value: T } | Rej\\ntype Other = | Zed { q: Int }\\ntype Holder { r: Out<Int> }\\nfn probe() -> Holder { Holder { r: Acc { value: 1 } } }\\n\";\n",
+    "                assert!(\n",
+    "                    diags_matching(unselectable, \"record-literal field template could not be selected\") >= 1,\n",
+    "                    \"THE ONLY PRODUCTION-REACHABLE UNAVAILABLE CAUSE WENT SILENT. If authored source can no longer reach FieldTemplateSelectionFailed, then no ordinary cause of InstantiationUnavailable is production-authorable, and the typed decline is a diagnostic surface no user can see -- which is the inert-lens defect, not a working refusal. Either restore the reach or delete the arm; do not relax this assertion\"\n",
+    "                );\n",
+    "                assert_eq!(\n",
+    "                    diags_matching(selectable, \"cannot select the field template\"),\n",
+    "                    0,\n",
+    "                    \"THE PAIRED CONTROL ALSO DECLINED, SO THE ARM ABOVE IS NOT DISCRIMINATING. `Acc` IS a variant of the expected Out, so this position must select. Two sources differing in one identifier must land on opposite sides, or the assertion above is satisfied by declining everything\"\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"a_field_template_that_cannot_be_selected_declines_from_authored_source panicked\");\n",
+    "    }\n\n",
+    "    // 7': THE SELECTOR'S MANY-ARM REFUSES INSTEAD OF CHOOSING. The subject is fold TOTALITY, so\n",
+    "    // the decision is fed directly rather than through manufactured source and a type\n",
+    "    // environment. It carries NO production-coverage credit: no source program is known that\n",
+    "    // presents two matching owners at one position, and no wall is credited for that absence.\n",
+    "    // Mutating the many-arm to take the FIRST owner, or the LAST, must red this independently --\n",
+    "    // which is why both owners are asserted present rather than just the count.\n",
+    "    #[test]\n",
+    "    fn the_selector_refuses_many_owners_instead_of_choosing_one() {\n",
+    "        use crate::v1_compiler_infer::\{matching_owner_decision, MatchingOwnerDecision as D};\n",
+    "        let two: im::Vector<String> = im::vector![\"'Alpha' reached as A\".to_string(), \"'Beta' reached as B\".to_string()];\n",
+    "        match &*matching_owner_decision(std::rc::Rc::new(two)) {\n",
+    "            D::ManyMatchingOwners \{ owners } => {\n",
+    "                assert!(\n",
+    "                    owners.iter().any(|o| o.contains(\"Alpha\")) && owners.iter().any(|o| o.contains(\"Beta\")),\n",
+    "                    \"THE MANY-ARM DROPPED AN OWNER. Taking the first or the last would leave one name here and satisfy a count-only assertion, which is exactly the silent pick this arm exists to refuse -- a refusal that names one of two owners has decided the ambiguity while appearing to report it\"\n",
+    "                );\n",
+    "            }\n",
+    "            other => panic!(\"two matching owners must REFUSE, not select: {:?}\", other),\n",
+    "        }\n",
+    "        match &*matching_owner_decision(std::rc::Rc::new(im::vector![\"'Only' reached as A\".to_string()])) {\n",
+    "            D::OneMatchingOwner => {}\n",
+    "            other => panic!(\"exactly one matching owner must SELECT: {:?}\", other),\n",
+    "        }\n",
+    "        match &*matching_owner_decision(std::rc::Rc::new(im::Vector::new())) {\n",
+    "            D::NoMatchingOwner => {}\n",
+    "            other => panic!(\"no matching owner is not-found, not ambiguity: {:?}\", other),\n",
+    "        }\n",
+    "    }\n\n",
+  )
+}
+
+
+fn ct_template_selection_keeps_the_ambiguity_cause_test() -> String {
+  concat(
+    "    // THE SEAM THAT USED TO COLLAPSE. record_lit_instantiation_template_fields once returned\n",
+    "    // List<Node>? and mapped BOTH VariantNotFound AND VariantAmbiguous \{ owners } onto the same\n",
+    "    // `none`, so the owner census this authority exists to produce died one seam after it was\n",
+    "    // built and every ambiguity surfaced as FieldTemplateSelectionFailed. The return type is now\n",
+    "    // TemplateFieldSelection, which has NO shared empty arm -- the collapse is unwritable rather\n",
+    "    // than checked, so this cell is a REGRESSION CONTROL over that shape, not a wall.\n",
+    "    //\n",
+    "    // What it does NOT establish: that production reaches the ambiguous state through this seam.\n",
+    "    // It constructs the carrier directly. Production reach stays unestablished, and the reviewer\n",
+    "    // accepted unit evidence on exactly that understanding.\n",
+    "    #[test]\n",
+    "    fn template_selection_keeps_the_two_causes_distinguishable() {\n",
+    "        use crate::v1_compiler_infer::\{TemplateFieldSelection as TFS, RecordLitUnavailableCause as C, record_lit_unavailable_cause_text};\n",
+    "        let owners: im::Vector<String> = im::vector![\"'Alpha' reached as A\".to_string(), \"'Beta' reached as B\".to_string()];\n",
+    "        let ambiguous = TFS::TemplateFieldsUnavailable \{ cause: std::rc::Rc::new(C::AmbiguousVariantOwners \{ owners: std::rc::Rc::new(owners) }) };\n",
+    "        let not_found = TFS::TemplateFieldsUnavailable \{ cause: std::rc::Rc::new(C::FieldTemplateSelectionFailed) };\n",
+    "        let (a, n) = match (&ambiguous, &not_found) {\n",
+    "            (TFS::TemplateFieldsUnavailable \{ cause: a }, TFS::TemplateFieldsUnavailable \{ cause: n }) =>\n",
+    "                (record_lit_unavailable_cause_text(a.clone()), record_lit_unavailable_cause_text(n.clone())),\n",
+    "            _ => panic!(\"both constructions must be Unavailable\"),\n",
+    "        };\n",
+    "        assert_ne!(\n",
+    "            a, n,\n",
+    "            \"THE TWO CAUSES REPORT THE SAME TEXT. That is the collapse itself: an ambiguity that reports as a selection failure sends the author looking for a missing template, when the real fact is that TWO types claim the name and the position does not choose\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            a.contains(\"Alpha\") && a.contains(\"Beta\"),\n",
+    "            \"THE OWNER CENSUS WAS DROPPED CROSSING THE SEAM. Naming one owner of two decides the ambiguity while appearing to report it, and would satisfy any count-only assertion: {}\",\n",
+    "            a\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !n.contains(\"Alpha\"),\n",
+    "            \"not-found must not acquire an owner census it never had: {}\",\n",
+    "            n\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
+
+fn ct_instantiation_unavailable_refuses_fallback_test() -> String {
+  concat(
+    "    // UNIT EVIDENCE ONLY, AND IT EARNS NO PRODUCTION-COVERAGE CREDIT. This cell CONSTRUCTS an\n",
+    "    // InstantiationUnavailable and proves the consumer handles it: that Unavailable is refused\n",
+    "    // the legacy fallback while NotApplicable and Instantiated are not. It says nothing about\n",
+    "    // whether production can produce that value. The production reach of this arm is carried by\n",
+    "    // a_field_template_that_cannot_be_selected_declines_from_authored_source, which reaches the\n",
+    "    // real inference seam from source.\n",
+    "    #[test]\n",
+    "    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {\n",
+    "        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;\n",
+    "        use crate::v1_compiler_infer::RecordLitUnavailableCause as RLUC;\n",
+    "        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {\n",
+    "            cause: std::rc::Rc::new(RLUC::FieldTemplateSelectionFailed),\n",
+    "        });\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),\n",
+    "            \"SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced\"\n",
+    "        );\n",
+    "        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(\n",
+    "            unavailable.clone(),\n",
+    "            false,\n",
+    "            named_type_node(\"Thing\"),\n",
+    "            crate::v1_std_core::no_span(),\n",
+    "            \"probe.module\".to_string(),\n",
+    "            std::rc::Rc::new(HashMap::new()),\n",
+    "        );\n",
+    "        assert_eq!(\n",
+    "            diags.len(),\n",
+    "            1,\n",
+    "            \"SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place\"\n",
+    "        );\n",
+    "        match &*diags[0].diagnostic {\n",
+    "            crate::v1_std_core::CompilerDiagnostic::RecordLitInstantiationUndetermined { .. } => {}\n",
+    "            other => panic!(\"the unavailable arm emitted an unexpected diagnostic: {:?}\", other),\n",
+    "        }\n",
+    "        assert!(\n",
+    "            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::InstantiationNotApplicable\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(\n",
+    "                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }\n",
+    "            )),\n",
+    "            \"POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer\"\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
+
 fn ct_generic_param_declines_fail_closed_unwrap_test() -> String {
   concat(
     "    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {\n",
