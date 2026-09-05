@@ -50,7 +50,7 @@ import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detache
 import std.measure { ByteSize, byte_size_count }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
-import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, ExecMainStatus }
+import extdeps.systemd { SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
@@ -1828,8 +1828,18 @@ fn dispatch_worker_unit_properties(
     systemd_run_property(name: "ProtectHome", value: "read-only"),
     systemd_run_property(name: "PrivateTmp", value: "yes"),
     systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
+    systemd_run_property(name: "RemainAfterExit", value: "yes"),
   ]
 }
+
+// THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
+// by the manager and reads LoadState=not-found a moment later; one that exits nonzero is retained as
+// failed. The process observer below read not-found as "never ran", so a SUCCESSFUL worker was the one
+// case the belt could not commit or verify -- measured 2026-09-05 on the first worker to finish with
+// turn.completed (attempt ce21f99eb2e82ec1: worktree dirty, commit "provider not completed"), while
+// the eight failed attempts before it were all committed. RemainAfterExit keeps the unit loaded as
+// active (exited) with its ExecMainStatus readable until it is stopped, so the exit is an observable
+// fact for as long as the attempt needs it, on both exit paths alike.
 
 // THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
 // second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
@@ -2962,7 +2972,16 @@ fn dispatch_session_cleanup_detail(
 // answers ActiveState `inactive` with a successful exit, which is indistinguishable from a unit
 // that ran and stopped -- so deciding absence from ActiveState would report every finished attempt
 // as one that never started. `not-found` is the manager saying it has no such unit, and it is the
-// only reading that means absent.
+// only reading that means absent. That premise needs RemainAfterExit on the unit (see
+// dispatch_worker_unit_properties): without it a unit that exited 0 IS collected and reads
+// not-found, which is how every successful worker was read as never having run until 2026-09-05.
+//
+// SUBSTATE, NOT ACTIVESTATE, DECIDES RUNNING. With RemainAfterExit the unit stays ActiveState=active
+// after its process has exited, so ActiveState cannot separate a working process from a finished
+// one; SubState can -- `running` while the main process lives, `exited` once it has gone, `failed`
+// or `dead` for the retained failure and the stopped unit. Every other SubState is a transition
+// (start-pre, stop-sigterm, auto-restart) and counts as live, because a unit in transition has no
+// final exit to report yet.
 //
 // A REFUSED READ IS NOT AN ABSENT UNIT. Every capture refusal maps to WorkerProcessUnobserved
 // carrying its cause, never to WorkerProcessAbsent: "the manager says no such unit" and "I could
@@ -3001,19 +3020,23 @@ fn attempt_unit_observation(unit: NonEmptyStr) -> AttemptUnitObservation {
       if load == "not-found" {
         AttemptUnitAbsent
       } else {
-        match attempt_unit_property(unit: unit, property: ActiveState) {
+        match attempt_unit_property(unit: unit, property: SubState) {
           AttemptUnitUnreadable { reason: why } => AttemptUnitUnreadable { reason: why }
           AttemptUnitAbsent => AttemptUnitAbsent
           AttemptUnitActive => AttemptUnitActive
-          AttemptUnitFinished { exit_status: active } =>
-            if active == "active" {
-              AttemptUnitActive
-            } else {
+          AttemptUnitFinished { exit_status: sub } =>
+            if attempt_unit_substate_has_exited(substate: sub) {
               attempt_unit_property(unit: unit, property: ExecMainStatus)
+            } else {
+              AttemptUnitActive
             }
         }
       }
   }
+}
+
+fn attempt_unit_substate_has_exited(substate: String) -> Bool {
+  substate == "exited" || substate == "failed" || substate == "dead"
 }
 
 fn worker_process_from_attempt_unit(

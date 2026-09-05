@@ -1,7 +1,7 @@
 module test.claim.roadmap.dispatch_worker_confinement_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance }
+import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance, attempt_unit_substate_has_exited }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 
@@ -41,4 +41,17 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
   )
   string_contains(s: wire, pattern: verification_dir)
     && string_contains(s: verification_dir, pattern: "/verification")
+}
+
+// DISCRIMINATING: a successful worker's unit must stay observable after exit, and the observer must
+// read the exit from SubState rather than ActiveState (which stays active under RemainAfterExit).
+// Before 2026-09-05 a unit that exited 0 was collected and read as never having run.
+test fn the_worker_unit_outlives_its_process_and_substate_decides_exit() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log")
+  has_property(props: props, needle: "RemainAfterExit=yes")
+    && attempt_unit_substate_has_exited(substate: "exited")
+    && attempt_unit_substate_has_exited(substate: "failed")
+    && !attempt_unit_substate_has_exited(substate: "running")
+    && !attempt_unit_substate_has_exited(substate: "start-pre")
 }
