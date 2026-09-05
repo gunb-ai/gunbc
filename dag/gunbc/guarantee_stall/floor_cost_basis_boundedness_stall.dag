@@ -57,6 +57,30 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // drop's previous/temporary/reason fields have no answer here. The two rows are also different
 // facts: the drop states the standing unavailability, this states that one named restoration
 // conjunct is unreachable BY MEASUREMENT and what would reach it.
+// THIS ROW DID NOT HAVE A TYPO, AND THE CONVERSION BELOW IS NOT A FIX TO IT. Read this before
+// concluding anything about the author of this row from the diff that added `climbs_when` here.
+//
+// WHAT HAPPENED. `next_rung_trigger` was a `String` when this row was written and landed
+// (gunbc#10281). The field later became the `NextRungTrigger` product, with `climbs_when` as its
+// constructor, in a separate change (gunbc#10582). The two never met: this row kept the bare
+// string, 31 of the 33 rows in this directory adopted the constructor, and the module closure that
+// enumerates them STOPPED RESOLVING -- `type mismatch: expected 'Product(NextRungTrigger)', got
+// 'Primitive(String)'`. That is the carrier-swap shape: a new carrier introduced while a caller of
+// the old spelling sits somewhere the change did not look.
+//
+// THE FINDING IS THE GATE, NOT THE ROW, and it is the reason this comment is long. BOTH commits
+// are ancestors of a GREEN required floor -- main's required-witnesses-floor at 2f8819b891
+// reported SUCCESS with both in its history. The gate did not lose a race with the merge; IT RAN
+// AND IT PASSED over a rostered row that does not typecheck. `dag/test/claim/guarantee_stall_witness_test.dag`
+// imports `gunbc.guarantee_stall.roster` and declares eleven `test fn`s, so a reader would
+// reasonably expect the closure to be compiled by the floor. It is not. THE ROSTER IS ENUMERATED
+// SOMEWHERE THE REQUIRED FLOOR DOES NOT COMPILE, and until that is closed, any stall row can stop
+// typechecking without a single red anywhere.
+//
+// THE CONVERSION IS MECHANICAL AND CHANGES NO MEANING: the same string, wrapped in the
+// constructor the field now requires. It was made because a branch merging main cannot resolve
+// this closure otherwise, not because anything about this row's content was wrong.
+
 data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   subject: "the BOUNDEDNESS-BY-CONSTRUCTION arm of conjunct (ii) of gunbc.rung_drop.floor_cost_claim_qualification_unavailable's restoration trigger: repeated execution measurement cannot establish it, because every observed maximum is a LOWER bound on the smallest valid bound rather than an upper bound over the admitted envelope",
   current: OutsideTheLadder,
