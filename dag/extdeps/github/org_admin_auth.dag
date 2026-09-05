@@ -1,6 +1,6 @@
 module extdeps.github.org_admin_auth
 
-import std.types { NonEmptyStr, Timestamp }
+import std.types { NonEmptyStr, Timestamp, String, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -22,6 +22,21 @@ data actions_permissions_citation: ExternalAuthority = ExternalAuthority {
 data installation_token_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app" }
 }
+
+// The installation access token endpoint and the App JWT bounds are facts of GitHub's API
+// (installation_token_citation): the JWT is signed RS256 with the App's private key, its `iat` may
+// be backdated up to 60 s for clock skew, its `exp` may be at most 10 minutes after issue, and the
+// POST returns a token valid for one hour. Modeled here so the workflow step that mints one names
+// the endpoint through the citation rather than spelling a URL.
+data github_app_installation_access_token_url_prefix: String = "https://api.github.com/app/installations/"
+
+fn github_app_installation_access_token_url(installation_id: Int) -> String {
+  join([github_app_installation_access_token_url_prefix, to_string(installation_id), "/access_tokens"], "")
+}
+
+data github_app_jwt_backdate_seconds: Int = 60
+
+data github_app_jwt_lifetime_seconds: Int = 540
 
 data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }

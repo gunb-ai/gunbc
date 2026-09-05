@@ -21,7 +21,7 @@ import gunbc.executor_privileged_operation {
   runner_slot_privileged_operations,
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
@@ -44,7 +44,9 @@ import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_ensure_effect,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy }
-import gunbc.runner_slot_provision { desired_runner_slot_members }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
+import gunbc.runner_host_deploy { runner_index_seq }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
@@ -249,10 +251,33 @@ fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> Li
   }
 }
 
+// THE TEARDOWN GRANT ENROLLS THE SLOT GRAMMAR, NOT THE CURRENT WIDTH. Sudoers is derived from desired
+// state, but the trees a reconcile removes are RETIRED ones -- by definition outside the desired
+// width -- so a grant that named only desired dirs authorized exactly the removals that never
+// happen and refused every one that does (runner_slot_teardown_grant_note). The removal grant now
+// names every slot dir the host's grammar can render up to a declared index bound, still one exact
+// path per line with no wildcard (the `..` traversal argument in executor_privileged_operation
+// stands). The bound is a policy budget: the widest committed width in the fleet is 21 and the
+// retired incarnations reclaimed on srv2 on 2026-09-04 ran well past it, so 64 covers every tree
+// that exists with headroom for growth, at 64 sudoers lines per host. A retired tree above the bound refuses at apply exactly as
+// before, and the witness pins the bound above every committed width so a width change cannot
+// silently outgrow its own teardown.
+data runner_slot_teardown_grant_index_bound: Int = 64
+
+fn runner_slot_grammar_dirs_to_bound(host: HostIdentity, bound: Int) -> List<NonEmptyStr> {
+  map(runner_index_seq(n: bound), i =>
+    runner_slot_instance_dir(instance_name: runner_slot_instance_name(slot: RunnerSlotIdentity { host: host, slot_index: i }) as NonEmptyStr))
+}
+
+fn runner_slot_teardown_grant_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  map(runner_slot_grammar_dirs_to_bound(host: deploy.host_label as HostIdentity, bound: runner_slot_teardown_grant_index_bound), d => RemoveDirectoryTree { path: d })
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
-  runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
+  runner_slot_teardown_grant_operations(deploy: deploy)
+    + runner_slot_install_operations(slot_dirs: slot_dirs, slot_owner: job)
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)

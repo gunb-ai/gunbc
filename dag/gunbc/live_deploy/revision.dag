@@ -69,6 +69,7 @@ type DeployRevisionRelation
   | DeployedIsAncestor
   | CandidateIsAncestor
   | UnrelatedHistories
+  | DivergedHistories
   | RelationUnverifiable { cause: NonEmptyStr }
 
 type DeployRevisionVerdict
@@ -85,6 +86,10 @@ fn classify_deploy_revision(relation: DeployRevisionRelation) -> DeployRevisionV
     UnrelatedHistories =>
       RevisionRefused {
         cause: "deployed and candidate revisions share no ancestry (force-push, rewritten history, or foreign repository) — refusing rather than guessing which is newer" as NonEmptyStr
+      }
+    DivergedHistories =>
+      RevisionRefused {
+        cause: "deployed and candidate revisions have diverged: they share an ancestor but neither is an ancestor of the other, so installing the candidate would move the running release sideways — refusing rather than guessing which changes would be lost" as NonEmptyStr,
       }
     RelationUnverifiable { cause: why } => RevisionRefused { cause: why }
   }
@@ -156,22 +161,33 @@ fn revision_relation_from_ancestry_facts(
     if deployed_is_ancestor_of_candidate {
       if candidate_is_ancestor_of_deployed { SameRevision } else { DeployedIsAncestor }
     } else {
-      if candidate_is_ancestor_of_deployed { CandidateIsAncestor } else { UnrelatedHistories }
+      if candidate_is_ancestor_of_deployed { CandidateIsAncestor } else { DivergedHistories }
     }
   }
 }
 
+// DIVERGED IS NOT UNRELATED. The srv1 deploy of 2026-09-04 refused with 'share no ancestry' when the
+// running release was a sibling of the candidate with a merge base two commits back: the neither-
+// ancestor arm had been folded into the no-common-ancestor arm, so the refusal named a force-push
+// that never happened. revision_relation_from_ancestry_facts is reached only once a merge base was
+// REPORTED (relation_from_merge_base_oid), so 'neither' there means diverged; a merge-base exit of 1
+// reaches UnrelatedHistories on its own path. Two bare is-ancestor probes cannot tell the two apart,
+// so the probe fold below says so rather than picking one.
 fn deploy_revision_relation_from_probes(
   deployed: CommitSha,
   candidate: CommitSha,
   deployed_is_ancestor_of_candidate: Bool,
   candidate_is_ancestor_of_deployed: Bool,
 ) -> DeployRevisionRelation {
-  revision_relation_from_ancestry_facts(
-    same: deployed == candidate,
-    deployed_is_ancestor_of_candidate: deployed_is_ancestor_of_candidate,
-    candidate_is_ancestor_of_deployed: candidate_is_ancestor_of_deployed,
-  )
+  if deployed == candidate {
+    SameRevision
+  } else if deployed_is_ancestor_of_candidate {
+    DeployedIsAncestor
+  } else if candidate_is_ancestor_of_deployed {
+    CandidateIsAncestor
+  } else {
+    RelationUnverifiable { cause: "two is-ancestor probes answered no in both directions, which cannot distinguish diverged histories from unrelated ones; a merge-base observation decides" as NonEmptyStr }
+  }
 }
 
 // The deployed-revision record lives OUTSIDE the directory the deploy rsyncs into, and that
