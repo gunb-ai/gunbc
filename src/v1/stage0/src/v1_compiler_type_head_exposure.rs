@@ -16,10 +16,7 @@ pub enum TypeHeadView {
     KernelScalarHead {
         type_identity: String,
     },
-    ApplicationHead {
-        constructor_identity: String,
-        argument_identities: Rc<Vec<String>>,
-    },
+    ApplicationHead,
     ProductHead {
         type_identity: String,
     },
