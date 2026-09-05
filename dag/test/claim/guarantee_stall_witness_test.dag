@@ -11,7 +11,12 @@ import gunbc.guarantee_stall {
   BoundedPopulation, UncountedNotEnumerable,
   stall_is_below_ceiling, stall_report_message,
   every_stall_is_below_its_ceiling, every_stall_names_a_trigger, stall_roster_size,
+  NextRungTrigger, climbs_when, climbs_when_awaiting,
+  TriggerAdmission, TriggerAdmitted, TriggerCapabilityEmpty, TriggerCapabilitySpellsAReferent,
+  stall_trigger_admission, every_stall_trigger_is_admitted,
 }
+import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
+import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
 import gunbc.guarantee_stall.roster {
   all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,
@@ -33,7 +38,7 @@ data control_stall: GuaranteeStall = GuaranteeStall {
   ceiling: StructurallyGuaranteed,
   blocker: CannotClimbFurther { why: "control why" },
   population: BoundedPopulation { members: ["control.stall.member"] },
-  next_rung_trigger: "control stall trigger"
+  next_rung_trigger: climbs_when(capability: "control stall trigger")
 }
 
 // THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
@@ -97,7 +102,7 @@ data stall_at_its_ceiling: GuaranteeStall = GuaranteeStall {
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["control.member"] },
-  next_rung_trigger: "control trigger"
+  next_rung_trigger: climbs_when(capability: "control trigger")
 }
 
 data stall_missing_its_trigger: GuaranteeStall = GuaranteeStall {
@@ -106,7 +111,7 @@ data stall_missing_its_trigger: GuaranteeStall = GuaranteeStall {
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["control.member"] },
-  next_rung_trigger: ""
+  next_rung_trigger: climbs_when(capability: "")
 }
 
 // THE LIVE ROSTER PASSES AND A ROSTER CARRYING AN ARRIVED CLASS DOES NOT. A row whose current
@@ -158,4 +163,74 @@ test fn every_restored_stall_is_still_rostered() -> Bool {
   every_restored_stall_is_rostered_once(ss: all_guarantee_stalls)
     && !every_restored_stall_is_rostered_once(ss: [])
     && every_restored_stall_is_rostered_once(ss: restored_stalls)
+}
+
+// THE SECOND DECIDABLE SUB-CASE OF `stale_claim_survives_its_own_correct_edit`, WITH THE RED THAT
+// MAKES IT REAL. Four live rows spelled `node://<work item>` into their trigger sentence, so the
+// condition a later reader must re-measure and the lane that was asked to deliver it were one
+// opaque string -- and the roster's own dated reading records three such lanes reaching done with
+// their conditions unmet. The two arms below differ in exactly one property: whether the referent
+// sits INSIDE the capability or beside it in `awaiting`. A predicate that answered a constant, or
+// one that keyed on the presence of an `awaiting` row rather than on the capability's text, agrees
+// with one arm and is caught by the other.
+data stall_spelling_a_referent_into_its_capability: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.referent.in.capability",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: climbs_when(capability: "node://adhoc-00000000-000 lands: the control capability arrives")
+}
+
+data stall_carrying_its_referent_beside_the_capability: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.referent.beside.capability",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: climbs_when_awaiting(
+    capability: "the control capability arrives",
+    awaiting: [dashboard_work_item_referent(node: "adhoc-00000000-000" as RoadmapNodeId)],
+  )
+}
+
+// THE ADMISSION ARM IS ASSERTED BY CAUSE AND NOT BY REFUSAL. A row can refuse for the wrong
+// reason -- an empty capability and a capability resting on a lane's ending are different defects
+// with different repairs -- so each arm is matched rather than read through a Bool.
+test fn a_trigger_resting_on_a_lifecycle_bounded_referent_refuses_by_cause() -> Bool {
+  match stall_trigger_admission(s: stall_spelling_a_referent_into_its_capability) {
+    TriggerCapabilitySpellsAReferent { subject: _, scheme: sch } => sch == "node://"
+    TriggerCapabilityEmpty { subject: _ } => false
+    TriggerAdmitted => false
+  } && match stall_trigger_admission(s: stall_missing_its_trigger) {
+    TriggerCapabilityEmpty { subject: subj } => subj == "control.stall.no.trigger"
+    TriggerCapabilitySpellsAReferent { subject: _, scheme: _ } => false
+    TriggerAdmitted => false
+  } && match stall_trigger_admission(s: stall_carrying_its_referent_beside_the_capability) {
+    TriggerAdmitted => true
+    TriggerCapabilityEmpty { subject: _ } => false
+    TriggerCapabilitySpellsAReferent { subject: _, scheme: _ } => false
+  }
+}
+
+// THE LIVE ROSTER IS ADMITTED AND A ROSTER CARRYING EITHER DEFECT IS NOT. This is the fold that
+// makes the property scale with the population instead of with how many rows an author remembered,
+// and it is the arm that would have redded on main against all four unmigrated rows.
+test fn every_live_stall_trigger_is_admitted() -> Bool {
+  every_stall_trigger_is_admitted(ss: all_guarantee_stalls)
+    && !every_stall_trigger_is_admitted(ss: [stall_spelling_a_referent_into_its_capability])
+    && !every_stall_trigger_is_admitted(ss: [stall_missing_its_trigger])
+    && every_stall_trigger_is_admitted(ss: [stall_carrying_its_referent_beside_the_capability])
+}
+
+// THE ASKED LANE SURVIVES INTO THE REPORT, AND ONLY FROM THE FIELD. The migration would be a loss
+// if the provenance stopped being readable, so the rendering is asserted in both directions: a row
+// with an awaited lane names it, a row without one does not, and the URI comes from the referent's
+// own module rather than from a second spelling in the renderer.
+test fn the_report_names_the_asked_lane_only_when_one_is_carried() -> Bool {
+  let asked = stall_report_message(s: stall_carrying_its_referent_beside_the_capability)
+  let unasked = stall_report_message(s: control_stall)
+  contains_text(haystack: asked, needle: "[asked: node://adhoc-00000000-000]")
+    && contains_text(haystack: asked, needle: "the control capability arrives")
+    && !contains_text(haystack: unasked, needle: "[asked:")
 }

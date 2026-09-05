@@ -435,7 +435,7 @@ test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool 
       AwaitsOneGrounding { grounding: _ } => true
       ClimbableButUnbuilt => true
     }
-    && string_contains(s: runner_activation_safety_stall.next_rung_trigger, pattern: "root-owned")
+    && string_contains(s: runner_activation_safety_stall.next_rung_trigger.capability, pattern: "root-owned")
 }
 
 // THE REFUSAL CARRIES ITS AFFECTED POPULATION, IN BOTH MAGNITUDE AND IDENTITY. A count alone cannot

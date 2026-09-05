@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.algebra_operation_associativity_undeclarable_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
 
 data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = GuaranteeStall {
   subject: "no declared operation in the tree can be said to be associative",
@@ -9,5 +9,5 @@ data algebra_operation_associativity_undeclarable_stall: GuaranteeStall = Guaran
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding { grounding: "std.algebra's Semigroup<T> carries the law its name asserts, so that it is distinguishable from Magma<T>" },
   population: UncountedNotEnumerable { reason: "every n-ary application of a binary operation in the corpus depends on associativity and none of them can say so. concat alone is roughly 1200 free-call sites above binary across 64 measured arities, but the class is not concat: it is every operation whose surface arity exceeds its declared arity, and nothing enumerates those because nothing can currently ask the question." },
-  next_rung_trigger: "associativity of a declared operation is expressible and checkable -- SUFFICIENT FOR n-ary application of a binary operation declared associative to fold to nested binary application, which is what gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding waits on. Magma<T> is { op: fn(T, T) -> T } and Semigroup<T> is { op: fn(T, T) -> T }: structurally identical, differing by a blank line where the law would sit, so the type whose ENTIRE content is the associativity law carries no law. This is a DESIGN section 5 wall-after-grounding rather than a ratchet -- associativity of a DECLARED operation is a modeled fact, not an undecidable property of an arbitrary function."
+  next_rung_trigger: climbs_when(capability: "associativity of a declared operation is expressible and checkable -- SUFFICIENT FOR n-ary application of a binary operation declared associative to fold to nested binary application, which is what gunbc.rung_drop concat_binary_signature_exempt_from_arg_binding waits on. Magma<T> is { op: fn(T, T) -> T } and Semigroup<T> is { op: fn(T, T) -> T }: structurally identical, differing by a blank line where the law would sit, so the type whose ENTIRE content is the associativity law carries no law. This is a DESIGN section 5 wall-after-grounding rather than a ratchet -- associativity of a DECLARED operation is a modeled fact, not an undecidable property of an arbitrary function.")
 }

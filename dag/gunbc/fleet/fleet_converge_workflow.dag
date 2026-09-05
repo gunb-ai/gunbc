@@ -38,6 +38,7 @@ import gunbc.fleet_workflow_steps {
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
+  gunbc_ci_runner_guest_image_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_fleet_job_backstop_timeout_minutes,
@@ -59,6 +60,8 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_org_actions_converge_invoke,
+  gunbc_ci_runner_guest_image_observe_invoke,
+  gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
   gunbc_ci_spark_serving_observe_invoke,
@@ -98,7 +101,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
+data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "guest_image_observe", "guest_image_converge", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -160,6 +163,15 @@ data fleet_converge_allocation_store_plan_step_if: String = "github.event.inputs
 data fleet_converge_any_plan_step_if: String = "github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'spark_serving_plan' || github.event.inputs.mode == 'allocation_store_plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
 data fleet_converge_org_actions_step_if: String = "github.event.inputs.mode == 'org_actions_observe'"
+// THE TWO MICRO-VM MODES ARE HOST-PINNED FOR THE SAME REASON EVERY MODE IN THIS WORKFLOW IS: the
+// image is built on the host that will boot it, out of an install root that host owns, so the
+// question "which host" is not a parameter of the operation but its subject.
+data fleet_converge_guest_image_observe_step_if: String = "github.event.inputs.mode == 'guest_image_observe'"
+
+data fleet_converge_guest_image_converge_step_if: String = "github.event.inputs.mode == 'guest_image_converge'"
+
+data fleet_converge_guest_image_any_step_if: String = "github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge'"
+
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
@@ -338,6 +350,54 @@ fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String
     },
     env: none,
     if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_guest_image_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner micro-VM guest image: observe base artifacts and their digests" },
+    id: Present { value: "guest_image_observe" },
+    run: gunbc_ci_runner_guest_image_observe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_guest_image_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_guest_image_converge_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner micro-VM guest image: build the image and digest what was built" },
+    id: Present { value: "guest_image_converge" },
+    run: gunbc_ci_runner_guest_image_converge_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_guest_image_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+// ONE UPLOAD FOR BOTH MODES, because both write the SAME receipt: the standing of one host's guest
+// image root. A second artifact name per mode would make the same fact answer to two names.
+fn fleet_converge_guest_image_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner micro-VM guest image standing receipt" },
+    id: Present { value: "guest_image_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-guest-image-standing")),
+      kv(key: "path", value: yaml_string(s: "target/runner-guest-image-standing.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_guest_image_any_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -671,6 +731,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_apply_receipt_upload_step(),
         fleet_converge_org_actions_step(),
         fleet_converge_org_actions_receipt_upload_step(),
+        fleet_converge_guest_image_observe_step(),
+        fleet_converge_guest_image_converge_step(),
+        fleet_converge_guest_image_receipt_upload_step(),
         fleet_converge_spark_linger_step(),
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
@@ -819,7 +882,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark" },
+          description: Present { value: "plan shows membership hunks; spark_serving_plan freezes typed Spark rows for the selected target; apply executes a prior plan artifact (Spark rows over FleetSsh); org_actions_observe validates the org credential and refuses on runner-group drift; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; spark modes observe or converge the selected Spark" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

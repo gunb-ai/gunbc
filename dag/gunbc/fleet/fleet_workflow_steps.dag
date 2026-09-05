@@ -441,6 +441,18 @@ STEADY STATE IS SECONDS, NOT MINUTES. A converged host plans zero rows and the s
 
 DISSOLVE-ON: the first successful srv6 canary produces the measurement this envelope stands in for — replace the number with that receipt, dated and cited to its run id, per the rule the v1-compiler test-targets gate states one constant down (raising a budget needs a measurement, not a round number)."
 
+data gunbc_ci_runner_guest_image_step_timeout_minutes: Duration = 30
+
+data gunbc_ci_runner_guest_image_step_timeout_note: String = "Runner micro-VM guest image observe/converge step budget, raised from the shared aux 5m. It is its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes for the reason the Spark serving envelope one section up already records: that value is multiplied by the step count in the fleet job backstop, so raising it inflates every unrelated aux step and the job cap together.
+
+STATED AS AN ENVELOPE, NOT A MEASUREMENT, and the honest reason is that NONE of the three inputs has a modeled size. extdeps.virtualization.firecracker carries the CI kernel and the Ubuntu 24.04 rootfs by URL ONLY -- the vendor publishes no digest beside them, which is the same gap gunbc.runner_guest_image opens its first-observed provenance rows for, and a URL that does not carry a digest does not carry a byte count either. The Actions runner tarball is pinned by digest on extdeps.github.actions_runner and still has no modeled size. Nor has throughput from a runner host to either origin ever been measured. So no honest derivation produces a minute count, and 5m was never a considered budget for this step -- it was the shared aux default inherited by construction.
+
+WHY BOTH MODES CARRY IT rather than only the converge: observe FETCHES the base artifacts before it can hash them, so it pays the same unmodeled download on a cold host. What it does not pay is the extraction and the mke2fs population of an 8192 MiB image, which is why the converge is the arm that would actually approach this envelope.
+
+STEADY STATE IS SECONDS, NOT MINUTES. A host that already holds the base artifacts re-hashes files it has and returns; this envelope is paid on a cold host only. A run that approaches it is therefore evidence about the fetch or the build path, not a budget to raise again.
+
+DISSOLVE-ON: the first successful guest_image_converge on a cold host produces the measurement this envelope stands in for -- replace the number with that receipt, dated and cited to its run id, per the rule stated one constant down that raising a budget needs a measurement rather than a round number."
+
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 // v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate

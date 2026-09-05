@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 // THE DELIBERATELY DROPPED HALF OF gunbc#10258'S DISPLAY CONTRACT. That lane printed module
 // identity beside source path from ResolvedGraph, but only after typed resolution. The
@@ -16,5 +16,5 @@ data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = Guarantee
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["claim_batch --print-entry-closure"] },
-  next_rung_trigger: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling"
+  next_rung_trigger: climbs_when(capability: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling")
 }

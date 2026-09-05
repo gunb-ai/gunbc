@@ -5133,15 +5133,11 @@ fn call_function_inner(
                 // The corpus marks an unused parameter with a leading underscore (`_ctx`,
                 // `_spelling`) or `_`, and call sites label it WITHOUT the underscore
                 // (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
-                // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
+                // (`(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
                 // Not a mismatch: the body cannot read it, so nothing is dropped. Accept `x`
-                // against a declared `x`, `_x`, or `_`.
-                let matches_param = |p: &String| {
-                    p == name
-                        || p == "_"
-                        || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
-                };
-                if !all_param_names.iter().any(matches_param) {
+                // against a declared `x`, `_x`, or `_` (centralised in param_name_matches_declared
+                // — one authority for the rule, not a second copy per call site).
+                if !param_name_matches_declared(name, all_param_names) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!(
@@ -10922,9 +10918,39 @@ fn build_service_param_env(
     ctx: &InterpContext,
 ) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
+    // Build the declared parameter name list (mirrors the fn-call path's cached_params).
+    // `all_param_names` includes underscored variants.
+    let all_param_names: Vec<String> = op_node
+        .params
+        .iter()
+        .map(|p| param_node_name_at(p.clone(), ctx.si()))
+        .collect();
 
     for (opt_name, val) in args {
         if let Some(name) = opt_name {
+            // Single authority for the name-matching rule (param_name_matches_declared —
+            // shared with the fn-call path). Accept `x` against a declared `x`, `_x`, or `_`.
+            if !param_name_matches_declared(name, &all_param_names) {
+                let detail = format!(
+                    "no parameter named '{}' (declared: [{}])",
+                    name,
+                    all_param_names.join(", ")
+                );
+                return Err(InterpError::CallContractMismatch {
+                    callee: op_node.name.clone(),
+                    detail,
+                });
+            }
+            // Duplicate label guard: same rule as fn-call path. An anonymous key ("_") is
+            // excluded from the collision check: two anonymous parameters are distinct
+            // unreadable slots, and the insert must still happen so the required-argument
+            // contains_key check below sees it filled.
+            if name != "_" && bindings.contains_key(&ctx.sym(name)) {
+                return Err(InterpError::CallContractMismatch {
+                    callee: op_node.name.clone(),
+                    detail: format!("argument '{}' supplied more than once", name),
+                });
+            }
             bindings.insert(ctx.sym(name), val.clone());
         }
     }
@@ -14270,6 +14296,16 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
 /// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
 fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
     config_auth_resolved && has_auth_basic
+}
+
+/// Whether a caller's named argument `name` matches a declared parameter `p`, following the
+/// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Single authority
+/// for the rule — one site, shared by the fn-call path and the service-rest binding path
+/// (DESIGN §3 nicknaming: a second copy of one rule at a second call site drifts).
+fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
+    declared.iter().any(|p| {
+        p == name || p == "_" || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+    })
 }
 
 /// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
