@@ -611,7 +611,9 @@ data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 // srv1-live is serving https://srv1.tailecbe08.ts.net/ today; giving it --set-path=/srv1-live would
 // move the dashboard to a different URL as a side effect of an abstraction change, which is the
 // same silent-rename hazard the annotation on DeploymentNames refuses for the unit name and
-// refuses here for the same reason.\n\nThe root mount is therefore a DECLARED PLACEMENT for production and
+// refuses here for the same reason.
+//
+// The root mount is therefore a DECLARED PLACEMENT for production and
 // derived for everyone else — the identical shape, and the identical stop, as
 // gunbc-roadmap.service.\n\nThe backend is NOT transcribed. It reads the instance's listen_port, so
 // this row states only what genuinely differs from the derivation (the mount) and inherits
@@ -622,7 +624,9 @@ data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 // required, because the upstream `off` form demands every original flag, so a mapping applied
 // without the listener flag cannot state the listener flag when removing itself. 443 is the
 // listener production already serves on, so the resulting mapping is the one that is
-// live.\n\nIt dissolves on the same condition as the unit name, carried by
+// live.
+//
+// It dissolves on the same condition as the unit name, carried by
 // srv1_live_unit_naming_debt_dissolution: once srv1-live moves to its derived names it takes a
 // derived mount with them, and this function collapses into derived_deployment_names.
 
@@ -883,7 +887,9 @@ fn deployment_steps_apply_order(
 // beside it. It used to be a second hand-written list repeating the same five steps in opposite
 // order — one fact in two places, so editing either alone makes them disagree, and the disagreement
 // surfaces as a teardown that removes the binary while the unit still references it.
-// deployment_steps_apply_order carries the ordering law as prose on itself; this computes it.\n\nDeriving from
+// deployment_steps_apply_order carries the ordering law as prose on itself; this computes it.
+//
+// Deriving from
 // spec.steps rather than re-deriving from instance and identity matters: it makes the retract order
 // the reverse of THE ORDER THIS SPEC ACTUALLY APPLIED, not the reverse of what a freshly built spec
 // would apply. Those differ exactly when a spec is constructed with something other than the
