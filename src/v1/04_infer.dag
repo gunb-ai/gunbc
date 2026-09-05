@@ -5669,6 +5669,66 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
   }
 }
 
+// SERVICE NAMES ARE ARBITRARILY SEGMENTED, and this is where that is decided (operator ruling,
+// 2026-09-05: "you should be able to arbitrarily segment any name in the repo"). It resolves the
+// COMPLETE dotted occurrence in one lookup, exactly as qualified_value_projection above resolves a
+// qualified value, and for the same reason: a dotted name is one name, so asking about it once is
+// both the correct question and the cheap one.
+//
+// WHY NOT WALK THE SPINE HOP BY HOP. Because the intermediate hops are not values. Resolving
+// `diagnostic.ipmi.Tool` by first admitting `diagnostic.ipmi` requires giving that prefix a type,
+// and it does not have one — it names no declaration, and nothing in the expression grammar forces
+// a further hop to complete it, so the prefix escapes as an ordinary admissible expression naming
+// nothing. Resolving the whole occurrence never asks about a prefix at all, so the escape has no
+// spelling. It also costs one map_get rather than a scan of the service population per hop.
+//
+// THE SHADOWING CHECK IS LOAD-BEARING and is the same one qualified_value_projection uses: if the
+// spine's root is bound to an ordinary local, then `x.inner.Tool` is a field access on a value that
+// happens to share a root name with a service namespace, and reading it as a service would take the
+// binding away from the local that owns it.
+//
+// WHAT THIS DOES NOT DO: it does not decide that a call is a service call, and it must not be read
+// as making the emitters' spelling-based receiver predicates semantic. Those consume a different
+// judgment and are unchanged by this.
+// THE TWO WHOLE-OCCURRENCE PROJECTIONS, TRIED IN ORDER, so the ExprFieldAccess arm asks one
+// question. A qualified VALUE wins over a service name of the same spelling: a declaration the
+// symbol index can resolve is a stronger claim than a service-registry key, and preferring the
+// registry would let a service name shadow a real declaration.
+fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
+  match qualified_value_projection(texpr: texpr, scope: scope, span: span) {
+    Present { value: proj } => Present { value: proj }
+    Absent =>
+      match service_spine_projection(texpr: texpr, scope: scope) {
+        Absent => none
+        Present { value: svc_type } =>
+          Present { value: ok_infer(texpr: make_named_expr_node(
+            occurrence_identity: texpr.occurrence_identity,
+            name: authored_name_at(source_indices: scope.type_env.source_indices, node: svc_type),
+            expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+            children: [],
+            inferred: Present { value: Resolved { node: svc_type } },
+            span: span,
+            name_span: span,
+          )) }
+      }
+  }
+}
+
+fn service_spine_projection(texpr: Node, scope: InferScope) -> Node? {
+  match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
+    Absent => none
+    Present { value: spine } =>
+      match spine_root_is_shadowed(scope: scope, root: spine.root) {
+        true => none
+        false =>
+          match map_get(scope.service_registry, spine.dotted) {
+            Absent => none
+            Present { value: _ } => Present { value: nominal_type_ref(name: spine.dotted) }
+          }
+      }
+  }
+}
+
 // ONE ARM OF `infer_expr_body` BELOW IS UNREACHABLE AND SPELLED ANYWAY: at the ExprCall
 // signature lookup, the enclosing match refuses FuncSigAmbiguous before that body runs, so
 // the collapse cannot happen there -- but the arm is written out instead of wildcarded so
@@ -6072,7 +6132,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let field_name = field_access_field_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
-      match qualified_value_projection(texpr: texpr, scope: scope, span: span) {
+      match qualified_or_service_projection(texpr: texpr, scope: scope, span: span) {
         Present { value: proj } => proj
         Absent =>
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)

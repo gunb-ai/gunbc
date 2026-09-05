@@ -8945,6 +8945,53 @@ pub fn qualified_value_projection(
     }
 }
 
+pub fn qualified_or_service_projection(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferResult>> {
+    match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+        Some(proj) => Some(proj.clone()),
+        std::option::Option::None => match service_spine_projection(texpr.clone(), scope.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(svc_type) => Some(ok_infer(crate::v1_std_core::make_named_expr_node(
+                texpr.occurrence_identity.clone(),
+                crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    svc_type.clone(),
+                ),
+                Rc::new(ExprData::ExprVar {
+                    binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
+                }),
+                Rc::new(vec![]),
+                Some(Rc::new(InferredNode::Resolved {
+                    node: svc_type.clone(),
+                })),
+                span.clone(),
+                span.clone(),
+            ))),
+        },
+    }
+}
+
+pub fn service_spine_projection(texpr: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match crate::v1_std_core::field_access_spine(
+        texpr.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(spine) => match spine_root_is_shadowed(scope.clone(), spine.root.clone()) {
+            true => std::option::Option::None,
+            false => match v1_rt::map_get(&scope.service_registry.clone(), spine.dotted.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
+                    spine.dotted.clone(),
+                )),
+            },
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralBoundary {
@@ -9488,7 +9535,7 @@ Rc::new(InferResult {
             );
             let span = texpr.span.clone();
             let base_expr = crate::v1_std_core::field_access_base(texpr.clone());
-            match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+            match qualified_or_service_projection(texpr.clone(), scope.clone(), span.clone()) {
                 Some(proj) => proj.clone(),
                 std::option::Option::None => {
                     let base_result =
