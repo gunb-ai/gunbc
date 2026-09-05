@@ -215,12 +215,26 @@ fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent) 
   }
 }
 
+// ONE EVENT FILE AS READ, so the decode over a directory is a pure fold a witness can drive with
+// constructed reads (the hermetic floor routes no filesystem read), while the filesystem walk stays
+// in roadmap_events_decode_all.
+type EventFileRead
+  = EventFileContent { content: String }
+  | EventFileUnreadable { detail: String }
+
 fn roadmap_events_decode_all(node: RoadmapNodeId, dir: String, names: List<String>) -> RoadmapEventsRead {
-  let reads = map(filter(names, n => ends_with(s: n, suffix: ".json")), n => Filesystem.Read(path: join([dir, "/", n], "")))
-  if any(reads, r => !r.success) {
-    EventsReadRefused { node: node, step: "read", reason: "one or more event files could not be read" }
+  let reads = map(filter(names, n => ends_with(s: n, suffix: ".json")), n => {
+    let r = Filesystem.Read(path: join([dir, "/", n], ""))
+    if r.success { EventFileContent { content: r.content } } else { EventFileUnreadable { detail: r.error } }
+  })
+  roadmap_events_decode_reads(node: node, reads: reads)
+}
+
+fn roadmap_events_decode_reads(node: RoadmapNodeId, reads: List<EventFileRead>) -> RoadmapEventsRead {
+  if any(reads, r => match r { EventFileUnreadable { detail: _ } => true  EventFileContent { content: _ } => false }) {
+    EventsReadRefused { node: node, step: "read", reason: join(fold(reads, init: [], f: (acc, r) => match r { EventFileUnreadable { detail } => concat(acc, [detail])  EventFileContent { content: _ } => acc }), "; ") }
   } else {
-    let decoded = map(reads, r => roadmap_event_decode(text: r.content))
+    let decoded = map(reads, r => match r { EventFileContent { content } => roadmap_event_decode(text: content)  EventFileUnreadable { detail } => RoadmapEventUndecodable { reason: detail } })
     if any(decoded, d => match d { RoadmapEventUndecodable { reason: _ } => true  RoadmapEventDecoded { envelope: _ } => false }) {
       EventsReadRefused { node: node, step: "decode", reason: join(fold(decoded, init: [], f: (acc, d) => match d { RoadmapEventUndecodable { reason } => concat(acc, [reason])  RoadmapEventDecoded { envelope: _ } => acc }), "; ") }
     } else {
