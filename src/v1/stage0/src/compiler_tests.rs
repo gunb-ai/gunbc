@@ -3657,12 +3657,18 @@ mod compiler_tests {
         );
     }
 
+    // UNIT EVIDENCE ONLY, AND IT EARNS NO PRODUCTION-COVERAGE CREDIT. This cell CONSTRUCTS an
+    // InstantiationUnavailable and proves the consumer handles it: that Unavailable is refused
+    // the legacy fallback while NotApplicable and Instantiated are not. It says nothing about
+    // whether production can produce that value. The production reach of this arm is carried by
+    // a_field_template_that_cannot_be_selected_declines_from_authored_source, which reaches the
+    // real inference seam from source.
     #[test]
     fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {
         use crate::v1_compiler_infer::RecordLitInstantiation as RLI;
         use crate::v1_compiler_infer::RecordLitUnavailableCause as RLUC;
         let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {
-            cause: std::rc::Rc::new(RLUC::GenericArityDisagreement),
+            cause: std::rc::Rc::new(RLUC::FieldTemplateSelectionFailed),
         });
         assert!(
             !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),
@@ -3747,6 +3753,35 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("the_element_route_selects_and_a_name_no_route_reaches_declines panicked");
+    }
+
+    // THE PRODUCTION REACH OF InstantiationUnavailable, from authored source rather than a
+    // constructed value. `Zed` is a variant of another type entirely, so at an Out<Int> position
+    // the expected name does not match the literal and no candidate carries that constructor --
+    // which is FieldTemplateSelectionFailed, reached through the real seam. The control beside it
+    // differs by ONE identifier and must stay silent, so neither half can pass vacuously.
+    #[test]
+    fn a_field_template_that_cannot_be_selected_declines_from_authored_source() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let unselectable = "module probe\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder { r: Out<Int> }\nfn probe() -> Holder { Holder { r: Zed { q: 1 } } }\n";
+                let selectable = "module probe\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder { r: Out<Int> }\nfn probe() -> Holder { Holder { r: Acc { value: 1 } } }\n";
+                assert!(
+                    diags_matching(unselectable, "record-literal field template could not be selected") >= 1,
+                    "THE ONLY PRODUCTION-REACHABLE UNAVAILABLE CAUSE WENT SILENT. If authored source can no longer reach FieldTemplateSelectionFailed, then no ordinary cause of InstantiationUnavailable is production-authorable, and the typed decline is a diagnostic surface no user can see -- which is the inert-lens defect, not a working refusal. Either restore the reach or delete the arm; do not relax this assertion"
+                );
+                assert_eq!(
+                    diags_matching(selectable, "cannot select the field template"),
+                    0,
+                    "THE PAIRED CONTROL ALSO DECLINED, SO THE ARM ABOVE IS NOT DISCRIMINATING. `Acc` IS a variant of the expected Out, so this position must select. Two sources differing in one identifier must land on opposite sides, or the assertion above is satisfied by declining everything"
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "a_field_template_that_cannot_be_selected_declines_from_authored_source panicked",
+        );
     }
 
     #[test]

@@ -1519,16 +1519,12 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RecordLitUnavailableCause {
-    GenericArityDisagreement,
     FieldTemplateSelectionFailed,
     AmbiguousVariantOwners { owners: Rc<Vec<String>> },
 }
 impl RecordLitUnavailableCause {
     pub fn owners(&self) -> Rc<Vec<String>> {
         match self {
-            RecordLitUnavailableCause::GenericArityDisagreement => {
-                panic!("no owners on unit variant")
-            }
             RecordLitUnavailableCause::FieldTemplateSelectionFailed => {
                 panic!("no owners on unit variant")
             }
@@ -1541,7 +1537,6 @@ impl RecordLitUnavailableCause {
 
 pub fn record_lit_unavailable_cause_text(c: Rc<RecordLitUnavailableCause>) -> String {
     match (*c.clone()).clone() {
-    RecordLitUnavailableCause::GenericArityDisagreement => "the declared generic arity does not match the number of supplied type arguments".to_string(),
     RecordLitUnavailableCause::FieldTemplateSelectionFailed => "the record-literal field template could not be selected for this type name".to_string(),
     RecordLitUnavailableCause::AmbiguousVariantOwners { owners: os, .. } => v1_rt::concat(v1_rt::concat("this literal name is a constructor of more than one type reachable from this position -- ".to_string(), os.clone().join(&"; and ".to_string())), " -- so which coproduct it constructs is not determined by the position. Name the intended one explicitly rather than letting route order decide".to_string()),
 }
@@ -2370,24 +2365,15 @@ pub fn record_lit_instantiated_fields(
                                 if ((decl.params.clone().len() as i64) == 0) {
                                     Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
                                 } else {
-                                    if ((decl.params.clone().len() as i64)
-                                        != (exp.children.clone().len() as i64))
                                     {
-                                        Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-                                            cause: Rc::new(
-                                                RecordLitUnavailableCause::GenericArityDisagreement,
-                                            ),
-                                        })
-                                    } else {
-                                        {
-                                            let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                            let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
+                                        let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                        let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
-                                            match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
+                                        match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
     std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
     cause: Rc::new(RecordLitUnavailableCause::FieldTemplateSelectionFailed),
 }),
@@ -2417,7 +2403,6 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
 })); } __result }),
 }),
 }
-                                        }
                                     }
                                 }
                             }

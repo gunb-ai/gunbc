@@ -1166,33 +1166,12 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 //
 // Closing the coproduct also makes the arms countable. A String cause can be spelled three ways at
 // three sites and read as three causes, or spelled one way and read as one when it is not.
-// GenericArityDisagreement HAS NO OBSERVED POPULATION, AND IS KEPT DELIBERATELY RATHER THAN BY
-// OMISSION. Every corpus occurrence of it was the misfire that node_children_are_not_type_arguments
-// now answers, and an authored arity error never reaches this cause at all: it is refused upstream
-// by TypeArgumentArityMismatch, which is the authority for that class and says so with the two
-// counts. Measured: a 2-argument application against a 1-parameter declaration produces that
-// refusal and ZERO record-literal declines.
-//
-// What could still reach it, which is the question that decides keeping over deleting: an APPLIED
-// (NoConnective) expected node whose supplied argument count differs from the declaration's
-// parameter count, arriving by a path where the parser's arity check did not run first -- a
-// synthesized or substituted expected type rather than an authored one. That input is
-// constructible in principle, so the guard is not dead by construction; it is unobserved.
-//
-// It is therefore NOT the same disposition as the many-owners arm. That arm is FORCED: it is the
-// residue of a total fold over a closed vocabulary and cannot be absent. This is a removable
-// variant, and removing it would delete a fail-closed comparison on the strength of a DIFFERENT
-// wall continuing to run first -- a coupling that fails silently the day that wall narrows. The
-// cause carries no rung of its own and is not evidence of anything; TypeArgumentArityMismatch is.
 type RecordLitUnavailableCause
-  = | GenericArityDisagreement
-  | FieldTemplateSelectionFailed
+  = | FieldTemplateSelectionFailed
   | AmbiguousVariantOwners { owners: List<String> }
 
 fn record_lit_unavailable_cause_text(c: RecordLitUnavailableCause) -> String {
   match c {
-    GenericArityDisagreement =>
-      "the declared generic arity does not match the number of supplied type arguments"
     FieldTemplateSelectionFailed =>
       "the record-literal field template could not be selected for this type name"
     AmbiguousVariantOwners { owners: os } =>
@@ -1811,6 +1790,16 @@ fn node_children_are_not_type_arguments(n: Node) -> Bool {
 // does not own, turning its own blind spot into a blocking accusation against
 // programs main compiles cleanly. NotApplicable is the honest arm: the question
 // does not ARISE for these routes, so the established path answers it.
+// THE ARITY COMPARISON THAT USED TO STAND HERE IS DELETED RATHER THAN KEPT AS A SECOND WALL. It
+// refused when a declaration's parameter count differed from the supplied type arguments -- but a
+// real arity error never arrives here: TypeArgumentArityMismatch refuses it upstream and names both
+// counts. Measured: a 2-argument application against a 1-parameter declaration produces that
+// refusal and zero record-literal declines.
+//
+// It was briefly retained on the argument that it would still catch the fault if that upstream wall
+// were ever narrowed. That argument is refused: it keeps a second authority alive over one fault,
+// against a hypothetical regression, and if the upstream wall narrows it is that wall's OWN controls
+// that must red. An unreachable check is deleted, not insured.
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
@@ -1826,9 +1815,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                 if (decl.params |> count) == 0 {
                   InstantiationNotApplicable
                 }
-                else if (decl.params |> count) != (exp.children |> count) {
-                  InstantiationUnavailable { cause: GenericArityDisagreement }
-                } else {
+                else {
                   let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                     let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
                     match exp.children |> skip(pair.first) |> first {
