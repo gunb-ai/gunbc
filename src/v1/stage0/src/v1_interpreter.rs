@@ -18911,7 +18911,10 @@ pub fn cast_lookup_counters() -> (u64, u64, u64) {
     )
 }
 
-/// Diagnostic counters for the data-eval cost center. Zero-cost when profiling is off.
+/// Diagnostic counters for the data-eval cost center. One thread-local read and an Option match
+/// per data-declaration access when profiling is off — not compiled out, same cost pattern as
+/// the cast counters above (whose own "Zero-cost" doc comment is incorrect in the same way and
+/// is pre-existing; not corrected here).
 /// `(data_eval_lookups, data_eval_evals)` — the gap between lookups and evals is the
 /// per-cache-hit saving that would be lost per-claim if the cache were shared across frames.
 pub fn data_eval_counters() -> (u64, u64) {
