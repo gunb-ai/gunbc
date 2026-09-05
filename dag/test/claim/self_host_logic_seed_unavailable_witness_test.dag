@@ -1,0 +1,27 @@
+module test.claim.self_host_logic_seed_unavailable_witness
+
+import tools.self_host_logic_seed_unavailable_transport {
+  slbu_seed_unavailable_receipt_holds
+}
+
+// Seed-unavailable self-host behavioral receipt for dag/std/logic.dag (Control (b)):
+// tools.self_host_logic_seed_unavailable_transport emits dag/std/logic.dag via the
+// real gunbc binary, compiles the emitted Rust WITHOUT the seed crate (pure std
+// dependencies only -- self-contained dag module), and runs the resulting witness
+// binary to prove seed independence by construction: no seed crate at link time
+// means seed linkage is structurally impossible.
+//
+// THIS IS NOT A SUBSTITUTE FOR CONTROL (a). Control (b) tests whether the candidate
+// depends on the seed; control (a) tests whether the comparison discriminates. Neither
+// establishes the other, and a green (b) does not cover a missing (a).
+//
+// CLASSIFIED onto LocalRepoWetLane: the only external effect beyond temp directory
+// operations is a cargo build of a zero-external-dependency crate (emitted code uses
+// only std), which requires no network access and is structurally the same class as
+// the local file and git operations already on that lane. The hermetic envelope
+// refuses because shell.Mktemp.Dir, Filesystem.Write, cargo.Build.BuildManifest, and
+// gunbc.WitnessBin.Run have no mock_response.
+
+test fn self_host_logic_seed_unavailable_receipt_holds() -> Bool {
+  slbu_seed_unavailable_receipt_holds()
+}

@@ -247,6 +247,17 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag",
       function: "observe_npm_wet_posix_command_v_check_does_not_crash",
       expectation: ExpectedToHold {}
+    },
+    // CONTROL (b) -- seed-unavailable behavioral receipt for dag/std/logic.dag.
+    // Proves the emitted candidate STILL EXECUTES SUCCESSFULLY without the seed crate.
+    // Zero-external-dependency emit->rustc (via cargo on a std-only crate), so the
+    // cargo build requires no network access and the LocalRepoWetLane constraint
+    // (effects confined to temp dir + local operations) is satisfied.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_witness", function: "self_host_logic_seed_unavailable_receipt_holds" },
+      entry: "dag/test/claim/self_host_logic_seed_unavailable_witness_test.dag",
+      function: "self_host_logic_seed_unavailable_receipt_holds",
+      expectation: ExpectedToHold {}
     }
   ]
 }
