@@ -242,3 +242,133 @@ fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
     MutationEnrolment { gate: "FCI-6", mutation: "receipt-absent", discharge: Undischarged { reason: "FCI-6 is unbuilt: the required check has not cut over.", restoration_trigger: "The required conclusion is DERIVED FROM an admitted receipt and has no other source, sufficient for an absent receipt to yield no passing required conclusion -- a required fabric check that can conclude by any other route leaves this mutation live." } },
   ]
 }
+
+// ============================================================================
+// EARNED STANDING. The census above answers "is the enrolment WELL-FORMED?".
+// It cannot answer "is this obligation COVERED?", because a DischargedByWitness row is a
+// NOMINATION written by an author and nothing in the join reads evidence. The FCI authority states
+// the boundary itself: a gate may acquire standing only from an executed receipt, and no such
+// receipt join existed. This is that join.
+//
+// THE SEPARATION IS THE WHOLE POINT. A nomination is authored and says which declaration SHOULD
+// discharge an obligation. An observation is evidence and says which declaration DID run, over what
+// subject, and what it terminated as. Standing is DERIVED from the pair and is authored by nobody.
+// Hold the obligations and the nominations fixed, remove the evidence, and well-formedness is
+// unchanged while standing must collapse -- that is the acceptance test this construction exists to
+// pass, and the reason the two verdicts are separate functions rather than one widened one.
+//
+// WHY THIS IS NOT THE EXISTING RECEIPT ADMISSION. product.fabric.execution admit_receipt_for_grant
+// compares attempt and lease relations; it consumes no gate obligation, no witness declaration and
+// no expected observation. A receipt correctly admitted for ITS OWN subject is irrelevant to this
+// consumer's question -- the same shape as the FCI-5 counterexample where a receipt genuinely
+// admitted for another Work satisfied a trigger while the mutation survived. Relevance to the
+// obligation is a relation this module must establish and may not inherit.
+type TerminalObservation
+  = ObservedPassing {}
+  | ObservedRefusingAsExpected { refusal: NonEmptyStr }
+  | ObservedFailing {}
+  | ObservedNotExecuted {}
+
+type WitnessObservation {
+  witness: NonEmptyStr
+  subject_revision: NonEmptyStr
+  terminal: TerminalObservation
+}
+
+// EVERY NON-COVERED ARM IS A NAMED CAUSE, never a silent absence. An obligation with no evidence and
+// an obligation whose evidence ran at another revision are different facts with different repairs,
+// and collapsing them is how "not covered" degrades into "not yet looked at".
+type StandingCause
+  = NominationHasNoObservation { witness: NonEmptyStr }
+  | ObservedAtAnotherRevision { witness: NonEmptyStr, observed: NonEmptyStr, adjudicated: NonEmptyStr }
+  | ObservedWrongTerminal { witness: NonEmptyStr }
+  | SeveralObservationsForOneNomination { witness: NonEmptyStr }
+  | NotNominated {}
+
+type ObligationStanding
+  = Covered { gate: NonEmptyStr, mutation: NonEmptyStr, witness: NonEmptyStr }
+  | NotCovered { gate: NonEmptyStr, mutation: NonEmptyStr, cause: StandingCause }
+
+// Standing is refused wholesale when the census is refused: a partition computed over a roster known
+// to disagree with its authority would report coverage for obligations that may not exist.
+type GateStandingVerdict
+  = StandingDerived { covered: List<ObligationStanding>, uncovered: List<ObligationStanding> }
+  | StandingRefusedUnwellFormedEnrolment { refusals: List<CoverageRefusal> }
+
+fn observations_naming(observations: List<WitnessObservation>, witness: NonEmptyStr) -> List<WitnessObservation> {
+  filter(observations, o => o.witness == witness)
+}
+
+fn terminal_is_adequate(t: TerminalObservation) -> Bool {
+  match t {
+    ObservedPassing {} => true,
+    ObservedRefusingAsExpected { refusal } => true,
+    ObservedFailing {} => false,
+    ObservedNotExecuted {} => false,
+  }
+}
+
+// ONE NOMINATION, ONE OBSERVATION, ONE REVISION, ONE ADEQUATE TERMINAL. Anything else is a named
+// cause. Note that exactly-one is required of the BINDING, not of the witness: a declaration may
+// deliberately discharge two obligations, but an ambiguous or duplicated observation may never be
+// counted as coverage.
+fn standing_for(
+  e: MutationEnrolment,
+  observations: List<WitnessObservation>,
+  adjudicated_revision: NonEmptyStr,
+) -> ObligationStanding {
+  match e.discharge {
+    Undischarged { reason, restoration_trigger } =>
+      NotCovered { gate: e.gate, mutation: e.mutation, cause: NotNominated {} },
+    DischargedByWitness { witness } => {
+      let seen = observations_naming(observations, witness)
+      if seen.length() == 0 {
+        NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationHasNoObservation { witness: witness } }
+      } else if seen.length() > 1 {
+        NotCovered { gate: e.gate, mutation: e.mutation, cause: SeveralObservationsForOneNomination { witness: witness } }
+      } else if !all(seen, o => o.subject_revision == adjudicated_revision) {
+        NotCovered {
+          gate: e.gate,
+          mutation: e.mutation,
+          cause: ObservedAtAnotherRevision {
+            witness: witness,
+            observed: fold(seen, init: "none", f: (acc, o) => o.subject_revision),
+            adjudicated: adjudicated_revision,
+          },
+        }
+      } else if !all(seen, o => terminal_is_adequate(o.terminal)) {
+        NotCovered { gate: e.gate, mutation: e.mutation, cause: ObservedWrongTerminal { witness: witness } }
+      } else {
+        Covered { gate: e.gate, mutation: e.mutation, witness: witness }
+      }
+    },
+  }
+}
+
+fn is_covered(s: ObligationStanding) -> Bool {
+  match s {
+    Covered { gate, mutation, witness } => true,
+    NotCovered { gate, mutation, cause } => false,
+  }
+}
+
+fn gate_standing(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+  observations: List<WitnessObservation>,
+  adjudicated_revision: NonEmptyStr,
+) -> GateStandingVerdict {
+  match gate_coverage(gates, enrolments) {
+    CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
+    CoverageTotal { discharged, undischarged } => {
+      let all_standings = map(
+        concat(discharged, undischarged),
+        e => standing_for(e, observations, adjudicated_revision),
+      )
+      StandingDerived {
+        covered: filter(all_standings, s => is_covered(s)),
+        uncovered: filter(all_standings, s => !is_covered(s)),
+      }
+    },
+  }
+}

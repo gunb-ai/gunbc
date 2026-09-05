@@ -1,6 +1,6 @@
 module test.claim.fabric.fabric_gate_coverage_witness_test
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
 import gunbc.fabric_gate_coverage {
   MutationEnrolment,
@@ -10,6 +10,12 @@ import gunbc.fabric_gate_coverage {
   gate_coverage,
   fabric_mutation_enrolments,
   fabric_gate_coverage,
+  TerminalObservation,
+  WitnessObservation,
+  StandingCause,
+  ObligationStanding,
+  GateStandingVerdict,
+  gate_standing,
 }
 
 // THE RED IS AUTHORED HERE, DELIBERATELY. A coverage lens run only over the roster it ships with can
@@ -259,4 +265,128 @@ test fn every_undischarged_row_is_an_undischarged_constructor_over_a_total_verdi
           Undischarged { reason, restoration_trigger } => true,
         }),
   }
+}
+
+// ============================================================================
+// THE ACCEPTANCE TEST FOR EARNED STANDING, stated by the reviewer who rejected the authored-only
+// contract: hold the obligations and the NOMINATIONS fixed, supply matching evidence, then remove it
+// or substitute wrong-subject evidence. Enrolment WELL-FORMEDNESS may remain unchanged; earned
+// STANDING must not. Every witness below varies only the observation population, and the paired
+// coverage assertion pins that the census really did stay unchanged -- without that pairing the test
+// would pass for a construction that simply broke well-formedness too.
+fn one_gate_two_obligations() -> List<FabricCiGate> {
+  [gate_with("FCI-X", ["m", "n"])]
+}
+
+fn nominated_rows() -> List<MutationEnrolment> {
+  [
+    MutationEnrolment { gate: "FCI-X", mutation: "m", discharge: DischargedByWitness { witness: "t.w_m" } },
+    MutationEnrolment { gate: "FCI-X", mutation: "n", discharge: Undischarged { reason: "unread", restoration_trigger: "owner supplies it" } },
+  ]
+}
+
+fn passing_at(rev: NonEmptyStr) -> WitnessObservation {
+  WitnessObservation { witness: "t.w_m", subject_revision: rev, terminal: ObservedPassing {} }
+}
+
+// A REFUSAL IS NOT A COUNT. An earlier version of this helper returned -1 on the refusal arm, which
+// types a refusal as a number and lets a caller compare it like one -- the shape where a refusal
+// reaches a writer wearing the same type as an answer. The two questions are asked separately.
+fn standing_is_refused(v: GateStandingVerdict) -> Bool {
+  match v {
+    StandingRefusedUnwellFormedEnrolment { refusals } => true,
+    StandingDerived { covered, uncovered } => false,
+  }
+}
+
+fn covered_count(v: GateStandingVerdict) -> Int {
+  match v {
+    StandingRefusedUnwellFormedEnrolment { refusals } => 0,
+    StandingDerived { covered, uncovered } => covered.length(),
+  }
+}
+
+fn cause_labels(v: GateStandingVerdict) -> List<NonEmptyStr> {
+  match v {
+    StandingRefusedUnwellFormedEnrolment { refusals } => ["standing-refused"],
+    StandingDerived { covered, uncovered } => map(uncovered, s => match s {
+      Covered { gate, mutation, witness } => "covered",
+      NotCovered { gate, mutation, cause } => match cause {
+        NominationHasNoObservation { witness } => located("no-observation", gate, mutation),
+        ObservedAtAnotherRevision { witness, observed, adjudicated } => located("other-revision", gate, mutation),
+        ObservedWrongTerminal { witness } => located("wrong-terminal", gate, mutation),
+        SeveralObservationsForOneNomination { witness } => located("several-observations", gate, mutation),
+        NotNominated {} => located("not-nominated", gate, mutation),
+      },
+    }),
+  }
+}
+
+// THE ENROLMENT IS WELL-FORMED IN EVERY CASE BELOW. Pinned once so the standing witnesses cannot
+// pass by having quietly broken the census instead of the evidence.
+test fn the_fixture_enrolment_is_well_formed_regardless_of_evidence() -> Bool {
+  refusal_labels(gate_coverage(one_gate_two_obligations(), nominated_rows())).length() == 0
+}
+
+// EVIDENCE PRESENT AND MATCHING -> the nominated obligation is covered; the unnominated one is not.
+test fn a_nomination_with_matching_evidence_earns_standing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-1")], "rev-1")
+  covered_count(v) == 1 && any(cause_labels(v), l => l == "not-nominated|FCI-X|n")
+}
+
+// EVIDENCE REMOVED -> standing collapses while well-formedness is untouched. This is the exact
+// discrimination the authored-only contract could not make, and the reason it was rejected.
+test fn removing_the_evidence_collapses_standing_without_touching_well_formedness() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [], "rev-1")
+  covered_count(v) == 0
+    && any(cause_labels(v), l => l == "no-observation|FCI-X|m")
+    && refusal_labels(gate_coverage(one_gate_two_obligations(), nominated_rows())).length() == 0
+}
+
+// WRONG-SUBJECT EVIDENCE -> a real observation of the right declaration at another revision earns
+// nothing. Correct evidence for its own subject is not relevance to this obligation.
+test fn evidence_observed_at_another_revision_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-0")], "rev-1")
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "other-revision|FCI-X|m")
+}
+
+test fn evidence_that_ran_and_failed_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
+    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedFailing {} }], "rev-1")
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
+}
+
+test fn evidence_that_did_not_execute_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
+    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedNotExecuted {} }], "rev-1")
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
+}
+
+// A witness that discriminates by REFUSING is adequate evidence; only failing and not-executed are
+// inadequate. Without this the join would demand every witness be a positive control.
+test fn evidence_that_refused_as_expected_earns_standing() -> Bool {
+  covered_count(gate_standing(one_gate_two_obligations(), nominated_rows(),
+    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedRefusingAsExpected { refusal: "some-refusal" } }],
+    "rev-1")) == 1
+}
+
+test fn two_observations_for_one_nomination_earn_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-1"), passing_at("rev-1")], "rev-1")
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "several-observations|FCI-X|m")
+}
+
+// A REFUSAL STAYS A REFUSAL. An unwell-formed enrolment must not yield an empty successful standing
+// population -- that is the absorbing-fallback shape, and it would report "nothing covered" in the
+// same value a caller reads as "nothing to worry about".
+test fn an_unwell_formed_enrolment_refuses_standing_rather_than_deriving_an_empty_one() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), [], [passing_at("rev-1")], "rev-1")
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused")
+}
+
+// The paired positive control: a WELL-FORMED enrolment with no evidence is NOT refused -- it derives
+// zero coverage. Without this, the refusal witness above is satisfied by a construction that refuses
+// everything, and "refuses when unwell-formed" would be indistinguishable from "always refuses".
+test fn a_well_formed_enrolment_with_no_evidence_derives_rather_than_refuses() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [], "rev-1")
+  !standing_is_refused(v) && covered_count(v) == 0
 }
