@@ -1,0 +1,141 @@
+module test.claim.fabric.fabric_gate_coverage_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+import gunbc.fabric_gate_coverage {
+  MutationEnrolment,
+  MutationDischarge,
+  CoverageVerdict,
+  CoverageRefusal,
+  gate_coverage,
+  fabric_mutation_enrolments,
+  fabric_gate_coverage,
+}
+
+// THE RED IS AUTHORED HERE, DELIBERATELY. A coverage lens run only over the roster it ships with can
+// never be observed refusing, because that roster is maintained to be total -- and a check whose
+// failing value cannot be constructed is a decoration (DESIGN 4b). So the discriminating inputs are
+// built as fixtures: a partial enrolment list, a duplicated row, and rows naming a gate and a
+// mutation the program does not declare. Each must refuse, and each must refuse BY ITS OWN NAME,
+// because a refusal witness satisfied by any refusal is satisfied by an unrelated bug.
+fn one_real_gate() -> List<FabricCiGate> {
+  filter(fabric_ci_gates(), g => g.id == "FCI-2")
+}
+
+fn discharged_row(gate: NonEmptyStr, mutation: NonEmptyStr) -> MutationEnrolment {
+  MutationEnrolment { gate: gate, mutation: mutation, discharge: DischargedByWitness { witness: "fixture" } }
+}
+
+fn refusal_labels(v: CoverageVerdict) -> List<NonEmptyStr> {
+  match v {
+    CoverageTotal { discharged, undischarged } => [],
+    CoverageRefused { refusals } => map(refusals, r => match r {
+      MutationHasNoEnrolmentRow { gate, mutation } => concat("no-row:", mutation),
+      MutationHasSeveralEnrolmentRows { gate, mutation } => concat("several-rows:", mutation),
+      EnrolmentNamesUnknownGate { gate, mutation } => concat("unknown-gate:", gate),
+      EnrolmentNamesUndeclaredMutation { gate, mutation } => concat("undeclared-mutation:", mutation),
+    }),
+  }
+}
+
+fn total_undischarged(v: CoverageVerdict) -> List<MutationEnrolment> {
+  match v {
+    CoverageTotal { discharged, undischarged } => undischarged,
+    CoverageRefused { refusals } => [],
+  }
+}
+
+fn total_discharged(v: CoverageVerdict) -> List<MutationEnrolment> {
+  match v {
+    CoverageTotal { discharged, undischarged } => discharged,
+    CoverageRefused { refusals } => [],
+  }
+}
+
+// POSITIVE CONTROL. FCI-2 declares three mutations; three matching rows join totally.
+test fn a_complete_enrolment_joins_totally() -> Bool {
+  let v = gate_coverage(one_real_gate(), [
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "work-mismatch"),
+    discharged_row("FCI-2", "expired-reservation"),
+  ])
+  refusal_labels(v).length() == 0 && total_discharged(v).length() == 3
+}
+
+// THE MUTATION THIS LENS WAS BUILT FOR: a mutation with no row refuses, and names itself. Dropping
+// the expired-reservation row is exactly the state the FCI-2 pull request was in when its description
+// claimed each discriminating mutation was enrolled.
+test fn a_mutation_with_no_enrolment_row_refuses_by_name() -> Bool {
+  let labels = refusal_labels(gate_coverage(one_real_gate(), [
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "work-mismatch"),
+  ]))
+  labels.length() == 1 && any(labels, l => l == "no-row:expired-reservation")
+}
+
+// An empty enrolment list refuses once per declared mutation rather than passing vacuously -- the
+// zero-population trap, where a guard over an empty roster is green because it checked nothing.
+test fn an_empty_enrolment_refuses_once_per_declared_mutation() -> Bool {
+  refusal_labels(gate_coverage(one_real_gate(), [])).length() == 3
+}
+
+test fn a_duplicated_row_refuses_rather_than_being_counted_twice() -> Bool {
+  let labels = refusal_labels(gate_coverage(one_real_gate(), [
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "work-mismatch"),
+    discharged_row("FCI-2", "expired-reservation"),
+  ]))
+  labels.length() == 1 && any(labels, l => l == "several-rows:duplicate-grant")
+}
+
+// DIRECTION TWO, AND THE TWO FOREIGN CASES ARE DISTINGUISHED. Enrolling work nobody asked about must
+// not raise coverage, and a misspelled gate is a different repair from a misspelled mutation.
+test fn an_enrolment_naming_an_unknown_gate_refuses_by_that_name() -> Bool {
+  let labels = refusal_labels(gate_coverage(one_real_gate(), [
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "work-mismatch"),
+    discharged_row("FCI-2", "expired-reservation"),
+    discharged_row("FCI-9", "duplicate-grant"),
+  ]))
+  labels.length() == 1 && any(labels, l => l == "unknown-gate:FCI-9")
+}
+
+test fn an_enrolment_naming_an_undeclared_mutation_refuses_by_that_name() -> Bool {
+  let labels = refusal_labels(gate_coverage(one_real_gate(), [
+    discharged_row("FCI-2", "duplicate-grant"),
+    discharged_row("FCI-2", "work-mismatch"),
+    discharged_row("FCI-2", "expired-reservation"),
+    discharged_row("FCI-2", "grant-corrupt"),
+  ]))
+  labels.length() == 1 && any(labels, l => l == "undeclared-mutation:grant-corrupt")
+}
+
+// THE SHIPPED ROSTER IS TOTAL OVER ALL SEVEN GATES. This is the assertion that reds when somebody
+// adds a discriminating mutation to gunbc.fabric_ci_program without enrolling it -- the whole point.
+test fn the_shipped_enrolment_is_total_over_every_gate() -> Bool {
+  refusal_labels(fabric_gate_coverage()).length() == 0
+    && fabric_mutation_enrolments().length()
+      == fold(fabric_ci_gates(), init: 0, f: (acc, g) => acc + g.discriminating_mutations.length())
+}
+
+// THE ROSTER IS HONEST RATHER THAN FLATTERING: it reports real remaining work, and specifically it
+// reports the mutation whose coverage was once claimed in prose. A roster that discharged everything
+// would satisfy the totality witness above and mean nothing, so this pins the opposite direction.
+// The discharged/undischarged DISTINCTION is discriminated on fixtures in the positive control above
+// rather than here, because in this tree every shipped row is undischarged -- the FCI-2 witnesses are
+// still in flight -- and a witness asserting a partition over a uniform population asserts nothing.
+test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> Bool {
+  let undischarged = total_undischarged(fabric_gate_coverage())
+  undischarged.length() > 0
+    && any(undischarged, e => e.gate == "FCI-2" && e.mutation == "expired-reservation")
+}
+
+// Undischarged is never a bare admission: every such row carries the trigger that retires it, so a
+// gap cannot be parked without naming what ends it (DESIGN 4b(2), no untracked stall).
+test fn every_undischarged_row_names_a_reason_and_a_restoration_trigger() -> Bool {
+  all(total_undischarged(fabric_gate_coverage()), e => match e.discharge {
+    DischargedByWitness { witness } => false,
+    Undischarged { reason, restoration_trigger } => reason != "" && restoration_trigger != "",
+  })
+}

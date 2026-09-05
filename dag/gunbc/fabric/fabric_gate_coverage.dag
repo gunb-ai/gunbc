@@ -1,0 +1,180 @@
+module gunbc.fabric_gate_coverage
+
+import std.types { List, NonEmptyStr, Bool }
+import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+
+// WHY THIS EXISTS, STATED AS THE FAILURE IT ANSWERS. gunbc.fabric_ci_program declares, per gate, the
+// mutations that discriminate its exit predicate. Nothing joined those declarations to the evidence
+// that discharges them, so a gate's coverage was ASSERTED IN PROSE by whoever wrote the pull request.
+// It was asserted wrongly at least once: the FCI-2 issuance kernel was described as enrolling each
+// discriminating mutation of its gate while "expired-reservation" had no decision arm anywhere in the
+// change. The claim was not caught by a check, because the claim was not IN a check -- it was in a
+// sentence, and no sentence is reachable from an Accepted program (DESIGN 4c).
+//
+// So this module makes the join total. Every declared mutation of every gate must carry exactly one
+// enrolment row, and that row is a COPRODUCT: either it names the witness that discharges the
+// mutation, or it declares the mutation undischarged WITH a restoration trigger. There is no third
+// arm and no default, so the missing row is not silence -- it is a located refusal.
+//
+// THE CLASS THIS BELONGS TO. A coverage claim computed from a roster is a different object from a
+// coverage claim written beside one. This is the second: the roster of gates is the authority, the
+// enrolment list is measured against it, and the disagreement is typed. What it does NOT do is
+// verify that a named witness EXISTS or EXECUTES -- that is a receipt join against the executed floor
+// population, and it is this class's next-rung trigger, named as the CAPABILITY (DESIGN 4b(3)):
+// a join from executed witness receipts to enrolment rows, sufficient to refuse a row whose witness
+// did not run. Until that capability exists a DischargedByWitness row is an author's claim about a
+// symbol, and this module's honest rung is that it makes that claim ENUMERABLE AND TOTAL, not true.
+type MutationDischarge
+  = DischargedByWitness { witness: NonEmptyStr }
+  | Undischarged { reason: NonEmptyStr, restoration_trigger: NonEmptyStr }
+
+type MutationEnrolment {
+  gate: NonEmptyStr
+  mutation: NonEmptyStr
+  discharge: MutationDischarge
+}
+
+// EVERY ARM IS LOCATED BY (gate, mutation), because a coverage complaint that does not name its
+// subject sends the reader back to the roster to find it, which is the cost this module removes.
+type CoverageRefusal
+  = MutationHasNoEnrolmentRow { gate: NonEmptyStr, mutation: NonEmptyStr }
+  | MutationHasSeveralEnrolmentRows { gate: NonEmptyStr, mutation: NonEmptyStr }
+  | EnrolmentNamesUnknownGate { gate: NonEmptyStr, mutation: NonEmptyStr }
+  | EnrolmentNamesUndeclaredMutation { gate: NonEmptyStr, mutation: NonEmptyStr }
+
+// THE VERDICT DOES NOT CARRY A BOOLEAN "COVERED". A total join whose undischarged list is nonempty is
+// a correct and useful answer -- it is the honest state of FCI-2 today -- and collapsing it to a
+// boolean would force every consumer to choose between refusing on a truthfully declared gap and
+// ignoring the gap entirely. Consumers that require full coverage test the undischarged list; the
+// gate program itself only requires that the join be TOTAL.
+type CoverageVerdict
+  = CoverageTotal {
+      discharged: List<MutationEnrolment>,
+      undischarged: List<MutationEnrolment>,
+    }
+  | CoverageRefused { refusals: List<CoverageRefusal> }
+
+fn enrolments_for(
+  enrolments: List<MutationEnrolment>,
+  gate: NonEmptyStr,
+  mutation: NonEmptyStr,
+) -> List<MutationEnrolment> {
+  filter(enrolments, e => e.gate == gate && e.mutation == mutation)
+}
+
+fn gate_declares_mutation(gates: List<FabricCiGate>, gate: NonEmptyStr, mutation: NonEmptyStr) -> Bool {
+  any(gates, g => g.id == gate && any(g.discriminating_mutations, m => m == mutation))
+}
+
+// DIRECTION ONE: every declared mutation is answered exactly once.
+fn unanswered_mutations(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+) -> List<CoverageRefusal> {
+  flat_map(gates, g =>
+    fold(g.discriminating_mutations, init: [], f: (acc, m) => {
+      let rows = enrolments_for(enrolments, g.id, m)
+      if rows.length() == 0 {
+        concat(acc, [MutationHasNoEnrolmentRow { gate: g.id, mutation: m }])
+      } else if rows.length() > 1 {
+        concat(acc, [MutationHasSeveralEnrolmentRows { gate: g.id, mutation: m }])
+      } else {
+        acc
+      }
+    }))
+}
+
+// DIRECTION TWO: every enrolment answers something the roster actually declares. Without this arm the
+// join is satisfiable by enrolling mutations nobody asked about, which is how a coverage number grows
+// while coverage does not -- and it separates the two ways an enrolment can be foreign, because a
+// misspelled gate and a misspelled mutation are different authoring mistakes with different repairs.
+fn foreign_enrolments(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+) -> List<CoverageRefusal> {
+  fold(enrolments, init: [], f: (acc, e) => {
+    if !any(gates, g => g.id == e.gate) {
+      concat(acc, [EnrolmentNamesUnknownGate { gate: e.gate, mutation: e.mutation }])
+    } else if !gate_declares_mutation(gates, e.gate, e.mutation) {
+      concat(acc, [EnrolmentNamesUndeclaredMutation { gate: e.gate, mutation: e.mutation }])
+    } else {
+      acc
+    }
+  })
+}
+
+fn is_discharged(e: MutationEnrolment) -> Bool {
+  match e.discharge {
+    DischargedByWitness { witness } => true,
+    Undischarged { reason, restoration_trigger } => false,
+  }
+}
+
+// TOTAL IN BOTH DIRECTIONS, AND FAIL-CLOSED: any refusal in either direction refuses the whole
+// verdict rather than reporting a partition computed over a roster known to be wrong (DESIGN 5).
+fn gate_coverage(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+) -> CoverageVerdict {
+  let refusals = concat(
+    unanswered_mutations(gates, enrolments),
+    foreign_enrolments(gates, enrolments),
+  )
+  if refusals.length() > 0 {
+    CoverageRefused { refusals: refusals }
+  } else {
+    CoverageTotal {
+      discharged: filter(enrolments, e => is_discharged(e)),
+      undischarged: filter(enrolments, e => !is_discharged(e)),
+    }
+  }
+}
+
+fn fabric_gate_coverage() -> CoverageVerdict {
+  gate_coverage(fabric_ci_gates(), fabric_mutation_enrolments())
+}
+
+// THE ENROLMENT ROSTER. Two rules govern what may be written here, and both exist because the
+// cheapest way to make this lens green is to lie to it.
+//
+// FIRST: DischargedByWitness may name only a witness THIS AUTHOR HAS READ, in a test module, that
+// asserts the refusal or identity the mutation names. It may not name a witness that merely touches
+// the subject. Nothing in the substrate can check this yet -- see the next-rung trigger above -- so
+// it is diligence, and it is stated here rather than assumed so that a reviewer knows what claim a
+// row is making.
+//
+// SECOND, AND IT IS THE LOAD-BEARING ONE: the safe direction is Undischarged. A gate this author has
+// not assessed is enrolled as undischarged with that stated as the reason, NOT omitted and NOT
+// optimistically discharged. Undischarged over-reports the work remaining; a wrong DischargedByWitness
+// under-reports it and is indistinguishable from real coverage at every consumer. So where this
+// roster is ignorant it says so, and the FCI-0 and FCI-1 rows below say exactly that: this lane built
+// FCI-2 and has not read the evidence for the gates on either side of it.
+fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
+  [
+    MutationEnrolment { gate: "FCI-0", mutation: "command-word", discharge: Undischarged { reason: "FCI-0 evidence not read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-0 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-0", mutation: "environment-entry", discharge: Undischarged { reason: "FCI-0 evidence not read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-0 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-0", mutation: "verified-tree", discharge: Undischarged { reason: "FCI-0 evidence not read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-0 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-0", mutation: "toolchain-identity", discharge: Undischarged { reason: "FCI-0 evidence not read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-0 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-0", mutation: "output-declaration", discharge: Undischarged { reason: "FCI-0 evidence not read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-0 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-1", mutation: "unbounded-cell", discharge: Undischarged { reason: "FCI-1 is open and unowned; its evidence has not been read by this lane.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-1", mutation: "unowned-cell", discharge: Undischarged { reason: "FCI-1 is open and unowned; its evidence has not been read by this lane.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-1", mutation: "multiple-cells", discharge: Undischarged { reason: "FCI-1 is open and unowned; its evidence has not been read by this lane.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-1", mutation: "work-mismatch", discharge: Undischarged { reason: "FCI-1 is open and unowned; its evidence has not been read by this lane.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
+    MutationEnrolment { gate: "FCI-2", mutation: "duplicate-grant", discharge: Undischarged { reason: "The witness that discriminates this mutation is in flight and not yet in this tree: test.claim.fabric.fabric_grant_issuance_witness_test.a_second_grant_for_one_attempt_is_refused, on the FCI-2 issuance kernel branch. Enrolling it as discharged here would name a symbol this tree does not contain, which is the exact claim-without-referent this module exists to refuse.", restoration_trigger: "The FCI-2 issuance kernel lands on main, after which this row names that witness." } },
+    MutationEnrolment { gate: "FCI-2", mutation: "work-mismatch", discharge: Undischarged { reason: "The witness that discriminates this mutation is in flight and not yet in this tree: test.claim.fabric.fabric_grant_issuance_witness_test.an_attempt_naming_another_work_is_refused, on the FCI-2 issuance kernel branch. Enrolling it as discharged here would name a symbol this tree does not contain, which is the exact claim-without-referent this module exists to refuse.", restoration_trigger: "The FCI-2 issuance kernel lands on main, after which this row names that witness." } },
+    MutationEnrolment { gate: "FCI-2", mutation: "expired-reservation", discharge: Undischarged { reason: "The issuance kernel has no expiry decision arm: a reservation carries no epoch that issuance reads, so no input distinguishes a live reservation from an expired one and the refusal is unauthorable. This row is the mutation whose absence was asserted as covered in a pull request description before this lens existed.", restoration_trigger: "Reservation acquires a modeled validity epoch that issuance reads, making an expired-reservation refusal constructible and its witness able to go red." } },
+    MutationEnrolment { gate: "FCI-3", mutation: "grant-removed", discharge: Undischarged { reason: "FCI-3 is unbuilt: no executor re-reads a committed grant.", restoration_trigger: "A persistent executor exists that re-reads the committed grant before start." } },
+    MutationEnrolment { gate: "FCI-3", mutation: "grant-corrupt", discharge: Undischarged { reason: "FCI-3 is unbuilt: no executor re-reads a committed grant.", restoration_trigger: "A persistent executor exists that re-reads the committed grant before start." } },
+    MutationEnrolment { gate: "FCI-3", mutation: "grant-expired", discharge: Undischarged { reason: "FCI-3 is unbuilt: no executor re-reads a committed grant.", restoration_trigger: "A persistent executor exists that re-reads the committed grant before start." } },
+    MutationEnrolment { gate: "FCI-4", mutation: "duplicate-receipt", discharge: Undischarged { reason: "FCI-4 is unbuilt: nothing admits a receipt.", restoration_trigger: "A receipt admission path exists that deduplicates by fenced key." } },
+    MutationEnrolment { gate: "FCI-4", mutation: "foreign-receipt", discharge: Undischarged { reason: "FCI-4 is unbuilt: nothing admits a receipt.", restoration_trigger: "A receipt admission path exists that deduplicates by fenced key." } },
+    MutationEnrolment { gate: "FCI-4", mutation: "release-before-sanitation", discharge: Undischarged { reason: "FCI-4 is unbuilt: nothing releases a cell.", restoration_trigger: "A cell release path exists that is ordered after confirmed sanitation." } },
+    MutationEnrolment { gate: "FCI-4", mutation: "failed-sanitation", discharge: Undischarged { reason: "FCI-4 is unbuilt: nothing sanitizes a cell.", restoration_trigger: "A cell release path exists that is ordered after confirmed sanitation." } },
+    MutationEnrolment { gate: "FCI-5", mutation: "receipt-absent", discharge: Undischarged { reason: "FCI-5 is unbuilt: no shadow job derives a conclusion.", restoration_trigger: "A deployed shadow job derives its conclusion only from an admitted receipt." } },
+    MutationEnrolment { gate: "FCI-5", mutation: "receipt-refused", discharge: Undischarged { reason: "FCI-5 is unbuilt: no shadow job derives a conclusion.", restoration_trigger: "A deployed shadow job derives its conclusion only from an admitted receipt." } },
+    MutationEnrolment { gate: "FCI-5", mutation: "receipt-subject-mismatch", discharge: Undischarged { reason: "FCI-5 is unbuilt: no shadow job derives a conclusion.", restoration_trigger: "A deployed shadow job derives its conclusion only from an admitted receipt." } },
+    MutationEnrolment { gate: "FCI-6", mutation: "direct-invocation-present", discharge: Undischarged { reason: "FCI-6 is unbuilt: the required check has not cut over.", restoration_trigger: "The fabric-derived result is the required merge-admission dependency." } },
+    MutationEnrolment { gate: "FCI-6", mutation: "fabric-result-not-required", discharge: Undischarged { reason: "FCI-6 is unbuilt: the required check has not cut over.", restoration_trigger: "The fabric-derived result is the required merge-admission dependency." } },
+    MutationEnrolment { gate: "FCI-6", mutation: "receipt-absent", discharge: Undischarged { reason: "FCI-6 is unbuilt: the required check has not cut over.", restoration_trigger: "The fabric-derived result is the required merge-admission dependency." } },
+  ]
+}
