@@ -3209,7 +3209,14 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       module_name: name,
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
-  let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
+  // THE CRATE-SHAPE DECISIONS BELOW ARE RETAINED-HOST FACTS, NOT PIPELINE FACTS, AND THE SPLIT IS
+  // WHY THIS PREDICATE IS THE NARROWER ONE. crate_name, the clap dependency, the generated CLI
+  // dispatch file and the compiler test projection all describe the SEED's realization: a clap
+  // front end dispatching into hand-authored host Rust. A corpus whose entry declares a different
+  // driver carries none of that, so widening these to every pipeline entry would rename its crate
+  // and demand a dispatch surface it never asked for. The main is where the two drivers differ,
+  // and emit_main_rs branches there.
+  let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
   let cargo = emit_cargo_toml(
     crate_name: crate_name,
@@ -15702,12 +15709,91 @@ fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<Cli
   }
 }
 
+// THE ENTRY-POINT FACT IS READ FROM THE CORPUS, NOT MATCHED AGAINST A NAME.
+//
+// This replaced `authored_name_at(...) == "v1.compiler.compile"` at every site that asked whether
+// the corpus carries a compiler pipeline. That predicate did not name the property it was used
+// for: v1's entry is v1.compiler.compile and v2's is v2.compiler.compile, so the literal
+// discriminated WHICH SEED GENERATION WROTE THE COMPILER rather than whether a module is a pipeline
+// entry at all -- a generation discriminator wearing a role predicate's name, which is why no
+// self-emitted compiler could ever satisfy it. Adding a second literal is the same defect twice: it
+// breaks at the next generation and hard-codes a fact about the corpus into the tool that reads it.
+//
+// The fact is carried by the entry module, as a module-scope `data` row annotated
+// std.compiler_entry.CompilerEntryDriver, and this scan reads the declaration. The DRIVER SHAPE
+// rides on the same row because it is a second fact (DESIGN section 3: interface, realization and
+// policy are three facts) -- which module is the entry is the interface, which driver realizes it
+// is realization, and the dispatch selecting a realization is itself realization.
+//
+// TWO ENTRIES IN ONE CORPUS IS AN INVALID STATE AND REFUSES. One emitted crate has one entry
+// point; a corpus declaring two has no answer to which one the binary runs, and answering with the
+// first would be the silent wrong choice this repair exists to remove.
+
+data compiler_entry_driver_type_name: String = "CompilerEntryDriver"
+
+data compiler_entry_retained_host_driver: String = "RetainedHostCliKernel"
+
+type CompilerPipelineEntryDecl {
+  module_name: String
+  driver: String
+}
+
+fn module_compiler_pipeline_entry_decls(tm: TypedModule) -> List<CompilerPipelineEntryDecl> {
+  let si = tm.type_env.source_indices
+  let module_name = authored_name_at(source_indices: si, node: tm.module)
+  tm.items
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
+    |> flat_map(item => {
+      let type_name = match item.type_annotation {
+        Present { value: ta } => authored_name_at(source_indices: si, node: ta)
+        Absent => ""
+      }
+      if type_name != compiler_entry_driver_type_name {
+        []
+      } else {
+        let driver = match item.body {
+          Present { value: b } => authored_name_at(source_indices: si, node: b)
+          Absent => ""
+        }
+        [CompilerPipelineEntryDecl { module_name: module_name, driver: driver }]
+      }
+    })
+}
+
+fn compiler_pipeline_entry_decls(modules: List<TypedModule>) -> List<CompilerPipelineEntryDecl> {
+  modules |> flat_map(tm => module_compiler_pipeline_entry_decls(tm: tm))
+}
+
+fn compiler_pipeline_entry_decl(modules: List<TypedModule>) -> CompilerPipelineEntryDecl? {
+  let decls = compiler_pipeline_entry_decls(modules: modules)
+  if (decls |> count) == 1 { decls |> first } else { none }
+}
+
+fn corpus_has_compiler_pipeline(modules: List<TypedModule>) -> Bool {
+  compiler_pipeline_entry_decl(modules: modules) != none
+}
+
+fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.module_name
+    Absent => ""
+  }
+}
+
+fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_retained_host_driver
+    Absent => false
+  }
+}
+
 fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
   emit_gunbc_cli_dispatch_generated_for_rows(crate_name: crate_name, rows: gunbc_cli_generated_dispatch_subcommands())
 }
 
 fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
-  let has_pipeline = modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
+  let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
+  let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
   let unique_resource_types = unique_strings(items: resource_type_names)
   let resource_imports = unique_resource_types |> flat_map(rname =>
@@ -15738,17 +15824,26 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   }
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
-  if workflow_funcs |> count == 0 && has_pipeline == false {
+  // THE DIRECT-INGEST DRIVER RETURNS HERE, AHEAD OF EVERY RETAINED-HOST DECISION BELOW.
+  // Nothing after this point is true of it: it has no clap surface, no generated dispatch, no
+  // PipelineResult, and no CandidateCliHost, because those are the seed's realization rather than
+  // properties of having an entry point. Rendering it through the retained-host path would emit a
+  // main naming v1_compiler.cli_run, which a self-emitted crate does not contain -- trading a
+  // correct refusal for a call that does not link.
+  if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
+    return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+  }
+  if workflow_funcs |> count == 0 && retained_host_pipeline == false {
     return emit_entry_point_absent_main_rs(crate_name: crate_name)
   }
-  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
-  let binary_name = if has_pipeline { "gunbc" } else { crate_name }
-  let cli_about = if has_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
-  let cli_version_attr = if has_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
-  let cli_struct = if has_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
-  let subcommand_enum = if has_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline) }
-  let pipeline_fns = if has_pipeline { concat(emit_main_pipeline_fns(crate_name: crate_name), emit_candidate_cli_host(crate_name: crate_name)) } else { "" }
-  let main_fn = if has_pipeline {
+  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline, crate_name: crate_name, pipeline_module: pipeline_module)
+  let binary_name = if retained_host_pipeline { "gunbc" } else { crate_name }
+  let cli_about = if retained_host_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
+  let cli_version_attr = if retained_host_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
+  let cli_struct = if retained_host_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
+  let subcommand_enum = if retained_host_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline) }
+  let pipeline_fns = if retained_host_pipeline { concat(emit_main_pipeline_fns(crate_name: crate_name, pipeline_module: pipeline_module), emit_candidate_cli_host(crate_name: crate_name)) } else { "" }
+  let main_fn = if retained_host_pipeline {
     concat(
       "fn main() {\n",
       "    let cli = ", crate_name, "::gunbc_cli_dispatch_generated::Cli::parse();\n",
@@ -15756,9 +15851,9 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
       "    ", crate_name, "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n",
       "}\n")
   } else {
-    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
+    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: retained_host_pipeline, crate_name: crate_name)
   }
-  let diagnostic_fns = if has_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
+  let diagnostic_fns = if retained_host_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
   let content = concat(
     header, crate_use, resource_use, svc_use, mod_uses, "\n",
     cli_struct, "\n\n",
@@ -15768,6 +15863,49 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     diagnostic_fns
   )
   TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
+}
+
+// THE DRIVER FOR A SELF-EMITTED COMPILER, AND WHY IT IS A SHIM RATHER THAN A PROGRAM.
+//
+// Everything this main decides is argv and process status. The compile transaction itself is one
+// modeled call -- compile_dag_source_to_target_text in the entry module -- so the driver logic
+// lives in `.dag` where it can be read, checked and re-emitted, and the Rust authored here stays
+// the part that is genuinely a host boundary: reading a path, writing bytes, choosing an exit
+// status. DESIGN section 7 has the seed shrinking toward zero, and every line of driver logic
+// written as a string literal in this emitter is seed that would have to shrink later.
+//
+// THE THREE EXITS ARE DISTINCT ON PURPOSE. Missing or unreadable input is a USAGE refusal (2) and
+// is not a compile verdict; a rejected compile is (1); a completed compile writes its emitted text
+// to stdout and exits 0. Collapsing the first two would report a typo in a path as a compiler
+// diagnostic.
+fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+      "fn main() {\n",
+      "    let source_path = match std::env::args().nth(1) {\n",
+      "        Some(path) => path,\n",
+      "        None => { eprintln!(\"REFUSED: no source path given -- usage: ", crate_name, " <source.dag>\"); std::process::exit(2); }\n",
+      "    };\n",
+      "    let source_text = match std::fs::read_to_string(&source_path) {\n",
+      "        Ok(text) => text,\n",
+      "        Err(cause) => { eprintln!(\"REFUSED: could not read {}: {}\", source_path, cause); std::process::exit(2); }\n",
+      "    };\n",
+      "    match &*", crate_name, "::", pipeline_mod, "::compile_dag_source_to_target_text(source_text) {\n",
+      "        ", crate_name, "::v2_std_diagnostic::Outcome::Accepted { value, .. } => {\n",
+      "            print!(\"{}\", value.carried);\n",
+      "            std::process::exit(0);\n",
+      "        }\n",
+      "        ", crate_name, "::v2_std_diagnostic::Outcome::Rejected { .. } => {\n",
+      "            eprintln!(\"gunbc: refused: {}\", source_path);\n",
+      "            std::process::exit(1);\n",
+      "        }\n",
+      "    }\n",
+      "}\n")
+  }
 }
 
 // THE ENTRY POINT A PIPELINE-FREE CORPUS GETS, AND WHY IT REFUSES RATHER THAN RETURNING.
@@ -15820,13 +15958,13 @@ fn entry_point_absent_refusal_text(crate_name: String) -> String {
     " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run")
 }
 
-fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String) -> String {
+fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String, pipeline_module: String) -> String {
   let mod_names = workflow_funcs |> map(wf => module_to_filename(name: wf.module_name))
   let unique_mods = unique_strings(items: mod_names)
   let use_lines = unique_mods |> map(m => concat("use ", crate_name, "::", m, ";"))
   let base = use_lines |> join(separator: "\n")
   if has_pipeline {
-    let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
+    let pipeline_mod = module_to_filename(name: pipeline_module)
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
       "\nuse im::HashMap;\n",
@@ -16098,8 +16236,8 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
   }
 }
 
-fn emit_main_pipeline_fns(crate_name: String) -> String {
-  let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
+fn emit_main_pipeline_fns(crate_name: String, pipeline_module: String) -> String {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
   let artifact_mod = module_to_filename(name: "v1.compiler.artifact")
   concat(
     emit_collect_dag_files_fn(),
