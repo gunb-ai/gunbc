@@ -35,7 +35,6 @@ import product.printed_chassis.coupon {
 type ChordSubject sole_constructor { feature: NonEmptyStr }
 
 fn chord_subject(feature: NonEmptyStr) -> ChordSubject { ChordSubject { feature: feature } }
-fn chord_subject_feature(s: ChordSubject) -> NonEmptyStr { s.feature }
 fn chord_subject_eq(a: ChordSubject, b: ChordSubject) -> Bool {
   (a.feature as String) == (b.feature as String)
 }
@@ -189,15 +188,6 @@ fn standing_profile(s: ChordStanding) -> StlExportKnobs {
   }
 }
 
-fn standing_subject(s: ChordStanding) -> ChordSubject {
-  match s {
-    WithinRequiredDistinction { judgment: j } => observation_subject(o: j.observation)
-    ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_subject(o: o)
-    RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_subject(o: o)
-    ChordSubjectMismatch { observation: o, requirement: _ } => observation_subject(o: o)
-  }
-}
-
 fn standing_is_within(s: ChordStanding) -> Bool {
   match s {
     WithinRequiredDistinction { judgment: _ } => true
@@ -242,7 +232,14 @@ data export_profile_subject_roster: List<ChordSubject> = [
 // itself malformed -- reporting "missing" against a broken roster sends a consumer to fix the wrong
 // artifact.
 //
-// THE REQUIREMENT-POPULATION ARM HAS NO DISCRIMINATING RED TODAY, and that is stated rather than
+// THREE SUBJECTS CAN BE MALFORMED, NOT TWO, AND THE VERDICT MUST NAME THE RIGHT ONE.
+// ObservationRepeatedExpected says THE ROSTER ITSELF asks a question twice; it says nothing about
+// the population being checked against it. Attributing it to the requirement population would send
+// someone to repair the requirements when the roster is what is broken -- the same wrong-remedy
+// error as reporting "missing" against a malformed denominator, which is exactly why the authority
+// checks this arm first. So the roster owns its own refusal from EITHER join.
+//
+// NEITHER THE ROSTER NOR THE REQUIREMENT ARM HAS A DISCRIMINATING RED TODAY, and that is stated rather than
 // left to look covered. Both populations it compares -- the roster and the canonical requirements --
 // are module data closed over by admission, so no fixture can vary either; its RED is authorable
 // only by editing the canonical rows. It is not decoration: it fires on exactly the authoring
@@ -264,27 +261,11 @@ fn subject_key_eq(a: ChordSubject, b: ChordSubject) -> Bool {
 // profile it wants blessed.
 type ExportProfileAdmission
   = ExportProfileAdmitted { knobs: StlExportKnobs, standings: List<ChordStanding> }
+  | ExportProfileRefusedSubjectRoster { coverage: ObservationCompleteness<ChordSubject> }
   | ExportProfileRefusedIncomplete { coverage: ObservationCompleteness<ChordSubject> }
   | ExportProfileRefusedRequirementPopulation { coverage: ObservationCompleteness<ChordSubject> }
   | ExportProfileRefusedUnsettled { unsettled: List<ChordStanding> }
   | ExportProfileRefusedProfileDisagreement { standings: List<ChordStanding> }
-
-// COVERAGE IS PROVEN BEFORE ANY GEOMETRY IS FOLDED, so a short or mismatched evidence set can never
-// reach the arm that reports on deviations. The empty list needs no special case any more: it is
-// simply the coverage failure that misses every rostered subject, which is a better diagnostic than
-// the bare "unmeasured" arm it replaces because it names WHICH subjects are unaccounted for.
-// EQUALITY IS TRANSITIVE, SO ONE PASS SUFFICES. This compared every standing against every other,
-// which is the copied-accumulator shape DESIGN section 6 says to fix regardless of the realized n --
-// three subjects today, and n is not a time-stable fact. Comparing each standing to the FIRST one
-// establishes exactly the same predicate in a single linear fold.
-fn standings_share_one_profile(standings: List<ChordStanding>) -> Bool {
-  match map(standings, st => standing_profile(s: st)) |> first {
-    Absent => true
-    Present { value: reference } =>
-      fold(standings, init: true, f: (acc, st) =>
-        acc && stl_export_knobs_eq(a: standing_profile(s: st), b: reference))
-  }
-}
 
 // THE ROSTER AND THE CRITERIA ARE BOTH CLOSED OVER, AND ADMISSION ADJUDICATES RATHER THAN ACCEPTS
 // ADJUDICATIONS. This is the third and last place the same defect appeared, each repair having moved
@@ -329,10 +310,6 @@ fn observations_share_one_profile(observations: List<ChordObservation>) -> Bool 
   }
 }
 
-fn count_observations_for(subject: ChordSubject, observations: List<ChordObservation>) -> Nat {
-  filter(observations, o => chord_subject_eq(a: observation_subject(o: o), b: subject)).length()
-}
-
 // THE EXACT-ONE LOOKUP IS EARNED, NOT ASSUMED. Taking `first` over a filtered list conflates three
 // authority states: exactly one canonical requirement, none at all, and TWO OR MORE resolved by list
 // order. The third is the dangerous one and it bites precisely at this module's stated next rung --
@@ -355,7 +332,7 @@ fn admit_export_profile(observations: List<ChordObservation>) -> ExportProfileAd
     key_eq: subject_key_eq,
   ) {
     ObservationRepeatedExpected { keys: k } =>
-      ExportProfileRefusedRequirementPopulation { coverage: ObservationRepeatedExpected { keys: k } }
+      ExportProfileRefusedSubjectRoster { coverage: ObservationRepeatedExpected { keys: k } }
     ObservationMissingExpected { keys: k } =>
       ExportProfileRefusedRequirementPopulation { coverage: ObservationMissingExpected { keys: k } }
     ObservationForeignObserved { keys: k } =>
@@ -369,7 +346,7 @@ fn admit_export_profile(observations: List<ChordObservation>) -> ExportProfileAd
         key_eq: subject_key_eq,
       ) {
         ObservationRepeatedExpected { keys: k } =>
-          ExportProfileRefusedIncomplete { coverage: ObservationRepeatedExpected { keys: k } }
+          ExportProfileRefusedSubjectRoster { coverage: ObservationRepeatedExpected { keys: k } }
         ObservationMissingExpected { keys: k } =>
           ExportProfileRefusedIncomplete { coverage: ObservationMissingExpected { keys: k } }
         ObservationForeignObserved { keys: k } =>
@@ -510,3 +487,15 @@ data exercised_chord_requirements: List<ChordRequirement> = [
     because: "the clearance an 80 mm fan body needs through this bore has not been measured",
   },
 ]
+
+// THE MODULE'S VERDICT ON ITS OWN RECORDED EVIDENCE, and it exists because the measurements above
+// had NO CONSUMER once admission moved to taking observations as a parameter. Recorded evidence that
+// nothing adjudicates is a ledger, not a fact the graph carries: it can drift from the profile it
+// was measured under, or from the roster, and nothing refuses. A dead-surface sweep found it, which
+// is the argument for running one after any change that moves a function's inputs.
+//
+// THE ANSWER TODAY IS A REFUSAL, and that is the honest state rather than a failure: the coupon rung
+// clears its authored requirement, and the two fan features have none, so the profile is unsettled.
+// If this ever reads admitted without those requirements being authored, something upstream has been
+// weakened.
+data exercised_export_profile_admission: ExportProfileAdmission = admit_export_profile(observations: exercised_chord_observations)

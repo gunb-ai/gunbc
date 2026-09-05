@@ -12,8 +12,8 @@ import product.printed_chassis.export_profile {
   ExportProfileAdmission, ExportProfileAdmitted, ExportProfileRefusedUnsettled,
   exercised_stl_knobs, coupon_top_rung_subject, fan_bore_subject, fan_mounting_hole_subject,
   export_profile_subject_roster, ExportProfileRefusedIncomplete,
-  ExportProfileRefusedRequirementPopulation,
-  ExportProfileRefusedProfileDisagreement,
+  ExportProfileRefusedRequirementPopulation, ExportProfileRefusedSubjectRoster,
+  ExportProfileRefusedProfileDisagreement, exercised_export_profile_admission,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -38,6 +38,7 @@ fn admission_name(a: ExportProfileAdmission) -> String {
     ExportProfileRefusedProfileDisagreement { standings: _ } => "disagreement"
     ExportProfileRefusedUnsettled { unsettled: _ } => "unsettled"
     ExportProfileRefusedRequirementPopulation { coverage: _ } => "requirement-population"
+    ExportProfileRefusedSubjectRoster { coverage: _ } => "subject-roster"
   }
 }
 
@@ -195,4 +196,18 @@ test fn w_observations_measured_under_different_profiles_refuse() -> Bool {
 
 fn coupon_observation() -> ChordObservation {
   probe_observation(subject: coupon_top_rung_subject, undersize: 993)
+}
+
+// THE RECORDED EVIDENCE IS ADJUDICATED, NOT MERELY STORED. This is the witness that makes the
+// measurements load-bearing: it asserts the module's verdict on its OWN rows rather than on a
+// fixture's. Before this, admission was reachable only with observations a caller supplied, so the
+// recorded numbers could drift from the roster or the profile with nothing refusing.
+//
+// It reads UNSETTLED today because two of the three measured features have no authored requirement.
+// That is the honest current state, and it is the same assertion as the declared-roster witness made
+// against the real rows instead of probe fixtures -- so if the measurements are edited to disagree
+// with the profile they were taken under, or a subject is dropped, this goes red where the fixture
+// version would not.
+test fn w_the_recorded_measurements_are_adjudicated_by_the_module() -> Bool {
+  admission_name(a: exercised_export_profile_admission) == "unsettled"
 }
