@@ -765,11 +765,27 @@ fn floor_route_gap_expectation_chunk_05() -> List<FloorRouteGapExpectation> {
 // every assertion while the operator still received nothing, which is the fabricated-plausible-
 // output failure the witnesses exist to catch. The route is supplied by the wet lane instead.
 //
-// THE PAIR IS NOT ENFORCED BY ANYTHING AND THAT IS A KNOWN GAP. A local_repo_wet_schedule row and
-// a row here are both required and neither references the other; nothing refuses a witness that
-// has one and not the other. This module and v2.workflow.local_repo_wet_terminal were carrying
-// that fact only in prose, on one half each, when this enrollment was written -- the third time in
-// one day a two-part enrollment was supplied one part at a time.
+// THE PAIR IS NOT ENFORCED BY ANYTHING, AND THIS PARAGRAPH IS PROSE, WHICH CANNOT REFUSE. A
+// local_repo_wet_schedule row and a row here are BOTH REQUIRED, NEITHER REFERENCES THE OTHER, and
+// NOTHING REFUSES A WITNESS THAT HAS ONE AND NOT THE OTHER. That is stated as a declared boundary
+// rather than as advice: the reader is being told what this text cannot do for them.
+//
+// THE EVIDENCE THAT PROSE CANNOT CARRY THIS IS THIS REPOSITORY'S OWN HISTORY, TWICE IN ONE DAY.
+// floor_prepared_subject_exclusions carries a comment reading "run_required_floor consults THIS
+// list and nothing else", written by an author who had just spent three CI cycles learning it; it
+// did not reach the next author, who spent more. chunk_05's header above states this same pairing
+// in this same file, and it did not reach the author of chunk_06, who supplied the schedule row
+// alone and learned the rest from five red floors. A comment is read by whoever already knew to
+// look for it.
+//
+// AND THE ONE WALL GUARDING THESE ROWS CANNOT FIRE FOR THE POPULATION THAT NEEDS IT.
+// floor_route_gap_expectation_mismatch refuses a WRONG operation or ground, but it returns early
+// on a missing expectation, so it fires only for an identity that is ALREADY ENROLLED. An
+// unenrolled identity -- the state every author is in while deciding what to write here --
+// produces no mismatch diagnostic at all and blocks as an unenrolled gap with nothing said about
+// what the right row would have been. A guard whose precondition is the state you are not yet in
+// protects the case that no longer needs it, and the shape occurs twice in this one mechanism:
+// once for the missing enrollment, once for the wrong one.
 fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_real_report_refuses_on_the_measured_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
