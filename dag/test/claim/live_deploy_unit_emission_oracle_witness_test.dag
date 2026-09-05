@@ -56,7 +56,8 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
 // next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
 // deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
-// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
+// the annotation on that module's deployment_steps_apply_order records it as RETIRED from
+// deployment membership by
 // operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
 // asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
 // ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot

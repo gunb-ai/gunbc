@@ -507,7 +507,7 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // revision of this reason said blue/green selection is observe-then-mutate, so two jobs could both
 // observe blue active and the second would restart what had become the active green slot. THAT
 // MECHANISM DOES NOT EXIST: blue/green was deleted at the root on 2026-08-19 by operator directive
-// (gunbc.live_deploy.apply single_deployment_note), and apply now converges deployment_spec_srv1 IN
+// (annotated on gunbc.live_deploy.apply live_deploy_fold), and apply now converges deployment_spec_srv1 IN
 // PLACE. The conclusion survived the deletion and its stated reason did not, which is the §3
 // stale-citation failure -- and it is the load-bearing kind, because a reader who checks the cited
 // mechanism finds it gone and can correctly conclude the group is obsolete.

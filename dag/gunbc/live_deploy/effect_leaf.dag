@@ -66,7 +66,8 @@ data live_deploy_package_input: String = "package"
 
 // EVERY MUTATION ON THIS HOST CROSSES A PRIVILEGE BOUNDARY, so these constructors elevate rather
 // than taking a `privileged` flag: the deploy principal is the unprivileged CI-runner account
-// (emit_deploy_principal_note), and a systemctl mutation it could issue unelevated does not exist.
+// (gunbc.fleet_posix_accounts FleetAccountCiRunner), and a systemctl mutation it could issue
+// unelevated does not exist.
 // The package READ (dpkg -s) is the one leaf that does not, which is why it alone binds unelevated.
 fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOperationInvocation {
   bash_bind_operation_invocation_elevated(

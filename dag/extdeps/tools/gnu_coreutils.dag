@@ -98,8 +98,8 @@ fn readlink_command(path: String) -> ArgvCommand {
 // -o and -g set owner and group at creation. Owner-at-creation is why this repository installs
 // rather than copying and fixing up: the wrongly-owned intermediate state has no moment in
 // which to exist. install does NOT create missing parents — that is upstream behaviour, stated
-// here so a caller does not assume otherwise (emit's serve_binary_parent_was_a_literal_note is
-// the receipt for what assuming it costs).
+// here so a caller does not assume otherwise (the annotation on gunbc.live_deploy.emit
+// path_parent_dir is the receipt for what assuming it costs).
 data coreutils_install_directory_flag: NonEmptyStr = "-d"
 data coreutils_install_mode_flag: NonEmptyStr = "-m"
 data coreutils_install_owner_flag: NonEmptyStr = "-o"
