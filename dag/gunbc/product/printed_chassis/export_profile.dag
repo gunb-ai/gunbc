@@ -1,0 +1,217 @@
+module product.printed_chassis.export_profile
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, Nanometer, nanometer, nanometer_count, micrometer_to_nanometer }
+import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs }
+
+// HOW ROUND A HOLE COMES OUT IS A MEASUREMENT DECISION, NOT A FILE-FORMAT DETAIL.
+//
+// STL is a mesh format, so every modelled circle leaves the kernel as a polygon inscribed in it.
+// An inscribed polygon lies inside the circle everywhere between its vertices, so an exported hole
+// is systematically UNDERSIZE by the chord sagitta -- one-directional, never oversize. For a
+// hole-diameter calibration coupon that is not cosmetic: the coupon exists to resolve one ladder
+// rung, and if tessellation moves a diameter by an appreciable fraction of that rung, the coupon is
+// measuring the exporter as much as the printer.
+//
+// gunbc.product.printed_chassis.cadquery_realization deliberately emitted no export call and left
+// this open with its trigger stated as a runner with cadquery importable. That trigger has fired --
+// extdeps.package_managers.conda_forge records the route -- so the profile is authored against
+// MEASURED deviation rather than the seven blind literals the obligation was filed to avoid.
+
+// THE SUBJECT IS THE JOIN KEY, and it exists so an observation and a requirement about the same
+// feature can be authored independently and still be adjudicated against each other. Two features
+// of identical nominal diameter can carry different requirements, because the requirement comes
+// from the consumer question, not from the size.
+type ChordSubject sole_constructor { feature: NonEmptyStr }
+
+fn chord_subject(feature: NonEmptyStr) -> ChordSubject { ChordSubject { feature: feature } }
+fn chord_subject_feature(s: ChordSubject) -> NonEmptyStr { s.feature }
+fn chord_subject_eq(a: ChordSubject, b: ChordSubject) -> Bool {
+  (a.feature as String) == (b.feature as String)
+}
+
+// WHAT THE INSTRUMENT REPORTED, AND NOTHING ELSE. An earlier shape of this module hung the required
+// distinction off the observation itself, which quietly asserts that the instrument measured the
+// requirement. It did not: a mesh export reports a deviation, and how small that deviation must be
+// is a decision someone AUTHORED. Storing them in one row makes a decision look like a reading.
+//
+// The undersize is nanometres because it is genuinely sub-micrometre on the smallest features, and
+// rounding to micrometres would report zero deviation for exactly the cases whose margin is claimed.
+type ChordObservation sole_constructor {
+  subject: ChordSubject
+  nominal_diameter: Micrometer
+  measured_undersize: Nanometer
+  instrument: NonEmptyStr
+}
+
+fn chord_observation(
+  subject: ChordSubject,
+  nominal_diameter: Micrometer,
+  measured_undersize: Nanometer,
+  instrument: NonEmptyStr,
+) -> ChordObservation {
+  ChordObservation {
+    subject: subject,
+    nominal_diameter: nominal_diameter,
+    measured_undersize: measured_undersize,
+    instrument: instrument,
+  }
+}
+
+fn observation_subject(o: ChordObservation) -> ChordSubject { o.subject }
+
+// THE REQUIREMENT, AUTHORED, WITH THE AUTHORITY THAT SETTLES IT. Undeclared is a real arm rather
+// than a missing row: for some features the consumer question genuinely has no measured answer yet,
+// and a default would answer for it in the flattering direction.
+type ChordRequirement
+  = DistinctionDeclared {
+      subject: ChordSubject
+      smallest: Micrometer
+      authority: NonEmptyStr
+    }
+  | DistinctionUndeclared { subject: ChordSubject, because: NonEmptyStr }
+
+fn requirement_subject(r: ChordRequirement) -> ChordSubject {
+  match r {
+    DistinctionDeclared { subject: s, smallest: _, authority: _ } => s
+    DistinctionUndeclared { subject: s, because: _ } => s
+  }
+}
+
+// THE COMPARISON IS A MULTIPLICATION, NOT A SUBTRACTION, and that is load-bearing rather than
+// stylistic. Nat subtraction in this substrate yields a NEGATIVE value: it neither saturates nor
+// refuses, so `smallest - undersize > 0` would silently read as satisfied for exactly the
+// observations that blow the budget. Scaling the observation up has no such arm.
+data chord_error_safety_factor: Nat = 20
+
+// ADJUDICATION JOINS THE TWO BY SUBJECT. A pair whose subjects disagree is not a weak verdict, it is
+// a mis-join, and it takes its own arm rather than being folded into a refusal that would read as a
+// finding about the geometry.
+type ChordStanding
+  = WithinRequiredDistinction { observation: ChordObservation, requirement: ChordRequirement }
+  | ExceedsRequiredDistinction { observation: ChordObservation, requirement: ChordRequirement }
+  | RequiredDistinctionUndeclared { observation: ChordObservation, requirement: ChordRequirement }
+  | ChordSubjectMismatch { observation: ChordObservation, requirement: ChordRequirement }
+
+fn adjudicate_chord(o: ChordObservation, r: ChordRequirement) -> ChordStanding {
+  if chord_subject_eq(a: observation_subject(o: o), b: requirement_subject(r: r)) == false {
+    ChordSubjectMismatch { observation: o, requirement: r }
+  } else {
+    match r {
+      DistinctionUndeclared { subject: _, because: _ } =>
+        RequiredDistinctionUndeclared { observation: o, requirement: r }
+      DistinctionDeclared { subject: _, smallest: s, authority: _ } =>
+        if nanometer_count(n: o.measured_undersize) * chord_error_safety_factor
+             <= nanometer_count(n: micrometer_to_nanometer(m: s)) {
+          WithinRequiredDistinction { observation: o, requirement: r }
+        } else {
+          ExceedsRequiredDistinction { observation: o, requirement: r }
+        }
+    }
+  }
+}
+
+fn standing_is_within(s: ChordStanding) -> Bool {
+  match s {
+    WithinRequiredDistinction { observation: _, requirement: _ } => true
+    ExceedsRequiredDistinction { observation: _, requirement: _ } => false
+    RequiredDistinctionUndeclared { observation: _, requirement: _ } => false
+    ChordSubjectMismatch { observation: _, requirement: _ } => false
+  }
+}
+
+type ExportProfileAdmission
+  = ExportProfileAdmitted { knobs: StlExportKnobs, standings: List<ChordStanding> }
+  | ExportProfileRefusedUnmeasured { knobs_offered: StlExportKnobs }
+  | ExportProfileRefusedUnsettled { knobs_offered: StlExportKnobs, unsettled: List<ChordStanding> }
+
+// AN UNMEASURED PROFILE IS NOT AN ADMITTED PROFILE. The empty list takes its own refusal arm rather
+// than falling through: a fold over no standings finds no violation, so folding the empty case into
+// the green arm would make the profile MOST admissible exactly when nothing had been measured.
+fn admit_export_profile(knobs: StlExportKnobs, standings: List<ChordStanding>) -> ExportProfileAdmission {
+  if standings.length() == 0 {
+    ExportProfileRefusedUnmeasured { knobs_offered: knobs }
+  } else {
+    let unsettled = filter(standings, s => standing_is_within(s: s) == false)
+    if unsettled.length() > 0 {
+      ExportProfileRefusedUnsettled { knobs_offered: knobs, unsettled: unsettled }
+    } else {
+      ExportProfileAdmitted { knobs: knobs, standings: standings }
+    }
+  }
+}
+
+// THE PROFILE THAT WAS ACTUALLY EXERCISED.
+//
+// WHY NOT TIGHTER. A finer angular tolerance buys deviation already far below the distinction the
+// coupon resolves, and pays for it in facet count and file size on every part forever. WHY NOT THE
+// LINEAR KNOB. It was varied across five values and the exported facet count did not move: on these
+// shapes the angular tolerance binds and the linear one is inert, so pinning it tighter would be a
+// number chosen to look careful.
+//
+// HOW THAT MEASUREMENT WENT WRONG FIRST, because the failure is reproducible and quiet. OCC caches a
+// triangulation on the shape, so re-exporting one shape at five tolerances returns the FIRST mesh
+// five times -- the facet count sat unchanged and read as evidence that the knob did nothing. The
+// control only flips when the shape is rebuilt per setting.
+data exercised_stl_knobs: StlExportKnobs = stl_export_knobs(
+  linear_tolerance_text: "0.001",
+  angular_tolerance_text: "0.1",
+)
+
+// THE SUBJECT NAMES A FEATURE ON A PART, NOT A DIAMETER. An earlier revision of this roster labelled
+// the 4.4 mm measurement a coupon rung. It is not one: the coupon ladder runs 3.00 to 4.00 mm, and
+// 4.4 mm is the fan mount's FASTENER hole. Attaching the coupon's rung spacing to it would have been
+// the wrong-denominator error a second time, wearing a subject name instead of a bare number.
+data coupon_top_rung_subject: ChordSubject = chord_subject(feature: "coupon ladder top rung hole, 4.00 mm")
+data fan_mounting_hole_subject: ChordSubject = chord_subject(feature: "fan mount fastener hole, 4.40 mm")
+data fan_bore_subject: ChordSubject = chord_subject(feature: "fan mount bore, 76.00 mm")
+
+// THE DEVIATION IS A DIAMETER DEVIATION, and saying so is a correction rather than a clarification.
+// The first numbers carried here were RADIUS deviations reported under a diameter's name -- a factor
+// of two, in the flattering direction, on the one quantity the coupon exists to resolve. The
+// instrument string records which quantity is meant so the same conflation cannot be re-entered
+// silently. The undersize is worst at the LARGEST rung, so the top rung is the one measured.
+data exercised_chord_observations: List<ChordObservation> = [
+  chord_observation(
+    subject: coupon_top_rung_subject,
+    nominal_diameter: micrometer(count: 4000),
+    measured_undersize: nanometer(count: 1243),
+    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+  ),
+  chord_observation(
+    subject: fan_mounting_hole_subject,
+    nominal_diameter: micrometer(count: 4400),
+    measured_undersize: nanometer(count: 1368),
+    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+  ),
+  chord_observation(
+    subject: fan_bore_subject,
+    nominal_diameter: micrometer(count: 76000),
+    measured_undersize: nanometer(count: 23622),
+    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+  ),
+]
+
+// WHAT THE RATIO DOES AND DOES NOT ESTABLISH, stated because the stronger reading is the tempting
+// one. The measured undersize is a small fraction of the coupon's rung spacing. That is a statement
+// about ONE DEVIATION AGAINST ONE SPACING. It is NOT yet a guarantee that two independently
+// approximated rungs stay distinguishable: that conclusion needs the error LAW, not one sample, and
+// what has been established about the law so far is only its DIRECTION -- an inscribed polygon can
+// only undersize -- not a bound holding across every rung. So the requirement below is authored as
+// the rung spacing with a safety factor, and the distinguishability claim is deliberately not made.
+data exercised_chord_requirements: List<ChordRequirement> = [
+  DistinctionDeclared {
+    subject: coupon_top_rung_subject,
+    smallest: micrometer(count: 100),
+    authority: "hole_ladder_spec step in gunbc.product.printed_chassis.coupon",
+  },
+  DistinctionUndeclared {
+    subject: fan_mounting_hole_subject,
+    because: "the fit this hole must hold against an M4 fastener has not been measured",
+  },
+  DistinctionUndeclared {
+    subject: fan_bore_subject,
+    because: "the clearance an 80 mm fan body needs through this bore has not been measured",
+  },
+]

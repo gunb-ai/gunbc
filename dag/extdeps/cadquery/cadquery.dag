@@ -1,0 +1,77 @@
+module extdeps.cadquery.cadquery
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.opencascade.ocp { OcpDistribution, OcpWithoutVtk }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cadquery.readthedocs.io/en/latest/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cadquery.cadquery",
+      decl_name: "cadquery_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data cadquery_distribution_name: NonEmptyStr = "cadquery"
+data cadquery_version: NonEmptyStr = "2.8.0"
+
+// WHICH KERNEL BUILD THIS PROJECT ASKS FOR. Nothing in this repository renders, so the VTK stack is
+// weight with no consumer. The choice is declared here rather than left to pip's default because a
+// resolver default is not a decision anyone made, and DESIGN section 2 prices an unexamined default
+// the same as an authored one once it is load-bearing.
+data cadquery_ocp_distribution: OcpDistribution = OcpWithoutVtk
+
+// PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim
+// records: an absolute path is a claim about a filesystem this repository has not observed.
+data python_program: NonEmptyStr = "python3"
+
+// RUN ONE EMITTED PROGRAM. The script path is the caller's -- this module has no authority to
+// enumerate the programs a consumer might run, exactly as extdeps.tools.make refuses to enumerate
+// Makefiles. What this builder owns is that CadQuery programs are executed by the PYTHON
+// INTERPRETER and not by a shell, so a path carrying a space or a metacharacter cannot become two
+// operands or a second command.
+fn cadquery_run_program_command(script_path: String) -> ArgvCommand {
+  argv_command(program: python_program, arguments: [script_path])
+}
+
+// THE EXPORT KNOBS ARE UPSTREAM'S, AND THEY ARE CARRIED AS UPSTREAM SPELLS THEM.
+//
+// cq.exporters.export takes `tolerance` in millimetres and `angularTolerance` in RADIANS. gunbc has
+// no radian carrier and std.measure declines to mint one on purpose: a turn is exactly divisible
+// into degrees and arcseconds, a radian is not, and a total integer conversion would floor and
+// invent precision at the unit boundary. So the angular knob is NOT retyped into a gunbc angle
+// here. It stays what it is -- an opaque numeric parameter of a third-party exporter -- and the
+// safety of a particular setting is established downstream by MEASURING the chord error it produces,
+// in a unit this substrate does have. Retyping it would have looked more principled and would have
+// asserted an exactness that does not exist.
+type StlExportKnobs sole_constructor {
+  linear_tolerance_text: NonEmptyStr
+  angular_tolerance_text: NonEmptyStr
+}
+
+fn stl_export_knobs(linear_tolerance_text: NonEmptyStr, angular_tolerance_text: NonEmptyStr) -> StlExportKnobs {
+  StlExportKnobs { linear_tolerance_text: linear_tolerance_text, angular_tolerance_text: angular_tolerance_text }
+}
+
+fn stl_export_call(destination: String, knobs: StlExportKnobs) -> String {
+  join([
+    "cq.exporters.export(result, \"", destination, "\"",
+    ", tolerance=", knobs.linear_tolerance_text as String,
+    ", angularTolerance=", knobs.angular_tolerance_text as String,
+    ")\n",
+  ], "")
+}

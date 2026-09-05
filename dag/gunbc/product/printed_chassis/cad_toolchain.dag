@@ -1,0 +1,185 @@
+module product.printed_chassis.cad_toolchain
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.package_managers.pip { pip_install_pinned_command }
+import extdeps.package_managers.conda_forge {
+  CondaPackageRequirement, conda_package_name, micromamba_create_command,
+}
+import extdeps.cadquery.cadquery {
+  cadquery_distribution_name, cadquery_version, cadquery_ocp_distribution,
+  cadquery_run_program_command,
+}
+import extdeps.opencascade.ocp {
+  SharedLibrarySoname, shared_library_soname_text,
+  ocp_distribution_name, ocp_distribution_version, ocp_shared_library_requirements,
+  ocp_requires_libgl, ocp_requires_libx11,
+}
+
+// WHAT IT TAKES TO TURN AN EMITTED CADQUERY PROGRAM INTO A SOLID, declared in one place so the
+// answer is not rediscovered by each session probing pip until something imports.
+//
+// THE PROVISIONING IS TWO PARTS WITH DIFFERENT OWNERS, and conflating them is what made an earlier
+// attempt reach for a workaround. The PYTHON DISTRIBUTIONS name what must be importable and at
+// which version. The SHARED LIBRARIES the OCP wheel links against are not carried by that wheel, so
+// something outside pip must place them -- and which manager does it is a CHOICE, not a property of
+// the requirement. extdeps.package_managers.conda_forge records why the choice landed there and
+// what the earlier apt-shaped reading of it got wrong.
+//
+// THE REJECTED ALTERNATIVE IS RECORDED BECAUSE IT WAS ATTEMPTED. Downloading the .deb files into a
+// scratch directory and pointing LD_LIBRARY_PATH at them does produce a working import. It also
+// produces a kernel that no declaration accounts for, that vanishes with the scratch directory,
+// that no other session can reproduce, and whose glibc compatibility is decided by which distro the
+// objects happened to come from -- the first attempt pulled a sysroot needing GLIBC 2.38 against a
+// host providing 2.36. That is the workaround DESIGN section 5 names: the obstacle was a choice of
+// dependency manager, and routing around it hid exactly the choice that needed making.
+
+type PythonDistributionRequirement sole_constructor {
+  distribution: NonEmptyStr
+  version: NonEmptyStr
+}
+
+fn python_distribution_name(r: PythonDistributionRequirement) -> NonEmptyStr { r.distribution }
+fn python_distribution_version(r: PythonDistributionRequirement) -> NonEmptyStr { r.version }
+
+data cadquery_requirement: PythonDistributionRequirement = PythonDistributionRequirement {
+  distribution: cadquery_distribution_name,
+  version: cadquery_version,
+}
+
+data ocp_requirement: PythonDistributionRequirement = PythonDistributionRequirement {
+  distribution: ocp_distribution_name(d: cadquery_ocp_distribution),
+  version: ocp_distribution_version,
+}
+
+// ORDERED, AND THE ORDER IS LOAD-BEARING: the kernel is pinned BEFORE cadquery, so cadquery's own
+// dependency resolution cannot pull the with-VTK build in behind our backs and leave two OCP
+// distributions fighting over the same import name.
+data cad_toolchain_python_requirements: List<PythonDistributionRequirement> = [
+  ocp_requirement,
+  cadquery_requirement,
+]
+
+fn install_python_requirement(r: PythonDistributionRequirement) -> ArgvCommand {
+  pip_install_pinned_command(distribution: r.distribution, version: r.version)
+}
+
+// THE SYSTEM SIDE, JOINED TO WHAT PROVIDES IT. A refusal that named only the missing SONAME would
+// send a reader to search for it; naming the package that carries it makes the refusal actionable
+// without a search. The provider is conda-forge rather than the host distribution because that is
+// the one measured to satisfy both SONAMEs into a user-owned prefix with no privilege.
+type SystemLibraryProvision sole_constructor {
+  soname: SharedLibrarySoname
+  conda_requirement: CondaPackageRequirement
+}
+
+fn provision_soname(p: SystemLibraryProvision) -> SharedLibrarySoname { p.soname }
+fn provision_package(p: SystemLibraryProvision) -> NonEmptyStr {
+  conda_package_name(r: p.conda_requirement)
+}
+fn provision_requirement(p: SystemLibraryProvision) -> CondaPackageRequirement { p.conda_requirement }
+
+// THE VERSIONS ARE THE ONES OBSERVED SATISFYING THE IMPORT, not the newest the channel offers. A
+// pin copied from a channel listing states what was available; a pin taken from the prefix that
+// actually loaded OCP states what worked, and only the second is evidence.
+data cad_toolchain_system_provisions: List<SystemLibraryProvision> = [
+  SystemLibraryProvision {
+    soname: ocp_requires_libgl,
+    conda_requirement: CondaPackageRequirement { package_name: "libgl", version: "1.7.0" },
+  },
+  SystemLibraryProvision {
+    soname: ocp_requires_libx11,
+    conda_requirement: CondaPackageRequirement { package_name: "xorg-libx11", version: "1.8.13" },
+  },
+]
+
+// THE ONE COMMAND THAT PROVISIONS THE SYSTEM SIDE. Every provision goes into a single solve, so a
+// prefix that comes back exists with all of them or does not exist at all -- there is no arm in
+// which half the SONAMEs are present and the failure waits for an import to discover it.
+fn provision_system_libraries_command(prefix: String) -> ArgvCommand {
+  micromamba_create_command(
+    prefix: prefix,
+    requirements: map(cad_toolchain_system_provisions, p => provision_requirement(p: p)),
+  )
+}
+
+// THE OBSERVED STATE OF ONE REQUIREMENT. Unobserved is its own arm rather than folded into absent,
+// because "we did not look" and "we looked and it is not there" are different facts and only the
+// second justifies telling someone to change an image.
+type LibraryObservation
+  = LibraryPresent { soname: SharedLibrarySoname }
+  | LibraryAbsent { soname: SharedLibrarySoname, provider_package: NonEmptyStr }
+  | LibraryUnobserved { soname: SharedLibrarySoname }
+
+// THE TOOLCHAIN VERDICT. Every arm that is not Ready REFUSES and carries what is missing; none
+// substitutes a partial toolchain or a "best effort" run. A CadQuery program executed against a
+// half-provisioned kernel does not produce a worse solid -- it produces no solid and a traceback,
+// and the failure arrives at the point of use rather than at the point of decision.
+type CadToolchainStanding
+  = CadToolchainReady
+  | CadToolchainSystemLibrariesMissing { missing: List<LibraryObservation> }
+  | CadToolchainUnobserved { requirements: List<SystemLibraryProvision> }
+
+fn cad_library_absent(o: LibraryObservation) -> Bool {
+  match o {
+    LibraryPresent { soname: _ } => false
+    LibraryUnobserved { soname: _ } => false
+    LibraryAbsent { soname: _, provider_package: _ } => true
+  }
+}
+
+fn cad_library_unobserved(o: LibraryObservation) -> Bool {
+  match o {
+    LibraryPresent { soname: _ } => false
+    LibraryAbsent { soname: _, provider_package: _ } => false
+    LibraryUnobserved { soname: _ } => true
+  }
+}
+
+// AN EMPTY OBSERVATION LIST IS NOT A READY TOOLCHAIN. Folding it into Ready would make the verdict
+// vacuously green exactly when nothing had been measured, which is the empty-domain trap: the
+// predicate is satisfied because its domain is empty, and the result reads as evidence.
+fn judge_cad_toolchain(observations: List<LibraryObservation>) -> CadToolchainStanding {
+  if observations.length() == 0 {
+    CadToolchainUnobserved { requirements: cad_toolchain_system_provisions }
+  } else {
+    let absent = filter(observations, o => cad_library_absent(o: o))
+    let unobserved = filter(observations, o => cad_library_unobserved(o: o))
+    if unobserved.length() > 0 {
+      CadToolchainUnobserved { requirements: cad_toolchain_system_provisions }
+    } else {
+      if absent.length() > 0 {
+        CadToolchainSystemLibrariesMissing { missing: absent }
+      } else {
+        CadToolchainReady
+      }
+    }
+  }
+}
+
+// THE RUN IS GATED ON THE VERDICT, not merely preceded by it. A caller holding a
+// CadQueryExecutionPlan is holding proof the toolchain was judged Ready, because the only mint is
+// the Ready arm below.
+type CadQueryExecutionPlan sole_constructor { command: ArgvCommand }
+
+fn execution_plan_command(p: CadQueryExecutionPlan) -> ArgvCommand { p.command }
+
+type CadQueryExecutionAdmission
+  = CadQueryExecutionAdmitted { plan: CadQueryExecutionPlan }
+  | CadQueryExecutionRefused { standing: CadToolchainStanding }
+
+fn admit_cadquery_execution(
+  standing: CadToolchainStanding,
+  script_path: String,
+) -> CadQueryExecutionAdmission {
+  match standing {
+    CadToolchainSystemLibrariesMissing { missing: m } =>
+      CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesMissing { missing: m } }
+    CadToolchainUnobserved { requirements: r } =>
+      CadQueryExecutionRefused { standing: CadToolchainUnobserved { requirements: r } }
+    CadToolchainReady =>
+      CadQueryExecutionAdmitted {
+        plan: CadQueryExecutionPlan { command: cadquery_run_program_command(script_path: script_path) },
+      }
+  }
+}

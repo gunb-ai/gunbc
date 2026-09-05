@@ -1,0 +1,119 @@
+module test.claim.printed_chassis_export_profile_witness_test
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { micrometer, nanometer }
+import product.printed_chassis.export_profile {
+  ChordSubject, chord_subject, ChordObservation, chord_observation,
+  ChordRequirement, DistinctionDeclared, DistinctionUndeclared,
+  ChordStanding, WithinRequiredDistinction, ExceedsRequiredDistinction,
+  RequiredDistinctionUndeclared, ChordSubjectMismatch,
+  adjudicate_chord, admit_export_profile,
+  ExportProfileAdmission, ExportProfileAdmitted, ExportProfileRefusedUnmeasured,
+  ExportProfileRefusedUnsettled,
+  exercised_stl_knobs, coupon_top_rung_subject, fan_bore_subject,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PROFILE HAD NO CONSUMER, and a module that typechecks is not one. Every witness below names a
+// mutation that must flip it, because the four refusal arms are exactly where a green profile would
+// be manufactured rather than earned.
+
+fn standing_name(s: ChordStanding) -> String {
+  match s {
+    WithinRequiredDistinction { observation: _, requirement: _ } => "within"
+    ExceedsRequiredDistinction { observation: _, requirement: _ } => "exceeds"
+    RequiredDistinctionUndeclared { observation: _, requirement: _ } => "undeclared"
+    ChordSubjectMismatch { observation: _, requirement: _ } => "mismatch"
+  }
+}
+
+fn admission_name(a: ExportProfileAdmission) -> String {
+  match a {
+    ExportProfileAdmitted { knobs: _, standings: _ } => "admitted"
+    ExportProfileRefusedUnmeasured { knobs_offered: _ } => "unmeasured"
+    ExportProfileRefusedUnsettled { knobs_offered: _, unsettled: _ } => "unsettled"
+  }
+}
+
+fn probe_observation(subject: ChordSubject, undersize: Nat) -> ChordObservation {
+  chord_observation(
+    subject: subject,
+    nominal_diameter: micrometer(count: 4000),
+    measured_undersize: nanometer(count: undersize),
+    instrument: "fixture",
+  )
+}
+
+data coupon_requirement: ChordRequirement = DistinctionDeclared {
+  subject: coupon_top_rung_subject,
+  smallest: micrometer(count: 100),
+  authority: "fixture",
+}
+
+// The measured 1243 nm diameter undersize clears a 100 um rung at safety factor 20. Flip the observation past
+// 5000 nm and this must stop reading "within" -- see the paired witness below, which does exactly
+// that and is the reason this one is not satisfiable by a constructor that always answers within.
+test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 1243),
+    r: coupon_requirement,
+  )) == "within"
+}
+
+// THE DISCRIMINATOR FOR THE ONE ABOVE. 5000 nm * 20 == 100000 nm, exactly the rung, so it still
+// clears; 5001 must not. A criterion that answered "within" here would be a decoration.
+test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 5000),
+    r: coupon_requirement,
+  )) == "within"
+  && standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 5001),
+    r: coupon_requirement,
+  )) == "exceeds"
+}
+
+// AN UNDECLARED REQUIREMENT IS NOT A PASS, and it is not an exceedance either. The fan bore has no
+// measured clearance obligation, so borrowing the coupon's rung -- which was this module's first
+// shape -- would have refused a profile that is fine, and defaulting to something generous would
+// have admitted one nobody had judged.
+test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+    r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
+  )) == "undeclared"
+}
+
+// A MIS-JOIN IS NOT A GEOMETRY FINDING. Judging one feature's deviation against another feature's
+// requirement can produce either verdict by luck, and reporting that as "exceeds" would attribute a
+// bookkeeping error to the mesh.
+test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+    r: coupon_requirement,
+  )) == "mismatch"
+}
+
+// THE EMPTY DOMAIN. Nothing measured must not read as nothing wrong.
+test fn w_an_unmeasured_profile_is_refused_rather_than_admitted() -> Bool {
+  admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [])) == "unmeasured"
+}
+
+// ONE UNSETTLED FEATURE REFUSES THE WHOLE PROFILE, and the pair is what makes that non-vacuous: the
+// same call admits once the undeclared subject is removed, so the refusal is caused by that feature
+// and not by the function being unable to admit anything.
+test fn w_one_undeclared_feature_refuses_the_profile_and_its_removal_admits_it() -> Bool {
+  let good = adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 1243),
+    r: coupon_requirement,
+  )
+  let unsettled = adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+    r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
+  )
+  admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [good, unsettled]))
+      == "unsettled"
+  && admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [good]))
+      == "admitted"
+}
