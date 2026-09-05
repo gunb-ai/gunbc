@@ -3196,6 +3196,15 @@ fn strip_lab_set_style(target: String, property: String, value: TsExpr) -> TsStm
   ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: target), property: "style"), property: property), op: "=", right: value))
 }
 
+// A custom property is set through setProperty; the CSSStyleDeclaration member form the plain
+// setter uses has no spelling for a dashed name. The names match gunbc.roadmap_style's fill vars.
+fn strip_lab_set_custom_property(target: String, name: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_member(object: ts_ident(name: target), property: "style"), property: "setProperty"),
+    args: [ts_lit_str(value: name), value],
+  ))
+}
+
 fn strip_lab_on_click(selector: String, body: List<TsStmt>) -> TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: strip_lab_query_all(selector: selector), property: "forEach"),
@@ -3217,8 +3226,8 @@ fn strip_lab_bind_statements() -> List<TsStmt> {
           strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "none")),
           ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "seg"), property: "getBoundingClientRect"), args: [])),
           strip_lab_set_style(target: "seg", property: "animation", value: ts_lit_str(value: "")),
-          strip_lab_set_style(target: "seg", property: "animationDuration", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "durationMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
-          strip_lab_set_style(target: "seg", property: "animationDelay", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "delayMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          strip_lab_set_custom_property(target: "seg", name: "--fill-duration", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "durationMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
+          strip_lab_set_custom_property(target: "seg", name: "--fill-delay", value: ts_binop(left: ts_binop(left: strip_lab_dataset_number(name: "delayMs"), op: "*", right: ts_ident(name: "factor")), op: "+", right: ts_lit_str(value: "ms"))),
           
         ])),
       ]))],

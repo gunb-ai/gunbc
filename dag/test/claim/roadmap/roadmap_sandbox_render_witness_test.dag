@@ -16,3 +16,17 @@ test fn the_sandbox_page_renders_with_its_strip_lab() -> Bool {
     EmitOk { html } => string_contains(s: html, pattern: "strip-lab-row") && string_contains(s: html, pattern: "activity-round-strip")
   }
 }
+
+// DISCRIMINATING: an inline animation-duration on a segment outranks the pulse rule and ran the
+// live pulse at the 120ms fill floor (2026-09-05). The schedule must reach segments only as the
+// --fill-* custom properties, so this is red the moment a longhand is written inline again.
+test fn segments_carry_the_fill_schedule_as_custom_properties_not_inline_longhands() -> Bool {
+  match try_serialize_html_source(node: sandbox_page()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html } =>
+      string_contains(s: html, pattern: "--fill-duration: ")
+        && string_contains(s: html, pattern: "--fill-delay: ")
+        && string_contains(s: html, pattern: "animation-duration: var(--fill-duration")
+        && !string_contains(s: html, pattern: "ms; animation-duration: ")
+  }
+}

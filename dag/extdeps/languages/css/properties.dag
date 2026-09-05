@@ -27,6 +27,7 @@ type CssPropertyName
   = AlignItems
   | Animation
   | AnimationDelay
+  | AnimationDuration
   | TransformOrigin
   | Background
   | Border
@@ -90,6 +91,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     AlignItems => "align-items"
     Animation => "animation"
     AnimationDelay => "animation-delay"
+    AnimationDuration => "animation-duration"
     TransformOrigin => "transform-origin"
     Background => "background"
     Border => "border"

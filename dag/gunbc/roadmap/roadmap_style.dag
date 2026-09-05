@@ -6,7 +6,7 @@ import gunbc.design.material {
   serialize_rules, reduced_motion_block,
 }
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
-import extdeps.languages.css.properties { Transform, TransformOrigin }
+import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class }
 import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
@@ -323,6 +323,23 @@ data round_fill_timing: TimingToken = TimingToken { name: "round-fill", duration
 data round_pulse_cycle: MotionCycle = MotionCycle { name: "round-pulse", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Opacity, value: "1")] }, Keyframe { offset_percent: 50, decls: [decl(prop: Opacity, value: "0.55")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Opacity, value: "1")] }] }
 data round_pulse_timing: TimingToken = TimingToken { name: "round-pulse", duration_ms: 3000, easing: "ease-in-out" }
 
+// THE FILL SCHEDULE REACHES A SEGMENT AS CUSTOM PROPERTIES, NEVER AS INLINE ANIMATION LONGHANDS. The
+// page used to write animation-delay and animation-duration inline per segment for the replay; an
+// inline longhand outranks every stylesheet rule, so on the live segment it also overrode the pulse
+// rule's 3000ms and the pulse ran at the fill's 120ms floor -- the "flashing" the operator saw
+// (2026-09-05). The segment now carries --fill-delay and --fill-duration; these longhands read them,
+// and they sit AFTER the fill shorthand and BEFORE the pulse shorthand, so the pulse's own timing is
+// the last word on a live segment by cascade order rather than by anything inline.
+data round_fill_delay_var: String = "fill-delay"
+data round_fill_duration_var: String = "fill-duration"
+
+fn round_fill_schedule_decls() -> List<CssDecl> {
+  [
+    decl(prop: AnimationDelay, value: join(["var(--", round_fill_delay_var, ", 0ms)"], "")),
+    decl(prop: AnimationDuration, value: join(["var(--", round_fill_duration_var, ", ", to_string(round_fill_timing.duration_ms), "ms)"], "")),
+  ]
+}
+
 fn activity_round_strip_rules() -> List<BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
@@ -368,6 +385,10 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     AmbientRule { selector: ClassSelector { name: activity_round_write_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
     AmbientRule { selector: ClassSelector { name: activity_round_unmeasured_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
     AmbientRule { selector: ClassSelector { name: activity_round_reason_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_reason_class }, decls: round_fill_schedule_decls() },
     AmbientRule { selector: ClassSelector { name: activity_round_live_class }, cycle: round_pulse_cycle, timing: round_pulse_timing, repeat: RunForever },
   ]
 }

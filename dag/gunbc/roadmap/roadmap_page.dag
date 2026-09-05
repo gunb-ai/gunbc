@@ -8,7 +8,7 @@ import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
-import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
@@ -651,8 +651,8 @@ fn round_segment_node(play: RoundPlayback, pulsing: Bool) -> Fragment {
     attr(name: "class", value: if pulsing { join([base_class, " ", activity_round_live_class], "") } else { base_class }),
     attr(name: "style", value: join([
       "flex-grow: ", to_string(value: if seg.duration_ms < 1 { 1 } else { seg.duration_ms }),
-      "; animation-delay: ", to_string(value: play.delay_ms), "ms",
-      "; animation-duration: ", to_string(value: play.duration_ms), "ms",
+      "; --", round_fill_delay_var, ": ", to_string(value: play.delay_ms), "ms",
+      "; --", round_fill_duration_var, ": ", to_string(value: play.duration_ms), "ms",
     ], "")),
     attr(name: "data-delay-ms", value: to_string(value: play.delay_ms)),
     attr(name: "data-duration-ms", value: to_string(value: play.duration_ms)),
