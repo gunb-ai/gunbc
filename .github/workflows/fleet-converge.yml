@@ -404,7 +404,7 @@ jobs:
           echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet
-          cat "$ROOT/target/spark-apply-receipt.txt"
+          cat "$ROOT/target/spark-managed-access-apply-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
