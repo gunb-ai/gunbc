@@ -675,9 +675,14 @@ fn scm_ck_selection_is(repo: RepositoryEnvelope, reference: RepositoryCommitRef)
 }
 
 // RECOVERY MUST NOT RETURN ITS ACCUMULATED PREFIX AS A CORPUS, and the specimen has to put the
-// MISSING entry LAST to reach that. The partial snapshot above sorts "gone.dag" before "held.dag", so
-// the fold refuses on its first entry and never accumulates anything -- a recover_corpus that leaked
-// its prefix would still answer an empty corpus there and look identical to a correct refusal.
+// MISSING entry LAST to reach that. The partial snapshot above sorts "gone.dag" before "held.dag"
+// under canonical_manifest_entries, so its fold refuses on the first entry and never accumulates.
+//
+// AN EARLIER WORDING OF THIS NOTE SAID A LEAK WOULD "LOOK IDENTICAL TO A CORRECT REFUSAL" THERE, AND
+// THAT WAS WRONG: that claim rejects every RepositoryCheckedOut, including one carrying an empty
+// corpus, so an unconditional leak is caught. What it cannot catch is narrower and is the real gap --
+// an implementation that refuses correctly when its accumulator is EMPTY and leaks a NONEMPTY prefix
+// as success. With nothing ever accumulated there, that behaviour is unreachable and so unobserved.
 //
 // Here two entries resolve before the third does not. A recovery that exposed what it had gathered
 // would hand back a two-file corpus and call it a successful checkout, which is the silently narrowed
