@@ -1,16 +1,15 @@
 module v2.test.claim.wrap_decision_predicate
 
-import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { translate_apply_use_site_ownership_to_projected_boundary }
 import v2.compiler.wrap_decision { wrap_decision_gate, wrap_decision_flow_gate }
-import v2.extdeps.languages.rust {
-  rust_named_edge,
-  rust_sg2_type_expr_target_model,
-  rust_sg_rc_use_site_ownership_catalog,
-  rust_type_expression_projection
+import v2.extdeps.languages.rust { rust_type_expression_projection }
+import v2.extdeps.languages.rust_wrap_decision_test {
+  wrap_decision_fixture_boundary_target,
+  wrap_decision_fixture_bundle_absent_target,
+  wrap_decision_fixture_gate_target,
+  wrap_decision_fixture_partial_bundle_target
 }
 import v2.std.compilers.target_model {
-  ProducedDeclUnwired,
   TargetModel,
   TargetOwnershipUseSite,
   TargetReferenceLayer,
@@ -32,20 +31,14 @@ import v2.std.compilers.target_model {
   target_carrier_use_site_verdict_node,
   target_type_expr_atom_emitted,
   target_type_expr_instantiation_emitted,
-  target_type_expr_emitted_wire_decode,
-  target_use_site_ownership_catalog_node
+  target_type_expr_emitted_wire_decode
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Node,
-  TypeNode,
-}
+import v2.std.node { Node }
 import v2.std.collection { list_at_optional }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Present }
-import v2.std.text { String }
 
 // Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single
 // authority for Rc/Box/owned type wrapping at ONE emit position, and wrap_decision_flow_gate is the
@@ -56,49 +49,13 @@ import v2.std.text { String }
 // distinct_reference_layers witnesses red while missing_row and both accept controls stay green;
 // make wrap_decisions_equal layer-blind -> distinct_reference_layers alone reds. A witness set that
 // reds together says less than one whose profile names which witness guards which arm.
-
-fn wrap_decision_sg_rc_target() -> TargetModel {
-  rust_sg2_type_expr_target_model()
-}
-
-fn wrap_decision_bundle_absent_target() -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [],
-      occurrence_id: OccurrenceSynthetic
-    },
-    lex: wrap_decision_sg_rc_target().lex,
-    binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
-    token_class_emit_transforms: wrap_decision_sg_rc_target().token_class_emit_transforms,
-    authority_source_text: wrap_decision_sg_rc_target().authority_source_text,
-    runtime_row: wrap_decision_sg_rc_target().runtime_row
-  }
-}
-
-fn wrap_decision_partial_bundle_target() -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        rust_named_edge(
-          name: ^target_model_edge_use_site_ownership_realizations,
-          target: target_use_site_ownership_catalog_node(
-            rows: rust_sg_rc_use_site_ownership_catalog()
-          )
-        )
-      ],
-      occurrence_id: OccurrenceSynthetic
-    },
-    lex: wrap_decision_sg_rc_target().lex,
-    binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
-    token_class_emit_transforms: wrap_decision_sg_rc_target().token_class_emit_transforms,
-    authority_source_text: wrap_decision_sg_rc_target().authority_source_text,
-    runtime_row: wrap_decision_sg_rc_target().runtime_row
-  }
-}
+//
+// COST: the target is the fixture in v2.extdeps.languages.rust_wrap_decision_test rather than
+// rust_sg2_type_expr_target_model(), whose bundle constructs six edge targets — serialize_source,
+// translation_rules, selection_policy, declared_inhabitants, collection_realization,
+// signature_realizations — that no claim here reaches through wrap_decision_gate. The ownership
+// catalog stays rust's live one, which is what keeps the flow controls above answering the
+// question they are stated to answer.
 
 fn wrap_decision_gate_is_by_value(
   target: TargetModel,
@@ -195,7 +152,7 @@ fn wrap_decision_gate_is_inapplicable(
 
 test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
   wrap_decision_gate_is_rc_reference(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
     use_site: OwnershipAtFunctionReturn
   )
@@ -203,7 +160,7 @@ test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
 
 test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
     use_site: OwnershipAtFunctionParameter
   )
@@ -211,7 +168,7 @@ test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
 
 test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
   wrap_decision_gate_rejects(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_probe_heap_node(),
     use_site: OwnershipAtFunctionParameter
   )
@@ -219,7 +176,7 @@ test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
 
 test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
   wrap_decision_gate_is_inapplicable(
-    target: wrap_decision_bundle_absent_target(),
+    target: wrap_decision_fixture_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
     use_site: OwnershipAtFunctionReturn
   )
@@ -227,7 +184,7 @@ test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
 
 test fn wrap_decision_bundle_partial_rejects() -> Bool {
   wrap_decision_gate_rejects(
-    target: wrap_decision_partial_bundle_target(),
+    target: wrap_decision_fixture_partial_bundle_target(),
     source_carrier: target_carrier_diagnostics_node(),
     use_site: OwnershipAtFunctionReturn
   )
@@ -235,7 +192,7 @@ test fn wrap_decision_bundle_partial_rejects() -> Bool {
 
 test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
     use_site: OwnershipAtFunctionParameter
   )
@@ -243,7 +200,7 @@ test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
 
 test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
     use_site: OwnershipAtFunctionReturn
   )
@@ -251,7 +208,7 @@ test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
 
 test fn wrap_decision_node_struct_field_is_box() -> Bool {
   wrap_decision_gate_is_box_reference(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_node_node(),
     use_site: OwnershipAtStructField
   )
@@ -336,7 +293,7 @@ fn wrap_decision_flow_is_inapplicable(
 
 test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
   wrap_decision_flow_rejects(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
     producer_site: OwnershipAtBindingProjection,
     consumer_site: OwnershipAtFunctionParameter
@@ -345,7 +302,7 @@ test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
 
 test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
   wrap_decision_flow_rejects(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
     producer_site: OwnershipAtFunctionParameter,
     consumer_site: OwnershipAtBindingProjection
@@ -354,7 +311,7 @@ test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
 
 test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
   wrap_decision_flow_rejects(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_node_node(),
     producer_site: OwnershipAtBindingProjection,
     consumer_site: OwnershipAtStructField
@@ -363,7 +320,7 @@ test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
 
 test fn wrap_decision_flow_missing_row_refuses() -> Bool {
   wrap_decision_flow_rejects(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_probe_heap_node(),
     producer_site: OwnershipAtFunctionReturn,
     consumer_site: OwnershipAtFunctionParameter
@@ -372,7 +329,7 @@ test fn wrap_decision_flow_missing_row_refuses() -> Bool {
 
 test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
   wrap_decision_flow_is_by_value(
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
     producer_site: OwnershipAtFunctionReturn,
     consumer_site: OwnershipAtFunctionParameter
@@ -381,7 +338,7 @@ test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
 
 test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
   wrap_decision_flow_is_inapplicable(
-    target: wrap_decision_bundle_absent_target(),
+    target: wrap_decision_fixture_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
     producer_site: OwnershipAtBindingProjection,
     consumer_site: OwnershipAtFunctionParameter
@@ -427,7 +384,7 @@ fn wrap_decision_composite_boundary_result() -> Node {
   match translate_apply_use_site_ownership_to_projected_boundary(
     projected: wrap_decision_composite_projected(),
     source_for_binding: wrap_decision_composite_source(),
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_fixture_boundary_target(),
     projection: rust_type_expression_projection(),
     use_site: OwnershipAtStructField
   ) {
