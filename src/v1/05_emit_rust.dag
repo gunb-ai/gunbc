@@ -3166,6 +3166,13 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // never "the one module that changed": a change reaches every mirror its reverse closure names,
 // and a selector that could carry only one member would be a bound that cannot express its own
 // answer.
+// THE CRATE-SHAPE DECISIONS IN THIS FUNCTION ARE RETAINED-HOST FACTS, NOT PIPELINE FACTS, AND THAT
+// SPLIT IS WHY ITS has_pipeline BINDING USES THE NARROWER PREDICATE. crate_name, the clap
+// dependency, the generated CLI dispatch file and the compiler test projection all describe the
+// SEED's realization: a clap front end dispatching into hand-authored host Rust. A corpus whose
+// entry declares a different driver carries none of that, so widening these to every pipeline entry
+// would rename its crate and demand a dispatch surface it never asked for. The main is where the
+// two drivers differ, and emit_main_rs branches there.
 fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
@@ -3209,13 +3216,6 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       module_name: name,
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
-  // THE CRATE-SHAPE DECISIONS BELOW ARE RETAINED-HOST FACTS, NOT PIPELINE FACTS, AND THE SPLIT IS
-  // WHY THIS PREDICATE IS THE NARROWER ONE. crate_name, the clap dependency, the generated CLI
-  // dispatch file and the compiler test projection all describe the SEED's realization: a clap
-  // front end dispatching into hand-authored host Rust. A corpus whose entry declares a different
-  // driver carries none of that, so widening these to every pipeline entry would rename its crate
-  // and demand a dispatch surface it never asked for. The main is where the two drivers differ,
-  // and emit_main_rs branches there.
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
   let cargo = emit_cargo_toml(
@@ -15770,7 +15770,10 @@ fn compiler_pipeline_entry_decl(modules: List<TypedModule>) -> CompilerPipelineE
 }
 
 fn corpus_has_compiler_pipeline(modules: List<TypedModule>) -> Bool {
-  compiler_pipeline_entry_decl(modules: modules) != none
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
@@ -15791,6 +15794,12 @@ fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
   emit_gunbc_cli_dispatch_generated_for_rows(crate_name: crate_name, rows: gunbc_cli_generated_dispatch_subcommands())
 }
 
+// THE DIRECT-INGEST DRIVER RETURNS EARLY, AHEAD OF EVERY RETAINED-HOST DECISION IN THIS FUNCTION.
+// Nothing below that branch is true of it: it has no clap surface, no generated dispatch, no
+// PipelineResult and no CandidateCliHost, because those are the seed's realization rather than
+// properties of having an entry point. Rendering it through the retained-host path would emit a
+// main naming v1_compiler.cli_run, which a self-emitted crate does not contain -- trading a correct
+// refusal for a call that does not link.
 fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
@@ -15824,12 +15833,6 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   }
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
-  // THE DIRECT-INGEST DRIVER RETURNS HERE, AHEAD OF EVERY RETAINED-HOST DECISION BELOW.
-  // Nothing after this point is true of it: it has no clap surface, no generated dispatch, no
-  // PipelineResult, and no CandidateCliHost, because those are the seed's realization rather than
-  // properties of having an entry point. Rendering it through the retained-host path would emit a
-  // main naming v1_compiler.cli_run, which a self-emitted crate does not contain -- trading a
-  // correct refusal for a call that does not link.
   if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
     return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
   }
