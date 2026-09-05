@@ -8,8 +8,7 @@ import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_identity_target }
-import v2.std.compilers.target_model { TargetModel }
+import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_translation_claim }
 import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileRejected }
 import v2.std.diagnostic {
   Diagnostic,
@@ -247,9 +246,9 @@ test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> Bool {
 
 data target_compile_prerequisite_note: String = "The prerequisite is DERIVED from the claim the obligation already carries, which is why 'target-compile an emission nobody requested' cannot be written down. This asserts the derivation, not a hand-authored edge: the prerequisite of a TargetCompile obligation is exactly the Translate obligation over ITS OWN translation claim, and the assertion compares the translation IDENTITY rather than the discriminant, so a prerequisite pointing at some other target would fail here."
 
-fn rust_translation_claim(target: TargetModel) -> TranslationClaim {
+fn rust_translation_claim() -> TranslationClaim {
   TranslationClaim {
-    target: target,
+    target: rust_target_model(),
     target_identity: ^target_rust,
     emitter_identity: ^emitter_v2_emit
   }
@@ -257,7 +256,7 @@ fn rust_translation_claim(target: TargetModel) -> TranslationClaim {
 
 fn rustc_target_compile_claim() -> TargetCompileClaim {
   TargetCompileClaim {
-    translation: rust_translation_claim(target: rust_emit_small_identity_target()),
+    translation: rust_emit_small_translation_claim(),
     toolchain_identity: ^toolchain_rustc
   }
 }
@@ -271,7 +270,7 @@ test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool 
     f: fn(acc, p) {
       acc || obligation_eq(
         a: p,
-        b: TranslateStage { claim: rust_translation_claim(target: rust_emit_small_identity_target()) }
+        b: TranslateStage { claim: rust_emit_small_translation_claim() }
       )
     }
   )
@@ -363,7 +362,7 @@ test fn acceptance_translate_row_is_determinate() -> Bool {
     receipt: run_acceptance(
       contract: contract(
         name: ^through_translate,
-        head: TranslateStage { claim: rust_translation_claim(target: rust_target_model()) },
+        head: TranslateStage { claim: rust_translation_claim() },
         tail: [],
         costs: []
       ),

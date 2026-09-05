@@ -18,6 +18,7 @@ import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
+import v2.workflow.dag_acceptance { TranslationClaim }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,6 +33,16 @@ fn rust_emit_small_identity_target() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// Keep the identity-only carrier separate from the acceptance module's
+// production translation helper: the end-to-end translate claim is unchanged.
+fn rust_emit_small_translation_claim() -> TranslationClaim {
+  TranslationClaim {
+    target: rust_emit_small_identity_target(),
+    target_identity: ^target_rust,
+    emitter_identity: ^emitter_v2_emit
   }
 }
 
