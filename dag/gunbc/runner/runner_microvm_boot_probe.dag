@@ -103,7 +103,12 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
 // setup, which would render as an image defect; pointing it at the rootfs copy attaches a real file
 // the guest ignores. The moment a credential exists this argument is the credential's path and this
 // paragraph deletes.
-fn runner_microvm_boot_probe_config(root: String, image: RunnerGuestImage) -> RunnerMicroVmConfigResolution {
+// NO IMAGE IDENTITY IS TAKEN HERE, AND THAT IS THE POINT: the probe boots a FIXED path, and the
+// identity is spent upstream by runner_microvm_boot_probe_stage_commands, which copies
+// runner_guest_image_path(root, image) onto it. Taking an identity this function could not honour
+// would claim a binding it does not perform -- the copy is what binds the bytes, and the caller
+// refuses on a failed copy rather than booting whatever the previous run left behind.
+fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResolution {
   gunbc_runner_microvm_vm_config(
     rootfs_path: runner_microvm_boot_probe_rootfs(root: root),
     jit_config_path: runner_microvm_boot_probe_rootfs(root: root),
@@ -236,7 +241,7 @@ func runner_microvm_boot_probe_wet() -> ProcessExit
       } else {
         let root = runner_guest_image_root(executor_home: home)
         let image = gunbc_runner_guest_image
-        match runner_microvm_boot_probe_config(root: root, image: image) {
+        match runner_microvm_boot_probe_config(root: root) {
           MicroVmConfigUnresolved { cause: c } =>
             runner_microvm_boot_probe_receipt_wet(
               verdict: BootNotAttempted {
