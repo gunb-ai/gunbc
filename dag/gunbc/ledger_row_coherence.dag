@@ -127,6 +127,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
+    Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []

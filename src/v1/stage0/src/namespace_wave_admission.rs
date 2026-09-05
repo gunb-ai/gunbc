@@ -1358,24 +1358,84 @@ pub struct TransitionAdmission {
 /// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
 /// branches short rather than to defer the payment.
 ///
+/// THIRTY-FOURTH DISSOLUTION (2026-09-05, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. Both `gunbc#10300 param_names_of grounding` rows are deleted. gunbc#10300 merged, so its
+/// rows were consumed by their own merge and their deletion falls to this roster's next touch.
+///
+/// ADJUDICATED BY THE DECLARING-MODULE JOIN AGAINST MAIN'S OWN BLOBS, NOT AGAINST THIS WORKTREE.
+/// The first run of this join read the working tree and answered NOT DECLARED, which would have
+/// kept two consumed rows alive; the working tree was the PRE-MERGE tree, so it was answering about
+/// a base the wall does not compare. Re-asked against `origin/main`, `param_names_of` IS declared in
+/// `v2.std.fn_index`, and NEITHER `v2.lens.effect_reach` NOR `v2.lens.live_read_classification`
+/// still declares its own copy -- so base and head bind the spelling identically and no run can
+/// produce these deltas. CALIBRATED IN BOTH DIRECTIONS: a fabricated spelling answers NOT DECLARED
+/// against the same module, and real neighbours in that module answer DECLARED, so neither a
+/// uniform "found" nor a uniform "missing" was available to the join. THE FIRST READING IS RECORDED
+/// RATHER THAN QUIETLY CORRECTED, because a join that silently answers about the wrong tree is the
+/// same defect class as an edit pass that matches nothing: well-formed, plausible, and about a
+/// subject that is not the one under adjudication.
+///
+/// THIS BRANCH'S OWN THIRTY-THIRD DISSOLUTION IS DROPPED, NOT RENUMBERED -- the fourth time this has
+/// happened here. gunbc#10300 landed its own THIRTY-THIRD DISSOLUTION deleting the identical 22
+/// gunbc#10445 rows this branch had just deleted. The deletion happened ONCE; two entries would
+/// leave two authorities describing one event.
+///
+/// FIFTH OBLIGATION, 62 ROWS, NONE AUTHORED HERE: 30 gunbc#10355, 2 gunbc#10350, 6 gunbc#10439, 22
+/// gunbc#10445, and now 2 gunbc#10300. FOUR OF THE FIVE WERE ALSO PAID INDEPENDENTLY BY THE BRANCH
+/// THAT LANDED FIRST, which is why four dissolution entries written here are dropped rather than
+/// renumbered. The rate is the observation: this roster is a serialization point every merging
+/// branch must pass through, and the debt attaches to arrival order, not to authorship.
+
+/// TWENTY-SIXTH TRANSITION (2026-09-05, gunbc#10324). `host_converge_for_identity` moves out of
+/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
+/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
+/// `TargetChanged` and is not auto-admitted.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
+/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
+/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
+/// that type's declaration, in another file. Two callers had each privately worked around this with
+/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
+/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
+///
+/// THE ORDINAL IS TWENTY-SIXTH AND IT STILL STANDS. It has already moved five times -- TWENTY-FIRST,
+/// TWENTY-THIRD, TWENTY-FOURTH, TWENTY-FIFTH, TWENTY-SIXTH -- each time because a base that changed
+/// underneath had minted the number first. This merge is the first that did NOT force a renumber:
+/// gunbc#10300 took TWENTY-FIRST, which was vacated by this entry long ago and is NOT reclaimed by
+/// it here either. THE VACATED NUMBERS ARE NOT RECLAIMED BY ANYONE is the stronger reading of that
+/// rule, and main just demonstrated the weaker one; the ordinals are a naming scheme, so what the
+/// discipline protects is that a citation resolves to ONE row across time, which reuse defeats.
+///
+/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, for the fifth time and for
+/// the same cause each time: the conflict is a misaligned array head, aligning this branch's rows
+/// against the other cohort's, so hand-editing the markers would splice one cohort's label onto the
+/// other's body. Main's file is taken WHOLE and this delta re-derived at ROW IDENTITY grain.
+///
+/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
+/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
+/// stale, and their deletion is owed by whoever next touches this roster.
+const HOST_CONVERGE_LOOKUP_MOVE_LABEL: &str =
+    "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type, \
+     from gunbc.fleet_converge_cli to gunbc.host_converge";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
+        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
+            module: "gunbc.fleet_converge_cli",
+            in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
+            spelling: "host_converge_for_identity",
+            target: "gunbc.host_converge",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
+        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
+            module: "gunbc.fleet_converge_cli",
+            in_declaration: "converge_cli_run_host_knobs",
+            spelling: "host_converge_for_identity",
+            target: "gunbc.host_converge",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

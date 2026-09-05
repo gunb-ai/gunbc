@@ -1,0 +1,19 @@
+module test.claim.fabric.fci1_bounded_execution_context_emit_witness_test
+
+import std.types { Bool, list_length }
+import v2.std.algebra { filter }
+import gunbc.generated_artifact {
+  Fci1BoundedExecutionContextArtifact,
+  artifact_path, artifact_eq, artifact_commit_policy, CommitRequired, HostReconciler,
+  committed_generated_artifacts,
+}
+
+test fn fci1_bounded_context_fragment_is_registered_once() -> Bool {
+  list_length(items: filter(xs: committed_generated_artifacts(), predicate: fn(a) { artifact_eq(a: a, b: Fci1BoundedExecutionContextArtifact) })) == 1
+    && artifact_path(a: Fci1BoundedExecutionContextArtifact)
+      == "tools/fabric_ci_fci1_bounded_execution_context.env"
+    && match artifact_commit_policy(a: Fci1BoundedExecutionContextArtifact) {
+      CommitRequired { consumer: HostReconciler } => true
+      _ => false
+    }
+}
