@@ -143,6 +143,7 @@ import gunbc.recurring_failure_mode.a_deconfliction_plan_does_not_enumerate_its_
 import gunbc.recurring_failure_mode.a_branch_property_falsified_by_a_derived_push { a_branch_property_falsified_by_a_derived_push }
 import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_its_own_denominator }
 import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
+import gunbc.recurring_failure_mode.discriminating_evidence_authored_into_the_operational_population { discriminating_evidence_authored_into_the_operational_population }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -277,4 +278,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_branch_property_falsified_by_a_derived_push,
   roster_is_its_own_denominator,
   instrument_answers_outside_its_domain,
+  discriminating_evidence_authored_into_the_operational_population,
 ]
