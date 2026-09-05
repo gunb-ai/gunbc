@@ -26,14 +26,24 @@ fn discharged_row(gate: NonEmptyStr, mutation: NonEmptyStr) -> MutationEnrolment
   MutationEnrolment { gate: gate, mutation: mutation, discharge: DischargedByWitness { witness: "fixture" } }
 }
 
+// EVERY LABEL CARRIES BOTH COORDINATES. An earlier revision encoded only one -- the mutation for
+// three arms, the gate for the fourth -- so a regression could return the correct arm, carry the one
+// field the witness read, and locate the refusal on the WRONG (gate, mutation) pair while every test
+// still passed. A located refusal whose location is unverified is an unlocated refusal.
+fn located(arm: NonEmptyStr, gate: NonEmptyStr, mutation: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(arm, "|"), concat(gate, concat("|", mutation))) as NonEmptyStr
+}
+
 fn refusal_labels(v: CoverageVerdict) -> List<NonEmptyStr> {
   match v {
     CoverageTotal { discharged, undischarged } => [],
     CoverageRefused { refusals } => map(refusals, r => match r {
-      MutationHasNoEnrolmentRow { gate, mutation } => concat("no-row:", mutation) as NonEmptyStr,
-      MutationHasSeveralEnrolmentRows { gate, mutation } => concat("several-rows:", mutation) as NonEmptyStr,
-      EnrolmentNamesUnknownGate { gate, mutation } => concat("unknown-gate:", gate) as NonEmptyStr,
-      EnrolmentNamesUndeclaredMutation { gate, mutation } => concat("undeclared-mutation:", mutation) as NonEmptyStr,
+      GateIdDeclaredSeveralTimes { gate } => located("dup-gate-id", gate, "-"),
+      MutationDeclaredSeveralTimes { gate, mutation } => located("dup-declared-mutation", gate, mutation),
+      MutationHasNoEnrolmentRow { gate, mutation } => located("no-row", gate, mutation),
+      MutationHasSeveralEnrolmentRows { gate, mutation } => located("several-rows", gate, mutation),
+      EnrolmentNamesUnknownGate { gate, mutation } => located("unknown-gate", gate, mutation),
+      EnrolmentNamesUndeclaredMutation { gate, mutation } => located("undeclared-mutation", gate, mutation),
     }),
   }
 }
@@ -70,7 +80,7 @@ test fn a_mutation_with_no_enrolment_row_refuses_by_name() -> Bool {
     discharged_row("FCI-2", "duplicate-grant"),
     discharged_row("FCI-2", "work-mismatch"),
   ]))
-  labels.length() == 1 && any(labels, l => l == "no-row:expired-reservation")
+  labels.length() == 1 && any(labels, l => l == "no-row|FCI-2|expired-reservation")
 }
 
 // An empty enrolment list refuses once per declared mutation rather than passing vacuously -- the
@@ -86,7 +96,7 @@ test fn a_duplicated_row_refuses_rather_than_being_counted_twice() -> Bool {
     discharged_row("FCI-2", "work-mismatch"),
     discharged_row("FCI-2", "expired-reservation"),
   ]))
-  labels.length() == 1 && any(labels, l => l == "several-rows:duplicate-grant")
+  labels.length() == 1 && any(labels, l => l == "several-rows|FCI-2|duplicate-grant")
 }
 
 // DIRECTION TWO, AND THE TWO FOREIGN CASES ARE DISTINGUISHED. Enrolling work nobody asked about must
@@ -98,7 +108,7 @@ test fn an_enrolment_naming_an_unknown_gate_refuses_by_that_name() -> Bool {
     discharged_row("FCI-2", "expired-reservation"),
     discharged_row("FCI-9", "duplicate-grant"),
   ]))
-  labels.length() == 1 && any(labels, l => l == "unknown-gate:FCI-9")
+  labels.length() == 1 && any(labels, l => l == "unknown-gate|FCI-9|duplicate-grant")
 }
 
 test fn an_enrolment_naming_an_undeclared_mutation_refuses_by_that_name() -> Bool {
@@ -108,7 +118,52 @@ test fn an_enrolment_naming_an_undeclared_mutation_refuses_by_that_name() -> Boo
     discharged_row("FCI-2", "expired-reservation"),
     discharged_row("FCI-2", "grant-corrupt"),
   ]))
-  labels.length() == 1 && any(labels, l => l == "undeclared-mutation:grant-corrupt")
+  labels.length() == 1 && any(labels, l => l == "undeclared-mutation|FCI-2|grant-corrupt")
+}
+
+// DIRECTION ZERO, WITH DESTRUCTIVE CONTROLS. The identity the whole join rests on is (gate,
+// mutation), and an earlier revision policed its uniqueness only among ENROLMENT rows. A gate
+// declaring one mutation twice was then answered by a SINGLE enrolment row: each declaration visit
+// found exactly one match, the reverse direction saw a declared pair, and the verdict came back
+// CoverageTotal with one row covering two obligations. The length-equality witness below happens to
+// notice that one fixture, but it is not a located refusal and it cannot see a duplicated gate id at
+// all, so the census belongs in the verdict where it can name its subject.
+fn gate_with(id: NonEmptyStr, mutations: List<NonEmptyStr>) -> FabricCiGate {
+  FabricCiGate {
+    id: id,
+    owned_question: "fixture",
+    exit_predicate: "fixture",
+    positive_control: "fixture",
+    discriminating_mutations: mutations,
+    frozen_output_identities: [],
+    non_goals: [],
+  }
+}
+
+test fn a_mutation_declared_twice_by_one_gate_refuses_rather_than_being_answered_once() -> Bool {
+  let labels = refusal_labels(gate_coverage(
+    [gate_with("FCI-X", ["duplicate-grant", "duplicate-grant"])],
+    [discharged_row("FCI-X", "duplicate-grant")],
+  ))
+  labels.length() == 1 && any(labels, l => l == "dup-declared-mutation|FCI-X|duplicate-grant")
+}
+
+test fn two_gates_sharing_one_id_refuse_by_that_id() -> Bool {
+  let labels = refusal_labels(gate_coverage(
+    [gate_with("FCI-X", ["m"]), gate_with("FCI-X", ["m"])],
+    [discharged_row("FCI-X", "m")],
+  ))
+  any(labels, l => l == "dup-gate-id|FCI-X|-")
+}
+
+// The positive control for direction zero: a well-formed authority is NOT refused by the census, so
+// the two witnesses above discriminate duplication rather than reporting that the census always
+// fires.
+test fn a_well_formed_authority_is_not_refused_by_the_identity_census() -> Bool {
+  refusal_labels(gate_coverage([gate_with("FCI-X", ["m", "n"])], [
+    discharged_row("FCI-X", "m"),
+    discharged_row("FCI-X", "n"),
+  ])).length() == 0
 }
 
 // THE SHIPPED ROSTER IS TOTAL OVER ALL SEVEN GATES. This is the assertion that reds when somebody
@@ -131,11 +186,25 @@ test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> B
     && any(undischarged, e => e.gate == "FCI-2" && e.mutation == "expired-reservation")
 }
 
-// Undischarged is never a bare admission: every such row carries the trigger that retires it, so a
-// gap cannot be parked without naming what ends it (DESIGN 4b(2), no untracked stall).
-test fn every_undischarged_row_names_a_reason_and_a_restoration_trigger() -> Bool {
-  all(total_undischarged(fabric_gate_coverage()), e => match e.discharge {
-    DischargedByWitness { witness } => false,
-    Undischarged { reason, restoration_trigger } => reason != "" && restoration_trigger != "",
-  })
+// Undischarged is never a bare admission: every such row is an Undischarged CONSTRUCTOR, which is
+// what carries the trigger that retires it (DESIGN 4b(2), no untracked stall).
+//
+// TWO CORRECTIONS LIVE IN THIS WITNESS, and both were mine. It projected the verdict to a list first,
+// so a CoverageRefused -- which projects to [] -- passed by universal quantification over nothing:
+// the third instance in two days of the same all([]) class, in the very module built to refuse
+// unearned coverage claims. It now matches the coproduct and answers false on the refusal arm, so
+// there is no empty population to defend. And it asserted reason != "" on fields already typed
+// NonEmptyStr, whose non-emptiness is STRUCTURAL -- a check restating a constraint the model already
+// carries is a second representation of it (DESIGN 5), permanently green and worth nothing. What is
+// worth asserting is that the property was evaluated over a genuinely TOTAL verdict at all.
+test fn every_undischarged_row_is_an_undischarged_constructor_over_a_total_verdict() -> Bool {
+  match fabric_gate_coverage() {
+    CoverageRefused { refusals } => false,
+    CoverageTotal { discharged, undischarged } =>
+      undischarged.length() > 0
+        && all(undischarged, e => match e.discharge {
+          DischargedByWitness { witness } => false,
+          Undischarged { reason, restoration_trigger } => true,
+        }),
+  }
 }
