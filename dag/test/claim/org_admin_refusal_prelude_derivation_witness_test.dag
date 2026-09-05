@@ -1,18 +1,26 @@
 module test.claim.org_admin_refusal_prelude_derivation_witness_test
 
-// THE JOIN THIS FILE EXISTS TO MAKE. OrgAdminAppKeyUnreadable and OrgAdminInstallationTokenRefused
-// are now arms of OrgAdminCredentialRefusal, and the CI prelude's sentence is RENDERED from the
-// renderers that sit beside those arms rather than hand-written in a shell string beside them.
+// WHAT THESE WITNESSES COVER, STATED AT THE GRAIN THEY ACTUALLY HOLD: the prelude's command list
+// INCLUDES the message the shared renderer produces. That is inclusion coverage over one shared
+// helper, and it is worth executing -- if the prelude stops echoing the rendered sentence, or
+// corrupts it on the way through the shell quoting, these go red.
 //
-// A type declaration alone would establish nothing -- a coproduct arm no producer constructs and no
-// consumer reads is inert, and citing it as coverage is the inflation the arms' own annotation
-// names. What makes the arms load-bearing is that the bytes the runner executes come from the same
-// place, so the two cannot drift. That is an identity join and it is what these witnesses execute:
-// the prelude's actual command list must CONTAIN the rendered sentence.
+// AN EARLIER REVISION OF THIS HEADER CLAIMED A DISCRIMINATING RED IT DOES NOT HAVE. It said
+// "change either message function and the corresponding test fails". It does not. Both the expected
+// string and the prelude bytes are computed from the SAME helper, so editing the helper's wording
+// moves both sides together and every test here stays green. A check whose two sides share their
+// only authority cannot detect a change to that authority; what it detects is the two sides coming
+// APART.
 //
-// The discriminating red: change either message function and the corresponding test fails, because
-// nothing else in the tree carries those words any more. Under the old arrangement the same edit
-// would have left the shell string untouched and every test green.
+// THE FIX IS NOT A SECOND COPY OF THE MESSAGE. Manufacturing a discriminating red by maintaining an
+// independently authored expected string would reintroduce exactly the duplicated sentence this
+// arrangement removed, and it would rot the moment either copy moved. The honest move is to say
+// what the coverage is and stop citing more.
+//
+// AND THIS IS NOT THE TYPED-REFUSAL JOIN. Nothing here constructs or matches
+// OrgAdminCredentialRefusal; gunbc.auth.org_admin_credential records why, and what would change it.
+// These witnesses say the words have one home and reach the runner -- not that a refusal VALUE ever
+// exists on the CI path.
 import gunbc.ci_spec { gunbc_ci_org_admin_app_token_prelude }
 import gunbc.auth.org_admin_credential {
   org_admin_app_key_unreadable_message,
