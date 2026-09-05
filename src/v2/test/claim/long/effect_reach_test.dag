@@ -1,5 +1,6 @@
 module v2.test.claim.long.effect_reach_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.effect_reach {
   effect_reach_classification_from_facts,
   derived_host_reading,
@@ -11,8 +12,10 @@ import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.collection { List }
 import v2.std.data_index { DataInitDecl }
 import v2.std.effect_reach { EffectReachClassification }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index { FnArrowDecl }
 import v2.std.logic { Bool }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode }
 import v2.std.text { String }
 
 data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
@@ -77,6 +80,70 @@ data fixture_empty_data_inits: List<DataInitDecl> = []
 // ModuleDependencyEdge closure reaching this lens, at which point a genuinely live 03_normalize row
 // has a producer to read.
 data fixture_empty_decls: List<FnArrowDecl> = []
+
+data fixture_call_channel_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.call_channel.entry", imports: ["fix.call_channel.helper"] },
+  ModuleImportFact { module: "fix.call_channel.helper", imports: [] }
+]
+
+fn call_channel_atom(text: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: text) } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn call_channel_call(callee: String) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: call_channel_atom(text: callee) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn call_channel_entry(output: Node) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "fix.call_channel.entry.seed",
+    name: "seed",
+    output: output,
+    params: []
+  }
+}
+
+fn call_channel_helper() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "fix.call_channel.helper.helper_fn",
+    name: "helper_fn",
+    output: call_channel_call(callee: "Read"),
+    params: []
+  }
+}
+
+fn call_channel_effect_classification(entry_output: Node) -> EffectReachClassification {
+  effect_reach_classification_from_facts(
+    entry_module: "fix.call_channel.entry",
+    facts: fixture_call_channel_facts,
+    decls: [call_channel_entry(output: entry_output), call_channel_helper()],
+    data_inits: fixture_empty_data_inits
+  )
+}
+
+test fn effect_reach_follows_a_structural_call_to_the_sink_helper() -> Bool {
+  derived_host_reading(classification: call_channel_effect_classification(
+    entry_output: call_channel_call(callee: "helper_fn")
+  ))
+}
+
+test fn effect_reach_does_not_follow_a_non_call_atom_collision() -> Bool {
+  classification_is_local(classification: call_channel_effect_classification(
+    entry_output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [Edge { label: Positional, target: call_channel_atom(text: "helper_fn") }],
+      occurrence_id: OccurrenceSynthetic
+    }
+  ))
+}
 
 data fixture_prose_facts: List<ModuleImportFact> = [
   ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
