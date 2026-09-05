@@ -111,7 +111,7 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     isolation: ProxyDhcpPxeOnly,
-    enrolled_bootloader: none,
+    tftp_bootloader: spark_pxe_tftp_relative_path(p: TftpBootloader, image: FastOsRecoveryTarball),
   ).network_chain.boot_mode {
     UefiPxe { tftp_root: _ } => true
     _ => false

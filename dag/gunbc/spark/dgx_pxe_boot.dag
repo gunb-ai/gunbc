@@ -350,8 +350,26 @@ fn spark_unattended_image_boot(
   tftp_root: Uri,
   http_image_root: Uri,
   isolation: PxeNetworkIsolation,
-  enrolled_bootloader: NonEmptyStr?,
+  tftp_bootloader: NonEmptyStr,
 ) -> SparkUnattendedImageBoot {
+  SparkUnattendedImageBoot {
+    image_kind: image_kind,
+    network_chain: NetworkBootChain {
+      boot_mode: spark_pxe_client_boot_mode(tftp_root: tftp_root),
+      dhcp_direction: pxe_network_isolation_dhcp_direction(isolation: isolation),
+      image_http_root: http_image_root,
+    },
+    tftp_bootloader: tftp_bootloader,
+    tftp_grub_config: spark_pxe_tftp_relative_path(p: TftpGrubConfig, image: image_kind),
+    tftp_kernel: spark_pxe_tftp_relative_path(p: TftpKernelImage, image: image_kind),
+    tftp_initrd: spark_pxe_tftp_relative_path(p: TftpInitrdImage, image: image_kind),
+    http_install_image: spark_pxe_http_install_image_path(image: image_kind),
+    kernel_cmdline: match image_kind {
+      FastOsRecoveryTarball => spark_fastos_unattended_kernel_cmdline(http_image_root: http_image_root)
+      DgxOsIsoImage => spark_dgx_os_unattended_kernel_cmdline(http_image_root: http_image_root)
+    },
+  }
+}
   SparkUnattendedImageBoot {
     image_kind: image_kind,
     network_chain: NetworkBootChain {
@@ -495,17 +513,17 @@ fn admit_spark_unattended_pxe_boot(
                     reason: UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
                   }
                 SparkPxeFirmwareReady =>
+                  let bootloader = match enrolled_pxe_bootloader(config: fw) {
+                    Present { value: b } => b
+                    Absent => spark_pxe_tftp_relative_path(p: TftpBootloader, image: image_kind)
+                  }
                   SparkUnattendedPxeBootAdmitted {
                     boot: spark_unattended_image_boot(
                       image_kind: image_kind,
                       tftp_root: tftp_root,
                       http_image_root: http_image_root,
                       isolation: network_isolation,
-                      // Enrolled bootloader carries from firmware config to boot plan
-                      // so the DHCP bootfile offer and TFTP path agree with what is
-                      // enrolled in Secure Boot. When SecureBootDisabledForPxe, this
-                      // is none and the standard per-image path applies.
-                      enrolled_bootloader: enrolled_pxe_bootloader(config: fw),
+                      tftp_bootloader: bootloader,
                     )
                   }
               }
