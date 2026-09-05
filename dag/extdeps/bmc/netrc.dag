@@ -17,8 +17,6 @@ type NetrcResolution
 
 type NetrcRefusalCause
   = NetrcNoMatchingEntry { host: NonEmptyStr }
-  // reserved: the current parser does not detect duplicates (upstream enhancement for a future lane)
-  | NetrcDuplicateMachine { host: NonEmptyStr }
   | NetrcMalformedFile { detail: String }
   | NetrcFileUnreadable { detail: String }
 

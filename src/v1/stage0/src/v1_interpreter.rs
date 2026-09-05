@@ -5119,15 +5119,11 @@ fn call_function_inner(
                 // The corpus marks an unused parameter with a leading underscore (`_ctx`,
                 // `_spelling`) or `_`, and call sites label it WITHOUT the underscore
                 // (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
-                // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
+                // (`(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
                 // Not a mismatch: the body cannot read it, so nothing is dropped. Accept `x`
-                // against a declared `x`, `_x`, or `_`.
-                let matches_param = |p: &String| {
-                    p == name
-                        || p == "_"
-                        || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
-                };
-                if !all_param_names.iter().any(matches_param) {
+                // against a declared `x`, `_x`, or `_` (centralised in param_name_matches_declared
+                // — one authority for the rule, not a second copy per call site).
+                if !param_name_matches_declared(name, all_param_names) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!(
@@ -10764,16 +10760,9 @@ fn build_service_param_env(
 
     for (opt_name, val) in args {
         if let Some(name) = opt_name {
-            // Same matches_param rule as the fn-call path (v1_interpreter.rs:5125):
-            // accept `x` against a declared `x`, `_x`, or `_`. This prevents a false
-            // refusal for callers that label an underscore-prefixed param without the
-            // prefix (the established corpus pattern).
-            let matches_param = |p: &String| {
-                p == name
-                    || p == "_"
-                    || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
-            };
-            if !all_param_names.iter().any(matches_param) {
+            // Single authority for the name-matching rule (param_name_matches_declared —
+            // shared with the fn-call path). Accept `x` against a declared `x`, `_x`, or `_`.
+            if !param_name_matches_declared(name, &all_param_names) {
                 let detail = format!(
                     "no parameter named '{}' (declared: [{}])",
                     name,
@@ -14126,6 +14115,16 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<Option<ureq::Age
 /// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
 fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
     config_auth_resolved && has_auth_basic
+}
+
+/// Whether a caller's named argument `name` matches a declared parameter `p`, following the
+/// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Pure so it is
+/// execution-witnessable and shared between the fn-call path and the service-rest binding path
+/// (DESIGN §3 single authority — one rule, one site).
+fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
+    declared.iter().any(|p| {
+        p == name || p == "_" || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+    })
 }
 
 /// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
