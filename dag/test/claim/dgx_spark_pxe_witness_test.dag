@@ -254,7 +254,7 @@ test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool 
         s: i.instruction,
         pattern: "pxe_rescue_observation.dag" as String,
       ) && i.frequency == DeviceOnce
-    SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
+    SparkPxeFirmwareReady => false
   }
 }
 
@@ -270,10 +270,8 @@ test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
       nic_pxe_boot_enabled: true,
     },
   ) {
-    SparkPxeFirmwareReady { enrolled_bootloader: Present { value: b } } =>
-      b == "bootaa64.efi"
+    SparkPxeFirmwareReady => true
     SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
-    SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
   }
     && match evaluate_spark_pxe_firmware_standing(
       config: SparkUefiPxeConfiguration {
@@ -283,11 +281,39 @@ test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
         nic_pxe_boot_enabled: true,
       },
     ) {
-      SparkPxeFirmwareReady { enrolled_bootloader: Present { value: b } } =>
-        b == spark_pxe_bootloader_filename
+      SparkPxeFirmwareReady => true
       SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
-      SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
     }
+}
+
+// Verify that the enrolled bootloader is carried through to the boot plan.
+test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool {
+  match admit_spark_unattended_pxe_boot(
+    image_kind: FastOsRecoveryTarball,
+    tftp_root: witness_tftp_root,
+    http_image_root: witness_http_root,
+    network_observation: Present { value: synthetic_ready_network_observation() },
+    dhcp_authority: Present { value: witness_dhcp_authority },
+    tftp_endpoint: Present { value: witness_tftp_endpoint },
+    http_endpoint: Present { value: witness_http_endpoint },
+    isolation: Present { value: ProxyDhcpPxeOnly },
+    firmware_config: Present {
+      value: SparkUefiPxeConfiguration {
+        secure_boot: BootloaderEnrolledForPxe { bootloader: "bootaa64.efi" },
+        network_stack_enabled: true,
+        ipv4_pxe_support_enabled: true,
+        nic_pxe_boot_enabled: true,
+      }
+    },
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
+  ) {
+    SparkUnattendedPxeBootAdmitted { boot: b } =>
+      b.tftp_bootloader == "bootaa64.efi"
+    SparkUnattendedPxeBootRefused { reason: _ } =>
+      false
+  }
 }
 
 test fn w_red_admission_without_observation_refuses() -> Bool {
