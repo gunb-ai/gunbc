@@ -57,6 +57,7 @@ import v2.std.orchestration {
 import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 
 // Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash
 // command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf's
@@ -72,6 +73,20 @@ import v2.workflow.bash_command_fold_serialize {
 type BashShellExecutablePosition
   = DeclarationLiteral
   | HostEnvVar { name: String }
+  | ElevatedDeclarationLiteral
+
+// ElevatedDeclarationLiteral is the third RENDERING of argv[0], not a third kind of operation. The
+// operation row is named and bound exactly as DeclarationLiteral names and binds it; what differs
+// is that this foreign-executor transport crosses a privilege boundary, so the declaration literal
+// is executed THROUGH sudo. The words are extdeps.sudo.elevation sudo_elevate's -- the module that
+// owns sudo's calling convention (which binary, which flag, in which position) -- so this arm reads
+// an authority rather than respelling "sudo" and "-n" as two literals here, which is how the
+// corpus previously carried four copies of the same two tokens.
+//
+// It cannot elevate something the caller could not otherwise name: sudo_elevate transforms an argv
+// that is still derived from the operation declaration, and this arm has no parameter through which
+// a caller could substitute a different program. Elevation is therefore visible in the emitted
+// bytes and decided at the authoring leaf, never inside argv materialization.
 
 type BashBoundOperationInvocation {
   invocation: BoundOperationInvocation
@@ -90,6 +105,16 @@ fn bash_bind_operation_invocation(
   BashBoundOperationInvocation {
     invocation: bind_operation_invocation(at: at, bindings: bindings),
     executable_position: DeclarationLiteral
+  }
+}
+
+fn bash_bind_operation_invocation_elevated(
+  at: OperationRef,
+  bindings: List<OperationInputBinding>
+) -> BashBoundOperationInvocation {
+  BashBoundOperationInvocation {
+    invocation: bind_operation_invocation(at: at, bindings: bindings),
+    executable_position: ElevatedDeclarationLiteral
   }
 }
 
@@ -174,6 +199,8 @@ fn effect_plan_bash_command_from_argv(
 ) -> Node {
   match executable_position {
     DeclarationLiteral => bash_build_command_from_lits(lits: argv)
+    ElevatedDeclarationLiteral =>
+      bash_build_command_from_lits(lits: sudo_elevate_argv(command: argv))
     HostEnvVar { name: env_var } =>
       match list_head(xs: argv) {
         HeadAbsent => bash_build_command_from_lits(lits: [])

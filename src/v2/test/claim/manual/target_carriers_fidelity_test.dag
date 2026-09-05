@@ -16,7 +16,7 @@ fn dag_target_advertises_declared_loss() -> Bool {
 }
 
 fn rust_target_advertises_lossless() -> Bool {
-  match decode_fidelity_from_target(target: rust_target_model()) {
+  match decode_fidelity_from_target(target: rust_target_model_staging()) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
         Lossless => true

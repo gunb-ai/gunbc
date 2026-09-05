@@ -382,6 +382,12 @@ type Ampere = Measure<ElectricCurrent, One, Nat>
 // pitch with hundred-micrometre traces, which whole millimetres cannot express at all. Two
 // declarations of it were briefly authored in parallel and one was deleted — the concept is one,
 // and its reasons accumulate here rather than forking the type.
+// A LENGTH FINER THAN THE MICROMETRE, because a mesh chord error is genuinely sub-micrometre and
+// rounding it into micrometres would report the safest possible value -- zero -- for exactly the
+// deviations small enough to round away. The carrier is the same Length axis one decade down, not a
+// new quantity: DESIGN section 2's horizontal move, the way CubicMillimeter already reuses Nano.
+type Nanometer = Measure<Length, Nano, Nat>
+
 type Micrometer = Measure<Length, Micro, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
@@ -629,6 +635,38 @@ fn positive_shard_count_value(shards: PositiveShardCount) -> Int {
   }
 }
 
+// A BYTE QUANTITY THAT IS ACTUALLY A BOUND, on the Memory axis beside ByteSize and built the same
+// way over PositiveMeasureCount. It is not a second memory model: it is ByteSize's third parameter
+// exchanged for the positive count, so the two differ by exactly the distinction they carry.
+//
+// Zero is excluded by CONSTRUCTION rather than by a check, and the argument is the siblings': a
+// zero-byte limit is not a smaller limit, it is the absence of one. A consumer projecting this to a
+// live resource bound therefore needs no validator deciding whether a purported limit is a limit,
+// and ByteSize's Nat already rules out the `infinity` spelling at the other end.
+type FiniteByteSize = Measure<Memory, One, PositiveMeasureCount>
+
+fn finite_byte_size(count: PositiveMeasureCount) -> FiniteByteSize {
+  Measure { count: count }
+}
+
+fn finite_byte_size_count(size: FiniteByteSize) -> Int {
+  positive_measure_count_value(count: size.count)
+}
+
+type FiniteByteSizeBuild
+  = FiniteByteSizeBuilt { size: FiniteByteSize }
+  | FiniteByteSizeNonPositive { observed: Int }
+
+fn finite_byte_size_from_byte_size(size: ByteSize) -> FiniteByteSizeBuild {
+  let observed = byte_size_count(b: size)
+  match positive_measure_count_from_int(count: observed) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      FiniteByteSizeBuilt { size: finite_byte_size(count: positive) }
+    PositiveMeasureCountRefused { cause: _ } =>
+      FiniteByteSizeNonPositive { observed: observed }
+  }
+}
+
 fn watt(count: Nat) -> Watt {
   Measure { count: count }
 }
@@ -676,6 +714,21 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
+}
+
+fn nanometer(count: Nat) -> Nanometer {
+  Measure { count: count }
+}
+
+fn nanometer_count(n: Nanometer) -> Nat {
+  measure_count(n)
+}
+
+// EXACT IN THIS DIRECTION ONLY. A micrometre is a thousand nanometres, so widening never loses
+// anything; the reverse would floor, and a floored chord error is an error bound that flatters
+// itself, so no narrowing conversion is offered here.
+fn micrometer_to_nanometer(m: Micrometer) -> Nanometer {
+  nanometer(count: micrometer_count(m: m) * 1000)
 }
 
 fn micrometer(count: Nat) -> Micrometer {
