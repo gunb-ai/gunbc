@@ -26,6 +26,28 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE AUTHORITY IS PARTITIONED BY SOURCE FILE, BECAUSE ONE ANCHOR OVER FIVE FILES IS NOT A CITATION.
+//
+// An earlier revision pointed a single scope at `ray_config_def.h` with no further citations, while
+// the module asserted facts read from the factory body and the monitor implementation as well. That
+// gap is not cosmetic: it is WHY fifteen green witnesses did not catch a `master` diagnostic literal
+// sitting under a 2.58.0 pin. The witnesses compare authored values against authored expectations;
+// nothing in them establishes external-source fidelity, so the only thing that can is a citation
+// naming the file each fact came from.
+data ray_factory_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/multi_memory_monitor_factory.cc"
+  }
+}
+
+data ray_threshold_monitor_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/threshold_memory_monitor.cc"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -36,6 +58,30 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
+}
+
+data ray_built_monitors_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_built_monitors",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_factory_authority,
+  further_citations: []
+}
+
+data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_monitor_log_format",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_threshold_monitor_authority,
+  further_citations: [ray_factory_authority]
 }
 
 // ── THE REVISION IS THE ONE WE EXECUTE, NOT THE ONE THAT WAS EASIEST TO READ ────────────────────
@@ -112,14 +158,34 @@ data ray_config_absences: List<RayConfigAbsentAtRevision> = [
 
 // ── THE COMPILED-IN DEFAULTS AT THIS REVISION ───────────────────────────────────────────────────
 //
-// THESE ARE THE VALUES IN FORCE ON THIS FLEET, AND THAT IS AN OBSERVATION AND NOT AN ASSUMPTION:
-// `env | grep '^RAY_'` inside the serving container returns NOTHING on either host read. So there is
-// no deployment-layer choice to record anywhere -- what we chose is that we chose nothing, and every
-// value below is what actually governs.
+// THESE ARE COMPILED-IN DEFAULTS AND NOT, BY THEMSELVES, THIS FLEET'S EFFECTIVE CONFIGURATION.
+//
+// AN EARLIER REVISION CLAIMED THEY WERE "in force on this fleet" on the strength of an empty
+// `RAY_*` environment. That entailment does not hold: Ray reads the environment AND THEN applies a
+// JSON configuration list through `RayConfig::initialize`, so an empty environment rules out one
+// input and not the other. The observation was real; the conclusion drawn from it was larger than
+// the observation, which is the same shape as every other defect this module has already corrected.
+//
+// THE HONEST SPLIT, and the reason the fleet reading is not written here at all: this module owns
+// the ray-2.58.0 DEFAULTS. Which of them survive into an effective configuration is a join over an
+// observed environment and an observed config list, and both of those are receipts about OUR
+// deployment rather than facts about Ray -- so they belong in `gunbc.spark`, where an unobserved
+// config list is a coverage obligation that can be refused rather than a silence that reads as zero.
+// THE SENTINEL IS AN ARM, NOT A NEGATIVE NUMBER. `min_memory_free_bytes` defaults to -1, which is
+// upstream's DISABLED marker rather than a quantity. Carrying it as a signed byte count would make
+// "no floor configured" and "a floor of minus one byte" the same value, and ByteSize cannot hold the
+// sentinel honestly anyway. It is enumerated as a config above and consumed by the factory's
+// threshold calculation, so leaving its default out of this record while claiming the record IS the
+// defaults population was a partial surface presented as a complete one.
+type RayMinMemoryFree
+  = MinMemoryFreeDisabled
+  | MinMemoryFreeFloor { bytes: ByteSize }
+
 type RayThresholdMonitorDefaults {
   memory_usage_threshold: Percent
   memory_monitor_refresh: Millisecond
   max_kill_memory_buffer: ByteSize
+  min_memory_free: RayMinMemoryFree
   worker_killing_policy_by_group: Bool
   read_at: RaySourceRevision
 }
@@ -128,6 +194,7 @@ data ray_threshold_monitor_defaults: RayThresholdMonitorDefaults = RayThresholdM
   memory_usage_threshold: percent(count: 95),
   memory_monitor_refresh: millisecond(count: 250),
   max_kill_memory_buffer: gibibyte_to_byte_size(g: gibibyte(count: 3)),
+  min_memory_free: MinMemoryFreeDisabled,
   worker_killing_policy_by_group: false,
   read_at: ray_source_revision_read
 }
@@ -154,18 +221,21 @@ type RayMonitorLogLine
   | NodeMemoryAboveThreshold
   | UserSliceMemoryAboveThreshold
   | NodeMemoryUncapturable
+  | UserSliceSnapshotFailed
   | ThresholdMonitorDisabled
 
 fn ray_monitor_log_format(line: RayMonitorLogLine) -> NonEmptyStr {
   match line {
     ThresholdExceeded =>
-      "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB limit)" as NonEmptyStr
+      "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB total)" as NonEmptyStr
     NodeMemoryAboveThreshold =>
       "Node memory usage above threshold, used: %d, threshold_bytes: %d, total bytes: %d, threshold fraction: %f" as NonEmptyStr
     UserSliceMemoryAboveThreshold =>
       "User slice memory usage above threshold, used: %d, threshold_bytes: %d, total bytes: %d, threshold fraction: %f" as NonEmptyStr
     NodeMemoryUncapturable =>
       "Unable to capture node memory. Monitor will not be able to detect memory usage above threshold." as NonEmptyStr
+    UserSliceSnapshotFailed =>
+      "Failed to take user and system slice memory snapshot. The threshold memory monitor will not be able to provide resource isolation protection." as NonEmptyStr
     ThresholdMonitorDisabled =>
       "ThresholdMemoryMonitor disabled. Specify `RAY_memory_monitor_refresh_ms` > 0 to enable the monitor." as NonEmptyStr
   }
@@ -181,20 +251,29 @@ fn ray_monitor_line_reports_measurement(line: RayMonitorLogLine) -> Bool {
     NodeMemoryAboveThreshold => true
     UserSliceMemoryAboveThreshold => true
     NodeMemoryUncapturable => false
+    UserSliceSnapshotFailed => false
     ThresholdMonitorDisabled => false
   }
 }
 
-// THE THREE CAUSES OF A SILENT THRESHOLD LOG ARE ALL DECIDABLE, WHICH IS THE POINT OF CARRYING THE
-// DISABLED LINE. No threshold line means one of: the monitor ran and saw nothing above threshold
-// (neither line present); it ran and could not SEE (the uncapturable line present); or it was never
-// built at all (the disabled line present, naming the variable). Because the zero interval swaps the
-// OBJECT and logs on construction, the third is announced rather than inferred -- so a reader is
-// never left treating "no alarm" as evidence of safety.
-fn ray_startup_line_explains_threshold_silence(line: RayMonitorLogLine) -> Bool {
+// WHICH DIAGNOSTIC LINES EXPLAIN AN ABSENT THRESHOLD ALARM -- AND THE CLAIM IS NARROWED TO THAT.
+//
+// AN EARLIER DRAFT CLAIMED THIS DECIDED THREE CAUSES OF SILENCE. It cannot, and the reason is
+// structural rather than a wording slip: this takes a LINE, while the safe case is the ABSENCE of any
+// line. A function over present texts can never represent "nothing was printed", so it classifies the
+// explicit explanations and says nothing about the third outcome. Deciding BelowThreshold against
+// ObservationFailed against Disabled needs a carrier for an observation OUTCOME -- a reader's fact
+// about a captured log, not a property of a line -- so it belongs to whatever consumes the capture,
+// and this module does not fabricate it.
+//
+// WHAT REMAINS TRUE IS THE USEFUL PART: each of these lines, WHEN PRESENT, explains an absent alarm,
+// and none of them reports a measurement. A reader who finds none has established only that no
+// explanation was printed.
+fn ray_line_explains_absent_threshold_alarm(line: RayMonitorLogLine) -> Bool {
   match line {
     ThresholdMonitorDisabled => true
     NodeMemoryUncapturable => true
+    UserSliceSnapshotFailed => true
     ThresholdExceeded => false
     NodeMemoryAboveThreshold => false
     UserSliceMemoryAboveThreshold => false
