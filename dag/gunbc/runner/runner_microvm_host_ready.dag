@@ -30,8 +30,26 @@ import gunbc.command_runner {
 // module observes both as a typed standing, plans the one install it owns (the release tarball,
 // digest-verified, into an executor-owned root, so no host grant is spent on it), and refuses the
 // rest: the KVM group membership is a host grant that belongs to the runner host's sudoers roster,
-// not to this reconciler. Measured on srv2 on 2026-09-05: /dev/kvm present, executor not in kvm,
-// no Firecracker anywhere -- which is exactly the standing this module was written to say.
+// not to this reconciler.
+//
+// THE FIRST MEASUREMENT HERE WAS INVALIDATED BY THE MEASURER, WHICH IS WHY IT IS DATED AND
+// ATTRIBUTED RATHER THAN STATED AS THE HOST'S STANDING. Observed on srv2 2026-09-05: /dev/kvm
+// present, executor NOT in kvm, no Firecracker anywhere -- exactly the standing this module says.
+// Hours later the same operator ran the modeled argv BY HAND (sudo usermod -aG kvm ghrunner, the
+// grant already rendered at provisioning/srv2/gunbc-ghrunner.sudoers), so srv2 now reads
+// kvm=writable while every other host still reads present-not-writable. No Accepted program reads
+// an annotation, so the stale sentence could never go red; it was found only because the operator
+// was asked whether the grant was converged. The durable fact is the asymmetry: srv2's writability
+// is a property of one shell session, NOT of convergence, and it must not be read as evidence that
+// a host reaches this standing on its own.
+//
+// THE GAP THAT PERMITTED IT is that EnsureSupplementaryGroupMembership is AUTHORIZED and never
+// APPLIED: gunbc.runner.runner_host_grants runner_host_privileged_operations emits the row, and its
+// only consumer is runner_host_sudoers_content, which renders permission to run the argv. This
+// reconciler disclaims it (above). So the operation is granted by one module, disclaimed by
+// another, and executed by neither -- a hole an operator falls into once per host, by hand. The
+// refusal below is CORRECT and stays; what is missing is an applier for the host-grant ops, which
+// is an ownership decision about host actuation and not this module's to take unilaterally.
 
 type KvmDeviceStanding
   = KvmDeviceWritable
