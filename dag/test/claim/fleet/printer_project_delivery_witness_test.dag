@@ -1,0 +1,98 @@
+module test.claim.fleet.printer_project_delivery_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.nat { Nat }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.ietf.ftps {
+  FtpsEndpoint, FtpsExplicit, FtpsImplicit, FtpsVerifyPeer,
+  FtpsPeerVerificationDisabled, DeviceSelfSignedCertificateOnTrustedLan,
+  ftps_default_port, ftps_verifies_peer,
+}
+import gunbc.fleet.printer_project_delivery {
+  remote_name_for_digest, bambu_lan_endpoint, ftps_upload_url, upload_command_for,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE IS A DIGEST, NOT A PAYLOAD, because IdentifiedProjectPayload is sole_constructor and a
+// witness that could forge one would be testing the very thing the seal exists to prevent.
+fn probe_name(hex: NonEmptyStr) -> NonEmptyStr {
+  remote_name_for_digest(content: sha256_digest(hex: hex))
+}
+
+// THE PORT IS DERIVED FROM THE NEGOTIATION, BOTH WAYS. A comparison answering one way for every
+// input satisfies either half alone. Pairing them is what catches an implicit endpoint pinned to 21,
+// which connects and then stalls with a diagnostic that blames nothing.
+test fn w_the_ftps_port_follows_the_negotiation_in_both_directions() -> Bool {
+  ftps_default_port(negotiation: FtpsImplicit) == 990
+  && ftps_default_port(negotiation: FtpsExplicit) == 21
+}
+
+// AND VERIFICATION IS A DECISION, NOT A DEFAULT. If this ever reads false for FtpsVerifyPeer, a
+// weakening authored for one self-signed device has escaped to every endpoint.
+test fn w_peer_verification_is_waived_only_by_the_enumerated_peer_class() -> Bool {
+  ftps_verifies_peer(v: FtpsVerifyPeer)
+  && ftps_verifies_peer(
+       v: FtpsPeerVerificationDisabled { peer: DeviceSelfSignedCertificateOnTrustedLan }
+     ) == false
+}
+
+// THE REMOTE NAME IS THE CONTENT, so two different projects cannot land on one remote filename and
+// silently overwrite whichever print was queued first. Equal bytes SHOULD collide -- that overwrite
+// is a no-op -- so the witness asserts both directions rather than only distinctness.
+test fn w_the_remote_name_distinguishes_content_and_only_content() -> Bool {
+  (probe_name(hex: "aa11") as String) != (probe_name(hex: "bb22") as String)
+  && (probe_name(hex: "aa11") as String) == (probe_name(hex: "aa11") as String)
+}
+
+// THE LOCAL FILENAME NEVER REACHES THE WIRE. curl appends the local basename when a URL ends in a
+// slash, so a URL that did not spell the remote name would silently name the file after whatever the
+// local path happened to be -- and the local path here is deliberately misleading in the fixture.
+test fn w_the_upload_url_carries_the_derived_name_not_the_local_one() -> Bool {
+  let url = ftps_upload_url(
+    endpoint: bambu_lan_endpoint(host: "printer.invalid"),
+    remote_name: probe_name(hex: "aa11"),
+  )
+  url == "ftps://printer.invalid:990/gunbc-aa11.3mf"
+  && any(argv_words(command: probe_command()), a => a == url)
+}
+
+// THE TRANSFER CANNOT DEGRADE TO CLEARTEXT, IN EITHER OF THE TWO WAYS CURL OFFERS. --ssl merely
+// PREFERS TLS and exits 0 after proceeding in the clear when the server declines. --ftp-ssl-control
+// is the subtler one: it encrypts the LOGIN and leaves the DATA connection clear, so the access code
+// is protected and the file is not -- a form that would pass any check looking only for "some TLS
+// flag". This asserts the required form is present and BOTH permissive forms are absent, because a
+// builder emitting one of each would satisfy a one-sided check.
+test fn w_the_upload_requires_tls_rather_than_preferring_it() -> Bool {
+  let argv = argv_words(command: probe_command())
+  any(argv, a => a == "--ssl-reqd")
+  && any(argv, a => a == "--ssl") == false
+  && any(argv, a => a == "--ftp-ssl-control") == false
+}
+
+// THE CREDENTIAL REACHES CURL AS A BINDING, NEVER AS AN ARGUMENT. This is the enrolled control for
+// gunbc.credential_argv_exposure at this call site: on this fleet /proc has no hidepid and
+// /proc/PID/cmdline is 0444, so a --user word is readable by any job payload on a runner slot. The
+// witness asserts the netrc form is present AND that curl's two argv-borne credential flags are
+// absent -- an assertion that stays authorable, and would go red the moment someone "fixed" an auth
+// failure by adding --user back to the builder.
+test fn w_no_credential_is_ever_spelled_into_the_upload_argv() -> Bool {
+  let argv = argv_words(command: probe_command())
+  any(argv, a => a == "--netrc-file")
+  && any(argv, a => a == "--user") == false
+  && any(argv, a => a == "-u") == false
+}
+
+// THE LOCAL PATH IN THE FIXTURE IS DELIBERATELY MISLEADING: curl appends the local basename when a
+// URL ends in a slash, so a builder that failed to spell the remote name would name the remote file
+// after this, and the url witness would catch it.
+fn probe_command() -> ArgvCommand {
+  upload_command_for(
+    endpoint: bambu_lan_endpoint(host: "printer.invalid"),
+    local_path: "/tmp/whatever-the-local-file-is-called.3mf",
+    remote_name: probe_name(hex: "aa11"),
+    netrc_path: "/tmp/a-fixture-netrc-that-is-never-created" as FilePath,
+  )
+}

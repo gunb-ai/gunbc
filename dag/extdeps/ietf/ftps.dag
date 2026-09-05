@@ -1,0 +1,115 @@
+module extdeps.ietf.ftps
+
+import std.types { NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// FTP OVER TLS, modeled because a device this repository owns speaks it and nothing here did.
+//
+// THE TWO NEGOTIATIONS ARE DIFFERENT PROTOCOLS WEARING ONE NAME, and conflating them is the
+// failure this type exists to prevent. EXPLICIT FTPS connects in cleartext on the ordinary control
+// port and issues AUTH TLS to upgrade. IMPLICIT FTPS expects TLS from the first byte on a separate
+// port. A client that guesses wrong does not fail politely: an implicit server receives "AUTH TLS"
+// as TLS garbage and drops the connection, while an explicit server receives a ClientHello as an
+// unparseable command. Both surface as an unhelpful hangup, which is exactly the diagnostic that
+// sends someone to check the password.
+//
+// THE TWO HALVES HAVE DIFFERENT AUTHORITIES, and an earlier draft of this module cited only the
+// first for both. RFC 4217 standardises the EXPLICIT mechanism -- AUTH TLS over the normal control
+// port -- and that is its whole subject; it neither defines implicit FTPS nor assigns it a port.
+// The implicit form is not IETF-standardised at all: port 990 is an IANA service-name registration
+// (ftps-data 989 / ftps 990), and the client behaviour this repository actually depends on is
+// curl's, which treats the ftps:// scheme as TLS-from-the-first-byte. Citing the RFC for the
+// implicit leg would attribute to a standards document a fact it does not contain, which is the
+// nicknaming failure aimed at a source rather than at a symbol.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc4217"
+  }
+}
+
+data ftps_implicit_port_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml"
+  }
+}
+
+data ftps_implicit_client_behaviour_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "curl.se/docs/url-syntax.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ietf.ftps",
+      decl_name: "FtpsNegotiation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.ietf.ftps.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.ietf.ftps.ftps_implicit_port_authority,
+    extdeps.ietf.ftps.ftps_implicit_client_behaviour_authority,
+  ]
+}
+
+type FtpsNegotiation
+  = FtpsExplicit
+  | FtpsImplicit
+
+// THE DEFAULT PORTS ARE PART OF THE NEGOTIATION, NOT A SEPARATE CHOICE. Explicit FTPS runs on the
+// ordinary FTP control port because it BEGINS as ordinary FTP; implicit FTPS was assigned 990
+// precisely so the server could know TLS was coming without being told. Deriving the port from the
+// negotiation keeps a caller from pairing implicit with 21, which connects and then stalls.
+fn ftps_default_port(negotiation: FtpsNegotiation) -> Nat {
+  match negotiation {
+    FtpsExplicit => 21
+    FtpsImplicit => 990
+  }
+}
+
+// WHAT TLS VERIFICATION IS ACTUALLY BEING GIVEN UP, NAMED FOR WHAT IT COSTS RATHER THAN FOR THE
+// CERTIFICATE THAT PROMPTED IT. An earlier draft called the weakened arm FtpsAcceptSelfSigned, which
+// reads as "trust THIS peer's own certificate" -- a scoped pin. It is not: the realization is curl's
+// -k, which disables certificate-chain validation AND hostname verification together, so the
+// connection will accept ANY certificate from ANY peer that answers on that address. That is not a
+// pin, it is the absence of authentication, and a name that flatters it is the cosmetic-wrapper
+// failure: the type would carry a distinction the realization does not enforce.
+//
+// THE REASON IS A CLOSED CLASS, NOT A CALLER-AUTHORED STRING. A free `because: NonEmptyStr` lets any
+// consumer mint its own justification at the call site, which makes the weakening self-authorising --
+// the same defect as a caller-supplied roster or a caller-chosen criterion. Enumerating the admissible
+// peer classes here means adding a new excuse requires editing this module, where it is reviewable
+// beside the sentence describing what -k actually surrenders.
+//
+// The honest ceiling of the weakened arm is mitigation, not a rung: the transfer stays confidential
+// against a passive listener and remains fully open to an active one on the same LAN. Climbing it
+// means pinning the device's certificate or its public key -- a scoped pin, verified -- which is a
+// real construction rather than a rename, and is the trigger this arm is waiting on.
+type UnverifiablePeerClass
+  = | DeviceSelfSignedCertificateOnTrustedLan
+
+type FtpsPeerVerification
+  = FtpsVerifyPeer
+  | FtpsPeerVerificationDisabled { peer: UnverifiablePeerClass }
+
+fn ftps_verifies_peer(v: FtpsPeerVerification) -> Bool {
+  match v {
+    FtpsVerifyPeer => true
+    FtpsPeerVerificationDisabled { peer: _ } => false
+  }
+}
+
+type FtpsEndpoint {
+  host: NonEmptyStr
+  port: Nat
+  negotiation: FtpsNegotiation
+  verification: FtpsPeerVerification
+}

@@ -179,14 +179,6 @@ fn adjudicate_chord(o: ChordObservation, r: ChordRequirement) -> ChordStanding {
   }
 }
 
-fn standing_profile(s: ChordStanding) -> StlExportKnobs {
-  match s {
-    WithinRequiredDistinction { judgment: j } => observation_profile(o: j.observation)
-    ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_profile(o: o)
-    RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_profile(o: o)
-    ChordSubjectMismatch { observation: o, requirement: _ } => observation_profile(o: o)
-  }
-}
 
 fn standing_is_within(s: ChordStanding) -> Bool {
   match s {

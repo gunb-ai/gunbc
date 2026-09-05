@@ -28,9 +28,9 @@ import gunbc.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
+import gunbc.auth.netrc_binding { netrc_content }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
-  netrc_content,
   boot_override_body,
   reset_body
 }
@@ -237,7 +237,7 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
 
   let netrc_write = Filesystem.Write(
     path: bmc_onboard_netrc_path,
-    content: netrc_content(host: host, account: account, password: password)
+    content: netrc_content(machine: host as NonEmptyStr, login: account as NonEmptyStr, password: password as Secret)
   )
   if netrc_write.success == false {
     return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))

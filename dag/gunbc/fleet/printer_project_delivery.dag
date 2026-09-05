@@ -1,0 +1,378 @@
+module gunbc.fleet.printer_project_delivery
+
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
+import std.nat { Nat }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.curl { curl_ftps_upload_command }
+import extdeps.ietf.ftps {
+  FtpsEndpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
+  FtpsPeerVerification, FtpsVerifyPeer, FtpsPeerVerificationDisabled,
+  UnverifiablePeerClass, DeviceSelfSignedCertificateOnTrustedLan,
+  ftps_default_port, ftps_verifies_peer,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.shell
+import gunbc.auth.materialized_secret {
+  private_scoped_materialization_root, gunbc_private_materialization_dir,
+  ensure_gunbc_private_materialization_dir,
+}
+import gunbc.auth.netrc_binding {
+  NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
+  place_netrc_binding, shred_netrc_binding, netrc_binding_path,
+}
+import extdeps.exec.command { CommandTransport }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialFetch, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused,
+  fetch_secret_ref_credential,
+}
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.fleet_printer_access {
+  PrinterAccessCodeLocus, PrinterAccessCodeLocusLookup, PrinterAccessCodeLocusFound,
+  PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
+  printer_access_code_locus,
+}
+
+// DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
+//
+// THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. product.printed_chassis.slicing_toolchain owns whether
+// THIS repository may run OrcaSlicer; that question is currently answered "no" and its positive
+// capability is uninhabited. Coupling delivery to it would make the transport unprovable behind a
+// producer-side blocker, and would also be a category error: the printer does not care who sliced
+// the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
+// legitimate input here and says nothing false about this repository's slicing.
+//
+// THE PAYLOAD IS NOT CALLED A BAMBU PROJECT, and that restraint is deliberate. No authority in this
+// tree establishes the .3mf project format: there is no BambuProject type, and naming one here
+// would mint a format claim out of a filename. What IS known is that the machine consumes a file
+// and that this repository can identify the bytes it is sending. That is what the type says.
+type PrinterProjectPayload {
+  local_path: NonEmptyStr
+}
+
+// THE CONTENT IDENTITY IS TAKEN FROM THE BYTES, NEVER ACCEPTED FROM THE CALLER.
+//
+// An earlier draft carried `content: Digest` and `byte_length: Nat` as ORDINARY FIELDS of the payload
+// -- which meant the digest that named the remote file, justified the upload, and was sealed into the
+// receipt was a number the caller simply asserted, with nothing in the graph having read the file. It
+// is the same defect as every other one on this lane, one layer further out: a positive standing that
+// downstream trusts, supplied rather than earned. A caller could have handed a correct-looking digest
+// for bytes that were never at that path, and every consumer of the receipt would have believed it.
+//
+// So identification is an EFFECT, and the identified payload is sealed. Possessing an
+// IdentifiedProjectPayload is the evidence that sha256sum actually read the file at that exact path;
+// there is no other way to obtain one. An unreadable file REFUSES rather than yielding the digest of
+// nothing -- extdeps.tools.sha256sum already draws that distinction, and this consumes it rather than
+// re-deciding it.
+// THE BYTES ARE COPIED INTO AN OWNED REALIZATION BEFORE THEY ARE HASHED, AND IT IS THAT COPY THAT IS
+// UPLOADED. Hashing the caller's path and then handing the same path to curl would have been B13 for
+// the third time on this lane: a correct observation decaying into a mutable locator before it is
+// spent. The digest would have proved what was at that path WHEN sha256sum ran, while curl opens the
+// path LATER -- so replacing or truncating the file in between ships different bytes under a receipt
+// that still names the old digest, and every downstream consumer believes it. The property that has
+// to hold is not "path identified == path later opened" but "bytes identified == bytes curl reads",
+// and only an owned copy gives that.
+//
+// A COPY RATHER THAN A READ, because a .3mf is binary and Filesystem.Read carries String content; a
+// read-then-write round trip would corrupt the payload it was meant to preserve. shell.Copy.File is
+// the modeled cp.
+//
+// The realization lands under private_scoped_materialization_root -- RUNNER_TEMP when set, else a
+// mktemp -d, which is 0700 -- rather than a fixed /tmp name, so two concurrent deliveries cannot
+// collide on one path and nothing outside the run holds a writable handle to it. RESIDUE, stated
+// rather than absorbed: this narrows the window to the private directory's own lifetime; it does not
+// make mutation impossible, and a genuinely structural close is content-addressed storage where the
+// name IS the digest. That is the trigger this arm is waiting on.
+type OwnedProjectRealization sole_constructor {
+  path: FilePath
+}
+
+type IdentifiedProjectPayload sole_constructor {
+  realization: OwnedProjectRealization
+  content: Digest
+}
+
+type PayloadIdentification
+  = PayloadIdentified { payload: IdentifiedProjectPayload }
+  | PayloadIdentificationRefused { local_path: NonEmptyStr, cause: NonEmptyStr }
+
+func identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentification {
+  match private_scoped_materialization_root() {
+    Absent =>
+      PayloadIdentificationRefused {
+        local_path: payload.local_path,
+        cause: "no private materialization root could be established, so the payload could not be copied anywhere this run owns",
+      }
+    Present { value: root } =>
+      if ensure_gunbc_private_materialization_dir(root: root) == false {
+        PayloadIdentificationRefused {
+          local_path: payload.local_path,
+          cause: "the private materialization directory could not be created",
+        }
+      } else {
+        let destination =
+          concat(gunbc_private_materialization_dir(root: root) as String, "/project-payload") as FilePath
+        if shell.Copy.File(
+          source: payload.local_path as FilePath,
+          destination: destination
+        ).success == false {
+          PayloadIdentificationRefused {
+            local_path: payload.local_path,
+            cause: "the project file could not be copied into the run's own materialization",
+          }
+        } else {
+          match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+            Sha256FileDigestUnavailable { path: _, reason: _ } =>
+              PayloadIdentificationRefused {
+                local_path: payload.local_path,
+                cause: "the copied realization could not be read, so its content identity was never observed",
+              }
+            Sha256FileDigest { digest: digest } =>
+              PayloadIdentified {
+                payload: IdentifiedProjectPayload {
+                  realization: OwnedProjectRealization { path: destination },
+                  content: digest,
+                },
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE NAMING RULE IS SEPARATED FROM THE PROVENANCE SEAL, and the separation is what keeps this
+// checkable. IdentifiedProjectPayload is sole_constructor precisely so nobody outside this module can
+// assert a content identity -- which also means no witness can build one, so a rule reachable only
+// through the sealed type would have no authorable RED and its check would be a decoration. The rule
+// itself is a pure function of a Digest and is exercised directly; the seal governs where that Digest
+// is allowed to come from. Two different questions, kept apart rather than fused into one signature.
+fn remote_name_for_digest(content: Digest) -> NonEmptyStr {
+  concat(concat("gunbc-", content.hex as String), ".3mf") as NonEmptyStr
+}
+
+fn project_remote_name(payload: IdentifiedProjectPayload) -> NonEmptyStr {
+  remote_name_for_digest(content: payload.content)
+}
+
+// WHAT AN UPLOAD ESTABLISHED, STATED AT THE STRENGTH FTPS ACTUALLY OBSERVES.
+//
+// THE FIELD IS NAMED FOR THE LOCAL BYTES ON PURPOSE. A completed curl transfer establishes that the
+// server accepted a transfer of the realization this invocation selected, under this remote name. It
+// does NOT establish that the printer's storage now holds bytes whose digest is D: nothing here read
+// anything back off the device. An earlier field named `delivered: Digest` implied exactly that
+// stronger claim, and it would have been spent by MQTT as though the remote object had been verified
+// -- rung inflation on the one value the control channel trusts. Narrowing the NAME is the fix,
+// because the receipt is consumed by a lane that cannot re-derive what it means.
+//
+// Establishing remote-equals-local needs an independent readback -- a size, a listing, a hash the
+// device will report -- and if the Bambu FTPS surface exposes one, that is a separate climb with its
+// own evidence. Until then this receipt says: THESE local bytes were what this upload was instructed
+// to send, and the server accepted the transfer.
+//
+// THE CREDENTIAL VERSION IS CARRIED because a delivery that authenticated with a rotated code is a
+// different event from one that did not, and fleet_printer_access pins exact Secret Manager versions
+// precisely so that distinction survives.
+type ProjectUploadReceipt sole_constructor {
+  printer: PhysicalAssetIdentity
+  uploaded_local_digest: Digest
+  remote_name: NonEmptyStr
+  endpoint_host: NonEmptyStr
+  resolved_credential_version: SmResolvedVersionIdentity
+}
+
+fn receipt_printer(r: ProjectUploadReceipt) -> PhysicalAssetIdentity { r.printer }
+fn receipt_uploaded_local_digest(r: ProjectUploadReceipt) -> Digest { r.uploaded_local_digest }
+fn receipt_remote_name(r: ProjectUploadReceipt) -> NonEmptyStr { r.remote_name }
+
+type ProjectDelivery
+  = ProjectDelivered { receipt: ProjectUploadReceipt }
+  | ProjectDeliveryRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+  | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
+
+// THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
+// a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 with
+// a self-signed certificate, and the account name is fixed by the firmware; the password is the LAN
+// access code, which lives only in Secret Manager and is resolved per delivery.
+data bambu_lan_ftps_user: NonEmptyStr = "bblp"
+
+fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {
+  FtpsEndpoint {
+    host: host,
+    port: ftps_default_port(negotiation: FtpsImplicit),
+    negotiation: FtpsImplicit,
+    verification: FtpsPeerVerificationDisabled {
+      peer: DeviceSelfSignedCertificateOnTrustedLan,
+    },
+  }
+}
+
+fn ftps_upload_url(endpoint: FtpsEndpoint, remote_name: NonEmptyStr) -> String {
+  concat(
+    concat(concat("ftps://", endpoint.host as String), concat(":", to_string(n: endpoint.port))),
+    concat("/", remote_name as String),
+  )
+}
+
+// THE UPLOAD COMMAND, WHICH TAKES A CREDENTIAL BINDING AND CANNOT BE HANDED A SECRET.
+//
+// AN EARLIER DRAFT OF THIS FUNCTION TOOK `credential: Secret` AND RENDERED IT INTO curl's --user.
+// That was not a lapse in an unexplored area -- it re-created, verbatim, the class
+// gunbc.credential_argv_exposure exists to enumerate and retire, on a fleet where /proc carries no
+// hidepid and /proc/PID/cmdline is mode 0444, and where the identical defect had already been found
+// and repaired on the Redfish side by DELETING the `-u {username}:{password}` arms in favour of a
+// 0600 netrc. The comment that stood here even argued the parameter was the safe design because the
+// secret was "a parameter and never a literal", which is the failure this session keeps meeting in
+// new costumes: a justification supplied beside the thing it is supposed to justify.
+//
+// So the secret never becomes an argument. The account name and the access code live together in a
+// netrc file, and what crosses into argv is a PATH.
+fn upload_command_for(
+  endpoint: FtpsEndpoint,
+  local_path: NonEmptyStr,
+  remote_name: NonEmptyStr,
+  netrc_path: FilePath,
+) -> ArgvCommand {
+  curl_ftps_upload_command(
+    url: ftps_upload_url(endpoint: endpoint, remote_name: remote_name),
+    local_path: local_path as String,
+    netrc_path: netrc_path,
+    skip_verification: ftps_verifies_peer(v: endpoint.verification) == false,
+  )
+}
+
+fn project_upload_command(
+  endpoint: FtpsEndpoint,
+  payload: IdentifiedProjectPayload,
+  netrc_path: FilePath,
+) -> ArgvCommand {
+  upload_command_for(
+    endpoint: endpoint,
+    local_path: payload.realization.path as NonEmptyStr,
+    remote_name: project_remote_name(payload: payload),
+    netrc_path: netrc_path,
+  )
+}
+
+data printer_netrc_path: FilePath = "/tmp/gunbc_printer_netrc" as FilePath
+
+// THE DELIVERY EFFECT, WHICH OWNS THE WHOLE CHAIN FROM PRINTER IDENTITY TO RECEIPT.
+//
+// printer -> locus -> fetch -> owner-only binding -> curl -> shred -> receipt. Every link is here
+// rather than split across the caller, because a chain assembled by the caller is a chain the caller
+// can shortcut: the reason this function takes a PhysicalAssetIdentity and not a Secret is that the
+// only way to reach an upload is to have gone through the locus roster and Secret Manager. The
+// mechanics of the binding itself -- the 0600 creation, the O_EXCL rewrite order, why the write is
+// checked -- are gunbc.auth.netrc_binding's facts and are stated there, once.
+//
+// THE SHRED RUNS ON EVERY ARM OUT OF THE TRANSFER, including the failing one: a refused upload that
+// leaves the access code on disk has turned a transient failure into a standing exposure.
+//
+// THE RECEIPT IS MINTED FROM payload.content -- the same digest that named the remote file and the
+// same value curl was pointed at -- and only inside the exit-zero arm of a real transfer. It cannot
+// be reached by any path that did not move bytes.
+// THE EXIT CLASSIFICATION IS ALREADY MADE, and deliver_project_to_printer below does not re-derive
+// it. Nothing in its match compares an exit code: run_shell_command_capture applies ExitZeroSucceeds
+// and returns ProcessRefused for a non-zero exit, carrying the code and stderr. An earlier draft
+// invented `exit_code` and `output` fields on the OUTPUT arms and re-tested `code == 0` -- two
+// defects at once, since those fields do not exist on those variants and the test duplicated a
+// policy this module does not own. With -fsS a completed transfer is precisely the admitted-exit
+// arms, and the empty/non-empty stdout split that separates them says nothing about whether the file
+// arrived, which is why both map to one receipt.
+//
+// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
+// literal would be two places a receipt could be authored, and the point of sealing it is that there
+// is exactly one.
+fn delivered_receipt(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  endpoint: FtpsEndpoint,
+  credential_version: SmResolvedVersionIdentity,
+) -> ProjectDelivery {
+  ProjectDelivered {
+    receipt: ProjectUploadReceipt {
+      printer: printer,
+      uploaded_local_digest: payload.content,
+      remote_name: project_remote_name(payload: payload),
+      endpoint_host: endpoint.host,
+      resolved_credential_version: credential_version,
+    }
+  }
+}
+
+func deliver_project_to_printer(
+  printer: PhysicalAssetIdentity,
+  host: NonEmptyStr,
+  payload: IdentifiedProjectPayload,
+  token_source: AccessTokenSource,
+  transport: CommandTransport,
+) -> ProjectDelivery
+  uses net: Network
+{
+  match printer_access_code_locus(printer: printer) {
+    PrinterAccessCodeLocusUnknown { printer: p } =>
+      ProjectDeliveryUnattempted {
+        printer: p,
+        cause: "no access-code locus is recorded for this printer in gunbc.fleet.fleet_printer_access",
+      }
+    PrinterAccessCodeLocusConflict { printer: p, matches: _ } =>
+      ProjectDeliveryUnattempted {
+        printer: p,
+        cause: "more than one access-code locus matches this printer; the roster is ambiguous and delivery refuses rather than picking one",
+      }
+    PrinterAccessCodeLocusFound { locus: locus } =>
+      match fetch_secret_ref_credential(secret_ref: locus.secret, token_source: token_source) {
+        SecretCredentialAccessUpsertRequired { plan: _ } =>
+          ProjectDeliveryUnattempted {
+            printer: printer,
+            cause: "the access code could not be read: Secret Manager access has not been granted to this identity",
+          }
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          ProjectDeliveryUnattempted {
+            printer: printer,
+            cause: "the Secret Manager response for the access code did not decode",
+          }
+        SecretCredentialFetchRefused { reason: reason } =>
+          ProjectDeliveryUnattempted { printer: printer, cause: reason }
+        SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
+          endpoint = bambu_lan_endpoint(host: host)
+          match place_netrc_binding(
+            path: printer_netrc_path,
+            machine: endpoint.host,
+            login: bambu_lan_ftps_user,
+            password: credential
+          ) {
+            NetrcBindingRefused { cause: cause } =>
+              ProjectDeliveryUnattempted { printer: printer, cause: cause }
+            NetrcBindingPlaced { binding: binding } => {
+            outcome = run_shell_command_capture(
+              command: project_upload_command(
+                endpoint: endpoint,
+                payload: payload,
+                netrc_path: netrc_binding_path(binding: binding)
+              ),
+              transport: transport
+            )
+            let _ = shred_netrc_binding(binding: binding)
+            let _ = shell.Remove.FileForce(path: payload.realization.path)
+            match outcome {
+              ProcessRefused { exit_code: _, stderr: stderr } =>
+                ProjectDeliveryRefused {
+                  printer: printer,
+                  cause: concat("the transfer did not complete: ", stderr) as NonEmptyStr,
+                }
+              ProcessOutputAbsent => delivered_receipt(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version)
+              ProcessOutputPresent { text: _ } => delivered_receipt(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version)
+            }
+          }
+        }
+      }
+  }
+  }
+}
