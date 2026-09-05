@@ -240,19 +240,10 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
 /// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285): a typed
 /// refusal with a `Display`, returned by `Result`, the exit taken at the command boundary.
 ///
-/// THIS WIDENS main.rs's DECLARED DIVERGENCE FROM ITS EMITTED FORM, AND THE NEXT PERSON TO
-/// CLOSE THAT DIVERGENCE WILL DELETE THIS REPAIR UNLESS THEY READ THIS.
-///
-/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` -- two `panic!`s
-/// and the `.ok()`. Sanctioned, not drift: `main.rs` is a `hand_maintained_stage0_filenames`
-/// member, suppressed from the derived generated population, and
-/// `gunbc.emit_diagnostic_observation` names it as this repository's one declared divergence.
-///
-/// But `gunbc.plans.seed_debt_bundle_item_2` plans to wire the main-emit path, move `main.rs`
-/// into the generated population and regen -- which emits a panic back over this typed refusal.
-/// Whoever does it owes `emit_main_rs` this repair FIRST, or the regen is a safety regression
-/// wearing a green diff. Two bodies for one function carry OPPOSITE failure semantics; this one
-/// is authoritative until that wiring lands.
+/// `v1.05_emit_rust` `emit_main_rs` now emits the same three refusal arms before wiring the
+/// candidate compile handler. `main.rs` remains a declared hand-maintained divergence for its
+/// other retained host bodies, but executing the emitted compile entry no longer regresses this
+/// boundary to panic-or-ignore semantics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OutputWriteRefusal {
     OutputDirectoryNotCreated {
