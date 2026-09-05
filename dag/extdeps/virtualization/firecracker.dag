@@ -39,6 +39,9 @@ data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
 // access to /dev/kvm exposed by the KVM module. Modeled as a datum rather than prose because a
 // consumer must be able to refuse on it, and prose cannot be read by an Accepted program.
 data firecracker_requires_kvm_device: FilePath = "/dev/kvm"
+// The group udev hands /dev/kvm to on Ubuntu (50-udev-default.rules: KERNEL=="kvm", GROUP="kvm",
+// MODE="0660"); a process that is not a member cannot open the device.
+data kvm_device_group: NonEmptyStr = "kvm" as NonEmptyStr
 
 // THE RELEASE ARTIFACT IS IDENTIFIED BY VERSION, ARCHITECTURE AND DIGEST, all three read from the
 // upstream release page on 2026-09-05: firecracker-v1.16.1-aarch64.tgz and the sha256 upstream

@@ -1,5 +1,8 @@
 module test.claim.runner_microvm_host_ready_witness
 
+import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
+import gunbc.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner_host_deploy { srv2_runner_host_deploy }
 import std.types { String, Bool, List }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.virtualization.firecracker {
@@ -69,4 +72,23 @@ test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_dig
     && !any(concat(fetch, install), c => any(c.arguments, a => string_contains(s: a, pattern: firecracker_release_aarch64_tarball_sha256 as String)))
     && firecracker_installed_binary(root: root, rel: firecracker_release_aarch64) == "/home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64/firecracker"
     && starts_with(s: root, prefix: "/home/x/")
+}
+
+// THE KVM GRANT IS ONE EXACT COMMAND ON EVERY RUNNER HOST. usermod is a whole-binary sudo grant, so
+// what keeps it narrow is the rendered argv: append one group to one login and nothing else, and the
+// sudoers line carries exactly that argv. The srv2 deploy is the host the readiness observation
+// measured the missing membership on.
+test fn the_kvm_grant_appends_one_group_to_the_executor_and_nothing_else() -> Bool {
+  let op = EnsureSupplementaryGroupMembership { login: "gunbc-ci" as NonEmptyStr, group: "kvm" as NonEmptyStr }
+  map(executor_privileged_operation_argv(op: op), w => w as String) == ["/usr/sbin/usermod", "-aG", "kvm", "gunbc-ci"]
+    && (executor_privileged_operation_sudoers_line(grantee: "gunbc-ci" as NonEmptyStr, op: op) as String) == "gunbc-ci ALL=(root) NOPASSWD: /usr/sbin/usermod -aG kvm gunbc-ci"
+}
+
+test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
+  let job = srv2_runner_host_deploy.job_user
+  length(filter(runner_host_privileged_operations(deploy: srv2_runner_host_deploy), op =>
+    match op {
+      EnsureSupplementaryGroupMembership { login: l, group: g } => (l as String) == (job as String) && (g as String) == "kvm"
+      _ => false
+    })) == 1
 }
