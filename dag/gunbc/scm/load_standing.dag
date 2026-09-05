@@ -39,15 +39,30 @@ import std.types { Bool }
 // "I could not read this" and "I read this, and it is a delta" have opposite remedies.
 // A SIXTH ARM, AND IT IS NOT A KIND OF PARTIAL. LoadPartial says "I read this, and it is a delta --
 // fetch the named identities and it completes". That promise is FALSE for a requirement whose locator
-// is occupied by an authored source: something is already there, it is the wrong kind, and no fetch
-// repairs it. Answering LoadPartial sends a reader to fetch an object that is not missing, which is
-// the same fabricated fetchable absence the object model closed at the record level -- re-entering
-// here at the standing level, because a wrong-kind requirement and an absent one both fail to be
-// complete and the two-valued question could not tell them apart.
+// is occupied by an object of the wrong kind: something is already there, and no fetch repairs it.
+// Answering LoadPartial sends a reader to fetch an object that is not missing, which is the same
+// fabricated fetchable absence the object model closed at the record level -- re-entering here at
+// the standing level, because a wrong-kind requirement and an absent one both fail to be complete
+// and the two-valued question could not tell them apart.
+//
+// IT NAMES THE PREDICAMENT, NOT THE OCCUPANT, and that is why it survived a third object kind
+// without splitting. It read LoadRequiresNodeAtAuthoredSource while an authored source was the only
+// thing that could occupy a semantic requirement; a corpus manifest can too, and the STANDING is
+// identical for both -- unsatisfiable as asserted, unrepairable by any fetch, and not permitted to
+// supersede. Two arms would be one contract under two names. WHICH kind was found is a fact the
+// refusal cause already carries, at the grain that has a remedy attached.
+//
+// IT DOES NOT NAME THE REQUIRED KIND EITHER, and the rename to LoadRequirementAtWrongKind is what
+// made that true. It read LoadRequiresNodeAtWrongKind, which was accurate while only a SEMANTIC
+// CHILD could be requirement-shaped; a manifest entry requires an AUTHORED SOURCE at a locator, and
+// that requirement lands in exactly the same predicament for exactly the same reasons. Keeping the
+// node in the name and routing a source requirement through it would be one name carrying two
+// contracts -- the meaning fork DESIGN section 3 forbids -- and the alternative, a second standing
+// with identical semantics, is the nickname it forbids from the other side.
 type LoadStanding
   = LoadComplete
   | LoadPartial
-  | LoadRequiresNodeAtAuthoredSource
+  | LoadRequirementAtWrongKind
   | LoadUnsupportedProtocol
   | LoadDocumentMalformed
   | LoadIdentityCollision
@@ -64,7 +79,7 @@ type LoadStanding
 // The relation itself survives unchanged in content: `LoadDocumentMalformed` is still the sole
 // standing that permits superseding a generation, and the FIVE refusals are still refused for five
 // different reasons rather than by one rule. This said "four" and listed four while the coproduct
-// carried a fifth: `LoadRequiresNodeAtAuthoredSource` landed without being added here, so the
+// carried a fifth: `LoadRequirementAtWrongKind` landed without being added here, so the
 // rationale list was a census of the population as it stood when the sentence was written --
 //
 //   LoadComplete            nothing is wrong; there is nothing to replace.
@@ -78,7 +93,7 @@ type LoadStanding
 //                           is prevented by construction). A collision means the structural locator
 //                           cannot represent both, not that either is damaged -- so superseding
 //                           discards a valid generation over an honest hash coincidence.
-//   LoadRequiresNodeAtAuthoredSource
+//   LoadRequirementAtWrongKind
 //                           the document read fine and what it ASSERTS is unsatisfiable: a position
 //                           that must hold a semantic node names authored source. No fetch repairs
 //                           it, and no rewrite of the bytes is owed -- the writer's generation is
@@ -96,7 +111,7 @@ type LoadStanding
 // Whether a standing represents a load that produced a usable closure at all. LoadPartial answers
 // TRUE: a delta is usable, it simply needs its missing objects supplied before checkout.
 //
-// LoadRequiresNodeAtAuthoredSource answers FALSE, and it is the arm that shows why this is not the
+// LoadRequirementAtWrongKind answers FALSE, and it is the arm that shows why this is not the
 // same question as "did bytes arrive". The document read fine and its object table is intact; what it
 // asserts is unsatisfiable -- a program is required where a file sits, and no supply step completes
 // it. Grouping it with LoadPartial because both are "not complete" would tell a caller to fetch, and
@@ -105,7 +120,7 @@ fn standing_loaded(standing: LoadStanding) -> Bool {
   match standing {
     LoadComplete => true
     LoadPartial => true
-    LoadRequiresNodeAtAuthoredSource => false
+    LoadRequirementAtWrongKind => false
     LoadUnsupportedProtocol => false
     LoadDocumentMalformed => false
     LoadIdentityCollision => false
