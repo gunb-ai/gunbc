@@ -35,9 +35,23 @@ import extdeps.uri { Uri, uri_wire }
 // non-terminating one, and the honest arms are exhaustion or refusal, never a truncated result
 // wearing the shape of a complete one.
 //
-// max_pages is PositiveInt rather than Int because a zero-page budget refuses every fold before it
-// begins, which is a policy nobody means and which would report the same refusal as a genuine
-// overrun. The single authority for positivity is std.integer, consumed rather than re-minted.
+// max_pages is PositiveInt rather than Int because a zero-page budget would refuse every fold
+// before it begins -- a policy nobody means, reported with the same refusal as a genuine overrun.
+// The single authority for positivity is std.integer, consumed rather than re-minted.
+//
+// THE REFINEMENT IS A PARTIAL WALL, AND THE MEASUREMENT IS RECORDED HERE RATHER THAN ASSUMED.
+// Probed on this tree: a LITERAL violation refuses (`PageSize { count: 0 }` gives "expected
+// 'Product(PositiveInt)', got 'Primitive(Int)'") and a literal `50` is admitted, so the refinement
+// is genuinely evaluated for literals. An `Int`-typed DECLARATION REFERENCE is admitted WITHOUT
+// that check, whatever its value. `as PositiveInt` is not an escape either: it refuses at
+// evaluation, because `Int` is not `Nat` and the conversion is not representable.
+//
+// So the guarantee this field carries is: no caller can write a non-positive bound as a literal.
+// A caller routing a non-positive `Int` row into it is not stopped by this type today. Every
+// construction in this repository passes a literal or a positive cited row, so no live value is
+// wrong -- the gap is in what the type FORBIDS, not in what it currently holds. Saying "PositiveInt
+// therefore it cannot be zero" without that qualifier would be the prose-over-enforcement claim
+// this module has already had to correct once.
 type PageBound {
   max_pages: PositiveInt
 }
