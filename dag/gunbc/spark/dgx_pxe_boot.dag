@@ -264,14 +264,13 @@ type SparkPxeFirmwareGap
   | PxeSupportDisabled
   | NicPxeBootDisabled
 
+// THE ENROLLED BOOTLOADER FILENAME is carried from firmware enrollment through to the
+// boot plan so that the DHCP bootfile offer and the TFTP path agree with what is
+// enrolled in Secure Boot. When SecureBootDisabledForPxe, this is none and the standard
+// per-image bootloader path applies.
 type SparkPxeFirmwareStanding
   = SparkPxeFirmwareReady {
       enrolled_bootloader: NonEmptyStr?,
-      // THE ENROLLED BOOTLOADER FILENAME, when the firmware has a Signed Bootloader
-      // enrolled. This MUST be used as the tftp_bootloader in the boot plan so that
-      // the DHCP bootfile offer and the TFTP path agree with what is enrolled in
-      // Secure Boot. When SecureBootDisabledForPxe, this is none and the standard
-      // per-image bootloader path applies.
     }
   | SparkPxeFirmwareHumanInterventionRequired { intervention: HumanIntervention }
 
@@ -361,10 +360,6 @@ fn spark_unattended_image_boot(
       dhcp_direction: pxe_network_isolation_dhcp_direction(isolation: isolation),
       image_http_root: http_image_root,
     },
-    // USE THE ENROLLED BOOTLOADER FILENAME when one is provided; fall back to the
-    // standard per-image bootloader path. This ensures the DHCP bootfile offer and
-    // TFTP path agree with what is enrolled in Secure Boot (spark-2196 used
-    // bootaa64.efi, which differed from the documented grubnetaa64.efi.signed).
     tftp_bootloader: match enrolled_bootloader {
       Present { value: b } => b
       Absent => spark_pxe_tftp_relative_path(p: TftpBootloader, image: image_kind)
