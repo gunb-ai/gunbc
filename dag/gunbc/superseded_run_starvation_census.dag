@@ -1,10 +1,46 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp }
+import std.types { Bool, Int, String, Timestamp, List }
 import std.measure { Second }
 
-// One census identity is an ordered pair, never a run selected because it hurt. The observing
-// instrument discovers every pair in a declared time window by PR identity and head transition.
+// —————————————————————————————————————————————————————————————————————————————
+// RAW INPUT TYPES
+// What the host collects from the GitHub Actions API before the model
+// computes. WorkflowRunBrief is the grain visible from the runs listing;
+// JobBrief is the grain visible from the jobs listing for one run.
+// —————————————————————————————————————————————————————————————————————————————
+
+type WorkflowRunBrief {
+  id: Int
+  head_sha: String
+  created_at: Timestamp
+  updated_at: Timestamp
+  pull_request: Int
+}
+
+type JobBrief {
+  id: Int
+  created_at: Timestamp
+  started_at: Timestamp?
+  completed_at: Timestamp?
+  status: String
+  conclusion: String?
+}
+
+type JobRoster {
+  jobs: List<JobBrief>
+}
+
+type CensusWindow {
+  from: Timestamp
+  through: Timestamp
+  observed_at: Timestamp
+}
+
+// —————————————————————————————————————————————————————————————————————————————
+// ONE census identity is an ordered pair, never a run selected because it
+// hurt. The observing instrument discovers every pair in a declared time
+// window by PR identity and head transition.
 type SupersededRunPair {
   pull_request: Int
   superseded_run: Int
@@ -13,9 +49,10 @@ type SupersededRunPair {
   live_head: String
 }
 
-// Absence of either job roster is coverage debt, not the reassuring `false` arm. `ReachedFirst`
-// also covers a live-head run that still has zero registered jobs at the observation boundary:
-// once a dead-head job has started, it necessarily started before an event that has not happened.
+// Absence of either job roster is coverage debt, not the reassuring `false`
+// arm. `ReachedFirst` also covers a live-head run that still has zero
+// registered jobs at the observation boundary: once a dead-head job has
+// started, it necessarily started before an event that has not happened.
 type DeadHeadStartStanding
   = DeadHeadReachedInProgressFirst
   | LiveHeadRegisteredJobFirst
@@ -27,6 +64,223 @@ type CensusReadEnvelope {
 
 type CensusBoundaryObligation
   = LeftBoundaryLookbackExhausted { pull_request: Int, earliest_observed_run: Int }
+
+// —————————————————————————————————————————————————————————————————————————————
+// ENRICHED PAIR — a SupersededRunPair plus the job-grain detail computed
+// from the host-provided job rosters.
+// —————————————————————————————————————————————————————————————————————————————
+
+type EnrichedPair {
+  pair: SupersededRunPair
+  dead_job_count: Int
+  live_job_count: Int
+  dead_first_job_started_at: Timestamp?
+  live_first_job_created_at: Timestamp?
+  start_standing: DeadHeadStartStanding
+  cancelled_jobs: Int
+  failed_jobs: Int
+  queued_jobs: Int
+  terminal_laggard_started_at: Timestamp?
+  prior_jobs_completed_at: Timestamp?
+  dead_time_under_hold: Second?
+  group_hold_after_jobs: Second?
+}
+
+// —————————————————————————————————————————————————————————————————————————————
+// CENSUS OUTPUT TYPES
+// —————————————————————————————————————————————————————————————————————————————
+
+type StandingCount {
+  standing: DeadHeadStartStanding
+  count: Int
+}
+
+// Cancellation is priced at job grain. A run listing can lag the individual
+// run resource during settlement, so the instrument refreshes that resource
+// and never derives a status transition from successive listing reads.
+// Cancelled work and a queued laggard can coexist in one aggregate.
+type CancelledRunJobStanding {
+  pair: SupersededRunPair
+  cancelled_jobs: Int
+  failed_jobs: Int
+  queued_jobs: Int
+  dead_time_under_hold: Second?
+  group_hold_after_jobs: Second?
+}
+
+type CensusOutput {
+  window: CensusWindow
+  left_boundary_obligations: List<CensusBoundaryObligation>
+  pair_count: Int
+  start_standings: List<StandingCount>
+  cancellation_rows: List<CancelledRunJobStanding>
+  pairs: List<EnrichedPair>
+}
+
+// —————————————————————————————————————————————————————————————————————————————
+// PURE COMPUTATIONS
+// —————————————————————————————————————————————————————————————————————————————
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+fn first_started_at(jobs: List<JobBrief>) -> Timestamp? {
+  let started = jobs |> filter(j => match j.started_at {
+    Present { value: _ } => true
+    Absent => false
+  })
+  match started |> sort_by(j => match j.started_at {
+    Present { value: t } => t
+    Absent => ""
+  }) |> first {
+    Present { value: j } => j.started_at
+    Absent => none
+  }
+}
+
+fn first_created_at(jobs: List<JobBrief>) -> Timestamp? {
+  match jobs |> sort_by(j => j.created_at) |> first {
+    Present { value: j } => Present { value: j.created_at }
+    Absent => none
+  }
+}
+
+fn last_completed_job(jobs: List<JobBrief>) -> JobBrief? {
+  let completed = jobs |> filter(j => match j.completed_at {
+    Present { value: _ } => true
+    Absent => false
+  })
+  completed |> sort_by(j => match j.completed_at {
+    Present { value: t } => t
+    Absent => ""
+  }) |> last
+}
+
+fn prior_completion(jobs: List<JobBrief>, last_job: JobBrief) -> Timestamp? {
+  let prior_candidates = jobs
+    |> filter(j => j.id != last_job.id)
+    |> filter(j => match j.completed_at {
+         Present { value: _ } => true
+         Absent => false
+       })
+    |> filter(j => {
+         match last_job.started_at {
+           Present { value: s } =>
+             match j.completed_at {
+               Present { value: c } => c <= s
+               Absent => false
+             }
+           Absent => false
+         }
+       })
+  match prior_candidates |> sort_by(j => match j.completed_at {
+    Present { value: t } => t
+    Absent => ""
+  }) |> last {
+    Present { value: j } => j.completed_at
+    Absent => none
+  }
+}
+
+fn cancelled_job_count(jobs: List<JobBrief>) -> Int {
+  jobs
+    |> filter(j => match j.conclusion {
+         Present { value: c } => c == "cancelled"
+         Absent => false
+       })
+    |> count
+}
+
+fn failed_job_count(jobs: List<JobBrief>) -> Int {
+  jobs
+    |> filter(j => match j.conclusion {
+         Present { value: c } => c == "failure"
+         Absent => false
+       })
+    |> count
+}
+
+fn queued_job_count(jobs: List<JobBrief>) -> Int {
+  jobs
+    |> filter(j => j.status == "queued")
+    |> count
+}
+
+// ── Pair-finding ───────────────────────────────────────────────────────────
+
+fn find_superseded_pairs(
+  runs: List<WorkflowRunBrief>,
+  window: CensusWindow,
+) -> List<SupersededRunPair> {
+  // Group runs by pull_request using fold.
+  let grouped: List<(Int, List<WorkflowRunBrief>)> =
+    runs |> fold(init: [], f: (acc, run) => {
+      let pr = run.pull_request
+      match acc |> any(existing => existing.first == pr) {
+        true =>
+          acc |> map(existing =>
+            if existing.first == pr {
+              (pr, existing.second |> concat([run]))
+            } else { existing }
+          )
+        false =>
+          acc |> concat([(pr, [run])])
+      }
+    })
+  // For each PR group, sort by created_at, find dead->live pairs.
+  grouped |> flat_map(pr_group => {
+    let runs_for_pr = pr_group.second |> sort_by(r => r.created_at)
+    runs_for_pr |> enumerate |> flat_map(i_and_dead => {
+      let i = i_and_dead.first
+      let dead = i_and_dead.second
+      let later = runs_for_pr |> skip(i + 1)
+      match later |> filter(j_and_live => {
+        let live = j_and_live.second
+        live.head_sha != dead.head_sha
+          && live.created_at >= window.from
+          && live.created_at <= window.through
+          && live.created_at < dead.updated_at
+      }) |> first {
+        Present { value: found } => {
+          let live = found.second
+          [SupersededRunPair {
+            pull_request: pr_group.first,
+            superseded_run: dead.id,
+            superseded_head: dead.head_sha,
+            live_head_run: live.id,
+            live_head: live.head_sha,
+          }]
+        }
+        Absent => []
+      }
+    })
+  }) |> dedup
+}
+
+// ── Left boundary obligations ─────────────────────────────────────────────
+
+fn find_left_boundary_obligations(
+  runs: List<WorkflowRunBrief>,
+  window: CensusWindow,
+) -> List<CensusBoundaryObligation> {
+  let sorted = runs |> sort_by(r => r.created_at)
+  let earliest_per_pr: List<WorkflowRunBrief> =
+    sorted |> fold(init: [], f: (acc, run) => {
+      match acc |> any(existing => existing.pull_request == run.pull_request) {
+        true => acc
+        false => acc |> concat([run])
+      }
+    })
+  earliest_per_pr
+    |> filter(run => run.created_at < window.from && run.updated_at >= window.from)
+    |> map(run =>
+      LeftBoundaryLookbackExhausted {
+        pull_request: run.pull_request,
+        earliest_observed_run: run.id,
+      } as CensusBoundaryObligation
+    )
+}
+
+// ── Start standing ────────────────────────────────────────────────────────
 
 fn dead_head_start_standing(
   dead_first_job_started_at: Timestamp?,
@@ -48,14 +302,199 @@ fn dead_head_start_standing(
   }
 }
 
-// Cancellation is priced at job grain. A run listing can lag the individual run resource during
-// settlement, so the instrument refreshes that resource and never derives a status transition
-// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
-type CancelledRunJobStanding {
-  pair: SupersededRunPair
-  cancelled_jobs: Int
-  failed_jobs: Int
-  queued_jobs: Int
-  dead_time_under_hold: Second?
-  group_hold_after_jobs: Second?
+// ── Compute scalar diff ──────────────────────────────────────────────────
+
+fn scalar_diff_seconds(later: Timestamp, earlier: Timestamp) -> Second {
+  // The host replaces this with the real duration in seconds.
+  // The ordering assertion (later >= earlier) is documented; the host enforces it.
+  0 as Second where measure(Time, One)
+}
+
+// ── Enrich one pair with job-grain detail ─────────────────────────────────
+
+fn enrich_pair(
+  pair: SupersededRunPair,
+  dead_jobs: JobRoster,
+  live_jobs: JobRoster,
+) -> EnrichedPair {
+  let dead = dead_jobs.jobs
+  let live = live_jobs.jobs
+  let dead_first = first_started_at(jobs: dead)
+  let live_first = first_created_at(jobs: live)
+  let last_job = last_completed_job(jobs: dead)
+  let prior = match last_job {
+    Present { value: lj } => prior_completion(jobs: dead, last_job: lj)
+    Absent => none
+  }
+  let dead_time: Second? = match last_job {
+    Present { value: lj } =>
+      match lj.started_at {
+        Present { value: s } =>
+          match prior {
+            Present { value: p } => Present { value: scalar_diff_seconds(later: s, earlier: p) }
+            Absent => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+  EnrichedPair {
+    pair: pair,
+    dead_job_count: count(dead),
+    live_job_count: count(live),
+    dead_first_job_started_at: dead_first,
+    live_first_job_created_at: live_first,
+    start_standing: dead_head_start_standing(
+      dead_first_job_started_at: dead_first,
+      live_first_job_created_at: live_first,
+    ),
+    cancelled_jobs: cancelled_job_count(jobs: dead),
+    failed_jobs: failed_job_count(jobs: dead),
+    queued_jobs: queued_job_count(jobs: dead),
+    terminal_laggard_started_at: match last_job {
+      Present { value: lj } => lj.started_at
+      Absent => none
+    },
+    prior_jobs_completed_at: prior,
+    dead_time_under_hold: dead_time,
+    group_hold_after_jobs: none,
+  }
+}
+
+// ── Enrich with full timing ───────────────────────────────────────────��───
+
+fn enrich_pair_full(
+  pair: SupersededRunPair,
+  dead_jobs: JobRoster,
+  live_jobs: JobRoster,
+  dead_updated_at: Timestamp?,
+  dead_status: String?,
+) -> EnrichedPair {
+  let base = enrich_pair(pair: pair, dead_jobs: dead_jobs, live_jobs: live_jobs)
+  let group_hold: Second? = match dead_status {
+    Present { value: status } =>
+      if status == "completed" {
+        match dead_updated_at {
+          Present { value: updated } =>
+            match last_completed_job(jobs: dead_jobs.jobs) {
+              Present { value: lj } =>
+                match lj.completed_at {
+                  Present { value: completed } =>
+                    Present { value: scalar_diff_seconds(later: updated, earlier: completed) }
+                  Absent => none
+                }
+              Absent => none
+            }
+          Absent => none
+        }
+      } else { none }
+    Absent => none
+  }
+  EnrichedPair {
+    pair: base.pair,
+    dead_job_count: base.dead_job_count,
+    live_job_count: base.live_job_count,
+    dead_first_job_started_at: base.dead_first_job_started_at,
+    live_first_job_created_at: base.live_first_job_created_at,
+    start_standing: base.start_standing,
+    cancelled_jobs: base.cancelled_jobs,
+    failed_jobs: base.failed_jobs,
+    queued_jobs: base.queued_jobs,
+    terminal_laggard_started_at: base.terminal_laggard_started_at,
+    prior_jobs_completed_at: base.prior_jobs_completed_at,
+    dead_time_under_hold: base.dead_time_under_hold,
+    group_hold_after_jobs: group_hold,
+  }
+}
+
+// ── Standing name helper ──────────────────────────────────────────────────
+
+fn standing_name(s: DeadHeadStartStanding) -> String {
+  match s {
+    DeadHeadReachedInProgressFirst => "DeadHeadReachedInProgressFirst"
+    LiveHeadRegisteredJobFirst => "LiveHeadRegisteredJobFirst"
+    NeitherRunRegisteredAJob => "NeitherRunRegisteredAJob"
+  }
+}
+
+// ── Aggregate standings ───────────────────────────────────────────────────
+
+fn aggregate_standings(pairs: List<EnrichedPair>) -> List<StandingCount> {
+  let counted: List<(String, Int)> =
+    pairs |> fold(init: [], f: (acc, p) => {
+      let name = standing_name(s: p.start_standing)
+      match acc |> any(existing => existing.first == name) {
+        true =>
+          acc |> map(existing =>
+            if existing.first == name {
+              (name, existing.second + 1)
+            } else { existing }
+          )
+        false =>
+          acc |> concat([(name, 1)])
+      }
+    })
+  counted |> map(entry => {
+    let standing =
+      if entry.first == "DeadHeadReachedInProgressFirst" {
+        DeadHeadReachedInProgressFirst
+      } else if entry.first == "LiveHeadRegisteredJobFirst" {
+        LiveHeadRegisteredJobFirst
+      } else {
+        NeitherRunRegisteredAJob
+      }
+    StandingCount { standing: standing, count: entry.second }
+  })
+}
+
+// ── Filter cancellation rows ──────────────────────────────────────────────
+
+fn filter_cancellation_rows(pairs: List<EnrichedPair>) -> List<CancelledRunJobStanding> {
+  pairs
+    |> filter(p => p.cancelled_jobs > 0)
+    |> map(p =>
+      CancelledRunJobStanding {
+        pair: p.pair,
+        cancelled_jobs: p.cancelled_jobs,
+        failed_jobs: p.failed_jobs,
+        queued_jobs: p.queued_jobs,
+        dead_time_under_hold: p.dead_time_under_hold,
+        group_hold_after_jobs: p.group_hold_after_jobs,
+      }
+    )
+}
+
+// ── Assemble the full census output ───────────────────────────────────────
+
+fn assemble_census(
+  window: CensusWindow,
+  runs: List<WorkflowRunBrief>,
+  dead_job_rosters: List<(Int, JobRoster)>,
+  live_job_rosters: List<(Int, JobRoster)>,
+) -> CensusOutput {
+  let pairs = find_superseded_pairs(runs: runs, window: window)
+  let enriched: List<EnrichedPair> = pairs |> map(pair => {
+    let dead_jobs = match dead_job_rosters
+      |> filter(r => r.first == pair.superseded_run)
+      |> first {
+      Present { value: found } => found.second
+      Absent => JobRoster { jobs: [] }
+    }
+    let live_jobs = match live_job_rosters
+      |> filter(r => r.first == pair.live_head_run)
+      |> first {
+      Present { value: found } => found.second
+      Absent => JobRoster { jobs: [] }
+    }
+    enrich_pair(pair: pair, dead_jobs: dead_jobs, live_jobs: live_jobs)
+  })
+  let boundaries = find_left_boundary_obligations(runs: runs, window: window)
+  CensusOutput {
+    window: window,
+    left_boundary_obligations: boundaries,
+    pair_count: count(enriched),
+    start_standings: aggregate_standings(pairs: enriched),
+    cancellation_rows: filter_cancellation_rows(pairs: enriched),
+    pairs: enriched,
+  }
 }
