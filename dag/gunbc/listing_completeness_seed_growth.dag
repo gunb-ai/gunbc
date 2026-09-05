@@ -5,57 +5,71 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust added by the directory-listing completeness repair.
-// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
-// unenumerated hand growth in src/v1 a stop-line, and this change adds four hand items to
-// v1_compiler.v1_interpreter. That row also records, measured, that a row authored only when a
-// review asks for it is a row the roster cannot rely on -- so this one is authored with the change
-// rather than after it.
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated hand growth
+// in src/v1 a stop-line, and records, measured, that of the four PRs adding hand src/v1 Rust in the
+// 48 hours to 2026-08-24 zero were caught by an unassisted reviewer -- so a row authored only when a
+// review asks for it is a row the roster cannot rely on.
+//
+// THE POPULATION BELOW IS DERIVED, NOT COUNTED. It is the ADDED HAND ITEMS list printed by
+// tools.seed_growth_change_population, which runs observe_rust_item_change_against over this
+// branch's diff and projects each item through item_declaration_ref. No cardinality is stated here
+// and none should be: seed_growth_forward_freeze_policy_note retired the authored hand-item and
+// hand-LOC deltas precisely because they are functions of the diff, and it measured the cost of
+// authoring them -- a receipt on gunbc#9095 claiming +195/+65 against a measured +203/-0, +60/-5,
+// +102/-0. Run that instrument to re-derive this list; do not maintain a number beside it.
+//
+// INLINE MODULES ARE SCOPES, NOT LEAVES, which is what a first cut of this row got wrong. It named
+// the two production functions and the two test modules and stopped, on the reading that
+// WholeDeclaration on a module covers its members. It does not: item_declaration_ref_in folds
+// enclosing_module into each member's module_path, and the admission join compares exact
+// references, so the nested functions were absent from the roster and nothing in the seven green
+// admission witnesses could say so -- they exercise roster well-formedness and supplied-list joins,
+// and one staleness control supplies the roster AS the live population, which cannot discover an
+// omission from the roster itself.
+//
+// TEST ITEMS ARE IN, AND THAT PART WAS RIGHT. There is no production-only exemption: whether a
+// declaration implements behaviour, supplies a fixture, or checks a result does not remove it from
+// the added hand-Rust population.
 //
 // WHAT THE CHANGE IS. The interpreter's directory-listing host call folded three distinct facts
-// into one silent narrowing: an entry the OS refused to yield, an entry whose name is not UTF-8,
-// and an entry whose name contains the LF the join uses as its own separator were all simply
-// absent from the returned listing. A caller reading that listing could not tell a directory of
-// four entries from a directory of five whose fifth could not be represented -- a partial observer
-// returning the negative value of a total observer, which is the class §5 forbids outright: a
-// failure arm must refuse, never widen, and here it did not even widen, it shrank in silence.
-// collect_listing_names_from now returns a typed refusal for each of the three, and the call site
-// carries it into FileResult.error with success=false rather than into a shorter list.
+// into one narrowing: an entry the OS refused to yield and an entry whose name is not UTF-8 were
+// simply absent from the listing, and an entry whose name contains the LF that the caller joins on
+// was SERIALIZED AMBIGUOUSLY -- present, but indistinguishable from two entries, so a membership
+// test could answer yes for an entry that is not there. Two silent losses and one ambiguous
+// encoding, all reported as an ordinary shorter listing: a partial observer returning the negative
+// value of a total observer. collect_listing_names_from now refuses on each.
 //
-// WHY IT IS RUST AND NOT .dag. The subject is std::fs::ReadDir -- a host iterator whose items are
-// std::io::Result<std::ffi::OsString>. The substrate has no representation of a native filesystem
-// entry name that is not already a String, which is precisely the distinction the non-UTF-8
-// refusal exists to preserve; modeling it here would require the .dag side to name OsString. The
-// modeled replacement is the structured listing under docs/plans/corpus-acquisition-design.md,
-// which decodes one JSON document beside the operation and gives EntryKind and exact Unicode names
-// their own carrier; until that lands, the effect boundary admits only flat scalars and
-// List<String>, so the seed is where the three distinctions can be made at all.
+// WHY IT IS RUST AND NOT .dag. The subject is std::fs::ReadDir, a host iterator whose items are
+// std::io::Result<std::ffi::OsString>. The substrate has no representation of a native entry name
+// that is not already a String, which is exactly the distinction the non-UTF-8 refusal preserves;
+// modeling it here would require the .dag side to name OsString.
 //
-// WHAT IS NOT NETTED. The existing listing call site inside the file-operation match was MODIFIED
-// rather than added and is ExistingSeedItemModified per gunbc.seed_growth_admission
-// SeedGrowthChangeDisposition, so it is not counted as an addition. No deletions are netted
-// against the four below.
-//
-// HAND-ITEM DELTA: +4 citable declarations, all in v1_compiler.v1_interpreter -- two production
-// free functions and two test modules. The test modules are ENUMERATED, not omitted: they are
-// hand-authored src/v1 Rust on the same surface, and a roster that counts only production items
-// would under-report every change whose weight is its evidence.
-// HAND-LOC DELTA: +363 / -14 in src/v1/stage0/src/v1_interpreter.rs, +1 / -1 in
-// src/v1/05_emit_rust.dag and +1 / -1 in its regenerated mirror
-// src/v1/stage0/src/v1_compiler_emit_rust.rs, measured by `git diff --numstat` against the merge
-// base. The two emit files are ONE authored line each -- the emitted listing producer's match
-// expression, rewritten to make the same three refusals -- and the mirror is generated from the
-// .dag row, so it adds no authority. Of the interpreter's 363, the two production functions are 47
-// lines of code between them and roughly 114 are comment; the balance is the two test modules,
-// which is where the evidence for all three refusals and for the emitted producer lives.
+// WHAT IS NOT NETTED. The listing call site inside the file-operation match was MODIFIED rather than
+// added -- v1_interpreter.rs::fn::dispatch_file, per the same instrument -- and is
+// ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition. It is not
+// counted as an addition, and no deletions are netted against the additions below.
 data listing_completeness_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "collect_listing_entry_names", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "collect_listing_names_from", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "listing_collector_refuses_rather_than_narrowing", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "the_emitted_listing_producer_refuses_too", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "ok", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "advancement_error", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "an_advancement_error_after_one_entry_refuses_rather_than_returning_the_prefix", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "an_advancement_error_between_two_entries_refuses_rather_than_returning_a_subset", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "a_returned_name_containing_the_delimiter_refuses_rather_than_fabricating_an_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "a_returned_name_containing_a_carriage_return_is_still_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "an_empty_directory_is_still_a_successful_empty_listing", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.listing_collector_refuses_rather_than_narrowing", decl_name: "an_ordinary_populated_directory_still_lists", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "the_emitted_listing_producer_refuses_too", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.the_emitted_listing_producer_refuses_too", decl_name: "run_emitted_listing_probe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.the_emitted_listing_producer_refuses_too", decl_name: "a_supported_directory_lists_its_whole_population_in_order", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.the_emitted_listing_producer_refuses_too", decl_name: "a_name_carrying_the_delimiter_refuses_rather_than_fabricating_an_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.the_emitted_listing_producer_refuses_too", decl_name: "a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped", field: WholeDeclaration }
   ],
-  reason: "Reading a native directory is a host capability, not a modeled one. collect_listing_entry_names is the seam that takes std::fs::ReadDir and projects each entry to its std::ffi::OsString name; collect_listing_names_from holds the decision -- advance-failed, not-UTF-8, contains-LF -- and is split out precisely so the decision can be exercised without a real ReadDir, which is what makes the three refusals testable at all rather than asserted. Neither invents a policy the substrate owns: the LF refusal exists because the effect boundary's List<String> is carried as newline-joined stdout_lines, so an entry name containing LF would be read back as two entries, and refusing is the only arm that does not fabricate one.\n\nENUMERATED RATHER THAN COUNTED. All four are free items at module scope, so the citable count and the real count are both four; no impl method or Display impl is involved and nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though nothing would have caught it: gunbc.seed_growth_admission's G1 join is not enrolled (diff populations absent until rust_item_host_observation), so this roster is honest only if authors add rows they were not asked for.",
+  reason: "Reading a native directory is a host capability, not a modeled one. collect_listing_entry_names is the seam that takes std::fs::ReadDir and projects each entry to its std::ffi::OsString name, returning the names in ITERATION ORDER -- it does not sort and does not join; the call site owns both, which is why the sorted-listing assertion lives in the caller's probe and not in this function's own tests. collect_listing_names_from holds every decision -- advance-failed, not-UTF-8, contains-LF -- and is split out so each can be exercised without a real ReadDir, which is what makes the three refusals testable rather than asserted.\n\nTHE REFUSAL SHAPE IS Result<Vec<String>, String>, AND THAT IS A DISTINCTION, NOT A CAUSE VOCABULARY. It separates a complete listing from a refused one and carries a diagnostic string; it does not give each of the three defects its own typed arm, and no reader can dispatch on which one fired. That is the honest ceiling here: a typed cause belongs to the structured listing's EnumerationRefused, one boundary over, not to a host projection whose caller is a flat FileResult.\n\nThe LF refusal is not a policy this function invents. The caller joins names with LF, so an LF-bearing name serializes ambiguously -- one entry indistinguishable from two -- and refusing is the only arm that neither drops it nor fabricates a sibling.\n\nENUMERATED RATHER THAN COUNTED, AND THE ENUMERATION IS DERIVED: the list above is what tools.seed_growth_change_population prints for this branch. Every item is a free item at module scope or inside an inline test module, so all are citable; nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though nothing would have caught it. gunbc.rust_item_host_observation and the admission join both EXIST and EXECUTE at this head -- the instrument above runs them. What is missing is enforcement: no required CI phase invokes the join, which is seed_growth_forward_freeze_policy_note's own stated rung and next-rung trigger. So this roster is honest only if authors add rows they were not asked for.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all four when the structured listing lands -- i.e. when the filesystem effect returns one decoded document carrying EntryKind and the exact Unicode name per entry, with a native-name that is not representable refused explicitly at that boundary, so a caller reads entries as records rather than reconstructing them from a newline-joined String. That is the capability, not any one artifact of it: a structured listing that still routes through a joined List<String> anywhere on the path leaves the LF refusal load-bearing and retires nothing. The two test modules retire with the functions they discriminate, and their claims move to the .dag witness that adjudicates the new boundary -- they are not deleted as redundant, because §4b(4) keeps the discriminating RED enrolled wherever the wall then stands.",
-  current_boundary: "Confined to one call site. collect_listing_entry_names is reached only from the interpreter's directory arm of the file-operation match, and returns the same sorted, newline-joined listing the previous code returned for every directory whose entries all yield, are all UTF-8, and none of which contain LF -- so no behaviour changes for any directory in this repository. The three new outcomes are reported through FileResult.error with success=false, an arm every existing caller already handles, so nothing downstream learns a new shape. Neither function classifies, and neither is reachable from the emitted compiler path: the emitted producer makes the same three refusals from its own authority row in src/v1/05_emit_rust.dag, which is why it carries its own executing evidence rather than inheriting these tests'."
+  trigger: "THE SUBJECT IS THESE DECLARATIONS, NOT A FORMAT MILESTONE, and the two do not retire together. A first cut of this row said 'delete all four when the structured listing lands', which named the replacement ENCODING and inferred the deletion of the code from it. A structured listing still has to advance the native iterator and convert native names; it could keep these collectors, or hand-written successors with only the LF check removed. Conversely a shared generated realization could displace these functions before any structured listing arrived.\n\nSo three conditions, all required.\n\n(1) IMPLEMENTATION DISPLACEMENT. The listed hand implementation is no longer needed by its production consumers because the replacement supplies the behaviour. A differently named hand-written replacement is not dissolution -- it is this same obligation under a new key, and the roster row moves rather than retires.\n\n(2) EVIDENCE CONTINUITY. Each still-relevant behaviour stays discriminated AT THE BOUNDARY WHERE IT CAN FAIL. The harness may retire; the regression obligation does not retire with it. A .dag witness starting from EnumerationRefused { cause } does not replace the injected-iterator test -- it begins after the point where the host defect discarded the error -- and a JSON-decoder test does not establish what the emitted producer decides. Host-level evidence stays on any still-live host route until the replacement either exercises that route and its failure or makes the failure impossible by construction.\n\n(3) THE CHANGED REPRESENTATION CONTRACT. Under a representation that supports LF-bearing names, 'LF must refuse' is no longer the right claim; it becomes exact name preservation with no fabricated membership. The old assertion must be re-decided, not carried forward as a ban on a now-supported name. The narrow condition to check is that NO OPERATIONAL NAME OBSERVATION DEPENDS ON THE AMBIGUOUS UNESCAPED DELIMITER REPRESENTATION -- which is not a ban on List<String> or on joining generally: an internal list of names, or a join over already-escaped fragments, is not the lossy transport. Keep that separate from preservation of iterator errors and from faithful native-name handling, which are their own obligations and are not retired by a format change.",
+  current_boundary: "Confined to one call site. collect_listing_entry_names is reached only from the interpreter's directory arm of the file-operation match, and returns the same population the previous code returned for every directory whose entries all yield, are all UTF-8, and none of which contain LF -- so no behaviour changes for any directory in this repository. The three new outcomes are reported through FileResult.error with success=false, an arm every existing caller already handles, so nothing downstream learns a new shape. Neither function classifies, and neither is reachable from the emitted compiler path: the emitted producer makes the same three refusals from its own authority row in src/v1/05_emit_rust.dag, which is why it carries its own executing evidence rather than inheriting these tests'."
 }

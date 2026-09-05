@@ -1,0 +1,111 @@
+module tools.seed_growth_change_population
+
+import extdeps.git.inspect
+import gunbc.rust_item_host_observation {
+  observe_rust_item_change_against,
+  RustItemChangeObserved, RustItemChangeUnattributed,
+  RustItemChangeScanRefused, RustItemChangeHostRefused,
+  item_declaration_ref, projected_declaration_refs, projected_refused_keys,
+  ItemDeclarationRefProjection,
+  ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused
+}
+import gunbc.rust_item_identity { rust_item_identity_key }
+import gunbc.seed_growth_admission { seed_growth_unjustified_additions }
+import gunbc.repo_identity { gunbc_merge_target_ref }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { List, String }
+import v2.std.algebra { fold_list, length }
+
+// THE POPULATION AN AUTHOR MUST NOT COUNT BY HAND.
+//
+// gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note retired the authored hand-item
+// and hand-LOC deltas on the ground that they are functions of the diff, and it names the remaining
+// gap exactly: the join EXECUTES and is CALLABLE, and no required CI phase invokes it. This is the
+// callable end -- the entry point that runs the join over the live change so a receipt's coverage is
+// re-derived rather than transcribed. It is NOT the missing phase, and running it green here does
+// not retire that trigger; a required-run phase that stops the line is what does.
+//
+// WHY THE JOIN AND NOT seed_growth_admit_change. The full verdict additionally demands an
+// AuthorizedTemporarySeedBridge per added item -- gunbc.capability_origin's origin test, a separate
+// obligation with its own evidence. Answering the roster-coverage question through a function that
+// also refuses for a missing bridge would report one deficit under another's name.
+//
+// SCOPE, STATED SO A GREEN RUN IS NOT OVERREAD: this reports items whose DeclarationRef is absent
+// from the roster, plus items no DeclarationRef can address at all. It does not check that a row
+// which EXISTS is true, well formed, or still needed.
+
+fn item_key_lines(keys: List<String>) -> String {
+  fold_list(xs: keys, empty: "", cons: fn(acc, k) { concat(acc, concat("  ", concat(k, "\n"))) })
+}
+
+// The enumeration, for an author writing or auditing a SeedGrowthJustification row. Inline modules
+// are SCOPES and not leaves: gunbc.rust_item_host_observation item_declaration_ref_in folds
+// enclosing_module into each member's module_path, so a module row does not cover its members and a
+// roster naming only the module under-reports the change.
+fn population_summary() -> String {
+  match observe_rust_item_change_against(base_ref: gunbc_merge_target_ref as String) {
+    RustItemChangeHostRefused { detail: d } => concat("HOST REFUSED: ", d)
+    RustItemChangeUnattributed { repo_path: p, line: _, detail: d } =>
+      concat("UNATTRIBUTED ", concat(p, concat(": ", d)))
+    RustItemChangeScanRefused { repo_path: p, line: _, line_text: _, detail: d } =>
+      concat("SCAN REFUSED ", concat(p, concat(": ", d)))
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: modified,
+      deleted_hand_items: _,
+      generated_changes: _
+    } =>
+      concat(
+        concat("ADDED HAND ITEMS:\n", item_key_lines(
+          keys: added |> map(i => declaration_key_of(item_projection: item_declaration_ref(item: i)))
+        )),
+        concat("MODIFIED HAND ITEMS (disposition owed, not netted):\n", item_key_lines(
+          keys: modified |> map(i => rust_item_identity_key(item: i))
+        ))
+      )
+  }
+}
+
+fn declaration_key_of(item_projection: ItemDeclarationRefProjection) -> String {
+  match item_projection {
+    ItemDeclarationRefProjected { ref: r } => concat(r.module_path as String, concat("::", r.decl_name as String))
+    ItemDeclarationRefUncitable { item_key: k, detail: _ } => concat("UNCITABLE ", k)
+    ItemDeclarationRefRefused { item_key: k, detail: _ } => concat("UNADDRESSABLE ", k)
+  }
+}
+
+// The verdict half. A refusal to OBSERVE is a refusal here too, never an empty population reported
+// as coverage -- that is the absorbing fallback DESIGN section 5 forbids.
+func main() -> ProcessExit {
+  match observe_rust_item_change_against(base_ref: gunbc_merge_target_ref as String) {
+    RustItemChangeHostRefused { detail: d } =>
+      exit_failure(reason: concat("the change population was not observed: ", d))
+    RustItemChangeUnattributed { repo_path: p, line: _, detail: d } =>
+      exit_failure(reason: concat("changed hand Rust could not be attributed to an item in ", concat(p, concat(": ", d))))
+    RustItemChangeScanRefused { repo_path: p, line: _, line_text: _, detail: d } =>
+      exit_failure(reason: concat("hand Rust source could not be read at item grain in ", concat(p, concat(": ", d))))
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: _,
+      deleted_hand_items: _,
+      generated_changes: _
+    } => {
+      let projections = added |> map(i => item_declaration_ref(item: i))
+      let unaddressable = projected_refused_keys(projections: projections)
+      let unjustified = seed_growth_unjustified_additions(added: projected_declaration_refs(projections: projections))
+      if length(xs: unaddressable) > 0 {
+        exit_failure(reason: concat(
+          "added hand Rust item(s) live under a tree rust_source_namespace_rows does not claim:\n",
+          item_key_lines(keys: unaddressable)
+        ))
+      } else if length(xs: unjustified) > 0 {
+        exit_failure(reason: concat(
+          "added hand Rust item(s) lack a SeedGrowthJustification row:\n",
+          item_key_lines(keys: unjustified)
+        ))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}

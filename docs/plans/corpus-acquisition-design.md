@@ -486,14 +486,33 @@ nothing else.
 
 1A adds hand Rust to `src/v1`, which `gunbc.seed_growth_admission`
 `seed_growth_forward_freeze_policy_note` makes a stop-line unless the addition is enumerated. The row
-is `gunbc.listing_completeness_seed_growth`, enrolled in the roster's own declaration list, and it
-enumerates **four** items in `v1_compiler.v1_interpreter`: the two production functions and both test
-modules. The test modules are counted deliberately — they are hand-authored `src/v1` Rust on the same
-surface, and a roster that counted only production items would under-report every change whose weight
-is its evidence.
+is `gunbc.listing_completeness_seed_growth`, enrolled in the roster's own declaration list.
 
-Its trigger names the **capability**, not an artifact: the four retire when the filesystem effect
-returns one decoded document carrying `EntryKind` and the exact Unicode name per entry, with an
-unrepresentable native name refused at that boundary. A structured listing that still routes through
-a newline-joined `List<String>` anywhere on the path leaves the LF refusal load-bearing and retires
-nothing. That is §1B's own completion condition, stated from the other side.
+**The population is derived, not authored.** `tools.seed_growth_change_population` runs
+`observe_rust_item_change_against` over this branch and projects each added item through
+`item_declaration_ref`; the row's list is that output. No cardinality appears in the row or in this
+section — the same policy note retired authored hand-item and hand-LOC deltas because they are
+functions of the diff, and a number here would re-create exactly the second representation it
+deleted. Run the instrument to re-derive the list.
+
+**Inline modules are scopes, not leaves.** `item_declaration_ref_in` folds `enclosing_module` into
+each member's `module_path`, and the admission join compares exact references, so naming a test
+module does not cover the functions inside it. A first cut of the row named four items on the
+opposite reading; the instrument named the nested functions the row was missing. Test items belong
+in the roster on the same footing as production ones — there is no production-only exemption.
+
+**Its trigger binds the declarations, not a format milestone.** Three conditions, all required:
+implementation displacement (the production consumers no longer need this hand code — a renamed hand
+successor moves the obligation rather than retiring it), evidence continuity (each still-live
+behaviour stays discriminated at the boundary where it can fail; a `.dag` witness starting from
+`EnumerationRefused` begins *after* the point where the host defect discarded the error), and the
+changed representation contract (under a representation supporting LF-bearing names, "LF must
+refuse" is re-decided into exact preservation with no fabricated membership, not carried forward).
+The narrow check is that **no operational name observation depends on the ambiguous unescaped
+delimiter representation** — not a ban on `List<String>` or on joining, since an internal list of
+names, or a join over already-escaped fragments, is not the lossy transport.
+
+**What the instrument is not.** It is the callable end of a join that already executes; the missing
+piece is a required CI phase that invokes it and stops the line, which is
+`seed_growth_forward_freeze_policy_note`'s own next-rung trigger. Running it green here retires
+nothing.
