@@ -344,6 +344,9 @@ type StringPartInferResult {
 type ArgInferResult {
   typed_arg: Node
   diagnostics: List<ErrorNode>
+  // Grounded once before generic binding; the application plan consumes this
+  // same fact instead of resolving the actual again in a later phase.
+  product_application: TypeApplication<Node>?
 }
 
 type FieldInferResult {
@@ -4145,6 +4148,7 @@ fn build_call_application_plan(
   value_params: List<Node>,
   formals: List<ResolvedFormal>,
   typed_args: List<Node>,
+  arg_infer_results: List<ArgInferResult>,
   call_subst: Map<String, Node>,
   type_env: TypeEnv,
   module_name: String
@@ -4176,8 +4180,10 @@ fn build_call_application_plan(
           Absent => none
         },
         produced_product_application: if carried.product_application == none { none } else { match matched {
-          Present { value: bound } => declaration_bound_produced_product_application(
-            value: arg_value(n: bound.second), env: type_env, module_name: module_name)
+          Present { value: bound } => match arg_infer_results |> skip(bound.first) |> first {
+            Present { value: inferred } => inferred.product_application
+            Absent => none
+          }
           Absent => none
         } }
       }]
@@ -5459,7 +5465,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     match init_arg {
       Present { value: ia } =>
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Present { value: ArgInferResult { typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
       Absent => none
     }
   } else { none }
@@ -5523,7 +5529,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -5549,14 +5555,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         ContractUnavailable =>
           let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
           let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-          ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
         ContractKnown { types: declared_types } =>
           match declared_types |> skip(idx) |> first {
             Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
             Absent =>
               let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-              ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+              ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
           }
       }
     }
@@ -5613,7 +5619,7 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, prior_results: List<ArgInferResult>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
@@ -5644,15 +5650,53 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    // Use the same first-actual selection as build_call_application_plan.
+    // A second generic pass may replace a provisional inferred value; method,
+    // unresolved, unavailable-formal and duplicate-actual paths do not capture.
+    let capture_application = match formal_selection {
+      CallArgumentFormalSelected { formal_index: index, formal: _ } => match formals |> skip(index) |> first {
+        Present { value: carried } => carried.product_application != none
+          && !(call_args |> take(pair.first) |> enumerate |> any(prior =>
+            call_argument_selects_formal_index(argument: prior.second, argument_index: prior.first,
+              formal_index: index, arguments: call_args, value_params: value_params,
+              source_indices: scope.type_env.source_indices)))
+        Absent => false
+      }
+      CallArgumentFormalUnavailable => false
+    }
+    let produced_application = if capture_application {
+      // The enclosing scope is identical across both passes. Share the first
+      // captured fact when its complete input is unchanged; changed inference
+      // (for example a contextually typed lambda) supersedes that first input.
+      // Full structural Node equality includes inferred data and spans. This is
+      // a conservative correctness guard: any disagreement recaptures. A span
+      // or name alone cannot establish that the capture input stayed equal.
+      match prior_results |> skip(pair.first) |> first {
+        Present { value: prior } => if arg_value(n: prior.typed_arg) == ar.typed {
+          prior.product_application
+        } else {
+          declaration_bound_produced_product_application(value: ar.typed, env: scope.type_env, module_name: scope.module_name)
+        }
+        Absent => declaration_bound_produced_product_application(value: ar.typed, env: scope.type_env, module_name: scope.module_name)
+      }
+    } else { none }
+    let actual_type = resolved_type(n: ar.typed)
+    let actual_for_binding = match produced_application {
+      Present { value: application } =>
+        if actual_type.connective == NoConnective && (actual_type.children |> count) == (application.arguments |> count) {
+          node_with_children(n: actual_type, children: application.arguments)
+        } else { actual_type }
+      Absent => actual_type
+    }
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
       unify_record_lit_generics(formal: formal_raw, record: ar.typed, generic_names: generic_names, scope: scope, acc: st.subst)
     } else {
-      unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
+      unify_generics(formal: formal_raw, actual: actual_for_binding, generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
     ArgGenericFoldState {
-      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+      results: concat(st.results, [ArgInferResult { product_application: produced_application, typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
       subst: next_subst
     }
   )
@@ -5672,7 +5716,7 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -6276,7 +6320,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
             subst: st.subst,
-            results: concat(st.results, [ArgInferResult {
+            results: concat(st.results, [ArgInferResult { product_application: none,
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
               diagnostics: ar.diagnostics
             }])
@@ -6291,7 +6335,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult { product_application: none, typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
             )
           Absent =>
@@ -6301,9 +6345,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), prior_results: [], scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, prior_results: first_pass.results, scope: scope)
         } else {
           first_pass
         }
@@ -6357,6 +6401,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           value_params: value_params_for_check,
           formals: resolved_formals,
           typed_args: typed_args,
+          arg_infer_results: arg_infer_results,
           call_subst: call_subst,
           type_env: scope.type_env,
           module_name: scope.module_name

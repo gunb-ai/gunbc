@@ -107,6 +107,13 @@ test fn a_nongeneric_base_preserves_its_field_application_alias() -> Bool {
   application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> {n:Int}\ntype Inner=Wrapped<First>\ntype Record<P> {n:Int}\ntype Specific=Record<Inner>\ntype Box {value:Specific}\nfn take<P>(q:Record<P>)->Int {q.n}\nfn probe(q:Box)->Int {take(q:q.value)}\n")
 }
 
+// Generic rebinding re-infers the actual with the first pass's substitution.
+// The final plan must use that pass's carried identity; an earlier capture must
+// not replace the newly inferred value or lose the concrete marker's binding.
+test fn generic_rebinding_preserves_the_carried_application() -> Bool {
+  application_source_is_clean(source: "module application\ntype Marker\ntype Record<P> {n:Int}\ntype Specific=Record<Marker>\nfn take<P>(q:Record<P>, f:fn(P)->P)->Int {q.n}\nfn probe(q:Specific)->Int {take(q:q,f:x=>x)}\n")
+}
+
 test fn distinct_application_aliases_are_refused_by_inhabitance() -> Bool {
   application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype FirstRecord = Record<First>\ntype SecondRecord = Record<Second>\nfn take(q: FirstRecord) -> Int { q.n }\nfn probe(q: SecondRecord) -> Int { take(q: q) }\n")
 }
