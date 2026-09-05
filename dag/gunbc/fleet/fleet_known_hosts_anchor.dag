@@ -199,6 +199,69 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
   })
 }
 
+// A SHARED KEY IS A DIFFERENT CONFLICT FROM A SHARED ENDPOINT, and the check above cannot see it.
+// That one compares endpoints, because an endpoint is what ssh matches on; this one compares KEY
+// MATERIAL across distinct enrolled hosts, because a key is what identifies a host. Two rows naming
+// one endpoint widen what is trusted at that endpoint. Two hosts naming one key mean the key
+// identifies NEITHER of them: connecting to either and getting that key proves nothing about which
+// machine answered.
+//
+// THE CLASS IS LIVE ON THE FLEET AND ABSENT FROM THIS REGISTRY, which is why it is added before the
+// next enrolment rather than after. Three Sparks -- srv7, srv8 and srv11 -- were bootstrapped from
+// one setup image and share a single ed25519 host key. They are not in fleet_host_key_enrollments,
+// so this registry is clean today; enrolling them as they stand would introduce the collision, and
+// until now nothing here could refuse it. The rows would have looked like every other row.
+//
+// SCANNING CANNOT FIND THIS, WHICH IS WHY IT IS A SET-LEVEL CHECK. Every enrolled row is
+// ScannedFirstContact, and a scan reproduces whatever the first contact established -- the srv5 and
+// srv6 provenance strings say exactly that about themselves. Scanning three cloned hosts returns the
+// same fingerprint three times and reports three successes. The collision exists only ACROSS rows.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because the neighbouring vocabulary invites the stronger
+// reading: this is a UNIQUENESS check, not an authentication one. It cannot tell whether any
+// enrolled key was authentically obtained from the host it names; a TOFU scan that was intercepted
+// would enrol a unique attacker key and pass here cleanly. Cross-host uniqueness and enrolment
+// authenticity are separate properties and this closes only the first. The second needs an
+// enrolment that binds a key to a physical unit and a boot attempt through an independently
+// authenticated channel, which no row in this registry currently carries.
+//
+// THE GRAIN IS THE ENROLLED HOST IDENTITY, NOT THE PHYSICAL UNIT, and that is a real limitation
+// rather than a simplification. KnownHostKeyRow carries `host` and `endpoint` and no unit identity,
+// so two logical identities backed by one physical machine are indistinguishable here from two
+// machines. Comparing at host grain is correct for the cloned-image class -- distinct logical hosts,
+// one key -- and multiple addresses for one host do not false-positive, because the comparison is
+// not over endpoints. A unit-grain check needs a unit identity on the row, which is the same missing
+// carrier the anchored-enrolment join needs.
+fn known_hosts_shared_key_conflict(rows: List<KnownHostKeyRow>) -> String? {
+  fold(rows, init: none, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        let sharers = rows
+          |> filter(other => other.public_key_base64 == row.public_key_base64)
+          |> filter(other => (other.host as String) != (row.host as String))
+          |> map(other => other.host as String)
+        if length(sharers) > 0 {
+          Present { value: join([
+            "host ", row.host as String, " enrolls a public key also enrolled by ",
+            join(sharers, ", "),
+            "; a key shared across hosts identifies none of them, so a connection returning it proves nothing about which machine answered"
+          ], "") }
+        } else { none }
+    }
+  })
+}
+
+// BOTH CONFLICT CONDITIONS, ASKED AS ONE QUESTION, so the materialization guard has a single seam
+// and a third condition does not need a third call site. Endpoint conflicts are reported first
+// because they are the older and narrower failure; either refuses.
+fn known_hosts_registry_conflict(rows: List<KnownHostKeyRow>) -> String? {
+  match known_hosts_endpoint_conflict(rows: rows) {
+    Present { value: c } => Present { value: c }
+    Absent => known_hosts_shared_key_conflict(rows: rows)
+  }
+}
+
 fn fleet_known_hosts_fragment() -> String {
   canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
 }
@@ -238,7 +301,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+  } else { match known_hosts_registry_conflict(rows: fleet_host_key_enrollments) {
     Present { value: conflict } => KnownHostsRefused {
       first: join(["known-hosts materialization refused: ", conflict], ""),
       more: [],

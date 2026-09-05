@@ -1,0 +1,88 @@
+module gunbc.fleet_known_hosts_shared_key_probe
+
+import std.types { NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.fleet_intent_network { HostIdentity }
+import gunbc.fleet_host_key_enrollment {
+  KnownHostKeyRow,
+  ScannedFirstContact,
+  fleet_host_key_enrollments,
+}
+import gunbc.fleet_known_hosts_anchor { known_hosts_shared_key_conflict }
+
+// THE CLONED-IMAGE FIXTURE, shaped like the incident it stands for rather than like a minimal
+// counterexample: two DISTINCT hosts at DISTINCT endpoints enrolling the SAME public key, which is
+// what imaging three Sparks from one setup image produced. The key material is a placeholder and
+// its value is irrelevant — what the check reads is that two rows agree on it while disagreeing on
+// host.
+//
+// IT IS SYNTHETIC AND SAYS SO. The real colliding hosts (srv7, srv8, srv11) are not enrolled, so
+// there is no live row to point at; authoring them here to make the fixture real would enrol the
+// collision this check exists to refuse. A planted duplicate with an asserted outcome is the
+// controlled-fixture oracle DESIGN §5 admits, and is not a measurement copied from the tree.
+data cloned_key_material: String = "AAAAC3NzaC1lZDI1NTE5AAAAICLONEDCLONEDCLONEDCLONEDCLONEDCLONEDCLONED"
+
+data cloned_pair_fixture: List<KnownHostKeyRow> = [
+  KnownHostKeyRow {
+    host: "srvA" as HostIdentity,
+    endpoint: "192.168.1.240",
+    key_type: "ssh-ed25519",
+    public_key_base64: cloned_key_material,
+    sha256_fingerprint: "SHA256:clonedfixturefingerprintplaceholdervalue",
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture for the shared-key wall; not a real observation" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srvB" as HostIdentity,
+    endpoint: "192.168.1.241",
+    key_type: "ssh-ed25519",
+    public_key_base64: cloned_key_material,
+    sha256_fingerprint: "SHA256:clonedfixturefingerprintplaceholdervalue",
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture for the shared-key wall; not a real observation" as NonEmptyStr },
+  },
+]
+
+// ONE HOST AT TWO ADDRESSES IS NOT A COLLISION, and this is the arm that keeps the wall from
+// refusing legitimate rows. srv5 and srv6 both moved address in August and kept their keys, so a
+// check that compared keys without excluding same-host rows would have refused the registry it is
+// meant to protect. The comparison is over hosts, not endpoints, precisely so this case passes.
+data same_host_two_endpoints_fixture: List<KnownHostKeyRow> = [
+  KnownHostKeyRow {
+    host: "srvA" as HostIdentity,
+    endpoint: "192.168.1.240",
+    key_type: "ssh-ed25519",
+    public_key_base64: cloned_key_material,
+    sha256_fingerprint: "SHA256:clonedfixturefingerprintplaceholdervalue",
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture: one host, first address" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srvA" as HostIdentity,
+    endpoint: "192.168.1.241",
+    key_type: "ssh-ed25519",
+    public_key_base64: cloned_key_material,
+    sha256_fingerprint: "SHA256:clonedfixturefingerprintplaceholdervalue",
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture: one host, address moved" as NonEmptyStr },
+  },
+]
+
+fn conflict_present(rows: List<KnownHostKeyRow>) -> Bool {
+  match known_hosts_shared_key_conflict(rows: rows) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THREE ASSERTIONS IN ONE FUNC so they cannot drift apart: the wall must refuse the cloned pair,
+// admit one host at two addresses, and admit the live registry as it stands today. The third is the
+// one that would fail loudly if this check were wrong about real data rather than about fixtures.
+func fleet_shared_key_wall_probe() -> ProcessExit {
+  if conflict_present(rows: cloned_pair_fixture) == false {
+    return exit_failure(reason: "shared-key wall: two distinct hosts enrolling one key were NOT refused")
+  }
+  if conflict_present(rows: same_host_two_endpoints_fixture) {
+    return exit_failure(reason: "shared-key wall: one host at two endpoints was refused; the wall reads endpoints where it should read hosts")
+  }
+  if conflict_present(rows: fleet_host_key_enrollments) {
+    return exit_failure(reason: "shared-key wall: the LIVE enrolment registry already contains a shared key")
+  }
+  return ExitSuccess
+}
