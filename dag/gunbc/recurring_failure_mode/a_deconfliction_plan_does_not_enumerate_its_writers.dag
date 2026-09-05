@@ -7,7 +7,7 @@ data a_deconfliction_plan_does_not_enumerate_its_writers: RecurringFailureMode =
   identity: "a_deconfliction_plan_does_not_enumerate_its_writers" as NonEmptyStr,
 
   receipts: [
-    "**a deconfliction plan does not enumerate its writers** (two or more lanes reason about how to avoid colliding on one subject, agree on a scheme, and collide anyway -- because the scheme is a PREDICTION about who will write the subject next, and the predicted population omits a writer. The omitted writer is not an adversary: it is a peer who agreed to stand down and then did not act. The result merges CLEAN, so the collision is silent. ",
+    "**a deconfliction plan does not enumerate its writers** (two or more lanes reason about how to avoid colliding on one subject, agree on a scheme, and collide anyway -- because the scheme is a PREDICTION about who will write the subject next, and the predicted population omits a writer. The omitted writer is not an adversary: it is a peer who agreed to stand down and then WROTE ANYWAY -- an earlier revision of this sentence said \"and then did not act\", which is the opposite mechanism and could not produce the collision the row models, because a writer that does not write collides with nobody. The result merges CLEAN, so the collision is silent. ",
 
     "INVALID STATE: a lane holding a deconfliction property that quantifies over a writer population it never discovered. ",
 
