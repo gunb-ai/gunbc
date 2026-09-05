@@ -8,7 +8,7 @@ module test.claim.scm_repository_envelope_witness
 // identity, re-derived from structure on load -- so the round-trip claims assert on the derived
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr, list_length }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -1657,21 +1657,64 @@ fn scm_env_with_objects(members: List<JsonKeyValue>, objects: List<JsonValue>) -
   })
 }
 
-// Which kind the FIRST emitted object is, which is how these claims observe the order they set.
-fn scm_env_first_object_tag(members: List<JsonKeyValue>) -> String {
-  fold(scm_env_objects_of(members: members), init: "empty", f: fn(acc, o) {
-    if acc == "empty" { scm_env_object_tag(v: o) } else { acc }
-  })
+// THE ORDER ORACLE NAMES THE ENTRY, NOT ITS KIND, and the first version of it named the kind. Asking
+// "is the first object a manifest" distinguishes a referring manifest from a leaf-node occupant, and
+// distinguishes NOTHING in the two-manifest specimen, where both entries are manifests and both
+// orders answer yes. A claim built on it would have stayed green with the reversal replaced by the
+// identity function, which is exactly the false-positive this pair of claims exists to rule out.
+//
+// So the oracle is the EXPECTED ENTRY, reconstructed here from the fixture's own path and locator:
+// {"path": p, "source": {"uncontained": digest}}. The occupant is wrong-kind, so the writer cannot
+// spell that reference `at`, which is what makes the expected value derivable without asking the
+// writer what it wrote. Both claims inspect the SAME document they then hand to decode_repository.
+fn scm_env_expected_referring_entry(path: String, locator: ObjectId) -> String {
+  serialize_json(
+    v: json_object(
+      members: [
+        json_kv(
+          key: "manifest",
+          value: json_array(
+            elements: [
+              json_object(
+                members: [
+                  json_kv(key: "path", value: json_string(s: path)),
+                  json_kv(
+                    key: "source",
+                    value: json_object(
+                      members: [
+                        json_kv(key: "uncontained", value: json_string(s: locator.digest as String)),
+                      ]
+                    ),
+                  ),
+                ]
+              ),
+            ]
+          ),
+        ),
+      ]
+    ),
+  )
 }
 
-fn scm_env_object_tag(v: JsonValue) -> String {
-  match v {
-    JsonObject { members: ms } =>
-      fold(ms, init: "other", f: fn(acc, m) {
-        if m.key == "manifest" { "manifest" } else if m.key == "source" { "source" } else { acc }
-      })
-    _ => "other"
+fn scm_env_object_json_at(members: List<JsonKeyValue>, index: Int) -> String {
+  match fold(
+    scm_env_objects_of(members: members),
+    init: ScmEnvIndexedJson { at: 0, found: "" },
+    f: fn(acc, o) {
+      ScmEnvIndexedJson {
+        at: acc.at + 1,
+        found: if acc.at == index { serialize_json(v: o) } else { acc.found },
+      }
+    }
+  ) {
+    ScmEnvIndexedJson { at: _, found: found } => found
   }
+}
+
+type ScmEnvIndexedJson { at: Int, found: String }
+
+fn scm_env_object_count(members: List<JsonKeyValue>) -> Int {
+  list_length(items: scm_env_objects_of(members: members))
 }
 
 fn scm_env_reversed_wire_of(store: ObjectStore) -> List<JsonKeyValue> {
@@ -1684,34 +1727,60 @@ fn scm_env_leaf_program() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^LEAF } }, children: [])
 }
 
-// THE ORDERING CONTROL. It states what the encoder actually emits -- occupant first -- which is the
-// fact the deleted claim assumed it could change by inserting in the other order.
-test fn scm_env_the_writer_emits_a_manifests_occupant_before_the_manifest() -> Bool {
+// THE ORDERING CONTROL. It states what the encoder actually emits -- occupant FIRST, referrer second
+// -- which is the fact the deleted claim assumed it could change by inserting in the other order.
+// Assert it in both directions so that dropping the reversal fails the ORDER assertion, not merely
+// the refusal one.
+fn scm_env_manifest_over_a_program() -> ScmEnvManifestFixture {
   let put = scm_env_put(store: empty_store(), n: scm_env_leaf_program())
-  let fixture = scm_env_manifest_over(
-    store: put.store,
-    locator: node_target_locator(target: put.identity),
-  )
+  scm_env_manifest_over(store: put.store, locator: node_target_locator(target: put.identity))
+}
+
+fn scm_env_program_locator() -> ObjectId {
+  node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_leaf_program()).identity)
+}
+
+fn scm_env_referrer_is_at(members: List<JsonKeyValue>, index: Int, locator: ObjectId) -> Bool {
+  (scm_env_object_count(members: members) == 2)
+    && (scm_env_object_json_at(members: members, index: index)
+      == scm_env_expected_referring_entry(path: "witness/manifested.dag", locator: locator))
+}
+
+test fn scm_env_the_writer_emits_a_manifests_occupant_before_the_manifest() -> Bool {
+  let fixture = scm_env_manifest_over_a_program()
   fixture.built
-    && (scm_env_first_object_tag(
+    && scm_env_referrer_is_at(
       members: scm_env_wire_of(repo: scm_env_repository_with_store(store: fixture.store)),
-    ) != "manifest")
+      index: 1,
+      locator: scm_env_program_locator(),
+    )
 }
 
 // AND THE REORDERED DOCUMENT, WHERE THE OCCUPANT ARRIVES AFTER THE MANIFEST THAT NAMES IT. This is
-// the order a per-entry judgment cannot decide, and the claim proves the document is in it before
-// asserting the refusal.
+// the order a per-entry judgment cannot decide, and each claim proves the document IS in that order
+// -- by matching the referring entry itself at position 0 -- before asserting what the reader did
+// with it.
 test fn scm_env_a_manifest_source_at_a_program_emitted_after_it_still_refuses() -> Bool {
-  let put = scm_env_put(store: empty_store(), n: scm_env_leaf_program())
-  let fixture = scm_env_manifest_over(
-    store: put.store,
-    locator: node_target_locator(target: put.identity),
-  )
+  let fixture = scm_env_manifest_over_a_program()
   let wire = scm_env_reversed_wire_of(store: fixture.store)
   fixture.built
-    && (scm_env_first_object_tag(members: wire) == "manifest")
+    && scm_env_referrer_is_at(members: wire, index: 0, locator: scm_env_program_locator())
     && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
       == "decoded_manifest_source_node")
+}
+
+// THE TWO-MANIFEST SPECIMEN, WHERE THE KIND ORACLE WAS BLIND. Both entries are manifests, so
+// "the first object is a manifest" is true of both orders; only the entry itself separates them.
+test fn scm_env_the_writer_emits_a_manifest_occupant_before_the_manifest() -> Bool {
+  let first = scm_env_empty_manifest(store: empty_store())
+  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
+  first.built
+    && fixture.built
+    && scm_env_referrer_is_at(
+      members: scm_env_wire_of(repo: scm_env_repository_with_store(store: fixture.store)),
+      index: 1,
+      locator: first.manifest,
+    )
 }
 
 test fn scm_env_a_manifest_source_at_a_manifest_emitted_after_it_still_refuses() -> Bool {
@@ -1720,7 +1789,7 @@ test fn scm_env_a_manifest_source_at_a_manifest_emitted_after_it_still_refuses()
   let wire = scm_env_reversed_wire_of(store: fixture.store)
   first.built
     && fixture.built
-    && (scm_env_first_object_tag(members: wire) == "manifest")
+    && scm_env_referrer_is_at(members: wire, index: 0, locator: first.manifest)
     && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
       == "decoded_manifest_source_manifest")
 }

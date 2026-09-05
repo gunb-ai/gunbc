@@ -1229,6 +1229,15 @@ pub struct TransitionAdmission {
 /// the import edge it forced was a consumer resolving through the wrong authority. The codec and
 /// its vocabulary move to `gunbc.scm.object_table_json`, the module the object table is named for.
 ///
+/// ONE ROW OF THIS ENTRY WAS REPOINTED WHERE IT SHOULD HAVE BEEN DELETED, AND THE WALL SAID SO
+/// TWICE. Renaming `encode_repository_v2` to `encode_repository_v3` moved the declaration a binding
+/// row is keyed on, and the row was rewritten to name the new spelling on the reasoning that "the
+/// binding it describes still moves". It does not. A RENAMED declaration is a NEW declaration: the
+/// base corpus has no `encode_repository_v3` for a target to have changed FROM, so the run produces
+/// no TargetChanged delta for it at all, and the row matched nothing on two consecutive heads. It is
+/// deleted. `encode_repository_checked`, which kept its name across the change, keeps its row --
+/// which is the distinction the repoint blurred.
+///
 /// THE SAME PR INTRODUCES A THIRD OBJECT KIND. `CorpusManifestObject` gives every kind-specific
 /// lookup a third wrong-kind arm, gives the object-table decoder its manifest causes, and splits
 /// the untyped locator so that an authored-source identity can no longer inhabit a semantic child
@@ -1499,16 +1508,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         subject: AdmissionSubject::Binding {
             module: "gunbc.scm.repository_envelope",
             in_declaration: "encode_repository_checked",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_repository_v3",
             spelling: "encode_object_table",
             target: "gunbc.scm.object_table_json",
         },
