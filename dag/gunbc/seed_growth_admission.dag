@@ -28,6 +28,7 @@ import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_bounda
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
+import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -222,6 +223,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_entry_closure_preflight_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
     census_memo_seed_growth_justification,
+    data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,

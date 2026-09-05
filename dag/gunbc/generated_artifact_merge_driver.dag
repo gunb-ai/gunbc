@@ -1,6 +1,8 @@
 module gunbc.generated_artifact_merge_driver
 
 import gunbc.shell_bash_runner { bash_escape_double_quote_specials_except_expansion }
+import extdeps.tools.sed { sed_script_arguments }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
@@ -133,10 +135,66 @@ fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<S
 // authority-ahead-of-artifact by exactly this branch's own rows, which is the state heal exists
 // to repair and which the generated-artifact gate can still see. What it removes is the DELETION,
 // which nothing downstream can see at all.
+// THE EXTRACTOR IS THE ONE PRINTED LINE THAT IS A PROGRAM RATHER THAN PROSE, AND IT IS DECLARED
+// RATHER THAN SPELLED so that the program a lane is told to run and the program a witness executes
+// are ONE declaration. This is the same one-concept-two-names problem the escaper above had, one
+// layer up: the recipe now carries TWO sed clauses because the two delegated projections spell a row
+// identity differently, and two clauses inside a prose sentence are two things any executed copy can
+// drift from. `-e` is not spelled here -- extdeps.tools.sed sed_script_arguments owns that pairing,
+// beside the `-i` it already owned -- and the single-quote wrapping is
+// extdeps.posix.shell_command_language posix_single_quote rather than a literal quote pair, because
+// the recipe is placing a program inside a shell word and that encoding has an authority.
+//
+// WHAT THE DECLARATION BUYS, concretely: test.claim.generated_artifact_merge_driver_real_execution
+// runs THESE expressions through real sed over a fixture built from the two rosters and requires the
+// extraction to name every rostered row. That is a coverage join rather than a non-emptiness check,
+// and it is the enrolled form of the hole this recipe carried on docs/design-rung-drops.md -- a
+// correct program pointed at a row shape it could not match, which rendered perfectly and read zero
+// of 35 rows. Dropping either clause reds that witness; the recipe reading as sensible English does
+// not.
+//
+// THE EMITTED BYTES ARE UNCHANGED by this lift, which is the point: the recipe a lane pastes is the
+// same recipe, now derived from the expressions instead of restating them.
+
+data generated_artifact_merge_driver_row_identity_extraction_expressions: List<String> = [
+  "s/^- `\\([a-z0-9_]*\\)`.*/\\1/p",
+  "s/^### \\(.*\\) — .*/\\1/p",
+]
+
+fn generated_artifact_merge_driver_row_extractor_function() -> String {
+  join(
+    [
+      "rows() { sed -n ",
+      join(
+        sed_script_arguments(
+          expressions: map(
+            generated_artifact_merge_driver_row_identity_extraction_expressions,
+            e => posix_single_quote(spelling: e)
+          )
+        ),
+        " "
+      ),
+      " | sort; }",
+    ],
+    ""
+  )
+}
+
+fn generated_artifact_merge_driver_dark_row_set_difference_step() -> String {
+  join(
+    [
+      "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both, or the check reads zero rows on the file it cannot parse and reports a pass it never measured: ",
+      generated_artifact_merge_driver_row_extractor_function(),
+      "; comm -23 <(git show <base-ref>:$merged_path | rows) <(git show HEAD:$merged_path | rows) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
+    ],
+    ""
+  )
+}
+
 fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
   [
     "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base",
-    "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both, or the check reads zero rows on the file it cannot parse and reports a pass it never measured: rows() { sed -n -e 's/^- `\\([a-z0-9_]*\\)`.*/\\1/p' -e 's/^### \\(.*\\) — .*/\\1/p' | sort; }; comm -23 <(git show <base-ref>:$merged_path | rows) <(git show HEAD:$merged_path | rows) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
+    generated_artifact_merge_driver_dark_row_set_difference_step(),
     "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
     "4. finish the authority merge and push the branch; do not regenerate this projection locally",
     "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",

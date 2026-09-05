@@ -4094,6 +4094,10 @@ pub struct PreparedScopeIndexes {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    // Alias lookup uses the first authored declaration in graph order, independently of
+    // function precedence. Derived from the same module fragments and shared with the scope;
+    // a fresh evaluation frame must not re-read the corpus to resolve its first cast.
+    type_items: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     /// SOURCE FILE -> DECLARING MODULE PATH, for the one lookup tier that needs to know where a
     /// reference was authored.
@@ -4130,6 +4134,9 @@ impl PreparedScopeIndexes {
         let mut lines: Vec<String> = Vec::new();
         for (name, item) in self.fn_nodes.iter() {
             lines.push(format!("fn\t{}\t{:p}", name, Rc::as_ptr(item)));
+        }
+        for (name, item) in self.type_items.iter() {
+            lines.push(format!("type_item\t{}\t{:p}", name, Rc::as_ptr(item)));
         }
         for name in self.ambiguous_bare_function_names.iter() {
             lines.push(format!("ambiguous\t{}", name));
@@ -4203,21 +4210,11 @@ pub struct InterpContext {
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // Same chokepoint, ExprCast arm, missed by the three caches above. A cast resolved its
-    // target per EVALUATION: cast_target_seed_name re-sliced source (authored_name_at), and for
-    // any target not named "String" the alias-chain walk called lookup_type_item_across_modules,
-    // which SCANS every item of every module extracting source text per comparison — per hop, up
-    // to 32 hops. Both names are pure functions of target node + module set, fixed per ctx, so
-    // they are memoized per target node pointer, kept alive via cast_kernel_cache_keepalive as
-    // call_func_name_cache above.
+    // Cast names are pure functions of target node + module set. The alias walk reads the
+    // prepared scope's type_items; only the per-expression result lives in the evaluation frame,
+    // keyed and kept alive like call_func_name_cache above.
     cast_kernel_cache: std::cell::RefCell<HashMap<usize, Rc<CastTargetNames>>>,
     cast_kernel_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // The alias walk's per-hop `lookup_type_item_across_modules` was a LINEAR SCAN over every
-    // item of every module, extracting source text per comparison. One daily-page render: 700
-    // lookups scanned 1,967,155 items (~2,810 each), essentially all of ExprCast's 2,027ms — and
-    // the term grows with the closure, not the request. A name->item map is the same fact
-    // indexed, built once per ctx. `or_insert` preserves the scan's first-match-wins order.
-    type_item_index: std::cell::RefCell<Option<Rc<HashMap<String, Rc<Node>>>>>,
     // The cast's SOURCE-side name, same class as cast_kernel_cache above (see
     // cast_expr_inferred_type_name).
     cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
@@ -4431,32 +4428,49 @@ impl InterpContext {
     ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
         let first_write_wins = module_order.is_some();
-        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
-            match module_order {
-                Some(order) => {
-                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
-                        graph
-                            .modules
-                            .iter()
-                            .map(|m| (m.func_env.name.as_str(), m))
-                            .collect();
-                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
-                    // `modules` from the same `order` (`in_scope` is that list), so the
-                    // filter_map cannot drop a scoped member.
-                    order
-                        .iter()
-                        .filter_map(|name| by_name.get(name.as_str()).copied())
-                        .collect()
+        // Derive each module's authored entries once. Alias precedence is graph order even
+        // when the caller supplies a different function order (or a subset of modules).
+        let mut type_items = HashMap::new();
+        let module_fragments: Vec<_> = graph
+            .modules
+            .iter()
+            .map(|module| {
+                let fragment = module_scope_fragment(module, &source_indices, fragments);
+                for entry in &fragment.fn_entries {
+                    if let FragmentFnEntry::Bare { name, item } = entry {
+                        type_items
+                            .entry(name.clone())
+                            .or_insert_with(|| item.clone());
+                    }
                 }
-                None => graph.modules.iter().collect(),
-            };
+                (module, fragment)
+            })
+            .collect();
+        let fragments_to_walk: Vec<&Rc<ModuleScopeFragment>> = match module_order {
+            Some(order) => {
+                let by_name: HashMap<&str, &Rc<ModuleScopeFragment>> = module_fragments
+                    .iter()
+                    .map(|(module, fragment)| (module.func_env.name.as_str(), fragment))
+                    .collect();
+                // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                // `modules` from the same `order` (`in_scope` is that list), so the
+                // filter_map cannot drop a scoped member.
+                order
+                    .iter()
+                    .filter_map(|name| by_name.get(name.as_str()).copied())
+                    .collect()
+            }
+            None => module_fragments
+                .iter()
+                .map(|(_, fragment)| fragment)
+                .collect(),
+        };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut file_module_paths = HashMap::<String, String>::new();
         let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
-        for module in modules_to_walk {
-            let fragment = module_scope_fragment(module, &source_indices, fragments);
+        for fragment in fragments_to_walk {
             for ((file, imported), source_module) in fragment.file_import_bindings.iter() {
                 file_import_bindings
                     .entry((file.clone(), imported.clone()))
@@ -4494,6 +4508,7 @@ impl InterpContext {
             source_indices,
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
+            type_items,
             ambiguous_bare_function_names,
             file_module_paths,
             file_import_bindings,
@@ -4530,7 +4545,6 @@ impl InterpContext {
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
             cast_kernel_cache_keepalive: std::cell::RefCell::new(Vec::new()),
-            type_item_index: std::cell::RefCell::new(None),
             cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
             cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
@@ -5839,8 +5853,15 @@ fn eval_var(
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
+                    let profile_on = eval_profile_enabled();
+                    if profile_on {
+                        DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
+                    }
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
+                    }
+                    if profile_on {
+                        DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
                     ctx.data_cache.borrow_mut().insert(key, v.clone());
@@ -5866,8 +5887,15 @@ fn eval_var(
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
                         let key = Rc::as_ptr(fn_node) as usize;
+                        let profile_on = eval_profile_enabled();
+                        if profile_on {
+                            DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
+                        }
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
+                        }
+                        if profile_on {
+                            DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                         }
                         let v = eval_expr(body, &Env::empty(), ctx)?;
                         ctx.data_cache.borrow_mut().insert(key, v.clone());
@@ -9226,30 +9254,170 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     if eval_profile_enabled() {
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
-    let existing = ctx.type_item_index.borrow().clone();
-    let index = match existing {
-        Some(index) => index,
-        None => {
-            let mut built: HashMap<String, Rc<Node>> = HashMap::new();
-            for module in ctx.modules.iter() {
-                for item in module.items.iter() {
-                    if eval_profile_enabled() {
-                        TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
-                    }
-                    let name = authored_name_at(ctx.si(), item.clone());
-                    if name.is_empty() {
-                        continue;
-                    }
-                    // First declaration wins, matching the scan's early return.
-                    built.entry(name).or_insert_with(|| item.clone());
+    ctx.indexes.type_items.get(type_name).cloned()
+}
+
+#[cfg(test)]
+mod cast_scope_index_tests {
+    use super::*;
+
+    fn fixture() -> (ResolvedGraph, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+        let mut first = String::from("module fixture.cast_first\ntype Shared = String\n");
+        for i in 0..512 {
+            first.push_str(&format!("data unused_{i}: Int = {i}\n"));
+        }
+        let files = [
+            ("cast_first.dag", first),
+            (
+                "cast_second.dag",
+                "module fixture.cast_second\ntype Shared = Int\n".to_string(),
+            ),
+        ]
+        .into_iter()
+        .map(|(path, content)| {
+            Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content,
+            })
+        })
+        .collect();
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files));
+        let graph = result.graph.as_ref().expect("fixture resolves");
+        ((**graph).clone(), result.source_indices.clone())
+    }
+
+    // The counted work is the host-side declaration walk, which eval_steps cannot see.
+    // Multiple fresh frames have the same prepared scope, exactly as on the required floor.
+    // Reverting to a frame-owned index authors the red: each first lookup walks every item.
+    #[test]
+    fn fresh_cast_frames_do_not_rescan_the_prepared_scope() {
+        PROFILE_FLAG.with(|flag| flag.set(Some(true)));
+        let (graph, sources) = fixture();
+        let indexes = InterpContext::build_scope_indexes(&graph, sources);
+        let mut samples = Vec::new();
+        for _ in 0..4 {
+            let ctx = InterpContext::over_scope_indexes(
+                indexes.clone(),
+                ExecutionMode::Hermetic,
+                None,
+                None,
+            );
+            let before = cast_lookup_counters().2;
+            let started = thread_cpu_nanos();
+            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
+            let cold_cpu = thread_cpu_nanos().saturating_sub(started);
+            let cold_visits = cast_lookup_counters().2 - before;
+            let started = thread_cpu_nanos();
+            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
+            let warm_cpu = thread_cpu_nanos().saturating_sub(started);
+            let warm_visits = cast_lookup_counters().2 - before - cold_visits;
+            samples.push((cold_visits, warm_visits, cold_cpu, warm_cpu));
+        }
+        eprintln!(
+            "cast-scope-index (cold visits, warm visits, cold cpu ns, warm cpu ns): {samples:?}"
+        );
+        assert!(samples
+            .iter()
+            .all(|(cold, warm, _, _)| *cold == 0 && *warm == 0));
+    }
+
+    // Both modules author Shared with different kernels. Alias lookup has always used
+    // graph order, first declaration wins, independently of function lookup precedence.
+    #[test]
+    fn cast_lookup_preserves_graph_order_even_with_reversed_function_precedence() {
+        let (graph, sources) = fixture();
+        let first = graph
+            .modules
+            .iter()
+            .flat_map(|m| m.items.iter())
+            .find(|item| authored_name_at(sources.clone(), (*item).clone()) == "Shared")
+            .expect("fixture has colliding declarations")
+            .clone();
+        let order: Vec<String> = graph
+            .modules
+            .iter()
+            .rev()
+            .map(|module| module.func_env.name.clone())
+            .collect();
+        for module_order in [None, Some(order.as_slice())] {
+            let indexes = InterpContext::build_scope_indexes_with_module_order(
+                &graph,
+                sources.clone(),
+                module_order,
+                None,
+            );
+            let ctx =
+                InterpContext::over_scope_indexes(indexes, ExecutionMode::Hermetic, None, None);
+            let selected =
+                lookup_type_item_across_modules(&ctx, "Shared").expect("Shared resolves");
+            assert!(Rc::ptr_eq(&selected, &first));
+            assert!(lookup_type_item_across_modules(&ctx, "Absent").is_none());
+            assert!(lookup_type_item_across_modules(&ctx, "fixture.cast_first.Shared").is_none());
+        }
+    }
+
+    // Offline differential oracle for the removed scan, never reachable in production.
+    // This explicitly resolves the lane's real scope; ordinary unit runs stay fixture-bounded.
+    #[test]
+    #[ignore = "real repository scope; run explicitly on a remote worker"]
+    fn real_scope_cast_index_matches_the_retired_scan() {
+        use crate::cli_run::{
+            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
+            witness_exclusion_substrings,
+        };
+        // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
+        // relative compilation path, which is not a usable execution-time source root.
+        let cwd = std::env::current_dir().expect("test working directory");
+        let root = cwd
+            .ancestors()
+            .find(|path| path.join("dag").is_dir() && path.join("src/v2").is_dir())
+            .expect("test runs inside the repository checkout");
+        // Repository preparation resolves indexed, repo-relative entry paths against cwd.
+        // This ignored probe runs alone with --test-threads=1; restore cwd even on panic.
+        struct RestoreDirectory(std::path::PathBuf);
+        impl Drop for RestoreDirectory {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+        let _restore = RestoreDirectory(cwd.clone());
+        std::env::set_current_dir(root).expect("enter repository root");
+        let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
+        let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
+        let index = process_shared_index(&roots);
+        let (prepared, _) = prepare_repository_closure(
+            &roots,
+            &witness_exclusion_substrings(),
+            Some((&index, std::slice::from_ref(&entry))),
+        )
+        .expect("real scope prepares strictly");
+        let scope = claim_scope_for(&prepared, &entry).expect("real scope exists");
+        let ctx = evaluation_frame(&scope, ExecutionMode::Hermetic, None, None);
+        let mut legacy = HashMap::new();
+        let mut visited = 0;
+        let started = thread_cpu_nanos();
+        for module in ctx.modules.iter() {
+            for item in module.items.iter() {
+                visited += 1;
+                let name = authored_name_at(ctx.si(), item.clone());
+                if !name.is_empty() {
+                    legacy.entry(name).or_insert_with(|| item.clone());
                 }
             }
-            let built = Rc::new(built);
-            *ctx.type_item_index.borrow_mut() = Some(built.clone());
-            built
         }
-    };
-    index.get(type_name).cloned()
+        let legacy_cpu = thread_cpu_nanos().saturating_sub(started);
+        assert_eq!(legacy.len(), ctx.indexes.type_items.len());
+        for (name, item) in &legacy {
+            assert!(Rc::ptr_eq(
+                item,
+                ctx.indexes.type_items.get(name).expect("same name")
+            ));
+        }
+        let started = thread_cpu_nanos();
+        assert!(lookup_type_item_across_modules(&ctx, "NonEmptyStr").is_some());
+        let lookup_cpu = thread_cpu_nanos().saturating_sub(started);
+        eprintln!("real-cast-scope modules={} visited={visited} names={} legacy_cpu_ns={legacy_cpu} prepared_lookup_cpu_ns={lookup_cpu}", ctx.modules.len(), legacy.len());
+    }
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
@@ -18865,6 +19033,27 @@ thread_local! {
     static CAST_KERNEL_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_ITEMS: Cell<u64> = const { Cell::new(0) };
+
+    /// DIAGNOSTIC (2026-09-05 floor-cost-w3 investigation, behind GUNBC_INTERP_PROFILE=1
+    /// only). SUSPECTED: `data` declarations are re-evaluated per claim because each fresh
+    /// `InterpContext` initialises an empty `data_cache` (`InterpContext::over_scope_indexes`,
+    /// field `data_cache: HashMap::new()`), and required-floor builds one `InterpContext` per
+    /// claim (noted "FRESH PER CLAIM" at the `InterpContext` allocation in
+    /// `required_floor_runner.rs`). The suspected shape: a claim whose call graph
+    /// reaches a `data` declaration pays the cost of evaluating its initialiser (List<String>
+    /// with 233 strings, a `phase_board_from_census_identities` fold over them, etc.) on the
+    /// first access, then caches it in the per-claim cache — only for the next claim to repeat
+    /// it. DATA_EVAL_LOOKUPS and DATA_EVAL_EVALS make the multiplier observable.
+    ///
+    /// NEGATIVE RESULT: #10544's after-artifact (run 33958329744 vs parent 33956318599) showed
+    /// the ~65ms floor in self_host_compile_phase_frontier_witness was the **type_index**, not
+    /// data_cache — module total went 2,140 -> 269 ms with these counters uninvolved. The
+    /// data_cache mechanism is real but was not the dominant cost in this module. A residual gap
+    /// in that same module (three claims at ~73ms on ~95k steps) and a 4.96ms probe scan vs
+    /// ~55ms observed floor on #10544 remain unassigned. These counters exist to settle that
+    /// class of question directly, not to establish a saving.
+    static DATA_EVAL_LOOKUPS: Cell<u64> = const { Cell::new(0) };
+    static DATA_EVAL_EVALS: Cell<u64> = const { Cell::new(0) };
 }
 
 /// Diagnostic counters for the cast cost center. Zero-cost when profiling is off.
@@ -18873,6 +19062,19 @@ pub fn cast_lookup_counters() -> (u64, u64, u64) {
         CAST_KERNEL_CALLS.with(|c| c.get()),
         TYPE_LOOKUP_CALLS.with(|c| c.get()),
         TYPE_LOOKUP_ITEMS.with(|c| c.get()),
+    )
+}
+
+/// Diagnostic counters for the data-eval cost center. One thread-local read and an Option match
+/// per data-declaration access when profiling is off — not compiled out, same cost pattern as
+/// the cast counters above (whose own "Zero-cost" doc comment is incorrect in the same way and
+/// is pre-existing; not corrected here).
+/// `(data_eval_lookups, data_eval_evals)` — the gap between lookups and evals is the
+/// per-cache-hit saving that would be lost per-claim if the cache were shared across frames.
+pub fn data_eval_counters() -> (u64, u64) {
+    (
+        DATA_EVAL_LOOKUPS.with(|c| c.get()),
+        DATA_EVAL_EVALS.with(|c| c.get()),
     )
 }
 
@@ -20306,6 +20508,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -20385,6 +20588,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -20408,6 +20612,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

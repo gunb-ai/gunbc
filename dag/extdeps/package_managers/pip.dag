@@ -1,0 +1,42 @@
+module extdeps.package_managers.pip
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pip.pypa.io/en/stable/cli/pip_install/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.package_managers.pip",
+      decl_name: "pip_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data pip_program: NonEmptyStr = "pip"
+
+// THE VERSION IS NOT OPTIONAL IN THIS BUILDER, and that is the whole reason it exists rather than a
+// caller passing a bare package name. An unpinned install resolves to whatever the index serves at
+// the moment it runs, so two sessions can provision materially different toolchains from the same
+// declaration and neither is wrong about what it asked for. DESIGN section 3 calls a fact whose
+// meaning drifts under a constant name a meaning fork; an unpinned dependency is that fork with the
+// index as the author. The requirement string is assembled here so no caller can spell == itself
+// and no caller can omit it.
+fn pip_install_pinned_command(distribution: NonEmptyStr, version: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: pip_program,
+    arguments: ["install", concat(concat(distribution as String, "=="), version as String)],
+  )
+}

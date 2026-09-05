@@ -41,7 +41,7 @@ data absence_classifier_default_bucket: RecurringFailureMode = RecurringFailureM
 
     "NEXT-RUNG TRIGGER, a capability and not an artifact: parse constructors that CARRY the module-item kind they already dispatched on, consumed by an exhaustive match with NO DEFAULT TYPE BUCKET -- at which point membership is decided at construction and the residual refusal becomes real rather than decorative. ",
 
-    "THE SECOND SPECIMEN IS IN A DIFFERENT AUTHORITY AND IS FILED, NOT REPAIRED: v1.compiler.emit_core_support is_bare_leaf_item reads a CAPABILITY-LESS resource as a type declaration -- `resource Network` and `resource AuthContext` in std.resources have no children, no body, no params and no connective -- so the emit-side shape predicates carry the same defect in the same direction. ",
+    "THE SECOND SPECIMEN IS IN A DIFFERENT AUTHORITY AND IS FILED, NOT REPAIRED: v1.compiler.emit_core_support is_leaf_type_item, then named is_bare_leaf_item, read a CAPABILITY-LESS resource as a type declaration -- `resource Network` and `resource AuthContext` in std.resources have no children, no body, no params and no connective -- so the emit-side shape predicates carry the same defect in the same direction. ",
 
     "Two specimens, one module, unrepaired here because it is a change to a different authority and smuggling it into a parser change would fork the subject. ",
 
@@ -52,6 +52,12 @@ data absence_classifier_default_bucket: RecurringFailureMode = RecurringFailureM
     "That split arrived here as a side effect of building the population join, not as a design goal, which is exactly why it is written down: RECOGNITION RULE: WHERE A CENSUS COMPARES TWO READERS, A THIRD INDEPENDENTLY-DERIVED READER IS THE ONLY THING THAT CAN FALSIFY THEIR AGREEMENT -- reach for it ON PURPOSE when an agreed-wrong population is suspected. ",
 
     "The corpus-wide instrument is `type_occurrence_binding_census --establish`, joining the two readers at occurrence-id grain with uniqueness on both sides and no extra members.)",
+
+    "THE TRIGGER FIRED, 2026-09-04. The parse constructors now CARRY the kind: v1.std.core Node has module_item_kind: ParsedModuleItemKind, stamped by the eight item constructors in v1.compiler.parse from the ItemForm body_kind they were already dispatching on, propagated at every construction that rebuilds a node, and consumed by an EXHAUSTIVE MATCH in all three emitters. Membership is decided at construction; there is no default type bucket to fall into; and the residual is now two named arms -- ModuleItemUnrecognized and NotAModuleItem -- that refuse in every target rather than a shape no one claimed. The second specimen this row filed and did not repair is repaired by the same motion: the emit-side predicates that decided an item's KIND from absence are deleted, and the four that survive decide TYPE STRUCTURE only, each gated on the carried kind. ",
+
+    "WHAT THE CLIMB COVERS AND WHAT IT DOES NOT, because the rung is the MINIMUM across the paths. The CLASSIFICATION axis reaches structurally impossible: no item can acquire a kind it was not constructed with, and a new ParsedModuleItemKind variant fails to compile at every dispatcher. The PAYLOAD axis does not move: Node is one carrier for items and expressions, so body and type_annotation stay optional and a kind-stamped item with a missing payload is still authorable. That residue is its own row, [[kind_carried_but_its_fields_stay_optional]], with the per-kind item carrier named as its trigger. Reporting the classification climb as if it closed both would be the rung inflation this ledger exists to catch. ",
+
+    "EVIDENCE, EXECUTED AND ENROLLED: v1.tests.claim.item_kind_dissolves_shape_predicates_control_test carries the discriminating RED -- a node satisfying every conjunct of the old shape test while carrying ModuleItemResource, which the shape-only predicate claimed and the kind-gated one refuses -- beside the accepted positive control that stops it being satisfied by a predicate that answers false for everything. Per DESIGN section 4b(4) both stay enrolled now that the machinery they falsified is deleted.",
   ],
 
   evidence: [],

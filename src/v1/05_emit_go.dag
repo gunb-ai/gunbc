@@ -2,6 +2,8 @@ module v1.compiler.emit_go
 
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
   import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at,
   NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
@@ -98,10 +100,9 @@ import v1.compiler.emit_core_support {
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
   apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, extract_test_projections
+  is_type_alias_return_node,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item,
+  extract_test_projections
 }
 
 
@@ -253,9 +254,9 @@ fn go_package_name(module_name: String) -> String {
 }
 
 fn emit_go_imports(items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
-  let has_services = items |> any(item => is_service_item(item: item))
+  let has_services = items |> any(item => item.module_item_kind == ModuleItemService)
   let has_types = items |> any(item => is_type_def_item(item: item))
-  let has_functions = items |> any(item => is_function_item(item: item))
+  let has_functions = items |> any(item => item.module_item_kind == ModuleItemFunction)
   let std_imports = collect_go_std_imports(has_services: has_services, has_types: has_types, has_functions: has_functions)
   let pkg_imports = imports |> map(imp =>
     let mod_name = module_to_filename(name: authored_name_at(source_indices: source_indices, node: imp))
@@ -287,30 +288,62 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
   concat(fmt_import, rt_import, net_imports)
 }
 
+// EXHAUSTIVE ON THE ITEM KIND, so a new ParsedModuleItemKind variant fails to compile here rather
+// than falling through an if-chain into a residual arm. The kind decides WHICH construct is being
+// emitted; it does not decide that the optional fields that construct reads are Present, so the
+// function and data arms still match on body and type_annotation and REFUSE when they are Absent
+// (Node.body stays `Node?`, so a kind-stamped item with no body remains authorable). The type
+// arms keep the structure predicates, which split ONE kind by the shape of the type it declares.
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  if is_type_def_item(item: item) {
-    emit_go_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    emit_go_type_alias(name: item_text, base: resolved_type(n: item), source_indices: env.source_indices)
-  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    ""
-  } else if is_function_item(item: item) {
-    if item.uses |> count > 0 {
-      emit_go_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
-    } else {
-      emit_go_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope)
-    }
-  } else if is_data_def_item(item: item) {
-    emit_go_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0)
-  } else if is_service_def_item(item: item) {
-    emit_go_service_def(item: item, registry: registry, env: env)
-  } else if is_resource_def_item(item: item) {
-    emit_go_resource_def(item: item, env: env)
-  } else {
-    concat(language_spec(target: Go).items.func_keyword, " init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
+  match item.module_item_kind {
+    ModuleItemTypeDeclaration =>
+      if is_type_def_item(item: item) {
+        emit_go_type_def_from_connective(item: item, env: env)
+      } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+        emit_go_type_alias(name: item_text, base: resolved_type(n: item), source_indices: env.source_indices)
+      } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
+        ""
+      } else {
+        emit_go_item_refusal(item_text: item_text, reason: "type declaration matches no declared type structure")
+      }
+    ModuleItemFunction =>
+      match item.body {
+        Present { value: fn_body } =>
+          if item.uses |> count > 0 {
+            emit_go_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: fn_body, registry: registry, scope: scope)
+          } else {
+            emit_go_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: fn_body, registry: registry, scope: scope)
+          }
+        Absent => emit_go_item_refusal(item_text: item_text, reason: "function item carries no body")
+      }
+    ModuleItemDataValue =>
+      match item.type_annotation {
+        Present { value: anno } =>
+          match item.body {
+            Present { value: value_expr } =>
+              emit_go_data_def(name: item_text, type_node: anno, value: value_expr, registry: registry, scope: scope, depth: 0)
+            Absent => emit_go_item_refusal(item_text: item_text, reason: "data item carries no value")
+          }
+        Absent => emit_go_item_refusal(item_text: item_text, reason: "data item carries no declared type")
+      }
+    ModuleItemService =>
+      if item.children |> count == 0 {
+        emit_go_item_refusal(item_text: item_text, reason: "service declares no operations")
+      } else {
+        emit_go_service_def(item: item, registry: registry, env: env)
+      }
+    ModuleItemResource => emit_go_resource_def(item: item, env: env)
+    ModuleItemUnrecognized =>
+      emit_go_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    NotAModuleItem =>
+      emit_go_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
+}
+
+fn emit_go_item_refusal(item_text: String, reason: String) -> String {
+  concat(language_spec(target: Go).items.func_keyword, " init() { panic(\"EMIT REFUSED: ", reason, ": ", item_text, "\") }")
 }
 
 fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {

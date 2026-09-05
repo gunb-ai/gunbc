@@ -148,14 +148,51 @@ test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> 
 // CEILING, NOT A RUNG DROP. The meaning-level two-arm discriminator is authorable
 // and has been executed: the broad classifier substitutes a marker struct and
 // rustc reports E0308 at the parent boundary; the positional classifier exposes
-// the unsupported non-applied projection and rustc reports E0573. It is not
-// enrollable today. compile_dag_rust_emit_check and compile_dag_multi_module_fixture
-// stop at emitted text, while emitted_closure_compile_host is wired to the live
-// required-entry roster and offers no fixture-callable operation.
+// the unsupported non-applied projection and rustc reports E0573.
+// compile_dag_rust_emit_check and compile_dag_multi_module_fixture stop at emitted
+// text, which is what pins this class at SourceToEmittedTextHonestyOnly.
+//
+// ONE STALE SENTENCE RETIRED. What stood here saying emitted_closure_compile_host
+// offers no fixture-callable operation is removed because it became false:
+// fixture_closure_rustc_verdict takes a fixture source, emits its closure and hands
+// it to rustc, and pairs already ride it.
+//
+// THE DISCRIMINATOR NAMED ABOVE IS STILL OUTSTANDING, AND A FIXTURE PAIR CANNOT
+// DISCHARGE IT. Its two arms are the BROAD and the POSITIONAL classifier -- two
+// COMPILER behaviours over ONE source -- so the variable between them is
+// emit_rust's classification, not any text a fixture can author. Two fixture files
+// vary the SOURCE and hold the compiler fixed, which is the opposite axis. No
+// number of them reaches this row's arms. That is a defect in the trigger below as
+// much as a gap in coverage: a route that only compiles authored fixtures can never
+// satisfy a condition whose arms differ by compiler behaviour, so the capability
+// this row is waiting for includes compiler variance and not merely a callable
+// rustc route. Recorded, deliberately not repaired here: rewriting the trigger is a
+// change to what this row demands, and it belongs to whoever takes the climb rather
+// than to a change that merely built beside it.
+//
+// WHAT WAS ADDED IS SEPARATE COVERAGE, NOT THAT DISCRIMINATOR.
+// fixtures/fixture_closure_rustc/phantom_marker_applied_probe.dag and
+// phantom_marker_non_applied_probe.dag are a POSITION pair: one identity in the
+// ruled applied-argument position, whose emitted crate compiles, against the same
+// identity in a non-applied position, whose emitted crate rustc refuses with a
+// located E0308. They establish that the emitted-crate route reaches rustc for this
+// subject and that the non-applied projection is refused there. They do NOT
+// establish the broad-versus-positional distinction, and both declare their markers
+// LOCALLY, so they do not exercise the imported-marker construction that
+// emit_specific_import_block decides -- which is where those classifiers diverge.
+// Cited as coverage of the position question only.
+//
+// AN OBSERVATION THAT IS NOT A CONCLUSION. The refusal that pair measured, E0308 at
+// the parent boundary with a marker struct standing where the return wanted the
+// coproduct, matches the signature this row attributes to the BROAD arm. It is not
+// evidence that the shipped classifier is broad: the construction is local rather
+// than imported, so it is not the arm this row describes. It is written down
+// because it is the kind of coincidence that becomes a false memory once nobody can
+// find where it came from.
 //
 // The carrier below makes the enrollment standing, currently enrolled boundary,
-// trigger, and routed owner separately readable facts. In particular, an executed
-// scratch discriminator cannot be mistaken for enrolled coverage.
+// trigger, and routed owner separately readable facts, so an executed scratch
+// discriminator cannot be mistaken for enrolled coverage.
 type PhantomMarkerMeaningDiscriminatorEnrollmentStanding
   = MeaningDiscriminatorExecutedNotEnrolled
   | MeaningDiscriminatorEnrolled
@@ -164,6 +201,12 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
   = SourceToEmittedTextHonestyOnly
   | EmittedCrateMeaningDiscriminator
 
+// THE ROUTE OWNER IS REPOINTED BECAUSE THE ONE NAMED HERE WAS CLOSED, WHICH MADE
+// THE TRIGGER UNRETIRABLE. node://adhoc-da8c65c0-b3b reached status DONE on
+// 2026-09-01 without the capability it owed existing, so this row named a next-rung
+// trigger nobody was accountable for -- the untracked stall DESIGN 4b(2) forbids,
+// wearing the shape of a tracked one. A trigger is retired BY ITS TRIGGER AND BY
+// NOTHING ELSE, and a trigger whose owner cannot act is retired by nothing at all.
 type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
 
 type PhantomMarkerMeaningDiscriminatorCeiling {
@@ -177,5 +220,5 @@ data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscr
   standing: MeaningDiscriminatorExecutedNotEnrolled,
   enrolled_boundary: SourceToEmittedTextHonestyOnly,
   next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
-  route_owner: "node://adhoc-da8c65c0-b3b" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+  route_owner: "node://adhoc-f044ad97-222" as PhantomMarkerMeaningDiscriminatorRouteOwner,
 }

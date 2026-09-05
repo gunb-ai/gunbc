@@ -141,6 +141,36 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_names_a_row_that_went_dark_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_names_a_row_that_went_dark_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_reconciles_with_both_rosters_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_reconciles_with_both_rosters_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_duplicated_identity_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_refuses_a_duplicated_identity_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_substituted_identity_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "row_extractor_refuses_a_substituted_identity_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
       function: "divergent_generated_artifact_merge_refuses_by_real_execution",
