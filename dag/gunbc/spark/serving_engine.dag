@@ -2,10 +2,11 @@ module gunbc.spark.serving_engine
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent, PositiveSlotCount }
+import std.measure { TokenCount, Percent, PositiveSlotCount, Millisecond }
 import std.types { Port }
 import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
 import extdeps.vllm.engine_args { VllmEngineArgs, VllmDistributedExecutorBackend, ExecutorRay, ExecutorMp, ExecutorExternalLauncher }
+import extdeps.ray.threshold_memory_monitor { ray_linux_built_monitors, ray_built_monitor_enforces }
 
 type SparkServingBindListen {
   host: NonEmptyStr
@@ -180,17 +181,44 @@ type EnforcerRefusal
 // launch with an empty declared list refused as `NoEnforcerDeclared`, naming the wrong fact. Making
 // the implied monitor a real member of the list dissolves both: there is one population and one set
 // of rules over it.
+// WHETHER RAY IS ENFORCING IS READ FROM RAY, NOT RE-DECIDED HERE. This function took a
+// `ray_monitor_disabled: Bool` produced by nobody, which was a second authority for a question
+// `extdeps.ray.threshold_memory_monitor` already answers from pinned `ray-2.58.0` source -- and the
+// two AGREED ONLY BY ACCIDENT. "Disabled" is spelled as a zero refresh interval, and at a zero
+// interval the factory does NOT stop enforcing: it swaps the threshold monitor for a Noop while the
+// EVENT monitor, pushed before the interval is ever read, keeps enforcing. So the Bool answered []
+// for a host that has a live enforcer, and the refusal below would have reported
+// `NoEnforcerDeclared` against a host that was being enforced -- naming the wrong fact, which is the
+// exact defect the declared-population rewrite above was meant to end.
+//
+// THE SELECTION INPUTS ARE THE FACTORY'S, so they are the parameters: the same two arguments
+// `ray_linux_built_monitors` selects on. A caller can no longer assert Ray's enforcement state; it
+// supplies what Ray was configured with and the citation decides.
+//
+// RAY CONTRIBUTES AT MOST ONE MEMBER, WHICH IS NOT THE SAME AS ONE MONITOR. With isolation on and a
+// live interval the factory builds TWO enforcing monitors, event and threshold. Mapping monitors to
+// members one-for-one would hand `MoreThanOneEnforcer { count: 2 }` to every ordinary Ray host,
+// turning a correct citation into a refusal of the normal case. The population this module counts is
+// ENFORCING SUBSYSTEMS over one pool, and Ray is one of those however many objects it builds
+// internally -- so the join is `any`, not a map.
 fn ray_implied_enforcers(
   backend: VllmDistributedExecutorBackend,
-  ray_monitor_disabled: Bool,
+  resource_isolation_enabled: Bool,
+  monitor_refresh: Millisecond,
 ) -> List<MemoryEnforcerKind> {
   match backend {
     ExecutorMp => []
     ExecutorExternalLauncher => []
     ExecutorRay =>
-      match ray_monitor_disabled {
-        true => []
-        false => [RayThresholdMonitor]
+      match any(
+        ray_linux_built_monitors(
+          resource_isolation_enabled: resource_isolation_enabled,
+          refresh: monitor_refresh,
+        ),
+        m => ray_built_monitor_enforces(m: m),
+      ) {
+        true => [RayThresholdMonitor]
+        false => []
       }
   }
 }
@@ -215,12 +243,17 @@ fn ray_implied_enforcers(
 fn spark_memory_enforcer_admits(
   memory_kind: MemoryKind,
   enforcers: List<MemoryEnforcerKind>,
-  ray_monitor_disabled: Bool,
+  resource_isolation_enabled: Bool,
+  monitor_refresh: Millisecond,
   backend: VllmDistributedExecutorBackend,
 ) -> EnforcerVerdict {
   let live = concat(
     enforcers,
-    ray_implied_enforcers(backend: backend, ray_monitor_disabled: ray_monitor_disabled),
+    ray_implied_enforcers(
+      backend: backend,
+      resource_isolation_enabled: resource_isolation_enabled,
+      monitor_refresh: monitor_refresh,
+    ),
   )
   match first(live) {
     Absent => EnforcerRefused { cause: NoEnforcerDeclared }
