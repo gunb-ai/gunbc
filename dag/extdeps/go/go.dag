@@ -1,0 +1,34 @@
+module extdeps.go
+
+import std.types { FilePath, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/spec"
+  }
+}
+
+// Go toolchain execution. RunFile mirrors python.Interpreter.RunFile — go run compiles and
+// executes the script at the given path in one shot, returning captured stdout/stderr to the
+// caller. The Go compiler binary must be on PATH; if absent the operation fails and the caller
+// sees success: false. This is by design (see $5: conditional provisioning is a widen — the
+// operation refuses rather than downloading a tarball and continuing).
+service go.Toolchain {
+  operation RunFile {
+    input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "go", "run", "{script_path}", args] }
+    exit {
+      0 => Unit
+      nonzero => String "go run exited nonzero"
+    }
+  }
+}
