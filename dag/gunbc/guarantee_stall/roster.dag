@@ -88,7 +88,7 @@ import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption
 // `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`. `NextRungTrigger` now
 // carries the operative half as `capability` and the asked lanes as modeled
 // `DashboardWorkItemReferent` rows in `awaiting`, and `every_stall_trigger_is_admitted` refuses a
-// capability that spells a referent back into itself. Two rows were migrated by that change --
+// capability that spells a referent back into itself. Four rows were migrated by that change --
 // `operation_argv_binding_wall_stall`, `external_model_scope_live_cover_stall`,
 // `observation_heartbeat_lockstep_stall` and `gitattributes_committed_emit_drift_stall` -- four,
 // not the three this paragraph's dated reading counts, because that reading enumerated the nodes
