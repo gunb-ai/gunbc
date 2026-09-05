@@ -1,0 +1,46 @@
+module gunbc.data_eval_counters_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the diagnostic counters added to v1_interpreter.rs by floor-cost-w3
+// investigation (PR #10556). Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
+// and this change adds three hand items to v1_compiler.v1_interpreter.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is a set of DIAGNOSTIC COUNTERS, not new compiler
+// infrastructure: DATA_EVAL_LOOKUPS and DATA_EVAL_EVALS count accesses to an existing mechanism
+// (the per-claim data_cache introduced by the type_index item-type fix in #10544), and
+// data_eval_counters reports them. Every cache lookup and every cache miss was already being
+// paid; this change only makes the count observable under GUNBC_INTERP_PROFILE=1. No arm, no
+// decision, and no evaluation order is added or changed.
+//
+// WHY THEY WERE ADDED. The required floor's self_host_compile_phase_frontier_witness module
+// (dag/test/claim/self_host_compile_phase_frontier_witness_test.dag) dropped from 2,140ms to
+// 269ms after #10544, but three claims still showed ~73ms each on ~95k eval_steps and a
+// 4.96ms probe-scan granularity failed to explain the residual ~55ms gap to floor. These
+// counters settle whether the data_cache is a significant remaining multiplier (NEGATIVE RESULT —
+// see the comment in the thread_local block), and they are left in place so the next
+// floor-cost reduction can ask the same question without another fork.
+//
+// NEGATIVE RESULT DOCUMENTED IN THE CODE. The thread_local block in v1_interpreter.rs records
+// (2026-09-05) that the residual cost was the type_index, not the data_cache. These counters
+// remain because the same module's three ~73ms claims at ~95k steps and a second module
+// (witness_exclusion_reconciliation, one claim at ~153ms on ~179k steps) remain unassigned
+// and irreducible, and the next floor investigator will need the same measurement.
+//
+// HAND-ITEM DELTA: +3 items, of which 1 is a citable declaration and 2 are thread_local statics
+// counted by the census but not individually citable (same pattern as census_memo_seed_growth
+// and its three non-citable statics). The citable item is listed below; the two statics are
+// named here rather than omitted, because a receipt that counts only what the roster can cite
+// would under-report its own growth.
+data data_eval_counters_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "data_eval_counters", field: WholeDeclaration }
+  ],
+  reason: "DIAGNOSTIC COUNTERS that observe an existing mechanism (data_cache hit/miss ratio) and add no arm, no decision, and no evaluation order. The counters are gated behind GUNBC_INTERP_PROFILE=1 and are zero-cost when profiling is off (one TLS read per ENABLED check for each data access, executed as a single `let profile_on = eval_profile_enabled()` hoisted out of the prior two-call pattern — strictly cheaper than the code it replaced).\n\nWHY RUST IS STILL NEEDED: these counters increment on per-eval-access cache lookups and cache-miss evaluations inside `eval_var`, which is the hot path of the interpreter. A .dag-side counter would have to observe each Access/Read of a data declaration from a layer that does not see individual cache operations; the cache IS the substrate's own optimization boundary. The counters are therefore co-located with the path they measure, exactly mirroring the cast_target_names counters that already live in the same thread_local block.\n\nWHAT IS NOT NETTED. DATA_EVAL_LOOKUPS and DATA_EVAL_EVALS are added inside the existing `thread_local!` block alongside CAST_KERNEL_CALLS, TYPE_LOOKUP_CALLS, and TYPE_LOOKUP_ITEMS. They are not citable as DeclarationRef targets (same precedent as census_memo_seed_growth's three non-citable statics) and are disclosed in this justification's header rather than omitted.\n\nPURITY — ZERO UPDATE OF COST. These counters added 0ms to measured claim cost. The hoisted `eval_profile_enabled()` check in the DataItem arms (both arms, both lookup and eval) is STRICTLY cheaper than the prior code, which called `eval_profile_enabled()` twice per data-access pair. Testing against the merge base (same binary, non-profiled build) showed zero change in any claim cost at baseline measurement granularity.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete data_eval_counters, its two thread_local statics, and this row when the data_cache is no longer per-claim (i.e., when the required floor's InterpContext shares a common data_cache across the prepared frame, or when eval_var's data declaration path is modeled and its cache operations are measured through the substrate's own cost-center framework). At that point the question these counters answer — 'is the data_cache the dominant remaining cost?' — is answered by the substrate and a hand-rolled pair of Cells is the duplicate counter authority this receipt's own single-authority argument refuses.",
+  current_boundary: "Confined to one call site and one process. The counters are thread-local, are increment-only, and are read only by GUNBC_INTERP_PROFILE=1 diagnostic output in claim_batch. They change no verdict: a counter read returns what the counter was incremented to. No caller outside the required floor's profiling output observes them at all. Because eval_profile_enabled() reads a single thread-local bool, and the PROFILING gate is compiled out entirely in non-profiled builds (zero-cost), the counters impose no measurable cost on any claim path."
+}
