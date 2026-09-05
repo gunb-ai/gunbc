@@ -324,11 +324,10 @@ fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> Sp
   } else {
     // Extract the enrolled bootloader name when SecureBoot has a bootloader enrolled.
     // When SecureBoot is disabled there is no enrolled bootloader to carry through.
-    let enrolled_bootloader: NonEmptyStr? =
-      match config.secure_boot {
-        SecureBootDisabledForPxe => none
-        BootloaderEnrolledForPxe { bootloader: b } => Present { value: b }
-      }
+    let enrolled_bootloader: NonEmptyStr? = match config.secure_boot {
+      SecureBootDisabledForPxe => none
+      BootloaderEnrolledForPxe { bootloader: b } => Present { value: b }
+    }
     SparkPxeFirmwareReady {
       enrolled_bootloader: enrolled_bootloader,
     }
