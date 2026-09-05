@@ -2,7 +2,9 @@ module product.printed_chassis.slicing_toolchain
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, CommandTransport }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
 import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
 import extdeps.printing.orca_slicer {
   orca_slicer_version, orca_slicer_linux_aarch64_appimage,
@@ -114,67 +116,47 @@ type OrcaExecutionStanding
   | ExecutionRefused { receipt: NonEmptyStr }
   | ExecutionReady { attempt: AttemptedExecution }
 
-// CONSTRUCTOR EXCLUSIVITY IS NOT MINT SOUNDNESS. Sealing AttemptedExecution decided who may mint it;
-// it did not decide what the mint must consume. The previous signature took `started: Bool` beside
-// the call, so the sanctioned judge minted the seal on a caller's say-so and the seal proved only
-// that the caller had said yes. A boolean supplied alongside a call is not evidence -- it is the
-// conclusion, moved one argument to the left, which is the same defect this PR closed on the export
-// denominator.
+// CONSTRUCTOR EXCLUSIVITY IS NOT MINT SOUNDNESS, AND A STRUCTURED REPORT IS NOT AN OBSERVATION.
 //
-// The outcome is therefore a structured observation of a named process: either the loader refused it
-// or it exited with a status. Ready requires a ZERO status from that carrier, so there is no
-// spelling of "it started" that is separable from the process being described.
+// This function has now been wrong twice in the same direction, and the second attempt is the more
+// instructive one. First it took `started: Bool` beside the call, so the sanctioned judge minted the
+// sealed attempt on a caller's say-so. The repair replaced that with a locally declared
+// ProcessOutcome carrying program, exit status and diagnostic -- better typed, and structurally the
+// SAME DEFECT: a publicly constructible record supplied beside the call, from which Ready could
+// still be minted with no process anywhere. An annotation then explained why the seal was
+// trustworthy, which is the tell. Prose cannot narrow what a type lets a caller construct.
 //
-// WHAT REMAINS OUTSIDE THE MODEL, and is a declared boundary obligation rather than a rung: the
-// outcome is authored at the boundary by whoever ran the program. No construction in this graph can
-// witness a process. What the shape removes is the UNSTRUCTURED assertion; what it cannot remove is
-// the boundary itself.
-type ProcessOutcome
-  = ProcessFailedToStart { program: NonEmptyStr, loader_diagnostic: NonEmptyStr }
-  | ProcessExited { program: NonEmptyStr, exit_status: Nat, diagnostic: NonEmptyStr }
-
-fn process_outcome_program(o: ProcessOutcome) -> NonEmptyStr {
-  match o {
-    ProcessFailedToStart { program: p, loader_diagnostic: _ } => p
-    ProcessExited { program: p, exit_status: _, diagnostic: _ } => p
-  }
-}
-
-fn process_outcome_diagnostic(o: ProcessOutcome) -> NonEmptyStr {
-  match o {
-    ProcessFailedToStart { program: _, loader_diagnostic: d } => d
-    ProcessExited { program: _, exit_status: _, diagnostic: d } => d
-  }
-}
-
-fn process_outcome_succeeded(o: ProcessOutcome) -> Bool {
-  match o {
-    ProcessFailedToStart { program: _, loader_diagnostic: _ } => false
-    ProcessExited { program: _, exit_status: st, diagnostic: _ } => st == 0
-  }
-}
-
-// AN ATTEMPT IS ADMITTED ONLY OVER A HOST THAT CLEARS THE FLOOR, and only from an outcome describing
-// a process that exited zero. Both halves are required: below the floor there is nothing to attempt,
-// and above it an attempt can still refuse.
-fn judge_orca_execution(
+// THE PREMISE UNDER THAT SECOND ATTEMPT WAS ALSO FALSE. It said no construction in this graph can
+// witness a process. This repository already owns that seam: gunbc.command_runner
+// run_shell_command_capture is effectful, reaches shell.Exec.RunArgv, and returns
+// extdeps.shell.exec ProcessOutcome, a coproduct that exists precisely because a free success flag
+// was rejected as a conclusion rather than an observation. So the local type was not a boundary
+// obligation at all -- it was a NICKNAME for an authority one import away, re-derived where it
+// should have been retrieved, and in a flat namespace a second ProcessOutcome is worse than
+// redundant. It is deleted rather than renamed.
+//
+// The mint is therefore effectful. There is no pure path to AttemptedExecution: the only way to
+// obtain one is to have run the program, and a spawn failure refuses before any outcome exists.
+func attempt_orca_execution(
   observation: HostRuntimeObservation,
-  outcome: ProcessOutcome,
-) -> OrcaExecutionStanding {
+  program: NonEmptyStr,
+  command: ArgvCommand,
+  transport: CommandTransport,
+) -> OrcaExecutionStanding
+  uses net: Network
+{
   match judge_host_abi(observation: observation) {
     HostAbiUnobserved => ExecutionUnattempted { abi: HostAbiUnobserved }
     BelowObservedArtifactFloor { provided: p, required: r } =>
       ExecutionUnattempted { abi: BelowObservedArtifactFloor { provided: p, required: r } }
     MeetsObservedArtifactFloor { provided: _, required: _ } =>
-      if process_outcome_succeeded(o: outcome) {
-        ExecutionReady {
-          attempt: AttemptedExecution {
-            program: process_outcome_program(o: outcome),
-            receipt: process_outcome_diagnostic(o: outcome),
-          },
-        }
-      } else {
-        ExecutionRefused { receipt: process_outcome_diagnostic(o: outcome) }
+      match run_shell_command_capture(command: command, transport: transport) {
+        ProcessOutputPresent { text: t } =>
+          ExecutionReady { attempt: AttemptedExecution { program: program, receipt: t as NonEmptyStr } }
+        ProcessOutputAbsent =>
+          ExecutionReady { attempt: AttemptedExecution { program: program, receipt: "exited zero with no output" } }
+        ProcessRefused { exit_code: _, stderr: e } =>
+          ExecutionRefused { receipt: e as NonEmptyStr }
       }
   }
 }
@@ -191,21 +173,19 @@ fn judge_orca_execution(
 // session image, 12 on a general-purpose fleet host that already carried GTK and pango, and 9 on a
 // first pass that also had a conda prefix on the library path masking three more. Only the census
 // taken in the environment that will actually run it means anything.
-data container_execution: OrcaExecutionStanding = judge_orca_execution(
-  observation: observed_container_glibc,
-  outcome: ProcessFailedToStart {
-    program: "orca-slicer",
-    loader_diagnostic: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
-  },
-)
+// THE TWO REFUSALS ARE AUTHORED DIRECTLY, and that is safe in a way the Ready arm is not. These
+// rows record hosts on which the binary was run and did not start; ExecutionRefused is a public arm
+// on purpose, because the direction an authored value can lie in decides whether it may be authored.
+// A fabricated refusal costs a slice that would have worked; a fabricated readiness mints a plan
+// from a process that never ran. Only the second is a silent wrong answer, and only the second is
+// behind the effectful mint.
+data container_execution: OrcaExecutionStanding = ExecutionRefused {
+  receipt: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
+}
 
-data srv2_execution: OrcaExecutionStanding = judge_orca_execution(
-  observation: observed_srv2_glibc,
-  outcome: ProcessFailedToStart {
-    program: "orca-slicer",
-    loader_diagnostic: "above the floor and refused: 12 sonames unresolved on a host that already carried GTK and pango",
-  },
-)
+data srv2_execution: OrcaExecutionStanding = ExecutionRefused {
+  receipt: "above the floor and refused: 12 sonames unresolved on a host that already carried GTK and pango",
+}
 
 // WHAT WOULD RETIRE THE REFUSAL is stated in this module's opening annotation and nowhere else on
 // purpose. An earlier revision also carried it as `data slicing_next_rung_trigger: NonEmptyStr`,

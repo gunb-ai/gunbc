@@ -198,27 +198,36 @@ fn python_requirement_is_met(r: PythonDistributionRequirement, observations: Lis
 // substitutes a partial toolchain or a best-effort run. A CadQuery program executed against a
 // half-provisioned kernel does not produce a worse solid -- it produces no solid and a traceback,
 // and the failure arrives at the point of use rather than at the point of decision.
-// THE READY ARM CARRIES A SEALED TOKEN RATHER THAN BEING ONE. A bare CadToolchainReady is a public
+// THE READY ARM CARRIES A SEALED TOKEN RATHER THAN BEING ONE. A bare ready arm is a public
 // constructor: any module could write it and hand it to the sanctioned mint, so the plan's claim
-// that the toolchain was judged rested on nobody choosing to lie. AdmittedCadToolchain has a single
-// constructor and judge_cad_toolchain is its only caller, so the token cannot be forged even though
-// the coproduct that carries it is public.
+// that the toolchain was judged rested on nobody choosing to lie. The token below has a single
+// constructor and judge_cad_toolchain is its only caller, so it cannot be forged even though the
+// coproduct that carries it is public.
 //
-// WHAT THIS DOES NOT CLAIM, stated because the neighbouring claim is the tempting one: the token
-// proves the ROSTERS WERE WALKED, not that CadQuery imports. The observations are boundary facts
-// authored outside this graph; no .dag construction can witness a Python import. That residue is a
-// declared boundary obligation under DESIGN section 4b -- observed, never fabricated -- and the
-// instrument field is what keeps it declared rather than silent.
-type AdmittedCadToolchain sole_constructor {
+// AND THE NAME SAYS WHAT THE MINT ESTABLISHES, WHICH IS LESS THAN READY. The observations are
+// authored by whoever supplied them; this module runs no probe. So the token proves THE DECLARED
+// ROSTERS WERE EXHAUSTIVELY JOINED TO SUPPLIED OBSERVATIONS -- not that the SONAMEs resolve, and not
+// that CadQuery imports. An earlier revision called the arm Ready and then explained in an
+// annotation that it did not mean ready, including by citing an instrument field that does not exist
+// on either observation type. That is prose asked to narrow what the vocabulary widens, and it is
+// the same defect as a seal whose mint accepts a caller's conclusion: the reader downstream sees the
+// name, never the paragraph.
+//
+// NEXT-RUNG TRIGGER, and it is buildable today rather than blocked: run the pinned import probe
+// through gunbc.command_runner run_shell_command_capture -- the effectful seam
+// product.printed_chassis.slicing_toolchain attempt_orca_execution now uses -- and mint an OBSERVED
+// token from its ProcessOutcome. At that point the arm earns a name like CadToolchainObservedReady
+// and this one narrows to the reported-only fallback it should always have been.
+type ReportedCadToolchainSatisfaction sole_constructor {
   provisions: List<SystemLibraryProvision>
   requirements: List<PythonDistributionRequirement>
 }
 
-fn admitted_provisions(a: AdmittedCadToolchain) -> List<SystemLibraryProvision> { a.provisions }
-fn admitted_requirements(a: AdmittedCadToolchain) -> List<PythonDistributionRequirement> { a.requirements }
+fn reported_provisions(r: ReportedCadToolchainSatisfaction) -> List<SystemLibraryProvision> { r.provisions }
+fn reported_requirements(r: ReportedCadToolchainSatisfaction) -> List<PythonDistributionRequirement> { r.requirements }
 
 type CadToolchainStanding
-  = CadToolchainReady { admitted: AdmittedCadToolchain }
+  = CadToolchainRequirementsReportedSatisfied { reported: ReportedCadToolchainSatisfaction }
   | CadToolchainSystemLibrariesUnmet { unmet: List<SystemLibraryProvision> }
   | CadToolchainDistributionsUnmet { unmet: List<PythonDistributionRequirement> }
 
@@ -244,8 +253,8 @@ fn judge_cad_toolchain(
     if unmet_distributions.length() > 0 {
       CadToolchainDistributionsUnmet { unmet: unmet_distributions }
     } else {
-      CadToolchainReady {
-        admitted: AdmittedCadToolchain {
+      CadToolchainRequirementsReportedSatisfied {
+        reported: ReportedCadToolchainSatisfaction {
           provisions: cad_toolchain_system_provisions,
           requirements: cad_toolchain_python_requirements,
         },
@@ -274,18 +283,19 @@ fn admit_cadquery_execution(
       CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesUnmet { unmet: u } }
     CadToolchainDistributionsUnmet { unmet: u } =>
       CadQueryExecutionRefused { standing: CadToolchainDistributionsUnmet { unmet: u } }
-    CadToolchainReady { admitted: a } =>
+    CadToolchainRequirementsReportedSatisfied { reported: r } =>
       CadQueryExecutionAdmitted {
-        plan: plan_from_admitted_toolchain(admitted: a, script_path: script_path),
+        plan: plan_from_reported_toolchain(reported: r, script_path: script_path),
       }
   }
 }
 
-// THE ONLY MINT, AND IT CANNOT BE REACHED WITHOUT THE SEALED TOKEN. Taking AdmittedCadToolchain by
-// value rather than the coproduct is what makes that structural: there is no arm of this function
-// for an unjudged toolchain, because an unjudged toolchain cannot be spelled at this signature.
-fn plan_from_admitted_toolchain(
-  admitted: AdmittedCadToolchain,
+// THE ONLY MINT, AND IT CANNOT BE REACHED WITHOUT THE SEALED TOKEN. Taking the token by value
+// rather than the coproduct is what makes that structural: there is no arm of this function for an
+// unjudged toolchain, because an unjudged toolchain cannot be spelled at this signature. What it
+// still does not establish is that the kernel loads -- see the trigger above.
+fn plan_from_reported_toolchain(
+  reported: ReportedCadToolchainSatisfaction,
   script_path: String,
 ) -> CadQueryExecutionPlan {
   CadQueryExecutionPlan {
