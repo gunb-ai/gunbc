@@ -14051,8 +14051,15 @@ impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier {
 /// The ureq agent that realizes `InsecureAcceptAnyCert` — one accept-any rustls client
 /// config, built once per dispatching op (dispatch_rest builds it on the arm that selects
 /// the posture; the agent is cheap to construct and never reused across requests).
+///
+/// WON'T PANIC: uses `builder_with_provider` with an explicit provider from the ring crate
+/// rather than relying on a process-default crypto provider, which is not guaranteed to be
+/// installed (DESIGN §5: every path must refuse with a typed diagnostic, never panic).
 fn rest_accept_any_agent() -> ureq::Agent {
-    let config = rustls::ClientConfig::builder()
+    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+    let config = rustls::client::ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+        .expect("ring provider supports TLS 1.2 and 1.3")
         .dangerous()
         .with_custom_certificate_verifier(std::sync::Arc::new(RestAcceptAnyVerifier))
         .with_no_client_auth();
@@ -19754,7 +19761,6 @@ mod dispatch_rest_decision_tests {
     }
 
     #[test]
-    #[ignore = "requires rustls CryptoProvider::install_default() which the test runner does not set up; the test still compiles and validates the return type, but execution panics without the provider"]
     fn tls_posture_disposition_fails_closed() {
         // VerifyPeer (and absent) proceed on the stock verifier; InsecureAcceptAnyCert selects
         // the accept-any agent; an unknown posture refuses.
