@@ -457,16 +457,16 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 
 | module | symbols | executor |
 | --- | --- | --- |
-| `v2.workflow.ci_workflow_run_emit` | `ci_isolate_toolchain_script`, `ci_pin_rustup_default_script`, `ci_selection_control_script` | GHA `run:` |
+| `v2.workflow.ci_workflow_run_emit` | `ci_isolate_toolchain_script`, `ci_pin_rustup_default_script`, ~~`ci_selection_control_script`~~ **DELETED #8283-CI-FLOOR-CUT** | GHA `run:` |
 | `v2.workflow.ci_floor_peak_emit` | `ci_cgroup_peak_locate_shell`, `ci_floor_peak_pre_script`, `ci_floor_peak_post_script` | GHA `run:` (**cgroup-ascent leaves further climbed to typed path-intent by #7978, `ecbd0863c2a`; the peak calibration leaves remain raw Phase 2 — see §1.A and the Phase-1 row in §4.J**) |
 | `v2.workflow.ci_retry_emit` | `ci_cargo_eagain_retry_script` | GHA `run:` (via `ci_release_build_emit`) |
-| `v2.workflow.ci_release_build_emit` | `ci_release_build_script`, `gunbc_ci_run_script` | GHA `run:` (partial — still concat-wraps verify script) |
+| `v2.workflow.ci_release_build_emit` | `ci_release_build_script`, ~~`gunbc_ci_run_script`~~ **DELETED #9252-PLAN-WALK-DELETE** | GHA `run:` (partial — still concat-wraps verify script) |
 | `v2.workflow.orchestration_bash_emit_support` | `orch_bash_run`, `orch_bash_do`, `orch_bash_emit_pipeline` | shared emit plumbing (**#7265**; pre-existing four `ci_*_emit` forks migrate in PR2) |
 | `v2.workflow.ci_materialization_emit` | `ci_sccache_provider_shell_injection` | GHA `run:` (**LANDED #7265**) |
 | `v2.workflow.ci_merge_admission_emit` | `ci_floor_disposition_marker_init_script` | GHA `run:` (**LANDED #7265**) |
-| `v2.workflow.ci_regen_rustfmt_path_emit` | `ci_regen_ensure_rustfmt_path_script` | GHA regen `run:` (**LANDED #7290**; typed control flow, but FileExists/session-env leaves remain raw as named in §4.J) |
+| `v2.workflow.ci_regen_rustfmt_path_emit` | ~~`ci_regen_ensure_rustfmt_path_script`~~ **DELETED #8406-REGEN-ROOT-CUT** | GHA regen `run:` (**LANDED #7290**; typed control flow, but FileExists/session-env leaves remain raw as named in §4.J) |
 | `gunbc.assimilate.bmc_token_federation` | `gcp_token_smoke_script` | GHA `run:` |
-| `gunbc.live_deploy.emit` | `expected_live_deploy_apply_script`, `expected_live_deploy_retract_script` | **RECLASSIFIED runtime-present, not an emit-completion receipt.** GHA supplies the outer `run:` medium, but gunbc is already executing and must interpret typed effects; its raw command leaves are the §4.J terminal row. |
+| `gunbc.live_deploy.emit` | `expected_live_deploy_apply_script`, ~~`expected_live_deploy_retract_script`~~ **DELETED #7909-RELEASE-IDENTITY-REFACTOR** | **RECLASSIFIED runtime-present, not an emit-completion receipt.** GHA supplies the outer `run:` medium, but gunbc is already executing and must interpret typed effects; its raw command leaves are the §4.J terminal row. |
 | `gunbc.host_effect` | `fresh_standup_bootstrap_intent` → `EmitArtifactThenThinRun` bootstrap arm | pre-runtime bootstrap |
 
 **Remaining concat-built foreign-executor punch-list** — per-symbol table and PR batching in §4.J.
