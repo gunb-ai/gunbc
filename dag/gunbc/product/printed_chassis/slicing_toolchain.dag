@@ -137,9 +137,14 @@ type OrcaExecutionStanding
 //
 // The mint is therefore effectful. There is no pure path to AttemptedExecution: the only way to
 // obtain one is to have run the program, and a spawn failure refuses before any outcome exists.
+// THE SEALED PROGRAM IS DERIVED FROM THE COMMAND THAT RAN, NOT SUPPLIED BESIDE IT. An earlier
+// revision took `program` as its own argument while executing `command`, so a caller could run any
+// zero-exit program and seal the name "orca-slicer" onto the result. That is this PR's own defect a
+// FOURTH time -- a conclusion handed in next to the evidence -- and here it was load-bearing rather
+// than cosmetic: admit_slice builds the slice invocation from the sealed program, so the plan would
+// have invoked a binary that was never the one proven to run.
 func attempt_orca_execution(
   observation: HostRuntimeObservation,
-  program: NonEmptyStr,
   command: ArgvCommand,
   transport: CommandTransport,
 ) -> OrcaExecutionStanding
@@ -152,9 +157,9 @@ func attempt_orca_execution(
     MeetsObservedArtifactFloor { provided: _, required: _ } =>
       match run_shell_command_capture(command: command, transport: transport) {
         ProcessOutputPresent { text: t } =>
-          ExecutionReady { attempt: AttemptedExecution { program: program, receipt: t as NonEmptyStr } }
+          ExecutionReady { attempt: AttemptedExecution { program: command.program, receipt: t as NonEmptyStr } }
         ProcessOutputAbsent =>
-          ExecutionReady { attempt: AttemptedExecution { program: program, receipt: "exited zero with no output" } }
+          ExecutionReady { attempt: AttemptedExecution { program: command.program, receipt: "exited zero with no output" } }
         ProcessRefused { exit_code: _, stderr: e } =>
           ExecutionRefused { receipt: e as NonEmptyStr }
       }
@@ -195,12 +200,20 @@ data srv2_execution: OrcaExecutionStanding = ExecutionRefused {
 // a third party binary was never a guarantee this repository held. It is the boundary column, which
 // section 4b keeps off the ladder deliberately.
 
-// THE PLAN IS MINTED FROM THE SEALED ATTEMPT, so holding one is holding evidence that the program
-// started on a host that cleared the floor -- not that a version comparison succeeded.
+// THE PLAN IS MINTED FROM THE SEALED ATTEMPT, so holding one is holding evidence that THE PROGRAM
+// THIS PLAN NAMES actually ran on a host that cleared the floor -- not that a version comparison
+// succeeded, and not that the slice it describes is correct.
 type SlicePlan sole_constructor { command: ArgvCommand }
 
 fn slice_plan_command(p: SlicePlan) -> ArgvCommand { p.command }
 
+// WHAT THE SEALED ATTEMPT LICENSES, AND WHAT IT DOES NOT. It establishes that THIS PROGRAM ran to a
+// zero exit on a host clearing the ABI floor, and that is the only reason the plan may name that
+// program. It does NOT establish that the model path exists, that the three profiles resolve, or
+// that the slice this plan describes will succeed -- those are separate facts and the preset
+// resolver is where they are decided. The PLA-at-255 incident is the standing reason that is spelled
+// out here: a slice returned exit zero, "Success.", and the correct preset NAME while emitting the
+// wrong temperatures entirely, so an exit status is not a verdict about the artifact.
 type SliceAdmission
   = SliceAdmitted { plan: SlicePlan }
   | SliceRefused { standing: OrcaExecutionStanding }

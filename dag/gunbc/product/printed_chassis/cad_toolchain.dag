@@ -263,16 +263,20 @@ fn judge_cad_toolchain(
   }
 }
 
-// THE RUN IS GATED ON THE VERDICT, not merely preceded by it. A caller holding a
-// CadQueryExecutionPlan is holding proof the toolchain was judged Ready, because the only mint is
-// the Ready arm below.
+// THE RUN IS GATED ON THE VERDICT, not merely preceded by it -- and the verdict is REPORTED
+// SATISFACTION, which is less than readiness. A caller holding a CadQueryExecutionPlan is holding
+// proof that every declared provision and distribution was joined by identity to a supplied
+// observation and none was unmet. It is NOT proof that the kernel loads. The vocabulary downstream
+// has to stop where the mint stops, which is why the admission arm below is named for the census it
+// performed rather than for an execution nobody observed: a stale "judged Ready" sentence survived
+// one round of this narrowing here and would have been read as the stronger claim.
 type CadQueryExecutionPlan sole_constructor { command: ArgvCommand }
 
 fn execution_plan_command(p: CadQueryExecutionPlan) -> ArgvCommand { p.command }
 
 type CadQueryExecutionAdmission
-  = CadQueryExecutionAdmitted { plan: CadQueryExecutionPlan }
-  | CadQueryExecutionRefused { standing: CadToolchainStanding }
+  = CadQueryExecutionRequirementsSatisfied { plan: CadQueryExecutionPlan }
+  | CadQueryExecutionRequirementsUnmet { standing: CadToolchainStanding }
 
 fn admit_cadquery_execution(
   standing: CadToolchainStanding,
@@ -280,11 +284,11 @@ fn admit_cadquery_execution(
 ) -> CadQueryExecutionAdmission {
   match standing {
     CadToolchainSystemLibrariesUnmet { unmet: u } =>
-      CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesUnmet { unmet: u } }
+      CadQueryExecutionRequirementsUnmet { standing: CadToolchainSystemLibrariesUnmet { unmet: u } }
     CadToolchainDistributionsUnmet { unmet: u } =>
-      CadQueryExecutionRefused { standing: CadToolchainDistributionsUnmet { unmet: u } }
+      CadQueryExecutionRequirementsUnmet { standing: CadToolchainDistributionsUnmet { unmet: u } }
     CadToolchainRequirementsReportedSatisfied { reported: r } =>
-      CadQueryExecutionAdmitted {
+      CadQueryExecutionRequirementsSatisfied {
         plan: plan_from_reported_toolchain(reported: r, script_path: script_path),
       }
   }
