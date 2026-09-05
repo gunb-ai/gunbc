@@ -52,6 +52,8 @@ import gunbc.tools.reference_binding_provenance_calibration {
 import v2.std.optional { Present, Absent }
 import std.reference_binding_observation {
   RepeatedMentionDependencyObservation,
+  SameFileNeighbourProductionRefused,
+  ReferenceBindingNamedReferenceAbsent,
   StructuralBindingResolved,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -219,6 +221,26 @@ test fn the_verdict_accepts_a_fully_populated_sound_matrix() -> Bool {
     }
 }
 
+// A DUPLICATE INSIDE THE SUPPLIED POPULATION MUST REFUSE, and this is the arm the distinct-key
+// conjunct alone could not reach. Coverage and uniqueness are different properties: 28 cells plus a
+// duplicate of one of them still has 28 DISTINCT keys, so distinct == declared held while the
+// population contained 29. The report claims to have measured the declared matrix; a population it
+// cannot even count correctly is not that matrix.
+//
+// It became reachable when the report was parameterised on its population -- the right repair for a
+// different gap -- because that made the population an input a caller shapes rather than something
+// the module derives.
+test fn a_duplicated_cell_in_the_supplied_population_refuses() -> Bool {
+  let padded = concat(fully_sound_matrix(), [sound_cell(kind: SameFileNeighbourKind, arm: ResolvedArm)])
+  list_length(items: padded) == declared_cell_population() + 1
+    && distinct_cell_key_count(cells: padded) == declared_cell_population()
+    && !traversal_is_complete(cells: padded)
+    && match calibration_verdict(cells: padded) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+}
+
 // AN EMPTY OR SHORT TRAVERSAL MUST REFUSE, NOT SUCCEED. This is the absorbing arm the verdict grew a
 // clause for: no cells means no unsound cells, and reporting that as success would say "nothing was
 // wrong" when the truth is "nothing was measured".
@@ -267,7 +289,6 @@ test fn the_consumer_standing_reaches_its_non_demonstrated_arms() -> Bool {
       provider_file: "dag/provider.dag",
       projected_dependencies: ["dag/provider.dag"],
     },
-    resolution: resolution_for_arm(kind: SameFileNeighbourKind, arm: ResolvedArm),
   )
   let wrong_kind = consumer_standing_for(
     intended_kind: SameFileNeighbourKind,
@@ -276,7 +297,6 @@ test fn the_consumer_standing_reaches_its_non_demonstrated_arms() -> Bool {
       kind: DistinctHomonymKind,
       resolution: resolution_for_arm(kind: DistinctHomonymKind, arm: ResolvedArm),
     ),
-    resolution: resolution_for_arm(kind: SameFileNeighbourKind, arm: ResolvedArm),
   )
   match unjudgeable {
     CalibrationRefusedOrIncomplete { cause: _ } => true
@@ -287,4 +307,38 @@ test fn the_consumer_standing_reaches_its_non_demonstrated_arms() -> Bool {
       _ => false
     }
     && standing_is_demonstrated(s: consumer_standing(kind: SameFileNeighbourKind, arm: ResolvedArm))
+}
+
+// THE ARM IS READ OUT OF THE JUDGED OBSERVATION, NOT TAKEN ON THE CALLER'S WORD, and this is the
+// control that discriminates it. The kind is RIGHT and only the EMBEDDED RESOLUTION ARM is wrong --
+// which the previous signature could not detect at all, because it accepted the observation and the
+// resolution as two separate parameters and never checked that the resolution it inspected was the
+// one inside the observation it claimed to have judged. A matched pair by convention passed; a
+// mismatched pair passed just as well.
+test fn a_right_kind_carrying_the_wrong_arm_is_not_demonstrated() -> Bool {
+  match consumer_standing_for(
+    intended_kind: SameFileNeighbourKind,
+    intended_arm: ResolvedArm,
+    observation: observation_for(
+      kind: SameFileNeighbourKind,
+      resolution: resolution_for_arm(kind: SameFileNeighbourKind, arm: IndexTransportRefusedArm),
+    ),
+  ) {
+    CalibrationNotDemonstrated { note: _ } => true
+    _ => false
+  }
+}
+
+// A PRODUCTION-REFUSED TWIN CARRIES A GAP RATHER THAN A RESOLUTION, so no arm was judged and the
+// honest standing is REFUSED/INCOMPLETE -- discovery could not produce a case, which is not a
+// negative observation about the subject.
+test fn a_production_refused_twin_yields_refused_or_incomplete() -> Bool {
+  match consumer_standing_for(
+    intended_kind: SameFileNeighbourKind,
+    intended_arm: ResolvedArm,
+    observation: SameFileNeighbourProductionRefused { gap: ReferenceBindingNamedReferenceAbsent },
+  ) {
+    CalibrationRefusedOrIncomplete { cause: _ } => true
+    _ => false
+  }
 }

@@ -518,29 +518,38 @@ fn cell_distinguishability(
   }
 }
 
-// THE CONSUMER STANDING IS DERIVED, AND IT WAS A CONSTANT FUNCTION UNTIL IT WAS CAUGHT.
+// THE CONSUMER STANDING IS DERIVED FROM AN EXECUTED JUDGEMENT, AND IT TOOK TWO REPAIRS TO GET THERE.
 //
-// It returned CalibrationDemonstrated unconditionally, with only the conditions string varying. So
-// three arms of a four-armed vocabulary were UNCONSTRUCTIBLE on this route and the field carried
-// zero information -- a fixture pinned at an absorbing extreme, where admission cannot fail because
-// the input cannot differ. In the instrument built to find distinctions that die before their
-// consumer, that is the defect wearing the instrument's own clothes.
+// FIRST it was a CONSTANT FUNCTION returning CalibrationDemonstrated unconditionally, so three arms
+// of a four-armed vocabulary were unconstructible and the field carried zero information -- a
+// fixture pinned at an absorbing extreme, where admission cannot fail because the input cannot
+// differ.
 //
-// It now derives from structure that can actually differ, and the derivation is the demonstration's
-// three clauses read literally: the intended case was SUPPLIED, it REACHED the intended judging
-// stage, and it produced the attributed result. Clause two is the one a constant cannot express --
-// a case that never reached the judging stage and "passed" is not a demonstration -- so it is
-// checked by round-tripping the constructed observation and resolution back through the same total
-// matches that bind the denominator, and a mismatch is NOT DEMONSTRATED rather than a quiet pass.
+// THEN it round-tripped the kind and the arm and STILL NEVER CALLED THE CONSUMER, while its own
+// conditions string said the case had been "judged by assess_reference_binding_observation". That is
+// this instrument's own subject one layer up: a claim of consumer execution that no consumer
+// execution backs. It was not wrong on today's inputs, because the caller happened to supply
+// consistent arguments -- which is exactly how this class survives, since a derivation that asserts
+// what it did not perform is invisible while its inputs stay well-formed.
 //
-// The parameterised form exists so the RED is authorable: a fixture can hand it a deliberately
-// mismatched observation and see the standing fall, which is the discriminating input the constant
-// form made impossible to write anywhere.
+// It now takes ONE observation and reads the resolution OUT of it, so the judged case and the
+// checked arm cannot be two different things -- the previous signature took both and could be handed
+// a matched pair by convention alone. And CalibrationDemonstrated is reached only after
+// assess_reference_binding_observation actually runs, carrying that call's attributed result.
+fn resolution_of_observation(o: ReferenceBindingObservation) -> StructuralBindingResolution? {
+  match o {
+    SameFileNeighbourObservation { neighbour: _, resolution } => Present { value: resolution }
+    SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution } => Present { value: resolution }
+    LaterDeclarationObservation { later_declaration: _, resolution } => Present { value: resolution }
+    DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution } => Present { value: resolution }
+    _ => Absent
+  }
+}
+
 fn consumer_standing_for(
   intended_kind: CalibrationObservationKind,
   intended_arm: CalibrationResolutionArm,
   observation: ReferenceBindingObservation,
-  resolution: StructuralBindingResolution,
 ) -> CalibrationStanding {
   match kind_of_observation(o: observation) {
     Absent =>
@@ -556,20 +565,28 @@ fn consumer_standing_for(
                 " -- it never reached the intended judging stage, so a passing result would not be a demonstration")))),
         }
       } else {
-        if resolution_arm_label(a: arm_of_resolution(r: resolution)) != resolution_arm_label(a: intended_arm) {
-          CalibrationNotDemonstrated {
-            note: concat("the supplied resolution carries ",
-              concat(resolution_arm_label(a: arm_of_resolution(r: resolution)),
-                concat(" rather than the intended ", resolution_arm_label(a: intended_arm)))),
-          }
-        } else {
-          CalibrationDemonstrated {
-            conditions: concat(
-              "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); supplied resolution arm ",
-              concat(resolution_arm_label(a: intended_arm),
-                concat("; judged by gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation as ",
-                  observation_kind_label(k: intended_kind)))),
-          }
+        match resolution_of_observation(o: observation) {
+          Absent =>
+            CalibrationRefusedOrIncomplete {
+              cause: "the supplied observation is a production-refused twin carrying a gap rather than a resolution, so no resolution arm was judged",
+            }
+          Present { value: carried } =>
+            if resolution_arm_label(a: arm_of_resolution(r: carried)) != resolution_arm_label(a: intended_arm) {
+              CalibrationNotDemonstrated {
+                note: concat("the observation carries resolution arm ",
+                  concat(resolution_arm_label(a: arm_of_resolution(r: carried)),
+                    concat(" rather than the intended ", resolution_arm_label(a: intended_arm)))),
+              }
+            } else {
+              CalibrationDemonstrated {
+                conditions: concat(
+                  "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); arm ",
+                  concat(resolution_arm_label(a: intended_arm),
+                    concat(" carried by a ", concat(observation_kind_label(k: intended_kind),
+                      concat(" observation, EXECUTED through gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation, which returned ",
+                        admission_render(a: assess_reference_binding_observation(observation: observation))))))),
+              }
+            }
         }
       }
   }
@@ -579,12 +596,10 @@ fn consumer_standing(
   kind: CalibrationObservationKind,
   arm: CalibrationResolutionArm,
 ) -> CalibrationStanding {
-  let resolution = resolution_for_arm(kind: kind, arm: arm)
   consumer_standing_for(
     intended_kind: kind,
     intended_arm: arm,
-    observation: observation_for(kind: kind, resolution: resolution),
-    resolution: resolution,
+    observation: observation_for(kind: kind, resolution: resolution_for_arm(kind: kind, arm: arm)),
   )
 }
 
@@ -597,12 +612,15 @@ fn consumer_standing(
 // unreachable: the route lacks the input, and the missing input is named below because that name is
 // the next-rung trigger.
 //
-// ProductionRefusedArm carries an additional and separately sourced fact -- no module anywhere
-// constructs StructuralBindingProductionRefused -- which is a whole-tree namespace question this
-// module cannot answer from inside a fold over fixtures. It is re-derived by
+// ProductionRefusedArm carries an additional and separately sourced fact, and its SCOPE is the whole
+// of its content: no PRODUCTION-ROUTE module constructs StructuralBindingProductionRefused. Stated
+// unscoped -- "no module anywhere" -- it is simply false, because THIS MODULE constructs it, in
+// resolution_for_arm, and so would any other evidence carrier. That is a whole-tree namespace
+// question this module cannot answer from inside a fold over fixtures; it is re-derived by
 //   grep -rn "StructuralBindingProductionRefused" dag/ src/ --include=*.dag --include=*.rs
-// and is recorded as a note on a standing that stays UNSUPPORTED BY THIS ROUTE, because a grep is
-// not a demonstration either.
+// reading production carriers and evidence carriers as different populations, and is recorded as a
+// note on a standing that stays UNSUPPORTED BY THIS ROUTE, because a grep is not a demonstration
+// either.
 fn production_standing(arm: CalibrationResolutionArm) -> CalibrationStanding {
   match arm {
     ResolvedArm =>
@@ -767,9 +785,20 @@ fn declared_cell_population() -> Int {
   list_length(items: calibration_observation_kinds) * list_length(items: calibration_resolution_arms)
 }
 
+// LENGTH AND DISTINCT-KEY COUNT ARE BOTH REQUIRED, AND CHECKING ONLY ONE IS THE DEFECT EITHER WAY.
+// The distinct-key conjunct establishes COVERAGE -- every declared cell is present -- and says
+// nothing about UNIQUENESS: a 29-element population made of the 28 cells plus one duplicate has 28
+// distinct keys and would pass. The length conjunct establishes uniqueness given coverage. Together
+// length == distinct == declared is the identity join; either count alone is a count.
+//
+// This became reachable when the report was parameterised on its population, which was the right
+// repair for a different gap: it made the population an INPUT a caller shapes rather than something
+// this module derives, so a duplicate can now arrive through the parameter rather than only through
+// the traversal lists the first two conjuncts guard.
 fn traversal_is_complete(cells: List<ProvenanceCell>) -> Bool {
   distinct_arm_label_count() == list_length(items: calibration_resolution_arms)
     && distinct_kind_label_count() == list_length(items: calibration_observation_kinds)
+    && list_length(items: cells) == declared_cell_population()
     && distinct_cell_key_count(cells: cells) == declared_cell_population()
 }
 

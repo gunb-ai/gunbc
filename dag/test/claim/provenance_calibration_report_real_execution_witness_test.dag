@@ -8,6 +8,7 @@ import extdeps.filesystem.filesystem_io
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.tools.reference_binding_provenance_calibration {
   ProvenanceCell,
+  calibration_body_of,
   CalibrationObservationKind,
   CalibrationResolutionArm,
   CalibrationDemonstrated,
@@ -100,26 +101,64 @@ test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool {
   })
 }
 
-// THE WRITE REALLY HAPPENED. Without this, both arms above are satisfied by a report that never
-// wrote anything -- and the stopped-line audit's whole claim is that the operator GETS THE MATRIX
-// and then the line stops. A refusal with no file is a different and worse outcome than a refusal
-// with one, and they are indistinguishable from the ProcessExit alone.
+// THE MATRIX REALLY REACHED THE FILE, WHICH IS NOT THE SAME AS THE FILE EXISTING. Without this arm,
+// both arms above are satisfied by a report that never wrote anything -- and the stopped-line
+// audit's whole claim is that the operator GETS THE MATRIX and then the line stops. A refusal with
+// no evidence is a different and worse outcome than a refusal with it, and the two are
+// indistinguishable from the ProcessExit alone.
+//
+// IT ASSERTED ONLY .success AND THAT WAS THE SAME DEFECT ONE LAYER DOWN: a read of a ZERO-BYTE file
+// succeeds, so a report that created the file and wrote nothing satisfied the arm -- which is
+// precisely the outcome the arm exists to forbid. Existence is not content. The comparison is
+// against calibration_body_of, the very function the report writes, so this asserts the actual
+// matrix rather than a file handle.
 test fn the_refusing_report_still_wrote_the_matrix_by_real_execution() -> Bool {
   with_temp_dir(scenario: dir => {
     let path = report_path(dir: dir)
-    let refused = match provenance_calibration_report_over(cells: calibration_cells(), out: path) {
+    let cells = calibration_cells()
+    let refused = match provenance_calibration_report_over(cells: cells, out: path) {
       ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
-    refused && Filesystem.Read(path: path as FilePath).success
+    let read_back = Filesystem.Read(path: path as FilePath)
+    refused
+      && read_back.success
+      && read_back.content == calibration_body_of(cells: cells)
+      && read_back.content != ""
+  })
+}
+
+// THE PAYLOAD MUST SURVIVE A WRONG-CONTENT SUBSTITUTION, not merely be non-empty. Asserting only
+// non-emptiness accepts a truncated or wrong body; asserting only equality would be satisfied by a
+// renderer that returned "" for both sides. Both are asserted above. This arm adds the third
+// substitution class the previous two do not reach: a payload that is the right SHAPE but the wrong
+// POPULATION -- the sound matrix rendered where the measured one belongs -- which is what a stub
+// that "writes a matrix" would produce.
+test fn the_written_payload_is_the_measured_matrix_and_not_another_one() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let path = report_path(dir: dir)
+    let measured = calibration_cells()
+    let refused = match provenance_calibration_report_over(cells: measured, out: path) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+    let read_back = Filesystem.Read(path: path as FilePath)
+    refused
+      && read_back.content == calibration_body_of(cells: measured)
+      && read_back.content != calibration_body_of(cells: fully_sound_matrix())
+      && calibration_body_of(cells: measured) != calibration_body_of(cells: fully_sound_matrix())
   })
 }
 
 // THE ARGUMENT GUARD IS A DIFFERENT REFUSAL AND MUST NOT BE MISTAKEN FOR THE VERDICT'S. An empty
-// out path refuses BEFORE any write, so a control that only asked "did it refuse" could be
-// satisfied by never reaching the decision at all -- which is precisely the confusion that made the
-// hermetic control insufficient.
-test fn an_empty_out_path_refuses_without_writing_by_real_execution() -> Bool {
+// out path refuses BEFORE any write.
+//
+// SCOPE, NARROWED BECAUSE THE EARLIER WORDING CLAIMED MORE THAN THE BOOLEAN ESTABLISHES: this
+// asserts only that the guard REFUSES. It does NOT observe the absence of a write -- no path is
+// supplied, so there is nothing this assertion could read to establish that nothing was written.
+// The claim it supports is that the guard's refusal is reached, which is what distinguishes it from
+// the verdict's refusal; "without writing" is a property of the code path, not of this measurement.
+test fn an_empty_out_path_refuses_by_real_execution() -> Bool {
   match provenance_calibration_report_over(cells: calibration_cells(), out: "") {
     ExitSuccess => false
     ExitFailure { code: _, reason: _ } => true

@@ -177,9 +177,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "an_empty_out_path_refuses_without_writing_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_written_payload_is_the_measured_matrix_and_not_another_one" },
       entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
-      function: "an_empty_out_path_refuses_without_writing_by_real_execution",
+      function: "the_written_payload_is_the_measured_matrix_and_not_another_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "an_empty_out_path_refuses_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "an_empty_out_path_refuses_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
