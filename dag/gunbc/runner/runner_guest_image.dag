@@ -87,9 +87,17 @@ type GuestArtifactDigestProvenance
 // is printed for a human to commit as a row; it is never silently accepted as whatever arrived.
 // Filling the pinned arm with a plausible-looking hex string would be the fabricated output DESIGN
 // section 5 forbids, wearing a security control's clothes.
+// A BUILT ARTIFACT IS NOT "NOT PINNED YET", IT IS NOT PINNABLE, and collapsing the two made the
+// receipt instruct a reader to do what this module forbids: the standing printed "author this as
+// ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THIS BUILD had just
+// produced. Following that advice would pin a digest that legitimately changes whenever the tree
+// does, and demand byte-reproducible mke2fs output to stay green. The distinction is the artifact's
+// to carry, because only the artifact knows whether a pin could ever be authored for it, so
+// ArtifactDigestNotPinnable is a third arm rather than a flag on the second.
 type GuestArtifactIntegrity
   = ArtifactDigestPinned { digest: Digest, provenance: GuestArtifactDigestProvenance }
   | ArtifactDigestUnpinned { cause: String }
+  | ArtifactDigestNotPinnable { cause: String }
 
 type GuestBaseArtifact {
   url: NonEmptyStr
@@ -141,7 +149,7 @@ data runner_guest_base_rootfs_artifact: GuestBaseArtifact = GuestBaseArtifact {
 data runner_guest_built_image_artifact: GuestBaseArtifact = GuestBaseArtifact {
   url: "about:built-here" as NonEmptyStr,
   filename: "guest-image" as NonEmptyStr,
-  integrity: ArtifactDigestUnpinned {
+  integrity: ArtifactDigestNotPinnable {
     cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against",
   },
 }
@@ -450,6 +458,7 @@ fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<Ar
 type GuestArtifactVerdict
   = ArtifactMatchesPin
   | ArtifactUnpinnedFirstContact { digest_hex: String }
+  | ArtifactBuildReceipt { digest_hex: String }
   | ArtifactContradictsPin { expected_hex: String, observed_hex: String }
   | ArtifactNotMeasured { reason: String }
 
@@ -460,6 +469,8 @@ fn guest_artifact_verdict(artifact: GuestBaseArtifact, observed: Sha256FileDiges
       match artifact.integrity {
         ArtifactDigestUnpinned { cause: _ } =>
           ArtifactUnpinnedFirstContact { digest_hex: d.hex as String }
+        ArtifactDigestNotPinnable { cause: _ } =>
+          ArtifactBuildReceipt { digest_hex: d.hex as String }
         ArtifactDigestPinned { digest: expected, provenance: _ } =>
           if expected == d {
             ArtifactMatchesPin
@@ -476,6 +487,9 @@ fn guest_artifact_verdict_text(artifact: GuestBaseArtifact, verdict: GuestArtifa
     ArtifactUnpinnedFirstContact { digest_hex: h } =>
       join([artifact.filename as String, "=unpinned-first-contact sha256=", h,
             " (author this as ArtifactDigestPinned with FirstObservedOnFetch provenance)"], "")
+    ArtifactBuildReceipt { digest_hex: h } =>
+      join([artifact.filename as String, "=build-receipt sha256=", h,
+            " (this build's output; not a pin, and not to be authored as one)"], "")
     ArtifactContradictsPin { expected_hex: e, observed_hex: o } =>
       join([artifact.filename as String, "=CONTRADICTS-PIN expected=", e, " observed=", o], "")
     ArtifactNotMeasured { reason: r } =>
@@ -490,6 +504,7 @@ fn guest_artifact_verdict_admits_build(verdict: GuestArtifactVerdict) -> Bool {
   match verdict {
     ArtifactMatchesPin => true
     ArtifactUnpinnedFirstContact { digest_hex: _ } => true
+    ArtifactBuildReceipt { digest_hex: _ } => true
     ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
     ArtifactNotMeasured { reason: _ } => false
   }
