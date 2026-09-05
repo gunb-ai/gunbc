@@ -1269,10 +1269,6 @@ pub struct TransitionAdmission {
 /// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
 /// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
 /// the exact head.
-const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
-    "gunbc#10445 SCM object-table codec move: the mixed-table encoder, decoder and their positions \
-     move from gunbc.scm.commit_closure_json_v2 to gunbc.scm.object_table_json";
-
 /// THERE IS NO MANIFEST-VOCABULARY LABEL, AND THE 38 ROWS THAT CARRIED ONE ARE DELETED. An earlier
 /// head of this branch authored one row per newly authored manifest spelling, each reported as a
 /// `NewPoolCoincidenceResolution` binding delta by the wall at that base. Against the merged base
@@ -1288,12 +1284,83 @@ const SCM_OBJECT_TABLE_CODEC_MOVE_LABEL: &str =
 /// introduced when the untyped locator was split so an authored-source identity can no longer
 /// inhabit a semantic child position. These fixtures could previously write a bare `ObjectId`
 /// there; they now name the constructor, which is a name the base corpus did not declare.
-const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
-    "gunbc#10445 SCM semantic-target constructor: node_target_of is newly authored in \
-     gunbc.scm.object_store and had no base declaration";
-
-/// THIRTY-THIRD TRANSITION (2026-09-05, gunbc#10459): the parsed item-kind coproduct moves to the
-/// module that declares the carrier it is stamped onto.
+/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
+/// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
+/// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
+/// `v2.std.fn_index`, where `callees_from_node` already needed it to exclude a declaration's own
+/// parameter names from its callee set. Two `TargetChanged` deltas follow, one per consuming lens,
+/// enumerated by identity rather than admitted by a spelling wildcard, because a wildcard would also
+/// admit a THIRD consumer nobody reviewed.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THE ORDINARY RULE: once this merges, the base binds the spelling
+/// to `v2.std.fn_index` in both modules, the deltas stop being producible, and these two rows are
+/// owed deletion by the next roster-touching change -- the same rule the two dissolutions below were
+/// paid on.
+///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
+/// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
+/// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
+/// 30 of 30, on this branch's own head -- #10355 has merged, the base now binds each spelling to
+/// `gunbc.scm.proposal`, and the deltas have stopped being producible.
+///
+/// THE DELETION IS OWED BY THIS CHANGE AND NOT BY A LATER ONE, on the roster's own standing rule:
+/// a consumed row's deletion comes due on the roster's next touch, and this change touches the
+/// roster. That rule is what keeps the ledger from growing without bound, and it is why this
+/// dissolution is authored by a PR that has nothing to do with SCM vocabulary.
+///
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10300). Both `gunbc#10350` kernel-identity
+/// predicate-relocation rows are deleted, and `KERNEL_IDENTITY_RELOCATION_LABEL` with them. Reported
+/// by identity as `CONSUMED ADMISSION`, 2 of 2, by the required phase on this branch's own head:
+/// #10350 has merged, `v1.compiler.infer::ancestry_binding_is_kernel_identity` and
+/// `v1.compiler.emit_rust::import_name_resolves_to_host_realized_kernel_scalar` both bind
+/// `resolved_node_is_kernel_identity_for_name` to `v1.std.core` at the base, and neither delta is
+/// producible any more.
+///
+/// THE SECOND SUCH PAYMENT ON THIS ONE BRANCH, which is worth recording rather than smoothing over.
+/// The THIRTIETH deleted 30 consumed `gunbc#10355` rows; a merge of main then brought in a fresh
+/// cohort whose own transition had merged in the meantime, and the phase came due again. That is the
+/// treadmill working as designed, not a defect: a long-lived branch touches the roster once per
+/// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
+/// -- is what makes an append-only ledger grow without bound.
+///
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10300). All six `gunbc#10439` serving-engine
+/// launch-vocabulary rows are deleted, and `SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL` with them.
+/// Reported by identity as `CONSUMED ADMISSION`, 6 of 6, by the required phase on this branch's own
+/// head: #10439 has merged and none of the six deltas is producible against the base any more.
+///
+/// THE THIRD PAYMENT ON THIS ONE BRANCH, AND THE PATTERN IS NOW THE POINT. The THIRTIETH cleared 30
+/// consumed `gunbc#10355` rows, the THIRTY-FIRST cleared 2 `gunbc#10350` rows, and this clears 6
+/// `gunbc#10439` rows -- three different cohorts, none of them this PR's, each consumed by a merge
+/// that happened while this branch was open. A branch that syncs with main N times touches the
+/// roster N times and owes the payment N times.
+///
+/// THAT IS THE RULE WORKING, NOT FRICTION TO ROUTE AROUND, and it is worth saying plainly because
+/// the tempting reading is the opposite. The alternative to paying on touch is a roster that only
+/// ever grows, where every stale row refuses unrelated changes and the cost lands on whoever is
+/// unlucky enough to touch the file last. Paying three times over one afternoon is the ledger
+/// staying small; it is not the ledger misbehaving.
+///
+/// THIRTY-THIRD DISSOLUTION (2026-09-05, gunbc#10300). All 22 `gunbc#10445` rows are deleted, and
+/// both `SCM_OBJECT_TABLE_CODEC_MOVE_LABEL` and `SCM_NODE_TARGET_CONSTRUCTOR_LABEL` with them --
+/// 17 object-table codec-move rows and 5 semantic-target constructor rows. Reported by identity as
+/// `CONSUMED ADMISSION`, 22 of 22, by the required phase on this branch's own head: #10445 has
+/// merged and none of the deltas is producible against the base any more.
+///
+/// FOURTH PAYMENT, FOURTH COHORT, NONE OF THEM THIS PR'S. The running total on one branch is 30
+/// (#10355) + 2 (#10350) + 6 (#10439) + 22 (#10445) = 60 rows dissolved for work this change has
+/// nothing to do with, because the roster's rule is that a consumed row's deletion comes due on the
+/// roster's next touch and every sync with main is a touch.
+///
+/// THE RATE IS THE OBSERVATION WORTH LEAVING HERE. Four cohorts became consumed inside one open
+/// branch's lifetime, which means main is landing roster-touching transitions faster than a branch
+/// can complete a CI cycle. That is not an argument against the rule -- the ledger is 2 rows rather
+/// than 62 precisely because it is paid on touch -- but it does mean a long-lived branch pays a
+/// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
+/// branches short rather than to defer the payment.
+///
+/// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
+/// entries above number themselves against a sequence that other lanes are appending to
+/// concurrently, so a number chosen on this branch would be wrong by the time it merged.
 ///
 /// #10459 is the declared next-rung trigger for the resource-exclusion validator family: the emit
 /// side stopped INFERRING what an item is from its shape and started READING a positive kind the
@@ -1316,12 +1383,12 @@ const SCM_NODE_TARGET_CONSTRUCTOR_LABEL: &str =
 /// shape predicates are deleted. Admitting a row the wall already decides would be a second
 /// authority for one decision.
 ///
-/// THIS ENTRY NO LONGER CLAIMS THE gunbc#10439 DELETION, AND THE CORRECTION IS THE POINT. An earlier
-/// revision of this block, authored when this branch was the first to touch the roster after #10439
-/// merged, said the six serving-engine rows "are deleted by this change". gunbc#10445 landed that
-/// deletion first, as the THIRTY-SECOND DISSOLUTION entry above records. Leaving the sentence
-/// standing would have made this block assert an act it did not perform -- a claim true on the
-/// branch that wrote it and false the moment another lane discharged the same obligation.
+/// THIS ENTRY ONCE CLAIMED THE gunbc#10439 DELETION AND NO LONGER DOES, WHICH IS THE POINT OF
+/// SAYING SO. An earlier revision, authored when this branch was the first to touch the roster after
+/// #10439 merged, said the six serving-engine rows "are deleted by this change". gunbc#10445 landed
+/// that deletion first. Leaving the sentence standing would have made this block assert an act it
+/// did not perform -- true on the branch that wrote it, false the moment another lane discharged the
+/// same obligation.
 ///
 /// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10459 merges. The base then binds
 /// each spelling to `v1.std.core`, no run can produce these deltas, and all seven report CONSUMED
@@ -1334,222 +1401,22 @@ const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "build_full_store",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "build_two_child_store",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "closure_over_an_occupied_locator",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_commit_closure_witness",
-            in_declaration: "permutation_fixture",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_NODE_TARGET_CONSTRUCTOR_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_load_standing_witness",
-            in_declaration: "ls_full",
-            spelling: "node_target_of",
-            target: "gunbc.scm.object_store",
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "an_uncontained_key",
-            spelling: "object_id_key",
-            target: "gunbc.scm.object_table_json",
+            module: "v2.lens.effect_reach",
+            in_declaration: "flows_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "encoded_root_reference",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.commit_closure_json_v2",
-            in_declaration: "encoded_root_reference",
-            spelling: "encode_target",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "commit_root_standing",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "commit_root_standing",
-            spelling: "node_position_of",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_members",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_members_after_reference",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_root",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_root",
-            spelling: "resolve_reference",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_commit_step",
-            spelling: "DecodePositions",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_repository_body_with_allocator",
-            spelling: "DecodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "decode_repository_body_with_allocator",
-            spelling: "decode_object_table",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_commit_record",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_commit_records",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "unresolved_commit_root",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "unresolved_commit_root_step",
-            spelling: "EncodeAcc",
-            target: "gunbc.scm.object_table_json",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_OBJECT_TABLE_CODEC_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.scm.repository_envelope",
-            in_declaration: "encode_repository_checked",
-            spelling: "encode_object_table",
-            target: "gunbc.scm.object_table_json",
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carriers_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
