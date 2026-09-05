@@ -37,10 +37,10 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
 };
+pub use crate::std_occurrence_binding::{AmbiguousBindingCandidates, OccurrenceBindingResult};
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
@@ -1175,23 +1175,23 @@ pub fn bound_reference_population_fold_step(
                 }),
             }
         }
-        ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
-            occurrence: _, ..
-        } => match acc.first_failure.clone() {
-            std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
-                    acc.more_failures_reversed.clone(),
-                ),
-            }),
-        },
+        ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous { .. } => {
+            match acc.first_failure.clone() {
+                std::option::Option::None => Rc::new(BoundReferencePopulationBuild {
+                    providers_reversed: acc.providers_reversed.clone(),
+                    first_failure: Some(projection.clone()),
+                    more_failures_reversed: acc.more_failures_reversed.clone(),
+                }),
+                Some(_) => Rc::new(BoundReferencePopulationBuild {
+                    providers_reversed: acc.providers_reversed.clone(),
+                    first_failure: acc.first_failure.clone(),
+                    more_failures_reversed: v1_rt::concat(
+                        Rc::new(vec![projection.clone()]),
+                        acc.more_failures_reversed.clone(),
+                    ),
+                }),
+            }
+        }
         ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
             refusal: _,
             ..
@@ -2870,6 +2870,7 @@ pub enum ReferenceBindingProjection {
     },
     ReferenceBindingProjectionAmbiguous {
         occurrence: OccurrenceId,
+        candidates: Rc<AmbiguousBindingCandidates<OccurrenceId>>,
     },
     ReferenceBindingProjectionTransportRefused {
         refusal: Rc<OccurrenceTransportRefusal>,
@@ -2929,8 +2930,9 @@ pub fn resolve_reference_via_structural_candidates(
     OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
     occurrence: reference.occurrence.clone(),
 }),
-    OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
+    OccurrenceBindingResult::OccurrenceAmbiguous { candidates, .. } => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
     occurrence: reference.occurrence.clone(),
+    candidates: candidates.clone(),
 }),
     OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => {
             let declaration_occurrence = binding.candidate.clone().containment.clone().terminal.clone();

@@ -1,6 +1,7 @@
 module test.claim.occurrence_binding_candidates_witness_test
 
 import std.types { Bool, SourceSpan, NonEmptyStr, CommitSha, String }
+import std.algebra { Empty, Cons }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
@@ -58,6 +59,7 @@ import std.occurrence_binding_candidates {
   section13_population_law_roster_denominator_holds,
   declarations_by_name_build,
   resolve_reference_binding_via_structural_candidates,
+  bound_reference_population_from_projections,
   direct_module_dependencies_from_providers,
   direct_module_dependencies_from_bound_population,
   ModulePathFileRow,
@@ -539,7 +541,7 @@ fn obc_ambiguous_inputs() -> OccurrenceBindingCandidateInputs {
 }
 
 test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  let projection = resolve_reference_binding_via_structural_candidates(
     transport: obc_ambiguous_transport(),
     inputs: obc_ambiguous_inputs(),
     reference: obc_fixture_reference(
@@ -547,8 +549,27 @@ test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool {
       containment: obc_fixture_path(ancestors: [], terminal: OccurrenceId { value: 90 }),
       category: CallableOccurrence,
     ),
+  )
+  match direct_module_dependencies_from_bound_population(
+    population: bound_reference_population_from_projections(projections: [projection]),
   ) {
-    ReferenceBindingProjectionAmbiguous { occurrence: ambiguous } => ambiguous.value == 90
+    DirectModuleDependencyPopulationRefused {
+      population: ReferencePopulationRefused {
+        first_failure: ReferenceBindingProjectionAmbiguous {
+          occurrence: ambiguous,
+          candidates: candidates,
+        },
+        more_failures: more_failures,
+      },
+    } =>
+      ambiguous.value == 90
+        && (more_failures |> count) == 0
+        && candidates.first.containment.terminal.value == 80
+        && candidates.second.containment.terminal.value == 81
+        && match candidates.rest {
+          Empty => true
+          Cons { head: _, tail: _ } => false
+        }
     _ => false
   }
 }

@@ -243,6 +243,7 @@ test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
                 population: ReferencePopulationRefused {
                   first_failure: ReferenceBindingProjectionAmbiguous {
                     occurrence: first_ambiguous,
+                    candidates: _,
                   },
                   more_failures: more_failures,
                 },
@@ -257,6 +258,7 @@ test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
                   Present {
                     value: ReferenceBindingProjectionAmbiguous {
                       occurrence: second_ambiguous,
+                      candidates: _,
                     },
                   } =>
                     (more_failures |> count) == 1
