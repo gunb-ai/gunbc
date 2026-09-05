@@ -1,25 +1,37 @@
 module gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall
 
-import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
 
-// WHY THE BLOCKER IS `ClimbableButUnbuilt` WHEN THE CEILING AWAITS A GROUNDING, which is the one
-// thing a reader of this row is likeliest to read as a contradiction. DESIGN section 4b(2) obliges
-// a stall to separate "cannot climb further" from "can climb after one grounding" from "can climb
-// NOW but unbuilt", and that classification is about THIS ROW'S STANDING STATE -- whether it can
-// move off the rung it sits on -- not about the last step to its ceiling. This class sits OUTSIDE
-// THE LADDER and the climb off it needs no capability that does not exist today, so it is
-// climbable and unbuilt. Calling it `AwaitsOneGrounding` because the CEILING needs one would put an
-// affordable climb behind a capability nobody is building, and would assert the third case is the
-// second -- the misclassification this paragraph exists to prevent, caught in review of the first
-// version of this row (gunbc#10366, review 59852) where the blocker contradicted the evidence six
-// lines above it.
+// WHY THE BLOCKER IS `AwaitsOneGrounding` TODAY AND WAS `ClimbableButUnbuilt` BEFORE, which is the
+// one thing a reader of this row is likeliest to read as a contradiction against the paragraphs
+// below, since several of them were written while the earlier classification held. DESIGN section
+// 4b(2) obliges a stall to separate "cannot climb further" from "can climb after one grounding"
+// from "can climb NOW but unbuilt", and that classification is about THIS ROW'S STANDING STATE --
+// whether it can move off the rung it sits on -- not about the last step to its ceiling. The class
+// sat OUTSIDE THE LADDER and the climb off it needed no capability that did not exist, so it was
+// climbable and unbuilt; that climb has now been taken (the join described further down), the row
+// stands at `MechanicallyPreventable`, and the ONLY remaining climb is the one to the ceiling, which
+// does await a grounding. So the blocker changed because the standing state changed, not because
+// the reading of section 4b(2) did.
 //
-// THE CEILING'S GROUNDING THEREFORE LIVES IN THIS ANNOTATION AND NOT IN A FIELD, recorded as a
-// limit of the carrier rather than left for a reader to notice as an omission. `GuaranteeStall`
-// carries ONE `blocker`, which answers for the immediate climb, and `ceiling` is a bare
-// `GuaranteeRung` with nothing attached; there is no field in which "what the LAST step needs" can
-// be written, so it is written here. It is: declaration introspection sufficient to BIND a
+// THE DISTINCTION THAT PARAGRAPH PRESERVES IS STILL LOAD-BEARING and is why it is rewritten rather
+// than deleted: while an affordable climb was outstanding, calling the blocker `AwaitsOneGrounding`
+// because the CEILING needs one would have put an affordable climb behind a capability nobody is
+// building, and would have asserted the third case is the second -- the misclassification caught in
+// review of the first version of this row (gunbc#10366, review 59852), where the blocker
+// contradicted the evidence six lines above it. The same error is available in the other direction
+// now: leaving `ClimbableButUnbuilt` standing after the affordable climb landed would claim a climb
+// is available today that is not.
+//
+// THE CEILING'S GROUNDING NOW REACHES A FIELD, AND ONLY BECAUSE THE TWO COINCIDE TODAY -- the
+// carrier limit this paragraph was written to record is unchanged and is restated rather than
+// deleted. `GuaranteeStall` carries ONE `blocker`, which answers for the IMMEDIATE climb, and
+// `ceiling` is a bare `GuaranteeRung` with nothing attached; there is still no field in which "what
+// the LAST step needs" can be written. It is legible in `blocker.grounding` at the moment only
+// because the immediate climb and the last climb have become the same climb: the affordable one has
+// been taken. Should this row gain another intermediate rung, the ceiling's grounding falls back out
+// of every field and into this paragraph, which is why it stays here in full. It is: declaration introspection sufficient to BIND a
 // discovered data declaration as a typed value of its declared type -- not merely to report that it
 // exists, its name, or its declared type as strings -- such that a roster is folded over the
 // declared population with no authored name per row, at which point an unrostered row has no
@@ -41,8 +53,10 @@ import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNot
 // a value is bound only by an authored name. Decoding a typed value out of a data initializer is
 // already declared blocked in a second carrier: `test.fixture.scaffold_disposition_census.pool_notes`
 // records the same constructor/variant-value identity prerequisite as the reason nothing there
-// decodes a `Disposition`. This separability is what the paragraph above rests on: it is why the
-// blocker can be `ClimbableButUnbuilt` while the ceiling still awaits a grounding.
+// decodes a `Disposition`. This separability is what the paragraphs above rest on: it is why the
+// blocker could be `ClimbableButUnbuilt` while the ceiling awaited a grounding, and why, once
+// membership discovery had been spent on the affordable climb, the value binding is the whole of
+// what remains.
 //
 // THE DEMAND PREDATES THIS ROW, which is what keeps it from being self-serving. `std.primitives`
 // `primitive_contract_roster_note` independently names this class and this dissolution for its own
@@ -68,11 +82,54 @@ import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNot
 // splits into per-row files, which is why the population is UNCOUNTED rather than a list of
 // thirteen: rendering that list would read as "these are affected", the selection-view-read-as-
 // population narrow, when the real exposure is every per-row carrier that exists or will.
+//
+// THE ROW MOVED OFF THE LADDER'S OUTSIDE, AND THE TRIGGER THAT MOVED IT IS DISCHARGED, RECORDED
+// HERE BECAUSE THE FIELDS BELOW NOW SAY SOMETHING DIFFERENT THAN THEY DID. The declared trigger --
+// a declared-versus-rostered identity join executing as a merge-blocking check on every rostered
+// row type -- is built and enrolled: `gunbc.rostered_row_join` declares the enrolled row types,
+// `v1_compiler.cli_run.rostered_row_join` executes the join inside the required-CI PARSE phase, and
+// it therefore runs on every push and pull request, in whichever lane owns that phase, with no job
+// added -- the phase's own lane ownership answers for the join, so there is no second routing fact
+// to drift. The
+// declared population is read through `v2.std.decl_index` `data_decl_type_facts` -- the same host
+// walk that builtin marshals, shared rather than re-derived -- and each roster's membership is read
+// out of the parse that phase has already performed, because a list literal's element NAMES are
+// reachable only there.
+//
+// WHAT IT ESTABLISHES IS THE OMISSION GOING LOUD, AND NOTHING MORE. Every author still writes the
+// row and then writes the roster entry; the double authoring is untouched, the invalid state stays
+// writable, and safety depends on this check executing and staying enrolled. That is
+// `MechanicallyPreventable` by the definition in DESIGN section 4b, and calling it anything higher
+// would be the inflation the paragraphs above already warn about.
+//
+// IT REFUSED FIVE ROWS ON ITS FIRST EXECUTION, inside this row's own carrier, which is the evidence
+// that the population was not theoretical: five valid GuaranteeStall declarations were standing
+// declared and unrostered -- two in `gunbc.namespace_wave_admission`, two in
+// `gunbc.runner.runner_service_activation`, one in `gunbc.declaration_index_seed_growth` -- absent
+// from every projection this roster feeds. They are rostered in `gunbc.guarantee_stall.roster` with
+// that change; the annotation there records why they were invisible to every earlier check.
+//
+// THE JOIN IS A SPELLING COMPARISON AND IT IS NAMED AS ONE. `DataDeclTypeFact` carries `type_name`
+// as a `String` -- the authored head name of the declared type annotation -- so membership is
+// decided by comparing spellings over a population discovered by parse. That is DISCOVERY EVIDENCE,
+// not resolved typed membership: two distinct types spelled alike in different modules are one
+// subject to this check, and a row whose annotation is written through an alias is invisible to it.
+// It is exact today only because each enrolled spelling is declared in exactly one module, which is
+// a property of the corpus and not of the check. The same missing capability bounds both halves:
+// declaration introspection reports names and spellings, and binds no values.
+//
+// THE CEILING IS UNCHANGED AND SO IS WHAT IT NEEDS. The blocker becomes `AwaitsOneGrounding`
+// because the affordable climb has been taken and the remaining one is not affordable: reaching
+// `StructurallyImpossible` still requires binding a discovered data declaration as a typed VALUE of
+// its declared type, so a roster is folded over the declared population with no authored name per
+// row. The long annotation above states that capability in full and it is not restated here.
 data roster_re_enumerates_its_own_rows_stall: GuaranteeStall = GuaranteeStall {
   subject: "a roster of per-module rows enumerates by hand the declarations it rosters, so a declared row absent from the list is silently absent from every projection derived from it",
-  current: OutsideTheLadder,
+  current: MechanicallyPreventable,
   ceiling: StructurallyImpossible,
-  blocker: ClimbableButUnbuilt,
+  blocker: AwaitsOneGrounding {
+    grounding: "declaration VALUE binding: introspection that binds a discovered data declaration as a typed value of its declared type, not merely reporting that it exists and how its type is spelled, so a roster is folded over the declared population and an unrostered row has no constructor",
+  },
   population: UncountedNotEnumerable { reason: "every carrier whose rows live one per module and are re-enumerated in a roster, a class that gains a member whenever a carrier splits into per-row files; an executed proxy over non-test dag/ and src/ modules importing at least five names and re-listing at least five of them returned thirteen carriers on the derivation base named in the PR body, which under-reports intra-module rosters such as the std.primitives contract roster and over-reports any list literal of imported names, so it bounds nothing" },
-  next_rung_trigger: "a declared-versus-rostered identity join executing as a merge-blocking check on every rostered row type -- the declared population read through v2.std.decl_index data_decl_type_facts, joined at declaration identity rather than at count, refusing with the located identity of each declared row the roster omits -- which needs no capability that does not exist today and leaves the invalid state writable, hence mechanically preventable and not the ceiling"
+  next_rung_trigger: "declaration introspection sufficient to BIND a discovered data declaration as a typed value of its declared type, at which point gunbc.rostered_row_join's enrolled row types are folded over the declared population and the hand-authored roster list DELETES -- the join that made the omission loud dissolves with it, because there is no longer a list to omit a row from. Stated as binding rather than as introspection because data_decl_type_facts, which already exists, satisfies any trigger naming discovery: it is what the join executing today is built on, and it left the ceiling exactly as far away as it was"
 }
