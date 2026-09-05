@@ -23,6 +23,22 @@ data sparkrun_vllm_ds4_gb10_vllm_version: NonEmptyStr = "0.21.1rc1.dev339+g1967a
 data sparkrun_vllm_ds4_gb10_python: NonEmptyStr = "/opt/env/bin/python3" as NonEmptyStr
 data sparkrun_vllm_ds4_gb10_vllm_binary: NonEmptyStr = "/opt/env/bin/vllm" as NonEmptyStr
 data sparkrun_vllm_ds4_gb10_ray_binary: NonEmptyStr = "/opt/env/bin/ray" as NonEmptyStr
+
+// THE BASE IMAGE HAS NO RAY. `import ray` fails in it, and the local commits on the first pair carry
+// ray 2.58.0 installed by `python -m pip` as a REQUESTED distribution (dist-info INSTALLER=pip,
+// REQUESTED present) whose `default` extra is what brought py-spy and virtualenv along. So the
+// runtime the pair actually runs is base plus one pip requirement, and that is a build, not a
+// commit: the Dockerfile below is rendered and built on the host, tagged by what it adds.
+data sparkrun_vllm_ds4_gb10_ray_requirement: NonEmptyStr = "ray[default]==2.58.0" as NonEmptyStr
+data gunbc_spark_pair_runtime_image_tag: NonEmptyStr = "gunbc-spark-pair-runtime:ray-2.58.0" as NonEmptyStr
+
+fn gunbc_spark_pair_runtime_dockerfile() -> String {
+  join([
+    "FROM ", sparkrun_vllm_ds4_gb10_pinned_reference() as String, "\n",
+    "RUN ", sparkrun_vllm_ds4_gb10_python as String, " -m pip install --no-cache-dir ", sparkrun_vllm_ds4_gb10_ray_requirement as String, "\n",
+    "CMD [\"sleep\", \"infinity\"]\n",
+  ], "")
+}
 data sparkrun_vllm_ds4_gb10_jit_cache_root: NonEmptyStr = "/cache/huggingface" as NonEmptyStr
 
 // The pinned reference every create names: repository@sha256:digest, never the tag alone.

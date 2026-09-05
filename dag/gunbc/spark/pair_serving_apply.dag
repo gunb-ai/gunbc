@@ -1,6 +1,6 @@
 module gunbc.spark.pair_serving_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -8,8 +8,10 @@ import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
 import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
-import extdeps.docker.cli { docker_image_pull_command }
-import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import extdeps.docker.cli { docker_image_pull_command, docker_build_command }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
+  sparkrun_vllm_ds4_gb10_pinned_reference, gunbc_spark_pair_runtime_image_tag, gunbc_spark_pair_runtime_dockerfile,
+}
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -49,6 +51,7 @@ data spark_pair_apply_attempt_raw: String = "spark-pair-apply"
 // The hand-authored units this apply retires, per role, as observed on the first pair.
 data spark_pair_retired_head_unit: NonEmptyStr = "spark-vllm.service" as NonEmptyStr
 data spark_pair_retired_worker_unit: NonEmptyStr = "spark-ray-worker.service" as NonEmptyStr
+data spark_pair_runtime_build_dir: String = "/var/lib/gunbc/spark-pair/runtime"
 
 // A plain word is written as itself so the script reads as the unit's Exec line does; anything
 // else is single-quoted.
@@ -77,6 +80,9 @@ fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEm
     "install -d -m 755 /var/log/gunbc\n",
     "install -d -m 755 ", cache, "\n",
     argv_line(cmd: docker_image_pull_command(image: sparkrun_vllm_ds4_gb10_pinned_reference())), " >/dev/null\n",
+    "install -d -m 755 ", spark_pair_runtime_build_dir, "\n",
+    "printf '%s' ", shell_quote(arg: gunbc_spark_pair_runtime_dockerfile()), " > ", spark_pair_runtime_build_dir, "/Dockerfile\n",
+    "if ! docker image inspect ", gunbc_spark_pair_runtime_image_tag as String, " >/dev/null 2>&1; then ", argv_line(cmd: docker_build_command(tag: gunbc_spark_pair_runtime_image_tag, context_dir: spark_pair_runtime_build_dir as FilePath)), " >/dev/null; fi\n",
     "if docker container inspect ", old, " >/dev/null 2>&1; then docker cp ", old, ":/cache/huggingface/. ", cache, "/ 2>/dev/null || true; fi\n",
     "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker rm -f ", ctr, " >/dev/null; fi\n",
     argv_line(cmd: real.create), " >/dev/null\n",

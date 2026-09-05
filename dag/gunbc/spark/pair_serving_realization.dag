@@ -14,7 +14,7 @@ import extdeps.docker.cli {
   docker_create_command, docker_start_command, docker_exec_command,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
-  sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_binary, sparkrun_vllm_ds4_gb10_ray_binary,
+  sparkrun_vllm_ds4_gb10_vllm_binary, sparkrun_vllm_ds4_gb10_ray_binary, gunbc_spark_pair_runtime_image_tag,
   sparkrun_vllm_ds4_gb10_jit_cache_root, sparkrun_vllm_ds4_gb10_baked_interface_env_names,
 }
 import extdeps.systemd.unit_file {
@@ -40,7 +40,8 @@ import gunbc.spark.pair_serving_observed { first_pair_model_snapshot, first_pair
 // ROW. This replaces the hand-authored spark-vllm-head.sh, spark-ray-worker.sh and
 // launch_prod_pair.sh observed on the first pair (gunbc.spark.pair_serving_observed); every value
 // they carried by hand is derived here from a row that owns it:
-//   - the runtime is the public image pinned by registry digest, never a local commit;
+//   - the runtime is built on the public image pinned by registry digest plus the one pip
+//     requirement the pair needs (ray), never a local commit;
 //   - the container is created with EVERY interface-bearing environment variable the image bakes
 //     overridden from the host's own fabric endpoints, so no docker exec can inherit the build
 //     host's dead interface again (the 2026-09-05 drift, now unwritable rather than patched);
@@ -171,7 +172,7 @@ fn spark_pair_container_env_covers_every_baked_name(env: List<DockerEnvAssignmen
 fn spark_pair_container_spec(env: List<DockerEnvAssignment>) -> DockerCreateSpec {
   DockerCreateSpec {
     name: spark_pair_container_name,
-    image: sparkrun_vllm_ds4_gb10_pinned_reference(),
+    image: gunbc_spark_pair_runtime_image_tag,
     network: NamespaceHost,
     ipc: NamespaceHost,
     shm_size_bytes: 10737418240,

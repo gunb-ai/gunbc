@@ -135,6 +135,10 @@ fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: 
   )
 }
 
+fn docker_build_command(tag: NonEmptyStr, context_dir: FilePath) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["build", "--tag", tag as String, context_dir as String])
+}
+
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
 }

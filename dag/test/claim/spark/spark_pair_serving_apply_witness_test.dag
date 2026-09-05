@@ -45,6 +45,8 @@ test fn the_plan_applies_worker_then_head_with_each_retiring_its_own_predecessor
 test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> Bool {
   w_planned(f: fn(_w, h) {
     string_contains(s: h.script, pattern: "/usr/bin/docker image pull aidendle94/sparkrun-vllm-ds4-gb10@sha256:")
+      && string_contains(s: h.script, pattern: "if ! docker image inspect gunbc-spark-pair-runtime:ray-2.58.0 >/dev/null 2>&1; then /usr/bin/docker build --tag gunbc-spark-pair-runtime:ray-2.58.0 /var/lib/gunbc/spark-pair/runtime >/dev/null; fi\n")
+      && string_contains(s: h.script, pattern: "> /var/lib/gunbc/spark-pair/runtime/Dockerfile\n")
       && string_contains(s: h.script, pattern: "/usr/bin/docker create --name gunbc-spark-pair --network host --ipc host --shm-size 10737418240 --restart unless-stopped --ulimit memlock=-1:-1 --gpus all --device /dev/infiniband:/dev/infiniband:rwm --cap-add IPC_LOCK")
       && string_contains(s: h.script, pattern: "> /etc/systemd/system/gunbc-spark-pair-head.service\nsystemctl daemon-reload\n")
       && string_contains(s: h.script, pattern: "docker cp dsv4:/cache/huggingface/. /var/lib/gunbc/spark-pair/jit-cache/")
