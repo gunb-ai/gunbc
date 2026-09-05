@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
@@ -1543,7 +1544,7 @@ fn gunbc_ci_spark_bootstrap_invoke() -> String {
     entry: gunbc_ci_spark_bootstrap_target.entry,
     function: gunbc_ci_spark_bootstrap_target.function,
     claim_run: false,
-    receipt_rel: "target/spark-apply-receipt.txt"
+    receipt_rel: spark_apply_receipt_path
   )
 }
 
