@@ -68,6 +68,11 @@ fn workflow_step_disposition_for_authorization<Subject>(
   )
 }
 
+// THE ARM THE DENIAL DISTINCTION EXISTS FOR. StepAwaitingApproval is what makes the workflow ask
+// the operator again; every other cause blocks. Routing a denial to that arm would re-notify them
+// forever, so while a deny could not be represented separately from absence this fold had exactly
+// one terminal state -- eventual yes. AuthorizationDeniedByOperator blocks, carrying the operator's
+// own reason through to the disposition.
 fn workflow_step_disposition_for_decision<Subject>(
   request: AuthorizationRequest<Subject>,
   decision: AuthorizationDecision<Subject>,
@@ -78,6 +83,8 @@ fn workflow_step_disposition_for_decision<Subject>(
       match cause {
         AuthorizationNotGranted { escalation_id: _ } =>
           StepAwaitingApproval { request: request }
+        AuthorizationDeniedByOperator { escalation_id: _, denied_by: _, denied_at: _, reason: _ } =>
+          StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationExpired { expires_at: _, observed_at: _ } =>
           StepBlocked { reason: authorization_refusal_reason(cause: cause) }
         AuthorizationAlreadyCompleted { completed_by: _, completed_at: _ } =>
