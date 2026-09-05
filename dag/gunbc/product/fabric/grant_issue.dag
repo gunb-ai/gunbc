@@ -1,7 +1,7 @@
 module product.fabric.grant_issue
 
 import std.types { NonEmptyStr, List, Int, Timestamp }
-import std.measure { MoneyAmountMicro, Measure }
+import std.measure { Measure }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity {
@@ -289,19 +289,50 @@ type GrantIssue<P, Q, S>
 //
 // WHAT THIS DOES NOT ESTABLISH, STATED SO NO READER BUDGETS FOR IT.
 //
+// THIS IS THE ISSUANCE KERNEL OF FCI-2 AND NOT THE WHOLE GATE. The gate's exit predicate reads
+// "SELECTION, RESERVATION and commitment yield exactly one fenced ExecutionGrant for the exact
+// Work", and of those three this module constructs COMMITMENT. Selection and reservation liveness
+// arrive here as caller-authored parameters, which is the same defect this module just repaired
+// for the grantee principal, one premise earlier: a caller-selected principal was closed by
+// reading it off the Work, and a caller-selected winning offer is still open.
+//
+// Three residual capabilities, each stated as what must EXIST rather than as an artifact:
+//
+// ONE -- A SEALED SELECTED OFFER. issue_grant takes a SupplierOffer and rechecks fungibility.
+// Fungibility is selection's FIRST screen, not its result: product.fabric.selection folds
+// affordability, commitment, availability, operating, opportunity and delay cost into a ranked
+// decision, and a raw fungible offer is not that decision. So the caller still picks which
+// fungible offer becomes the grant. TRIGGER: a selection result whose constructor is the fold
+// itself -- CandidateOffer is already sole_constructor and is the shape this should consume --
+// SUFFICIENT FOR issuance to have no parameter by which a caller can name a different offer.
+//
+// TWO -- A LIFETIME-HELD RESERVATION. The lease and the resource reference are parameters, and
+// GrantIssueRefusal has no stale, expired or superseded arm, so THE GATE'S expired-reservation
+// MUTATION HAS NO SUBJECT HERE. Varying the lease generation changes the derived key, and that
+// proves two epochs have different IDENTITIES; it does not prove an expired epoch cannot
+// authorize. A DIFFERENT identity is not a CURRENTLY AUTHORITATIVE one, and the witness that
+// varies the generation must not be cited as covering this mutation. TRIGGER: FCI-1's cell
+// snapshot and lifetime verdict, joining canonical reservation generation to the cell substrate,
+// SUFFICIENT FOR issuance to receive a reservation that is held rather than described.
+//
+// THREE -- AN ATOMICALLY ADVANCED GRANT POPULATION. The duplicate and capacity checks read
+// `outstanding`, a caller-supplied list, and the committed arm returns advanced LEDGERS but no
+// advanced grant population. What is proved is: GIVEN A COMPLETE SUPPLIED ROSTER, this evaluation
+// refuses an attempt already represented in it. What the gate's duplicate-grant mutation demands
+// is that exactly one grant is atomically ADMITTED for an attempt, and two evaluations handed the
+// same stale empty list can each commit. TRIGGER: a grant registry advanced in the same successful
+// transition, SUFFICIENT FOR the census to stop being an argument.
+//
 // The five FabricGrantEvidence references are taken as a parameter and are NOT verified here.
 // product.fabric.demand states the reason in line: an observation reference is opaque provenance
 // the core never interprets, and inventing a verification of it at this layer would fabricate
-// exactly the external fact a boundary exists to refuse on. So the grant records WHICH
-// observations were cited, and whether they were honestly taken stays a boundary obligation on
-// whoever produced them. That is section 4b's outside-the-modeled-guarantee column, not a rung.
+// exactly the external fact a boundary exists to refuse on. That is section 4b's
+// outside-the-modeled-guarantee column, not a rung.
 //
 // Release is also not here. product.fabric.arbitration produces a ReleaseDirective carrying
-// ReservationRefs while the cell actuator needs a slot key, and nothing relates the two; a
-// ReservationRef is branded over NonEmptyStr, so any string inhabits it and a parse has no shape
-// to validate against. Issuance does not need that relation -- it MINTS the reference rather than
-// interpreting one -- which is why the producer could land without it. The relation is the
-// release side's, and it is unbuilt.
+// ReservationRefs while the cell actuator needs a slot key, and nothing relates the two. Issuance
+// does not need that relation -- it MINTS the reference rather than interpreting one -- which is
+// why the kernel could land without it.
 fn issue_grant<P, Q, S>(
   work: Work<P>,
   attempt: Attempt<P>,
@@ -316,7 +347,6 @@ fn issue_grant<P, Q, S>(
   demand: FabricIdentity<P, DemandKey>,
   evidence: FabricGrantEvidence,
   issued_at: Timestamp,
-  maximum_liability: MoneyAmountMicro,
 ) -> GrantIssue<P, Q, S> {
   if !fabric_identity_eq(left: attempt.work, right: work.id) {
     GrantRefused {
@@ -386,7 +416,7 @@ fn issue_grant<P, Q, S>(
                         executor: offer.executor,
                         lease: c.lease,
                         issued_at: issued_at,
-                        maximum_liability: maximum_liability,
+                        maximum_liability: money_request.maximum_liability,
                       },
                       evidence: evidence,
                       resource_reservations: c.resources,

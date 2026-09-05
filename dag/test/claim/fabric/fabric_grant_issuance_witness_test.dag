@@ -1,7 +1,7 @@
 module test.claim.fabric_grant_issuance_witness
 
 import std.types { NonEmptyStr, Bool, Int, List }
-import std.measure { Count, One, MoneyRate, money_amount_micro, hardware_thread_count, second }
+import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
@@ -226,7 +226,6 @@ fn issue(
     demand: FabricIdentity { principal: "gunbc", key: "demand-1" },
     evidence: fixture_evidence,
     issued_at: "2026-09-04T00:10:00Z",
-    maximum_liability: money_amount_micro(count: 1000),
   )
 }
 
@@ -440,8 +439,10 @@ test fn a_different_offer_derives_a_different_grant_key() -> Bool {
   )
 }
 
-// The lease participates, so two grants over one work, attempt and offer under different leases
-// are two authorizations rather than one presented twice.
+// The lease participates in IDENTITY. This is deliberately not the gate's expired-reservation
+// mutation and must not be cited as covering it: two epochs having different identities says
+// nothing about whether an expired epoch can authorize, and issuance has no arm that could refuse
+// one. That subject arrives with FCI-1's lifetime-held reservation.
 test fn a_different_lease_derives_a_different_grant_key() -> Bool {
   derive_grant_key(
     work: subject_work.id,
@@ -557,4 +558,24 @@ test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool {
       generation: 10,
     },
   )
+}
+
+// ONE LIABILITY, NOT TWO. issue_grant used to take maximum_liability as its own argument beside
+// the reservation request that books it, so the amount actually reserved and the amount the grant
+// RECORDS were two writable representations of one fact, free to disagree with nothing able to
+// notice. The argument is gone and the field is derived from the committed request; this asserts
+// the equality that the removal makes structural, so a future re-introduction reds here.
+test fn the_recorded_liability_is_the_booked_liability() -> Bool {
+  let issued = committed_grants(o: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  issued.length() == 1 && (issued |> all(g =>
+    money_amount_micro_count(m: g.context.maximum_liability)
+      == money_amount_micro_count(m: money_request.maximum_liability)
+  ))
 }
