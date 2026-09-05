@@ -145,6 +145,46 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
     sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
     provenance: ScannedFirstContact { scanned_from: "originally 192.168.1.223 via ssh-keyscan -t ed25519; ADDRESS MOVED to 192.168.1.225 on 2026-08-27 (SPARK-WIFI-0, reservation re-keyed to the wireless MAC). The key is unchanged and was re-scanned at the new address: SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs matched the enrolled value exactly, which is what establishes that .225 is the same box .223 was. THAT IS CONTINUITY EVIDENCE AND NOT THE ANCHOR, for the reason given on the srv5 row: a re-scan reproduces the first contact rather than corroborating it. The anchored-enrollment join still has not been performed, so this stays first-contact" as NonEmptyStr },
   },
+  KnownHostKeyRow {
+    host: "srv7" as HostIdentity,
+    endpoint: "192.168.1.232",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIAJgeR78lC8yVqBnOvRh0K6AuL9pGNw9HxZm9rDgaRod",
+    sha256_fingerprint: "SHA256:YT7DxbMuiqEtnnYJ05MFaGwvjfTml3ffhsiOfVM+9RY",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.232 via ssh-keyscan -t ed25519 from the srv2 LAN probe position on 2026-09-05 (router reservation 192.168.1.232 cited in fleet_intent_network); SHARED HOST KEY: srv7, srv8 and srv11 present this one identical ED25519 key, so the three units were imaged from one setup image that never regenerated /etc/ssh host keys; the key authenticates the image, not the unit, and these three are mutually indistinguishable by host key until spark_bootstrap regenerates host keys (ssh-keygen -A) and this row is re-scanned" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srv8" as HostIdentity,
+    endpoint: "192.168.1.233",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIAJgeR78lC8yVqBnOvRh0K6AuL9pGNw9HxZm9rDgaRod",
+    sha256_fingerprint: "SHA256:YT7DxbMuiqEtnnYJ05MFaGwvjfTml3ffhsiOfVM+9RY",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.233 via ssh-keyscan -t ed25519 from the srv2 LAN probe position on 2026-09-05 (router reservation 192.168.1.233 cited in fleet_intent_network); SHARED HOST KEY: srv7, srv8 and srv11 present this one identical ED25519 key, so the three units were imaged from one setup image that never regenerated /etc/ssh host keys; the key authenticates the image, not the unit, and these three are mutually indistinguishable by host key until spark_bootstrap regenerates host keys (ssh-keygen -A) and this row is re-scanned" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srv9" as HostIdentity,
+    endpoint: "192.168.1.236",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIG+Vyj4wf23aaS4HANYxhVmNIM/JoI/VkbGXCurnf2a1",
+    sha256_fingerprint: "SHA256:8tObL+Kc0eYVceiRbap8TwqqmOian1NbGfSeZ9G7Erw",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.236 via ssh-keyscan -t ed25519 from the srv2 LAN probe position on 2026-09-05 (router reservation 192.168.1.236 cited in fleet_intent_network); key distinct across the fleet" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srv10" as HostIdentity,
+    endpoint: "192.168.1.237",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAII2M9X3utDqEch8AdHd9RN2fYAE2ZM/SlBkG5vA4P4IO",
+    sha256_fingerprint: "SHA256:6qfKjmplvxlMcgxsnz5x4LZp9uXw/x8HoOpazKdULTU",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.237 via ssh-keyscan -t ed25519 from the srv2 LAN probe position on 2026-09-05 (router reservation 192.168.1.237 cited in fleet_intent_network); key distinct across the fleet; unit is the defective RMA row in dgx_procurement and is enrolled for bootstrap only" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: "srv11" as HostIdentity,
+    endpoint: "192.168.1.238",
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIAJgeR78lC8yVqBnOvRh0K6AuL9pGNw9HxZm9rDgaRod",
+    sha256_fingerprint: "SHA256:YT7DxbMuiqEtnnYJ05MFaGwvjfTml3ffhsiOfVM+9RY",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.238 via ssh-keyscan -t ed25519 from the srv2 LAN probe position on 2026-09-05 (router reservation 192.168.1.238 cited in fleet_intent_network); SHARED HOST KEY: srv7, srv8 and srv11 present this one identical ED25519 key, so the three units were imaged from one setup image that never regenerated /etc/ssh host keys; the key authenticates the image, not the unit, and these three are mutually indistinguishable by host key until spark_bootstrap regenerates host keys (ssh-keygen -A) and this row is re-scanned" as NonEmptyStr },
+  },
 ]
 
 fn enrolled_fingerprint_for(host: String) -> String? {
