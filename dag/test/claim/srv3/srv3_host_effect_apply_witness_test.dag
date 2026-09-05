@@ -94,21 +94,28 @@ test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash
     && !string_contains(s: argv_surface, pattern: "serialize_bash")
 }
 
-test fn witness_srv3_apply_shell_failure_refuses_typed() -> Bool {
+test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: srv3_actuator_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: Srv3BmcwebTokenExtract,
     evidence: host_effect_identity_evidence,
-    transport: LocalShell
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
 
-test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> Bool {
-  match host_effect_apply(
-    target: srv3_actuator_target(),
-    effect: ShellCommand { script: "echo srv3-apply-red-marker && exit 1" },
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell
+// The process observation is a controlled RED at the reconciliation boundary.
+test fn witness_srv3_apply_failure_preserves_observed_stdout() -> Bool {
+  match reconcile_shell_exec_observed(
+    observed: ShellExecObserved {
+      exit_code: 1, success: false, stdout: "srv3-apply-red-marker", stderr: "",
+    },
+    intent: HostEffectIntent {
+      target: srv3_actuator_target(),
+      effect: Srv3BmcwebTokenExtract,
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+      privilege_denial: none,
+    },
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "srv3-apply-red-marker")
@@ -120,9 +127,9 @@ test fn witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated() -> 
 test fn witness_srv3_apply_failure_no_fabricated_stdout() -> Bool {
   let r = host_effect_apply(
     target: srv3_actuator_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: Srv3BmcwebTokenExtract,
     evidence: host_effect_identity_evidence,
-    transport: LocalShell
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   )
   !reconciliation_converged(r: r) && srv3_shell_stdout_from_apply(r: r) == none
 }

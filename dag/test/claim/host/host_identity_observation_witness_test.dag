@@ -108,9 +108,12 @@ test fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
   match host_identity_observation_from_apply(
     r: host_effect_apply(
       target: srv1_os_target(),
-      effect: ShellCommand { script: "exit 1" },
+      effect: HostIdentityShortHostnameRead,
       evidence: host_effect_identity_evidence,
-      transport: LocalShell
+      transport: EmitArtifactThenThinRun {
+        bootstrap: BootstrapFragment { script: "" },
+        invocation: ThinInvocation { argv: [] },
+      }
     ),
     probed_at: "2026-07-02"
   ) {

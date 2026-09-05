@@ -5,6 +5,7 @@ import gunbc.host_effect {
   NodeControlPlane, HostOs,
   host_effect_identity_evidence,
   LocalShell,
+  Srv3ReceiptEmit,
 }
 import gunbc.host_effect_plan {
   HostEffectPlan, HostEffectPlanContext,
@@ -12,15 +13,15 @@ import gunbc.host_effect_plan {
 }
 import v2.std.effect_plan {
   EffectPlan,
-  If,
+  If, Do,
 }
 import v2.std.orchestration {
   FailFast,
   ExitZero,
   Run,
 }
-import v2.std.collection { Absent }
-import std.realization_reconcile { reconciliation_converged }
+import v2.std.collection { Present, Absent }
+import std.realization_reconcile { Converged, NotConverged }
 import gunbc.fleet_intent { srv1_host }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -61,17 +62,66 @@ fn witness_if_control_flow_plan() -> HostEffectPlan {
   }
 }
 
-test fn witness_empty_plan_refuses_fail_closed() -> Bool {
-  !reconciliation_converged(r: host_effect_plan_apply(
-    plan: witness_empty_plan(),
-    ctx: witness_plan_ctx(),
-  ))
+test fn witness_empty_plan_refuses_without_fabricated_effect() -> Bool {
+  match host_effect_plan_apply(plan: witness_empty_plan(), ctx: witness_plan_ctx()) {
+    NotConverged { reason: why, applied: Absent } =>
+      why == "host_effect_plan_apply: empty plan has no effect to apply"
+    _ => false
+  }
 }
 
-test fn witness_control_flow_step_refuses_fail_closed() -> Bool {
-  !reconciliation_converged(r: host_effect_plan_apply(
-    plan: witness_if_control_flow_plan(),
-    ctx: witness_plan_ctx(),
-  ))
+test fn witness_control_flow_step_refuses_without_fabricated_effect() -> Bool {
+  match host_effect_plan_apply(plan: witness_if_control_flow_plan(), ctx: witness_plan_ctx()) {
+    NotConverged { reason: why, applied: Absent } =>
+      why == gunbc.host_effect_plan.host_effect_plan_unsupported_step_reason
+    _ => false
+  }
 }
 
+// Distinct receipt subjects distinguish the last attempted leaf from the first.
+test fn witness_do_retains_actual_intent() -> Bool {
+  let effect = Srv3ReceiptEmit { lines: ["last-effect"] }
+  match host_effect_plan_apply(
+    plan: EffectPlan {
+      steps: [Do { effect: Srv3ReceiptEmit { lines: ["first-effect"] } }, Do { effect: effect }],
+      on_failure: FailFast,
+    },
+    ctx: witness_plan_ctx(),
+  ) {
+    Converged { evidence: _, applied: Present { value: intent } } => intent.effect == effect
+    _ => false
+  }
+}
+
+test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool {
+  let effect = gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem }
+  match host_effect_plan_apply(
+    plan: EffectPlan {
+      steps: [Do { effect: effect }, Do { effect: Srv3ReceiptEmit { lines: ["must-not-run"] } }],
+      on_failure: FailFast,
+    },
+    ctx: witness_plan_ctx(),
+  ) {
+    NotConverged { reason: _, applied: Present { value: intent } } => intent.effect == effect
+    _ => false
+  }
+}
+
+test fn witness_unsupported_step_stops_before_next_effect() -> Bool {
+  match host_effect_plan_apply(
+    plan: EffectPlan {
+      steps: [
+        If {
+          cond: ExitZero { run: Run { command: "true", env: Empty, redirect: Absent, capture: Absent } },
+          then_: witness_empty_plan(), else_: Absent,
+        },
+        Do { effect: Srv3ReceiptEmit { lines: ["must-not-run"] } },
+      ],
+      on_failure: FailFast,
+    },
+    ctx: witness_plan_ctx(),
+  ) {
+    NotConverged { reason: _, applied: Absent } => true
+    _ => false
+  }
+}
