@@ -30,6 +30,7 @@ import gunbc.scm.repository_load {
 import gunbc.scm.repository_envelope {
   RepositoryDecodeRefusal,
   RepositoryFormatUnrecognized,
+  RepositoryFormatRetired,
   repository_envelope_load_standing,
 }
 import gunbc.scm.load_standing {
@@ -44,6 +45,7 @@ data scm_rl_empty_repository_path: String = "dag/test/fixture/scm_repository_loa
 data scm_rl_malformed_document_path: String = "dag/test/fixture/scm_repository_load/malformed_document.json"
 data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/unknown_format.json"
 data scm_rl_frozen_v1_path: String = "dag/test/fixture/scm_repository_load/frozen_repository_v1.json"
+data scm_rl_retired_v3_path: String = "dag/test/fixture/scm_repository_load/retired_repository_v3.json"
 
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
@@ -108,6 +110,29 @@ test fn scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() -> Bool {
       p == scm_rl_frozen_v1_path
         && match c {
           RepositoryFormatUnrecognized { found: f } => f == "gunbc-scm-repository-v1"
+          _ => false
+        }
+        && match repository_envelope_load_standing(cause: c) {
+          LoadUnsupportedProtocol => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// A RETIRED FORMAT IS NOT AN UNRECOGNIZED ONE, and this is the specimen that keeps them apart. v3 is
+// a tag this build knows EXACTLY and knows it cannot read: its commit root designates a semantic
+// node, and v4's carrier holds a corpus manifest. Telling the holder of a real v3 repository that
+// their format is unrecognized would point them at the wrong repair, so the refusal names it. It
+// stays UNSUPPORTED rather than malformed, because the document is not damaged -- this build is
+// simply not its reader, and there is deliberately no v3 reader beside v4: deriving a manifest from a
+// semantic root would fabricate the authored bytes the projection discarded.
+test fn scm_rl_a_retired_v3_document_is_refused_by_name_rather_than_as_unrecognized() -> Bool {
+  match load_repository(path: scm_rl_retired_v3_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
+      p == scm_rl_retired_v3_path
+        && match c {
+          RepositoryFormatRetired { found: f } => f == "gunbc-scm-repository-v3"
           _ => false
         }
         && match repository_envelope_load_standing(cause: c) {
