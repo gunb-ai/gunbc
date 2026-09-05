@@ -512,7 +512,22 @@ The narrow check is that **no operational name observation depends on the ambigu
 delimiter representation** — not a ban on `List<String>` or on joining, since an internal list of
 names, or a join over already-escaped fragments, is not the lossy transport.
 
-**What the instrument is not.** It is the callable end of a join that already executes; the missing
-piece is a required CI phase that invokes it and stops the line, which is
-`seed_growth_forward_freeze_policy_note`'s own next-rung trigger. Running it green here retires
-nothing.
+**What the instrument is not.** It is the callable **roster-coverage diagnostic**. A required
+admission phase may reuse its observation and coverage components, but must retain the full admission
+authority's obligations: `seed_growth_admit_change` takes `change`, `live`, `bridges` and `evidence`,
+performs `gunbc.capability_origin`'s origin checks, and preserves diagnostics this entry point
+deliberately omits — and the policy's next-rung trigger names stopping the line on
+`SeedGrowthAdmissionRefused` specifically. **Scheduling this function would not establish that
+trigger**, and running it green retires nothing.
+
+**Its own partial-observer repair.** `item_declaration_ref` has three outcomes and the first cut of
+the verdict decided success from two: `projected_declaration_refs` excludes uncitable *and* refused
+projections, `projected_refused_keys` collects only refused ones, so an added `RustImplMethod` —
+which `std.decl_ref` cannot name at all — fell out of both lists and the run exited success reporting
+neither the item nor the limitation. The same defect this branch exists to repair, committed by the
+instrument that measures it. The verdict now carries all three causes together rather than ranking
+them, is complete only when every one is empty, and keeps them distinct: unaddressable is an
+unclaimed source tree, uncitable is an item no `DeclarationRef` can spell (not a row an author can
+add), unjustified is a missing roster row. `test.claim.seed_growth_change_population_witness_test`
+hands the decision populations no diff on this branch produces, which is the only way the uncitable
+arm is reachable.

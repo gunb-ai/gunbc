@@ -6,6 +6,7 @@ import gunbc.rust_item_host_observation {
   RustItemChangeObserved, RustItemChangeUnattributed,
   RustItemChangeScanRefused, RustItemChangeHostRefused,
   item_declaration_ref, projected_declaration_refs, projected_refused_keys,
+  projected_uncitable_keys,
   ItemDeclarationRefProjection,
   ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused
 }
@@ -31,8 +32,17 @@ import v2.std.algebra { fold_list, length }
 // also refuses for a missing bridge would report one deficit under another's name.
 //
 // SCOPE, STATED SO A GREEN RUN IS NOT OVERREAD: this reports items whose DeclarationRef is absent
-// from the roster, plus items no DeclarationRef can address at all. It does not check that a row
-// which EXISTS is true, well formed, or still needed.
+// from the roster, items no DeclarationRef can address at all, and items under a source tree
+// rust_source_namespace_rows does not claim. It does not check that a row which EXISTS is true, well
+// formed, or still needed.
+//
+// AND WHAT IT IS NOT, stated because the reverse claim was made and was wrong. This is the callable
+// ROSTER-COVERAGE DIAGNOSTIC. A required admission phase may reuse its observation and coverage
+// components, but must retain the full admission authority's obligations -- seed_growth_admit_change
+// takes change, live, bridges and evidence, performs the origin checks, and preserves diagnostics
+// this entry point deliberately omits, and the policy's next-rung trigger names stopping the line on
+// SeedGrowthAdmissionRefused specifically. Scheduling THIS function would not establish that
+// trigger.
 
 fn item_key_lines(keys: List<String>) -> String {
   fold_list(xs: keys, empty: "", cons: fn(acc, k) { concat(acc, concat("  ", concat(k, "\n"))) })
@@ -74,8 +84,86 @@ fn declaration_key_of(item_projection: ItemDeclarationRefProjection) -> String {
   }
 }
 
-// The verdict half. A refusal to OBSERVE is a refusal here too, never an empty population reported
-// as coverage -- that is the absorbing fallback DESIGN section 5 forbids.
+// THE VERDICT HALF, AND ITS OWN PARTIAL-OBSERVER REPAIR.
+//
+// item_declaration_ref has THREE outcomes and a first cut of this function decided success from
+// TWO. projected_declaration_refs excludes both uncitable and refused projections and
+// projected_refused_keys collects only the refused ones, so an added item classified
+// ItemDeclarationRefUncitable -- gunbc.rust_item_host_observation classifies RustImplMethod and
+// RustImplBlock that way, since std.decl_ref cannot name a method on an impl block -- fell out of
+// both lists and the run exited SUCCESS reporting neither the item nor the limitation. That is the
+// same defect this branch exists to repair, committed by the instrument that measures it: a partial
+// observer reporting its own reach as the population.
+//
+// THE THREE CAUSES ARE CARRIED TOGETHER RATHER THAN RANKED. An arm that reports the first
+// non-empty list and stops would hide the others behind it, so the refusal carries all three and is
+// complete only when every one is empty. They are genuinely different obligations: unaddressable is
+// a source tree rust_source_namespace_rows does not claim, uncitable is an item no DeclarationRef
+// can spell AT ALL -- not a row an author can add -- and unjustified is a missing roster row.
+type RosterCoverageVerdict
+  = RosterCoverageComplete
+  | RosterCoverageRefused {
+      unaddressable: List<String>,
+      uncitable: List<String>,
+      unjustified: List<String>
+    }
+
+// The decision, over projections alone, so a control can hand it a population no diff on this branch
+// produces. main and every witness reach the verdict through THIS function.
+fn roster_coverage_verdict(projections: List<ItemDeclarationRefProjection>) -> RosterCoverageVerdict {
+  let unaddressable = projected_refused_keys(projections: projections)
+  let uncitable = projected_uncitable_keys(projections: projections)
+  let unjustified = seed_growth_unjustified_additions(
+    added: projected_declaration_refs(projections: projections)
+  )
+  if length(xs: unaddressable) == 0 && length(xs: uncitable) == 0 && length(xs: unjustified) == 0 {
+    RosterCoverageComplete
+  } else {
+    RosterCoverageRefused {
+      unaddressable: unaddressable,
+      uncitable: uncitable,
+      unjustified: unjustified
+    }
+  }
+}
+
+fn labelled_keys(label: String, keys: List<String>) -> String {
+  if length(xs: keys) == 0 {
+    ""
+  } else {
+    concat(label, concat("\n", item_key_lines(keys: keys)))
+  }
+}
+
+fn coverage_refusal_reason(verdict: RosterCoverageVerdict) -> String {
+  match verdict {
+    RosterCoverageComplete => ""
+    RosterCoverageRefused {
+      unaddressable: unaddressable,
+      uncitable: uncitable,
+      unjustified: unjustified
+    } =>
+      concat(
+        labelled_keys(
+          label: "added hand Rust item(s) live under a tree rust_source_namespace_rows does not claim:",
+          keys: unaddressable
+        ),
+        concat(
+          labelled_keys(
+            label: "added hand Rust item(s) that NO DeclarationRef can address, so no roster row can cover them -- this is a citation-representation limit in std.decl_ref, not a row an author can add:",
+            keys: uncitable
+          ),
+          labelled_keys(
+            label: "added hand Rust item(s) lack a SeedGrowthJustification row:",
+            keys: unjustified
+          )
+        )
+      )
+  }
+}
+
+// A refusal to OBSERVE is a refusal here too, never an empty population reported as coverage --
+// that is the absorbing fallback DESIGN section 5 forbids.
 func main() -> ProcessExit {
   match observe_rust_item_change_against(base_ref: gunbc_merge_target_ref as String) {
     RustItemChangeHostRefused { detail: d } =>
@@ -89,23 +177,23 @@ func main() -> ProcessExit {
       modified_hand_items: _,
       deleted_hand_items: _,
       generated_changes: _
-    } => {
-      let projections = added |> map(i => item_declaration_ref(item: i))
-      let unaddressable = projected_refused_keys(projections: projections)
-      let unjustified = seed_growth_unjustified_additions(added: projected_declaration_refs(projections: projections))
-      if length(xs: unaddressable) > 0 {
-        exit_failure(reason: concat(
-          "added hand Rust item(s) live under a tree rust_source_namespace_rows does not claim:\n",
-          item_key_lines(keys: unaddressable)
-        ))
-      } else if length(xs: unjustified) > 0 {
-        exit_failure(reason: concat(
-          "added hand Rust item(s) lack a SeedGrowthJustification row:\n",
-          item_key_lines(keys: unjustified)
-        ))
-      } else {
-        ExitSuccess
+    } =>
+      match roster_coverage_verdict(
+        projections: added |> map(i => item_declaration_ref(item: i))
+      ) {
+        RosterCoverageComplete => ExitSuccess
+        RosterCoverageRefused {
+          unaddressable: unaddressable,
+          uncitable: uncitable,
+          unjustified: unjustified
+        } =>
+          exit_failure(reason: coverage_refusal_reason(
+            verdict: RosterCoverageRefused {
+              unaddressable: unaddressable,
+              uncitable: uncitable,
+              unjustified: unjustified
+            }
+          ))
       }
-    }
   }
 }
