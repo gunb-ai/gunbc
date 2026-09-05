@@ -18,6 +18,7 @@ import gunbc.live_deploy.emit {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
   user_manager_environment_directives,
+  belt_tick_cadence,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -357,9 +358,12 @@ test fn belt_timer_targets_belt_service() -> Bool {
 }
 
 // DECISION: the timer cadence is the declared policy values.
+// OnUnitInactiveSec derives from belt_tick_cadence ("60s") in emit.dag.
+// OnBootSec and AccuracySec are transcribed from the same source the emitter uses
+// and are additionally pinned by the_belt_timer_unit_matches_the_deployed_bytes below.
 test fn belt_timer_has_declared_cadence() -> Bool {
   has_directive_timer(dirs: belt_timer_directives(), target: OnBootSec { duration: "2min" as NonEmptyStr })
-    && has_directive_timer(dirs: belt_timer_directives(), target: OnUnitInactiveSec { duration: "60s" as NonEmptyStr })
+    && has_directive_timer(dirs: belt_timer_directives(), target: OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr })
     && has_directive_timer(dirs: belt_timer_directives(), target: AccuracySec { duration: "5s" as NonEmptyStr })
 }
 
