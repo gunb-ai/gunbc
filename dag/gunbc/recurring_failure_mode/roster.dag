@@ -9,6 +9,7 @@ module gunbc.recurring_failure_mode.roster
 // sorting this list would reorder docs/design-failure-modes.md and destroy the empty-diff oracle
 // that proves a cut was structural. Append at the end.
 
+import gunbc.recurring_failure_mode.cyclic_alias_head_is_accepted { cyclic_alias_head_is_accepted }
 import std.types { List }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 import gunbc.recurring_failure_mode.a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry { a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry }
@@ -289,4 +290,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   comparison_keyed_on_part_of_the_identity_it_compares,
   edit_range_bounded_by_a_neighbour_rather_than_the_target,
   one_disposition_defined_jointly_by_independent_matches,
+  cyclic_alias_head_is_accepted,
 ]
