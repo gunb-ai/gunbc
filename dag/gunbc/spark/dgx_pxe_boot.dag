@@ -266,10 +266,12 @@ fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
     frequency: DeviceOnce,
     subject: "UEFI network stack",
     instruction: concat(
-      "At this unit's console, either disable secure boot or enroll ",
+      "At this unit's console, enroll the signed bootloader that your TFTP server serves ",
+      "(spark-2196 used bootaa64.efi, not the documented grubnetaa64.efi.signed — see ",
       concat(
-        spark_pxe_bootloader_filename as String,
-        ", then enable PXE on the chosen interface under Network Stack Configuration.",
+        "dag/gunbc/spark/pxe_rescue_observation.dag for the mismatch), ",
+        "then enable PXE on the chosen interface under Network Stack Configuration. ",
+        "SecureBoot need not be disabled if the bootloader is signed and enrolled.",
       ),
     ),
     completion_evidence: NoDischargeSiteModeled,
@@ -280,8 +282,15 @@ fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFi
   concat(
     match config.secure_boot {
       SecureBootDisabledForPxe => []
-      BootloaderEnrolledForPxe { bootloader: b } =>
-        if b == spark_pxe_bootloader_filename { [] } else { [SecureBootBlocksPxe] }
+      BootloaderEnrolledForPxe { bootloader: _ } =>
+        // A BOOTLOADER NAME EQUALITY CHECK WAS REMOVED HERE 2026-09-05 (spark-2196
+        // PXE rescue receipts). The previous code required the bootloader field to
+        // equal spark_pxe_bootloader_filename ("grubnetaa64.efi.signed") and refused
+        // if it did not. spark-2196 booted successfully with "bootaa64.efi" — a signed
+        // EFI bootloader at a different TFTP path — proving the constraint is THAT a
+        // signed bootloader is enrolled, not WHICH filename. See
+        // dag/gunbc/spark/pxe_rescue_observation.dag spark_2196_bootloader_filename_mismatch_description.
+        []
     },
     concat(
       if config.network_stack_enabled { [] } else { [NetworkStackDisabled] },
@@ -348,6 +357,11 @@ type SparkUnattendedPxeBootRefusalReason
   | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent
+  | UnattendedPxeBootImageKindNotNvidiaProvided { image: NonEmptyStr }
+  // A THIRD PARTY IMAGE IS REFUSED because stock arm64 Linux resets the GB10 module
+  // after approximately 90 seconds (three trials on spark-2196, 2026-09-05). Only
+  // NVIDIA-provided images (FastOsRecoveryTarball, DgxOsIsoImage) are known to be
+  // stable. See dag/gunbc/spark/pxe_rescue_observation.dag Receipt 2.
 
 fn admit_spark_unattended_pxe_boot(
   image_kind: SparkPxeBootImageKind,

@@ -217,36 +217,41 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
   }
 }
 
-test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
+test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool {
+  // The instruction cites the observation module (pxe_rescue_observation.dag) rather
+  // than deriving the bootloader filename from extdeps, because spark-2196 proved
+  // the documented filename does not match the working bootloader.
   match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {
-      secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
-      network_stack_enabled: true,
-      ipv4_pxe_support_enabled: true,
-      nic_pxe_boot_enabled: true,
+      secure_boot: SecureBootDisabledForPxe,
+      network_stack_enabled: false,
+      ipv4_pxe_support_enabled: false,
+      nic_pxe_boot_enabled: false,
     },
   ) {
     SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
       string_contains(
         s: i.instruction,
-        pattern: spark_pxe_bootloader_filename as String,
-      )
+        pattern: "pxe_rescue_observation.dag" as String,
+      ) && i.frequency == DeviceOnce
     SparkPxeFirmwareReady => false
   }
 }
 
-test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
+test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
+  // ANY signed EFI bootloader enrolled in SecureBoot suffices — the bootloader
+  // filename need not match spark_pxe_bootloader_filename. spark-2196 booted
+  // successfully with "bootaa64.efi" (see pxe_rescue_observation.dag Receipt 3).
   match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {
-      secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
+      secure_boot: BootloaderEnrolledForPxe { bootloader: "bootaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
       nic_pxe_boot_enabled: true,
     },
   ) {
-    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
-      i.frequency == DeviceOnce && i.identity == "spark-pxe-firmware-enablement"
-    SparkPxeFirmwareReady => false
+    SparkPxeFirmwareReady => true
+    SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
   }
     && match evaluate_spark_pxe_firmware_standing(
       config: SparkUefiPxeConfiguration {

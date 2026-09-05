@@ -1,0 +1,241 @@
+module gunbc.spark.pxe_rescue_observation
+
+import std.types { NonEmptyStr, Int }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.systems.nvidia_dgx_spark_pxe {
+  spark_pxe_bootloader_filename,
+}
+
+// SPARK-PXE-RESCUE-0 (2026-09-05). WHAT THIS REPOSITORY ACTUALLY DID TO PUT ONE PHYSICAL
+// SPARK UNIT (spark-2196) ON THE NETWORK THROUGH PXE AND INSTALL AN OS ON IT, as opposed to
+// what NVIDIA's documentation says should work.
+//
+// THE LAYER BOUNDARY IS THE WHOLE REASON THIS MODULE EXISTS SEPARATELY FROM
+// extdeps.systems.nvidia_dgx_spark_pxe. That module owns the vendor's DOCUMENTED PXE surface
+// and is cited to docs.nvidia.com/dgx/dgx-spark/pxe.html. Everything here is a RECEIPT
+// PRODUCED BY US by driving one physical unit, and DESIGN section 3 (external upstream
+// decomposition) is explicit that observations produced by this repository are receipts in
+// the observing layer, never facts authored into the observed upstream's module. Writing an
+// observed measurement into the extdeps module would make our measurement masquerade as
+// vendor documentation, and the next reader could not tell which claims NVIDIA stands behind.
+//
+// THE OBSERVED SUBJECT IS ONE UNIT AT ONE MOMENT (spark-2196, 2026-09-05), and every row
+// below is scoped to that. A second unit, a firmware revision, or a different regional image
+// may present different behaviour; this module claims nothing about them.
+//
+// SIX INDEPENDENT RECEIPTS ARE BELOW, each carrying its own observation context.
+
+// --------------------------------------------------------------------------
+// RECEIPT 1: NIC identity 10ec:8127 / r8169
+//
+// The DGX Spark contains a Realtek Ethernet controller at PCI vendor 10ec device 8127,
+// driven by the r8169 kernel module. This NIC is NOT claimed by Ubuntu 6.8 (the Fast OS
+// Recovery kernel), so a 6.8-image PXE boot succeeds (DHCP lease, TFTP transfer, kernel
+// loads) and then the system has NO NETWORK after boot — the interface is unclaimed.
+// Ubuntu 6.17 and later claim it.
+//
+// grep over the full dag/ tree returns no match for either "8127" or "r8169" as of the
+// observation date, confirming this PCI identity is unmodelled anywhere.
+//
+// LOAD-BEARING CONSEQUENCE: a PXE image based on Ubuntu 6.8 will appear to succeed at
+// every pre-boot step and then silently produce an unnetworked system. The NIC identity
+// must be modelled before any PXE plan can distinguish "kernel version supports NIC" from
+// "kernel version does not".
+
+data pxe_rescue_observation_timestamp: Rfc3339Timestamp =
+  "2026-09-05T14:30:00Z" as Rfc3339Timestamp
+
+data spark_2196_pci_vendor: NonEmptyStr = "10ec" as NonEmptyStr
+
+data spark_2196_pci_device: NonEmptyStr = "8127" as NonEmptyStr
+
+data spark_2196_nic_kernel_module: NonEmptyStr = "r8169" as NonEmptyStr
+
+data spark_2196_nic_unclaimed_in_kernel_6_8: NonEmptyStr =
+  "Ubuntu 6.8 does not claim 10ec:8127; 6.17 and later do." as NonEmptyStr
+
+// --------------------------------------------------------------------------
+// RECEIPT 2: Stock arm64 Linux resets the GB10 after ~90s
+//
+// Booting a generic arm64 distro kernel (not the NVIDIA-provided Fast OS or DGX OS image)
+// on spark-2196 causes the Grace Hopper GB10 module to reset the system approximately 90
+// seconds after boot. The exact trigger is not isolated, but the observation is reliable:
+// three attempts, all reset at ~90s.
+//
+// This means SparkPxeBootImageKind (FastOsRecoveryTarball | DgxOsIsoImage) is not simply
+// a catalogue choice — it is a SAFETY CONSTRAINT. A generic-distro image booted via PXE
+// on this hardware produces a non-viable system, and the model should REFUSE such an
+// image rather than admit it silently.
+
+data spark_2196_generic_distro_reset_observation_count: Int = 3
+
+data spark_2196_generic_distro_reset_seconds_to_reset: Int = 90
+
+data spark_2196_generic_distro_reset_note: NonEmptyStr =
+  "Three trials, all GB10 reset at approximately 90s post-boot. Root cause not isolated." as NonEmptyStr
+
+// --------------------------------------------------------------------------
+// RECEIPT 3: Secure Boot need not be disabled — BootloaderEnrolledForPxe suffices,
+//            but the actual bootloader filename differs from the documented one.
+//
+// NVIDIA's documented PXE bootloader filename is "grubnetaa64.efi.signed". The
+// bootloader that actually booted spark-2196 via PXE was named "bootaa64.efi". This
+// is the filename the DHCP server must offer as the bootfile, and the TFTP server
+// must serve at that path.
+//
+// SparkPxeSecureBootPrerequisite already models both alternatives (SecureBootDisabledForPxe
+// and BootloaderEnrolledForPxe { bootloader }). The mismatch is between the cited
+// constant spark_pxe_bootloader_filename ("grubnetaa64.efi.signed") and the observed
+// working filename ("bootaa64.efi"). This matters because:
+//
+//   (a) the DHCP bootfile offer must match what TFTP actually serves, and
+//   (b) the instruction text in the human-intervention carrier cites the documented
+//       filename, so an operator following it verbatim would serve the wrong file.
+//
+// Reconciliation belongs in the dgx_pxe_boot model, not here. This observation
+// module only records what filename was observed working.
+
+data spark_2196_pxe_bootloader_filename_observed: NonEmptyStr =
+  "bootaa64.efi" as NonEmptyStr
+
+data spark_2196_pxe_bootloader_filename_documented: NonEmptyStr =
+  spark_pxe_bootloader_filename
+
+data spark_2196_bootloader_filename_mismatch_description: NonEmptyStr =
+  "documented=grubnetaa64.efi.signed, observed=bootaa64.efi" as NonEmptyStr
+
+// The existing BootloaderEnrolledForPxe variant carries a bootloader: NonEmptyStr field.
+// That variant is correct in shape. The gap is that the model's only concrete bootloader
+// value (spark_pxe_bootloader_filename) names "grubnetaa64.efi.signed" while the observed
+// working value is "bootaa64.efi". A consumer that uses spark_pxe_bootloader_filename as
+// the DHCP bootfile will fail to netboot spark-2196 unless the TFTP server also serves
+// "bootaa64.efi".
+
+// --------------------------------------------------------------------------
+// RECEIPT 4: Boot order is NOT a fleet invariant.
+//
+// Four Spark units (serial numbers observed during the 2026-09-05 standup) were
+// installed with identical procedures and have DIFFERENT boot orders:
+//   - 4 units: PXE first in order
+//   - spark-2196: ubuntu-first in order
+//
+// This is EVIDENCE FOR the existing DeviceOnce framing of human interventions in
+// dgx_pxe_boot.dag. The DeviceOnce frequency and NoDischargeSiteModeled completion
+// evidence are correct: boot order is set once per unit during installation, is not
+// reverted by the software stack, and no modelled site exists to read it back under
+// programmatic control.
+//
+// It is also evidence AGAINST modelling a fleet-level "default boot order" in
+// extdeps. An operator intending to PXE-boot a Spark unit must verify that unit's
+// boot order at console before relying on PXE, because the fleet invariant does
+// not exist.
+
+data spark_2196_boot_order: NonEmptyStr = "UbuntuFirst" as NonEmptyStr
+
+data fleet_boot_order_pxe_first_count: Int = 4
+
+data fleet_boot_order_ubuntu_first_count: Int = 1
+
+// --------------------------------------------------------------------------
+// RECEIPT 5: Chainloading local GRUB is defeated by timeout=0.
+//
+// When PXE first loads GRUB from TFTP, the default grub.cfg on the TFTP server
+// delegates to chainloading the local disk's GRUB via:
+//   search --file /boot/grub/grub.cfg --set=root
+//   chainloader ($root)/EFI/...
+//
+// This chainload fails when the local GRUB has timeout=0 (the Ubuntu DGX OS default
+// installer setting), because local GRUB immediately proceeds to boot its default
+// entry without waiting for keyboard input and never provides a PXE-reachable menu.
+//
+// The working construction observed on spark-2196 avoids chainloading entirely.
+// Instead, the PXE GRUB config directly boots the local installation:
+//   search --file /boot/grub/grub.cfg --set=root
+//   probe --set=uu --fs-uuid $root
+//   linux /boot/vmlinuz-... root=UUID=$uu
+//   initrd /boot/initrd.img-...
+//
+// This is relevant to the dgx_pxe_boot model because the existing
+// spark_unattended_image_boot function constructs a boot chain for unattended
+// INSTALL, not for RESCUE. A rescue scenario that needs to fall through to the
+// installed OS must use the direct-boot construction above, not a GRUB chainload.
+
+data spark_2196_grub_timeout_zero_defeats_chainload: NonEmptyStr =
+  "timeout=0 causes local GRUB to boot default entry immediately; chainload never pauses for input" as NonEmptyStr
+
+data spark_2196_local_boot_rescue_construction: NonEmptyStr =
+  "search --file /boot/grub/grub.cfg --set=root ; probe --set=uu --fs-uuid $root ; linux ... root=UUID=$uu" as NonEmptyStr
+
+// The direct-boot construction requires knowing the root filesystem UUID at
+// PXE-GRUB-config-authoring time, so it is site-specific rather than a fleet-
+// invariant TFTP template. This observation does not produce a general-purpose
+// construction; it only records that chainloading with timeout=0 fails and that
+// the direct-boot construction works.
+
+// --------------------------------------------------------------------------
+// RECEIPT 6: IsolatedProvisioningSegment with native DHCP was sufficient.
+//
+// spark-2196 was PXE-booted using an isolated provisioning VLAN with native DHCP
+// (the router's own DHCP server configured with a static reservation and bootfile
+// option). ProxyDHCP was not required.
+//
+// This confirms that the existing PxeNetworkIsolation variant
+// IsolatedProvisioningSegment is correct and sufficient for at least one real
+// unit. The ProxyDhcpPxeOnly variant exists in the model and may be needed for
+// other network topologies, but is not required for spark-2196.
+
+data spark_2196_pxe_isolation: NonEmptyStr =
+  "IsolatedProvisioningSegment" as NonEmptyStr
+
+data spark_2196_pxe_dhcp_direction: NonEmptyStr =
+  "NativeDhcp" as NonEmptyStr
+
+// --------------------------------------------------------------------------
+// SEPARATE, NOT PXE: OOBE radio constraint.
+//
+// The OOBE wizard is served by the unit's OWN ACCESS POINT during first boot.
+// Driving it requires a radio associated with that AP. This was discovered during
+// the 2026-09-02 OOBE observation session (SPARK-OOBE-OBSERVE-0) and confirmed
+// during the 2026-09-05 standup: NO HOST on the fleet has both a browser capable
+// of rendering the SPA and a radio reachable from the Spark unit's AP.
+//
+// This constraint belongs in oobe_execution_placement, not here. That module
+// already models the composition of renderer, relay, and route. The AP-as-origin
+// fact is modelled in oobe_screen_observation as dgx_spark_0c75_oobe_account_run's
+// access point SSID.
+//
+// No duplicate is authored here.
+
+// --------------------------------------------------------------------------
+// WHAT IS NOT ESTABLISHED.
+//
+// These facts are deliberately NOT claimed by this module and must not be treated
+// as if they were:
+//
+// (a) Unattended install has NEVER been executed. The functions
+//     spark_fastos_unattended_kernel_cmdline and spark_dgx_os_unattended_kernel_cmdline
+//     in extdeps.systems.nvidia_dgx_spark_pxe are modelled intentions cited to
+//     NVIDIA's documentation, not receipts produced by this repository.
+//
+// (b) Factory firmware defaults are unknown. All observations above were made on
+//     a unit in POST-INSTALL state. Which settings differ from factory defaults has
+//     not been measured.
+//
+// (c) The OOBE radio requirement is inferred from the 2026-09-02 capture method
+//     (a host associated with the unit's own AP), not re-established by independent
+//     measurement during this session.
+//
+// (d) The generic-distro reset mechanism (Receipt 2) trigger is unisolated. The
+//     observation is three trials producing the same symptom; the root cause (GPU
+//     watchdog, thermal, power-state handshake, or other) has not been identified.
+
+// --------------------------------------------------------------------------
+// CONSUMERS: who references these receipts.
+//
+// - dgx_pxe_boot.dag should cite spark_2196_bootloader_filename_mismatch_description
+//   when reconciling spark_pxe_bootloader_filename against the observed working file.
+// - dgx_pxe_boot.dag should add a SparkPxeBootImageKind refusal arm for
+//   generic-distro images, citing spark_2196_nic_identity and the reset
+//   observation as the evidence.
+// - oobe_execution_placement.dag already owns the radio-constraint composition;
+//   no citation needed here.
