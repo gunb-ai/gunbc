@@ -56,6 +56,14 @@ type PxeNetworkIsolation
   | ProxyDhcpPxeOnly
   | AdmittedRouterDhcpChange
 
+// A PCI device identity, used to identify the target unit's NIC for kernel
+// coverage checking (see extdeps.os.ubuntu_kernel_nic_coverage and
+// gunbc.spark.pxe_rescue_observation Receipt 1 for spark-2196's NIC).
+type PciDeviceIdentity {
+  vendor: PciVendorId
+  device: PciDeviceId
+}
+
 type PxeNetworkGap
   = DhcpBootfileNotOffered
   | TftpBootChainUnreachable
@@ -429,13 +437,13 @@ fn admit_spark_unattended_pxe_boot(
   http_endpoint: DeclarationRef?,
   isolation: PxeNetworkIsolation?,
   firmware_config: SparkUefiPxeConfiguration?,
-  target_nic: (PciVendorId, PciDeviceId)?,
+  target_nic: PciDeviceIdentity?,
 ) -> SparkUnattendedPxeBootAdmissionOutcome {
   // NIC COVERAGE CHECK: if the target unit's NIC identity is known, verify
   // the image's kernel can claim it. A false negative means the image will
   // boot but have no network (see pxe_rescue_observation Receipt 1).
   match target_nic {
-    Present { value: (vendor, device) } =>
+    Present { value: PciDeviceIdentity { vendor: vendor, device: device } } =>
       if !r8169_claims_pci_device(
         flavour: spark_image_kernel_flavour(image_kind: image_kind),
         device: device,

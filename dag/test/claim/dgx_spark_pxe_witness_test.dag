@@ -53,6 +53,7 @@ import gunbc.spark.dgx_pxe_boot {
   SecureBootBlocksPxe,
   NetworkStackDisabled,
   UnattendedPxeBootKernelDoesNotClaimNic,
+  PciDeviceIdentity,
 }
 
 data witness_tftp_root: Uri = Uri {
@@ -130,7 +131,7 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
@@ -151,7 +152,7 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
       isolation: Present { value: IsolatedProvisioningSegment },
       firmware_config: Present { value: synthetic_ready_firmware_config() },
       target_nic: Present {
-        value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+        value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
       },
     ) {
       SparkUnattendedPxeBootAdmitted { boot: b } =>
@@ -306,7 +307,7 @@ test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool {
       }
     },
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
@@ -328,7 +329,7 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     isolation: none,
     firmware_config: none,
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootRefused { reason: NetworkObservationAbsent } => true
@@ -349,7 +350,7 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: none,
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootRefused { reason: FirmwareConfigurationAbsent } => true
@@ -370,7 +371,7 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
@@ -404,7 +405,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootRefused { reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
@@ -433,7 +434,7 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
       }
     },
     target_nic: Present {
-      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      value: PciDeviceIdentity { vendor: witness_claimed_pci_vendor, device: witness_claimed_pci_device }
     },
   ) {
     SparkUnattendedPxeBootRefused {
@@ -461,10 +462,10 @@ test fn w_nic_coverage_refuses_ga_kernel_for_8127() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
     target_nic: Present {
-      value: (
-        "10ec" as PciVendorId,
-        "8127" as PciDeviceId,
-      )
+      value: PciDeviceIdentity {
+        vendor: "10ec" as PciVendorId,
+        device: "8127" as PciDeviceId,
+      }
     },
   ) {
     SparkUnattendedPxeBootRefused {
@@ -493,10 +494,10 @@ test fn w_nic_coverage_accepts_hwe_kernel_for_8127() -> Bool {
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
     target_nic: Present {
-      value: (
-        "10ec" as PciVendorId,
-        "8127" as PciDeviceId,
-      )
+      value: PciDeviceIdentity {
+        vendor: "10ec" as PciVendorId,
+        device: "8127" as PciDeviceId,
+      }
     },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: _ } => true
