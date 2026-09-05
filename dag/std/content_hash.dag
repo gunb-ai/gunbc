@@ -10,7 +10,7 @@ import std.types { NonEmptyStr, String, Bool }
 // construction-walled by where-refinement, and non-literal sites route through sha256_hex_digest /
 // sha1_hex_digest / sha512_hex_digest / fnv1a64_structural_hex_digest (exact length plus canonical
 // lowercase-hex syntax, refusing rather than folding case). dissolve-on:
-// feature:where-refinement-predicate-coproduct for non-literal positions still admitted via cast
+// feature:refinement-evidence-at-non-literal-positions for non-literal positions still admitted via cast
 // after runtime validation (wall after grounding) on atom_identity_hash / hash_combine pipeline
 // outputs only. Fixtures needing stable identities hash their labels with content_hash_of_value,
 // never by labeling arbitrary text as a digest. Callers parsing wire text route through the
