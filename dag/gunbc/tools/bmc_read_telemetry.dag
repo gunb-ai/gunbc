@@ -1,15 +1,5 @@
 module gunbc.tools.bmc_read_telemetry
 
-import extdeps.bmc.http
-import extdeps.bmc.netrc {
-  NetrcResolution, NetrcResolved, NetrcRefused,
-  NetrcRefusalCause,
-  NetrcNoMatchingEntry, NetrcMalformedFile, NetrcFileUnreadable,
-  netrc_resolve,
-}
-import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
-}
 
 func bmc_read_telemetry() -> ProcessExit
   uses net: std.resources.Network
@@ -32,44 +22,23 @@ func bmc_read_telemetry() -> ProcessExit
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
 
-              let cred = netrc_resolve(file: netrc_file as FilePath, host: bmc)
-              match cred {
-                NetrcResolved { login: l, password: p } => {
-                  system_resp = redfish.Http.GetSystem(
-                    bmc_host: bmc, username: l, password: p
-                  )
-                  match system_resp.outcome {
-                    RestOk => Unit
-                    RestStatusRefused { status: _, body: b } => return exit_failure(reason: b)
-                    RestTransportRefused { cause: c } => return exit_failure(reason: c)
-                    RestBodyUndecodable { status: _, cause: c } => return exit_failure(reason: c)
-                  }
-
-                  sensors_resp = redfish.Http.GetChassisSensors(
-                    bmc_host: bmc, chassis_id: chassis, username: l, password: p
-                  )
-                  match sensors_resp.outcome {
-                    RestOk => Unit
-                    RestStatusRefused { status: _, body: b } => return exit_failure(reason: b)
-                    RestTransportRefused { cause: c } => return exit_failure(reason: c)
-                    RestBodyUndecodable { status: _, cause: c } => return exit_failure(reason: c)
-                  }
-
-                  return ExitSuccess
-                }
-                NetrcRefused { cause: c } =>
-                  return exit_failure(reason: concat("netrc resolution failed: ", netrc_refusal_reason(cause: c)))
+              system_resp = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
+              if system_resp.success == false {
+                return exit_failure(reason: system_resp.body)
               }
+
+              sensors_resp = redfish.Http.GetChassisSensors(
+                bmc_host: bmc,
+                chassis_id: chassis,
+                netrc_file: netrc_file
+              )
+              if sensors_resp.success == false {
+                return exit_failure(reason: sensors_resp.body)
+              }
+
+              return ExitSuccess
             }
         }
       }
-  }
-}
-
-fn netrc_refusal_reason(cause: NetrcRefusalCause) -> String {
-  match cause {
-    NetrcNoMatchingEntry { host: h } => concat("no netrc entry for ", h)
-    NetrcMalformedFile { detail: d } => d
-    NetrcFileUnreadable { detail: d } => d
   }
 }

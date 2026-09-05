@@ -6,10 +6,6 @@ module gunbc.tools.bmc_first_contact
 // second local netrc_content would be a fork of an authority whose whole point is that there is one
 // of it, and bare resolution over a whole-corpus pool is not a stable binding to reason about when
 // the question is "which write verb ran".
-import extdeps.bmc.http
-import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
-}
 import gunbc.tools.bmc_onboard { bmc_onboard_netrc_path, write_netrc }
 
 
@@ -31,30 +27,19 @@ fn bmc_first_contact_host(value: String?) -> NonEmptyStr {
 // secret, and an operation that accepts a credential by argv accepts every credential by argv.
 // Keeping one authentication path means the leaky one has nowhere to survive, so first-contact
 // writes the same 0600 netrc as every other Redfish caller and refuses loudly if it cannot.
-//
-// The file is written for other callers (bmc_read_telemetry) that authenticate through the
-// netrc file path. This function itself passes the credential directly via auth_basic.
 func bmc_first_contact() -> ProcessExit
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
-  let account = openbmc_factory_login.username as String
-  let password = openbmc_factory_login.published_password
 
-  if write_netrc(host: bmc as String, account: account, password: password) == false {
+  if write_netrc(host: bmc as String, account: openbmc_factory_login.username as String, password: openbmc_factory_login.published_password) == false {
     return exit_failure(reason: "first-contact: netrc write failed")
   }
   resp = redfish.Http.GetSystem(
     bmc_host: bmc,
-    username: account,
-    password: password as Secret
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
 
-  return match resp.outcome {
-    RestOk => ExitSuccess
-    RestStatusRefused { status: _, body: b } => exit_failure(reason: b)
-    RestTransportRefused { cause: c } => exit_failure(reason: c)
-    RestBodyUndecodable { status: _, cause: c } => exit_failure(reason: c)
-  }
+  return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
 }

@@ -30,6 +30,8 @@ data git_path: String = "dag/extdeps/git/git.dag"
 data git_service: String = "git.Core"
 data cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data cargo_service: String = "cargo.Build"
+data redfish_http_path: String = "dag/extdeps/bmc/http.dag"
+data redfish_http_service: String = "redfish.Http"
 
 fn argv_text(m: ArgvMaterialization) -> String {
   join(operation_argv_tokens_or_refusal_label(m: m), " ")
@@ -190,4 +192,34 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
       ]
     )
   ) != "systemctl show gunbc.service --property=SubState --value"
+}
+
+test fn operation_argv_previously_unbindable_operation_now_materializes() -> Bool {
+  argv_text(
+    m: shell_materialize_operation_argv(
+      redfish_http_path,
+      redfish_http_service,
+      "GetSystem",
+      [
+        operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc"),
+        operation_argv_bind_text(name: "netrc_file", text: "/run/bmc/srv4.netrc")
+      ]
+    )
+  ) == "curl --fail-with-body -sS -k --netrc-file /run/bmc/srv4.netrc https://srv4-bmc/redfish/v1/Systems/system"
+}
+
+test fn operation_argv_RED_redfish_credential_names_are_refused_not_injected() -> Bool {
+  let label = operation_argv_refusal_label(
+    m: shell_materialize_operation_argv(
+      redfish_http_path,
+      redfish_http_service,
+      "GetSystem",
+      [
+        operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc"),
+        operation_argv_bind_text(name: "netrc_file", text: "/run/bmc/srv4.netrc"),
+        operation_argv_bind_text(name: "password", text: "secret")
+      ]
+    )
+  )
+  string_contains(label, "UndeclaredInputBound:password") && string_contains(label, "redfish.Http.GetSystem")
 }
