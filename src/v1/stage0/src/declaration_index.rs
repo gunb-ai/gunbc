@@ -1117,7 +1117,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
 /// A citation may name a module by its LOGICAL path — `v2.` stripped — the identity
 /// `decl_facts` published and the corpus is authored against. Both spellings resolve to the
 /// one module; the fallback only ever finds a module that really declares itself `v2.x`.
-fn resolve_cited_module<'a>(
+pub(crate) fn resolve_cited_module<'a>(
     index: &'a DeclarationIndex,
     module_path: &str,
 ) -> Option<&'a ModuleDeclarationRecord> {
