@@ -1379,8 +1379,18 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
 // same question; a reader-local copy taking a store would be a second authority for one rule, and
 // re-derived the census once per question besides.
 //
-// GENUINE ABSENCE STAYS ADMISSIBLE, matching the writer: a document naming an object it does not
-// carry is a legitimate partial corpus. The refusals carry the ObjectId they actually know rather
+// GENUINE ABSENCE IS NOT WHAT THESE FOUR GUARDS ANSWER, AND SAYING THEY MATCH THE WRITER ON IT WAS
+// TOO BROAD. The absence policy is per SUBJECT, and the two subjects do not share it:
+//
+//   a manifest source this document does not carry   admitted by both writer and reader; a partial
+//                                                    corpus is legitimate
+//   a semantic child this document does not carry    REFUSED by the checked writer, as
+//                                                    RepositoryEncodeUncontainedTarget; not a
+//                                                    proposition these four guards make at all
+//
+// What these guards answer is narrower than either: they read the OCCUPIED populations only, so an
+// absent locator passes them whatever its subject, and the absent semantic child is refused by the
+// writer's own guard rather than here. The refusals carry the ObjectId they actually know rather
 // than a wire position, because at this point there is no position -- the reference was a digest.
 fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {

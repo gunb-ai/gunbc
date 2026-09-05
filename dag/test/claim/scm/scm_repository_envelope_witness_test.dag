@@ -1763,10 +1763,11 @@ test fn scm_env_the_writer_emits_a_manifests_occupant_before_the_manifest() -> B
 test fn scm_env_a_manifest_source_at_a_program_emitted_after_it_still_refuses() -> Bool {
   let fixture = scm_env_manifest_over_a_program()
   let wire = scm_env_reversed_wire_of(store: fixture.store)
+  let outcome = scm_env_decode_members(members: wire)
   fixture.built
     && scm_env_referrer_is_at(members: wire, index: 0, locator: scm_env_program_locator())
-    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
-      == "decoded_manifest_source_node")
+    && (scm_env_decode_cause_tag(outcome: outcome) == "decoded_manifest_source_node")
+    && scm_env_decode_names(outcome: outcome, expected: scm_env_program_locator())
 }
 
 // THE TWO-MANIFEST SPECIMEN, WHERE THE KIND ORACLE WAS BLIND. Both entries are manifests, so
@@ -1787,11 +1788,12 @@ test fn scm_env_a_manifest_source_at_a_manifest_emitted_after_it_still_refuses()
   let first = scm_env_empty_manifest(store: empty_store())
   let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
   let wire = scm_env_reversed_wire_of(store: fixture.store)
+  let outcome = scm_env_decode_members(members: wire)
   first.built
     && fixture.built
     && scm_env_referrer_is_at(members: wire, index: 0, locator: first.manifest)
-    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
-      == "decoded_manifest_source_manifest")
+    && (scm_env_decode_cause_tag(outcome: outcome) == "decoded_manifest_source_manifest")
+    && scm_env_decode_names(outcome: outcome, expected: first.manifest)
 }
 
 // THE LOCATOR IS ASSERTED, NOT ONLY THE TAG. Carrying an ObjectId in the refusal type is not
@@ -2032,55 +2034,38 @@ test fn scm_env_the_writer_emits_a_childs_occupying_file_before_the_node() -> Bo
   )
 }
 
+fn scm_env_file_occupant_locator() -> ObjectId {
+  match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => scm_env_absent_identity()
+    SourceStored { store: _, source: file } => file.locator
+  }
+}
+
 test fn scm_env_a_child_at_a_file_emitted_after_it_still_refuses() -> Bool {
   let wire = scm_env_reversed_wire_of(store: scm_env_child_over_a_file_store())
+  let outcome = scm_env_decode_members(members: wire)
   scm_env_occupant_is_at(
     members: wire,
     index: 1,
     expected: scm_env_expected_source_entry(text: "not a program\n"),
   )
-    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
-      == "decoded_target_source")
+    && (scm_env_decode_cause_tag(outcome: outcome) == "decoded_target_source")
+    && scm_env_decode_names(outcome: outcome, expected: scm_env_file_occupant_locator())
 }
 
 test fn scm_env_a_child_at_a_manifest_emitted_after_it_still_refuses() -> Bool {
   let manifest = scm_env_empty_manifest(store: empty_store())
   let assembled = scm_env_child_over(store: manifest.store, locator: manifest.manifest)
   let wire = scm_env_reversed_wire_of(store: assembled)
+  let outcome = scm_env_decode_members(members: wire)
   manifest.built
     && scm_env_occupant_is_at(
       members: wire,
       index: 1,
       expected: scm_env_expected_empty_manifest_entry(),
     )
-    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
-      == "decoded_target_manifest")
-    && scm_env_decode_names(
-      outcome: scm_env_decode_members(members: wire),
-      expected: manifest.manifest,
-    )
+    && (scm_env_decode_cause_tag(outcome: outcome) == "decoded_target_manifest")
+    && scm_env_decode_names(outcome: outcome, expected: manifest.manifest)
 }
 
-// AND THE LATE MANIFEST-SOURCE REFUSALS NAME THEIR OCCUPANT. The reordered claims above assert the
-// cause; carrying an ObjectId in the type is not evidence that the right one survives the reorder.
-test fn scm_env_a_late_manifest_source_refusal_names_the_occupying_program() -> Bool {
-  let fixture = scm_env_manifest_over_a_program()
-  let wire = scm_env_reversed_wire_of(store: fixture.store)
-  fixture.built
-    && scm_env_decode_names(
-      outcome: scm_env_decode_members(members: wire),
-      expected: scm_env_program_locator(),
-    )
-}
 
-test fn scm_env_a_late_manifest_source_refusal_names_the_occupying_manifest() -> Bool {
-  let first = scm_env_empty_manifest(store: empty_store())
-  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
-  let wire = scm_env_reversed_wire_of(store: fixture.store)
-  first.built
-    && fixture.built
-    && scm_env_decode_names(
-      outcome: scm_env_decode_members(members: wire),
-      expected: first.manifest,
-    )
-}
