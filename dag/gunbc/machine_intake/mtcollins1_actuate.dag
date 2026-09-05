@@ -45,11 +45,17 @@ data mtcollins1_power_action: NonEmptyStr = "cycle"
 data mtcollins1_bmc_username: NonEmptyStr = "admin"
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
-// read it from BMC_PASSWORD_FILE through shell.Env.Get, mirroring gunbc.tools.bmc_first_contact, and
-// that REFUSED at run time with `Unimplemented { what: "unknown service operation: shell.Env.Get" }`
-// — the interpreter has no such operation, so every caller of that pattern is emit-only and has
-// never been executed. An argument is the better shape regardless: the credential's location becomes
-// a declared input the caller must state rather than ambient state the func silently depends on.
+// read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
+// `Unimplemented { what: "unknown service operation: shell.Env.Get" }`. THAT DIAGNOSTIC IS
+// MISLEADING AND THE OBVIOUS READING OF IT IS WRONG: the operation is implemented and widely used —
+// gunbc.actions_run_binding calls it on the live converge path — and it refused here only because
+// this module did not carry `import extdeps.shell`. Service operations register from the IMPORT
+// CLOSURE, so an unimported service compiles clean and refuses at run time with a message that
+// names the operation as unknown rather than the import as missing.
+//
+// The argument is kept anyway, because it is the better shape independent of that defect: the
+// credential's location becomes a declared input the caller must state rather than ambient state
+// the func silently depends on, which matters most for the value that rotates mid-program.
 //
 // AN EMPTY PATH IS REFUSED RATHER THAN DIALLED. Passing "" would otherwise reach ipmitool as a -f
 // with no file and fail as an authentication error, which reads as a controller rejecting a
