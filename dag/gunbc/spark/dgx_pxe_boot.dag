@@ -33,6 +33,14 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
 }
+import extdeps.os.ubuntu_kernel_nic_coverage {
+  UbuntuKernelFlavour,
+  Noble2404GaLinux68,
+  Noble2404HweLinux617,
+  r8169_claims_pci_device,
+  PciVendorId,
+  PciDeviceId,
+}
 
 type PxeNetworkObservation {
   dhcp_offers_bootloader: Bool
@@ -362,6 +370,30 @@ type SparkUnattendedPxeBootRefusalReason
   // after approximately 90 seconds (three trials on spark-2196, 2026-09-05). Only
   // NVIDIA-provided images (FastOsRecoveryTarball, DgxOsIsoImage) are known to be
   // stable. See dag/gunbc/spark/pxe_rescue_observation.dag Receipt 2.
+  | UnattendedPxeBootKernelDoesNotClaimNic {
+      image_kind: SparkPxeBootImageKind,
+      pci_vendor: PciVendorId,
+      pci_device: PciDeviceId,
+    }
+  // THE BOOT IMAGE'S KERNEL DOES NOT CLAIM THE TARGET UNIT'S NIC. A PXE-booted
+  // image loads and then has no network — presenting as a black screen that names
+  // neither the driver nor the device ID. The kernel coverage facts are in
+  // extdeps.os.ubuntu_kernel_nic_coverage; the spark-2196 NIC identity is in
+  // gunbc.spark.pxe_rescue_observation.dag Receipt 1.
+
+// KERNEL FLAVOUR MAPPING: which kernel flavour each SparkPxeBootImageKind carries.
+// This is a gunbc-layer policy fact, not an upstream declaration, because the
+// kernel version embedded in the image is a deployment choice rather than a
+// hardware invariant. FastOsRecoveryTarball ships Ubuntu 6.8 GA; DgxOsIsoImage
+// ships Ubuntu 6.17 HWE (as of base_os_7.0.0). These may change with image
+// revisions without changing the SparkPxeBootImageKind enum.
+
+fn spark_image_kernel_flavour(image_kind: SparkPxeBootImageKind) -> UbuntuKernelFlavour {
+  match image_kind {
+    FastOsRecoveryTarball => Noble2404GaLinux68
+    DgxOsIsoImage => Noble2404HweLinux617
+  }
+}
 
 fn admit_spark_unattended_pxe_boot(
   image_kind: SparkPxeBootImageKind,
@@ -373,7 +405,27 @@ fn admit_spark_unattended_pxe_boot(
   http_endpoint: DeclarationRef?,
   isolation: PxeNetworkIsolation?,
   firmware_config: SparkUefiPxeConfiguration?,
+  target_nic: (PciVendorId, PciDeviceId)?,
 ) -> SparkUnattendedPxeBootAdmissionOutcome {
+  // NIC COVERAGE CHECK: if the target unit's NIC identity is known, verify
+  // the image's kernel can claim it. A false negative means the image will
+  // boot but have no network (see pxe_rescue_observation Receipt 1).
+  match target_nic {
+    Present { value: (vendor, device) } =>
+      if !r8169_claims_pci_device(
+        flavour: spark_image_kernel_flavour(image_kind: image_kind),
+        device: device,
+      ) {
+        return SparkUnattendedPxeBootRefused {
+          reason: UnattendedPxeBootKernelDoesNotClaimNic {
+            image_kind: image_kind,
+            pci_vendor: vendor,
+            pci_device: device,
+          }
+        }
+      }
+    Absent => {}
+  }
   match network_observation {
     Absent =>
       SparkUnattendedPxeBootRefused {

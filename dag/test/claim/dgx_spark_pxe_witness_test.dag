@@ -16,6 +16,12 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   SecureBootDisabledForPxe,
   BootloaderEnrolledForPxe,
 }
+import extdeps.os.ubuntu_kernel_nic_coverage {
+  PciVendorId,
+  PciDeviceId,
+  r8169_claims_pci_device,
+  Noble2404GaLinux68,
+}
 import std.human_intervention { HumanIntervention, DeviceOnce }
 import gunbc.spark.dgx_pxe_boot {
   spark_unattended_image_boot,
@@ -45,6 +51,7 @@ import gunbc.spark.dgx_pxe_boot {
   UnattendedPxeBootFirmwareHumanInterventionRequired,
   SecureBootBlocksPxe,
   NetworkStackDisabled,
+  UnattendedPxeBootKernelDoesNotClaimNic,
 }
 
 data witness_tftp_root: Uri = Uri {
@@ -120,6 +127,7 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
       match b.network_chain.dhcp_direction {
@@ -138,6 +146,7 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
       http_endpoint: Present { value: witness_http_endpoint },
       isolation: Present { value: IsolatedProvisioningSegment },
       firmware_config: Present { value: synthetic_ready_firmware_config() },
+      target_nic: none,
     ) {
       SparkUnattendedPxeBootAdmitted { boot: b } =>
         match b.network_chain.dhcp_direction {
@@ -277,6 +286,7 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     http_endpoint: none,
     isolation: none,
     firmware_config: none,
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootRefused { reason: NetworkObservationAbsent } => true
     SparkUnattendedPxeBootRefused { reason: _ } => false
@@ -295,6 +305,7 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: none,
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootRefused { reason: FirmwareConfigurationAbsent } => true
     SparkUnattendedPxeBootRefused { reason: _ } => false
@@ -313,6 +324,7 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
       b.image_kind == FastOsRecoveryTarball
@@ -344,6 +356,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootRefused { reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
       list_length(items: gs) == 1
@@ -370,6 +383,7 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
         nic_pxe_boot_enabled: true,
       }
     },
+    target_nic: none,
   ) {
     SparkUnattendedPxeBootRefused {
       reason: UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
@@ -377,5 +391,71 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
       i.frequency == DeviceOnce
     SparkUnattendedPxeBootRefused { reason: _ } => false
     SparkUnattendedPxeBootAdmitted { boot: _ } => false
+  }
+}
+
+test fn w_nic_coverage_refuses_ga_kernel_for_8127() -> Bool {
+  // FastOsRecoveryTarball ships Ubuntu 6.8 GA, which does NOT claim
+  // Realtek 8127 (10ec:8127, r8169). spark-2196 has this NIC.
+  // See extdeps.os.ubuntu_kernel_nic_coverage and
+  // gunbc.spark.pxe_rescue_observation Receipt 1.
+  match admit_spark_unattended_pxe_boot(
+    image_kind: FastOsRecoveryTarball,
+    tftp_root: witness_tftp_root,
+    http_image_root: witness_http_root,
+    network_observation: Present { value: synthetic_ready_network_observation() },
+    dhcp_authority: Present { value: witness_dhcp_authority },
+    tftp_endpoint: Present { value: witness_tftp_endpoint },
+    http_endpoint: Present { value: witness_http_endpoint },
+    isolation: Present { value: ProxyDhcpPxeOnly },
+    firmware_config: Present { value: synthetic_ready_firmware_config() },
+    target_nic: Present {
+      value: (
+        "10ec" as PciVendorId,
+        "8127" as PciDeviceId,
+      )
+    },
+  ) {
+    SparkUnattendedPxeBootRefused {
+      reason: UnattendedPxeBootKernelDoesNotClaimNic {
+        image_kind: FastOsRecoveryTarball,
+        pci_vendor: _,
+        pci_device: _,
+      }
+    } => true
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+  }
+}
+
+test fn w_nic_coverage_accepts_hwe_kernel_for_8127() -> Bool {
+  // DgxOsIsoImage ships Ubuntu 6.17 HWE, which DOES claim 8127.
+  // PXE-booting spark-2196 with this image will have network.
+  match admit_spark_unattended_pxe_boot(
+    image_kind: DgxOsIsoImage,
+    tftp_root: witness_tftp_root,
+    http_image_root: witness_http_root,
+    network_observation: Present { value: synthetic_ready_network_observation() },
+    dhcp_authority: Present { value: witness_dhcp_authority },
+    tftp_endpoint: Present { value: witness_tftp_endpoint },
+    http_endpoint: Present { value: witness_http_endpoint },
+    isolation: Present { value: ProxyDhcpPxeOnly },
+    firmware_config: Present { value: synthetic_ready_firmware_config() },
+    target_nic: Present {
+      value: (
+        "10ec" as PciVendorId,
+        "8127" as PciDeviceId,
+      )
+    },
+  ) {
+    SparkUnattendedPxeBootAdmitted { boot: _ } => true
+    SparkUnattendedPxeBootRefused {
+      reason: UnattendedPxeBootKernelDoesNotClaimNic {
+        image_kind: _,
+        pci_vendor: _,
+        pci_device: _,
+      }
+    } => false
+    SparkUnattendedPxeBootRefused { reason: _ } => false
   }
 }
