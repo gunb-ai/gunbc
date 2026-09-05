@@ -137,7 +137,7 @@ fn count_name_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Int {
   fold(seen, init: 0, f: (acc, s) => if s == name { acc + 1 } else { acc })
 }
 
-fn name_already_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
+fn fabric_name_already_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
   fold(seen, init: false, f: (acc, s) => if s == name { true } else { acc })
 }
 
@@ -159,9 +159,9 @@ fn name_already_in(seen: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
 // authority for duplicate detection, which section 3 forbids and which would cost more than the
 // scan. It is NOT reused directly because it answers a narrower question: it returns the FIRST
 // duplicate as evidence, where a coverage refusal must locate EVERY one.
-fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
+fn fabric_duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
   fold(names, init: [], f: (acc, n) =>
-    if count_name_in(names, n) > 1 && !name_already_in(acc, n) {
+    if count_name_in(names, n) > 1 && !fabric_name_already_in(acc, n) {
       concat(acc, [n])
     } else {
       acc
@@ -170,13 +170,13 @@ fn duplicated_names(names: List<NonEmptyStr>) -> List<NonEmptyStr> {
 
 fn duplicate_gate_ids(gates: List<FabricCiGate>) -> List<CoverageRefusal> {
   map(
-    duplicated_names(map(gates, g => g.id)),
+    fabric_duplicated_names(map(gates, g => g.id)),
     n => GateIdDeclaredSeveralTimes { gate: n })
 }
 
 fn duplicate_mutations_of(g: FabricCiGate) -> List<CoverageRefusal> {
   map(
-    duplicated_names(g.discriminating_mutations),
+    fabric_duplicated_names(g.discriminating_mutations),
     m => MutationDeclaredSeveralTimes { gate: g.id, mutation: m })
 }
 
