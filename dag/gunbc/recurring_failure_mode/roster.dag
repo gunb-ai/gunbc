@@ -135,6 +135,7 @@ import gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rath
 import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions { instruction_and_subject_resolved_from_different_revisions }
 import gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing { reported_required_refusal_does_not_precondition_landing }
 import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis { corroboration_without_an_independent_derivation_axis }
+import gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares { comparison_keyed_on_part_of_the_identity_it_compares }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -261,4 +262,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   instruction_and_subject_resolved_from_different_revisions,
   reported_required_refusal_does_not_precondition_landing,
   corroboration_without_an_independent_derivation_axis,
+  comparison_keyed_on_part_of_the_identity_it_compares,
 ]
