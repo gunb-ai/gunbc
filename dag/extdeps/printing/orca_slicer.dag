@@ -84,12 +84,13 @@ data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 3
 // read as ORCA executability. The subject was not substituted there and the receipt was not faked;
 // the executed thing was simply of the wrong kind, which no amount of care at the consumer can see.
 //
-// The kind is therefore constructional rather than checked. OrcaExecutable has one constructor, and
-// the only mints are in this module, so a caller cannot spell an Orca invocation over some other
-// program. That is DESIGN section 3 as much as section 5: what counts as this upstream product is a
-// fact this module owns, and a consumer comparing a program string to "orca-slicer" would be a
-// second authority for it -- and a string check besides, which the AppImage's own filename already
-// shows is unreliable.
+// The kind is therefore constructional rather than checked: OrcaExecutable has one constructor, so a
+// caller cannot spell an Orca invocation over some other program. What that constructor CONSUMES is
+// settled below, and today the answer is that nothing does. That is DESIGN section 3 as much as
+// section 5: what counts as this upstream product is a fact this module owns, and a consumer
+// comparing a program string to "orca-slicer" would be a second authority for it -- and a string
+// check besides, which the AppImage's own filename already shows is unreliable.
+//
 // AND THERE IS NO MINT, WHICH IS THE HONEST STATE RATHER THAN A GAP.
 //
 // The kind question was real: `true --version` exits zero on every host, so a consumer taking a bare

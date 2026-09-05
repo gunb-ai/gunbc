@@ -1,6 +1,11 @@
 module product.printed_chassis.export_profile
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.observation_completeness {
+  ObservationCompleteness, ObservationComplete, ObservationRepeatedExpected,
+  ObservationMissingExpected, ObservationForeignObserved, ObservationRepeatedObserved,
+  observation_completeness,
+}
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, Nanometer, nanometer, nanometer_count, micrometer_to_nanometer }
 import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs, stl_export_knobs_eq, RelativeDeflection, AbsoluteDeflection }
@@ -193,15 +198,6 @@ fn standing_subject(s: ChordStanding) -> ChordSubject {
   }
 }
 
-fn count_standings_for(subject: ChordSubject, standings: List<ChordStanding>) -> Nat {
-  fold(standings, init: 0, f: (acc, st) =>
-    if chord_subject_eq(a: standing_subject(s: st), b: subject) { acc + 1 } else { acc })
-}
-
-fn subject_in_roster(subject: ChordSubject, roster: List<ChordSubject>) -> Bool {
-  fold(roster, init: false, f: (acc, r) => acc || chord_subject_eq(a: r, b: subject))
-}
-
 fn standing_is_within(s: ChordStanding) -> Bool {
   match s {
     WithinRequiredDistinction { judgment: _ } => true
@@ -234,32 +230,32 @@ data export_profile_subject_roster: List<ChordSubject> = [
 // standing in for a missing one, which is the substitution most likely to occur and least likely to
 // be noticed. Missing, foreign and duplicated are separate arms because they have separate remedies:
 // measure the feature, remove the stray, or resolve which of two readings is the one that counts.
-type SubjectCoverage
-  = CoverageComplete
-  | CoverageMissing { subjects: List<ChordSubject> }
-  | CoverageForeign { subjects: List<ChordSubject> }
-  | CoverageDuplicated { subjects: List<ChordSubject> }
-
-fn cover_roster(roster: List<ChordSubject>, standings: List<ChordStanding>) -> SubjectCoverage {
-  let missing = filter(roster, r => count_standings_for(subject: r, standings: standings) == 0)
-  let duplicated = filter(roster, r => count_standings_for(subject: r, standings: standings) > 1)
-  let foreign = filter(
-    map(standings, st => standing_subject(s: st)),
-    sub => subject_in_roster(subject: sub, roster: roster) == false,
-  )
-  if missing.length() > 0 {
-    CoverageMissing { subjects: missing }
-  } else {
-    if foreign.length() > 0 {
-      CoverageForeign { subjects: foreign }
-    } else {
-      if duplicated.length() > 0 {
-        CoverageDuplicated { subjects: duplicated }
-      } else {
-        CoverageComplete
-      }
-    }
-  }
+// COVERAGE IS std.observation_completeness, NOT A LOCAL COPY OF IT.
+//
+// This module carried its own completeness join, and B12 then COPIED that implementation to work
+// over observations -- a second local copy of a law the substrate already owns. The copy carried a
+// hole the authority had already closed and documented: a duplicate in the EXPECTED list makes the
+// join MORE permissive. Roster [coupon, coupon, bore] against observations [coupon, bore] returns
+// complete here while the fan-hole obligation has silently vanished, because nothing counts repeats
+// on the expected side. ObservationRepeatedExpected is that arm, and it is checked FIRST, because
+// missing and foreign are statements about a question set and mean nothing when the question set is
+// itself malformed -- reporting "missing" against a broken roster sends a consumer to fix the wrong
+// artifact.
+//
+// THE REQUIREMENT-POPULATION ARM HAS NO DISCRIMINATING RED TODAY, and that is stated rather than
+// left to look covered. Both populations it compares -- the roster and the canonical requirements --
+// are module data closed over by admission, so no fixture can vary either; its RED is authorable
+// only by editing the canonical rows. It is not decoration: it fires on exactly the authoring
+// mistake this module's next rung invites, which is appending a measured DistinctionDeclared beside
+// an existing DistinctionUndeclared for the same subject. But nothing executes that today, and a
+// green suite is not evidence that it would.
+//
+// TWO POPULATIONS ARE JOINED, NOT ONE, because their remedies differ. Observation coverage asks
+// whether every rostered subject was MEASURED once. Requirement coverage asks whether every rostered
+// subject has exactly one CANONICAL POLICY. Collapsing them would report an unmeasured feature and
+// an unauthored requirement as the same refusal, and they are fixed by different people.
+fn subject_key_eq(a: ChordSubject, b: ChordSubject) -> Bool {
+  chord_subject_eq(a: a, b: b)
 }
 
 // THE ADMITTED PROFILE IS DERIVED FROM THE EVIDENCE, NEVER SUPPLIED BESIDE IT. There is no `knobs`
@@ -268,7 +264,8 @@ fn cover_roster(roster: List<ChordSubject>, standings: List<ChordStanding>) -> S
 // profile it wants blessed.
 type ExportProfileAdmission
   = ExportProfileAdmitted { knobs: StlExportKnobs, standings: List<ChordStanding> }
-  | ExportProfileRefusedIncomplete { coverage: SubjectCoverage }
+  | ExportProfileRefusedIncomplete { coverage: ObservationCompleteness<ChordSubject> }
+  | ExportProfileRefusedRequirementPopulation { coverage: ObservationCompleteness<ChordSubject> }
   | ExportProfileRefusedUnsettled { unsettled: List<ChordStanding> }
   | ExportProfileRefusedProfileDisagreement { standings: List<ChordStanding> }
 
@@ -318,7 +315,7 @@ fn requirement_for_subject(subject: ChordSubject) -> ChordRequirement {
     Absent =>
       DistinctionUndeclared {
         subject: subject,
-        because: "no canonical requirement is authored for this subject",
+        because: "unreachable: requirement coverage is established over the whole roster before this lookup runs, so every rostered subject has exactly one canonical requirement here",
       }
   }
 }
@@ -336,62 +333,71 @@ fn count_observations_for(subject: ChordSubject, observations: List<ChordObserva
   filter(observations, o => chord_subject_eq(a: observation_subject(o: o), b: subject)).length()
 }
 
-fn cover_roster_with_observations(
-  roster: List<ChordSubject>,
-  observations: List<ChordObservation>,
-) -> SubjectCoverage {
-  let missing = filter(roster, r => count_observations_for(subject: r, observations: observations) == 0)
-  let duplicated = filter(roster, r => count_observations_for(subject: r, observations: observations) > 1)
-  let foreign = filter(
-    map(observations, o => observation_subject(o: o)),
-    sub => subject_in_roster(subject: sub, roster: roster) == false,
-  )
-  if missing.length() > 0 {
-    CoverageMissing { subjects: missing }
-  } else {
-    if foreign.length() > 0 {
-      CoverageForeign { subjects: foreign }
-    } else {
-      if duplicated.length() > 0 {
-        CoverageDuplicated { subjects: duplicated }
-      } else {
-        CoverageComplete
-      }
-    }
-  }
+// THE EXACT-ONE LOOKUP IS EARNED, NOT ASSUMED. Taking `first` over a filtered list conflates three
+// authority states: exactly one canonical requirement, none at all, and TWO OR MORE resolved by list
+// order. The third is the dangerous one and it bites precisely at this module's stated next rung --
+// append a measured DistinctionDeclared for the fan hole beside the existing DistinctionUndeclared
+// and the new policy is silently ignored; reverse the order and the declared one silently wins while
+// a conflicting canonical row still stands. Nothing refuses the conflict.
+//
+// A MISSING ROW IS ALSO NOT AN AUTHORED "UNDECLARED". The previous lookup manufactured the latter
+// when it found the former, which refuses in the safe direction but names the wrong remedy: author
+// the measurement, versus repair the roster. So requirement coverage is established over the whole
+// roster FIRST, and only then is `first` an exact-one lookup rather than a guess.
+fn requirement_subjects() -> List<ChordSubject> {
+  map(exercised_chord_requirements, r => requirement_subject(r: r))
 }
 
 fn admit_export_profile(observations: List<ChordObservation>) -> ExportProfileAdmission {
-  match cover_roster_with_observations(
-    roster: export_profile_subject_roster,
-    observations: observations,
+  match observation_completeness(
+    expected: export_profile_subject_roster,
+    observed: requirement_subjects(),
+    key_eq: subject_key_eq,
   ) {
-    CoverageMissing { subjects: m } =>
-      ExportProfileRefusedIncomplete { coverage: CoverageMissing { subjects: m } }
-    CoverageForeign { subjects: f } =>
-      ExportProfileRefusedIncomplete { coverage: CoverageForeign { subjects: f } }
-    CoverageDuplicated { subjects: d } =>
-      ExportProfileRefusedIncomplete { coverage: CoverageDuplicated { subjects: d } }
-    CoverageComplete =>
-      if observations_share_one_profile(observations: observations) == false {
-        ExportProfileRefusedProfileDisagreement {
-          standings: map(observations, o =>
-            adjudicate_chord(o: o, r: requirement_for_subject(subject: observation_subject(o: o)))),
-        }
-      } else {
-        let standings = map(observations, o =>
-          adjudicate_chord(o: o, r: requirement_for_subject(subject: observation_subject(o: o))))
-        let unsettled = filter(standings, st => standing_is_within(s: st) == false)
-        if unsettled.length() > 0 {
-          ExportProfileRefusedUnsettled { unsettled: unsettled }
-        } else {
-          ExportProfileAdmitted {
-            knobs: fold(observations, init: exercised_stl_knobs, f: (acc, o) => observation_profile(o: o)),
-            standings: standings,
+    ObservationRepeatedExpected { keys: k } =>
+      ExportProfileRefusedRequirementPopulation { coverage: ObservationRepeatedExpected { keys: k } }
+    ObservationMissingExpected { keys: k } =>
+      ExportProfileRefusedRequirementPopulation { coverage: ObservationMissingExpected { keys: k } }
+    ObservationForeignObserved { keys: k } =>
+      ExportProfileRefusedRequirementPopulation { coverage: ObservationForeignObserved { keys: k } }
+    ObservationRepeatedObserved { keys: k } =>
+      ExportProfileRefusedRequirementPopulation { coverage: ObservationRepeatedObserved { keys: k } }
+    ObservationComplete =>
+      match observation_completeness(
+        expected: export_profile_subject_roster,
+        observed: map(observations, o => observation_subject(o: o)),
+        key_eq: subject_key_eq,
+      ) {
+        ObservationRepeatedExpected { keys: k } =>
+          ExportProfileRefusedIncomplete { coverage: ObservationRepeatedExpected { keys: k } }
+        ObservationMissingExpected { keys: k } =>
+          ExportProfileRefusedIncomplete { coverage: ObservationMissingExpected { keys: k } }
+        ObservationForeignObserved { keys: k } =>
+          ExportProfileRefusedIncomplete { coverage: ObservationForeignObserved { keys: k } }
+        ObservationRepeatedObserved { keys: k } =>
+          ExportProfileRefusedIncomplete { coverage: ObservationRepeatedObserved { keys: k } }
+        ObservationComplete =>
+          if observations_share_one_profile(observations: observations) == false {
+            ExportProfileRefusedProfileDisagreement { standings: judged(observations: observations) }
+          } else {
+            let standings = judged(observations: observations)
+            let unsettled = filter(standings, st => standing_is_within(s: st) == false)
+            if unsettled.length() > 0 {
+              ExportProfileRefusedUnsettled { unsettled: unsettled }
+            } else {
+              ExportProfileAdmitted {
+                knobs: fold(observations, init: exercised_stl_knobs, f: (acc, o) => observation_profile(o: o)),
+                standings: standings,
+              }
+            }
           }
-        }
       }
   }
+}
+
+fn judged(observations: List<ChordObservation>) -> List<ChordStanding> {
+  map(observations, o =>
+    adjudicate_chord(o: o, r: requirement_for_subject(subject: observation_subject(o: o))))
 }
 
 // THE PROFILE THAT WAS ACTUALLY EXERCISED.
