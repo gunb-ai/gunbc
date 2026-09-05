@@ -4094,6 +4094,10 @@ pub struct PreparedScopeIndexes {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    // Alias lookup uses the first authored declaration in graph order, independently of
+    // function precedence. Derived from the same module fragments and shared with the scope;
+    // a fresh evaluation frame must not re-read the corpus to resolve its first cast.
+    type_items: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     /// SOURCE FILE -> DECLARING MODULE PATH, for the one lookup tier that needs to know where a
     /// reference was authored.
@@ -4203,21 +4207,11 @@ pub struct InterpContext {
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // Same chokepoint, ExprCast arm, missed by the three caches above. A cast resolved its
-    // target per EVALUATION: cast_target_seed_name re-sliced source (authored_name_at), and for
-    // any target not named "String" the alias-chain walk called lookup_type_item_across_modules,
-    // which SCANS every item of every module extracting source text per comparison — per hop, up
-    // to 32 hops. Both names are pure functions of target node + module set, fixed per ctx, so
-    // they are memoized per target node pointer, kept alive via cast_kernel_cache_keepalive as
-    // call_func_name_cache above.
+    // Cast names are pure functions of target node + module set. The alias walk reads the
+    // prepared scope's type_items; only the per-expression result lives in the evaluation frame,
+    // keyed and kept alive like call_func_name_cache above.
     cast_kernel_cache: std::cell::RefCell<HashMap<usize, Rc<CastTargetNames>>>,
     cast_kernel_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // The alias walk's per-hop `lookup_type_item_across_modules` was a LINEAR SCAN over every
-    // item of every module, extracting source text per comparison. One daily-page render: 700
-    // lookups scanned 1,967,155 items (~2,810 each), essentially all of ExprCast's 2,027ms — and
-    // the term grows with the closure, not the request. A name->item map is the same fact
-    // indexed, built once per ctx. `or_insert` preserves the scan's first-match-wins order.
-    type_item_index: std::cell::RefCell<Option<Rc<HashMap<String, Rc<Node>>>>>,
     // The cast's SOURCE-side name, same class as cast_kernel_cache above (see
     // cast_expr_inferred_type_name).
     cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
@@ -4431,32 +4425,49 @@ impl InterpContext {
     ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
         let first_write_wins = module_order.is_some();
-        let modules_to_walk: Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>> =
-            match module_order {
-                Some(order) => {
-                    let by_name: HashMap<&str, &Rc<crate::v1_compiler_infer_items::TypedModule>> =
-                        graph
-                            .modules
-                            .iter()
-                            .map(|m| (m.func_env.name.as_str(), m))
-                            .collect();
-                    // Walk `order`, not the graph. `claim_scope_for` built this graph's
-                    // `modules` from the same `order` (`in_scope` is that list), so the
-                    // filter_map cannot drop a scoped member.
-                    order
-                        .iter()
-                        .filter_map(|name| by_name.get(name.as_str()).copied())
-                        .collect()
+        // Derive each module's authored entries once. Alias precedence is graph order even
+        // when the caller supplies a different function order (or a subset of modules).
+        let mut type_items = HashMap::new();
+        let module_fragments: Vec<_> = graph
+            .modules
+            .iter()
+            .map(|module| {
+                let fragment = module_scope_fragment(module, &source_indices, fragments);
+                for entry in &fragment.fn_entries {
+                    if let FragmentFnEntry::Bare { name, item } = entry {
+                        type_items
+                            .entry(name.clone())
+                            .or_insert_with(|| item.clone());
+                    }
                 }
-                None => graph.modules.iter().collect(),
-            };
+                (module, fragment)
+            })
+            .collect();
+        let fragments_to_walk: Vec<&Rc<ModuleScopeFragment>> = match module_order {
+            Some(order) => {
+                let by_name: HashMap<&str, &Rc<ModuleScopeFragment>> = module_fragments
+                    .iter()
+                    .map(|(module, fragment)| (module.func_env.name.as_str(), fragment))
+                    .collect();
+                // Walk `order`, not the graph. `claim_scope_for` built this graph's
+                // `modules` from the same `order` (`in_scope` is that list), so the
+                // filter_map cannot drop a scoped member.
+                order
+                    .iter()
+                    .filter_map(|name| by_name.get(name.as_str()).copied())
+                    .collect()
+            }
+            None => module_fragments
+                .iter()
+                .map(|(_, fragment)| fragment)
+                .collect(),
+        };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut file_module_paths = HashMap::<String, String>::new();
         let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
-        for module in modules_to_walk {
-            let fragment = module_scope_fragment(module, &source_indices, fragments);
+        for fragment in fragments_to_walk {
             for ((file, imported), source_module) in fragment.file_import_bindings.iter() {
                 file_import_bindings
                     .entry((file.clone(), imported.clone()))
@@ -4494,6 +4505,7 @@ impl InterpContext {
             source_indices,
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
+            type_items,
             ambiguous_bare_function_names,
             file_module_paths,
             file_import_bindings,
@@ -4530,7 +4542,6 @@ impl InterpContext {
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
             cast_kernel_cache_keepalive: std::cell::RefCell::new(Vec::new()),
-            type_item_index: std::cell::RefCell::new(None),
             cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
             cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
@@ -9226,31 +9237,12 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     if eval_profile_enabled() {
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
-    let existing = ctx.type_item_index.borrow().clone();
-    let index = match existing {
-        Some(index) => index,
-        None => {
-            let mut built: HashMap<String, Rc<Node>> = HashMap::new();
-            for module in ctx.modules.iter() {
-                for item in module.items.iter() {
-                    if eval_profile_enabled() {
-                        TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
-                    }
-                    let name = authored_name_at(ctx.si(), item.clone());
-                    if name.is_empty() {
-                        continue;
-                    }
-                    // First declaration wins, matching the scan's early return.
-                    built.entry(name).or_insert_with(|| item.clone());
-                }
-            }
-            let built = Rc::new(built);
-            *ctx.type_item_index.borrow_mut() = Some(built.clone());
-            built
-        }
-    };
-    index.get(type_name).cloned()
+    ctx.indexes.type_items.get(type_name).cloned()
 }
+
+#[cfg(test)]
+#[path = "cast_scope_index_tests.rs"]
+mod cast_scope_index_tests;
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     let direct = authored_name_at(ctx.si(), rhs.clone());
