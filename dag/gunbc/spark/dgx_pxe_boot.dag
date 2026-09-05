@@ -298,18 +298,18 @@ fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
   }
 }
 
+// A BOOTLOADER NAME EQUALITY CHECK WAS REMOVED HERE 2026-09-05 (spark-2196
+// PXE rescue receipts). The previous code required the bootloader field to
+// equal spark_pxe_bootloader_filename ("grubnetaa64.efi.signed") and refused
+// if it did not. spark-2196 booted successfully with "bootaa64.efi" — a signed
+// EFI bootloader at a different TFTP path — proving the constraint is THAT a
+// signed bootloader is enrolled, not WHICH filename. See
+// dag/gunbc/spark/pxe_rescue_observation.dag spark_2196_pxe_bootloader_filename_observed.
 fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFirmwareGap> {
   concat(
     match config.secure_boot {
       SecureBootDisabledForPxe => []
       BootloaderEnrolledForPxe { bootloader: _ } =>
-        // A BOOTLOADER NAME EQUALITY CHECK WAS REMOVED HERE 2026-09-05 (spark-2196
-        // PXE rescue receipts). The previous code required the bootloader field to
-        // equal spark_pxe_bootloader_filename ("grubnetaa64.efi.signed") and refused
-        // if it did not. spark-2196 booted successfully with "bootaa64.efi" — a signed
-        // EFI bootloader at a different TFTP path — proving the constraint is THAT a
-        // signed bootloader is enrolled, not WHICH filename. See
-        // dag/gunbc/spark/pxe_rescue_observation.dag spark_2196_pxe_bootloader_filename_observed.
         []
     },
     concat(
@@ -383,35 +383,36 @@ type SparkUnattendedPxeBootAdmissionOutcome
   = SparkUnattendedPxeBootAdmitted { boot: SparkUnattendedImageBoot }
   | SparkUnattendedPxeBootRefused { reason: SparkUnattendedPxeBootRefusalReason }
 
+// THE TARGET UNIT'S NIC IDENTITY IS UNKNOWN is a typed refusal so the admission
+// must refuse rather than silently admit an image whose kernel may not claim the
+// NIC. See gunbc.spark.pxe_rescue_observation.dag Receipt 1 for the spark-2196
+// NIC identity (10ec:8127).
+//
+// A THIRD PARTY IMAGE WAS PREVIOUSLY REFUSED HERE VIA
+// UnattendedPxeBootImageKindNotNvidiaProvided. That arm was unreachable because
+// SparkPxeBootImageKind is a closed sum over FastOsRecoveryTarball | DgxOsIsoImage
+// — no value can inhabit a "generic-distro" constructor. The actual refusal path is
+// UnattendedPxeBootKernelDoesNotClaimNic below (the 6.8 GA kernel does not claim
+// 10ec:8127, see pxe_rescue_observation Receipt 1). Removed 2026-09-05 per
+// handoff correction from witty-seal-144; see pxe_rescue_observation Receipt 2
+// prose for the corrected reasoning.
+//
+// THE BOOT IMAGE'S KERNEL DOES NOT CLAIM THE TARGET UNIT'S NIC. A PXE-booted
+// image loads and then has no network — presenting as a black screen that names
+// neither the driver nor the device ID. The kernel coverage facts are in
+// extdeps.os.ubuntu_kernel_nic_coverage; the spark-2196 NIC identity is in
+// gunbc.spark.pxe_rescue_observation.dag Receipt 1.
 type SparkUnattendedPxeBootRefusalReason
   = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
   | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent
   | TargetNicIdentityAbsent
-  // THE TARGET UNIT'S NIC IDENTITY IS UNKNOWN, so the kernel coverage check
-  // (UnattendedPxeBootKernelDoesNotClaimNic) cannot be evaluated. The admission
-  // must refuse rather than silently admit an image whose kernel may not claim
-  // the NIC. See gunbc.spark.pxe_rescue_observation.dag Receipt 1 for the
-  // spark-2196 NIC identity (10ec:8127).
-  // A THIRD PARTY IMAGE WAS PREVIOUSLY REFUSED HERE VIA
-  // UnattendedPxeBootImageKindNotNvidiaProvided. That arm was unreachable because
-  // SparkPxeBootImageKind is a closed sum over FastOsRecoveryTarball | DgxOsIsoImage
-  // — no value can inhabit a "generic-distro" constructor. The actual refusal path is
-  // UnattendedPxeBootKernelDoesNotClaimNic below (the 6.8 GA kernel does not claim
-  // 10ec:8127, see pxe_rescue_observation Receipt 1). Removed 2026-09-05 per
-  // handoff correction from witty-seal-144; see pxe_rescue_observation Receipt 2 prose
-  // for the corrected reasoning.
   | UnattendedPxeBootKernelDoesNotClaimNic {
       image_kind: SparkPxeBootImageKind,
       pci_vendor: PciVendorId,
       pci_device: PciDeviceId,
     }
-  // THE BOOT IMAGE'S KERNEL DOES NOT CLAIM THE TARGET UNIT'S NIC. A PXE-booted
-  // image loads and then has no network — presenting as a black screen that names
-  // neither the driver nor the device ID. The kernel coverage facts are in
-  // extdeps.os.ubuntu_kernel_nic_coverage; the spark-2196 NIC identity is in
-  // gunbc.spark.pxe_rescue_observation.dag Receipt 1.
 
 // KERNEL FLAVOUR MAPPING: which kernel flavour each SparkPxeBootImageKind carries.
 // This is a gunbc-layer policy fact, not an upstream declaration, because the
@@ -427,6 +428,9 @@ fn spark_image_kernel_flavour(image_kind: SparkPxeBootImageKind) -> UbuntuKernel
   }
 }
 
+// NIC COVERAGE CHECK: if the target unit's NIC identity is known, verify
+// the image's kernel can claim it. A false negative means the image will
+// boot but have no network (see pxe_rescue_observation Receipt 1).
 fn admit_spark_unattended_pxe_boot(
   image_kind: SparkPxeBootImageKind,
   tftp_root: Uri,
@@ -439,9 +443,6 @@ fn admit_spark_unattended_pxe_boot(
   firmware_config: SparkUefiPxeConfiguration?,
   target_nic: PciDeviceIdentity?,
 ) -> SparkUnattendedPxeBootAdmissionOutcome {
-  // NIC COVERAGE CHECK: if the target unit's NIC identity is known, verify
-  // the image's kernel can claim it. A false negative means the image will
-  // boot but have no network (see pxe_rescue_observation Receipt 1).
   match target_nic {
     Present { value: PciDeviceIdentity { vendor: vendor, device: device } } =>
       if !r8169_claims_pci_device(
