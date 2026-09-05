@@ -1956,3 +1956,131 @@ test fn scm_env_an_uncontained_manifest_source_at_a_program_stands_as_a_wrong_ki
       ),
     )
 }
+
+// THE OTHER OCCUPYING KIND ON THE UNCONTAINED SIDE, for the same reason: the claim above it covers
+// a semantic child at a FILE, and a child at a MANIFEST reaches the standing through its own cause.
+test fn scm_env_an_uncontained_child_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  let manifest = scm_env_empty_manifest(store: empty_store())
+  manifest.built
+    && scm_env_wrong_kind_barred(
+      outcome: scm_env_decode_members(
+        members: scm_env_wire_of(
+          repo: scm_env_repository_with_store(
+            store: scm_env_child_over(store: manifest.store, locator: manifest.manifest),
+          ),
+        ),
+      ),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The last three gaps the coverage matrix had
+// ---------------------------------------------------------------------------
+
+// THE EIGHTH PAIRING. Two requirement subjects, two occupying kinds, two reference spellings is
+// eight cells, and seven of them had an executed standing. This is the last: a manifest source
+// occupied by another manifest, named by digest.
+test fn scm_env_an_uncontained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  let first = scm_env_empty_manifest(store: empty_store())
+  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
+  first.built
+    && fixture.built
+    && scm_env_wrong_kind_barred(
+      outcome: scm_env_decode_members(
+        members: scm_env_wire_of(repo: scm_env_repository_with_store(store: fixture.store)),
+      ),
+    )
+}
+
+// THE LATE-OCCUPANT ORDER FOR THE SEMANTIC-CHILD SUBJECT TOO. The ordering claims above cover the
+// manifest-source subject only, and the reason the finished-table adjudication exists applies to
+// both: a semantic child's occupant can equally arrive after the node that requires it.
+//
+// Here the OCCUPANT is the reconstructable entry -- a file is {"source": text}, an empty manifest is
+// {"manifest": []} -- so these name it rather than the referrer, and assert both orders for the same
+// reason: dropping the reversal must fail the ORDER assertion, not merely the refusal one.
+fn scm_env_expected_source_entry(text: String) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "source", value: json_string(s: text))]))
+}
+
+fn scm_env_expected_empty_manifest_entry() -> String {
+  serialize_json(
+    v: json_object(members: [json_kv(key: "manifest", value: json_array(elements: []))]),
+  )
+}
+
+fn scm_env_occupant_is_at(members: List<JsonKeyValue>, index: Int, expected: String) -> Bool {
+  (scm_env_object_count(members: members) == 2)
+    && (scm_env_object_json_at(members: members, index: index) == expected)
+}
+
+fn scm_env_child_over_a_file_store() -> ObjectStore {
+  match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    SourceStored { store: with_file, source: file } =>
+      scm_env_child_over(store: with_file, locator: file.locator)
+  }
+}
+
+test fn scm_env_the_writer_emits_a_childs_occupying_file_before_the_node() -> Bool {
+  scm_env_occupant_is_at(
+    members: scm_env_wire_of(
+      repo: scm_env_repository_with_store(store: scm_env_child_over_a_file_store()),
+    ),
+    index: 0,
+    expected: scm_env_expected_source_entry(text: "not a program\n"),
+  )
+}
+
+test fn scm_env_a_child_at_a_file_emitted_after_it_still_refuses() -> Bool {
+  let wire = scm_env_reversed_wire_of(store: scm_env_child_over_a_file_store())
+  scm_env_occupant_is_at(
+    members: wire,
+    index: 1,
+    expected: scm_env_expected_source_entry(text: "not a program\n"),
+  )
+    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
+      == "decoded_target_source")
+}
+
+test fn scm_env_a_child_at_a_manifest_emitted_after_it_still_refuses() -> Bool {
+  let manifest = scm_env_empty_manifest(store: empty_store())
+  let assembled = scm_env_child_over(store: manifest.store, locator: manifest.manifest)
+  let wire = scm_env_reversed_wire_of(store: assembled)
+  manifest.built
+    && scm_env_occupant_is_at(
+      members: wire,
+      index: 1,
+      expected: scm_env_expected_empty_manifest_entry(),
+    )
+    && (scm_env_decode_cause_tag(outcome: scm_env_decode_members(members: wire))
+      == "decoded_target_manifest")
+    && scm_env_decode_names(
+      outcome: scm_env_decode_members(members: wire),
+      expected: manifest.manifest,
+    )
+}
+
+// AND THE LATE MANIFEST-SOURCE REFUSALS NAME THEIR OCCUPANT. The reordered claims above assert the
+// cause; carrying an ObjectId in the type is not evidence that the right one survives the reorder.
+test fn scm_env_a_late_manifest_source_refusal_names_the_occupying_program() -> Bool {
+  let fixture = scm_env_manifest_over_a_program()
+  let wire = scm_env_reversed_wire_of(store: fixture.store)
+  fixture.built
+    && scm_env_decode_names(
+      outcome: scm_env_decode_members(members: wire),
+      expected: scm_env_program_locator(),
+    )
+}
+
+test fn scm_env_a_late_manifest_source_refusal_names_the_occupying_manifest() -> Bool {
+  let first = scm_env_empty_manifest(store: empty_store())
+  let fixture = scm_env_manifest_over(store: first.store, locator: first.manifest)
+  let wire = scm_env_reversed_wire_of(store: fixture.store)
+  first.built
+    && fixture.built
+    && scm_env_decode_names(
+      outcome: scm_env_decode_members(members: wire),
+      expected: first.manifest,
+    )
+}

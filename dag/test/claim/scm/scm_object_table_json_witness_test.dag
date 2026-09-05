@@ -618,3 +618,18 @@ test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirem
 test fn ot_an_unresolved_manifest_source_is_not_a_wrong_kind_requirement() -> Bool {
   ot_wrong_kind_barred(entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]) == false
 }
+
+// AN EMPTY MANIFEST ENTRY, so a manifest can be the OCCUPANT rather than only the referrer.
+fn ot_empty_manifest_entry() -> JsonValue {
+  json_object(members: [json_kv(key: "manifest", value: json_array(elements: []))])
+}
+
+// THE FOURTH PAIRING. The three claims above cover edge-at-a-source, edge-at-a-manifest and
+// manifest-source-at-a-node; this is manifest-source-at-a-manifest, which had been standing on its
+// sibling. Four positively-resolved wrong-kind causes, four executed standings, no arm asserted by
+// family resemblance.
+test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [ot_empty_manifest_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  )
+}
