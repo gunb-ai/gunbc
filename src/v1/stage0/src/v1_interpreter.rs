@@ -10750,8 +10750,8 @@ fn build_service_param_env(
     ctx: &InterpContext,
 ) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
-    // Build the declared parameter name list (mirrors the fn-call path's cached_params
-    // at call_function_inner). `all_param_names` includes underscored variants.
+    // Build the declared parameter name list (mirrors the fn-call path's cached_params).
+    // `all_param_names` includes underscored variants.
     let all_param_names: Vec<String> = op_node
         .params
         .iter()
@@ -10773,10 +10773,10 @@ fn build_service_param_env(
                     detail,
                 });
             }
-            // Duplicate label guard: same rule as fn-call path (line 5152). An
-            // anonymous key ("_") is excluded from the collision check: two anonymous
-            // parameters are distinct unreadable slots, and the insert must still
-            // happen so the required-argument contains_key check below sees it filled.
+            // Duplicate label guard: same rule as fn-call path. An anonymous key ("_") is
+            // excluded from the collision check: two anonymous parameters are distinct
+            // unreadable slots, and the insert must still happen so the required-argument
+            // contains_key check below sees it filled.
             if name != "_" && bindings.contains_key(&ctx.sym(name)) {
                 return Err(InterpError::CallContractMismatch {
                     callee: op_node.name.clone(),
@@ -13136,6 +13136,95 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
     None
 }
 
+/// Collect a directory listing's entry names, REFUSING rather than narrowing.
+///
+/// THE THREE ROUTES ARE THREE DIFFERENT FAULTS, and calling them all "a silent drop" -- as an
+/// earlier revision of this annotation did -- gets two of them wrong. Only the first NARROWS a
+/// population in a way a caller can currently observe; the second narrows one nobody can currently
+/// ask about; and the third does not narrow at all, it WIDENS. They shared only the success channel
+/// that reported `true` over each of them, in the seed where no `.dag` wall can observe it.
+///
+/// Each says which:
+///
+/// - ADVANCEMENT, and this is the one with a reachable wrong answer. `read_dir` returning
+///   its iterator does not mean iteration succeeds; the API permits an error at any step,
+///   and iteration may CONTINUE afterwards -- so what a discarding filter collects is not
+///   even guaranteed to be a prefix, merely a subset. An ordinary askable name can go
+///   missing from it, and `filesystem_io::filesystem_entry_presence` then establishes
+///   `FilesystemEstablishedAbsence` from non-membership in a population that was silently
+///   narrowed. That is a REACHABLE ROUTE to an unsupported absence, which is a different
+///   and smaller claim than saying any particular absence in the tree is wrong.
+/// - REPRESENTATION, which changes no answer today. A native name that is not valid UTF-8
+///   has no faithful spelling in this listing encoding, and it cannot be the name a caller
+///   asked about either, since that name arrives as a `String`. So dropping it narrowed a
+///   population nobody could currently query. It is refused anyway, because the operation
+///   cannot carry it and silent omission is not faithful enumeration -- the refusal says
+///   the representation is unsupported, invents no host I/O error, and reports nothing
+///   missing.
+/// - AMBIGUITY. A name containing the LINE FEED that joins this listing makes one entry
+///   indistinguishable from two: `"prefix\nrepo.json"` and the pair `"prefix"`,
+///   `"repo.json"` produce identical bytes, and the membership predicate answers
+///   `repo.json` present for both. That is a fabricated PRESENCE -- the dual of the false
+///   absence above, and the one route here that does not narrow a population at all -- and
+///   admitting the queried name does not constrain it, because the collision is in the
+///   RETURNED name. Escaping it here without a matching decoder would
+///   introduce a second representation, so the listing refuses while this encoding stands.
+///
+/// Carriage return is deliberately NOT refused. It does not collide under the exact-`\n`
+/// join and split, and inventing a refusal for it here would be a restriction with no
+/// demonstrated defect behind it. Its disposition belongs to the structured-listing cut
+/// that retires this encoding, alongside the LF case.
+///
+/// The accumulated names are dropped on refusal rather than returned as a diagnostic
+/// payload: this function's caller has one listing channel, and a partial population
+/// reachable through it is a partial population that will be read as the listing.
+fn collect_listing_entry_names(entries: std::fs::ReadDir) -> Result<Vec<String>, String> {
+    // The DirEntry -> name projection is total and lives here; every DECISION lives in the
+    // function below, so the specimen that injects an advancement error exercises the same
+    // code this call reaches rather than a second implementation of enumeration.
+    collect_listing_names_from(entries.map(|entry| entry.map(|admitted| admitted.file_name())))
+}
+
+fn collect_listing_names_from(
+    entries: impl Iterator<Item = std::io::Result<std::ffi::OsString>>,
+) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = Vec::new();
+    for entry in entries {
+        let native = match entry {
+            Ok(native) => native,
+            Err(advance) => {
+                return Err(format!(
+                    "directory enumeration failed after {} entr(ies) were read, so this listing \
+                     accounts for no known portion of the directory and establishes no absence: {}",
+                    names.len(),
+                    advance
+                ))
+            }
+        };
+        let name = match native.into_string() {
+            Ok(name) => name,
+            Err(native) => {
+                return Err(format!(
+                    "directory entry name {:?} is not valid UTF-8, and this listing encoding \
+                     carries Unicode names only, so the entry cannot be represented faithfully. \
+                     The rendering shown is a diagnostic and is not the operational pathname",
+                    native
+                ))
+            }
+        };
+        if name.contains('\n') {
+            return Err(format!(
+                "directory entry name {:?} contains a line feed, which is the delimiter this \
+                 listing encoding joins entries with, so one entry would be indistinguishable \
+                 from two and a membership test could answer yes for an entry that is not there",
+                name
+            ));
+        }
+        names.push(name);
+    }
+    Ok(names)
+}
+
 fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -13759,21 +13848,26 @@ fn dispatch_file(
                     &format!("[file] list {}", path),
                 );
                 return match std::fs::read_dir(&path) {
-                    Ok(entries) => {
-                        let mut names: Vec<String> = entries
-                            .filter_map(|e| e.ok())
-                            .filter_map(|e| e.file_name().into_string().ok())
-                            .collect();
-                        names.sort();
-                        let content = names.join("\n");
-                        Ok(FileResult {
-                            success: true,
-                            byte_count: content.len() as i64,
+                    Ok(entries) => match collect_listing_entry_names(entries) {
+                        Ok(mut names) => {
+                            names.sort();
+                            let content = names.join("\n");
+                            Ok(FileResult {
+                                success: true,
+                                byte_count: content.len() as i64,
+                                path,
+                                error: String::new(),
+                                content,
+                            })
+                        }
+                        Err(error) => Ok(FileResult {
+                            success: false,
+                            byte_count: 0,
                             path,
-                            error: String::new(),
-                            content,
-                        })
-                    }
+                            error,
+                            content: String::new(),
+                        }),
+                    },
                     Err(e) => Ok(FileResult {
                         success: false,
                         byte_count: 0,
@@ -14009,101 +14103,20 @@ fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
     )
 }
 
-///
-/// REVISIT OF THE 2026-07-16 EMIT-ONLY RULING, DELIBERATE AND BOUNDED. The ruling refused to
-/// carry an accept-any rustls verifier into the retiring seed. The redfish ops (the only
-/// declared users of this posture) already carry `-k` by hand today, and `gunbc run` executes
-/// them through the shell handler — so the interpreter already realizes this bypass on those
-/// hosts, through curl. Realizing it in-process for the SAME declared ops removes the
-/// argv/file indirection without widening the population that bypasses verification: absent
-/// or VerifyPeer stays fail-closed, and an unrecognized posture still refuses. The emitted
-/// reqwest path is unchanged (`danger_accept_invalid_certs`).
-#[derive(Debug)]
-struct RestAcceptAnyVerifier;
-
-impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &rustls::pki_types::CertificateDer<'_>,
-        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
-        _server_name: &rustls::pki_types::ServerName<'_>,
-        _ocsp_response: &[u8],
-        _now: rustls::pki_types::UnixTime,
-    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _message: &[u8],
-        _cert: &rustls::pki_types::CertificateDer<'_>,
-        _dss: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        use rustls::SignatureScheme::*;
-        vec![
-            RSA_PKCS1_SHA1,
-            ECDSA_SHA1_Legacy,
-            RSA_PKCS1_SHA256,
-            ECDSA_NISTP256_SHA256,
-            RSA_PKCS1_SHA384,
-            ECDSA_NISTP384_SHA384,
-            RSA_PKCS1_SHA512,
-            ECDSA_NISTP521_SHA512,
-            RSA_PSS_SHA256,
-            RSA_PSS_SHA384,
-            RSA_PSS_SHA512,
-            ED25519,
-            ED448,
-            ML_DSA_44,
-            ML_DSA_65,
-            ML_DSA_87,
-        ]
-    }
-}
-
-/// Build the accept-any ureq agent for `InsecureAcceptAnyCert` rest transport rows.
-/// Uses `builder_with_provider` with an explicit ring provider (avoids the process-default
-/// crypto-provider ambiguity that would panic on this machine). Returns an `Err` message
-/// if the ring provider does not support the requested TLS versions — in practice ring
-/// supports TLS 1.2 and 1.3, so this path never returns an error on any current platform
-/// (DESIGN §5: a typed refusal rather than a panic).
-fn rest_accept_any_agent() -> Result<ureq::Agent, String> {
-    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
-    let config = rustls::client::ClientConfig::builder_with_provider(provider)
-        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
-        .map_err(|_| {
-            "ring provider does not support TLS 1.2 and 1.3 — cannot build accept-any TLS agent"
-                .to_string()
-        })?
-        .dangerous()
-        .with_custom_certificate_verifier(std::sync::Arc::new(RestAcceptAnyVerifier))
-        .with_no_client_auth();
-    Ok(ureq::builder()
-        .tls_config(std::sync::Arc::new(config))
-        .build())
-}
-
 /// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
-/// TlsPosture). `VerifyPeer` (and absent) proceed on the stock verifier — `None`;
-/// `InsecureAcceptAnyCert` selects the accept-any agent — `Some`; an unrecognized posture
-/// refuses. Pure so each arm is execution-witnessable.
-fn rest_tls_posture_interp_disposition(posture: &str) -> Result<Option<ureq::Agent>, String> {
+/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is
+/// emit-only (operator decision 2026-07-16), so the interpreter refuses it rather than carry
+/// a cert-verification bypass into the retiring seed; an unrecognized posture also refuses.
+/// Pure so each arm is execution-witnessable.
+fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
     match posture {
-        "VerifyPeer" => Ok(None),
-        "InsecureAcceptAnyCert" => rest_accept_any_agent().map(Some),
+        "VerifyPeer" => Ok(()),
+        "InsecureAcceptAnyCert" => Err(
+            "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
+             danger_accept_invalid_certs); the interpreter refuses it by design rather than carry \
+             a cert-verification bypass into the retiring seed — run such ops through emitted code"
+                .to_string(),
+        ),
         other => Err(format!(
             "rest transport tls: unrecognized posture '{}'",
             other
@@ -14118,9 +14131,9 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
 }
 
 /// Whether a caller's named argument `name` matches a declared parameter `p`, following the
-/// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Pure so it is
-/// execution-witnessable and shared between the fn-call path and the service-rest binding path
-/// (DESIGN §3 single authority — one rule, one site).
+/// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Single authority
+/// for the rule — one site, shared by the fn-call path and the service-rest binding path
+/// (DESIGN §3 nicknaming: a second copy of one rule at a second call site drifts).
 fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
     declared.iter().any(|p| {
         p == name || p == "_" || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
@@ -14816,38 +14829,32 @@ fn dispatch_rest(
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
-    // of curl's `-k` for self-signed BMC endpoints, selected via the accept-any agent — the
-    // interpreter realization of the posture (see RestAcceptAnyVerifier for the deliberate,
-    // bounded revisit of the 2026-07-16 emit-only ruling). An unrecognized posture refuses —
-    // never a silent no-op sending under VerifyPeer while the row asked for insecure.
-    let accept_any_agent: Option<ureq::Agent> = if let Some(tls_node) =
+    // of curl's `-k` for self-signed BMC endpoints, realized EMIT-ONLY (operator, 2026-07-16):
+    // emitted reqwest code uses `.danger_accept_invalid_certs(true)`; the interpreter refuses
+    // it rather than carry an accept-any rustls verifier into the retiring seed. So a present
+    // InsecureAcceptAnyCert is a typed refusal here (redfish etc. run through emitted code) —
+    // never a silent no-op sending under VerifyPeer while the row asked for insecure. An
+    // unrecognized posture also refuses.
+    if let Some(tls_node) =
         find_property(transport.properties.clone(), "tls".to_string(), si.clone())
     {
         let posture = authored_name_at(si.clone(), tls_node);
-        match rest_tls_posture_interp_disposition(&posture) {
-            Ok(agent) => agent,
-            Err(msg) => return Err(InterpError::TypeError { msg }),
+        if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
+            return Err(InterpError::TypeError { msg });
         }
-    } else {
-        None
-    };
+    }
 
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
     );
 
-    let mut request = match (&accept_any_agent, method.as_str()) {
-        (Some(agent), "GET") => agent.get(&url),
-        (Some(agent), "POST") => agent.post(&url),
-        (Some(agent), "PUT") => agent.put(&url),
-        (Some(agent), "DELETE") => agent.delete(&url),
-        (Some(agent), "PATCH") => agent.patch(&url),
-        (None, "GET") => ureq::get(&url),
-        (None, "POST") => ureq::post(&url),
-        (None, "PUT") => ureq::put(&url),
-        (None, "DELETE") => ureq::delete(&url),
-        (None, "PATCH") => ureq::patch(&url),
+    let mut request = match method.as_str() {
+        "GET" => ureq::get(&url),
+        "POST" => ureq::post(&url),
+        "PUT" => ureq::put(&url),
+        "DELETE" => ureq::delete(&url),
+        "PATCH" => ureq::patch(&url),
         _ => {
             return Err(InterpError::TypeError {
                 msg: format!("unsupported HTTP method: {}", method),
@@ -19800,15 +19807,9 @@ mod dispatch_rest_decision_tests {
 
     #[test]
     fn tls_posture_disposition_fails_closed() {
-        // VerifyPeer (and absent) proceed on the stock verifier; InsecureAcceptAnyCert selects
-        // the accept-any agent (wrapped in Result, which is Ok(Agent)); an unknown posture refuses.
-        assert!(matches!(
-            rest_tls_posture_interp_disposition("VerifyPeer"),
-            Ok(None)
-        ));
-        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert")
-            .unwrap()
-            .is_some());
+        // VerifyPeer proceeds; InsecureAcceptAnyCert and unknown refuse (emit-only decision).
+        assert!(rest_tls_posture_interp_disposition("VerifyPeer").is_ok());
+        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert").is_err());
         assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
     }
 
@@ -20341,6 +20342,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -20420,6 +20422,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -20443,6 +20446,7 @@ mod map_shell_outputs_optional_stream_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -21895,6 +21899,278 @@ mod opaque_host_call_reach_tests {
                 ],
             },
             "both operations must appear, in first-reach order, without the repeat"
+        );
+    }
+}
+
+/// THE LISTING COLLECTOR'S OWN EVIDENCE.
+///
+/// Every specimen here enters `collect_listing_names_from`, which is the function the production
+/// `list` verb reaches through a total projection -- not a second implementation of enumeration.
+/// A fixture that started from an already-failed listing would exercise the downstream `.dag`
+/// fold and leave the host producer, which is where the information was lost, untested.
+#[cfg(test)]
+mod listing_collector_refuses_rather_than_narrowing {
+    use super::collect_listing_names_from;
+
+    fn ok(name: &str) -> std::io::Result<std::ffi::OsString> {
+        Ok(std::ffi::OsString::from(name))
+    }
+
+    fn advancement_error() -> std::io::Result<std::ffi::OsString> {
+        Err(std::io::Error::other(
+            "host stopped advancing the directory iterator",
+        ))
+    }
+
+    /// THE DECISIVE ONE. An ordinary name is read, then advancement fails. Discarding that error
+    /// returned the one name collected so far as a COMPLETE listing, and non-membership in it then
+    /// established an absence for every entry the iterator never reached.
+    #[test]
+    fn an_advancement_error_after_one_entry_refuses_rather_than_returning_the_prefix() {
+        let refusal =
+            collect_listing_names_from([ok("ordinary-name"), advancement_error()].into_iter())
+                .expect_err("an enumeration that failed partway is not a listing");
+        assert!(
+            refusal.contains("directory enumeration failed after 1 entr(ies)"),
+            "the refusal must say how far enumeration got: {refusal}"
+        );
+        assert!(
+            refusal.contains("establishes no absence"),
+            "the refusal must say what it does not authorize: {refusal}"
+        );
+    }
+
+    /// AND THE ERROR NEED NOT COME LAST. Rust permits iteration to continue after an error, so
+    /// what a discarding filter collects is not even guaranteed to be a PREFIX of the directory --
+    /// it is an arbitrary subset. This specimen is the one that makes "prefix" the wrong word.
+    #[test]
+    fn an_advancement_error_between_two_entries_refuses_rather_than_returning_a_subset() {
+        let refusal =
+            collect_listing_names_from([ok("first"), advancement_error(), ok("third")].into_iter())
+                .expect_err("a subset of the directory is not the directory");
+        assert!(refusal.contains("after 1 entr(ies)"), "{refusal}");
+    }
+
+    /// A native name this listing encoding cannot carry is refused, not dropped. The old code
+    /// discarded it into a `success: true` listing, which claims a completeness it does not have.
+    #[test]
+    fn a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let native = std::ffi::OsString::from_vec(vec![0x66, 0x80, 0x66]);
+            let refusal = collect_listing_names_from([ok("ordinary"), Ok(native)].into_iter())
+                .expect_err("an unrepresentable name is not an absent one");
+            assert!(refusal.contains("not valid UTF-8"), "{refusal}");
+            assert!(
+                refusal.contains("is not the operational pathname"),
+                "the diagnostic rendering must not be mistaken for the real name: {refusal}"
+            );
+        }
+    }
+
+    /// THE FABRICATED PRESENCE, WHICH IS THE DUAL OF THE FALSE ABSENCE. One entry named
+    /// "prefix\nrepo.json" joins to exactly the bytes two entries "prefix" and "repo.json" join
+    /// to, so the newline-delimited membership predicate answers `repo.json` PRESENT for a
+    /// directory that holds no such entry. Admitting the QUERIED name does not reach this: the
+    /// collision is in the name the directory RETURNED.
+    #[test]
+    fn a_returned_name_containing_the_delimiter_refuses_rather_than_fabricating_an_entry() {
+        let refusal = collect_listing_names_from([ok("prefix\nrepo.json")].into_iter()).expect_err(
+            "a name that collides with the delimiter cannot be carried by this encoding",
+        );
+        assert!(refusal.contains("contains a line feed"), "{refusal}");
+        assert!(refusal.contains("indistinguishable from two"), "{refusal}");
+    }
+
+    /// CARRIAGE RETURN IS DELIBERATELY ADMITTED. It does not collide under the exact-`\n` join and
+    /// split, so refusing it here would be a restriction with no defect behind it -- the inverse of
+    /// leaving one standing on a lapsed justification. This claim is what keeps the LF refusal from
+    /// silently widening into "any control character".
+    #[test]
+    fn a_returned_name_containing_a_carriage_return_is_still_admitted() {
+        let names = collect_listing_names_from([ok("odd\rname")].into_iter())
+            .expect("carriage return does not collide with the delimiter");
+        assert_eq!(names, vec!["odd\rname".to_string()]);
+    }
+
+    /// THE CONTROLS, and they are what keep the repair from being "refuse every listing".
+    #[test]
+    fn an_empty_directory_is_still_a_successful_empty_listing() {
+        assert_eq!(
+            collect_listing_names_from(std::iter::empty()).expect("an empty directory listed fine"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn an_ordinary_populated_directory_still_lists() {
+        assert_eq!(
+            collect_listing_names_from([ok("repo.json"), ok("objects")].into_iter())
+                .expect("an ordinary directory listed fine"),
+            vec!["repo.json".to_string(), "objects".to_string()]
+        );
+    }
+}
+
+/// THE SECOND PRODUCER'S OWN EVIDENCE, BY EXECUTION.
+///
+/// `src/v1/05_emit_rust.dag` `file_list_match_expr` is a SEPARATE COPY of the listing decision --
+/// the emitted Rust runtime cannot call the interpreter's collector -- so the specimens above
+/// establish nothing about it. Neither does a clean regeneration or a standalone compile: one shows
+/// the mirror agrees with its authority, the other that the emitted text is well-formed Rust. Both
+/// are silent about what it DECIDES.
+///
+/// So this compiles the emitted expression and RUNS it against real directories. Two of the three
+/// routes are provokable that way -- a name carrying the delimiter, and a native name that is not
+/// Unicode -- and both fixtures are created here rather than committed, because a repository
+/// carrying such filenames would be a hazard to every tool that walks the tree for reasons
+/// unrelated to this repair.
+///
+/// The advancement error is NOT provokable this way and is deliberately not faked: a fixture that
+/// forced `read_dir` to fail at a chosen step would be a second implementation of enumeration
+/// wearing the emitted code's name. That route's evidence is the injected collector specimen above,
+/// and the two implementations' agreement on it rests on review of both, which is stated rather
+/// than claimed as executed.
+///
+/// THE EXPRESSION COMES FROM THE GENERATED ACCESSOR, NOT FROM A SECOND READING OF THE `.dag`. An
+/// earlier revision opened `05_emit_rust.dag` at test time, found the declaration by line prefix,
+/// stripped quotes and interpreted escapes by hand. That made this witness a SECOND AUTHORITY for
+/// what the declaration means, and one that would drift silently the moment the language grew an
+/// escape it did not know. The two checks now compose instead: the regeneration gate establishes
+/// that `file_list_match_expr()` agrees with its `.dag` authority, and this witness establishes
+/// what the value that accessor returns DOES.
+///
+/// AND THE PROBE ASSERTS ITS OWN RESULT RATHER THAN REPORTING ONE BACK. The first revision printed
+/// `success` and `error` on a tab-separated line for the test to parse, which made a malformed
+/// observation decode into a Boolean filesystem answer -- a broken instrument answering as though
+/// it were the subject. The expectations are compiled INTO the probe, so a probe that cannot
+/// observe what it claims to fails as a probe: it exits non-zero and this test reads that status.
+#[cfg(test)]
+mod the_emitted_listing_producer_refuses_too {
+    /// Compile the emitted expression with `expectations` asserted inside it, run it over `dir`,
+    /// and answer the probe's own stderr on failure. The probe's exit status is the verdict.
+    fn run_emitted_listing_probe(
+        name: &str,
+        dir_setup: &dyn Fn(&std::path::Path),
+        expectations: &str,
+    ) {
+        let work = std::env::temp_dir().join(format!(
+            "gunbc-emitted-listing-{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&work).expect("scratch directory");
+        let subject = work.join("subject");
+        std::fs::create_dir_all(&subject).expect("subject directory");
+        dir_setup(&subject);
+
+        let src = work.join("probe.rs");
+        std::fs::write(
+            &src,
+            format!(
+                "fn main() {{\n    let file_path = std::env::args().nth(1).unwrap();\n    \
+                 let (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = {}\n{}\n}}\n",
+                crate::v1_compiler_emit_rust::file_list_match_expr(),
+                expectations
+            ),
+        )
+        .expect("write the probe");
+        let bin = work.join("probe");
+        let compiled = std::process::Command::new("rustc")
+            .args(["--edition", "2021", "-o"])
+            .arg(&bin)
+            .arg(&src)
+            .output()
+            .expect("rustc runs");
+        // CLEAN UP BEFORE ASSERTING, NOT AFTER. A cleanup that trails the asserts runs only on the
+        // path where nothing went wrong, so every FAILING probe -- the run a maintainer repeats --
+        // leaks a scratch tree under the system temp dir, and the leak accumulates precisely while
+        // someone is iterating on the failure. Both outcomes are captured first, the tree is removed
+        // once, and the diagnostics are asserted from the captured values.
+        let run = if compiled.status.success() {
+            Some(
+                std::process::Command::new(&bin)
+                    .arg(&subject)
+                    .output()
+                    .expect("the probe runs"),
+            )
+        } else {
+            None
+        };
+        std::fs::remove_dir_all(&work).ok();
+        assert!(
+            compiled.status.success(),
+            "the emitted listing expression must be well-formed Rust: {}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        let run = run.expect("a compiled probe was run");
+        assert!(
+            run.status.success(),
+            "the emitted producer did not answer what this specimen requires: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+
+    /// THE CONTROL, AND IT ASSERTS THE POPULATION RATHER THAN THE ARM. Checking only `success`
+    /// left a mutation live: changing the emitted healthy tuple alone to `(true, String::new(),
+    /// String::new(), 0i64)` keeps every refusal intact and still publishes an EMPTY successful
+    /// listing for a directory holding three entries. Nothing in the interpreter's collector tests
+    /// can see a mutation confined to the emitted implementation, so the contents and the byte
+    /// count are asserted here.
+    ///
+    /// TWO ORDINARY NAMES MAKE THE SORT OBSERVABLE, and the third carries a CARRIAGE RETURN, which
+    /// establishes that the EMITTED collector preserves it too -- the interpreter's CR control
+    /// speaks only for the interpreter.
+    #[test]
+    fn a_supported_directory_lists_its_whole_population_in_order() {
+        run_emitted_listing_probe(
+            "ordinary",
+            &|subject| {
+                std::fs::write(subject.join("repo.json"), "{}").unwrap();
+                std::fs::write(subject.join("objects"), "").unwrap();
+                std::fs::write(subject.join("odd\rname"), "").unwrap();
+            },
+            "    assert!(file_success, \"an ordinary directory must list\");\n    \
+             assert_eq!(file_error, \"\", \"a successful listing carries no error\");\n    \
+             assert_eq!(file_content, \"objects\\nodd\\rname\\nrepo.json\", \"the whole population, sorted, with the carriage return preserved\");\n    \
+             assert_eq!(file_byte_count, file_content.len() as i64, \"the byte count counts the listing\");",
+        );
+    }
+
+    #[test]
+    fn a_name_carrying_the_delimiter_refuses_rather_than_fabricating_an_entry() {
+        run_emitted_listing_probe(
+            "delimiter",
+            &|subject| {
+                std::fs::write(subject.join("prefix\nrepo.json"), "x").unwrap();
+            },
+            "    assert!(!file_success, \"a delimiter-bearing name must refuse the listing\");\n    \
+             assert!(file_error.contains(\"line feed\"), \"{}\", file_error);\n    \
+             assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
+             assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped() {
+        run_emitted_listing_probe(
+            "native",
+            &|subject| {
+                use std::os::unix::ffi::OsStrExt;
+                let name = std::ffi::OsStr::from_bytes(&[0x66, 0x80, 0x66]);
+                std::fs::write(subject.join(name), "x").unwrap();
+            },
+            "    assert!(!file_success, \"a non-Unicode name must refuse the listing\");\n    \
+             assert!(file_error.contains(\"not valid UTF-8\"), \"{}\", file_error);\n    \
+             assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
+             assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
         );
     }
 }

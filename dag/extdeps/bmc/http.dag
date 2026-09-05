@@ -1,7 +1,6 @@
 module extdeps.bmc.http
 
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
@@ -22,14 +21,7 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-// §3(b) declared debt, SHRINKING: GetServiceRoot, GetSystem, GetChassisSensors, GetPower and
-// GetThermal (2026-09-03) are declarative transport rest rows — auth_basic + InsecureAcceptAnyCert
-// + modeled success — realized by the shared HTTP-client machinery; the remaining operations below
-// (SetAccountPassword, SetBootSourceOverride, ResetSystem) still re-spell the shell/curl transport
-// handler per row. The note dissolves when every operation is a declarative transport row — the
-// remaining rows need a body-from-file or inline body record axis. Until then the argv rows stay —
-// live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd)
-// execute them as-is.
+data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the three axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), and request-body-from-file. Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
 // Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
@@ -69,106 +61,68 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
 // until it lands the class sits at mitigatable and this note is diligence.
 service redfish.Http {
 
-  config {
-    endpoint: ""
-  }
-
   operation GetServiceRoot {
     input { bmc_host: NonEmptyStr }
-    output { body: String, outcome: RestOutcome }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "https://{bmc_host}/redfish/v1",
-      tls: InsecureAcceptAnyCert,
-      response_format: Text
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "https://{bmc_host}/redfish/v1"]
     }
-    response {
-      200 => String
-      401 => String
-      403 => String
-      404 => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root GET failed"
     }
   }
 
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, username: String, password: Secret }
-    output { body: String, outcome: RestOutcome }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "https://{bmc_host}/redfish/v1/Systems/system",
-      tls: InsecureAcceptAnyCert,
-      auth_basic: { username: username, password: password },
-      response_format: Text
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system"]
     }
-    response {
-      200 => String
-      401 => String
-      403 => String
-      404 => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "redfish system GET failed"
     }
   }
 
   operation GetChassisSensors {
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, username: String, password: Secret }
-    output { body: String, outcome: RestOutcome }
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors",
-      tls: InsecureAcceptAnyCert,
-      auth_basic: { username: username, password: password },
-      response_format: Text
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors"]
     }
-    response {
-      200 => String
-      401 => String
-      403 => String
-      404 => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis sensors GET failed"
     }
   }
 
   operation GetPower {
-    input { bmc_host: NonEmptyStr, username: String, password: Secret }
-    output { body: String, outcome: RestOutcome }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "https://{bmc_host}/redfish/v1/Chassis/Self/Power",
-      tls: InsecureAcceptAnyCert,
-      auth_basic: { username: username, password: password },
-      response_format: Text
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Power"]
     }
-    response {
-      200 => String
-      401 => String
-      403 => String
-      404 => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "redfish power GET failed"
     }
   }
 
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, username: String, password: Secret }
-    output { body: String, outcome: RestOutcome }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: GET,
-      path: "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal",
-      tls: InsecureAcceptAnyCert,
-      auth_basic: { username: username, password: password },
-      response_format: Text
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal"]
     }
-    response {
-      200 => String
-      401 => String
-      403 => String
-      404 => String
-      5xx => String
+    exit {
+      0 => Unit
+      nonzero => String "redfish thermal GET failed"
     }
   }
 

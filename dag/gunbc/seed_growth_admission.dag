@@ -28,7 +28,6 @@ import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_bounda
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
-import gunbc.rest_accept_any_seed_growth { rest_accept_any_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -63,6 +62,7 @@ import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_gr
 import gunbc.cross_claim_demand_census_seed_growth { cross_claim_demand_census_seed_growth_justification }
 import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
+import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
@@ -203,6 +203,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
+    listing_completeness_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
     frame_independent_symbol_seed_growth_justification,
@@ -236,8 +237,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     decl_facts_shared_memo_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
-    required_lane_judgment_seed_growth_justification,
-    rest_accept_any_seed_growth_justification
+    required_lane_judgment_seed_growth_justification
   ]
 }
 
@@ -284,11 +284,7 @@ fn seed_growth_roster_has_duplicate_keys() -> Bool {
 
 fn seed_growth_uncitable_item_keys() -> List<String> {
   [
-    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt",
-    "v1_compiler.v1_interpreter::impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier::verify_server_cert",
-    "v1_compiler.v1_interpreter::impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier::verify_tls12_signature",
-    "v1_compiler.v1_interpreter::impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier::verify_tls13_signature",
-    "v1_compiler.v1_interpreter::impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier::supported_verify_schemes"
+    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
   ]
 }
 
