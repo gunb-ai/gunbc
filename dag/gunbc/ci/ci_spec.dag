@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
@@ -810,6 +811,18 @@ data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main",
 }
 
+// THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
+// regeneration overwrites every committed projection from this checkout's authorities, so after it
+// no reader can report what the write repaired -- the defect and the evidence for it disappear
+// together. This target runs ahead of it, reads the committed bytes while they are still the
+// drifted ones, and writes the trailer lines the commit step folds into heal's message. It is
+// ordered against the WRITE rather than against a named entry, because the step this job uses to
+// regenerate has already been repointed once.
+data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "heal_repair_declaration",
+}
+
 data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/repo/repo_local_git_config.dag",
   function: "converge",
@@ -873,6 +886,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
+    gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_repo_local_git_config_target,
     gunbc_ci_heal_dispatch_target
@@ -1622,6 +1636,16 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
+fn gunbc_ci_heal_repair_declaration_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_repair_declaration_target.entry,
+    function: gunbc_ci_heal_repair_declaration_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 // Immediately after the release gunbc binary is unpacked, converge repository-local Git integration
 // bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled
 // repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact
@@ -1784,6 +1808,19 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
   ]
 }
 
+// THE MISSING DECLARATION REFUSES; IT DOES NOT COMMIT WITHOUT ONE. The trailer arm below previously
+// read `if [ -s <path> ]; then cat ...; fi`, which omitted the repair trailer whenever the file was
+// absent or empty and committed anyway. That is the exact shape gunbc.ledger_row_coherence
+// ledger_repair_judged_token exists to prevent, reappearing one layer down in shell: a head whose
+// declaration step silently produced nothing would commit with no trailer, and a later reader
+// counting repairs would see zero repairs over an unstated population and read a COVERAGE COLLAPSE
+// as a FIXED DEFECT. The module refuses to let a repair go unrecorded and the shell was still free
+// to let the record itself go missing.
+//
+// EMPTY REFUSES AS WELL AS ABSENT, deliberately rather than incidentally: a run that judged the
+// ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
+// judged. The denominator is zero, which is precisely the state that must never be mistaken for a
+// clean numerator.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
@@ -1807,7 +1844,20 @@ fn ci_heal_shell_lines() -> List<String> {
             "  exit 0",
             "else",
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
-            "  git commit --no-verify -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
+            "  HEAL_MESSAGE_FILE=$(mktemp)",
+            "  printf '%s\\n' \"chore: regenerate drifted generated artifacts (ci auto-heal)\" > \"$HEAL_MESSAGE_FILE\"",
+            concat(
+              concat("  if [ ! -s \"", heal_repair_declaration_artifact_path),
+              concat(
+                "\" ]; then echo \"::error::HealRepairDeclarationMissing path=",
+                concat(
+                  heal_repair_declaration_artifact_path,
+                  " -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population\" >&2; exit 1; fi"
+                )
+              )
+            ),
+            concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
+            "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
             "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""

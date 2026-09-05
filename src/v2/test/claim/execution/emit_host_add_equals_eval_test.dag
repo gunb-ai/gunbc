@@ -14,8 +14,10 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
   rust_emit_host_runtime_primitive_type_node,
-  rust_fixture_emitted_add_fn,
-  rust_target_model_staging
+  rust_fixture_emitted_add_fn
+}
+import v2.extdeps.languages.rust_test {
+  rust_add_target_model_staging
 }
 import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 import v2.test.manual.eval_runtime { eval_add_subgraph_node }
@@ -252,7 +254,7 @@ fn emit_eval_run(
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_eval_subject(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
-    target: rust_target_model_staging()
+    target: rust_add_target_model_staging()
   )
 }
 
