@@ -28,8 +28,6 @@ import v2.extdeps.languages.rust {
   rust_sg2_malformed_record_extra_positional_emitted,
   rust_sg2_malformed_sum_extra_positional_emitted,
   rust_sg2_rc_foobar_xy_emitted,
-  rust_sg2_type_expr_projection_probe_target_model,
-  rust_sg2_type_expr_target_model,
   rust_type_expression_projection,
   rust_type_expression_projection_bundle_node
 }
@@ -54,6 +52,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.extdeps.languages.rust_test {
+  rust_sg2_type_expression_projection_target_model
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sg2_fail_text: String = ""
@@ -69,7 +70,7 @@ fn sg2_fail_node() -> Node {
 }
 }
 
-data sg2_type_expr_target: TargetModel = rust_sg2_type_expr_projection_probe_target_model()
+data sg2_type_expr_target: TargetModel = rust_sg2_type_expression_projection_target_model()
 
 fn sg2_project_instantiation_emitted() -> Node {
   match translate_type_expression_project(
