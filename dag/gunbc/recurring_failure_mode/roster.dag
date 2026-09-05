@@ -11,6 +11,7 @@ module gunbc.recurring_failure_mode.roster
 
 import std.types { List }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode.a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry { a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry }
 import gunbc.recurring_failure_mode.censored_estimator_drops_its_own_tail { censored_estimator_drops_its_own_tail }
 import gunbc.recurring_failure_mode.selection_view_read_as_population { selection_view_read_as_population }
 import gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end { unlanded_citation_indistinguishable_at_the_citing_end }
@@ -135,6 +136,7 @@ import gunbc.recurring_failure_mode.emitter_residual_renders_inert_text { emitte
 import gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional { kind_carried_but_its_fields_stay_optional }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
+  a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
   selection_view_read_as_population,
   unlanded_citation_indistinguishable_at_the_citing_end,
