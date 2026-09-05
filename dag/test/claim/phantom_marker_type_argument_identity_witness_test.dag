@@ -213,12 +213,19 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
 // changing at the moment it becomes false.
 //
 // THE TEST THIS FIELD MUST PASS, stated so the next repoint is decidable rather than
-// a matter of who is awake: if every session running today archived tonight, would
-// this trigger still have an accountable owner tomorrow? A lane session fails that
-// test by construction, and so does the manager session above it -- both are
-// sessions. Checking that a candidate node is currently in_progress answers the
-// STATUS question and never the LIFETIME one; the first repoint was ratified on
-// exactly that check.
+// a matter of who is awake: AFTER THE LIFECYCLE TRANSITION, DOES EVERY STILL-
+// UNDISCHARGED OBLIGATION RETAIN AN ACCOUNTABLE OWNER OR A VALID TRANSFER? A
+// session's or work item's CURRENT `in_progress` STATUS DOES NOT ESTABLISH THAT
+// PROPERTY, and its closure is safe for this obligation only when the obligation is
+// discharged or responsibility validly transferred. The first repoint was ratified
+// on the status check, which answers a different question.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID A LANE SESSION AND THE MANAGER SESSION FAIL
+// THE TEST BY CONSTRUCTION, AND THAT NO LONGER FOLLOWS: an owner that discharges the
+// obligation before closing, or transfers it to a successor that accepts it, ends
+// cleanly. The failure is closure WITHOUT discharge or valid transfer -- not being a
+// session, and not being closable. A closed owner remains a perfectly valid
+// HISTORICAL reference; only ACTIVE RESPONSIBILITY is at risk when a lifecycle ends.
 //
 // SO THE OWNER IS A STANDING AUTHORITY THAT NAMES THE CAPABILITY, NOT A NODE.
 // `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
