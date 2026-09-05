@@ -1,0 +1,84 @@
+module gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that_prints_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// ATTRIBUTION, AND WHY THIS ROW IS FILED BY SOMEONE WHO DID NOT IDENTIFY THE CLASS. calm-owl-417
+// identified it while repairing gunbc#10460 and deliberately held it out of that branch, because
+// filing needed roster.dag AND the regenerated projection, both moving under open PRs -- which would
+// have put the branch into a driver-refused merge on the very projection whose recipe it repaired.
+// The follow-up change never landed and the session ended. So the class existed only in a merged
+// pull request body, where the ledger cannot see it and nobody would know to look. Section 3's
+// hazard is a SECOND authority forking an existing one; there is no authority here to fork, and a
+// row filed by the second-best-placed author beats no row. The 7a and 7c specimens below are
+// calm-owl-417's, cited as theirs. If they or a successor return, amending a filed row is cheap.
+
+data printed_remedy_is_mangled_by_the_medium_that_prints_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "printed_remedy_is_mangled_by_the_medium_that_prints_it" as NonEmptyStr,
+
+  receipts: [
+    "**a printed remedy is mangled by the medium that prints it** (an instruction is authored correctly, and the channel that carries it to its reader REWRITES it in transit. ",
+
+    "The author reads the authored string and sees the remedy; the reader receives something shorter that no longer does what it says; and no error crosses the boundary, because the rewriting is the medium behaving exactly as specified. ",
+
+    "THE RECOGNITION RULE, and it is the whole row: THE SENDER SEES INTACT TEXT, THE RECIPIENT GETS A SILENTLY SHORTENED SENTENCE, AND NOTHING REPORTS A FAILURE. The send succeeds. ",
+
+    "So every instrument that reads the AUTHORED artifact -- grep, review, a byte-exact drift gate over the source -- agrees the remedy is present, because it is present. The defect is in the rendering, which means the subject has to be what the reader RECEIVES and never what the author wrote. ",
+
+    "FIRST SPECIMEN, calm-owl-417, gunbc#10460, and it is the one that names the class: gunbc.generated_artifact_merge_driver prints its repair recipe through a double-quoted `echo`, because the lines are templates and `$merged_path` must interpolate. Double quotes leave the backquote active, and the recipe's sed program wrote its capture group between backquotes. Bash ran `\\([a-z0-9_]*\\)` as a COMMAND SUBSTITUTION at echo time: two `command not found` lines on stderr, and the printed instruction came out with the capture group DELETED. ",
+
+    "Pasted, it extracted zero rows from both sides of a set difference, and a difference over two empty sets is empty -- which the recipe's own words read as `MUST BE EMPTY`. The mangled remedy reported the vacuous pass the intact remedy exists to prevent, at the exact moment rows were at risk. ",
+
+    "SECOND SPECIMEN, same PR, and it is the same boundary read from the other side rather than a repeat: `$` stays active ON PURPOSE, so a `$1` written into a recipe line is the DRIVER's argv and not the reader's. An extractor drafted as a shell function taking `$1` rendered as `git show \"O:docs/design-rung-drops.md\"` -- git's own `%O` placeholder substituted into the instruction it was printing. ",
+
+    "Escaping does not save that one, because the escaper doubles backslashes first, so the remedy is to name only the variable the printer DEFINES. The two specimens together are why the class is the MEDIUM and not the escaping: one is a character the medium consumed, the other is a character the medium substituted, and no single escaping rule addresses both. ",
+
+    "THE DAMAGE IS NOT PROPORTIONAL TO THE CORRUPTION, and this is the sharpest available statement of the class. The repaired extractor carries TWO sed clauses, because the two delegated projections spell a row identity differently -- a backquoted slug bullet and a `### Title` heading. Mangling one character in the FIRST clause makes sed refuse the ENTIRE program on an invalid backreference, so the second clause, which nothing touched, extracts nothing either. ",
+
+    "Measured against a fixture carrying both spellings and 157 rostered rows: the intact program names 157, the mangled program names ZERO -- not 36, which is what a reader assuming per-clause degradation would predict. One corrupted character silenced a projection it never appeared in. ",
+
+    "THIRD AND FOURTH SPECIMENS, 2026-09-05, AND THEY ARE WHAT MAKE THIS A CLASS RATHER THAN A FACT ABOUT MERGE DRIVERS: the same mechanism fired twice more within ninety minutes, in a completely different medium, in messages ABOUT this class. An agent messaging body was passed to `dashboard-message --body` as a double-quoted shell argument; the body contained backquoted identifiers; bash substituted them away and the recipients received sentences with phrases missing. ",
+
+    "One of the two was a message whose SUBJECT was instruments that report success without carrying their claim. The other was sent by the author repairing the first specimen, while writing about the first specimen, roughly an hour after reading the analysis describing it. ",
+
+    "WHAT THOSE TWO ADD: the class is not a property of emitted artifacts or of merge drivers. It is a property of ANY text handed to a shell-quoted channel, and the agent messaging channel is one of them and is uninstrumented at both ends. ",
+
+    "THE OBVIOUS DEFENCE IS THE THING THAT FAILED, and a reader will supply the wrong remedy here unless it is stated. `Remember to quote correctly` was in active working memory in both messaging specimens and did not prevent either. The diagnosis in both cases was identical: the protection was attached to a command SPELLING rather than to the hazard -- one command was being single-quoted correctly all evening, and a DIFFERENT command was reached for with double quotes without re-deriving the rule. Vigilance that is bound to a habit does not transfer to the next call site. ",
+
+    "THE MECHANICAL FORM, which is the operative remedy and is cheap: write the body to a file with a QUOTED heredoc, then pass `\"$(cat file)\"`. Single-quoting the argument is insufficient, not merely awkward, because prose reliably contains apostrophes and one apostrophe ends the quoting. ",
+
+    "THE MANGLING IS NOT MERELY LOSSY -- IT EXECUTES, IN THE SENDER'S ENVIRONMENT, AND THAT IS THE MOST UNDER-STATED PROPERTY OF THIS CLASS. Discovered as physical residue rather than by reasoning: the third specimen's message contained the phrase `-> Bool` inside a double-quoted argument, and the shell read it as a COMMAND `-` that was not found, followed by a REDIRECTION that created an empty file named `Bool` in the repository working tree. It sat there untracked for fifteen minutes and was found by `git status`, not by anything watching the channel. ",
+
+    "The general statement is worse than the instance: a backquoted span inside double quotes is COMMAND SUBSTITUTION, which is arbitrary execution, and an unquoted redirection operator writes files. So the sender's mistake is not that a sentence arrived shortened; it is that a fragment of English prose was EVALUATED AS A PROGRAM against a live working tree. The lossy reading of this class is the benign one. ",
+
+    "AND IT WAS ONE ROUTINE COMMAND FROM BEING COMMITTED: the author of that instance stages with `git add -A`, so the next commit would have swept an artifact of a mangled chat message into a pull request, with a plausible-looking name and no origin anyone could reconstruct. THE REASON IT DID NOT LAND IS COMMIT ORDERING AND NOTHING ELSE: the last commit happened to precede the corruption by fifteen minutes. Recording that as `it did not land` would be luck reported as safety, which is the reporting failure this ledger exists to refuse -- no mechanism was involved, nothing detected it, and nothing would have blocked it. The file's name resembles a type this corpus uses everywhere, so review would most likely have read it as an intentional stray rather than as residue, and its provenance is unreconstructable from the diff. ",
+
+    "THE CHECK THIS LICENSES, and it caught something on its FIRST application in a second tree: inspect `git status` for unexplained worktree changes after any session that has sent shell-quoted messages, and do not stage with `git add -A` in a tree where that has happened. Applied immediately by a second author, it found no execution residue but did surface a forgotten STAGED modification to a generated artifact, checked out during verification and left behind -- a different cause with the same shape, on a branch that was main. GENERALIZATION: the hazard is not restricted to mangled messages. ANY command that writes into the worktree as a side effect of verification leaves residue a reviewer cannot distinguish from intent. The heredoc form prevents the cause; the status check catches damage already done, whatever wrote it. ",
+
+    "THE TRANSPORT'S SUCCESS SIGNAL WAS NEVER ASKED THE RELEVANT QUESTION, and this is the precise form of `no error crosses the boundary`. Successful delivery answers whether the SUBMITTED payload reached its destination. It does not answer whether that payload preserved the INTENDED message. Those are two different claims, and every send in every specimen above was truthful about the first while nothing anywhere was asked the second. ",
+
+    "A PRESERVATION CHECK MUST BE ANCHORED BEFORE THE DANGEROUS TRANSFORMATION, AND THE OBVIOUS IMPLEMENTATION IS WORTHLESS. The natural control is to digest what was sent and compare it with what arrived. If that digest is computed AFTER the shell has consumed the backquoted spans, it faithfully attests the CORRUPTED payload and reports a perfect match: both sides agree, the comparison is sound, and the defect is invisible, because the damage happened upstream of the first observation. The comparison must STRADDLE the transformation that does the damage -- intended payload captured BEFORE it, against payload received after it -- which is this row's own recognition rule applied to its own remedy. ",
+
+    "It is the same shape as the neighbouring instruments in this ledger, one layer further out: `comm` cannot report that its own operand was empty, a digest over emitted driver bytes proves an escape was APPLIED but not that it was CORRECT, and a preservation digest taken downstream of the corruption proves only that the corruption was transmitted reliably. QUALIFICATION, so a correct transport does not read as corruption: where a channel LEGITIMATELY transforms encoding or line endings, the comparison needs an explicit preservation contract stating what is allowed to change. ",
+
+    "THE RECEIVING END FAILS TOO, AND THAT COMPLETES THE PICTURE. Recorded as evidence about DETECTABILITY rather than about the mechanism: in the third specimen a reader received the corrupted message, read it, and did not identify it as corrupted. The missing expressions and an injected directory listing were both present in what they received, and the surrounding prose still supported the conclusions the conversation reached -- so the damage was survivable enough to be invisible, and they flagged only afterwards that those spans should have been treated as corrupt. So there are THREE parties and no signal at any of them: the sender sees intact text, the transport reports success against a question about a different payload, and the recipient reads fluent prose with holes in it. ",
+
+    "RUNG FOUND AT: silent wrongness wherever the subject read by any instrument is the authored string, because there the defect is invisible by construction; mitigatable where a witness reads the EMITTED artifact, which is where gunbc#10460 put it. ",
+
+    "CEILING: mechanically preventable for media this repository emits into -- a witness that executes the emitted artifact and reads what the reader receives cannot be satisfied by an authored string, and the shell-quoting encodings have single authorities that a hand-spelled call site can be made not to bypass. It stays MITIGATABLE for channels this repository does not own, such as an external tool's argv handling, which is observed rather than proven. ",
+
+    "NEXT-RUNG TRIGGER: the bash medium read forward from grammar rows, so a printed line's variable references and shell-active characters are DECLARED rather than spelled -- at which point no emitter concatenates a shell literal and the escaping arm has nothing to get wrong. That is the same trigger gunbc.generated_artifact_merge_driver generated_artifact_merge_driver_emit_dissolution_trigger already carries, and it is named here rather than restated because one capability retires both. ",
+
+    "DISTINGUISHING FACT AGAINST ITS NEAREST NEIGHBOURS. It is NOT `empty_capture_read_as_clean_result`: there a well-formed refusal travels on a stream the reader did not keep, and the reader's error is consuming the emptiness; here the text is rewritten before anyone reads it and the reader's conduct is irrelevant. The empty operand is one CONSEQUENCE of this class, not the class, and the second specimen proves it -- a substituted positional argument is not an empty capture at all. ",
+
+    "It is NOT `restoration_promise_names_a_route_that_does_not_exist`: there the named route is absent; here it exists and the rendering breaks it.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_recipe", decl_name: "heal_recipe_row_extractor_survives_the_drivers_own_quoting", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_recipe", decl_name: "heal_recipe_names_only_the_variable_the_driver_defines", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "driver_printed_step_two_carries_the_row_extractor_by_real_execution", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "row_extractor_reconciles_with_both_rosters_by_real_execution", field: WholeDeclaration },
+  ],
+}

@@ -19,6 +19,21 @@ data sed_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
+// ScriptsSuppressAutoPrint -- sed -n with its scripts passed as ARGUMENTS: auto-print suppressed, so the only output is what
+// a script's own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
+// '--silent') 'suppress automatic printing of pattern space', and -e ('--expression') 'add the
+// script to the commands to be executed', which is what makes a multi-clause program ONE program
+// rather than a pipeline of them. The scripts are argv entries rather than text spliced into a
+// shell word, which is the whole reason this operation exists as a modeled row: a caller
+// executing a program it received from somewhere else must not have that program re-read by a
+// shell on the way in.
+//
+// `arguments` takes the output of sed_script_arguments below and nothing else. The -e spelling
+// lives there, next to the -i spelling, for the same reason: one place per flag.
+//
+// stdout_lines rather than stdout, because the consumer question is HOW MANY rows the program
+// extracted and WHICH -- and a zero-length stdout and a refusal are indistinguishable as one
+// string, which is the failure this operation's first consumer exists to catch.
 service sed.Sed {
   operation InPlaceSubstitute {
     input { expression: NonEmptyStr, path: NonEmptyStr }
@@ -30,21 +45,6 @@ service sed.Sed {
     }
   }
 
-  // sed -n with its scripts passed as ARGUMENTS: auto-print suppressed, so the only output is what
-  // a script's own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
-  // '--silent') 'suppress automatic printing of pattern space', and -e ('--expression') 'add the
-  // script to the commands to be executed', which is what makes a multi-clause program ONE program
-  // rather than a pipeline of them. The scripts are argv entries rather than text spliced into a
-  // shell word, which is the whole reason this operation exists as a modeled row: a caller
-  // executing a program it received from somewhere else must not have that program re-read by a
-  // shell on the way in.
-  //
-  // `arguments` takes the output of sed_script_arguments below and nothing else. The -e spelling
-  // lives there, next to the -i spelling, for the same reason: one place per flag.
-  //
-  // stdout_lines rather than stdout, because the consumer question is HOW MANY rows the program
-  // extracted and WHICH -- and a zero-length stdout and a refusal are indistinguishable as one
-  // string, which is the failure this operation's first consumer exists to catch.
   operation ScriptsSuppressAutoPrint {
     input { arguments: List<String>, path: NonEmptyStr }
     output {
