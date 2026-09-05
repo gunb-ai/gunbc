@@ -25,6 +25,7 @@ import v1.compiler.type_head_exposure {
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
+  callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
@@ -183,6 +184,7 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields
 }
 import v1.compiler.infer_items {
+  duplicate_item_identity_marker,
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
@@ -191,8 +193,10 @@ import v1.compiler.infer_items {
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
   is_typed_service_call_receiver, extract_typed_service_name,
-  collect_typed_service_calls, collect_called_func_names,
+  collect_typed_service_calls,
   expand_transitive_services,
+  EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
+  ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete,
   check_service_field_access_node, check_service_method_call_node,
   service_op_entry
 }
@@ -12623,6 +12627,21 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   }
 }
 
+// The registry's key IS the declaration's identity, projected. A collision therefore means two
+// declarations of one leaf inside one module — the single case owner_module_path plus decl_name
+// cannot tell apart — so the row becomes the sentinel and every reader refuses, rather than the
+// later contribution silently winning.
+fn insert_item_by_identity(registry: Map<String, ItemInfo>, info: ItemInfo) -> Map<String, ItemInfo> {
+  let key = callable_identity(id: DeclaredCallableIdentity {
+    owner_module_path: info.module_name,
+    decl_name: info.name
+  })
+  match map_get(registry, key) {
+    Present { value: _ } => map_insert(registry, key, duplicate_item_identity_marker(name: key))
+    Absent => map_insert(registry, key, info)
+  }
+}
+
 fn fold_module_contributions(remaining: List<ItemContribution>,
     resolved_items: List<Node>,
     func_sigs: Map<String, DeclaredFuncSig>,
@@ -12661,7 +12680,7 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         func_sigs: next_func_sigs,
         svc_registry: next_svc_registry,
         svc_locals: next_svc_locals,
-        item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
+        item_registry: insert_item_by_identity(registry: item_registry, info: contribution.item_info),
         diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics),
         source_indices: source_indices
       )
@@ -13497,8 +13516,36 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       Absent => []
     }
   )
-  let expanded_registry = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
-  TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+  let analysis = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
+  let analysed_registry = match analysis {
+    EffectsComplete { registry: registry } => registry
+    EffectsIncomplete { partial: partial, causes: _ } => partial
+  }
+  let incompleteness_causes = match analysis {
+    EffectsComplete { registry: _ } => []
+    EffectsIncomplete { partial: _, causes: causes } => causes
+  }
+  let incompleteness_diagnostics = incompleteness_causes |> map(reason =>
+    match reason {
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+        inference_error(
+          message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
+          span: no_span(),
+          module_name: item_identity.owner_module_path
+        )
+      ExpansionBudgetExhausted { remaining_delta: _ } =>
+        inference_error(
+          message: "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point",
+          span: no_span(),
+          module_name: ""
+        )
+    }
+  )
+  TypedGraph {
+    modules: modules,
+    item_registry: analysed_registry,
+    diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+  }
 }
 
 fn realize_module(

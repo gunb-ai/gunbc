@@ -1,0 +1,31 @@
+module test.fixture.service_segments.svc
+
+// Segment-count discriminator: a THREE-segment and a TWO-segment service, declared identically in
+// one module, called identically from one caller. Any difference in how their calls are collected
+// is a property of segment count alone.
+
+import std.types { String, Unit }
+
+service seg.deep.Probe {
+  operation Ping {
+    input { tag: String }
+    output { line: String from "stdout" }
+    readonly
+    transport shell { argv: ["echo", "{tag}"] }
+    exit {
+      0 => Unit
+    }
+  }
+}
+
+service seg.Flat {
+  operation Ping {
+    input { tag: String }
+    output { line: String from "stdout" }
+    readonly
+    transport shell { argv: ["echo", "{tag}"] }
+    exit {
+      0 => Unit
+    }
+  }
+}

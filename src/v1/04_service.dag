@@ -5,6 +5,9 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { SourceSpan }
 
 import v1.std.core {
+  call_semantics_target, callable_identity, DeclaredCallableIdentity,
+  CallSemantics, FunctionValueCallSemantics,
+  CallTargetIdentity, SourceDeclarationCall, RuntimePrimitiveCall, CallableTargetUndetermined,
   Node,
   Connective, Conj, NoConnective,
   ExprData, NoExprData,
@@ -103,78 +106,153 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum, source_indice
   result
 }
 
-fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum, source_indices: Map<String, NewlineIndex>) -> UniqueAccum {
+// A callee edge is the resolved answer to "which declaration does this call reach", carried as a
+// value so that not-knowing is representable. Collapsing the third arm into an absence is what
+// makes an incomplete effect summary indistinguishable from a complete empty one.
+type CalleeEdge
+  = ResolvedCallee { identity: DeclaredCallableIdentity }
+  | PrimitiveCallee
+  | FunctionValueCallee
+  | UnresolvedCallee { spelling: String }
+
+type CalleeAccum {
+  seen: Map<String, Bool>
+  result: List<CalleeEdge>
+}
+
+// THE CALLEE EDGE, KEYED ON THE IDENTITY INFERENCE ALREADY ESTABLISHED.
+//
+// This arm used to destructure `call_semantics` and discard it, then key the edge on the authored
+// spelling from `expr_call_func_at`. That is the owner-discarding join: two modules declaring the
+// same authored name produce ONE edge key, so their effect summaries merge and a caller can be
+// told it depends on a service its actual callee never touches -- or, worse, told it depends on
+// nothing. The identity was on the node the whole time; `SourceDeclarationCall` names the owner
+// module and the declaration, which is exactly the canonical key the registry is built under.
+//
+// The three arms are distinct and none of them may collapse into another:
+//   - a source declaration contributes its identity, and its summary joins by that identity;
+//   - a runtime primitive has no `ItemInfo` and carries no declared effects, so it contributes
+//     no edge -- an absence that is CORRECT rather than unknown;
+//   - an unestablished target contributes an UNRESOLVED edge, which must not silently vanish.
+//     Dropping it would under-propagate effects exactly the way the authored-spelling join did,
+//     and falling back to the spelling would reinstate the defect this arm exists to remove. It
+//     is carried so the caller can refuse rather than publish a summary it cannot vouch for.
+fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge {
+  match cs {
+    Present { value: FunctionValueCallSemantics } => FunctionValueCallee
+    Absent => UnresolvedCallee { spelling: spelling }
+    _ =>
+      match call_semantics_target(cs: cs) {
+        SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+          ResolvedCallee { identity: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl } }
+        RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => PrimitiveCallee
+        CallableTargetUndetermined => UnresolvedCallee { spelling: spelling }
+      }
+  }
+}
+
+// The dedup key is a DISCRIMINATED spelling, not the bare string: a resolved identity and an
+// unresolved authored spelling can coincide textually, and folding them together would let an
+// unresolved edge be silently absorbed by a resolved one and disappear from the refusal set. A
+// primitive edge has no key because it is dropped at collection -- the one absence that is an
+// answer rather than a gap.
+fn callee_edge_dedup_key(edge: CalleeEdge) -> String {
+  match edge {
+    ResolvedCallee { identity: identity } => concat("d:", callable_identity(id: identity))
+    UnresolvedCallee { spelling: spelling } => concat("u:", spelling)
+    FunctionValueCallee => ""
+    PrimitiveCallee => ""
+  }
+}
+
+fn collect_callee_edges_into(texpr: Node, acc: CalleeAccum, source_indices: Map<String, NewlineIndex>) -> CalleeAccum {
   let this_acc = match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
-      if emit_map_has(m: acc.seen, key: f) { acc }
-      else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices))
+      let key = callee_edge_dedup_key(edge: edge)
+      if key == "" { acc }
+      else if emit_map_has(m: acc.seen, key: key) { acc }
+      else { CalleeAccum { seen: map_insert(acc.seen, key, true), result: list_push(acc.result, edge) } }
     _ => acc
   }
   let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
-    collect_called_func_names_into(texpr: child, acc: a, source_indices: source_indices)
+    collect_callee_edges_into(texpr: child, acc: a, source_indices: source_indices)
   )
   result
 }
 
-fn collect_called_func_names(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] }, source_indices: source_indices)
+fn collect_callee_edges(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<CalleeEdge> {
+  let result = collect_callee_edges_into(texpr: texpr, acc: CalleeAccum { seen: empty_map(), result: [] }, source_indices: source_indices)
   result.result
 }
 
-// THE CALLEE NAMES ARE LOOP-INVARIANT, and used to be recomputed on every pass. The fixpoint
+// THE CALLEE EDGES ARE LOOP-INVARIANT, and used to be recomputed on every pass. The fixpoint
 // updates only `registry.service_names`; `modules` is threaded through the recursion unchanged, so
-// an item's body and its module's source_indices are identical on pass 5 and pass 1 — yet
-// collect_called_func_names walked the WHOLE body tree of every item on each pass, up to 5 full
-// corpus AST traversals per resolve to recompute the same lists.
+// an item's body and its module's source_indices are identical on pass 5 and pass 1 — yet the
+// collector walked the WHOLE body tree of every item on each pass, up to 5 full corpus AST
+// traversals per resolve to recompute the same lists.
 //
-// They are precomputed ONCE, in the same nesting and order as the fold that consumes them, as a
-// positional list rather than a map keyed by item name: the registry treats item names as global
-// keys, so two modules declaring the same authored name share a key, and a name-keyed precompute
-// would silently hand one item the other's callees. Position preserves the original iteration
-// exactly, including that collision.
+// They are precomputed ONCE, in the same nesting and order as the fold that consumes them. The
+// positional layout used to be load-bearing for a second reason: the registry keyed items by
+// authored name, so two modules declaring the same name shared a key, and a name-keyed precompute
+// would have handed one item the other's callees -- position preserved that collision rather than
+// widening it. THAT REASON IS GONE. Items are keyed by canonical identity now, so position is
+// retained only because it is the cheapest faithful order, not because it is compensating for a
+// key that cannot tell two declarations apart.
 type ItemCallees {
-  item_name: String
+  item_identity: DeclaredCallableIdentity
   has_body: Bool
-  called: List<String>
+  called: List<CalleeEdge>
 }
 
 type ModuleCallees {
   items: List<ItemCallees>
 }
 
-fn item_callees_for(m: TypedModule, item: Node) -> ItemCallees {
-  let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
+fn item_callees_for(m: TypedModule, module_name: String, item: Node) -> ItemCallees {
+  let item_identity = DeclaredCallableIdentity {
+    owner_module_path: module_name,
+    decl_name: authored_name_at(source_indices: m.type_env.source_indices, node: item)
+  }
   let has_no_body = item.body == none
   if has_no_body {
-    ItemCallees { item_name: item_name, has_body: false, called: [] }
+    ItemCallees { item_identity: item_identity, has_body: false, called: [] }
   } else {
     ItemCallees {
-      item_name: item_name,
+      item_identity: item_identity,
       has_body: true,
-      called: collect_called_func_names(texpr: item.body.value, source_indices: m.type_env.source_indices)
+      called: collect_callee_edges(texpr: item.body.value, source_indices: m.type_env.source_indices)
     }
   }
 }
 
 fn build_module_callees(modules: List<TypedModule>) -> List<ModuleCallees> {
-  modules |> map(m => ModuleCallees { items: m.items |> map(item => item_callees_for(m: m, item: item)) })
+  modules |> map(m =>
+    let module_name = authored_name_at(source_indices: m.type_env.source_indices, node: m.module)
+    ModuleCallees { items: m.items |> map(item => item_callees_for(m: m, module_name: module_name, item: item)) }
+  )
 }
 
 fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
   module_callees |> fold(init: registry, f: (reg, m) =>
     m.items |> fold(init: reg, f: (reg2, entry) =>
-    let item_name = entry.item_name
-    match map_get(reg2, item_name) {
+    let item_identity = entry.item_identity
+    match map_get(reg2, callable_identity(id: item_identity)) {
       Present { value: info } =>
         let has_no_body = !entry.has_body
         if has_no_body { reg2 }
         else {
           let called = entry.called
-          let extra = called |> flat_map(callee_name =>
-            match map_get(reg2, callee_name) {
-              Present { value: callee_info } => callee_info.service_names
-              Absent => []
+          let extra = called |> flat_map(edge =>
+            match edge {
+              ResolvedCallee { identity: callee_identity } =>
+                match map_get(reg2, callable_identity(id: callee_identity)) {
+                  Present { value: callee_info } => callee_info.service_names
+                  Absent => []
+                }
+              PrimitiveCallee => []
+              FunctionValueCallee => []
+              UnresolvedCallee { spelling: _ } => []
             }
           )
           let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
@@ -184,7 +262,7 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
           let same_count = merged |> count == info.service_names |> count
           if same_count { reg2 }
           else {
-            map_insert(reg2, item_name, ItemInfo {
+            map_insert(reg2, callable_identity(id: item_identity), ItemInfo {
               name: info.name,
               module_name: info.module_name,
               kind: info.kind,
@@ -205,19 +283,89 @@ fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
   map_values(registry) |> fold(init: 0, f: (acc, info) => acc + info.service_names |> count)
 }
 
-fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
-  if remaining_passes <= 0 { registry }
-  else {
-    let before = total_service_count(registry: registry)
-    let next = expand_transitive_services_once(module_callees: module_callees, registry: registry)
-    let after = total_service_count(registry: next)
-    if before == after { registry }
-    else { expand_transitive_services_loop(module_callees: module_callees, registry: next, remaining_passes: remaining_passes - 1) }
+// WHY EXHAUSTION IS A DIFFERENT ANSWER FROM CONVERGENCE, AND MUST NOT SHARE ITS RETURN.
+//
+// The loop has two ways to stop and they mean opposite things. Reaching a fixed point means the
+// summary is COMPLETE: another pass would change nothing. Running out of passes means the summary
+// is UNFINISHED and nobody knows by how much. This function used to return the same ordinary
+// registry either way, so a truncated answer was indistinguishable from a settled one at every
+// consumer -- signatures and call sites alike -- and the deficit could never be counted, let
+// alone ranked for repair. A budget is a legitimate operational limit; spending it and then
+// publishing the partial result as though it were the answer is the absorbing fallback.
+//
+// The convergence test compares total service counts, which is sound ONLY because merging is
+// monotone: `merged` grows by deduplicating pushes and an item is rewritten only when its count
+// changed, so equal totals across a pass imply no item changed. If merging ever gains a removal
+// arm, this test stops being a fixed-point test and becomes a coincidence.
+// COMPLETENESS IS NOT A SIBLING FIELD, BECAUSE A SIBLING FIELD IS OPTIONAL TO ITS READER.
+//
+// The first shape of this carrier was a record with the registry beside a list of incompleteness
+// reasons, and every consumer could take the registry and never look at the list -- which is the
+// same defect one layer up: an unfinished summary presenting itself as a finished one. The
+// repository already learned this at `TypedModule.progress`, where an empty item list conflated
+// "checked, nothing there" with "never checked", and whose dissolution note names the terminal
+// construction: put the population INSIDE the completed arm so obtaining it requires handling
+// whether the analysis happened at all.
+//
+// So the finalized map is reachable only through `EffectsComplete`. The incomplete arm still
+// carries what was computed, because a partial result is useful for diagnosis and measurement,
+// but it is named `partial` and cannot be mistaken for the answer by a reader that did not look.
+type ServiceEffectAnalysis
+  = EffectsComplete { registry: Map<String, ItemInfo> }
+  | EffectsIncomplete { partial: Map<String, ItemInfo>, causes: List<EffectIncompleteness> }
+
+// Two ways an effect summary can fail to be trustworthy, kept apart because they have different
+// causes and different repairs: a callee whose identity was never established, and a closure the
+// pass budget did not finish walking.
+type EffectIncompleteness
+  = UnresolvedCalleeEdge { item_identity: DeclaredCallableIdentity, spelling: String }
+  | ExpansionBudgetExhausted { remaining_delta: Int }
+
+// The unresolved edges are a property of the PRECOMPUTED callee lists, not of any iteration, so
+// they are read once from the same structure the fold consumes rather than re-derived per pass.
+fn unresolved_callee_edges(module_callees: List<ModuleCallees>) -> List<EffectIncompleteness> {
+  module_callees |> flat_map(m =>
+    m.items |> flat_map(entry =>
+      entry.called |> flat_map(edge =>
+        match edge {
+          UnresolvedCallee { spelling: spelling } =>
+            [UnresolvedCalleeEdge { item_identity: entry.item_identity, spelling: spelling }]
+          ResolvedCallee { identity: _ } => []
+          PrimitiveCallee => []
+          FunctionValueCallee => []
+        }
+      )
+    )
+  )
+}
+
+fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> ServiceEffectAnalysis {
+  let before = total_service_count(registry: registry)
+  let next = expand_transitive_services_once(module_callees: module_callees, registry: registry)
+  let after = total_service_count(registry: next)
+  if before == after {
+    EffectsComplete { registry: registry }
+  } else if remaining_passes <= 1 {
+    EffectsIncomplete {
+      partial: next,
+      causes: [ExpansionBudgetExhausted { remaining_delta: after - before }]
+    }
+  } else {
+    expand_transitive_services_loop(module_callees: module_callees, registry: next, remaining_passes: remaining_passes - 1)
   }
 }
 
-fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
-  expand_transitive_services_loop(module_callees: build_module_callees(modules: modules), registry: registry, remaining_passes: remaining_passes)
+fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> ServiceEffectAnalysis {
+  let module_callees = build_module_callees(modules: modules)
+  let unresolved = unresolved_callee_edges(module_callees: module_callees)
+  let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: remaining_passes)
+  match closed {
+    EffectsComplete { registry: closed_registry } =>
+      if unresolved |> count == 0 { EffectsComplete { registry: closed_registry } }
+      else { EffectsIncomplete { partial: closed_registry, causes: unresolved } }
+    EffectsIncomplete { partial: partial, causes: causes } =>
+      EffectsIncomplete { partial: partial, causes: concat(unresolved, causes) }
+  }
 }
 
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {

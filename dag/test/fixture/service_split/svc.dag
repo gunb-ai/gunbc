@@ -1,0 +1,19 @@
+module test.fixture.service_split.svc
+
+// Non-colliding, cross-module control: a single ordinary two-segment service declared in its OWN
+// module, which is how every service in the live corpus is declared. Discriminates a general
+// service-recognition regression from an artifact of declaring service and caller together.
+
+import std.types { String, Unit }
+
+service split.Probe {
+  operation Ping {
+    input { tag: String }
+    output { line: String from "stdout" }
+    readonly
+    transport shell { argv: ["echo", "{tag}"] }
+    exit {
+      0 => Unit
+    }
+  }
+}

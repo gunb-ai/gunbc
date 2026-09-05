@@ -183,6 +183,42 @@ type CallSemantics
   | LookupCallSemantics { target: CallTargetIdentity }
   | FunctionValueCallSemantics
 
+// THE RESOLVED CALLEE IDENTITY, PROJECTED WHERE THE TYPE IS DECLARED RATHER THAN AT ONE CONSUMER.
+//
+// This answers "which declaration does this call reach", and it is asked by two consumers that sit
+// on opposite sides of the pipeline: Rust emission, which needs the identity to name a symbol, and
+// transitive effect analysis, which needs it to key one summary per callable. It lived next to the
+// first consumer, so the second either had to depend on the Rust emitter -- inference importing an
+// emitter is a layer inversion -- or re-derive the answer from the authored spelling, which is the
+// owner-discarding join that made two modules' same-named declarations share one effect summary.
+//
+// A function value has no callable declaration to name, and a call carrying no recorded semantics
+// predates the carrier; both are Undetermined, which refuses at the seam that must produce an
+// identifier rather than silently reverting to name matching.
+// THE REGISTRY-KEY PROJECTION OF AN IDENTITY THAT ALREADY HAS A CARRIER.
+//
+// `DeclaredCallableIdentity` is the identity; this is only its spelling as a map key, and it takes
+// the RECORD rather than two loose strings for two reasons. It cannot be called with an authored
+// name that happens to contain a dot, which is the join this repair exists to remove. And it keeps
+// one spelling of the key: effect analysis and emission would otherwise agree by coincidence until
+// one of them changed its separator.
+//
+// Consumers carry the identity and project only at the map boundary. Projecting earlier throws
+// away the distinction the record exists to hold.
+fn callable_identity(id: DeclaredCallableIdentity) -> String {
+  concat(id.owner_module_path, ".", id.decl_name)
+}
+
+fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
+  match cs {
+    Present { value: PlainCallSemantics { target: target } } => target
+    Present { value: ResolvedDirectCallSemantics { target: target, application_plan: _ } } => target
+    Present { value: LookupCallSemantics { target: target } } => target
+    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
+    Absent => CallableTargetUndetermined
+  }
+}
+
 // One declaration-produced fact, carried intact through application. These fields are not
 // independently recoverable at the call site: parameter identity orders named arguments,
 // conformance drives judgments, and substitution_basis drives generic and emitted type args.

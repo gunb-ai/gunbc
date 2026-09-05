@@ -1,0 +1,6 @@
+module test.fixture.service_split.caller
+
+import test.fixture.service_split.svc
+import std.types { String }
+
+fn direct(tag: String) -> String { split.Probe.Ping(tag: tag).line }

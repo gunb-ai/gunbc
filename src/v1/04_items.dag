@@ -59,6 +59,31 @@ type ItemInfo {
   has_non_tail_self_call: Bool
 }
 
+// The item registry is keyed on a declaration's identity — owner module path and declared name —
+// so a leaf spelled the same in two modules occupies two distinct rows. One case remains that the
+// identity cannot separate: two declarations of the same leaf inside ONE module. fold_module_contributions
+// inserts this sentinel row on that collision instead of letting the later contribution win, so every
+// consumer that reads the row refuses rather than rendering whichever declaration was folded last.
+// The sentinel lives here, beside ItemInfo, because the collision is a fact about registry
+// CONSTRUCTION; it was previously minted in the Rust emitter, which is where the overlay that has
+// since been deleted used to detect it.
+fn duplicate_item_identity_marker(name: String) -> ItemInfo {
+  ItemInfo {
+    name: name,
+    module_name: "__DUPLICATE_ITEM_IDENTITY__",
+    kind: OtherItem,
+    service_names: [],
+    resource_names: [],
+    params: [],
+    is_self_recursive: false,
+    has_non_tail_self_call: false
+  }
+}
+
+fn is_duplicate_item_identity_marker(info: ItemInfo) -> Bool {
+  info.module_name == "__DUPLICATE_ITEM_IDENTITY__"
+}
+
 type ModuleInterface {
   summary: InterfaceSummary
   env: TypeEnv
