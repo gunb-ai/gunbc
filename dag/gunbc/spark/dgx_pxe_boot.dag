@@ -324,15 +324,15 @@ fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> Sp
   }
 }
 
-// Extract the enrolled bootloader filename from the firmware config, if one is
-// enrolled. When SecureBootDisabledForPxe or the firmware is unknown, this is
-// none and the standard per-image bootloader path applies.
-fn enrolled_pxe_bootloader(config: SparkUefiPxeConfiguration) -> NonEmptyStr? {
-  match config.secure_boot {
-    SecureBootDisabledForPxe => none
-    BootloaderEnrolledForPxe { bootloader: b } => Present { value: b }
-  }
-}
+// THE ENROLLED BOOTLOADER IS SELECTED HERE: when the firmware has a bootloader
+// enrolled in Secure Boot, use that filename as the TFTP bootloader; otherwise
+// fall back to the standard per-image path. This ensures the DHCP bootfile offer
+// and TFTP path agree with what is enrolled.
+//
+// This block is defined as a function to avoid duplication at the two call
+// sites (boot plan construction and test verification). See
+// gunbc.spark.pxe_rescue_observation Receipt 3 for the spark-2196 observation
+// that motivated this (bootaa64.efi vs grubnetaa64.efi.signed).
 
 type SparkUnattendedImageBoot {
   image_kind: SparkPxeBootImageKind
@@ -498,9 +498,10 @@ fn admit_spark_unattended_pxe_boot(
                       tftp_root: tftp_root,
                       http_image_root: http_image_root,
                       isolation: network_isolation,
-                      tftp_bootloader: match enrolled_pxe_bootloader(config: fw) {
-                        Present { value: b } => b
-                        Absent => spark_pxe_tftp_relative_path(p: TftpBootloader, image: image_kind)
+                      tftp_bootloader: match fw.secure_boot {
+                        SecureBootDisabledForPxe =>
+                          spark_pxe_tftp_relative_path(p: TftpBootloader, image: image_kind)
+                        BootloaderEnrolledForPxe { bootloader: b } => b
                       },
                     )
                   }
