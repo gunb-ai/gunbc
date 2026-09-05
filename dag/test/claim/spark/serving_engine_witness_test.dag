@@ -127,11 +127,29 @@ fn enforcer_refused_with(v: EnforcerVerdict, wanted: NonEmptyStr) -> Bool {
     EnforcerRefused { cause: c } =>
       match c {
         NoEnforcerDeclared => wanted == "none" as NonEmptyStr
-        MoreThanOneEnforcer { count: _ } => wanted == "many" as NonEmptyStr
+        MoreThanOneEnforcer { count: _ } => false
         DeviceReservationCountingEnforcerOnUnifiedPool { kind: k } =>
           wanted == (concat("counts:", enforcer_kind_tag(k: k) as String) as NonEmptyStr)
         UnestablishedReservationAccountingOnUnifiedPool { kind: k } =>
           wanted == (concat("unestablished:", enforcer_kind_tag(k: k) as String) as NonEmptyStr)
+      }
+  }
+}
+
+// THE COUNT IS PART OF THE CLAIM TOO, SO IT HAS ITS OWN ORACLE. `enforcer_refused_with` matched
+// `MoreThanOneEnforcer { count: _ }` and answered on the cause alone, which would have accepted a
+// refusal reporting ANY number of enforcers -- including one, which is not "more than one" and would
+// mean the population arithmetic had broken. The count is the whole content of that cause, so a row
+// asserting it must read it. Rows that mean "two enforcers" now say two.
+fn enforcer_refused_as_many(v: EnforcerVerdict, wanted_count: Nat) -> Bool {
+  match v {
+    EnforcerAdmitted { enforcer: _ } => false
+    EnforcerRefused { cause: c } =>
+      match c {
+        NoEnforcerDeclared => false
+        DeviceReservationCountingEnforcerOnUnifiedPool { kind: _ } => false
+        UnestablishedReservationAccountingOnUnifiedPool { kind: _ } => false
+        MoreThanOneEnforcer { count: n } => n == wanted_count
       }
   }
 }
@@ -162,9 +180,9 @@ test fn w_no_declared_enforcer_refuses() -> Bool {
 // RED. Two enforcers refuse, and the count is carried. This is the measured incident: two enforcers
 // with different definitions of "used", the lower one unable to fire first.
 test fn w_two_enforcers_refuse_rather_than_layering() -> Bool {
-  enforcer_refused_with(
+  enforcer_refused_as_many(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard, fx_ray_monitor], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorMp),
-    wanted: "many" as NonEmptyStr)
+    wanted_count: 2)
 }
 
 // RED, AND THIS IS THE ROW THAT USED TO NAME THE WRONG FACT. A Ray launch on a unified pool with
@@ -190,9 +208,9 @@ test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool {
 // RED. A declared enforcer BESIDE the implied one is the two-enforcer incident, reached by the
 // implication rather than by two declarations. This is the case the old shape could not see at all.
 test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Bool {
-  enforcer_refused_with(
+  enforcer_refused_as_many(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay),
-    wanted: "many" as NonEmptyStr)
+    wanted_count: 2)
 }
 
 // RED, AND THE ROW THE OLD SHAPE COULD NOT EXPRESS AT ALL. A zero refresh interval is how Ray's

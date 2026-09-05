@@ -150,9 +150,9 @@ fn spark_engine_slot_admits(
 // `counts_device_reservation: Bool` field stood here beside `kind` and was read by nothing. It was
 // two defects at once: a second authority for a fact `kind` already decides, and -- worse -- a
 // required field with no consumer, which is a fact the model asserts and never verifies. It is now
-// a total function of the kind, so a caller cannot declare that Ray's monitor ignores the device
-// reservation. A `swap_aware` field is deleted outright rather than derived: it had no consumer AND
-// no measurement behind it for any of the three kinds, and deriving it would have been invention.
+// a total function of the kind, so a caller cannot declare that one of Ray's monitors ignores the
+// device reservation. A `swap_aware` field is deleted outright rather than derived: it had no
+// consumer AND no measurement behind it for any kind, and deriving it would have been invention.
 // RAY'S TWO MONITORS ARE TWO KINDS, BECAUSE THEY MEASURE DIFFERENT THINGS. An earlier revision had
 // a single `RayThresholdMonitor` standing for "Ray is enforcing", which forced every live Ray
 // configuration to be reported as the threshold monitor -- including the one where the factory
@@ -196,7 +196,9 @@ type EnforcerRefusal
   | UnestablishedReservationAccountingOnUnifiedPool { kind: MemoryEnforcerKind }
 
 // AN IMPLIED ENFORCER IS STILL AN ENFORCER, SO IT JOINS THE LIST INSTEAD OF BECOMING A SEPARATE ARM.
-// A Ray-backed executor brings the threshold monitor with it whether or not anyone declared it. That
+// A Ray-backed executor brings a memory monitor with it whether or not anyone declared it -- WHICH
+// monitor depends on the configuration and is read from the citation, not assumed to be the
+// threshold one. That
 // used to be decided in the refusal function from the `backend` argument, which meant the rule was
 // keyed on the applicant's launch flag rather than on the enforcers actually live -- so a
 // `RayThresholdMonitor` sitting in the DECLARED list with the flag off was admitted, and a Ray
@@ -272,7 +274,8 @@ fn ray_enforcing_member(built: List<RayBuiltMonitor>) -> List<MemoryEnforcerKind
 // monitor is added HERE, so a caller that also observes the running Ray monitor and lists it would
 // supply one physical enforcer twice and get `MoreThanOneEnforcer { count: 2 }` for a host that has
 // one. The rule is therefore that this parameter carries what was DECLARED and never what was
-// observed to be running: an observation of Ray's monitor is evidence that the backend is Ray, which
+// observed to be running: an observation of one of Ray's monitors is evidence that the backend is
+// Ray, which
 // this function already implies from, not a second member. Recorded here rather than left to the
 // first producer to rediscover, because the shape admits the mistake silently.
 //
