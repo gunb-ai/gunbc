@@ -29,6 +29,47 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
 // may present different behaviour; this module claims nothing about them.
 //
 // SEVEN INDEPENDENT RECEIPTS ARE BELOW, each carrying its own observation context.
+//
+// SEPARATE, NOT PXE: OOBE radio constraint.
+//
+// The OOBE wizard is served by the unit's OWN ACCESS POINT during first boot.
+// Driving it requires a radio associated with that AP. This was discovered during
+// the 2026-09-02 OOBE observation session (SPARK-OOBE-OBSERVE-0) and confirmed
+// during the 2026-09-05 standup: NO HOST on the fleet has both a browser capable
+// of rendering the SPA and a radio reachable from the Spark unit's AP.
+//
+// This constraint belongs in oobe_execution_placement, not here. That module
+// already models the composition of renderer, relay, and route. The AP-as-origin
+// fact is modelled in oobe_screen_observation as dgx_spark_0c75_oobe_account_run's
+// access point SSID.
+//
+// No duplicate is authored here.
+//
+// WHAT IS NOT ESTABLISHED.
+//
+// These facts are deliberately NOT claimed by this module and must not be treated
+// as if they were:
+//
+// (a) Unattended install has NEVER been executed. The functions
+//     spark_fastos_unattended_kernel_cmdline and spark_dgx_os_unattended_kernel_cmdline
+//     in extdeps.systems.nvidia_dgx_spark_pxe are modelled intentions cited to
+//     NVIDIA's documentation, not receipts produced by this repository.
+//
+// (b) Factory firmware defaults are unknown. All observations above were made on
+//     a unit in POST-INSTALL state. Which settings differ from factory defaults has
+//     not been measured.
+//
+// (c) The OOBE radio requirement is inferred from the 2026-09-02 capture method
+//     (a host associated with the unit's own AP), not re-established by independent
+//     measurement during this session.
+//
+// (d) The reset mechanism (Receipt 2) trigger is unisolated. The observation is
+//     three trials producing the same symptom; the root cause (GPU watchdog, thermal,
+//     power-state handshake, kernel-NIC-mismatch timeout, or other) has not been
+//     identified. The generic-distro reset is not modelled as a refusable image-kind
+//     arm (SparkPxeBootImageKind is a closed sum over NVIDIA constructors); the
+//     existing NIC coverage check (UnattendedPxeBootKernelDoesNotClaimNic) is the
+//     modelled refusal path.
 
 // --------------------------------------------------------------------------
 // RECEIPT 1: NIC identity 10ec:8127 / r8169
@@ -47,8 +88,7 @@ import extdeps.os.ubuntu_kernel_nic_coverage {
 // must be modelled before any PXE plan can distinguish "kernel version supports NIC" from
 // "kernel version does not".
 
-data pxe_rescue_observation_timestamp: Rfc3339Timestamp =
-  "2026-09-05T14:30:00Z" as Rfc3339Timestamp
+data pxe_rescue_observation_timestamp: Rfc3339Timestamp = "2026-09-05T14:30:00Z" as Rfc3339Timestamp
 
 data spark_2196_pci_vendor: PciVendorId = "10ec" as PciVendorId
 
@@ -108,11 +148,9 @@ data spark_2196_generic_distro_reset_duration: Second = second(count: 90)
 // is "grubnetaa64.efi.signed"; the observed working value on spark-2196 was "bootaa64.efi".
 // A DHCP server offering only the documented filename will fail to netboot this unit.
 
-data spark_2196_pxe_bootloader_filename_observed: NonEmptyStr =
-  "bootaa64.efi" as NonEmptyStr
+data spark_2196_pxe_bootloader_filename_observed: NonEmptyStr = "bootaa64.efi" as NonEmptyStr
 
-data spark_2196_pxe_bootloader_filename_documented: NonEmptyStr =
-  spark_pxe_bootloader_filename
+data spark_2196_pxe_bootloader_filename_documented: NonEmptyStr = spark_pxe_bootloader_filename
 
 // The existing BootloaderEnrolledForPxe variant has a bootloader: NonEmptyStr field.
 // The gap is that the model's only concrete bootloader value (spark_pxe_bootloader_filename)
@@ -168,11 +206,9 @@ data fleet_boot_order_ubuntu_first_count: Nat = 1
 // INSTALL, not for RESCUE. A rescue scenario that needs to fall through to the
 // installed OS must use the direct-boot construction above, not a GRUB chainload.
 
-data spark_2196_grub_timeout_zero_defeats_chainload: NonEmptyStr =
-  "timeout=0 causes local GRUB to boot default entry immediately; chainload never pauses for input" as NonEmptyStr
+data spark_2196_grub_timeout_zero_defeats_chainload: NonEmptyStr = "timeout=0 causes local GRUB to boot default entry immediately; chainload never pauses for input" as NonEmptyStr
 
-data spark_2196_local_boot_rescue_construction: NonEmptyStr =
-  "search --file /boot/grub/grub.cfg --set=root ; probe --set=uu --fs-uuid $root ; linux ... root=UUID=$uu" as NonEmptyStr
+data spark_2196_local_boot_rescue_construction: NonEmptyStr = "search --file /boot/grub/grub.cfg --set=root ; probe --set=uu --fs-uuid $root ; linux ... root=UUID=$uu" as NonEmptyStr
 
 // The direct-boot construction requires knowing the root filesystem UUID at
 // PXE-GRUB-config-authoring time, so it is site-specific rather than a fleet-
@@ -192,11 +228,9 @@ data spark_2196_local_boot_rescue_construction: NonEmptyStr =
 // unit. The ProxyDhcpPxeOnly variant exists in the model and may be needed for
 // other network topologies, but is not required for spark-2196.
 
-data spark_2196_pxe_isolation: NonEmptyStr =
-  "IsolatedProvisioningSegment" as NonEmptyStr
+data spark_2196_pxe_isolation: NonEmptyStr = "IsolatedProvisioningSegment" as NonEmptyStr
 
-data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr =
-  "NativeDhcp" as NonEmptyStr
+data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr = "NativeDhcp" as NonEmptyStr
 
 // --------------------------------------------------------------------------
 // RECEIPT 7: The actual fault mode that bricked spark-2196.
@@ -225,70 +259,10 @@ data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr =
 // kernel image and initramfs version must be discovered at PXE-GRUB-config-
 // authoring time, making the rescue entry site-specific.
 
-data spark_2196_broken_kernel_label: NonEmptyStr =
-  "6.17.0-1032-nvidia" as NonEmptyStr
-
-data spark_2196_recovery_kernel_label: NonEmptyStr =
-  "6.11.0-1014-nvidia" as NonEmptyStr
-
 // Annotation: 6.17.0-1032-nvidia was installed without initramfs; grub-install
 // succeeded before the setup process was interrupted.
+data spark_2196_broken_kernel_label: NonEmptyStr = "6.17.0-1032-nvidia" as NonEmptyStr
+
 // Annotation: 6.11.0-1014-nvidia has complete initramfs built during an earlier
 // setup phase.
-
-// --------------------------------------------------------------------------
-// SEPARATE, NOT PXE: OOBE radio constraint.
-//
-// The OOBE wizard is served by the unit's OWN ACCESS POINT during first boot.
-// Driving it requires a radio associated with that AP. This was discovered during
-// the 2026-09-02 OOBE observation session (SPARK-OOBE-OBSERVE-0) and confirmed
-// during the 2026-09-05 standup: NO HOST on the fleet has both a browser capable
-// of rendering the SPA and a radio reachable from the Spark unit's AP.
-//
-// This constraint belongs in oobe_execution_placement, not here. That module
-// already models the composition of renderer, relay, and route. The AP-as-origin
-// fact is modelled in oobe_screen_observation as dgx_spark_0c75_oobe_account_run's
-// access point SSID.
-//
-// No duplicate is authored here.
-
-// --------------------------------------------------------------------------
-// WHAT IS NOT ESTABLISHED.
-//
-// These facts are deliberately NOT claimed by this module and must not be treated
-// as if they were:
-//
-// (a) Unattended install has NEVER been executed. The functions
-//     spark_fastos_unattended_kernel_cmdline and spark_dgx_os_unattended_kernel_cmdline
-//     in extdeps.systems.nvidia_dgx_spark_pxe are modelled intentions cited to
-//     NVIDIA's documentation, not receipts produced by this repository.
-//
-// (b) Factory firmware defaults are unknown. All observations above were made on
-//     a unit in POST-INSTALL state. Which settings differ from factory defaults has
-//     not been measured.
-//
-// (c) The OOBE radio requirement is inferred from the 2026-09-02 capture method
-//     (a host associated with the unit's own AP), not re-established by independent
-//     measurement during this session.
-//
-// (d) The reset mechanism (Receipt 2) trigger is unisolated. The observation is
-//     three trials producing the same symptom; the root cause (GPU watchdog, thermal,
-//     power-state handshake, kernel-NIC-mismatch timeout, or other) has not been
-//     identified. The generic-distro reset is not modelled as a refusable image-kind
-//     arm (SparkPxeBootImageKind is a closed sum over NVIDIA constructors); the
-//     existing NIC coverage check (UnattendedPxeBootKernelDoesNotClaimNic) is the
-//     modelled refusal path.
-
-// --------------------------------------------------------------------------
-// CONSUMERS: who references these receipts.
-//
-// - dgx_pxe_boot.dag cites spark_2196_pxe_bootloader_filename_observed (Receipt 3)
-//   in spark_pxe_firmware_enablement_intervention() instruction text and in the
-//   bootloader-name-equality-removal comment at spark_pxe_firmware_gaps.
-// - dgx_pxe_boot.dag cites spark_2196_pci_vendor and spark_2196_pci_device (Receipt 1)
-//   in the NIC coverage check at admit_spark_unattended_pxe_boot and in the
-//   UnattendedPxeBootKernelDoesNotClaimNic refusal reason comment.
-// - dgx_pxe_boot.dag cites Receipt 2 in the UnattendedPxeBootKernelDoesNotClaimNic
-//   refusal reason comment.
-// - oobe_execution_placement.dag already owns the radio-constraint composition;
-//   no citation needed here.
+data spark_2196_recovery_kernel_label: NonEmptyStr = "6.11.0-1014-nvidia" as NonEmptyStr
