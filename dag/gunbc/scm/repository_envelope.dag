@@ -1644,18 +1644,37 @@ fn decode_repository_checkout(
 // retired" have different remedies: one is someone else's document, the other is your own repository
 // and a reader you no longer have.
 //
-// The third arm exists so this cannot become an absorbing answer: a refusal that is not about the
-// format at all says so, rather than being rendered as some default format complaint.
+// THE FAMILY IS EVERY PROTOCOL-SHAPED REFUSAL, NOT ONLY THE TWO FORMAT ONES. An earlier cut carried
+// retired and unrecognized-format and swept everything else into one arm, which put
+// `RepositoryIdentityRuleUnrecognized` -- a document whose FORMAT this build reads, declaring an
+// identity rule it does not -- in with ordinary schema failures, so a surface rendered it as "not a
+// repository document". That is the same discard one member along, and the identity rule is versioned
+// on its own axis precisely so it can move without the format moving.
+//
+// THIS PROJECTION ANSWERS WHICH PROTOCOL FACT THE DECODER OBSERVED. IT ESTABLISHES NOTHING ABOUT THE
+// BODY. `decode_repository` reads the format member and returns before any body validation, so
+// `{"format": "gunbc-scm-repository-v3"}` -- no identity rule, no objects, no commits -- reaches
+// `RepositoryProtocolRetiredFormat` exactly like a complete historical document. A consumer may
+// therefore say WHICH PROTOCOL WAS DECLARED and that this build has no reader for it; it may NOT say
+// the document is intact, that a repository is present, or that any history exists. Recovering those
+// would require reading the retired format, which is the thing deliberately not shipped.
+//
+// The last arm is a wildcard and means only "not one of the protocol facts above". It does NOT mean
+// foreign, non-repository, or validated -- a consumer inferring provenance from it would be reading a
+// negative as evidence about content.
 type RepositoryDocumentProtocol
-  = RepositoryProtocolRetired { found: String }
-  | RepositoryProtocolUnrecognized { found: String }
-  | RepositoryProtocolNotTheRefusal
+  = RepositoryProtocolRetiredFormat { found: String }
+  | RepositoryProtocolUnrecognizedFormat { found: String }
+  | RepositoryProtocolUnrecognizedIdentityRule { found: String }
+  | RepositoryProtocolNotAProtocolRefusal
 
 fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDocumentProtocol {
   match cause {
-    RepositoryFormatRetired { found: f } => RepositoryProtocolRetired { found: f }
-    RepositoryFormatUnrecognized { found: f } => RepositoryProtocolUnrecognized { found: f }
-    _ => RepositoryProtocolNotTheRefusal
+    RepositoryFormatRetired { found: f } => RepositoryProtocolRetiredFormat { found: f }
+    RepositoryFormatUnrecognized { found: f } => RepositoryProtocolUnrecognizedFormat { found: f }
+    RepositoryIdentityRuleUnrecognized { found: f } =>
+      RepositoryProtocolUnrecognizedIdentityRule { found: f }
+    _ => RepositoryProtocolNotAProtocolRefusal
   }
 }
 

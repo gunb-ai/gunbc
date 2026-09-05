@@ -47,6 +47,7 @@ data scm_rl_malformed_document_path: String = "dag/test/fixture/scm_repository_l
 data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/unknown_format.json"
 data scm_rl_frozen_v1_path: String = "dag/test/fixture/scm_repository_load/frozen_repository_v1.json"
 data scm_rl_retired_v3_path: String = "dag/test/fixture/scm_repository_load/retired_repository_v3.json"
+data scm_rl_retired_v3_tag_only_path: String = "dag/test/fixture/scm_repository_load/retired_v3_tag_only.json"
 
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
@@ -195,12 +196,33 @@ fn scm_rl_line_count(path: String) -> Int {
 }
 
 test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read() -> Bool {
-  scm_rl_says(path: scm_rl_retired_v3_path, line: "this build does not read repository format gunbc-scm-repository-v3")
+  scm_rl_says(path: scm_rl_retired_v3_path, line: "the document declares retired repository format gunbc-scm-repository-v3")
     && scm_rl_says(path: scm_rl_retired_v3_path, line: concat("  at ", scm_rl_retired_v3_path))
     && (scm_rl_says(
           path: scm_rl_retired_v3_path,
           line: concat("not a repository document: ", scm_rl_retired_v3_path)
         ) == false)
+}
+
+// RECOGNIZING THE TAG IS NOT VALIDATING THE BODY, and this specimen is the one that keeps the two
+// apart. It is parseable JSON carrying the retired format member and NOTHING ELSE -- no identity rule,
+// no objects, no commits, no allocator. decode_repository returns on the format member before any body
+// validation, so it reaches the same protocol answer as a complete historical document.
+//
+// The claim is therefore that the output says WHICH PROTOCOL WAS DECLARED and says the contents were
+// NOT VALIDATED, and never that the document is intact or that a repository is present. An earlier cut
+// of this rendering said "the document is intact"; on these bytes that was simply false, and it was
+// derived from recognizing a tag rather than from reading anything.
+test fn scm_rl_a_retired_tag_over_no_body_claims_the_protocol_and_not_the_contents() -> Bool {
+  scm_rl_says(
+    path: scm_rl_retired_v3_tag_only_path,
+    line: "the document declares retired repository format gunbc-scm-repository-v3"
+  )
+    && scm_rl_says(
+         path: scm_rl_retired_v3_tag_only_path,
+         line: "  this build has no reader for that format, so its contents were not validated"
+       )
+    && (scm_rl_says(path: scm_rl_retired_v3_tag_only_path, line: "  the document is intact; this reader was retired, and no reader for that format ships here") == false)
 }
 
 // THE CONTROLS THAT STOP "EVERYTHING IS RETIRED" FROM SATISFYING THE CLAIM ABOVE. A healthy v4
@@ -215,10 +237,10 @@ test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool 
   (scm_rl_line_count(path: scm_rl_malformed_document_path) > 0)
     && (scm_rl_says(
           path: scm_rl_malformed_document_path,
-          line: "this build does not read repository format gunbc-scm-repository-v3"
+          line: "the document declares retired repository format gunbc-scm-repository-v3"
         ) == false)
 }
 
 test fn scm_rl_an_unknown_format_renders_as_unrecognized_rather_than_retired() -> Bool {
-  scm_rl_says(path: scm_rl_unknown_format_path, line: "unrecognized repository format gunbc-scm-repository-v99")
+  scm_rl_says(path: scm_rl_unknown_format_path, line: "the document declares unrecognized repository format gunbc-scm-repository-v99")
 }

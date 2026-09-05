@@ -23,11 +23,15 @@ import gunbc.scm.log { repository_log }
 import gunbc.scm.status { repository_status }
 import gunbc.scm.authoring { empty_proposal }
 import gunbc.scm.cli { scm_log_response, scm_status_response, scm_init_response, plain_terminal_capability }
+import gunbc.scm.repository_envelope {
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+}
 import gunbc.scm.init {
   ScmInitRefused,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
-  ScmInitRetiredRepositoryPresent,
+  ScmInitUnsupportedDocumentPresent,
   init_present_refusal,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry,
@@ -236,7 +240,7 @@ fn decision_arm(d: ScmInitDecision) -> String {
       match c {
         ScmInitRepositoryPresent { path: _ } => "repository_present"
         ScmInitForeignFilePresent { path: _ } => "foreign_present"
-        ScmInitRetiredRepositoryPresent { path: _, found: _ } => "retired_present"
+        ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } => "unsupported_present"
         ScmInitPathUnobserved { path: _, cause: _ } => "unobserved"
         ScmInitNameNotAnEntry { name: _, cause: _ } => "name_not_an_entry"
       }
@@ -381,7 +385,7 @@ test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool {
         ScmInitNameNotAnEntry { name: _, cause: _ } => true
         ScmInitRepositoryPresent { path: _ } => false
         ScmInitForeignFilePresent { path: _ } => false
-        ScmInitRetiredRepositoryPresent { path: _, found: _ } => false
+        ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } => false
         ScmInitPathUnobserved { path: _, cause: _ } => false
       }
   }
@@ -457,8 +461,12 @@ data scm_cli_foreign_document: String = "{\"unrelated\": true}"
 
 test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool {
   match init_present_refusal(path: "repo.json", content: scm_cli_retired_v3_document) {
-    ScmInitRetiredRepositoryPresent { path: p, found: f } =>
-      p == "repo.json" && f == "gunbc-scm-repository-v3"
+    ScmInitUnsupportedDocumentPresent { path: p, protocol: protocol } =>
+      p == "repo.json"
+        && match protocol {
+             RepositoryProtocolRetiredFormat { found: f } => f == "gunbc-scm-repository-v3"
+             _ => false
+           }
     ScmInitForeignFilePresent { path: _ } => false
     ScmInitRepositoryPresent { path: _ } => false
     ScmInitPathUnobserved { path: _, cause: _ } => false
@@ -471,7 +479,7 @@ test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool
 test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool {
   match init_present_refusal(path: "repo.json", content: scm_cli_foreign_document) {
     ScmInitForeignFilePresent { path: p } => p == "repo.json"
-    ScmInitRetiredRepositoryPresent { path: _, found: _ } => false
+    ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } => false
     ScmInitRepositoryPresent { path: _ } => false
     ScmInitPathUnobserved { path: _, cause: _ } => false
     ScmInitNameNotAnEntry { name: _, cause: _ } => false
@@ -483,11 +491,15 @@ test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool {
 test fn a_retired_repository_renders_its_format_and_still_refuses_to_initialize() -> Bool {
   let response = scm_init_response(
     outcome: ScmInitRefused {
-      cause: ScmInitRetiredRepositoryPresent { path: "repo.json", found: "gunbc-scm-repository-v3" }
+      cause: ScmInitUnsupportedDocumentPresent {
+        path: "repo.json",
+        protocol: RepositoryProtocolRetiredFormat { found: "gunbc-scm-repository-v3" },
+      }
     }
   )
   wire_refuses(r: response)
     && string_contains(haystack: wire_bytes(r: response), needle: "gunbc-scm-repository-v3")
-    && string_contains(haystack: wire_bytes(r: response), needle: "a repository is already there")
+    && string_contains(haystack: wire_bytes(r: response), needle: "its contents were not validated")
+    && (string_contains(haystack: wire_bytes(r: response), needle: "a repository is already there") == false)
     && (string_contains(haystack: wire_bytes(r: response), needle: "that is not a repository") == false)
 }

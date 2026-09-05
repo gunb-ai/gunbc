@@ -49,6 +49,13 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.repository_envelope {
+  RepositoryDocumentProtocol,
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+  RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolNotAProtocolRefusal,
+}
 import gunbc.scm.init {
   ScmInitOutcome,
   ScmInitialized,
@@ -57,7 +64,7 @@ import gunbc.scm.init {
   ScmInitRefusal,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
-  ScmInitRetiredRepositoryPresent,
+  ScmInitUnsupportedDocumentPresent,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry
 }
@@ -288,6 +295,21 @@ fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
   }
 }
 
+// ONE SENTENCE FOR THE PROTOCOL FACT, so init and the read path cannot drift into describing the same
+// observation two ways. It says what was DECLARED and that this build has no reader; it does not say a
+// repository is present, because the decoder returned before validating any body.
+fn unsupported_document_line(protocol: RepositoryDocumentProtocol) -> String {
+  match protocol {
+    RepositoryProtocolRetiredFormat { found: f } =>
+      concat("the document declares retired repository format ", f)
+    RepositoryProtocolUnrecognizedFormat { found: f } =>
+      concat("the document declares unrecognized repository format ", f)
+    RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
+      concat("the document declares unrecognized object identity rule ", f)
+    RepositoryProtocolNotAProtocolRefusal => "the document could not be read as a repository"
+  }
+}
+
 fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
   match cause {
     ScmInitRepositoryPresent { path: p } =>
@@ -295,11 +317,11 @@ fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
         concat("refusing to initialize ", p),
         "  a repository is already there, and init would replace its whole history"
       ]
-    ScmInitRetiredRepositoryPresent { path: p, found: f } =>
+    ScmInitUnsupportedDocumentPresent { path: p, protocol: protocol } =>
       [
         concat("refusing to initialize ", p),
-        concat("  a repository is already there in format ", f),
-        "  this build has no reader for that format, and init would replace its whole history"
+        concat("  ", unsupported_document_line(protocol: protocol)),
+        "  its contents were not validated, and init would destroy the bytes that are there"
       ]
     ScmInitForeignFilePresent { path: p } =>
       [
@@ -331,8 +353,8 @@ fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
   match cause {
     ScmInitRepositoryPresent { path: _ } =>
       exit_failure(reason: "repository already present")
-    ScmInitRetiredRepositoryPresent { path: _, found: _ } =>
-      exit_failure(reason: "repository already present in a format this build does not read")
+    ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } =>
+      exit_failure(reason: "path occupied by a document declaring a protocol this build does not read")
     ScmInitForeignFilePresent { path: _ } =>
       exit_failure(reason: "path occupied by a non-repository file")
     ScmInitPathUnobserved { path: _, cause: _ } =>
