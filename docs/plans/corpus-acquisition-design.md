@@ -336,3 +336,82 @@ the capability now resolves. Receipt: `filesystem_io`'s "a split the interpreter
 against `split` as a seed builtin dispatched as `MethodCallSplit`.
 
 It lands with the cut in step 1, not as a bare roster append.
+
+## 10. A live defect found while sizing the cut, and a correction to how I first reported it
+
+The completeness property §1 requires is not merely unmodeled. It is **violated on main today**, in
+the seed, where no `.dag` wall can see it. The file transport's `list` verb:
+
+```rust
+return match std::fs::read_dir(&path) {
+    Ok(entries) => {
+        let mut names: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        ...
+        Ok(FileResult { success: true, content: names.join("\n"), .. })
+```
+
+Two silent drops, both landing in a result whose `success` channel says `true`. **They are not
+equally harmful, and my first report of them said they were.**
+
+**The iterator drop is live.** `filter_map(|e| e.ok())` discards a `read_dir` iterator error
+mid-enumeration and returns the prefix collected so far as a *complete* listing. It truncates the
+list of ordinary, askable names, so `filesystem_entry_presence` finds no membership for an entry that
+exists and constructs a `FilesystemEstablishedAbsence` for it. A wrong answer, with no diagnostic,
+under every absence established in the tree — the absorbing fallback ("could not enumerate" widened
+into "enumerated, nothing more") sitting underneath the module built to make absence honest.
+
+**The non-UTF-8 drop is latent.** `into_string().ok()` discards any entry whose name is not valid
+UTF-8, again into a `success: true` listing. But `filesystem_entry_presence` takes `name: String`, so
+the asked name is always valid UTF-8 by construction and a dropped entry could never have matched it;
+`admit_filesystem_entry_name` would refuse such a spelling independently. Since **no consumer
+enumerates** — the fact §0 establishes — the dropped entry is currently unobservable.
+
+It is still a success channel claiming a completeness it does not have, and it becomes load-bearing
+the instant enumeration exists, which is this cut. But it is not a live wrong answer, and reporting it
+as the second half of a live fail-open was the same defect this lane keeps finding, applied to my own
+finding: asserting a population without checking whether the distinction reaches a consumer. The
+correction is recorded rather than quietly edited, because a design document that silently agrees
+with whatever was true last is not evidence of anything.
+
+### What that implies for sequencing
+
+The live repair is independent of enumeration, `EntryKind`, encodings and corpus manifests, and wants
+to be reviewable by someone who does not have to hold this design in their head. The latent one has
+no honest home except the cut that activates it. So step 1 of §8 splits:
+
+- **1A — enumeration completeness.** The iterator error stops being discarded; the success channel
+  stops claiming an exhaustion it did not reach; a partial enumeration can no longer establish an
+  absence. Discriminating specimen: a directory that yields one entry and then fails.
+- **1B — the structured listing.** `EntryKind`, lossless names, deletion of
+  `filesystem_listing_names_entry`, and the re-decision of the two refusals whose justification the
+  cut falsifies.
+
+### The substrate constraint that shapes 1B
+
+The effect boundary carries only flat scalars and lists of **string-alias** elements: every `List`
+output in `extdeps` is `List<String>`, `List<FilePath>` or `List<CommitSha>`, all from
+`stdout_lines`, and no operation anywhere returns a list of records. So `entries` cannot come back as
+`List<{name, kind}>` directly. Three candidates:
+
+| candidate | verdict |
+|---|---|
+| per-line encoding decoded in `filesystem_io` | viable; keeps a delimiter, so names stay restricted |
+| two index-correlated parallel lists | **rejected here** — an unenforced index correlation is the conflation this module exists to remove |
+| a JSON document on the `entries` channel, decoded once beside the operation | preferred |
+
+The JSON branch is the only one that preserves a newline-bearing name losslessly, carries a per-entry
+kind, *and* can carry an explicit enumeration-completed field — which is what makes the completeness
+distinction **representable** rather than inferred from a success bool. Decoding it beside the
+operation is the same move `filesystem_io` already makes for membership: the encoding is `List`'s
+fact, so the structure over it is too.
+
+## 11. What this cut does not claim
+
+`filesystem_absence_establishment_adoption_standing` carries a next-rung trigger reading that the raw
+`List` and `Read` result projections cease to be reachable outside this module's folds, so a consumer
+cannot spell the conflation at all. **This cut does not satisfy that trigger** — the raw operations
+stay callable — and must not be reported as retiring it. A trigger is retired by its trigger and by
+nothing else.
