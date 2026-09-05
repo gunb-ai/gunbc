@@ -64,6 +64,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv9,
   operator_host_srv10,
   operator_host_srv11,
+  operator_host_srv12,
 }
 import gunbc.spark.dgx_procurement {
   dgx_spark_procurement_intent,
@@ -78,6 +79,7 @@ import gunbc.spark.dgx_procurement {
   spark_0c75_reservation,
   spark_3336_reservation,
   spark_b66c_reservation,
+  spark_2196_reservation,
   observed_dgx_spark_router_reservations,
   DgxSparkRouterBinding,
   SlotAssigned,
@@ -167,16 +169,17 @@ data all_spark_identities: List<HostIdentity> = [
   operator_host_srv9,
   operator_host_srv10,
   operator_host_srv11,
+  operator_host_srv12,
 ]
 
 test fn w_procurement_intent_reserves_seven_identities() -> Bool {
-  dgx_spark_procurement_intent.unit_count == 7
+  dgx_spark_procurement_intent.unit_count == 8
     && dgx_spark_procurement_intent.reserved_identities == all_spark_identities
     && dgx_spark_reserved_identities() == all_spark_identities
 }
 
 test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
-  count(dgx_spark_router_bindings) == 7
+  count(dgx_spark_router_bindings) == 8
     && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
     && router_binding_identity(binding: srv5_router_binding) == operator_host_srv5
     && router_binding_identity(binding: srv6_router_binding) == operator_host_srv6
@@ -189,7 +192,7 @@ test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
 // ascending address order -- srv5 to the lower reserved address -- an arbitrary tie-break between
 // two identical units, which is exactly why it must be recorded as a choice someone made.
 test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
-  count(observed_dgx_spark_router_reservations) == 7
+  count(observed_dgx_spark_router_reservations) == 8
     && spark_a3ee_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 226)
     && spark_3bd5_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 225)
     && spark_c2b1_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 232)
@@ -197,6 +200,7 @@ test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
     && spark_0c75_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236)
     && spark_3336_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 237)
     && spark_b66c_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 238)
+    && spark_2196_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 239)
     && match srv5_router_binding {
       SlotAssigned { identity: _, reservation: r, allocation: a } =>
         r.ipv4_address == spark_a3ee_reservation.ipv4_address
@@ -226,7 +230,7 @@ test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
 // arrived while they sat on the LAN: prose cannot be kept in step with facts by discipline alone.
 test fn w_arrival_standing_derives_from_the_observed_reservation_rows() -> Bool {
   match dgx_spark_arrival_standing() {
-    AllOrderedUnitsObservedOnLan { observed_count: n } => n == 7
+    AllOrderedUnitsObservedOnLan { observed_count: n } => n == 8
     OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
   }
 }
@@ -586,7 +590,7 @@ test fn w_red_selection_ignores_envelope_host() -> Bool {
 test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
   match dgx_spark_procurement_convergence() {
     DgxSparkProcurementPending { pending: p } =>
-      count(p) == 2
+      count(p) == count(dgx_spark_router_bindings)
         && fold(
           p,
           init: true,

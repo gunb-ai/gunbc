@@ -68,6 +68,11 @@ data operator_host_srv9: HostIdentity = "srv9"
 data operator_host_srv10: HostIdentity = "srv10"
 data operator_host_srv11: HostIdentity = "srv11"
 
+// SPARK-BATCH-4 (2026-09-05). An eighth unit, spark-2196 at 192.168.1.239, appeared in the router
+// lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
+// is its identity slot, assigned by the same ascending-address rule.
+data operator_host_srv12: HostIdentity = "srv12"
+
 // 🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file
 // are still bare `"192.168.1.x"` / CIDR strings even though this same lane grounded the address
 // leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress =
@@ -282,6 +287,14 @@ data srv11_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv12_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv12-host-lan",
+  subject: EndpointHost { host: operator_host_srv12 },
+  address: "192.168.1.239",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   subject: EndpointHost { host: operator_host_srv1 },
@@ -369,6 +382,7 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv9_host_lan_endpoint,
     srv10_host_lan_endpoint,
     srv11_host_lan_endpoint,
+    srv12_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,

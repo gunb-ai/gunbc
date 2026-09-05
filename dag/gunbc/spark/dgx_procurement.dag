@@ -37,6 +37,7 @@ import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6,
   operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11,
+  operator_host_srv12,
 }
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
@@ -133,6 +134,15 @@ data spark_b66c_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
   },
 }
 
+data spark_2196_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "F8:3D:C6:6C:FE:98" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 239),
+  lease: StaticDhcpReservation {
+    reservation_label: "spark-2196" as NonEmptyStr,
+    status: Active,
+  },
+}
+
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
   spark_a3ee_reservation,
   spark_3bd5_reservation,
@@ -141,6 +151,7 @@ data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
   spark_0c75_reservation,
   spark_3336_reservation,
   spark_b66c_reservation,
+  spark_2196_reservation,
 ]
 
 // SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure.
@@ -223,6 +234,15 @@ data dgx_spark_router_binding_batch_allocation_2026_09_05: OperatorAllocation = 
   basis: "srv7/srv8 keep the SPARK-PAIR-1 names (spark-c2b1 192.168.1.232, spark-ac79 .233); srv9..srv11 take the third batch in ascending address order (spark-0c75 .236, spark-3336 .237, spark-b66c .238). Pairing is observed from the fabric, not decided here.",
 }
 
+// The eighth unit was read off the router table on 2026-09-05 as a dynamic lease and is enrolled
+// from that observation; it took the next identity slot. The router reservation itself is the
+// operator's to author, which is why the row carries the lease as observed rather than Static.
+data dgx_spark_router_binding_batch_allocation_2026_09_05_fourth: OperatorAllocation = OperatorAllocation {
+  decided_by: "operator (2026-09-05, this session): the eighth Spark cabled to the fabric switch",
+  decided_on: "2026-09-05",
+  basis: "srv12 takes spark-2196 (192.168.1.239, F8:3D:C6:6C:FE:98), the eighth unit, by the same ascending-address rule; it was observed on switch lane qsfp56-dd-2-3 with the other three of group B",
+}
+
 data srv7_router_binding: DgxSparkRouterBinding = SlotAssigned {
   identity: operator_host_srv7,
   reservation: spark_c2b1_reservation,
@@ -253,6 +273,12 @@ data srv11_router_binding: DgxSparkRouterBinding = SlotAssigned {
   allocation: dgx_spark_router_binding_batch_allocation_2026_09_05,
 }
 
+data srv12_router_binding: DgxSparkRouterBinding = SlotAssigned {
+  identity: operator_host_srv12,
+  reservation: spark_2196_reservation,
+  allocation: dgx_spark_router_binding_batch_allocation_2026_09_05_fourth,
+}
+
 data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [
   srv5_router_binding, srv6_router_binding,
   srv7_router_binding,
@@ -260,6 +286,7 @@ data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [
   srv9_router_binding,
   srv10_router_binding,
   srv11_router_binding,
+  srv12_router_binding,
 ]
 
 // Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
@@ -289,9 +316,9 @@ fn dgx_spark_reserved_identities() -> List<HostIdentity> {
 
 data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
   vendor_catalog: nvidia_dgx_spark_4tb_catalog,
-  unit_count: 7,
+  unit_count: 8,
   reserved_identities: dgx_spark_reserved_identities(),
-  ordered_note: "7x NVIDIA DGX Spark across three batches (2 + 2 + 3), all live on the operator LAN as of 2026-09-05. FIRST BATCH: 2x ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation keyed to its WIRELESS interface (spark-a3ee 192.168.1.226 F0:68:E3:B3:1A:40 and spark-3bd5 192.168.1.225 F0:68:E3:31:AB:E6; both MACs read from the hosts as permanent hardware addresses, both ethernet ports unplugged and dark since 2026-08-27). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels -- and note the labels are ethernet-MAC-derived, so they no longer share a tail with the MAC the row binds.",
+  ordered_note: "8x NVIDIA DGX Spark across four batches (2 + 2 + 3 + 1), all live on the operator LAN as of 2026-09-05; the eighth (spark-2196) appeared the day the fabric switch was cabled. FIRST BATCH: 2x ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation keyed to its WIRELESS interface (spark-a3ee 192.168.1.226 F0:68:E3:B3:1A:40 and spark-3bd5 192.168.1.225 F0:68:E3:31:AB:E6; both MACs read from the hosts as permanent hardware addresses, both ethernet ports unplugged and dark since 2026-08-27). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels -- and note the labels are ethernet-MAC-derived, so they no longer share a tail with the MAC the row binds.",
 }
 
 type DgxSparkDeployment {

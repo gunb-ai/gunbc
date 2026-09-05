@@ -1,0 +1,111 @@
+module gunbc.spark.fabric_switch_observed
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.mikrotik.crs812 { crs812_qsfp56_dd_ports, crs812_lane_interface }
+import gunbc.fleet_intent_network {
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+}
+
+// THE SWITCHED FABRIC AS OBSERVED FROM BOTH ENDS ON 2026-09-05. Every Spark carries ONE leg of an FS
+// QDD-400G-4QPC015 breakout in its bottom cage; the switch's LLDP neighbour table names each Spark
+// on its lane and each Spark's lldpctl names the switch (identity gunbc-fabric-switch) and the lane.
+// That two-sided join is the positive cable receipt the direct pairs never had. Each row below is a
+// transcription of that join, and the group projection at the bottom is derived from which 400G
+// cage a lane belongs to, never asserted.
+//
+// TWO FACTS ABOUT THE SPARK END THAT THE MODEL MUST NOT SMOOTH OVER:
+//   - the leg appears on the NIC's SECOND-FUNCTION ports (enp1s0f1np1 / enP2p1s0f1np1), not the
+//     first-function ports the direct 200G cables used, because a two-lane leg occupies the upper
+//     lanes of the 200G cage;
+//   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
+//     the same lane. Only one of them may carry the rail address.
+//
+// THE LEG LINKS AT 50G, NOT 100G, AND THE CAUSE IS THE LEG'S EEPROM. The legs are QSFP28-coded:
+// extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") with a nominal rate of
+// 25.5 Gb/s per lane, so the ConnectX-7 firmware derives "Supported Cable Speed 50G_2X" and refuses
+// 100G_2X with "Cable speed not enabled" (mstlink status opcode 16). Two 25G lanes is 50G. The same
+// copper with legs coded 100GBASE-CR2 would link at 100G; that is a cable exchange, not a model change.
+
+type FabricLegCableObserved {
+  vendor: NonEmptyStr
+  part_number: NonEmptyStr
+  leg_identifier: NonEmptyStr
+  extended_compliance_byte: NonEmptyStr
+  nominal_rate_mbps: Nat
+  nic_supported_speeds: NonEmptyStr
+  linked_speed_gbps: Nat
+}
+
+data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
+  vendor: "FS" as NonEmptyStr,
+  part_number: "QDD-400G-4QPC015" as NonEmptyStr,
+  leg_identifier: "0x11 (QSFP28), passive copper 2m, PAM4 flag set" as NonEmptyStr,
+  extended_compliance_byte: "0x0B (100GBASE-CR4 or 25GBASE-CR CA-L)" as NonEmptyStr,
+  nominal_rate_mbps: 25500,
+  nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
+  linked_speed_gbps: 50,
+}
+
+type FabricLaneObserved {
+  cage: Nat
+  lane: Nat
+  host: HostIdentity
+  spark_hostname: NonEmptyStr
+  leg_netdev: NonEmptyStr
+  leg_netdev_twin: NonEmptyStr
+}
+
+data fabric_lane_observations: List<FabricLaneObserved> = [
+  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 7, host: operator_host_srv11, spark_hostname: "spark-b66c" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr },
+]
+
+fn fabric_lane_interface(o: FabricLaneObserved) -> NonEmptyStr {
+  crs812_lane_interface(port: crs812_qsfp56_dd_ports, cage: o.cage, lane: o.lane)
+}
+
+fn fabric_lane_for_host(host: HostIdentity) -> FabricLaneObserved? {
+  first(filter(fabric_lane_observations, o => host_identity_eq(a: o.host, b: host)))
+}
+
+// A GROUP IS THE SET OF HOSTS ON ONE 400G CAGE: four legs of one breakout share the cage, so the
+// four hosts are one fabric-natural tensor-parallel group. Group A is cage 1, group B is cage 2.
+type FabricGroup = FabricGroupA | FabricGroupB
+
+fn fabric_group_cage(g: FabricGroup) -> Nat {
+  match g {
+    FabricGroupA => 1
+    FabricGroupB => 2
+  }
+}
+
+fn fabric_group_wire(g: FabricGroup) -> NonEmptyStr {
+  match g {
+    FabricGroupA => "group-a" as NonEmptyStr
+    FabricGroupB => "group-b" as NonEmptyStr
+  }
+}
+
+fn fabric_group_hosts(g: FabricGroup) -> List<HostIdentity> {
+  map(filter(fabric_lane_observations, o => o.cage == fabric_group_cage(g: g)), o => o.host)
+}
+
+fn fabric_group_of_host(host: HostIdentity) -> FabricGroup? {
+  match fabric_lane_for_host(host: host) {
+    Absent => none
+    Present { value: o } => if o.cage == 1 { Present { value: FabricGroupA } } else { Present { value: FabricGroupB } }
+  }
+}
+
+// srv10 links and answers LLDP on this fabric; the earlier "no Mellanox devices" reading that made
+// it the RMA candidate was wrong about the NIC. Whatever failed in its setup, it is not the fabric.
+data srv10_fabric_link_observed: Bool = true
