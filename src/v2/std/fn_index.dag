@@ -21,7 +21,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_nodes }
 import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
@@ -225,6 +225,49 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
         list_snoc_item(xs: from_children, item: sym)
       }
     Absent => from_children
+  }
+}
+
+type AtomScanState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn atom_scan_init(n: Node) -> AtomScanState {
+  AtomScanState { node: n, atoms: empty_fn_arrow_symbol_list }
+}
+
+fn atom_scan_snoc(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if contains(xs: xs, item: sym, eq: fn_index_symbol_eq) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: sym)
+  }
+}
+
+fn atom_scan_step(acc: AtomScanState, _edge: Edge, child: AtomScanState) -> AtomScanState {
+  let merged = fold_list(
+    xs: child.atoms,
+    empty: acc.atoms,
+    cons: fn(a, sym) { atom_scan_snoc(xs: a, sym: sym) }
+  )
+  let with_child = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } => atom_scan_snoc(xs: merged, sym: sym)
+    Absent => merged
+  }
+  AtomScanState { node: acc.node, atoms: with_child }
+}
+
+// Whole-subtree atom identities remain an independent reader for lenses that inspect atom
+// population and depth directly. Call reachability no longer consumes this channel.
+fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(
+    n: node,
+    algebra: NodeFold { init: atom_scan_init, step: atom_scan_step }
+  ).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => atom_scan_snoc(xs: from_descendants, sym: sym)
+    Absent => from_descendants
   }
 }
 
