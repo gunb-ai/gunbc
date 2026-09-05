@@ -21,12 +21,14 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
+  DeploymentServiceConfig,
   deployment_spec_srv1,
   deployment_slice_unit_name,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh }
+import extdeps.http.server { HttpServerListenConfig }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -599,6 +601,75 @@ test fn slice_unit_is_not_installable() -> Bool {
     SliceUnitFile { install: NotInstallable, .. } => true
     _ => false
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// RED (EXECUTED) — each builds a spec with ONE field mutated and shows the positive claim FAIL
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: wrong_user,
+              service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+fn belt_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn serve_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn tree_sync_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+// RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
+test fn belt_service_user_goes_red_under_different_user() -> Bool {
+  let wrong_user = "not-" as NonEmptyStr  // wrong, does not match any real principal
+  let wrong_spec = spec_with_principal(wrong_user: join([wrong_user as String,
+    live_spec().service.service_user as String], "") as NonEmptyStr)
+  !has_directive(dirs: belt_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
+}
+
+// RED: a spec with a different service_user makes serve_unit_runs_as_service_principal go red.
+test fn serve_unit_user_goes_red_under_different_user() -> Bool {
+  let wrong_spec = spec_with_principal(wrong_user:
+    join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr)
+  !has_directive(dirs: serve_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
+}
+
+// RED: a spec with a different service_user makes tree_sync_runs_as_service_principal go red.
+test fn tree_sync_user_goes_red_under_different_user() -> Bool {
+  let wrong_spec = spec_with_principal(wrong_user:
+    join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr)
+  !has_directive(dirs: tree_sync_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
