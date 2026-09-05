@@ -4981,7 +4981,7 @@ fn belt_verify_attempt_for_instance(
   } else {
     VerifyDeferred {
       node_id: progress.node_id,
-      reason: "the agent has not reached a terminal state, so there is nothing to verify yet",
+      reason: "the agent obligation is not satisfied: the agent has not reached a terminal state, so there is nothing to verify yet",
     }
   }
 }
