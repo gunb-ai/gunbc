@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.runner_microvm_guest_size_derivation_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 // THE MICROVM GUEST SIZE, filed by the change that removed the wrong derivation rather than by a
 // later reviewer. This is AwaitsOneGrounding and not ClimbableButUnbuilt: the obstacle is not
@@ -70,5 +70,5 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
       "test.claim.runner_microvm_witness_test",
     ],
   },
-  next_rung_trigger: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from -- a CPUQuota or CPU set on the CELL SLICE, not the CPUQuota gunbc.host.host_converge already writes onto the runner UNIT -- or guest topology renamed as a separately declared product decision that is NOT derived from the cell. The clauses are separate because the obstacles differ in kind: the memory quantity may exist and merely be uncited, while the cell grants no CPU quantity at all, so a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm -- it cannot, and clauses 1 and 2 are what would change that"
+  next_rung_trigger: climbs_when(capability: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from -- a CPUQuota or CPU set on the CELL SLICE, not the CPUQuota gunbc.host.host_converge already writes onto the runner UNIT -- or guest topology renamed as a separately declared product decision that is NOT derived from the cell. The clauses are separate because the obstacles differ in kind: the memory quantity may exist and merely be uncited, while the cell grants no CPU quantity at all, so a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm -- it cannot, and clauses 1 and 2 are what would change that")
 }

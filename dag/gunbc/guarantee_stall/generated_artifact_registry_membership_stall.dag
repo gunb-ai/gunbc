@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.generated_artifact_registry_membership_stall
 
 import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 // THE GENERATED-ARTIFACT REGISTRY IS GUARDED INDIRECTLY, AND THIS ROW EXISTS BECAUSE THE MUTATION
 // WAS RUN RATHER THAN REASONED ABOUT. Deleting a member from generated_artifact_registry and
@@ -21,5 +21,5 @@ data generated_artifact_registry_membership_stall: GuaranteeStall = GuaranteeSta
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "gunbc.generated_artifact generated_artifact_registry", tail: Cons { head: "gunbc.generated_artifact_merge_driver", tail: Empty {} } } },
-  next_rung_trigger: "a census that enumerates committed files at every artifact_location and refuses one with no generated_artifact_registry member, so registry departure is refused by its own subject rather than by .gitattributes drift"
+  next_rung_trigger: climbs_when(capability: "a census that enumerates committed files at every artifact_location and refuses one with no generated_artifact_registry member, so registry departure is refused by its own subject rather than by .gitattributes drift")
 }

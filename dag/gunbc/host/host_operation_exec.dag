@@ -107,6 +107,7 @@ type HostOperation =
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
+  | SystemctlShowUserProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowLoadState { unit: NonEmptyStr }
   | HostnameReadShort
   | CgroupListChildren { cgroup_path: NonEmptyStr }
@@ -147,6 +148,16 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     )
     SystemctlShowProperty { unit: u, property: p } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "ShowProperty"),
+      bindings: [
+        operation_argv_bind_text(name: "unit", text: u as String),
+        operation_argv_bind_text(
+          name: "property",
+          text: systemd_unit_property_wire(property: p) as String,
+        ),
+      ],
+    )
+    SystemctlShowUserProperty { unit: u, property: p } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "ShowUserProperty"),
       bindings: [
         operation_argv_bind_text(name: "unit", text: u as String),
         operation_argv_bind_text(
@@ -255,6 +266,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     SystemctlShowProperty { unit: u, property: p } => {
       let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    SystemctlShowUserProperty { unit: u, property: p } => {
+      let result = systemd.Systemctl.ShowUserProperty(unit: u, property: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowLoadState { unit: u } => {

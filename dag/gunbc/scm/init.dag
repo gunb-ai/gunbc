@@ -68,7 +68,13 @@ import gunbc.scm.repository_envelope {
   empty_repository,
   decode_repository,
   RepositoryDecoded,
-  RepositoryDecodeRefused
+  RepositoryDecodeRefused,
+  repository_document_protocol,
+  RepositoryDocumentProtocol,
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+  RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolNotAProtocolRefusal
 }
 import gunbc.scm.repository_save {
   RepositorySave,
@@ -91,8 +97,27 @@ import std.measure { ByteSize }
 // same thing in both, so it is ONE type. Giving each its own refusal arms would be two spellings of
 // one concept, which is the fork DESIGN section 3 forbids; and folding the decision into the outcome
 // would put an arm on the outcome that is only ever intermediate.
+// A DOCUMENT THIS BUILD CANNOT READ IS NOT A FOREIGN FILE, and it gets its own arm because the two
+// mean different things to whoever is holding the path. "Foreign" says these bytes are not a
+// repository document at all and init would destroy something unrelated; "unsupported protocol" says
+// the document DECLARES a repository protocol this build does not read. Both refuse the write -- that
+// is not what differs -- but the remedy does: one is move your file, the other is get a build that
+// reads that protocol.
+//
+// AND THE ARM CARRIES THE PROTOCOL RATHER THAN ASSERTING A REPOSITORY. An earlier cut named this
+// `ScmInitRetiredRepositoryPresent` and rendered "a repository is already there ... its whole
+// history". That was an OVERCLAIM: `decode_repository` returns on the format member before validating
+// any body, so `{"format": "gunbc-scm-repository-v3"}` -- no objects, no commits -- reaches the same
+// arm as a complete historical document. What was observed is the DECLARED PROTOCOL, and nothing about
+// the contents; refusing to overwrite is justified by the bytes being there, which needs no claim
+// about their validity.
+//
+// An unrecognized format belongs here too, and calling it foreign was the same discard: "this build
+// does not know that format" is a fact about THIS BUILD's knowledge, not about who wrote the file. A
+// newer build's repository is not foreign content.
 type ScmInitRefusal
   = ScmInitRepositoryPresent { path: String }
+  | ScmInitUnsupportedDocumentPresent { path: String, protocol: RepositoryDocumentProtocol }
   | ScmInitForeignFilePresent { path: String }
   | ScmInitPathUnobserved { path: String, cause: String }
   | ScmInitNameNotAnEntry { name: String, cause: String }
@@ -134,7 +159,11 @@ fn init_present_refusal(path: String, content: String) -> ScmInitRefusal {
     JsonDocumentParsed { value: v } =>
       match decode_repository(v: v) {
         RepositoryDecoded { envelope: _ } => ScmInitRepositoryPresent { path: path }
-        RepositoryDecodeRefused { cause: _ } => ScmInitForeignFilePresent { path: path }
+        RepositoryDecodeRefused { cause: c } =>
+          match repository_document_protocol(cause: c) {
+            RepositoryProtocolNotAProtocolRefusal => ScmInitForeignFilePresent { path: path }
+            protocol => ScmInitUnsupportedDocumentPresent { path: path, protocol: protocol }
+          }
       }
   }
 }
