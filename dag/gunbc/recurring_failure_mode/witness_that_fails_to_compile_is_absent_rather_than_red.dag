@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data witness_that_fails_to_compile_is_absent_rather_than_red: RecurringFailureMode = RecurringFailureMode {
+  identity: "witness_that_fails_to_compile_is_absent_rather_than_red" as NonEmptyStr,
+
+  receipts: [
+    "**a witness that fails to COMPILE is ABSENT rather than red, and running its SUBJECT proves nothing about it** (a claim file is committed, reviewed and merged while it cannot compile, so none of its assertions ever execute and the guarantee it was written to carry does not exist; the class it polices reports as walled while nothing walls it, which is worse than an absent witness because the file is cited as coverage by its own author and by its reviewers). ",
+    "WHY IT IS A CLASS AND NOT A SLIP: every ordinary signal is compatible with the dead file and NONE OF THEM IS MALFUNCTIONING. It emits no advisories, because a file that does not compile contributes none. It fails no assertions, because none run. It is ABSENT from the floor disposition rather than failing in it, so a disposition read shows nothing to investigate. `cargo fmt` is green because the file is well-formed text. The push is green. And a reviewer can APPROVE on a wholly correct reading of the source, because READING DOES NOT COMPILE. ",
+    "THE CORE IS A TWO-CLAIM COLLAPSE: `the compiler behaves correctly` and `the witness that enrols that behaviour as executing evidence works` are DIFFERENT CLAIMS, and running the subject as a direct fixture establishes only the first. The mechanism of the misread is that holding the stronger claim's output makes the weaker one feel already answered — the author has the passing fixtures in hand, which is exactly why the file meant to carry them never gets checked. ",
+    "RECOGNITION RULE: ask what would have caught it, and IF THE ONLY ANSWER IS A RUN AIMED AT A DIFFERENT QUESTION, the class has no dedicated detector. The specimen surfaced from a whole-tree advisory census re-derivation chasing an unrelated hypothesis about a denominator, as blocking error number one, after the arms were green, the PR was open and an APPROVE was already recorded. THE ONE INSTRUMENT THAT SEES IT is a whole-tree compile INCLUDING the test roots; compiling the subject, or entry-scoping to the witness itself, does not. ",
+    "Rung found at 1, mitigatable, held only by an unrelated run happening to range over the file, which is not a mechanism. CEILING 3, structurally guaranteed: the population is decidable and closed — every file under the claim roots — so a required step that compiles them and refuses a non-compiling claim file makes the state unwritable in an `Accepted` tree. NEXT TRIGGER, capability and not artifact: the required floor must COMPILE every claim-root file and refuse a claim file that does not compile, rather than only executing the claim files that compile — AN EXECUTION ROSTER KEYED TO COMPILING FILES CANNOT SEE A FILE THAT FELL OUT OF IT, the same shape as a check whose population IS its own roster. Specimen gunbc#10337: `brand_nominal_identity_witness_test` named a host builtin in its import list; four direct fixtures had already proven the compiler refuses, and the witness enrolling them had never run. ",
+  ],
+
+  evidence: [],
+}
