@@ -1,10 +1,6 @@
 module extdeps.printing.orca_slicer
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.tools.sha256sum {
-  Sha256VerifyVerdict, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure,
-  sha256sum_verify_via_shell,
-}
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -94,49 +90,39 @@ data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 3
 // fact this module owns, and a consumer comparing a program string to "orca-slicer" would be a
 // second authority for it -- and a string check besides, which the AppImage's own filename already
 // shows is unreliable.
-// AND THE MINT CONSUMES A VERIFIED DIGEST, NOT A STRING. Sealing the record while exporting
-// `orca_executable(program: NonEmptyStr)` would re-export the very authority the seal was meant to
-// hold: sole_constructor answers WHO MAY WRITE THE LITERAL, and an unrestricted wrapper hands that
-// answer back to every caller. `true --version` exits zero on every host, so a mint that blesses any
-// string reproduces the wrong-kind state one layer inside this module.
+// AND THERE IS NO MINT, WHICH IS THE HONEST STATE RATHER THAN A GAP.
 //
-// Restricting the mint's CALLERS would not fix it either -- an admitted caller still receiving an
-// arbitrary program string moves the trust one function outward.
+// The kind question was real: `true --version` exits zero on every host, so a consumer taking a bare
+// ArgvCommand could read generic executability as ORCA executability. Sealing the executable answers
+// it, and the mint must consume evidence rather than a string -- an unrestricted
+// `orca_executable(program: NonEmptyStr)` would hand back the very authority the seal holds, and
+// restricting its CALLERS only moves that one function outward.
 //
-// THE VERIFICATION IS CONSUMED FROM extdeps.tools.sha256sum, NOT REBUILT HERE. That module already
-// owns the coreutils transport and, more importantly, already separates a digest MISMATCH from the
-// verification machinery itself breaking -- an infra failure recorded as a mismatch would report a
-// broken mktemp as a corrupted download. Re-deriving that distinction would have been a second
-// authority for it, and the wrong one, since this module has no reason to know how a digest is taken.
+// A DIGEST CHECK AT MINT TIME IS NOT ENOUGH, and this is where the previous revision stopped. It
+// verified the bytes at a path and then stored THE PATH. A path is a mutable locator, not the
+// content identity that earned the seal: verify the real AppImage, receive the seal, replace the
+// file, and the capability is spent against whatever now occupies that path. True when minted, false
+// when used. That matters most in this module, which insists the 2.38 floor belongs to THIS
+// content -- so a seal that decays to a name reintroduces exactly the inheritance it refuses.
 //
-// THAT BINDING IS ALSO WHY THE MEASUREMENTS TRANSFER. The 2.38 floor was read from the ELF closure
-// of THIS content. Another genuinely-Orca binary of another version has its own floor and must not
-// inherit this one merely by being Orca, so identity here is the content digest rather than the
-// product name -- the same reason the floor was measured from the closure rather than read off the
-// filename.
+// gunbc.package_delivery already refuses to treat a staging path as durable receipt identity, and
+// the Spark runtime publishes into a root derived from materialization identity rather than trusting
+// an arbitrary mutable path. Either shape would close this: re-verify at every positive spend, or
+// materialize into an owned content-addressed realization the probe and the slice both consume.
+//
+// NEITHER BELONGS IN THIS PR, so the positive capability stays UNINHABITED. There is no way to
+// obtain an OrcaExecutable, and therefore no way to reach ExecutionReady or a SlicePlan. The direct-
+// host route keeps what it actually established -- the measured ABI floor, and two recorded hosts
+// that cleared it and still refused -- which is useful and honest on its own. A coproduct having a
+// Ready arm is not a reason to manufacture a way to reach it; that is the same fabrication as the
+// three slicing witnesses this PR deleted and the export positive control it just deleted.
+//
+// NEXT-RUNG TRIGGER: a content-addressed materialization of the selected asset, from which the
+// executable capability is named and which the probe and slice invocations both consume, so the
+// bytes that were verified are the bytes that run.
 type OrcaExecutable sole_constructor { program: NonEmptyStr }
 
 fn orca_executable_program(e: OrcaExecutable) -> NonEmptyStr { e.program }
-
-type OrcaExecutableAdmission
-  = OrcaExecutableAdmitted { executable: OrcaExecutable }
-  | OrcaExecutableContentMismatch { program: NonEmptyStr }
-  | OrcaExecutableUnverifiable { program: NonEmptyStr, reason: NonEmptyStr }
-
-// THE ONLY MINT. A path on disk becomes an Orca executable exactly when its bytes are the selected
-// asset's bytes. The three outcomes stay distinct because they have different remedies: run it,
-// fetch the right asset, or fix the verification tooling.
-fn admit_orca_executable(program: NonEmptyStr) -> OrcaExecutableAdmission {
-  match sha256sum_verify_via_shell(
-    path: program,
-    expected_digest: orca_slicer_linux_aarch64_appimage_sha256,
-  ) {
-    Sha256Matches => OrcaExecutableAdmitted { executable: OrcaExecutable { program: program } }
-    Sha256Mismatch => OrcaExecutableContentMismatch { program: program }
-    Sha256VerifyInfraFailure { reason: r } =>
-      OrcaExecutableUnverifiable { program: program, reason: r }
-  }
-}
 
 // THE VERSION PROBE IS THE INVOCATION A CONSUMER USES TO ESTABLISH THAT THE BINARY RUNS. It is the
 // cheapest Orca-shaped command there is, it needs no display, and it exits zero only if the runtime

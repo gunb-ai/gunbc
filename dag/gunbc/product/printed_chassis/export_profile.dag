@@ -289,14 +289,83 @@ fn standings_share_one_profile(standings: List<ChordStanding>) -> Bool {
   }
 }
 
-// THE ROSTER IS CLOSED OVER, NOT RECEIVED. An earlier revision took the roster as a parameter, which
-// moved the writable denominator one argument to the left rather than removing it: a caller could
-// still name [coupon_top_rung_subject], omit both fan features, and be admitted. The paired witness
-// that watched a one-subject roster admit was exhibiting that state, not closing it. Coverage stays
-// roster-parametric in cover_roster, where varying the roster against fixed evidence is the whole
-// content of the discriminator; production admission may not offer that knob to anyone.
-fn admit_export_profile(standings: List<ChordStanding>) -> ExportProfileAdmission {
-  match cover_roster(roster: export_profile_subject_roster, standings: standings) {
+// THE ROSTER AND THE CRITERIA ARE BOTH CLOSED OVER, AND ADMISSION ADJUDICATES RATHER THAN ACCEPTS
+// ADJUDICATIONS. This is the third and last place the same defect appeared, each repair having moved
+// it one argument outward rather than removing it:
+//
+//   caller supplies the evidence population   -> closed by rostering the subjects
+//   caller supplies the ROSTER                -> closed by closing over the roster
+//   caller supplies already-judged STANDINGS  -> closed here
+//
+// Sealing ChordJudgment stopped a forged pass, and it proves exactly one thing: that
+// adjudicate_chord ran. It does NOT prove the requirement it ran AGAINST was this product's. A
+// caller could author a flattering DistinctionDeclared for a subject production calls UNDECLARED,
+// hand it to the legitimate adjudicator, receive a legitimate sealed pass, and spend that on
+// production admission. Nothing forged, every seal real, and the criterion caller-selected.
+//
+// So admission now takes OBSERVATIONS -- measurements, which is the only thing a caller is entitled
+// to supply -- and joins each to the canonical requirement itself. The generic adjudicate_chord
+// stays public for the discriminator witnesses, because the mathematics is worth testing on its own;
+// what may not happen is its generic result being the production authorization currency.
+//
+// THE GENERAL FORM, which took seven rounds to state at the right width: any positive standing
+// downstream admission trusts must itself be earned, INCLUDING THE POLICY IT WAS EARNED UNDER.
+fn requirement_for_subject(subject: ChordSubject) -> ChordRequirement {
+  match filter(exercised_chord_requirements, r =>
+    chord_subject_eq(a: requirement_subject(r: r), b: subject)) |> first
+  {
+    Present { value: r } => r
+    Absent =>
+      DistinctionUndeclared {
+        subject: subject,
+        because: "no canonical requirement is authored for this subject",
+      }
+  }
+}
+
+fn observations_share_one_profile(observations: List<ChordObservation>) -> Bool {
+  match map(observations, o => observation_profile(o: o)) |> first {
+    Absent => true
+    Present { value: reference } =>
+      fold(observations, init: true, f: (acc, o) =>
+        acc && stl_export_knobs_eq(a: observation_profile(o: o), b: reference))
+  }
+}
+
+fn count_observations_for(subject: ChordSubject, observations: List<ChordObservation>) -> Nat {
+  filter(observations, o => chord_subject_eq(a: observation_subject(o: o), b: subject)).length()
+}
+
+fn cover_roster_with_observations(
+  roster: List<ChordSubject>,
+  observations: List<ChordObservation>,
+) -> SubjectCoverage {
+  let missing = filter(roster, r => count_observations_for(subject: r, observations: observations) == 0)
+  let duplicated = filter(roster, r => count_observations_for(subject: r, observations: observations) > 1)
+  let foreign = filter(
+    map(observations, o => observation_subject(o: o)),
+    sub => subject_in_roster(subject: sub, roster: roster) == false,
+  )
+  if missing.length() > 0 {
+    CoverageMissing { subjects: missing }
+  } else {
+    if foreign.length() > 0 {
+      CoverageForeign { subjects: foreign }
+    } else {
+      if duplicated.length() > 0 {
+        CoverageDuplicated { subjects: duplicated }
+      } else {
+        CoverageComplete
+      }
+    }
+  }
+}
+
+fn admit_export_profile(observations: List<ChordObservation>) -> ExportProfileAdmission {
+  match cover_roster_with_observations(
+    roster: export_profile_subject_roster,
+    observations: observations,
+  ) {
     CoverageMissing { subjects: m } =>
       ExportProfileRefusedIncomplete { coverage: CoverageMissing { subjects: m } }
     CoverageForeign { subjects: f } =>
@@ -304,15 +373,20 @@ fn admit_export_profile(standings: List<ChordStanding>) -> ExportProfileAdmissio
     CoverageDuplicated { subjects: d } =>
       ExportProfileRefusedIncomplete { coverage: CoverageDuplicated { subjects: d } }
     CoverageComplete =>
-      if standings_share_one_profile(standings: standings) == false {
-        ExportProfileRefusedProfileDisagreement { standings: standings }
+      if observations_share_one_profile(observations: observations) == false {
+        ExportProfileRefusedProfileDisagreement {
+          standings: map(observations, o =>
+            adjudicate_chord(o: o, r: requirement_for_subject(subject: observation_subject(o: o)))),
+        }
       } else {
-        let unsettled = filter(standings, s => standing_is_within(s: s) == false)
+        let standings = map(observations, o =>
+          adjudicate_chord(o: o, r: requirement_for_subject(subject: observation_subject(o: o))))
+        let unsettled = filter(standings, st => standing_is_within(s: st) == false)
         if unsettled.length() > 0 {
           ExportProfileRefusedUnsettled { unsettled: unsettled }
         } else {
           ExportProfileAdmitted {
-            knobs: fold(standings, init: exercised_stl_knobs, f: (acc, st) => standing_profile(s: st)),
+            knobs: fold(observations, init: exercised_stl_knobs, f: (acc, o) => observation_profile(o: o)),
             standings: standings,
           }
         }
