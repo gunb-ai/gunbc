@@ -42,6 +42,7 @@ import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
+import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
 import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
@@ -65,8 +66,11 @@ import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption
 // DeclinedLiveTree arm stopped withholding their nine witness identities. None of their carriers
 // is changed by that deletion. They are declared rung drops rather than expected-red enrolments:
 // the witnesses remain ordinary, executing failures until the separately routed repair lands.
-// The work-item identity is part of each next-rung trigger, so ownership survives a squash merge
-// beside the bounded population and the semantic condition that ends the drop.
+// The work-item identity is carried BESIDE each next-rung trigger's capability, in that trigger's
+// `awaiting` field, so ownership survives a squash merge beside the bounded population and the
+// semantic condition that ends the drop. It was inside the trigger sentence until the
+// lifecycle-bounded-referent migration; see the paragraph below for why the two halves are now
+// separate fields rather than one string a reader must split.
 
 // THE THREE CITED WORK ITEMS ARE ALREADY status=done AND THEIR CONDITIONS ARE NOT MET, measured
 // 2026-08-28 against the dashboard and against required-floor run 33140608194. adhoc-89fcf94a-bdd,
@@ -76,8 +80,23 @@ import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption
 // So the node ids are PROVENANCE for who was asked, never evidence that the climb happened: a closed
 // work item beside an unmet condition is the reported-results-versus-committed-claims gap, and reading
 // "it lands" as satisfied would inflate three classes that are still at the bottom of the ladder.
-// EACH TRIGGER'S OPERATIVE HALF IS THE SEMANTIC CLAUSE AFTER THE COLON, which is what a later reader
-// must re-measure; the rows are authored that way and survive their work items unchanged.
+//
+// THAT SEPARATION IS NOW STRUCTURE RATHER THAN THIS PARAGRAPH. It read "each trigger's operative
+// half is the semantic clause after the colon, and the rows are authored that way", which was true
+// when written and asked every consumer to perform a split no field expressed -- a paragraph
+// standing where a model was available, which is the second decidable sub-case of
+// `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`. `NextRungTrigger` now
+// carries the operative half as `capability` and the asked lanes as modeled
+// `DashboardWorkItemReferent` rows in `awaiting`, and `every_stall_trigger_is_admitted` refuses a
+// capability that spells a referent back into itself. Two rows were migrated by that change --
+// `operation_argv_binding_wall_stall`, `external_model_scope_live_cover_stall`,
+// `observation_heartbeat_lockstep_stall` and `gitattributes_committed_emit_drift_stall` -- four,
+// not the three this paragraph's dated reading counts, because that reading enumerated the nodes
+// it had checked against the dashboard rather than the rows that spell one. THE COUNT WAS THE
+// FIRST THING THE MIGRATION FALSIFIED, and it is recorded rather than silently corrected: a
+// paragraph counting a population it did not derive is the same shape as the sentence above it.
+// The dated reading is kept as the measurement that established why the split was needed, and the
+// population is now whatever `awaiting` holds, which a fold can count.
 
 // THE ROSTER, AND WHY IT IS A FOLD RATHER THAN ONE EXEMPLAR PER ROW.
 //
@@ -162,6 +181,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   operation_argv_binding_wall_stall,
   roster_re_enumerates_its_own_rows_stall,
   self_host_wet_route_receipt_lifetime_stall,
+  trigger_capability_referent_free_by_construction_stall,
   namespace_wave_admission_occurrence_grain_stall,
   namespace_wave_admission_board_grain_stall,
   runner_activation_reachability_stall,

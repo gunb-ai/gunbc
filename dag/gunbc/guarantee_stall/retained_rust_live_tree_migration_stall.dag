@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.retained_rust_live_tree_migration_stall
 
 import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   subject: "live Rust-test discovery disagrees with the retained-kernel migration authority",
@@ -10,5 +10,5 @@ data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Empty {} } },
-  next_rung_trigger: "live Rust-test discovery and the retained-kernel authority join exactly"
+  next_rung_trigger: climbs_when(capability: "live Rust-test discovery and the retained-kernel authority join exactly")
 }
