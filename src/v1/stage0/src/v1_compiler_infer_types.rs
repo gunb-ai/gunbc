@@ -1064,6 +1064,14 @@ pub fn algebra_child_or_placeholder(
     child_index: i64,
     placeholder: String,
 ) -> Rc<Node> {
+    if base.connective != Connective::NoConnective {
+        // A nominal type application (NoConnective with children) is the only
+        // shape where children are type arguments. A structural connective
+        // (Disj, Conj, Arrow) means children are variant members, field
+        // types, or function domains — not type arguments. Refuse rather
+        // than silently reading a variant member as a type argument.
+        return crate::v1_std_core::error_type();
+    }
     match Rc::new({
         let mut __result = Vec::new();
         for pair in Rc::new({
