@@ -189,7 +189,3 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
         operation_argv_bind_text(name: "property", text: "ActiveState")
       ]
     )
-  ) != "systemctl show gunbc.service --property=SubState --value"
-}
-
-// LANE A MIGRATION (transport_argv_anemia_dissolution): GetSystem left the shell-argv
