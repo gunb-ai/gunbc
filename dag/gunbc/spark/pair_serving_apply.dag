@@ -1,0 +1,233 @@
+module gunbc.spark.pair_serving_apply
+
+import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, shell_quote }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import extdeps.docker.cli { docker_image_pull_command }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+  SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
+import gunbc.spark.pair_serving_realization {
+  SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
+  SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
+  spark_pair_realizations, spark_pair_container_name, spark_pair_head_log_path,
+  spark_pair_jit_cache_host_dir, spark_pair_head_unit_name, spark_pair_worker_unit_name,
+  exec_word_is_plain,
+}
+import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
+
+// THE FIRST APPLY OF THE RENDERED PAIR, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Each host gets
+// one privileged script made only of the realization's typed argv, quoted word by word: create the
+// log and cache directories, pull the pinned image, copy the JIT cache out of the retiring
+// container so the new engine does not spend minutes rebuilding it, recreate the container from the
+// rendered spec, write the rendered unit, retire the hand-authored unit and the old container,
+// and enable the new unit. The worker is applied before the head, so the head's first engine start
+// finds its rank. Nothing here is decided: every line is a projection of a row in
+// pair_serving_realization, and the receipt lists each host's steps with its outcome.
+//
+// THIS ENTRY IS THE PAIR'S FIRST CONVERGENCE, NOT ITS LAST FORM. The Ollama-shaped plan/apply loop
+// in serving_converge_* still answers for the serving axis; folding this apply into the frozen-plan
+// path is the cut that flips spark_serving_desired_engine, and until then this entry is the only
+// actuator of the pair realization and is invoked by name, never by the fleet plan.
+
+data spark_pair_apply_receipt_path: String = "target/spark-pair-apply-receipt.txt"
+data spark_pair_apply_attempt_raw: String = "spark-pair-apply"
+
+// The hand-authored units this apply retires, per role, as observed on the first pair.
+data spark_pair_retired_head_unit: NonEmptyStr = "spark-vllm.service" as NonEmptyStr
+data spark_pair_retired_worker_unit: NonEmptyStr = "spark-ray-worker.service" as NonEmptyStr
+
+// A plain word is written as itself so the script reads as the unit's Exec line does; anything
+// else is single-quoted.
+fn script_word(w: String) -> String {
+  if exec_word_is_plain(w: w) { w } else { shell_quote(arg: w) }
+}
+
+fn argv_line(cmd: ArgvCommand) -> String {
+  join(map(concat([cmd.program as String], cmd.arguments), w => script_word(w: w)), " ")
+}
+
+fn unit_render_text(u: SparkPairUnitRender) -> String? {
+  match u {
+    SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
+    SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
+  }
+}
+
+// The privileged script for one host of the pair.
+fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEmptyStr, unit_text: String, retired_unit: NonEmptyStr) -> String {
+  let ctr = spark_pair_container_name as String
+  let old = first_pair_container_runtime.container_name as String
+  let cache = spark_pair_jit_cache_host_dir as String
+  join([
+    "set -e\n",
+    "install -d -m 755 /var/log/gunbc\n",
+    "install -d -m 755 ", cache, "\n",
+    argv_line(cmd: docker_image_pull_command(image: sparkrun_vllm_ds4_gb10_pinned_reference())), " >/dev/null\n",
+    "if docker container inspect ", old, " >/dev/null 2>&1; then docker cp ", old, ":/cache/huggingface/. ", cache, "/ 2>/dev/null || true; fi\n",
+    "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker rm -f ", ctr, " >/dev/null; fi\n",
+    argv_line(cmd: real.create), " >/dev/null\n",
+    "printf '%s' ", shell_quote(arg: unit_text), " > /etc/systemd/system/", unit_name as String, "\n",
+    "systemctl daemon-reload\n",
+    "systemctl disable --now ", retired_unit as String, " >/dev/null 2>&1 || true\n",
+    "if docker container inspect ", old, " >/dev/null 2>&1; then docker update --restart=no ", old, " >/dev/null; docker stop ", old, " >/dev/null 2>&1 || true; fi\n",
+    "systemctl enable --now ", unit_name as String, "\n",
+    "systemctl is-active ", unit_name as String, "\n",
+  ], "")
+}
+
+type SparkPairHostApplyPlan {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  script: String
+}
+
+type SparkPairApplyPlan
+  = SparkPairApplyPlanned { worker: SparkPairHostApplyPlan, head: SparkPairHostApplyPlan }
+  | SparkPairApplyRefused { cause: String }
+
+fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
+  match r {
+    SparkPairRealizationRefused { pair: _, cause: c } => SparkPairApplyRefused { cause: c as String }
+    SparkPairRealized { pair: _, head: h, worker: w } =>
+      match unit_render_text(u: h.unit) {
+        Absent => SparkPairApplyRefused { cause: "the head unit did not render" }
+        Present { value: head_text } =>
+          match unit_render_text(u: w.unit) {
+            Absent => SparkPairApplyRefused { cause: "the worker unit did not render" }
+            Present { value: worker_text } =>
+              SparkPairApplyPlanned {
+                worker: SparkPairHostApplyPlan {
+                  host: w.host, unit_name: spark_pair_worker_unit_name,
+                  script: spark_pair_host_apply_script(real: w, unit_name: spark_pair_worker_unit_name, unit_text: worker_text, retired_unit: spark_pair_retired_worker_unit),
+                },
+                head: SparkPairHostApplyPlan {
+                  host: h.host, unit_name: spark_pair_head_unit_name,
+                  script: spark_pair_host_apply_script(real: h, unit_name: spark_pair_head_unit_name, unit_text: head_text, retired_unit: spark_pair_retired_head_unit),
+                },
+              }
+          }
+      }
+  }
+}
+
+type SparkPairHostApplyOutcome
+  = SparkPairHostApplied { host: HostIdentity, detail: String }
+  | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
+
+fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
+  match o {
+    SparkPairHostApplied { host: h, detail: d } => join(["  ", h as String, "  applied  ", d], "")
+    SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
+  }
+}
+
+fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
+  match o {
+    SparkPairHostApplied { host: _, detail: _ } => true
+    SparkPairHostApplyFailed { host: _, cause: _ } => false
+  }
+}
+
+fn spark_pair_apply_receipt_body(at: String, outcomes: List<SparkPairHostApplyOutcome>) -> String {
+  join([
+    "spark pair serving apply at=", at, "\n",
+    join(map(outcomes, o => join([spark_pair_host_apply_outcome_line(o: o), "\n"], "")), ""),
+  ], "")
+}
+
+fn spark_pair_apply_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bool {
+  all(outcomes, o => spark_pair_host_applied(o: o))
+}
+
+fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, plan: SparkPairHostApplyPlan, admin_credential: Secret, admin_credential_file: NonEmptyStr) -> SparkPairHostApplyOutcome {
+  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
+    Absent => SparkPairHostApplyFailed { host: plan.host, cause: "the privileged invocation is not expressible as portable remote words" }
+    Present { value: words } => {
+      let r = password_file_ssh_exec_portable_words_with_stdin(
+        password_file: admin_credential_file,
+        client_args: shape_fleet_ssh_password_exec_trusting(
+          trust: trust,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: plan.host as String) as NonEmptyStr,
+            principal: spark_operator_bootstrap_login as NonEmptyStr,
+          },
+          words: words,
+        ),
+        stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
+      )
+      if r.success {
+        SparkPairHostApplied { host: plan.host, detail: trim(s: r.stdout) }
+      } else {
+        SparkPairHostApplyFailed { host: plan.host, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+    }
+  }
+}
+
+func spark_pair_serving_apply_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match first(spark_pair_realizations()) {
+    Absent => exit_failure(reason: "spark_pair_serving_apply: no pair is promoted to pair serving")
+    Present { value: realization } =>
+      match spark_pair_apply_plan(r: realization) {
+        SparkPairApplyRefused { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: the pair realization refused: ", c], ""))
+        SparkPairApplyPlanned { worker: wp, head: hp } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: spark_pair_apply_attempt_raw) {
+                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                Present { value: attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-spark-pair-apply-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          let w = spark_pair_privileged_leg(trust: trust, plan: wp, admin_credential: administrator as Secret, admin_credential_file: file)
+                          let h = if spark_pair_host_applied(o: w) {
+                            spark_pair_privileged_leg(trust: trust, plan: hp, admin_credential: administrator as Secret, admin_credential_file: file)
+                          } else {
+                            SparkPairHostApplyFailed { host: hp.host, cause: "not attempted: the worker apply failed" }
+                          }
+                          [w, h]
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
+                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, outcomes: outcomes)
+                          let wr = Filesystem.Write(path: spark_pair_apply_receipt_path, content: body)
+                          if !wr.success {
+                            exit_failure(reason: join(["spark pair apply receipt write failed: ", wr.error], ""))
+                          } else if spark_pair_apply_all_applied(outcomes: outcomes) {
+                            ExitSuccess
+                          } else {
+                            exit_failure(reason: join(["spark pair serving apply did not converge:\n", body], ""))
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}

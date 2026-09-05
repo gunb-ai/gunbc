@@ -669,14 +669,16 @@ fn fleet_ssh_password_client_options(
   ])
 }
 
-fn shape_fleet_ssh_password_exec(
-  context: FleetSshExecutionContext,
+// The password session needs only the trust anchor, so a caller holding no fleet key (the first
+// contact, or an apply run from an operator position) shapes it from the policy alone.
+fn shape_fleet_ssh_password_exec_trusting(
+  trust: FleetOpenSshTrustPolicy,
   target: SshTarget,
   words: PortableRemoteWords,
 ) -> List<String> {
   let config_suppression = openssh_suppress_ambient_configuration_options()
   let derived = fleet_ssh_password_client_options(
-    trust: fleet_openssh_trust_options(policy: context.trust),
+    trust: fleet_openssh_trust_options(policy: trust),
     principal: target.principal,
   )
   concat(
@@ -686,6 +688,14 @@ fn shape_fleet_ssh_password_exec(
     ),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
   )
+}
+
+fn shape_fleet_ssh_password_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
 }
 
 fn shape_fleet_ssh_exec(
