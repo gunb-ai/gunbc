@@ -137,6 +137,7 @@ import gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rath
 import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions { instruction_and_subject_resolved_from_different_revisions }
 import gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing { reported_required_refusal_does_not_precondition_landing }
 import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis { corroboration_without_an_independent_derivation_axis }
+import gunbc.recurring_failure_mode.detector_promoted_to_an_actuator_predicate { detector_promoted_to_an_actuator_predicate }
 import gunbc.recurring_failure_mode.printed_remedy_is_mangled_by_the_medium_that_prints_it { printed_remedy_is_mangled_by_the_medium_that_prints_it }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -266,5 +267,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   instruction_and_subject_resolved_from_different_revisions,
   reported_required_refusal_does_not_precondition_landing,
   corroboration_without_an_independent_derivation_axis,
+  detector_promoted_to_an_actuator_predicate,
   printed_remedy_is_mangled_by_the_medium_that_prints_it,
 ]
