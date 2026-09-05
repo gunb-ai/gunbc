@@ -792,6 +792,7 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
             "VariantValueBinding".to_string()
         }
         VarBindingKind::MatchBoundBinding => "MatchBoundBinding".to_string(),
+        VarBindingKind::ServiceValueBinding => "ServiceValueBinding".to_string(),
     }
 }
 

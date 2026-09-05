@@ -8961,7 +8961,7 @@ pub fn qualified_or_service_projection(
                     svc_type.clone(),
                 ),
                 Rc::new(ExprData::ExprVar {
-                    binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
+                    binding_kind: Some(Rc::new(VarBindingKind::ServiceValueBinding)),
                 }),
                 Rc::new(vec![]),
                 Some(Rc::new(InferredNode::Resolved {

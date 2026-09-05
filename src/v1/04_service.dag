@@ -45,77 +45,33 @@ type ServiceMethodResult {
   op_params: List<Node>
 }
 
-// WHAT MAKES AN EXPRESSION A SERVICE RECEIVER IS ITS RESOLVED TYPE, NOT ITS SPELLING.
+// THE JUDGMENT IS READ, NOT RE-DERIVED. service_spine_projection resolved this occurrence against
+// the service registry and stamped ServiceValueBinding on the result; this fn asks for that stamp
+// and nothing else. It cannot be wrong about a name it does not read.
 //
-// THE SHAPE THESE PREDICATES NOW READ is the one service_spine_projection (v1.compiler.infer)
-// produces: a service occurrence is resolved as a WHOLE dotted name against the service registry
-// and admitted as a named expression whose own name and whose resolved type name are the SAME
-// dotted string. That coincidence is the marker, and it is not a new convention invented here —
-// binding_is_namespace_root_nominal already identifies a namespace binding by exactly the same
-// test (resolved.name == binding.name, nominal, childless). An ordinary value never satisfies it:
-// `x: Foo` has expression name `x` and type name `Foo`.
+// WHY NOT CONSULT THE REGISTRY HERE, which is the obvious alternative: the emitters cannot reach
+// it. 371 functions across 05_emit, 05_emit_rust, 05_emit_go and 05_emit_python thread
+// `source_indices`, and adding a parallel `services` parameter beside it would duplicate that
+// plumbing to carry a fact the node can carry itself.
 //
-// WHAT WAS HERE BEFORE, AND WHY IT WAS REPLACED RATHER THAN EXTENDED. The previous predicate
-// recognized a SYNTACTIC shape — a field access rooted directly in a variable whose final
-// component starts with an ASCII uppercase letter — and never consulted the resolution that had
-// already decided the question. That is a classifier guessing at a fact the compiler already
-// knew. Extending its field spine to accept deeper dotted names (the first attempt at
-// arbitrary segmentation) made it strictly worse: `x.inner.User`, an ordinary value expression,
-// then satisfied it, so an ordinary field access could be collected as a service dependency and
-// reach generated function parameters. Widening a spelling heuristic does not make it a semantic
-// authority; the repair is to stop guessing.
-//
-// THESE PREDICATES ARE CONSUMED BY EMISSION, not by diagnostics: collect_typed_service_calls_into
-// gathers the names that become generated service parameters, and 05_emit / 05_emit_go /
-// 05_emit_python decide call shape from them. A false positive here mints a parameter for a
-// service that does not exist; a false negative drops the parameter a real call needs. Both are
-// silent in the emitted program, which is why this judgment must come from resolution.
-// THE DOTTED REQUIREMENT IS BEHAVIOUR PRESERVATION, NOT A SPELLING RULE SNEAKING BACK IN, and it
-// is the difference between this predicate and the one CI refused.
-//
-// Name-equals-its-own-type-name is satisfied by THREE shapes, not one: a service occurrence
-// projected by service_spine_projection (`diagnostic.ipmi.Tool`), a single-segment service bound
-// directly (`Filesystem`), and a bare NAMESPACE ROOT (`cargo`, `diagnostic`) — because svc_locals
-// binds each root as a nominal whose resolved name is the root itself. The first is what this
-// predicate is for; the other two are not services being CALLED and admitting them changes emitted
-// behaviour in two different ways.
-//
-// THE SINGLE-SEGMENT CASE IS A FAIL-CLOSED GUARANTEE AND CI CAUGHT IT BEING BROKEN. The previous
-// form of this fn admitted `Filesystem`, so `Filesystem.Read(path:)` inside a pure `fn` was
-// collected as a service dependency and the emitted code bound it — deleting the
-// "unrealized host seam: service op Filesystem.Read" refusal that
-// test.claim.self_host_emitted_call_target_realization_witness_test
-// w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding exists to
-// assert. The predicate this replaces required an ExprFieldAccess receiver and therefore never
-// matched a single-segment name; requiring a dot reproduces that exactly. Single-segment services
-// were not collected before this branch and are not collected now, so nothing here changes their
-// treatment in either direction.
-//
-// THE NAMESPACE-ROOT CASE IS A FALSE POSITIVE that would mint a generated parameter for a service
-// that does not exist: `diagnostic` is a root, never a registered service. A root is single-segment
-// by construction, so the same requirement excludes it.
-//
-// WHAT WOULD BE STRICTLY BETTER, and why it is not done here: consulting the service registry, which
-// answers "is this name a service" directly instead of inferring it from shape. The registry is not
-// in scope at the four emit sites that consume this predicate — they receive only source_indices —
-// so threading it is a wider change than this repair, and is the same identity-preservation work
-// the A1/A4 lane owns. This is the narrow, behaviour-preserving form until that lands.
+// THREE EARLIER SHAPES GUESSED, AND EACH GUESS WAS WRONG IN ITS OWN WAY. A field access rooted in a
+// variable with an ASCII-uppercase leaf admitted `x.inner.User`, an ordinary value. Name-equals-its-
+// own-resolved-type-name admitted single-segment `Filesystem`, which deleted the fail-closed
+// "unrealized host seam" refusal a service op in a pure fn must produce — CI caught that one — and
+// admitted bare namespace roots like `cargo`, which are not services at all. Requiring a dot
+// reproduced the previous behaviour exactly and was still a semantic fact inferred from a
+// character. The stamp ends the sequence rather than adding a fourth spelling to it.
+// THE VARIANT IS MATCHED IN ITS OWN match RATHER THAN NESTED IN THE OUTER PATTERN, and that is an
+// emission constraint rather than a style choice: spelling it as
+// `ExprVar { binding_kind: Present { value: ServiceValueBinding } }` emits Rust that matches a bare
+// variant against an `Rc<VarBindingKind>` field and does not compile. Binding the payload and
+// eliminating it separately emits correctly. Measured by regen, not assumed.
 fn service_receiver_resolved_name(receiver: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match receiver.expr_data {
-    ExprVar { binding_kind: _ } =>
-      match receiver.inferred {
-        Present { value: Resolved { node: rt } } =>
-          if rt.connective == NoConnective && (rt.children |> count) == 0 {
-            let type_name = authored_name_at(source_indices: source_indices, node: rt)
-            let expr_name = expr_var_name_at(texpr: receiver, source_indices: source_indices)
-            if type_name != "" && type_name == expr_name && contains(type_name, ".") {
-              Present { value: type_name }
-            } else {
-              none
-            }
-          } else {
-            none
-          }
+    ExprVar { binding_kind: Present { value: bk } } =>
+      match bk {
+        ServiceValueBinding =>
+          Present { value: expr_var_name_at(texpr: receiver, source_indices: source_indices) }
         _ => none
       }
     _ => none

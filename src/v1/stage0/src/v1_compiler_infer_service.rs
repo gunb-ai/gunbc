@@ -16,6 +16,8 @@ use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::VarBindingKind;
+use crate::v1_std_core::VarBindingKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
@@ -51,34 +53,13 @@ pub fn service_receiver_resolved_name(
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprVar {
-            binding_kind: _, ..
-        } => match receiver.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                if ((rt.connective.clone() == Connective::NoConnective)
-                    && ((rt.children.clone().len() as i64) == 0))
-                {
-                    {
-                        let type_name = crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            rt.clone(),
-                        );
-                        let expr_name = crate::v1_std_core::expr_var_name_at(
-                            receiver.clone(),
-                            source_indices.clone(),
-                        );
-                        if (((type_name.clone() != "".to_string())
-                            && (type_name.clone() == expr_name.clone()))
-                            && v1_rt::contains(type_name.clone(), ".".to_string()))
-                        {
-                            Some(type_name.clone())
-                        } else {
-                            std::option::Option::None
-                        }
-                    }
-                } else {
-                    std::option::Option::None
-                }
-            }
+            binding_kind: Some(bk),
+            ..
+        } => match (*bk.clone()).clone() {
+            VarBindingKind::ServiceValueBinding => Some(crate::v1_std_core::expr_var_name_at(
+                receiver.clone(),
+                source_indices.clone(),
+            )),
             _ => std::option::Option::None,
         },
         _ => std::option::Option::None,

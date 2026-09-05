@@ -5704,7 +5704,7 @@ fn qualified_or_service_projection(texpr: Node, scope: InferScope, span: SourceS
           Present { value: ok_infer(texpr: make_named_expr_node(
             occurrence_identity: texpr.occurrence_identity,
             name: authored_name_at(source_indices: scope.type_env.source_indices, node: svc_type),
-            expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+            expr_data: ExprVar { binding_kind: Present { value: ServiceValueBinding } },
             children: [],
             inferred: Present { value: Resolved { node: svc_type } },
             span: span,
