@@ -2856,35 +2856,6 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.
         "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
-        // THE FIRST ENTRY IN THIS LIST THAT BUYS COVERAGE RATHER THAN SILENCE, and it is the
-        // opposite case to the two above rather than a copy of them.
-        //
-        // Those two are excluded BECAUSE they have no wet consumer: the exclusion buys a green
-        // floor, the claims sit at UNEXECUTED-IN-CI, and their comments say so plainly. This one
-        // is excluded so that it CAN be executed. Its five functions are enrolled in
-        // v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, whose cadence
-        // (LocalRepoWetLane) is one of the four std_witness_admission reports as having a live
-        // scheduled route — "the one arm added with its executor rather than before it" — and
-        // whose scope is this witness almost verbatim: real effects confined to a temporary
-        // directory, which the required lane runs in its own checkout. The lane joins its roster
-        // to the executor's terminal receipts at identity grain in BOTH directions, and refuses
-        // LocalRepoWetExecutorAbsent when a nonempty schedule meets an uninvoked executor, so a
-        // member it cannot run REDS rather than quietly reading as covered.
-        //
-        // WHY THE .dag ROSTERS WERE NOT ENOUGH, recorded because three CI cycles were spent
-        // finding it and the comment above already warned of the shape: witness_exclusion_frontier
-        // governs DISCOVERY SELECTION and is projected by cli_run/witness_gates.rs; the FLOOR
-        // PREPARED SUBJECT consults this literal and nothing else. The identities were gapping in
-        // the prepared subject, so the .dag row was the right row for the wrong consumer — twice,
-        // since bin_witness_wet_entries is one of the five cadences whose executor was deleted
-        // with falsifier.yml at 611fd02770 and was dead on arrival.
-        //
-        // Admitted against the v1 freeze on the PURPOSE test: the witness is the executing
-        // evidence for the Step 0 calibration instrument's refusal path, and without this entry
-        // that evidence cannot run at all. Mocking the effects is not the alternative — the
-        // witness exists to prove the REAL report writes the REAL matrix before refusing, and a
-        // mocked write asserts against the mock.
-        "test/claim/provenance_calibration_report_real_execution_witness_test.dag".to_string(),
     ]
 }
 
