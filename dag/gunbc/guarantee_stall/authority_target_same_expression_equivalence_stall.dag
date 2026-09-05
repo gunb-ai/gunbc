@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
 
 // ONE EXPRESSION, TWO EVALUATORS -- AND WHY THIS IS A STALL RATHER THAN A DROP, which is the whole
 // reason it is in this carrier. Nothing ever required this comparison, so no rung was lowered and
@@ -35,5 +35,5 @@ data authority_target_same_expression_equivalence_stall: GuaranteeStall = Guaran
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
   population: UncountedNotEnumerable { reason: "the affected population is every expression whose two realizations could diverge, and it is survivorship-filtered: the interpreter is the stricter arm, so sites where the divergence carried a consequence were rewritten while authoring and only the harmless matches survive to be grepped" },
-  next_rung_trigger: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row"
+  next_rung_trigger: climbs_when(capability: "a lane that runs ONE expression through BOTH realizations and refuses a divergence, sufficient for an emission differing from its authority in value OR in what it evaluates being caught, demonstrated by a red on a fixture where the two agree on the returned value and differ on which subexpressions ran; the fixture is already executed and dated on gunbc#10139, so what is owed is enrolment and not a harness, and enrolling behavioral_differential discharges the seed-Rust versus emitted-Rust axis ONLY and does not touch this row")
 }
