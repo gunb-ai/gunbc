@@ -1,54 +1,31 @@
 module tools.self_host_logic_seed_unavailable_transport
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, list_length }
 import std.logic { Bool }
 import std.integer { Int }
 import v2.std.algebra { fold_list }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
-// Seed-unavailable behavioral receipt for dag/std/logic.dag (Control (b), LocalRepoWetLane):
-// emit -> compile WITHOUT the seed crate v1-compiler -> run -> verify expected values.
-//
-// Control (b): the emitted candidate STILL EXECUTES SUCCESSFULLY when no seed implementation
-// is available. Standard infrastructure crate dependencies (im, serde, etc.) are present
+// Seed-unavailable behavioral receipt for dag/std/logic.dag (Control (b), LocalRepoWetLane).
+// The emitted candidate STILL EXECUTES SUCCESSFULLY when no seed implementation is
+// available. Standard infrastructure crate dependencies (im, serde, etc.) are present
 // because v1_rt.rs (the v2 runtime shim, emitted unconditionally by emit_v2_rt_module)
 // references them -- these are emitted-crate infrastructure deps, NOT seed linkage.
 // v1-compiler (the seed crate) is deliberately absent.
 //
-// SEED-DEPENDENCY BOUNDARY: The control denies THREE of four modes:
-//   (1) EXECUTION: the emitted binary runs without the seed binary
-//   (2) LINKAGE: v1-compiler is absent at cargo build time -- no link-time seed dependency
-//   (3) FALLBACK: no runtime fallback to v1-compiler (it is not linkable)
-//   (4) EMBEDDED SOURCE: v1_rt.rs IS present in the emitted source tree (unconditional
-//       emitter behavior) and compiled into the crate. The transport ENUMERATES all
-//       emitted .rs files, excludes v1_rt.rs (which defines the runtime functions), and
-//       checks EVERY OTHER file for v1_rt:: call sites -- refuses on any match. The red is
-//       authorable: point this transport at any module using concat/trim/length/rc_empty_map
-//       and the v1_rt:: check fires across the whole emitted crate, not just one file.
-//       This is CONSTRUCTION OVER PROSE -- the boundary is executed, not narrated.
-//
-// NEXT-RUNG TRIGGER: the ability to emit a crate whose runtime fragments are DERIVED
-// FROM THE MODELED SOURCE rather than copied from the seed's runtime module. Until then,
-// the embedded-source mode is enforced at the per-subject level by the v1_rt:: call-site
-// check below.
-//
-// This module fits LocalRepoWetLane: effects are confined to a temp directory + cargo
-// build with standard deps (no network for these cached crates), not BinWitnessWet
-// (ISOs, network fetch, remote host provisioning).
+// NEXT-RUNG TRIGGER: emit a crate whose runtime fragments are DERIVED FROM THE MODELED
+// SOURCE rather than copied from the seed's runtime module -- makes the v1_rt:: call-site
+// check unnecessary by construction.
 
 data slbu_logic_source_rel: String = "dag/std/logic.dag"
 
 data slbu_driver_main_source: String = "use v1_compiled::std_logic;\n\nfn eq(e: std_logic::Classical, v: std_logic::Classical) -> bool {\n    matches!((e, v),\n        (std_logic::Classical::True, std_logic::Classical::True)\n            | (std_logic::Classical::False, std_logic::Classical::False)\n    )\n}\n\nfn main() {\n    let tru = std_logic::Classical::True;\n    let fls = std_logic::Classical::False;\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    // classical_not\n    all_pass = all_pass && eq(std_logic::classical_not(tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_not(fls), tru); cases += 1;\n\n    // classical_and\n    all_pass = all_pass && eq(std_logic::classical_and(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(tru, fls), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, tru), fls); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_and(fls, fls), fls); cases += 1;\n\n    // classical_or\n    all_pass = all_pass && eq(std_logic::classical_or(tru, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(tru, fls), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, tru), tru); cases += 1;\n    all_pass = all_pass && eq(std_logic::classical_or(fls, fls), fls); cases += 1;\n\n    println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL_CASES: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_SEED_UNAVAIL: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
-
-data slbu_scaffold_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "slbu_driver_main_source -- the hand-written Rust driver that tests the emitted Classical truth table against known constants (no seed oracle). Static config string handed to typed host ops. DISSOLVES WHEN a modeled self-host seed-unavailable harness producer emits the driver (retire this string carrier).")
 
 data slbu_pass_marker: String = "SELF_HOST_LOGIC_SEED_UNAVAIL: PASS"
 
@@ -65,26 +42,31 @@ fn slbu_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
 }
 
-// Check all emitted .rs files for v1_rt:: call sites, EXCLUDING v1_rt.rs itself
-// (which defines those functions, not calls them). Returns true when NO file
-// (other than v1_rt.rs) contains a v1_rt:: reference. A failed read or a matching
-// file both return false (fail-closed).
+// Check all emitted .rs files for v1_rt:: call sites, EXCLUDING the file named
+// v1_rt.rs (which defines the runtime functions -- its v1_rt:: tokens are definitions
+// rather than call sites). Returns true when NO non-v1_rt.rs file contains a v1_rt::
+// reference. Refuses on a failed find, an empty file list (no subject to check), or
+// a missing subject module.
 fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
+  // Refuse on a failed find -- vacuity guard
+  let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
+  // Refuse on an empty file list -- no subject to check
+  let subject_present = list_length(items: files) > 0
   fold_list(
     xs: files,
     empty: true,
     cons: fn(ok, path) {
-      // Skip v1_rt.rs -- it defines the functions, doesn't call them via v1_rt::
-      if string_contains(s: path, pattern: "v1_rt.rs") {
+      // Exclude the exact file named "v1_rt.rs" at the end of any path segment
+      if ends_with(s: path, suffix: "/v1_rt.rs") {
         ok
       } else {
         let read = Filesystem.Read(path: path)
         ok && read.success && !string_contains(s: read.content, pattern: "v1_rt::")
       }
     }
-  )
+  ) && ok && subject_present
 }
 
 // NO SEED CRATE DEPENDENCY. The emitted crate always includes v1_rt.rs (the v2 runtime
@@ -92,15 +74,7 @@ fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
 // etc. -- those are standard emitted-crate infrastructure dependencies, NOT seed linkage.
 // What is ABSENT is v1-compiler (the seed crate), so the COMPARISON LEG (emitted vs seed)
 // cannot link. The CONSTRUCT LEG (emit, build as standalone, run) proves the emitted LOGIC
-// module (dag/std/logic.dag) is self-contained, verified by the v1_rt:: call-site check
-// below.
-//
-// BOUNDARY: v1_rt.rs IS present in the emitted source tree (unconditional by the emitter)
-// and IS compiled into the crate. The transport ENFORCES by execution that the emitted
-// subject module does not call v1_rt:: functions -- if it does, the transport refuses
-// with a typed refusal. The control denies three of four seed-dependency modes (execution,
-// linkage, fallback) and the fourth (embedded source) is enforced at the per-subject level
-// by the call-site check, not narrated.
+// module (dag/std/logic.dag) is self-contained, verified by the v1_rt:: call-site check.
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
@@ -118,12 +92,6 @@ fn slbu_cargo_toml(root: String) -> String {
   )
 }
 
-// Emit dag/std/logic.dag with the real gunbc binary, build WITHOUT any seed crate
-// dependency, and run the resulting witness. Returns true when:
-//   - emit succeeds
-//   - cargo build of the emitted crate (with no seed crate dependendency) succeeds
-//   - the witness binary runs and reports the expected case count
-//   - the witness binary exits 0 with the PASS marker
 fn slbu_seed_unavailable_receipt() -> Bool {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
@@ -158,16 +126,6 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     ]
   )
 
-  // ENFORCED BOUNDARY: verify NO emitted .rs file (other than v1_rt.rs which defines
-  // the runtime functions) calls v1_rt:: functions. v1_rt.rs is present in the emitted
-  // source tree unconditionally, but the emitted subject modules must not CALL into it.
-  // This check enumerates all .rs files, excludes v1_rt.rs, reads each, and refuses if
-  // any v1_rt:: reference is found. A typed refusal means "this subject is outside the
-  // control's denial scope" rather than "the control failed." The red is authorable:
-  // point this transport at any module using concat/trim/length/rc_empty_map and the
-  // v1_rt:: check fires. Fail-closed: a failed read returns false.
-  let no_v1_rt_calls = slbu_check_no_v1_rt_calls(src_dir: emitted_src_dir)
-
   // Write Cargo.toml with standard infrastructure deps but NO seed crate dependency
   let cargo_toml = Filesystem.Write(
     path: concat(out_dir.path, "/Cargo.toml"),
@@ -180,7 +138,17 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     content: slbu_driver_main_source
   )
 
-  // Build the emitted crate WITHOUT the seed crate (pure std dependency only -- no network)
+  // ENFORCED BOUNDARY: verify NO emitted .rs file (other than v1_rt.rs which defines
+  // the runtime functions) calls v1_rt:: functions. The check runs AFTER the final
+  // src/ tree is in place (emit + main_rs write), so what it scans is what cargo builds.
+  // A spelling check for `v1_rt::` tokens is a per-subject validator, not a construction
+  // wall -- it flags the symptom (a call site in a non-v1_rt module) but does not make
+  // the violation structurally unwritable. A typed refusal means the subject module
+  // references the seed runtime namespace; a pass means the emitted module content
+  // contains no `v1_rt::` token.
+  let no_v1_rt_calls = slbu_check_no_v1_rt_calls(src_dir: emitted_src_dir)
+
+  // Build the emitted crate WITHOUT the seed crate
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
     manifest_path: concat(out_dir.path, "/Cargo.toml"),
@@ -201,11 +169,6 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && cargo_toml.success && main_rs.success
     && cleanup_src.success && cleanup_out.success
 
-  // The receipt holds when:
-  //   - emit staged successfully
-  //   - the emitted module does NOT call into v1_rt (embedded-source boundary enforced)
-  //   - the no-seed-closure cargo build succeeded
-  //   - the witness ran, reported the expected case count, and printed the PASS marker
   staged
     && no_v1_rt_calls
     && build.success

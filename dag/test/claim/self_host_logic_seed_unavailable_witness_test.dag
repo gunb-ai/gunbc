@@ -16,8 +16,8 @@ import tools.self_host_logic_seed_unavailable_transport {
 //   (2) LINKAGE: v1-compiler absent at cargo build time
 //   (3) FALLBACK: no runtime fallback to v1-compiler
 //   (4) EMBEDDED SOURCE: v1_rt.rs present (unconditional emitter behavior) -- the
-//       transport ENFORCES by execution that the emitted subject module does not call
-//       v1_rt:: functions, with a typed refusal if it does. Construction over prose.
+//       transport checks via per-subject spelling search: emitted .rs files are read
+//       and checked for `v1_rt::` tokens; a match refuses the receipt (validator, not construction).
 //
 // THIS IS NOT A SUBSTITUTE FOR CONTROL (a). Control (b) tests whether the candidate
 // depends on the seed; control (a) tests whether the comparison discriminates. Neither

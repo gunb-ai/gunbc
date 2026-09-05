@@ -138,6 +138,24 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // the qualified name was authored twice per row and could disagree with itself. It is derived from
 // the pair by `witness_identity_qualified_name`, which is the same projection every other consumer
 // of an identity already uses.
+//
+// CONTROL (a) and (b) -- two self-host behavioral receipts for dag/std/logic.dag, each verified
+// by its own transport on the local-repo wet lane. Neither establishes the other; a green (b) does
+// not cover a missing (a), nor vice versa. Joined by entry path rather than by proximity.
+//   - CONTROL (b): test.claim.self_host_logic_seed_unavailable_witness /
+//     self_host_logic_seed_unavailable_receipt_holds -- emit dag/std/logic.dag with gunbc,
+//     compile the emitted Rust with standard infrastructure deps (im, serde, etc. for v1_rt.rs)
+//     but WITHOUT the seed crate v1-compiler, run the witness binary. Proves the emitted logic
+//     module executes without seed dependency at build/run time. The transport's v1_rt:: call-site
+//     check (per-subject spelling search) refuses if the emitted subject module references the seed
+//     runtime namespace. Replaces the former zero-external-dependency constraint (now with standard
+//     deps for v1_rt.rs, which the emitter includes unconditionally).
+//   - CONTROL (a): test.claim.self_host_logic_behavioral_witness /
+//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile WITH
+//     the seed crate (v1-compiler path dependency), run the comparison driver + --inject-fault.
+//     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
+//     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
+//     cadence is preserved in the exclusion row reason as evidence of the routing gap.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -248,24 +266,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "observe_npm_wet_posix_command_v_check_does_not_crash",
       expectation: ExpectedToHold {}
     },
-    // CONTROL (b) -- seed-unavailable behavioral receipt for dag/std/logic.dag.
-    // Proves the emitted candidate STILL EXECUTES SUCCESSFULLY without the seed crate
-    // (v1-compiler absent at build time). Standard infrastructure deps (im, serde etc.)
-    // are present for v1_rt.rs which the emitter includes unconditionally. The transport
-    // ENFORCES by execution that the emitted subject module does not call v1_rt::
-    // functions (reads the emitted .rs file, refuses on match).
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_witness", function: "self_host_logic_seed_unavailable_receipt_holds" },
       entry: "dag/test/claim/self_host_logic_seed_unavailable_witness_test.dag",
       function: "self_host_logic_seed_unavailable_receipt_holds",
       expectation: ExpectedToHold {}
     },
-    // CONTROL (a) -- planted-mutation behavioral receipt for dag/std/logic.dag.
-    // Rehomed from FalsifierSelfHostWet (dead cadence, DeclaredCadenceUnrealized).
-    // Emit dag/std/logic.dag with gunbc, compile WITH the seed crate (v1-compiler
-    // path dependency), run the comparison driver + --inject-fault. Proves the
-    // comparison discriminates (DESIGN section 5). Shares the same emission target
-    // as control (b); a future optimization could share the emit step.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_behavioral_witness", function: "self_host_logic_behavioral_receipt_holds" },
       entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",

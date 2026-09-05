@@ -56,7 +56,7 @@ test fn file_with_v1_rt_call_fails_check() -> Bool {
 // but the transport EXCLUDES v1_rt.rs from the check. This test verifies that a file
 // NAMED v1_rt.rs with v1_rt:: content is NOT treated as a violation.
 // Note: the actual transport uses shell.Find.FilesByNameSorted to enumerate files
-// and filters out paths containing "v1_rt.rs". This fixture confirms the per-file
+// and excludes only paths ending with "v1_rt.rs". This fixture confirms the per-file
 // check would permit a v1_rt.rs file while refusing a non-v1_rt file with calls.
 test fn v1_rt_rs_with_calls_permitted() -> Bool {
   let dir = shell.Mktemp.Dir()
