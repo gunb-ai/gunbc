@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.next_rung_trigger_enforcement_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, UncountedNotEnumerable, climbs_when }
 
 // THIS ROW IS THE STALL CARRIER'S OWN CLASS, and it sits in its own module for the reason every
 // other row does: the stall is in the stall machinery itself, whose type authority is
@@ -21,5 +21,5 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
   population: UncountedNotEnumerable {
     reason: "a next-rung trigger is authored as prose, so it has no identity to count at. The majority of sites sit inside // annotations, which DESIGN section 4c makes unreadable to any Accepted program, so no lens can enumerate them however it is written -- the shortfall is the representation, not the sweep"
   },
-  next_rung_trigger: "every class this repository declares below its ceiling declares it through gunbc.guarantee_stall GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation"
+  next_rung_trigger: climbs_when(capability: "every class this repository declares below its ceiling declares it through gunbc.guarantee_stall GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation")
 }

@@ -1,9 +1,12 @@
 module gunbc.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_binary_path }
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
+import std.measure { ByteSize }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.provider_account {
   AdmittedAccountBinding,
   CodexAccountSelection,
@@ -11,6 +14,7 @@ import gunbc.provider_account {
   CodexLabelledAccount,
   ProviderAccountLabel,
   EvidencedSharingDiscipline,
+  codex_account_state_root,
   codex_roadmap_account_evidence,
   codex_roadmap_account_selection,
   admitted_single_session_binding,
@@ -199,6 +203,60 @@ type HostDashboardInstance {
   actuation: DashboardActuationPosture
   provision_transport: DashboardProvisionTransport
   source_seed: DashboardSourceSeed
+  admitted_revision: DashboardAdmittedRevisionSource
+  toolchain: DashboardToolchain
+  dispatch_worker_memory_max: ByteSize
+}
+
+// THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
+// does not go through the capability set.
+//
+// execution_environment answers "which programs may a DISPATCH run", and its members are checked by
+// preflight before an attempt starts. Creating the instance's own roots happens BEFORE any of that
+// -- it is what makes the transition gate answerable at all -- so the directory program cannot come
+// from a capability the dispatch preflight owns without putting a provisioning tool in a dispatch
+// contract. It comes from the toolchain instead, which is the machine-level fact both consume.
+//
+// KNOWN RESIDUE, stated rather than hidden: execution_environment is DERIVED from this same
+// toolchain at each constructor, so the two fields can be made to disagree by passing one
+// toolchain and an environment built from another. No constructor does, and each names one
+// toolchain value twice in adjacent lines. The structural fix is for execution_environment to stop
+// being a field and become a function of this one, which is a 37-site repoint of `.execution_
+// environment` reads and does not belong in a change about serving a workspace locally.
+// Dissolution trigger: that repoint. Until then this is one authority with a derived copy beside
+// it, which is a weaker guarantee than one authority alone and is recorded as such.
+
+// WHICH AUTHORITY ADMITS A REVISION FOR THIS INSTANCE -- a required field, so that no instance can
+// exist without answering it.
+//
+// The launch gate asks whether the tree an instance dispatches from is the ADMITTED revision, and
+// until now the answer came from one hardcoded pair: refs/fleet/desired, advertised by origin. That
+// is the right authority for a fleet host and the wrong question for a development checkout, which
+// is not a fleet member and whose HEAD is ahead of the admitted fleet revision by construction --
+// that being the entire point of a development checkout.
+//
+// The refusal that must NOT be built here is the exempting one. "Skip the revision gate for local
+// instances" is a toggle whose only effect is to proceed as if the refusal had not fired, which is
+// the escape hatch DESIGN 5 names; it would also make the gate untestable on the one machine a
+// human iterates on. So the gate keeps its exact form -- HEAD compared against a named ref, drift
+// refuses, unobserved refuses -- and only the NAMED REF varies. A development instance points at a
+// ref in its own repository that the operator advances deliberately; dispatching from a tree nobody
+// admitted stays refused, and admitting your own tree becomes a visible act with a receipt in the
+// reflog rather than a bypass with no trace.
+//
+// It is a record rather than a coproduct because both fields are genuinely free: the pair is
+// (which remote advertises it, which ref it is), and a closed variant set would have to be widened
+// for every future admitting authority while carrying no fact the pair does not already carry.
+type DashboardAdmittedRevisionSource {
+  remote: String
+  ref_name: GitRef
+}
+
+// The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
+// spelled at each instance so that the fleet answer stays one value across every fleet host.
+data fleet_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: "origin",
+  ref_name: fleet_desired_ref_name,
 }
 
 // A dashboard is an explicit host instance, not an ambient serve process. One value moves the
@@ -366,63 +424,177 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }
 
-fn dashboard_execution_environment(
+// ONE CAPABILITY SET, N BOUND TOOLCHAINS -- the DESIGN 3 split between the interface shape and its
+// realization, applied to the executables a dispatch host runs.
+//
+// The capability LIST, each capability's identity probe, and each ensure policy are facts about
+// what a dispatch host must be able to do; WHERE those programs live is a fact about the machine.
+// Fusing them, as the single srv1-shaped producer did, made every path a Linux path by
+// construction: a second host could only be served by copying twelve rows and editing the paths,
+// which is the redundancy DESIGN 2 prices and the fork DESIGN 3 forbids -- the two copies drift
+// apart at exactly the moment a capability is added, because nobody edits the copy they are not
+// looking at.
+//
+// So the toolchain is the parameter and the capability set is the invariant. Adding a platform is
+// one DashboardToolchain value; adding a CAPABILITY is one row here that every platform must then
+// answer for, which is the direction the failure should point.
+type DashboardToolchain {
+  directory_create: FilePath
+  path_test: FilePath
+  git: FilePath
+  tmux: FilePath
+  pipe_shell: FilePath
+  tee: FilePath
+  jq: FilePath
+  environment_binding: FilePath
+  install: FilePath
+  link: FilePath
+  timeout: FilePath
+  systemd_run: FilePath?
+  cargo: FilePath
+  rustc: FilePath
+  rustfmt: FilePath
+}
+
+// The GNU identity strings below are not cosmetic and the macOS toolchain is why they are worth
+// stating. The attempt-pointer argv passes `ln -sfnT`, and `-T` does not exist in BSD ln; the
+// attempt-state argv passes `install -d -m`, which BSD install does happen to support. So the
+// identity probe asserting "coreutils" is load-bearing on both hosts: it is the executed check that
+// the program bound here answers the GNU contract the argv is written against, and on a Mac the
+// system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
+// difference between a typed preflight refusal naming the capability and a dispatch that dies
+// mid-attempt on an illegal option.
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, DERIVED FROM THE SLOT AUTHORITY RATHER THAN
+// AUTHORED HERE. The first cut of this row was `byte_size(count: 17179869184)` with a hand
+// justification about observed peaks, and that was the section 3 violation in its purest form: the
+// number is EXACTLY gunbc_runner_slot_desired().memory_max, which is not a coincidence to be
+// noted but an authority to be consumed. That row carries an operator ruling derived from 186
+// floor-job cgroup peaks, a superseded prior derivation retained as method, and its own dissolve-on
+// -- none of which a literal here inherits, and all of which a literal here would silently
+// contradict the moment the ruling moves.
+//
+// THE REUSE IS ON PROVEN COINCIDENCE, NOT ON A MATCHING NUMBER. What the slot row measured is
+// floor-job cgroup peaks, and a floor job is a gunbc process resolving this corpus. A dispatched
+// harness worker is the same workload shape -- one `gunbc run` resolving the same corpus -- so the
+// distribution the ruling derived from is the distribution this ceiling faces. Two concepts that
+// merely happened to share a number would have to stay separate; these share the measurement.
+//
+// WHERE THIS IS POINTED, and it is deliberately NOT built yet. A per-attempt ceiling is one half of
+// a concurrency question whose other half already exists: gunbc.runner_slot_allocation derives
+// host_memory_admitted_width, host_cpu_admitted_width and host_disk_admitted_width and commits the
+// MINIMUM over those axes, which is exactly "the most concurrent fraction this host admits", and
+// gunbc.fleet_host_budget already expresses shares as fractions over a measure
+// (measure_scale_fraction_floor) and charges control-plane residency against what a host may
+// commit. Dispatch consumes none of it: nothing today asks how many attempts this host admits
+// before starting one, so concurrency is bounded by whoever is clicking rather than by the budget.
+//
+// DISSOLUTION TRIGGER: dispatch admission takes a width from the same minimum-over-axes derivation
+// the runner slots use, at which point this row stops being a per-attempt ceiling standing alone
+// and becomes one term in an allocation the fabric can express. Until then it is honest about being
+// a ceiling with no width beside it.
+data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+
+data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
+  directory_create: "/usr/bin/mkdir" as FilePath,
+  path_test: "/usr/bin/test" as FilePath,
+  git: "/usr/bin/git" as FilePath,
+  tmux: "/usr/bin/tmux" as FilePath,
+  pipe_shell: "/usr/bin/sh" as FilePath,
+  tee: "/usr/bin/tee" as FilePath,
+  jq: "/usr/bin/jq" as FilePath,
+  environment_binding: dashboard_environment_binding_executable,
+  install: "/usr/bin/install" as FilePath,
+  link: "/usr/bin/ln" as FilePath,
+  timeout: "/usr/bin/timeout" as FilePath,
+  systemd_run: Present { value: "/usr/bin/systemd-run" as FilePath },
+  cargo: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+  rustc: "/home/briansrls/.cargo/bin/rustc" as FilePath,
+  rustfmt: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
+}
+
+// THE OPERATOR MACBOOK, OBSERVED RATHER THAN ASSUMED. Every path here was read off the machine on
+// 2026-09-02 with `which` and each identity probe was executed, because a toolchain row is a claim
+// about a specific host and an unrun claim is the fabricated-plausible-output failure in its
+// cheapest form. What the probes established, and why the rows do not simply mirror srv1:
+// tmux, cargo, rustc and rustfmt are Homebrew rather than system or rustup; sh is /bin/sh, since
+// macOS has no /usr/bin/sh at all; and tee, install, ln and env are the g-prefixed GNU builds,
+// because the system BSD ones answer no --version and, for ln, implement no -T.
+data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
+  directory_create: "/bin/mkdir" as FilePath,
+  path_test: "/bin/test" as FilePath,
+  git: "/usr/bin/git" as FilePath,
+  tmux: "/opt/homebrew/bin/tmux" as FilePath,
+  pipe_shell: "/bin/sh" as FilePath,
+  tee: "/opt/homebrew/bin/gtee" as FilePath,
+  jq: "/usr/bin/jq" as FilePath,
+  environment_binding: "/opt/homebrew/bin/genv" as FilePath,
+  install: "/opt/homebrew/bin/ginstall" as FilePath,
+  link: "/opt/homebrew/bin/gln" as FilePath,
+  timeout: "/opt/homebrew/bin/gtimeout" as FilePath,
+  systemd_run: none,
+  cargo: "/opt/homebrew/bin/cargo" as FilePath,
+  rustc: "/opt/homebrew/bin/rustc" as FilePath,
+  rustfmt: "/opt/homebrew/bin/rustfmt" as FilePath,
+}
+
+fn dashboard_execution_environment_for_toolchain(
+  toolchain: DashboardToolchain,
   serve_binary: FilePath,
 ) -> DispatchHostEnvironment {
   DispatchHostEnvironment {
     realizations: [
       CapabilityRealization {
         capability: GitWorkspaceCapability,
-        executable: "/usr/bin/git" as FilePath,
+        executable: toolchain.git,
         identity_args: ["--version"],
         identity_contains: "git version" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TmuxSessionCapability,
-        executable: "/usr/bin/tmux" as FilePath,
+        executable: toolchain.tmux,
         identity_args: ["-V"],
         identity_contains: "tmux" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TmuxPipeShellCapability,
-        executable: "/usr/bin/sh" as FilePath,
+        executable: toolchain.pipe_shell,
         identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
         identity_contains: "gunbc-tmux-pipe-shell" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: TeeEventCaptureCapability,
-        executable: "/usr/bin/tee" as FilePath,
+        executable: toolchain.tee,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: ProviderEventProjectionCapability,
-        executable: "/usr/bin/jq" as FilePath,
+        executable: toolchain.jq,
         identity_args: ["--version"],
         identity_contains: "jq-" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: EnvironmentBindingCapability,
-        executable: dashboard_environment_binding_executable,
+        executable: toolchain.environment_binding,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: AttemptStateDirectoryCapability,
-        executable: "/usr/bin/install" as FilePath,
+        executable: toolchain.install,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: AttemptCurrentPointerCapability,
-        executable: "/usr/bin/ln" as FilePath,
+        executable: toolchain.link,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
@@ -436,27 +608,36 @@ fn dashboard_execution_environment(
       },
       CapabilityRealization {
         capability: CargoCapability,
-        executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+        executable: toolchain.cargo,
         identity_args: ["--version"],
         identity_contains: "cargo" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: RustcCapability,
-        executable: "/home/briansrls/.cargo/bin/rustc" as FilePath,
+        executable: toolchain.rustc,
         identity_args: ["--version"],
         identity_contains: "rustc" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {
         capability: RustfmtCapability,
-        executable: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
+        executable: toolchain.rustfmt,
         identity_args: ["--version"],
         identity_contains: "rustfmt" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
     ],
   }
+}
+
+fn dashboard_execution_environment(
+  serve_binary: FilePath,
+) -> DispatchHostEnvironment {
+  dashboard_execution_environment_for_toolchain(
+    toolchain: srv1_linux_toolchain,
+    serve_binary: serve_binary,
+  )
 }
 
 // THE repo_root -> INSTANCE RESOLUTION LIVES WITH THE INSTANCES, NOT WITH ONE CONSUMER. It was
@@ -488,8 +669,157 @@ fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLooku
   if repo_root == (srv1_live_dashboard_instance().repo_root as String) {
     DashboardInstanceResolved { instance: srv1_live_dashboard_instance() }
   } else {
-    DashboardInstanceRootUnknown { repo_root: repo_root }
+    if repo_root == (macbook_local_dashboard_instance().repo_root as String) {
+      DashboardInstanceResolved { instance: macbook_local_dashboard_instance() }
+    } else if repo_root == (srv2_deploy_dashboard_instance().repo_root as String) {
+      DashboardInstanceResolved { instance: srv2_deploy_dashboard_instance() }
+    } else {
+      DashboardInstanceRootUnknown { repo_root: repo_root }
+    }
   }
+}
+
+data macbook_local_dashboard_id: NonEmptyStr = "macbook-local" as NonEmptyStr
+
+data macbook_operator_home_root: FilePath = "/Users/briansrls" as FilePath
+
+data macbook_local_repo_root: FilePath = "/Users/briansrls/gunbc" as FilePath
+
+data macbook_local_instance_root: FilePath = "/Users/briansrls/.local/share/gunbc-macbook-local" as FilePath
+
+// THE DEFAULT ACCOUNT, NOT THE ROADMAP-LABELLED ONE, and the difference is observable.
+//
+// srv1 runs Codex under a labelled account root, ~/.codex@gunbc-roadmap, so that the dashboard's
+// provider state is disjoint from any human's. This machine has no such root: the operator's Codex
+// is authenticated under the plain ~/.codex that codex_account_state_root produces for
+// CodexDefaultAccount. Deriving this row from codex_roadmap_account_selection produced a path that
+// does not exist, and readiness refused against it -- correctly, and for a reason that reads as a
+// missing login rather than as the wrong account.
+//
+// The selection is therefore a per-instance fact here, not a constant, and both roots come from the
+// same codex_account_state_root constructor rather than one being a literal beside the other.
+data macbook_local_codex_account: CodexAccountSelection = CodexDefaultAccount
+
+data macbook_local_codex_home: FilePath = codex_account_state_root(
+  home: macbook_operator_home_root,
+  selection: macbook_local_codex_account,
+) as String as FilePath
+
+// THE OPERATOR MACBOOK AS A DECLARED INSTANCE, so that serving the workspace from the development
+// checkout stops being a process that describes a machine it is not running on.
+//
+// Before this row, dashboard_instance_for_repo_root resolved exactly one root and every other
+// checkout answered DashboardInstanceRootUnknown, so a locally served page reported instance
+// srv1-live, host srv1 and repo /opt/gunbc/gunbc while running on a laptop. Nothing was wrong in
+// srv1's own terms -- the page simply had no way to say whose it was.
+//
+// FOUR FIELDS DIFFER FROM srv1-live FOR REASONS, not for local convenience:
+//
+// dispatch_state_scope is InstanceOwned rather than HostShared. srv1 puts worktrees and attempt
+// state beside the deployment under /opt/gunbc; on a development machine the repository root is
+// also the operator's working checkout, so host-shared roots would scatter dispatch debris through
+// the tree a human is editing. Instance-owned keeps every written path under one root that can be
+// removed whole.
+//
+// tmux_server is NAMED rather than Default. The default tmux server on this machine belongs to the
+// operator, and belt observation lists sessions on the server it is given: a shared default would
+// make the operator's own shells indistinguishable from dispatch sessions to the reaper. The named
+// server is the same isolation the labs already declare, for the same reason.
+//
+// listen_host is loopback rather than 0.0.0.0. srv1 binds every interface because the dashboard is
+// meant to be reachable across the LAN; a laptop on untrusted networks serving an ACTUATING
+// dispatch surface is a different exposure, and nothing needs to reach this one but the browser on
+// the same machine.
+//
+// provision_transport is Local rather than ssh:srv1, which is the honest reading of a host that
+// provisions itself and is why DashboardLocalProvision already exists as a variant.
+//
+// WHAT THIS ROW DOES NOT DO, stated because an actuating instance reads like a grant: it does not
+// make dispatch possible here. The revision gate still asks whether this tree is the admitted fleet
+// revision and still refuses, which is the correct answer while the admitting authority for a
+// development checkout is unmodeled. This row makes the machine nameable; it does not answer for
+// what may be launched on it.
+fn macbook_local_dashboard_instance() -> HostDashboardInstance {
+  HostDashboardInstance {
+    instance_id: macbook_local_dashboard_id,
+    host_identity: "macbook" as NonEmptyStr,
+    provision_parent_root: "/Users/briansrls/.local/share" as FilePath,
+    instance_root: macbook_local_instance_root,
+    local_origin_root: macbook_local_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: macbook_local_repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(
+      toolchain: macbook_local_toolchain,
+      serve_binary: macbook_local_serve_binary,
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: macbook_local_codex_home,
+      executable: Present { value: macbook_local_codex_executable },
+      binding: admitted_single_session_binding(
+        selection: macbook_local_codex_account,
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: macbook_local_serve_binary,
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 8081,
+    tmux_server: dashboard_named_tmux_server(instance_id: macbook_local_dashboard_id),
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: macbook_local_admitted_revision_source,
+    toolchain: macbook_local_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+  }
+}
+
+data macbook_local_serve_binary: FilePath = "/Users/briansrls/gunbc/target/release/gunbc" as FilePath
+
+// THE PROVIDER EXECUTABLE THIS INSTANCE OFFERS, and it is the field whose absence made the whole
+// inventory empty.
+//
+// codex_inventory_offers_for_instance answers [] when the instance's provider executable is Absent,
+// so a local dispatch that had passed every launch gate refused at selection with "no provider
+// offer is selection-eligible" -- a refusal that reads like a missing harness and was a missing
+// path. Worth stating because the diagnostic points at the SELECTION and the cause is in the
+// INSTANCE, which is a long way to walk without a note.
+//
+// srv1 derives its path through codex_bundled_executable_for_host, which resolves a committed-lock
+// placement for a fleet host. This machine has no such placement and needs none: Codex is installed
+// here by Homebrew and already authenticated, which /provider.json reports independently. So the
+// path is stated rather than derived, and the two are not a fork -- they answer the same question
+// for hosts whose provisioning stories genuinely differ.
+//
+// This binding is expected to be SHORT-LIVED and that is not a reason to skip it. DCH-3 makes the
+// dedicated harness the default selection and DCH-4 retires the vendor runtimes, at which point
+// this row goes with them. It earns its place in the meantime by exercising the belt path on this
+// machine -- worktree, attempt record, named-server tmux session, verification, publication -- none
+// of which has ever run on macOS. Proving that against a provider known to work is what makes a
+// later harness failure attributable to the harness.
+data macbook_local_codex_executable: FilePath = "/opt/homebrew/bin/codex" as FilePath
+
+// THE DEVELOPMENT CHECKOUT'S ADMITTING REF, and the deliberate act that advances it.
+//
+// The remote is "." -- the repository itself -- because a laptop's admitted revision is not a fact
+// origin has any business advertising, and pushing a personal admission ref to a shared remote
+// would make one operator's local iteration visible to every fleet host reading refs. The same
+// typed ls-remote reads both: git resolves "." as a remote against the local repository, so this is
+// one operation with two bindings rather than a second code path for the local case.
+//
+// Advancing it is `git update-ref refs/gunbc/local-admitted HEAD`, and the friction is the feature.
+// An operator who has edited the tree and wants to dispatch against those edits states so; an
+// operator who has not gets the same drift refusal a fleet host gets, naming both revisions. The
+// reflog on this ref is the record of what was admitted and when, which a bypass flag would not
+// have produced.
+data macbook_local_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: ".",
+  ref_name: "refs/gunbc/local-admitted" as GitRef,
 }
 
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
@@ -525,6 +855,9 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
@@ -615,6 +948,9 @@ fn isolated_dashboard_instance(
       anchor_ref: source_anchor_ref,
       history_remote: "origin" as NonEmptyStr,
     },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
 
@@ -662,6 +998,97 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
 data srv2_dashboard_lab_id: NonEmptyStr = "srv2-lab-v1-deletion" as NonEmptyStr
 
 data srv2_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as FilePath
+
+// THE srv2 DEPLOYMENT INSTANCE, rooted at a DEDICATED CLONE rather than at a lab's provisioned
+// source or at an operator's working checkout. Both alternatives were tried and each fails for its
+// own reason, which is why this row exists instead of a fourth parameter on one of them.
+//
+// srv2_lab_dashboard_instance below is fed from its own local origin.git bundle, and that bundle
+// advertises no refs/fleet/desired -- so every dispatch against it refuses with
+// deployed_revision_unobserved. The refusal is CORRECT: the lab is isolated by construction and its
+// origin is not the fleet's. Pushing the fleet ref into that bundle by hand would be out-of-band
+// actuation against provisioned state a modeled apply owns, and it would not help anyway, because
+// the lab's source is pinned to the ref it was seeded from and attempts would branch off that.
+//
+// Serving from a development checkout is the opposite failure: dispatch creates worktrees from
+// repo_root, so an actuating instance rooted at a tree someone is editing would branch attempts off
+// uncommitted work and race the editor. The clone is therefore the SUBJECT of the deployment while
+// the checkout stays the place work is authored -- the same tool/subject separation
+// gunbc_harness_spawn_argv already draws for the worker.
+//
+// The admitting ref follows macbook_local's shape rather than the fleet's, and for the same reason
+// stated there: a deployment's admitted revision is not a fact origin has any business advertising.
+// Advancing it is `git update-ref refs/gunbc/srv2-admitted HEAD` inside the clone, and the friction
+// is the feature -- the gate keeps its exact form and only the NAMED REF varies, so this is one
+// binding of one operation rather than an exemption.
+data srv2_deploy_dashboard_id: NonEmptyStr = "srv2-deploy" as NonEmptyStr
+
+data srv2_deploy_repo_root: FilePath = "/home/briansrls/gunbc-srv2-deploy" as FilePath
+
+data srv2_deploy_instance_root: FilePath = "/home/briansrls/.local/share/gunbc-srv2-deploy" as FilePath
+
+data srv2_deploy_serve_binary: FilePath = "/home/briansrls/gunbc-srv2-deploy/target/release/gunbc" as FilePath
+
+// THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEY WERE DISPATCHED FROM. dispatch_base_ref
+// is a remote-tracking ref ("origin/<branch>"); publication needs the branch name the pull request
+// targets. Deriving it here, from the same row, is what keeps a srv2 attempt (dispatched from
+// origin/srv2-deploy) from being offered against main with sixty unrelated commits in its diff --
+// which is what reading the repository's default_branch did (2026-09-05).
+fn dispatch_base_branch(instance: HostDashboardInstance) -> NonEmptyStr {
+  let r = instance.dispatch_base_ref as String
+  if starts_with(s: r, prefix: "origin/") { substring(s: r, start: 7, end: string_length(s: r)) as NonEmptyStr } else { r as NonEmptyStr }
+}
+
+data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: ".",
+  ref_name: "refs/gunbc/srv2-admitted" as GitRef,
+}
+
+// THE SRV2 DEPLOY INSTANCE BRANCHES ATTEMPTS FROM ITS OWN DEPLOY BRANCH, not from main, while the
+// deploy branch is ahead of main: an attempt based on main would lack every oracle its node names
+// and refuse verification by construction. This row returns to origin/main when the branch lands
+// (PR gunb-ai/gunbc#10443). Its clone's origin was repointed at GitHub on 2026-09-05 so publication
+// can run here: attempts are published against srv2-deploy (dispatch_base_branch), and the admitted
+// revision stays the local ref above.
+fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
+  HostDashboardInstance {
+    instance_id: srv2_deploy_dashboard_id,
+    host_identity: srv2_host_layout().host_identity,
+    provision_parent_root: "/home/briansrls/.local/share" as FilePath,
+    instance_root: srv2_deploy_instance_root,
+    local_origin_root: srv2_deploy_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: srv2_deploy_repo_root,
+    dispatch_base_ref: "origin/srv2-deploy" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(
+      toolchain: srv1_linux_toolchain,
+      serve_binary: srv2_deploy_serve_binary,
+    ),
+    provider_state: DashboardExistingProviderState {
+      root: srv2_host_layout().roadmap_codex_home,
+      executable: srv2_host_layout().codex_bundled_executable,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
+    },
+    serve_binary: srv2_deploy_serve_binary,
+    serve_function: "roadmap_serve_handle_srv2_deploy" as NonEmptyStr,
+    listen_host: "0.0.0.0" as NonEmptyStr,
+    listen_port: 18082,
+    tmux_server: dashboard_named_tmux_server(instance_id: srv2_deploy_dashboard_id),
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: srv2_deploy_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+  }
+}
 
 fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(

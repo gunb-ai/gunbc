@@ -35,11 +35,10 @@ pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, Se
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
-    is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item, is_service_item,
-    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
-    language_spec, make_indent, module_filename_collision_diagnostics, module_to_filename,
-    sanitize_service_name, service_var_name, test_function_name, to_lower_char, to_screaming_snake,
-    to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
+    is_leaf_type_item, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
+    is_type_def_item, is_upper, language_spec, make_indent, module_filename_collision_diagnostics,
+    module_to_filename, sanitize_service_name, service_var_name, test_function_name, to_lower_char,
+    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -77,6 +76,10 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+use crate::v1_std_core::ParsedModuleItemKind::{
+    ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
+    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
+};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::FunctionValueBinding;
@@ -95,8 +98,8 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -576,7 +579,7 @@ pub fn emit_go_imports(
         let has_services = {
             let mut __found = false;
             for item in items.iter().cloned() {
-                if crate::v1_compiler_emit_core_support::is_service_item(item.clone()) {
+                if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemService) {
                     __found = true;
                     break;
                 }
@@ -596,7 +599,7 @@ pub fn emit_go_imports(
         let has_functions = {
             let mut __found = false;
             for item in items.iter().cloned() {
-                if crate::v1_compiler_emit_core_support::is_function_item(item.clone()) {
+                if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemFunction) {
                     __found = true;
                     break;
                 }
@@ -693,76 +696,130 @@ pub fn emit_go_typed_item(
     {
         let env = scope.type_env.clone();
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
-        if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
-            emit_go_type_def_from_connective(item.clone(), env.clone())
-        } else {
-            if crate::v1_compiler_emit_core_support::is_type_alias_item(
-                item.clone(),
-                env.source_indices.clone(),
-            ) {
-                emit_go_type_alias(
-                    item_text.clone(),
-                    crate::v1_compiler_infer_types::resolved_type(item.clone()),
-                    env.source_indices.clone(),
-                )
-            } else {
-                if crate::v1_compiler_emit_core_support::is_type_decl_item(
-                    item.clone(),
-                    env.source_indices.clone(),
-                ) {
-                    "".to_string()
+        match item.module_item_kind.clone() {
+            ParsedModuleItemKind::ModuleItemTypeDeclaration => {
+                if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
+                    emit_go_type_def_from_connective(item.clone(), env.clone())
                 } else {
-                    if crate::v1_compiler_emit_core_support::is_function_item(item.clone()) {
-                        if ((item.uses.clone().len() as i64) > 0) {
-                            emit_go_func_def(
-                                item_text.clone(),
-                                item.params.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(item.clone()),
-                                item.uses.clone(),
-                                item.body.clone().clone().unwrap(),
-                                registry.clone(),
-                                scope.clone(),
-                            )
-                        } else {
-                            emit_go_fn_def(
-                                item_text.clone(),
-                                item.params.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(item.clone()),
-                                item.body.clone().clone().unwrap(),
-                                registry.clone(),
-                                scope.clone(),
-                            )
-                        }
+                    if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        item.clone(),
+                        env.source_indices.clone(),
+                    ) {
+                        emit_go_type_alias(
+                            item_text.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                            env.source_indices.clone(),
+                        )
                     } else {
-                        if crate::v1_compiler_emit_core_support::is_data_def_item(item.clone()) {
-                            emit_go_data_def(
-                                item_text.clone(),
-                                item.type_annotation.clone().clone().unwrap(),
-                                item.body.clone().clone().unwrap(),
-                                registry.clone(),
-                                scope.clone(),
-                                0,
-                            )
+                        if crate::v1_compiler_emit_core_support::is_type_decl_item(
+                            item.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            "".to_string()
                         } else {
-                            if crate::v1_compiler_emit_core_support::is_service_def_item(
-                                item.clone(),
-                            ) {
-                                emit_go_service_def(item.clone(), registry.clone(), env.clone())
-                            } else {
-                                if crate::v1_compiler_emit_core_support::is_resource_def_item(
-                                    item.clone(),
-                                ) {
-                                    emit_go_resource_def(item.clone(), env.clone())
-                                } else {
-                                    v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " init() { panic(\"EMIT BUG: unhandled item: ".to_string()), item_text.clone()), "\") }".to_string())
-                                }
-                            }
+                            emit_go_item_refusal(
+                                item_text.clone(),
+                                "type declaration matches no declared type structure".to_string(),
+                            )
                         }
                     }
                 }
             }
+            ParsedModuleItemKind::ModuleItemFunction => match item.body.clone() {
+                Some(fn_body) => {
+                    if ((item.uses.clone().len() as i64) > 0) {
+                        emit_go_func_def(
+                            item_text.clone(),
+                            item.params.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                            item.uses.clone(),
+                            fn_body.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                        )
+                    } else {
+                        emit_go_fn_def(
+                            item_text.clone(),
+                            item.params.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                            fn_body.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                        )
+                    }
+                }
+                std::option::Option::None => emit_go_item_refusal(
+                    item_text.clone(),
+                    "function item carries no body".to_string(),
+                ),
+            },
+            ParsedModuleItemKind::ModuleItemDataValue => match item.type_annotation.clone() {
+                Some(anno) => match item.body.clone() {
+                    Some(value_expr) => emit_go_data_def(
+                        item_text.clone(),
+                        anno.clone(),
+                        value_expr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        0,
+                    ),
+                    std::option::Option::None => emit_go_item_refusal(
+                        item_text.clone(),
+                        "data item carries no value".to_string(),
+                    ),
+                },
+                std::option::Option::None => emit_go_item_refusal(
+                    item_text.clone(),
+                    "data item carries no declared type".to_string(),
+                ),
+            },
+            ParsedModuleItemKind::ModuleItemService => {
+                if ((item.children.clone().len() as i64) == 0) {
+                    emit_go_item_refusal(
+                        item_text.clone(),
+                        "service declares no operations".to_string(),
+                    )
+                } else {
+                    emit_go_service_def(item.clone(), registry.clone(), env.clone())
+                }
+            }
+            ParsedModuleItemKind::ModuleItemResource => {
+                emit_go_resource_def(item.clone(), env.clone())
+            }
+            ParsedModuleItemKind::ModuleItemUnrecognized => emit_go_item_refusal(
+                item_text.clone(),
+                "item form carries no item kind".to_string(),
+            ),
+            ParsedModuleItemKind::NotAModuleItem => emit_go_item_refusal(
+                item_text.clone(),
+                "node in module-item position was not constructed by an item constructor"
+                    .to_string(),
+            ),
         }
     }
+}
+
+pub fn emit_go_item_refusal(item_text: String, reason: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
+                            .items
+                            .clone()
+                            .func_keyword
+                            .clone(),
+                        " init() { panic(\"EMIT REFUSED: ".to_string(),
+                    ),
+                    reason.clone(),
+                ),
+                ": ".to_string(),
+            ),
+            item_text.clone(),
+        ),
+        "\") }".to_string(),
+    )
 }
 
 pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {

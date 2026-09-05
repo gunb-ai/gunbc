@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall
 
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
 
 // WHY THE BLOCKER IS `AwaitsOneGrounding` TODAY AND WAS `ClimbableButUnbuilt` BEFORE, which is the
 // one thing a reader of this row is likeliest to read as a contradiction against the paragraphs
@@ -131,5 +131,5 @@ data roster_re_enumerates_its_own_rows_stall: GuaranteeStall = GuaranteeStall {
     grounding: "declaration VALUE binding: introspection that binds a discovered data declaration as a typed value of its declared type, not merely reporting that it exists and how its type is spelled, so a roster is folded over the declared population and an unrostered row has no constructor",
   },
   population: UncountedNotEnumerable { reason: "every carrier whose rows live one per module and are re-enumerated in a roster, a class that gains a member whenever a carrier splits into per-row files; an executed proxy over non-test dag/ and src/ modules importing at least five names and re-listing at least five of them returned thirteen carriers on the derivation base named in the PR body, which under-reports intra-module rosters such as the std.primitives contract roster and over-reports any list literal of imported names, so it bounds nothing" },
-  next_rung_trigger: "declaration introspection sufficient to BIND a discovered data declaration as a typed value of its declared type, at which point gunbc.rostered_row_join's enrolled row types are folded over the declared population and the hand-authored roster list DELETES -- the join that made the omission loud dissolves with it, because there is no longer a list to omit a row from. Stated as binding rather than as introspection because data_decl_type_facts, which already exists, satisfies any trigger naming discovery: it is what the join executing today is built on, and it left the ceiling exactly as far away as it was"
+  next_rung_trigger: climbs_when(capability: "declaration introspection sufficient to BIND a discovered data declaration as a typed value of its declared type, at which point gunbc.rostered_row_join's enrolled row types are folded over the declared population and the hand-authored roster list DELETES -- the join that made the omission loud dissolves with it, because there is no longer a list to omit a row from. Stated as binding rather than as introspection because data_decl_type_facts, which already exists, satisfies any trigger naming discovery: it is what the join executing today is built on, and it left the ceiling exactly as far away as it was")
 }

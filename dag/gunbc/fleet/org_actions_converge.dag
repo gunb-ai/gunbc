@@ -16,7 +16,8 @@ import extdeps.languages.json.parse {
 }
 import extdeps.shell.credentials { env_credential }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
-import gunbc.spark.secret_access_ensure { secret_access_ensure_for, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable, OperatorSuppliedToken }
+import gunbc.auth.gcp_secret_access { secret_access_ensure_for, secret_accessor_grant, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.access_token_source { OperatorSuppliedToken }
 import extdeps.github.org_admin_auth { RunnerGroupsRead, RunnerGroupRepositoriesRead }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -278,7 +279,7 @@ func org_actions_converge_wet() -> ProcessExit {
 // THE ACCESSOR BINDING FOR THE App KEY IS A CONVERGE, RUN BY THE CONTROL-PLANE PRINCIPAL. The
 // workload principal (fleet-cloud-convergence) may read secrets it is bound to and may not bind
 // itself, so this entry takes an operator-supplied access token (GUNBC_GCP_ACCESS_TOKEN_FILE, the
-// same channel gunbc.spark.secret_access_ensure uses) and reconciles roles/secretmanager.secretAccessor
+// same channel gunbc.auth.gcp_secret_access uses) and reconciles roles/secretmanager.secretAccessor
 // on ci-github-app-private-key for that principal: get policy, delta, set policy, read back the
 // grant. Once it has run, the org-actions step's in-run mint stops answering 403.
 func org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
@@ -287,6 +288,6 @@ func org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
     SuppliedTokenReady { token: t } =>
-      secret_access_ensure_for(target: gunbai_ci_app_pem_secret, token_source: OperatorSuppliedToken { token: t })
+      secret_access_ensure_for(grant: secret_accessor_grant(target: gunbai_ci_app_pem_secret), token_source: OperatorSuppliedToken { token: t })
   }
 }

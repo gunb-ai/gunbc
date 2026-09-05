@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.wall_deadline_shared_fill_attribution_stall
 
 import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 // THE WALL DEADLINE STILL CHARGES A SHARED-ARTIFACT FILL TO WHICHEVER CLAIM PAID IT, and this row
 // exists because a comment beside the code would go stale on the day the population changes while
@@ -23,5 +23,5 @@ data wall_deadline_shared_fill_attribution_stall: GuaranteeStall = GuaranteeStal
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v1_interpreter.arm_wall_deadline", tail: Cons { head: "v1_interpreter.wall_deadline_remaining_ms", tail: Cons { head: "v1_interpreter.wall_deadline_exceeded_error", tail: Empty {} } } } },
-  next_rung_trigger: "the required floor's ledger reports any INTERRUPTED-BEFORE-VERDICT row whose clock is Wall, at which point the wall deadline must read a fill-netted clock exactly as v1_interpreter.budgeted_cpu_nanos does for the CPU deadline"
+  next_rung_trigger: climbs_when(capability: "the required floor's ledger reports any INTERRUPTED-BEFORE-VERDICT row whose clock is Wall, at which point the wall deadline must read a fill-netted clock exactly as v1_interpreter.budgeted_cpu_nanos does for the CPU deadline")
 }

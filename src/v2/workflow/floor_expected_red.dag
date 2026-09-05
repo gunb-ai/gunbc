@@ -329,6 +329,21 @@ import v2.std.collection { List }
 // Rows are carried in fixed-size chunks and flattened because one Cons chain 820 deep is a
 // parse-depth hazard, not because chunk boundaries mean anything: a chunk is a slice of an
 // alphabetical list and nothing reads it.
+// THE SHELL-TO-DAG MIGRATION STUBS. Each row asserts the ABSENCE of the shell-rendering its task
+// exists to remove, over the API that exists TODAY -- which is forced rather than chosen: a witness
+// naming a symbol the migration has not written yet is an unresolved import, and a module that
+// cannot compile cannot be enrolled, cannot execute, and cannot answer.
+//
+// EACH ROW REACHES ITS SUBJECT, which is the rule this roster's own header states after 101 rows
+// were held while never executing. These are pure projections over .dag values under
+// SubstrateInputsOnly -- no host effect, no tool resolution, no budget -- so every one returns a
+// verdict on every run. They are red because the property is false, which is the only red this
+// roster may carry.
+//
+// A row retires by becoming TRUE. Per DESIGN section 4b(4) it is NOT deleted then: the
+// discriminating RED stays enrolled as the executing evidence that the property still holds,
+// flipping to a permanent regression control. The row that gates acceptance keeps guarding after it.
+
 fn floor_expected_red_chunk_00() -> List<String> {
   Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     Empty {} }
 }

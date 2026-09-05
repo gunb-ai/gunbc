@@ -61,6 +61,16 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 
 data gunbc_service_user: NonEmptyStr = "briansrls"
 
+// THE SERVICE PRINCIPAL'S UID IS CARRIED FOR THE SAME REASON ITS NAME IS: a host allocation the graph
+// states and never derives. It is needed because the serve and belt units run as SYSTEM services under
+// this principal and reach the principal's USER manager -- to start a dispatched worker as a transient
+// user unit and to read its ExecMainStatus afterwards -- which needs XDG_RUNTIME_DIR and the session
+// bus address, both spelled with the uid. Without them every such call answers "Failed to connect to
+// bus: No medium found" (srv1 belt journal, 2026-09-05, after the first converge deploy of the roles).
+// systemd's %U specifier is not usable here: in a system unit it names the manager's uid (0), not the
+// User= line's. The user manager itself must be running, which is loginctl linger for this account.
+data gunbc_service_uid: Int = 1000
+
 // AttemptStateRoot is an owned member for the same reason DispatchWorktreeRoot is: the belt WRITES
 // there, under the service user, on every dispatch. It was missing until 2026-07-30, and the gap
 // was not visible as a gap — #7368 made a published attempt state a hard precondition of dispatch
@@ -232,6 +242,7 @@ type DeploymentServiceConfig {
   instance_root: NonEmptyStr
   repo_root: NonEmptyStr
   service_user: NonEmptyStr
+  service_uid: Int
   listen: HttpServerListenConfig
   serve_cpu_limit: EvaluationLimit
   serve_wall_limit: EvaluationLimit
@@ -817,6 +828,7 @@ fn deployment_service_config(
     instance_root: instance.instance_root as String as NonEmptyStr,
     repo_root: instance.repo_root as String as NonEmptyStr,
     service_user: gunbc_service_user,
+    service_uid: gunbc_service_uid,
     listen: HttpServerListenConfig {
       host: instance.listen_host as String,
       port: instance.listen_port,

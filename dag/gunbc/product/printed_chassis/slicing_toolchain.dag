@@ -1,0 +1,266 @@
+module product.printed_chassis.slicing_toolchain
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.exec.command { ArgvCommand, CommandTransport }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
+import extdeps.printing.orca_slicer {
+  orca_slicer_version, orca_slicer_linux_aarch64_appimage,
+  orca_slicer_linux_aarch64_appimage_sha256, orca_slicer_required_glibc,
+  orca_slice_to_project_command, OrcaExecutable, orca_version_probe_command,
+}
+
+// WHERE THE MESH-TO-MACHINE ROUTE STOPS TODAY, DECLARED RATHER THAN DISCOVERED AT RUN TIME.
+//
+// product.printed_chassis.export_profile ends at an STL. A Bambu Lab A1 mini in LAN Mode consumes a
+// sliced project, so exactly one step stands between a verified mesh and a printable artifact, and
+// this module is that step.
+//
+// THIS MODULE JUDGES ONE ROUTE: RUNNING THE PUBLISHED BINARY DIRECTLY ON A HOST. It is not the
+// question "can this project slice", and reading it as that would make it a false authority.
+//
+// SLICING SUCCEEDS, BY A DIFFERENT ROUTE. The same artifact runs in a PINNED CONTAINER IMAGE whose
+// userspace carries the closure, reached over a Docker context. On that route the host's glibc is
+// not the slicer's dependency at all -- the image owns its own ABI -- so nothing about the host's C
+// library needs to converge for a slice to happen. Binding a libc floor to the host on account of
+// this product would attach the requirement to the wrong subject; what the host must supply is a
+// container execution substrate, which is a different fact and already has its own axis.
+//
+// WHY THE DIRECT-ROUTE JUDGEMENT IS STILL WORTH CARRYING. It is the arm that decides whether the
+// binary may be executed on a host at all, and it refuses for two independent reasons that a single
+// verdict would have conflated. It also records a measurement that keeps being re-learned: an
+// artifact's floor is read from its ELF closure, never from the distribution codename in its file
+// name.
+//
+// HOW THE ROUTE WAS NEARLY MISSED, recorded because the mistake was mine and it repeated an earlier
+// one exactly. `docker version` reported no reachable daemon and I promoted that to "no container
+// route exists", then escalated a base-image change and a privileged package install to the
+// operator. Neither was needed. `docker version` answers about the DEFAULT CONTEXT; `docker context
+// ls` answers about the population of contexts, and one of them was reachable the whole time. That
+// is the same move as reading apt's need for root as "this environment cannot acquire software" --
+// a selected view read as the population, on execution placement rather than acquisition.
+//
+// THE ROUTE AROUND IT IS NAMED HERE SO IT IS NOT REDISCOVERED AS A GOOD IDEA. Unpacking the
+// AppImage and supplying the newer symbols from somewhere else is the same move that was already
+// made once in this product's history, against the CAD kernel, and rejected: it produces a
+// toolchain no declaration accounts for and whose compatibility is decided by wherever the objects
+// came from. The difference between that and the routes that SUCCEEDED -- conda-forge for the
+// kernel, a pinned image for the slicer -- is not effort or cleverness; it is that something
+// resolved a COMPLETE environment, and a hand-assembled library path did not.
+
+// WHAT THE HOST PROVIDES, AS AN OBSERVATION WITH ITS OWN UNMEASURED ARM. An unobserved host is not
+// a satisfied host and is not a failing one either; the two have different remedies and only the
+// second is a statement about compatibility.
+type HostRuntimeObservation
+  = HostGlibcObserved { version: GlibcVersion, instrument: NonEmptyStr }
+  | HostGlibcUnobserved
+
+// RE-MEASURED AFTER THE SESSION IMAGE MOVED FROM DEBIAN 12 TO DEBIAN 13. The witness asserting this
+// container sat below the floor went RED when that landed, which is what it was written to do: a
+// declared refusal's regression control flips when the environment changes, and the response is to
+// re-measure rather than to edit the expectation.
+data observed_container_glibc: HostRuntimeObservation = HostGlibcObserved {
+  version: glibc_version(major: 2, minor: 41),
+  instrument: "ldd --version, first line, trailing field",
+}
+
+data observed_srv2_glibc: HostRuntimeObservation = HostGlibcObserved {
+  version: glibc_version(major: 2, minor: 39),
+  instrument: "ldd --version over ssh, first line, trailing field",
+}
+
+// THE ABI QUESTION AND THE RUNS QUESTION ARE TWO STANDINGS, AND CONFLATING THEM WAS A REAL ERROR IN
+// THIS MODULE RATHER THAN A HYPOTHETICAL ONE.
+//
+// The first shape had one verdict whose green arm was called Runnable, minted the moment the host's
+// glibc met the artifact's floor, with a witness asserting that 2.38 "runs". That was disproved by
+// execution within the hour: a host at 2.39, comfortably above the floor, refused to start the
+// artifact for want of libOpenGL, libGLU, libEGL and WebKitGTK. Clearing the ABI floor establishes
+// that the loader will not reject the binary for a missing glibc symbol and NOTHING MORE -- the rest
+// of the runtime closure, its plugins and its dynamic loads are all still unproven.
+//
+// So the floor is now a necessary condition with its own name, and executability is a separate
+// standing that only an ATTEMPT can settle. This is DESIGN section 5's specification-without-
+// execution in its exact form: the numeric comparison typechecked, read as evidence, and was wrong.
+type HostAbiStanding
+  = BelowObservedArtifactFloor { provided: GlibcVersion, required: GlibcVersion }
+  | MeetsObservedArtifactFloor { provided: GlibcVersion, required: GlibcVersion }
+  | HostAbiUnobserved
+
+fn judge_host_abi(observation: HostRuntimeObservation) -> HostAbiStanding {
+  match observation {
+    HostGlibcUnobserved => HostAbiUnobserved
+    HostGlibcObserved { version: v, instrument: _ } =>
+      if glibc_version_at_least(provided: v, required: orca_slicer_required_glibc) {
+        MeetsObservedArtifactFloor { provided: v, required: orca_slicer_required_glibc }
+      } else {
+        BelowObservedArtifactFloor { provided: v, required: orca_slicer_required_glibc }
+      }
+  }
+}
+
+// THE SEAL CARRIES THE PROOF, AND THE PUBLIC ARM NO LONGER DOES. An earlier shape minted the slice
+// plan from a public coproduct arm, so any module could construct that arm itself and hand it to the
+// sanctioned mint -- a seal proves WHO MAY MINT, never that the value handed in was earned. The
+// evidence of an actual attempt is therefore sealed in this type, and the plan mint takes THIS and
+// not a standing.
+// THE SEAL CARRIES THE EXECUTABLE, NOT ITS NAME. Holding a NonEmptyStr here would re-open the kind
+// question at the plan mint: admit_slice would have a program string and no way to know it named an
+// Orca binary, so the narrowing done at the attempt would be lost one function later. The typed
+// executable travels the whole way to the invocation it authorizes.
+type AttemptedExecution sole_constructor {
+  executable: OrcaExecutable
+  receipt: NonEmptyStr
+}
+
+type OrcaExecutionStanding
+  = ExecutionUnattempted { abi: HostAbiStanding }
+  | ExecutionRefused { receipt: NonEmptyStr }
+  | ExecutionReady { attempt: AttemptedExecution }
+
+// CONSTRUCTOR EXCLUSIVITY IS NOT MINT SOUNDNESS, AND A STRUCTURED REPORT IS NOT AN OBSERVATION.
+//
+// This function has now been wrong twice in the same direction, and the second attempt is the more
+// instructive one. First it took `started: Bool` beside the call, so the sanctioned judge minted the
+// sealed attempt on a caller's say-so. The repair replaced that with a locally declared
+// ProcessOutcome carrying program, exit status and diagnostic -- better typed, and structurally the
+// SAME DEFECT: a publicly constructible record supplied beside the call, from which Ready could
+// still be minted with no process anywhere. An annotation then explained why the seal was
+// trustworthy, which is the tell. Prose cannot narrow what a type lets a caller construct.
+//
+// THE PREMISE UNDER THAT SECOND ATTEMPT WAS ALSO FALSE. It said no construction in this graph can
+// witness a process. This repository already owns that seam: gunbc.command_runner
+// run_shell_command_capture is effectful, reaches shell.Exec.RunArgv, and returns
+// extdeps.shell.exec ProcessOutcome, a coproduct that exists precisely because a free success flag
+// was rejected as a conclusion rather than an observation. So the local type was not a boundary
+// obligation at all -- it was a NICKNAME for an authority one import away, re-derived where it
+// should have been retrieved, and in a flat namespace a second ProcessOutcome is worse than
+// redundant. It is deleted rather than renamed.
+//
+// The mint is therefore effectful. There is no pure path to AttemptedExecution: the only way to
+// obtain one is to have run the program, and a spawn failure refuses before any outcome exists.
+// THE SEALED PROGRAM IS DERIVED FROM THE COMMAND THAT RAN, NOT SUPPLIED BESIDE IT. An earlier
+// revision took `program` as its own argument while executing `command`, so a caller could run any
+// zero-exit program and seal the name "orca-slicer" onto the result. That is this PR's own defect a
+// FOURTH time -- a conclusion handed in next to the evidence -- and here it was load-bearing rather
+// than cosmetic: admit_slice builds the slice invocation from the sealed program, so the plan would
+// have invoked a binary that was never the one proven to run.
+// AND THE EXECUTED PROGRAM MUST BE ORCA BY CONSTRUCTION, WHICH IS ONE LAYER WIDER THAN THE FORK
+// ABOVE. Deriving the sealed program from the executed command closed subject SUBSTITUTION; it did
+// not close subject KIND. A caller could still run `true` on a host clearing the Orca ABI floor,
+// observe a genuine zero exit, seal program "true", and have admit_slice hand that program to the
+// slice invocation -- generic executability read as Orca executability, with nothing faked anywhere
+// along the way.
+//
+// The repair is NOT command.program == "orca-slicer". A string compare here would be a second
+// authority for what counts as this upstream product, and an unreliable one: the AppImage's own
+// filename is the standing example of a name that misstates the artifact. extdeps.printing.orca_slicer
+// owns that fact, so it now seals OrcaExecutable and mints the invocations. This function takes the
+// executable and builds the probe itself; there is no parameter through which a command of another
+// kind can arrive.
+func attempt_orca_execution(
+  observation: HostRuntimeObservation,
+  executable: OrcaExecutable,
+  transport: CommandTransport,
+) -> OrcaExecutionStanding
+  uses net: Network
+{
+  match judge_host_abi(observation: observation) {
+    HostAbiUnobserved => ExecutionUnattempted { abi: HostAbiUnobserved }
+    BelowObservedArtifactFloor { provided: p, required: r } =>
+      ExecutionUnattempted { abi: BelowObservedArtifactFloor { provided: p, required: r } }
+    MeetsObservedArtifactFloor { provided: _, required: _ } =>
+      match run_shell_command_capture(
+        command: orca_version_probe_command(executable: executable),
+        transport: transport,
+      ) {
+        ProcessOutputPresent { text: t } =>
+          ExecutionReady { attempt: AttemptedExecution { executable: executable, receipt: t as NonEmptyStr } }
+        ProcessOutputAbsent =>
+          ExecutionReady { attempt: AttemptedExecution { executable: executable, receipt: "exited zero with no output" } }
+        ProcessRefused { exit_code: _, stderr: e } =>
+          ExecutionRefused { receipt: e as NonEmptyStr }
+      }
+  }
+}
+
+// THE TWO ATTEMPTS THAT HAVE ACTUALLY HAPPENED. Neither is Ready, and the pair is worth carrying
+// because they fail for DIFFERENT reasons -- one never reached an attempt, the other attempted and
+// was refused -- which is exactly the distinction the single-verdict shape could not express.
+// THE UPGRADE CLEARED THE FLOOR AND DID NOT MAKE THE ARTIFACT RUN, which is the whole reason these
+// are two standings. The binary no longer fails at the loader for a glibc symbol; it fails for want
+// of a GUI runtime closure the image does not carry.
+//
+// AND THE MISSING SET IS RELATIVE TO THE MEASURING HOST, which is the denominator error this product
+// keeps re-committing in new spellings. The same artifact reports 36 unresolved sonames in a clean
+// session image, 12 on a general-purpose fleet host that already carried GTK and pango, and 9 on a
+// first pass that also had a conda prefix on the library path masking three more. Only the census
+// taken in the environment that will actually run it means anything.
+// THE TWO REFUSALS ARE AUTHORED DIRECTLY, and that is safe in a way the Ready arm is not. These
+// rows record hosts on which the binary was run and did not start; ExecutionRefused is a public arm
+// on purpose, because the direction an authored value can lie in decides whether it may be authored.
+// A fabricated refusal costs a slice that would have worked; a fabricated readiness mints a plan
+// from a process that never ran. Only the second is a silent wrong answer, and only the second is
+// behind the effectful mint.
+data container_execution: OrcaExecutionStanding = ExecutionRefused {
+  receipt: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
+}
+
+data srv2_execution: OrcaExecutionStanding = ExecutionRefused {
+  receipt: "above the floor and refused: 12 sonames unresolved on a host that already carried GTK and pango",
+}
+
+// WHAT WOULD RETIRE THE REFUSAL is stated in this module's opening annotation and nowhere else on
+// purpose. An earlier revision also carried it as `data slicing_next_rung_trigger: NonEmptyStr`,
+// which is the unclassified prose DESIGN section 4c names: no Accepted program can read it, so it
+// was commentary wearing a type. Nor is it a section 4b(3) rung drop needing a roster row -- a drop
+// lowers a guarantee this repository previously held, and an execution environment that cannot run
+// a third party binary was never a guarantee this repository held. It is the boundary column, which
+// section 4b keeps off the ladder deliberately.
+
+// THE PLAN IS MINTED FROM THE SEALED ATTEMPT, so holding one is holding evidence that THE PROGRAM
+// THIS PLAN NAMES actually ran on a host that cleared the floor -- not that a version comparison
+// succeeded, and not that the slice it describes is correct.
+type SlicePlan sole_constructor { command: ArgvCommand }
+
+fn slice_plan_command(p: SlicePlan) -> ArgvCommand { p.command }
+
+// WHAT THE SEALED ATTEMPT LICENSES, AND WHAT IT DOES NOT. It establishes that THIS PROGRAM ran to a
+// zero exit on a host clearing the ABI floor, and that is the only reason the plan may name that
+// program. It does NOT establish that the model path exists, that the three profiles resolve, or
+// that the slice this plan describes will succeed -- those are separate facts and the preset
+// resolver is where they are decided. The PLA-at-255 incident is the standing reason that is spelled
+// out here: a slice returned exit zero, "Success.", and the correct preset NAME while emitting the
+// wrong temperatures entirely, so an exit status is not a verdict about the artifact.
+type SliceAdmission
+  = SliceAdmitted { plan: SlicePlan }
+  | SliceRefused { standing: OrcaExecutionStanding }
+
+fn admit_slice(
+  standing: OrcaExecutionStanding,
+  input_model: String,
+  output_project: String,
+  printer_profile: String,
+  filament_profile: String,
+  process_profile: String,
+) -> SliceAdmission {
+  match standing {
+    ExecutionUnattempted { abi: a } => SliceRefused { standing: ExecutionUnattempted { abi: a } }
+    ExecutionRefused { receipt: r } => SliceRefused { standing: ExecutionRefused { receipt: r } }
+    ExecutionReady { attempt: at } =>
+      SliceAdmitted {
+        plan: SlicePlan {
+          command: orca_slice_to_project_command(
+            executable: at.executable,
+            input_model: input_model,
+            output_project: output_project,
+            printer_profile: printer_profile,
+            filament_profile: filament_profile,
+            process_profile: process_profile,
+          ),
+        },
+      }
+  }
+}
