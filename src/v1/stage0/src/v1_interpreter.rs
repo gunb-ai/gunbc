@@ -13112,28 +13112,36 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
 
 /// Collect a directory listing's entry names, REFUSING rather than narrowing.
 ///
-/// Every arm here was previously a silent drop into a listing that then reported
-/// `success: true`, and each drop produced a population smaller than the directory while
-/// claiming to be the directory. `filesystem_io::filesystem_entry_presence` establishes an
-/// absence from non-membership in that population, so a narrowed listing mints
-/// `FilesystemEstablishedAbsence` for an entry that exists -- the absorbing fallback
-/// (`could not enumerate` widened into `enumerated, nothing more`) sitting underneath the
-/// module built to make absence honest, in the seed where no `.dag` wall can observe it.
+/// THE THREE ROUTES ARE THREE DIFFERENT FAULTS, and calling them all "a silent drop" -- as an
+/// earlier revision of this annotation did -- gets two of them wrong. Only the first NARROWS a
+/// population in a way a caller can currently observe; the second narrows one nobody can currently
+/// ask about; and the third does not narrow at all, it WIDENS. They shared only the success channel
+/// that reported `true` over each of them, in the seed where no `.dag` wall can observe it.
 ///
-/// The three refusals are three different facts and each says which:
+/// Each says which:
 ///
-/// - ADVANCEMENT. `read_dir` returning its iterator does not mean iteration succeeds; the
-///   API permits an error at any step, and iteration may continue afterwards -- so what a
-///   discarding filter collects is not even guaranteed to be a prefix, merely a subset.
-/// - REPRESENTATION. A native name that is not valid UTF-8 has no faithful spelling in this
-///   listing encoding. The refusal says the representation is unsupported. It does not
-///   invent a host I/O error and it does not report the entry missing.
+/// - ADVANCEMENT, and this is the one with a reachable wrong answer. `read_dir` returning
+///   its iterator does not mean iteration succeeds; the API permits an error at any step,
+///   and iteration may CONTINUE afterwards -- so what a discarding filter collects is not
+///   even guaranteed to be a prefix, merely a subset. An ordinary askable name can go
+///   missing from it, and `filesystem_io::filesystem_entry_presence` then establishes
+///   `FilesystemEstablishedAbsence` from non-membership in a population that was silently
+///   narrowed. That is a REACHABLE ROUTE to an unsupported absence, which is a different
+///   and smaller claim than saying any particular absence in the tree is wrong.
+/// - REPRESENTATION, which changes no answer today. A native name that is not valid UTF-8
+///   has no faithful spelling in this listing encoding, and it cannot be the name a caller
+///   asked about either, since that name arrives as a `String`. So dropping it narrowed a
+///   population nobody could currently query. It is refused anyway, because the operation
+///   cannot carry it and silent omission is not faithful enumeration -- the refusal says
+///   the representation is unsupported, invents no host I/O error, and reports nothing
+///   missing.
 /// - AMBIGUITY. A name containing the LINE FEED that joins this listing makes one entry
 ///   indistinguishable from two: `"prefix\nrepo.json"` and the pair `"prefix"`,
 ///   `"repo.json"` produce identical bytes, and the membership predicate answers
 ///   `repo.json` present for both. That is a fabricated PRESENCE -- the dual of the false
-///   absence above -- and admitting the queried name does not constrain it, because the
-///   collision is in the RETURNED name. Escaping it here without a matching decoder would
+///   absence above, and the one route here that does not narrow a population at all -- and
+///   admitting the queried name does not constrain it, because the collision is in the
+///   RETURNED name. Escaping it here without a matching decoder would
 ///   introduce a second representation, so the listing refuses while this encoding stands.
 ///
 /// Carriage return is deliberately NOT refused. It does not collide under the exact-`\n`
@@ -21972,70 +21980,65 @@ mod listing_collector_refuses_rather_than_narrowing {
 /// `src/v1/05_emit_rust.dag` `file_list_match_expr` is a SEPARATE COPY of the listing decision --
 /// the emitted Rust runtime cannot call the interpreter's collector -- so the specimens above
 /// establish nothing about it. Neither does a clean regeneration or a standalone compile: one shows
-/// the mirror matches its authority, the other that the emitted text is well-formed Rust. Both are
-/// silent about what it DECIDES.
+/// the mirror agrees with its authority, the other that the emitted text is well-formed Rust. Both
+/// are silent about what it DECIDES.
 ///
-/// So this materializes the emitted expression from its `.dag` authority, compiles it, and runs it
-/// against real directories. Two of the three routes are provokable that way -- a name carrying the
-/// delimiter, and a native name that is not Unicode -- and both are created here rather than
-/// committed, because a repository carrying such filenames would be a hazard to every tool that
-/// walks the tree for reasons unrelated to this repair.
+/// So this compiles the emitted expression and RUNS it against real directories. Two of the three
+/// routes are provokable that way -- a name carrying the delimiter, and a native name that is not
+/// Unicode -- and both fixtures are created here rather than committed, because a repository
+/// carrying such filenames would be a hazard to every tool that walks the tree for reasons
+/// unrelated to this repair.
 ///
 /// The advancement error is NOT provokable this way and is deliberately not faked: a fixture that
 /// forced `read_dir` to fail at a chosen step would be a second implementation of enumeration
 /// wearing the emitted code's name. That route's evidence is the injected collector specimen above,
 /// and the two implementations' agreement on it rests on review of both, which is stated rather
 /// than claimed as executed.
+///
+/// THE EXPRESSION COMES FROM THE GENERATED ACCESSOR, NOT FROM A SECOND READING OF THE `.dag`. An
+/// earlier revision opened `05_emit_rust.dag` at test time, found the declaration by line prefix,
+/// stripped quotes and interpreted escapes by hand. That made this witness a SECOND AUTHORITY for
+/// what the declaration means, and one that would drift silently the moment the language grew an
+/// escape it did not know. The two checks now compose instead: the regeneration gate establishes
+/// that `file_list_match_expr()` agrees with its `.dag` authority, and this witness establishes
+/// what the value that accessor returns DOES.
+///
+/// AND THE PROBE ASSERTS ITS OWN RESULT RATHER THAN REPORTING ONE BACK. The first revision printed
+/// `success` and `error` on a tab-separated line for the test to parse, which made a malformed
+/// observation decode into a Boolean filesystem answer -- a broken instrument answering as though
+/// it were the subject. The expectations are compiled INTO the probe, so a probe that cannot
+/// observe what it claims to fails as a probe: it exits non-zero and this test reads that status.
 #[cfg(test)]
 mod the_emitted_listing_producer_refuses_too {
-    fn emitted_list_expression() -> String {
-        let authority = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../05_emit_rust.dag")
-            .canonicalize()
-            .expect("the emitter authority is where this test says it is");
-        let source = std::fs::read_to_string(&authority).expect("read the emitter authority");
-        let line = source
-            .lines()
-            .find(|l| l.starts_with("data file_list_match_expr:"))
-            .expect("file_list_match_expr is still the listing authority");
-        let literal = line.split_once("= ").expect("a data row assigns").1.trim();
-        let inner = literal
-            .strip_prefix('"')
-            .and_then(|l| l.strip_suffix('"'))
-            .expect("the row's value is a string literal");
-        let mut out = String::new();
-        let mut chars = inner.chars();
-        while let Some(c) = chars.next() {
-            if c != '\\' {
-                out.push(c);
-                continue;
-            }
-            match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('"') => out.push('"'),
-                Some('\\') => out.push('\\'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            }
-        }
-        out
-    }
+    /// Compile the emitted expression with `expectations` asserted inside it, run it over `dir`,
+    /// and answer the probe's own stderr on failure. The probe's exit status is the verdict.
+    fn run_emitted_listing_probe(
+        name: &str,
+        dir_setup: &dyn Fn(&std::path::Path),
+        expectations: &str,
+    ) {
+        let work = std::env::temp_dir().join(format!(
+            "gunbc-emitted-listing-{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&work).expect("scratch directory");
+        let subject = work.join("subject");
+        std::fs::create_dir_all(&subject).expect("subject directory");
+        dir_setup(&subject);
 
-    /// Compile the emitted expression into a probe binary and run it over `dir`, answering the
-    /// (success, error) pair the file transport would carry.
-    fn run_emitted_listing(work: &std::path::Path, dir: &std::path::Path) -> (bool, String) {
         let src = work.join("probe.rs");
         std::fs::write(
             &src,
             format!(
                 "fn main() {{\n    let file_path = std::env::args().nth(1).unwrap();\n    \
-                 let (file_success, file_content, file_error, _b): (bool, String, String, i64) = {}\n    \
-                 let _ = file_content;\n    println!(\"{{}}\\t{{}}\", file_success, file_error);\n}}\n",
-                emitted_list_expression()
+                 let (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = {}\n{}\n}}\n",
+                crate::v1_compiler_emit_rust::file_list_match_expr(),
+                expectations
             ),
         )
         .expect("write the probe");
@@ -22052,69 +22055,71 @@ mod the_emitted_listing_producer_refuses_too {
             String::from_utf8_lossy(&compiled.stderr)
         );
         let run = std::process::Command::new(&bin)
-            .arg(dir)
+            .arg(&subject)
             .output()
             .expect("the probe runs");
-        // Split BEFORE trimming: `trim_end` treats the tab separator as trailing whitespace when
-        // the error half is empty, so trimming first collapsed the healthy `true\t` case into an
-        // unsplittable `true` and the fallback then read the whole line as the success field. The
-        // ordinary-directory control is what caught it -- the two refusal specimens were green
-        // throughout, which is exactly the false positive a control exists to rule out.
-        let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
-        let line = stdout.strip_suffix('\n').unwrap_or(&stdout);
-        let (success, error) = line.split_once('\t').unwrap_or((line, ""));
-        (success == "true", error.to_string())
-    }
-
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc-emitted-listing-{}-{}-{}",
-            name,
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).expect("scratch directory");
-        dir
-    }
-
-    #[test]
-    fn an_ordinary_directory_still_lists() {
-        let work = scratch("ordinary");
-        let subject = work.join("subject");
-        std::fs::create_dir_all(&subject).unwrap();
-        std::fs::write(subject.join("repo.json"), "{}").unwrap();
-        let (success, error) = run_emitted_listing(&work, &subject);
-        assert!(success, "an ordinary directory must still list: {error}");
+        assert!(
+            run.status.success(),
+            "the emitted producer did not answer what this specimen requires: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
         std::fs::remove_dir_all(&work).ok();
+    }
+
+    /// THE CONTROL, AND IT ASSERTS THE POPULATION RATHER THAN THE ARM. Checking only `success`
+    /// left a mutation live: changing the emitted healthy tuple alone to `(true, String::new(),
+    /// String::new(), 0i64)` keeps every refusal intact and still publishes an EMPTY successful
+    /// listing for a directory holding three entries. Nothing in the interpreter's collector tests
+    /// can see a mutation confined to the emitted implementation, so the contents and the byte
+    /// count are asserted here.
+    ///
+    /// TWO ORDINARY NAMES MAKE THE SORT OBSERVABLE, and the third carries a CARRIAGE RETURN, which
+    /// establishes that the EMITTED collector preserves it too -- the interpreter's CR control
+    /// speaks only for the interpreter.
+    #[test]
+    fn a_supported_directory_lists_its_whole_population_in_order() {
+        run_emitted_listing_probe(
+            "ordinary",
+            &|subject| {
+                std::fs::write(subject.join("repo.json"), "{}").unwrap();
+                std::fs::write(subject.join("objects"), "").unwrap();
+                std::fs::write(subject.join("odd\rname"), "").unwrap();
+            },
+            "    assert!(file_success, \"an ordinary directory must list\");\n    \
+             assert_eq!(file_error, \"\", \"a successful listing carries no error\");\n    \
+             assert_eq!(file_content, \"objects\\nodd\\rname\\nrepo.json\", \"the whole population, sorted, with the carriage return preserved\");\n    \
+             assert_eq!(file_byte_count, file_content.len() as i64, \"the byte count counts the listing\");",
+        );
     }
 
     #[test]
     fn a_name_carrying_the_delimiter_refuses_rather_than_fabricating_an_entry() {
-        let work = scratch("delimiter");
-        let subject = work.join("subject");
-        std::fs::create_dir_all(&subject).unwrap();
-        std::fs::write(subject.join("prefix\nrepo.json"), "x").unwrap();
-        let (success, error) = run_emitted_listing(&work, &subject);
-        assert!(!success, "a delimiter-bearing name must refuse the listing");
-        assert!(error.contains("line feed"), "{error}");
-        std::fs::remove_dir_all(&work).ok();
+        run_emitted_listing_probe(
+            "delimiter",
+            &|subject| {
+                std::fs::write(subject.join("prefix\nrepo.json"), "x").unwrap();
+            },
+            "    assert!(!file_success, \"a delimiter-bearing name must refuse the listing\");\n    \
+             assert!(file_error.contains(\"line feed\"), \"{}\", file_error);\n    \
+             assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
+             assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
+        );
     }
 
     #[cfg(unix)]
     #[test]
     fn a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped() {
-        use std::os::unix::ffi::OsStrExt;
-        let work = scratch("native");
-        let subject = work.join("subject");
-        std::fs::create_dir_all(&subject).unwrap();
-        let name = std::ffi::OsStr::from_bytes(&[0x66, 0x80, 0x66]);
-        std::fs::write(subject.join(name), "x").unwrap();
-        let (success, error) = run_emitted_listing(&work, &subject);
-        assert!(!success, "a non-Unicode name must refuse the listing");
-        assert!(error.contains("not valid UTF-8"), "{error}");
-        std::fs::remove_dir_all(&work).ok();
+        run_emitted_listing_probe(
+            "native",
+            &|subject| {
+                use std::os::unix::ffi::OsStrExt;
+                let name = std::ffi::OsStr::from_bytes(&[0x66, 0x80, 0x66]);
+                std::fs::write(subject.join(name), "x").unwrap();
+            },
+            "    assert!(!file_success, \"a non-Unicode name must refuse the listing\");\n    \
+             assert!(file_error.contains(\"not valid UTF-8\"), \"{}\", file_error);\n    \
+             assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
+             assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
+        );
     }
 }

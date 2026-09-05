@@ -361,16 +361,26 @@ Two silent drops, both landing in a result whose `success` channel says `true`. 
 equally harmful, and my first report of them said they were.**
 
 **The iterator drop is live.** `filter_map(|e| e.ok())` discards a `read_dir` iterator error
-mid-enumeration and returns the prefix collected so far as a *complete* listing. It truncates the
-list of ordinary, askable names, so `filesystem_entry_presence` finds no membership for an entry that
-exists and constructs a `FilesystemEstablishedAbsence` for it. A wrong answer, with no diagnostic,
-under every absence established in the tree — the absorbing fallback ("could not enumerate" widened
-into "enumerated, nothing more") sitting underneath the module built to make absence honest.
+mid-enumeration and returns what was collected as a *complete* listing. ~~the prefix collected so
+far~~ — **corrected: not a prefix.** The API permits iteration to continue past an error, so what a
+discarding filter collects is an arbitrary *subset*, and "prefix" understates it. It omits ordinary,
+askable names, so `filesystem_entry_presence` finds no membership for an entry that exists and
+constructs a `FilesystemEstablishedAbsence` for it.
+
+~~A wrong answer under every absence established in the tree.~~ **Corrected:** that was a
+shared-dependency claim dressed as an observed population. What is established is a *reachable route*
+from a discarded enumeration error to an unsupported absence assertion — not that any particular
+absence is wrong, nor that anything destructive followed. The absorbing fallback ("could not
+enumerate" widened into "enumerated, nothing more") sits underneath the module built to make absence
+honest; how often it has fired is unmeasured.
 
 **The non-UTF-8 drop is latent.** `into_string().ok()` discards any entry whose name is not valid
 UTF-8, again into a `success: true` listing. But `filesystem_entry_presence` takes `name: String`, so
-the asked name is always valid UTF-8 by construction and a dropped entry could never have matched it;
-`admit_filesystem_entry_name` would refuse such a spelling independently. Since **no consumer
+the asked name is always valid UTF-8 by construction and a dropped entry could never have matched it.
+~~`admit_filesystem_entry_name` would refuse such a spelling independently.~~ **Corrected:** it would
+not. It checks component spellings — separators, NUL, LF, CR — and is not the native-name conversion
+boundary; a non-UTF-8 native spelling cannot reach its `String` parameter faithfully in the first
+place. It must not be credited with a second UTF-8 admission check. Since **no consumer
 enumerates** — the fact §0 establishes — the dropped entry is currently unobservable.
 
 It is still a success channel claiming a completeness it does not have, and it becomes load-bearing
@@ -409,16 +419,25 @@ Its disposition belongs with the LF case to the cut that retires this encoding.
 
 ### What that implies for sequencing
 
-The live repair is independent of enumeration, `EntryKind`, encodings and corpus manifests, and wants
-to be reviewable by someone who does not have to hold this design in their head. The latent one has
-no honest home except the cut that activates it. So step 1 of §8 splits:
+Step 1 of §8 splits, and the split settled differently from the first proposal here.
 
-- **1A — enumeration completeness.** The iterator error stops being discarded; the success channel
-  stops claiming an exhaustion it did not reach; a partial enumeration can no longer establish an
-  absence. Discriminating specimen: a directory that yields one entry and then fails.
-- **1B — the structured listing.** `EntryKind`, lossless names, deletion of
-  `filesystem_listing_names_entry`, and the re-decision of the two refusals whose justification the
-  cut falsifies.
+~~The latent defect has no honest home except the cut that activates it.~~ **Superseded.** Refusing
+an unrepresentable name in the *current* producer is also a valid repair, and it is the one taken:
+the existing `String` output cannot carry such a name faithfully, and silent omission is not faithful
+enumeration. That is the operation's own semantics, not a convenience.
+
+- **1A — the listing refuses rather than narrowing or fabricating.** All three routes, not the
+  iterator alone: the advancement error stops being discarded, an unrepresentable native name refuses
+  instead of being dropped, and a returned name colliding with the delimiter refuses instead of
+  fabricating an entry. Precisely: *a listing cannot report success after discarding an iterator
+  error, dropping an unrepresentable native name, or serializing a returned name that collides with
+  the listing delimiter. Supported successful listings retain their existing representation.* The
+  wire representation is unchanged; **the conditions for returning success change**, which is
+  observable behaviour and is not concealed under "the contract is untouched".
+- **1B — the structured listing.** The JSON representation, exact-Unicode support with explicit
+  native-name refusal, one completion authority, deletion of `filesystem_listing_names_entry`, and
+  re-decision of the restrictions the replacement makes unnecessary — **including the two 1A makes
+  correct for the old encoding.** They must not survive 1B merely because 1A justified them.
 
 ### The substrate constraint that shapes 1B
 
@@ -429,15 +448,31 @@ output in `extdeps` is `List<String>`, `List<FilePath>` or `List<CommitSha>`, al
 
 | candidate | verdict |
 |---|---|
-| per-line encoding decoded in `filesystem_io` | viable; keeps a delimiter, so names stay restricted |
-| two index-correlated parallel lists | **rejected here** — an unenforced index correlation is the conflation this module exists to remove |
-| a JSON document on the `entries` channel, decoded once beside the operation | preferred |
+| per-line encoding decoded in `filesystem_io` | viable — a *rigorously specified* record-per-line format could escape names and carry a terminal record |
+| two index-correlated parallel lists | **rejected** — an unenforced index correlation is the conflation this module exists to remove |
+| a JSON document on the `entries` channel, decoded once beside the operation | **chosen** |
 
-The JSON branch is the only one that preserves a newline-bearing name losslessly, carries a per-entry
-kind, *and* can carry an explicit enumeration-completed field — which is what makes the completeness
-distinction **representable** rather than inferred from a success bool. Decoding it beside the
-operation is the same move `filesystem_io` already makes for membership: the encoding is `List`'s
-fact, so the structure over it is too.
+~~JSON is the only encoding that preserves a newline-bearing name and makes completion
+representable.~~ **Corrected:** it is not the only *possible* lossless framed encoding, and a
+per-line format does not *necessarily* restrict names. The reason to choose one document is simpler:
+it gives this operation a single place to bind entries, their observations and the enumeration
+outcome, and there is no reason to invent another line protocol. Decoding it beside the operation is
+the move `filesystem_io` already makes for membership — the encoding is `List`'s fact, so the
+structure over it is too.
+
+**And JSON framing is not a name contract.** JSON strings are Unicode; escaping removes the delimiter
+collision but does not make arbitrary native filename bytes into Unicode. The two honest contracts
+are *exact Unicode names*, refusing the listing on a native name that cannot be represented, and
+*exact native names*, which needs an explicit reversible representation carried through every
+operation that consumes the name. **1B takes the first.** Supporting arbitrary native names is a
+larger, separately declared capability — not something JSON supplies automatically — and the generic
+`OsString` internal encoding is explicitly not a portable wire format.
+
+Completion belongs to the decoded **outcome's shape**, not to an independent flag beside `entries`:
+`EnumerationCompleted { entries } | EnumerationRefused { cause }`, with only the completed arm
+supplying a population from which non-membership can establish absence. A document parsing
+successfully does not establish that enumeration completed, and missing or malformed completion
+information must not default to completion.
 
 ## 11. What this cut does not claim
 
@@ -446,3 +481,19 @@ fact, so the structure over it is too.
 cannot spell the conflation at all. **This cut does not satisfy that trigger** — the raw operations
 stay callable — and must not be reported as retiring it. A trigger is retired by its trigger and by
 nothing else.
+
+## 12. The seed-growth receipt this cut owes
+
+1A adds hand Rust to `src/v1`, which `gunbc.seed_growth_admission`
+`seed_growth_forward_freeze_policy_note` makes a stop-line unless the addition is enumerated. The row
+is `gunbc.listing_completeness_seed_growth`, enrolled in the roster's own declaration list, and it
+enumerates **four** items in `v1_compiler.v1_interpreter`: the two production functions and both test
+modules. The test modules are counted deliberately — they are hand-authored `src/v1` Rust on the same
+surface, and a roster that counted only production items would under-report every change whose weight
+is its evidence.
+
+Its trigger names the **capability**, not an artifact: the four retire when the filesystem effect
+returns one decoded document carrying `EntryKind` and the exact Unicode name per entry, with an
+unrepresentable native name refused at that boundary. A structured listing that still routes through
+a newline-joined `List<String>` anywhere on the path leaves the LF refusal load-bearing and retires
+nothing. That is §1B's own completion condition, stated from the other side.

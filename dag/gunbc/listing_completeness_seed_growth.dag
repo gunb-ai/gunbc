@@ -1,0 +1,61 @@
+module gunbc.listing_completeness_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the directory-listing completeness repair.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds four hand items to
+// v1_compiler.v1_interpreter. That row also records, measured, that a row authored only when a
+// review asks for it is a row the roster cannot rely on -- so this one is authored with the change
+// rather than after it.
+//
+// WHAT THE CHANGE IS. The interpreter's directory-listing host call folded three distinct facts
+// into one silent narrowing: an entry the OS refused to yield, an entry whose name is not UTF-8,
+// and an entry whose name contains the LF the join uses as its own separator were all simply
+// absent from the returned listing. A caller reading that listing could not tell a directory of
+// four entries from a directory of five whose fifth could not be represented -- a partial observer
+// returning the negative value of a total observer, which is the class §5 forbids outright: a
+// failure arm must refuse, never widen, and here it did not even widen, it shrank in silence.
+// collect_listing_names_from now returns a typed refusal for each of the three, and the call site
+// carries it into FileResult.error with success=false rather than into a shorter list.
+//
+// WHY IT IS RUST AND NOT .dag. The subject is std::fs::ReadDir -- a host iterator whose items are
+// std::io::Result<std::ffi::OsString>. The substrate has no representation of a native filesystem
+// entry name that is not already a String, which is precisely the distinction the non-UTF-8
+// refusal exists to preserve; modeling it here would require the .dag side to name OsString. The
+// modeled replacement is the structured listing under docs/plans/corpus-acquisition-design.md,
+// which decodes one JSON document beside the operation and gives EntryKind and exact Unicode names
+// their own carrier; until that lands, the effect boundary admits only flat scalars and
+// List<String>, so the seed is where the three distinctions can be made at all.
+//
+// WHAT IS NOT NETTED. The existing listing call site inside the file-operation match was MODIFIED
+// rather than added and is ExistingSeedItemModified per gunbc.seed_growth_admission
+// SeedGrowthChangeDisposition, so it is not counted as an addition. No deletions are netted
+// against the four below.
+//
+// HAND-ITEM DELTA: +4 citable declarations, all in v1_compiler.v1_interpreter -- two production
+// free functions and two test modules. The test modules are ENUMERATED, not omitted: they are
+// hand-authored src/v1 Rust on the same surface, and a roster that counts only production items
+// would under-report every change whose weight is its evidence.
+// HAND-LOC DELTA: +363 / -14 in src/v1/stage0/src/v1_interpreter.rs, +1 / -1 in
+// src/v1/05_emit_rust.dag and +1 / -1 in its regenerated mirror
+// src/v1/stage0/src/v1_compiler_emit_rust.rs, measured by `git diff --numstat` against the merge
+// base. The two emit files are ONE authored line each -- the emitted listing producer's match
+// expression, rewritten to make the same three refusals -- and the mirror is generated from the
+// .dag row, so it adds no authority. Of the interpreter's 363, the two production functions are 47
+// lines of code between them and roughly 114 are comment; the balance is the two test modules,
+// which is where the evidence for all three refusals and for the emitted producer lives.
+data listing_completeness_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "collect_listing_entry_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "collect_listing_names_from", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "listing_collector_refuses_rather_than_narrowing", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "the_emitted_listing_producer_refuses_too", field: WholeDeclaration }
+  ],
+  reason: "Reading a native directory is a host capability, not a modeled one. collect_listing_entry_names is the seam that takes std::fs::ReadDir and projects each entry to its std::ffi::OsString name; collect_listing_names_from holds the decision -- advance-failed, not-UTF-8, contains-LF -- and is split out precisely so the decision can be exercised without a real ReadDir, which is what makes the three refusals testable at all rather than asserted. Neither invents a policy the substrate owns: the LF refusal exists because the effect boundary's List<String> is carried as newline-joined stdout_lines, so an entry name containing LF would be read back as two entries, and refusing is the only arm that does not fabricate one.\n\nENUMERATED RATHER THAN COUNTED. All four are free items at module scope, so the citable count and the real count are both four; no impl method or Display impl is involved and nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though nothing would have caught it: gunbc.seed_growth_admission's G1 join is not enrolled (diff populations absent until rust_item_host_observation), so this roster is honest only if authors add rows they were not asked for.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all four when the structured listing lands -- i.e. when the filesystem effect returns one decoded document carrying EntryKind and the exact Unicode name per entry, with a native-name that is not representable refused explicitly at that boundary, so a caller reads entries as records rather than reconstructing them from a newline-joined String. That is the capability, not any one artifact of it: a structured listing that still routes through a joined List<String> anywhere on the path leaves the LF refusal load-bearing and retires nothing. The two test modules retire with the functions they discriminate, and their claims move to the .dag witness that adjudicates the new boundary -- they are not deleted as redundant, because §4b(4) keeps the discriminating RED enrolled wherever the wall then stands.",
+  current_boundary: "Confined to one call site. collect_listing_entry_names is reached only from the interpreter's directory arm of the file-operation match, and returns the same sorted, newline-joined listing the previous code returned for every directory whose entries all yield, are all UTF-8, and none of which contain LF -- so no behaviour changes for any directory in this repository. The three new outcomes are reported through FileResult.error with success=false, an arm every existing caller already handles, so nothing downstream learns a new shape. Neither function classifies, and neither is reachable from the emitted compiler path: the emitted producer makes the same three refusals from its own authority row in src/v1/05_emit_rust.dag, which is why it carries its own executing evidence rather than inheriting these tests'."
+}
