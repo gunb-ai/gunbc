@@ -49,6 +49,22 @@
 //! module exists to make loud, so paying for it here would have been the defect wearing a fix's
 //! clothes.
 //!
+//! WHICH PATH A GREEN RUN COVERS, AND WHICH IT DOES NOT. The control's refusal is routed to the
+//! CONTROL bucket, so a green required run executes the finding PRODUCTION path and does NOT
+//! execute the `findings` → `phase_failures` push that stops the line. Those are two different
+//! claims and only the first is evidenced by a green.
+//!
+//! THE INSTRUMENT THAT RE-DERIVES THE MISSING HALF, named rather than described by an old run's
+//! output (§6 — a measurement is cited by naming the producer that re-derives it). Delete any
+//! entry from a PRODUCTION roster's list literal and run
+//! `claim_executor --required-ci --source-root dag --source-root src/v2`: its parse phase reports
+//! that declaration under `rostered-row-join FAIL`, the push lands it in `phase_failures`, and the
+//! run exits nonzero. That perturbation is available to any reader on any tree, which a historical
+//! measurement is not — the state that produced one is precisely the state a landed repair removes.
+//!
+//! A LATER READER MUST NOT CITE THIS GREEN AS COVERAGE OF THE PUSH. That would be rung inflation
+//! (§4b(1)), which is worse than sitting low, because an inflated class never ranks for climbing.
+//!
 //! `type_name` IS A SPELLING. `DataDeclTypeFact` carries the authored head name of the declared
 //! type annotation, so membership here is a string comparison over discovery evidence, not typed
 //! membership. It is exact only because each enrolled spelling is, today, declared in one module.
