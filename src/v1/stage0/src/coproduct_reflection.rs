@@ -839,6 +839,78 @@ fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
 /// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
 /// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
 /// cannot be un-stripped back into a module identity.
+/// One top-level `data` declaration with its declared-type spelling, keyed at declaration
+/// identity — the row `data_decl_type_facts` marshals into a `DataDeclTypeFact`.
+///
+/// THE HOST SHAPE EXISTS SO THE BUILTIN AND ITS ONE HOST CONSUMER ARE NOT TWO PRODUCERS.
+/// `v1_compiler.cli_run.rostered_row_join` runs the declared-versus-rostered identity join
+/// inside required CI, where there is no `InterpContext` to marshal a `Value` into; deriving
+/// the same population a second way would be exactly the second authority DESIGN §3 refuses,
+/// agreeing today and diverging on the first amendment. So the walk, the filter and the
+/// declared-type projection stay here, and the builtin is a marshaller over these rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataDeclTypeRow {
+    pub module_path: String,
+    pub decl_name: String,
+    pub type_name: String,
+    pub rel_path: String,
+}
+
+/// Every source this walk ACCOUNTED FOR, whether or not it declared any `data`.
+///
+/// EXISTENCE BEFORE MEANING. A consumer asking "is every declared row rostered" cannot answer
+/// from the rows alone: a source that contributed no row and a source the walk never reached
+/// render identically in a list of rows, and "it did not parse" is not an exclusion policy. The
+/// module inventory is therefore returned beside the rows, so a caller can join it against the
+/// files on disk and refuse, naming the source, for anything unaccounted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataDeclTypePopulation {
+    pub rows: Vec<DataDeclTypeRow>,
+    /// `(module_path, rel_path)` for every module this walk read, in path order.
+    pub accounted_modules: Vec<(String, String)>,
+}
+
+/// The declared `data` population of the named pool roots, fail-closed on every source it reaches.
+pub fn data_decl_type_rows(pool_roots: &[String]) -> Result<DataDeclTypePopulation, String> {
+    let defects = pool_root_defects(pool_roots);
+    if !defects.is_empty() {
+        return Err(pool_root_refusal_message(
+            &defects,
+            pool_roots.len(),
+            "data_decl_type_facts",
+        ));
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, _module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::DataItem],
+        "data_decl_type_facts",
+    )?;
+    let mut accounted: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    for (module_path, rel_path) in crate::cli_run::build_module_path_index(&abs_pool_roots) {
+        accounted.insert((module_path, rel_path.replace('\\', "/")));
+    }
+    let rows = data_decls
+        .iter()
+        .map(|decl| DataDeclTypeRow {
+            module_path: decl.module_path.clone(),
+            decl_name: decl.name.clone(),
+            type_name: data_decl_type_name(decl),
+            rel_path: decl.rel_path.clone(),
+        })
+        .collect();
+    Ok(DataDeclTypePopulation {
+        rows,
+        accounted_modules: accounted.into_iter().collect(),
+    })
+}
+
 pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
@@ -853,33 +925,24 @@ pub fn eval_data_decl_type_facts(
             },
         );
     }
-    let ws = crate::cli_run::workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-    let (data_decls, module_count) = decls_parse_only_fail_closed(
-        &abs_pool_roots,
-        &[],
-        &[ItemKind::DataItem],
-        "data_decl_type_facts",
-    )
-    .map_err(|msg| InterpError::TypeError { msg })?;
-    let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
-    for decl in data_decls.iter() {
+    let population =
+        data_decl_type_rows(pool_roots).map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(population.rows.len());
+    for row in population.rows.iter() {
         rows.push(Value::Record {
             type_name: ctx.sym("DataDeclTypeFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("module_path"), str_value(decl.module_path.clone())),
-                (ctx.sym("decl_name"), str_value(decl.name.clone())),
-                (ctx.sym("type_name"), str_value(data_decl_type_name(decl))),
-                (ctx.sym("rel_path"), str_value(decl.rel_path.clone())),
+                (ctx.sym("module_path"), str_value(row.module_path.clone())),
+                (ctx.sym("decl_name"), str_value(row.decl_name.clone())),
+                (ctx.sym("type_name"), str_value(row.type_name.clone())),
+                (ctx.sym("rel_path"), str_value(row.rel_path.clone())),
             ])),
         });
     }
     eprintln!(
-        "data_decl_type_facts: {} data declarations from {module_count} modules",
-        rows.len()
+        "data_decl_type_facts: {} data declarations from {} modules",
+        rows.len(),
+        population.accounted_modules.len()
     );
     Ok(crate::v1_interpreter::list_value(rows))
 }

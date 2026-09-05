@@ -44,6 +44,11 @@ data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
     reason: "WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.checks) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today",
     dissolution: unbound_dissolution(description: "GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.actions_runs", decl_name: "RunConclusion"),
+    reason: "UNLIKE THE ROW ABOVE, THIS IS NOT TWO APIS SHARING VARIANTS -- IT IS ONE API WITH TWO AUTHORITIES IN THIS TREE. extdeps.github.actions_runs and extdeps.github.workflow_runs both declare extdeps_external_authority_anchor with the locator docs.github.com/en/rest/actions/workflow-runs, character for character, and each then models that upstream independently. The conclusion vocabulary is forked (RunConclusion carries RunStale and a RunConclusionUnknown { spelling } fail-closed arm; WorkflowRunConclusion has neither and handles an unknown spelling as an optional parse), and so is the record (WorkflowRunRecord holds status and conclusion as String with epoch Ints; WorkflowRun holds WorkflowRunStatus, WorkflowRunConclusion?, CommitSha and Timestamp). By DESIGN section 3 that is a meaning fork over one cited spec rather than two shapes, and by section 2's deep direction the stringly record is the anemic side. This row DECLARES the fork so it is countable; it does not consolidate it, and consolidating it is a change against this upstream's authority with its own review",
+    dissolution: unbound_dissolution(description: "one of the two modules stops answering for the workflow-runs REST API: its run-conclusion vocabulary and run record are deleted and every consumer resolves through the surviving module, so a reader asking what a workflow run IS reaches exactly one authority"),
   )
 ]
 

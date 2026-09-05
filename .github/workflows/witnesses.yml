@@ -99,6 +99,11 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: clippy, all targets
+        id: rust_clippy_all_targets
+        run: |
+          # dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.
+          cargo clippy --all-targets -- -D warnings
       - name: Record runner filesystem at job end
         run: |
           # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
@@ -256,238 +261,6 @@ jobs:
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
-  rust-unit-tests:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 60
-    steps:
-      - name: Record runner filesystem at job start
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.expected_healed_sha || github.sha }}
-      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
-        run: |
-          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
-          RUN_SUBJECT_HEAD="${{ github.sha }}"
-          if [ -n "$EXPECTED_HEALED_SHA" ]; then
-          ACTUAL_HEAD="$(git rev-parse HEAD)"
-          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
-          fi
-      - name: Isolate toolchain homes
-        run: |
-          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
-          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
-          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
-          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
-          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
-          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
-          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: v1-compiler unit tests
-        id: rust_unit_tests
-        run: |
-          cargo test --release -p v1-compiler --lib
-      - name: clippy, all targets
-        id: rust_clippy_all_targets
-        run: |
-          # dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.
-          cargo clippy --all-targets -- -D warnings
-      - name: Record runner filesystem at job end
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
-  fabric-evidence:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 70
-    steps:
-      - name: Record runner filesystem at job start
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.expected_healed_sha || github.sha }}
-      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
-        run: |
-          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
-          RUN_SUBJECT_HEAD="${{ github.sha }}"
-          if [ -n "$EXPECTED_HEALED_SHA" ]; then
-          ACTUAL_HEAD="$(git rev-parse HEAD)"
-          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
-          fi
-      - name: Isolate toolchain homes
-        run: |
-          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
-          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
-          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
-          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
-          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
-          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
-          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Build the witness fold
-        id: build_witness_fold
-        run: |
-          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: Calibrate fabric CI evidence boundary
-        run: |
-          bash tools/fabric_ci_evidence_calibration.sh
-        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-        timeout-minutes: 55
-      - name: Record runner filesystem at job end
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
-  emit-copy-qualification-battery:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 60
-    if: "false"
-    steps:
-      - name: Record runner filesystem at job start
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.expected_healed_sha || github.sha }}
-      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
-        run: |
-          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
-          RUN_SUBJECT_HEAD="${{ github.sha }}"
-          if [ -n "$EXPECTED_HEALED_SHA" ]; then
-          ACTUAL_HEAD="$(git rev-parse HEAD)"
-          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
-          fi
-      - name: Isolate toolchain homes
-        run: |
-          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
-          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
-          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: |
-          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
-          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
-          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
-          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Build the witness fold
-        id: build_witness_fold
-        run: |
-          cargo build --release -p v1-compiler --bin gunbc --bin claim_batch
-      - name: "EMIT-COST-QUAL-0: wet copy/share qualification battery"
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          cd "$ROOT"
-          target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds
-      - name: Record runner filesystem at job end
-        run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
-          GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
-          echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
-        if: always()
   heal-generated-artifacts:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
@@ -524,10 +297,16 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin gunbc
+      - name: Declare which ledger rows this heal will repair
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function heal_repair_declaration
       - name: Regenerate every committed generated artifact
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet_verified
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main
       - name: Converge repository-local git config
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -586,6 +365,7 @@ jobs:
           if [ -e "docs/plans/cli-run-hollowing-plan.md" ]; then git add "docs/plans/cli-run-hollowing-plan.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cli-run-hollowing-plan.md"; fi
           if [ -e "docs/plans/discrete-cost-derivation.md" ]; then git add "docs/plans/discrete-cost-derivation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/discrete-cost-derivation.md"; fi
           if [ -e "docs/plans/deploy-convergence-observed-side.md" ]; then git add "docs/plans/deploy-convergence-observed-side.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/deploy-convergence-observed-side.md"; fi
+          if [ -e "docs/plans/floor-claim-cost-distribution.md" ]; then git add "docs/plans/floor-claim-cost-distribution.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/floor-claim-cost-distribution.md"; fi
           PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
@@ -596,7 +376,11 @@ jobs:
             exit 0
           else
             CHANGED_ARTIFACTS=$(git diff --cached --name-only)
-            git commit --no-verify -m "chore: regenerate drifted generated artifacts (ci auto-heal)"
+            HEAL_MESSAGE_FILE=$(mktemp)
+            printf '%s\n' "chore: regenerate drifted generated artifacts (ci auto-heal)" > "$HEAL_MESSAGE_FILE"
+            if [ ! -s "target/heal-repair-declaration.txt" ]; then echo "::error::HealRepairDeclarationMissing path=target/heal-repair-declaration.txt -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population" >&2; exit 1; fi
+            cat "target/heal-repair-declaration.txt" >> "$HEAL_MESSAGE_FILE"
+            git commit --no-verify -F "$HEAL_MESSAGE_FILE"
             HEALED_HEAD=$(git rev-parse HEAD)
             git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
@@ -620,7 +404,7 @@ jobs:
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [required-witnesses-build, required-witnesses-floor, rust-unit-tests]
+    needs: [required-witnesses-build, required-witnesses-floor]
     timeout-minutes: 5
     if: always()
     steps:
@@ -630,17 +414,16 @@ jobs:
           if '[' "$EVENT_NAME" '=' 'pull_request' ']'; then HEAD_STANDING='unobserved'; fi
           'echo' 'required floor attempt: pull_request='"$PULL_REQUEST"' measured_head='"$MEASURED_HEAD"' run_id='"$RUN_ID"' head_standing='"$HEAD_STANDING"
           VERDICT='stands-green'
-          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']' || '[' "$UNIT" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
-          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']' || '[' "$UNIT" '=' 'failure' ']'; then VERDICT='stands-red'; fi
+          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
+          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']'; then VERDICT='stands-red'; fi
           MECHANISM='unestablished'
           ATTRIBUTION='unestablished'
-          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
-          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
-          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' unit='"$UNIT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
+          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
         env:
           BUILD: ${{ needs['required-witnesses-build'].result }}
           FLOOR: ${{ needs['required-witnesses-floor'].result }}
-          UNIT: ${{ needs['rust-unit-tests'].result }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
           MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}

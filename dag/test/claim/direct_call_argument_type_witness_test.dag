@@ -84,11 +84,9 @@ fn source_has_zero_blocking_diagnostics(source: String) -> Bool {
   }
 }
 
-// THE DISCRIMINATING RED for the v2.* direct-call argument-type exemption, and it is EXPECTED-RED
-// today: the exemption is still standing, so the census carries zero blocking diagnostics for this
-// source and this assertion cannot hold. It is rostered in v2.workflow.floor_expected_red with its
-// trigger. Measured on a tree with the exemption deleted (gunbc#8886) it PASSES -- so it is a
-// satisfiable assertion held open by a named cause, not an aspiration.
+// The former discriminating red for the v2.* direct-call argument-type exemption, retained after
+// the climb as a permanent regression control. Declaration-bound formal carriage makes it pass in
+// every module without reconstructing the callee's formal in the caller environment.
 test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool {
   let census = direct_call_arg_type_census_of(source: direct_call_arg_type_v2_red_source)
   match active_probe_row(probe: direct_call_arg_type_v2_module_red_probe) {

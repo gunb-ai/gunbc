@@ -1,0 +1,38 @@
+module gunbc.rung_drop.floor_cost_debt_straddling_produced_decl
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+
+// WHY THIS ROW IS TYPED AND NOT PROSE. `gunbc.rung_drop` admits the prose arm only through a closed
+// enumeration of rows that predate the five 4b(3) fields; a new drop is declared through
+// `TypedDeclaration`, and this one can be, because every field below is a fact and not a reading of
+// a paragraph: the population is two identities, the reason is a deletion of coverage with nothing
+// standing in its place on an ordinary floor, and the trigger is a capability with two arms.
+//
+// THE REASON ARM IS `DeletedWithoutReplacement` AND NOT `ReplacementStaged`, deliberately. The
+// changed-witness override (`v2.workflow.required_floor` `changed_witness_cost_policy`) does run
+// these two identities for their verdict when a change touches them, and that is worth having --
+// but it is not a replacement for the coverage: it fires only when an author is already looking at
+// the witness, and it is silent for every OTHER change that could break the emission path these
+// two assert over. Calling it a staged replacement would inflate what remains.
+data floor_cost_debt_straddling_produced_decl: RungDrop = RungDrop {
+  identity: "floor_cost_debt_straddling_produced_decl" as NonEmptyStr,
+
+  subject: "two passing produced-declaration emission witnesses whose charged CPU straddles the required floor's 500ms per-claim ceiling",
+
+  declared: "2026-09-04",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "v2.test.emit.produced_decl_two_target.produced_decl_module_folds_declarations_in_order",
+      "v2.test.emit.produced_decl_two_target.produced_decl_two_targets_render_own_order",
+    ],
+    restoration_trigger: "EITHER ARM RETIRES THIS ROW, AND NEITHER IS AN ARTIFACT. (a) The produced-decl consumers stop paying to rebuild the rust TargetModel once per claim -- the measured serve-below-recompute ON THOSE CONSUMERS SPECIFICALLY that v2.workflow.floor_pure_producer_share names as its own next trigger, not on their family total, which has already been observed pointing the wrong way -- so these rows sit under the ceiling on their own work rather than on which runner the job landed on. (b) The required floor qualifies a claim's cost on a measure that IS a stable property of the claim, which is the capability gunbc.rung_drop floor_cost_claim_qualification_unavailable is waiting on; the deterministic eval_steps column already published in the floor's [over-cost] line is the candidate, and it is a candidate rather than the answer because no ceiling has been derived against it. WHAT THIS TRIGGER IS SUFFICIENT FOR, stated because 4b(3) requires it: after either arm, both identities execute on every ordinary required floor and are decided by a figure that does not change between two runs of one tree. DELETING THESE TWO LINES FROM v2.workflow.floor_cost_debt, EMPTYING THAT ROSTER, OR SHRINKING THE EMISSION SUBJECT THE WITNESSES ASSERT OVER SATISFIES NEITHER ARM -- the first two return the flapping, and the third would shrink the subject to buy the budget, which is the move that carrier already refuses for the live_deploy apply witnesses.",
+  }
+}

@@ -1,4 +1,4 @@
-module gunbc.scm.merge
+module gunbc.scm.role_requirement_integration
 
 import std.types { Bool, Int, List, String }
 
@@ -17,6 +17,15 @@ import v2.std.dependency {
   DependencyKind,
   DependencyKindClassifier,
   classify_dependency_kind,
+}
+
+import gunbc.scm.proposal {
+  Requirement,
+  RequireBinding,
+  RequireBindingAbsent,
+  requirement_role,
+  Proposal,
+  RoleDependency,
 }
 
 import gunbc.scm.object_store {
@@ -45,43 +54,8 @@ import gunbc.scm.checkout {
   CheckoutRefused,
   MissingObject,
   ObjectIsAuthoredSource,
+  ObjectIsCorpusManifest,
   checkout_node_target,
-}
-
-// A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. This is the
-// correction that motivated the rewrite. A dependency-derived frontier can answer "is removing f
-// compatible with everything that depends on f", but it cannot express "the author requested that f
-// be absent" -- that is a stated requirement, not a consequence. Modelling delete as the absence of
-// a positive requirement would make it indistinguishable from silence, and silence means PRESERVE
-// THE TARGET (below), so a delete expressed by omission would be read as "leave f alone" -- the
-// exact inversion of what was asked.
-type Requirement
-  = RequireBinding { role: Symbol, value: Node }
-  | RequireBindingAbsent { role: Symbol }
-
-fn requirement_role(r: Requirement) -> Symbol {
-  match r {
-    RequireBinding { role: role, value: _ } => role
-    RequireBindingAbsent { role: role } => role
-  }
-}
-
-type Proposal {
-  requirements: List<Requirement>
-  dependencies: List<MergeDependency>
-}
-
-// DEPENDENCIES ARE ROLE-GRAIN, NOT NODE-GRAIN, and that is a correctness choice rather than a
-// convenience. `DependencyView` endpoints are Nodes, and a replacement mints a NEW immutable node --
-// so a target-read edge `F1 -> K` says nothing about how `F2` relates to `K` once the binding is
-// replaced. The binding ROLE is the bridge that survives the replacement, so the relation is carried
-// at role grain and the question "does F2 still satisfy what K needed" stays answerable without
-// giving nodes a temporal identity they must not have.
-type MergeDependency {
-  dependent: Symbol
-  required: Symbol
-  kind: DependencyKind
-  usage_site: Symbol
 }
 
 // FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its OWN total
@@ -89,18 +63,18 @@ type MergeDependency {
 // defined a local MergeDependencyKind whose arms were byte-identical to DataDependsOn, BindsTo and
 // Contains, which is the section 3 nicknaming violation in its purest form: a second name for one
 // concept, duplicated again in everything derived from it. Consuming v2.std.dependency's
-// DependencyKind means merge's policy is a CLASSIFIER over the real kinds, which is the only part
-// that is genuinely merge-specific.
+// DependencyKind means this operation's policy is a CLASSIFIER over the real kinds, which is the
+// only part that is genuinely specific to role-requirement integration.
 //
 // THE POLICY IS A CLASSIFIER VALUE, AND THE DISPATCH IS BORROWED, NOT REWRITTEN. An earlier
 // revision answered these three questions with three hand-written 15-arm matches, which is
 // classify_dependency_kind re-implemented three times -- the same section 3 fork this module was
 // already corrected for once, at the dispatch layer instead of the vocabulary layer. What is
-// genuinely merge-specific is the three POLICY VALUES below; the walk from a kind to its entry
+// genuinely specific to this operation is the three POLICY VALUES below; the walk from a kind to its entry
 // belongs to v2.std.dependency and is used from there.
 //
 // THE ENFORCEMENT SURVIVES THE CHANGE. A sixteenth kind adds a sixteenth field to
-// DependencyKindClassifier, so these record literals fail to compile until merge states its
+// DependencyKindClassifier, so these record literals fail to compile until this operation states its
 // policy for it -- the same compile-time obligation the matches carried, now owed to one
 // authority rather than restated in three places. The local enum this replaced had an
 // UnsupportedKind { name: Symbol } escape hatch that would have absorbed any new kind under a
@@ -111,7 +85,7 @@ type MergeDependency {
 // because it shares a container. That is the file model returning through the dependency lens. Here
 // a child-body change never implicates its siblings, and the sibling-preservation claim is the
 // witness that would go red if it ever did.
-fn merge_removal_propagation_classifier() -> DependencyKindClassifier<Bool> {
+fn role_requirement_removal_propagation_classifier() -> DependencyKindClassifier<Bool> {
   DependencyKindClassifier {
     contains: false,
     binds_to: true,
@@ -131,7 +105,7 @@ fn merge_removal_propagation_classifier() -> DependencyKindClassifier<Bool> {
   }
 }
 
-fn merge_supported_kind_classifier() -> DependencyKindClassifier<Bool> {
+fn role_requirement_supported_kind_classifier() -> DependencyKindClassifier<Bool> {
   DependencyKindClassifier {
     contains: true,
     binds_to: true,
@@ -151,7 +125,7 @@ fn merge_supported_kind_classifier() -> DependencyKindClassifier<Bool> {
   }
 }
 
-fn merge_kind_name_classifier() -> DependencyKindClassifier<Symbol> {
+fn role_requirement_kind_name_classifier() -> DependencyKindClassifier<Symbol> {
   DependencyKindClassifier {
     contains: ^contains,
     binds_to: ^binds_to,
@@ -172,15 +146,15 @@ fn merge_kind_name_classifier() -> DependencyKindClassifier<Symbol> {
 }
 
 fn kind_propagates_removal(kind: DependencyKind) -> Bool {
-  classify_dependency_kind(classifier: merge_removal_propagation_classifier(), kind: kind)
+  classify_dependency_kind(classifier: role_requirement_removal_propagation_classifier(), kind: kind)
 }
 
 fn kind_is_supported(kind: DependencyKind) -> Bool {
-  classify_dependency_kind(classifier: merge_supported_kind_classifier(), kind: kind)
+  classify_dependency_kind(classifier: role_requirement_supported_kind_classifier(), kind: kind)
 }
 
 fn kind_name(kind: DependencyKind) -> Symbol {
-  classify_dependency_kind(classifier: merge_kind_name_classifier(), kind: kind)
+  classify_dependency_kind(classifier: role_requirement_kind_name_classifier(), kind: kind)
 }
 
 // WHERE A ROLE'S VALUE CAME FROM IS PART OF THE ANSWER, NOT AN IMPLEMENTATION DETAIL. The
@@ -207,33 +181,35 @@ type ResolvedRole {
 // this to a single `at:` field would discard exactly the two-sided relation the diagnostic needs, and
 // would not survive the later kinds: an ordering contradiction is located at the relation and a
 // placement violation at the shared resource, neither of which is an endpoint.
-type MergeRefusal
+type RoleRequirementIntegrationRefusal
   = TargetRootMissing { identity: ObjectId }
   | TargetRootIsAuthoredSource { identity: ObjectId }
+  | TargetRootIsCorpusManifest { identity: ObjectId }
   | TargetChildMissing { role: Symbol, identity: ObjectId }
   | TargetChildIsAuthoredSource { role: Symbol, identity: ObjectId }
+  | TargetChildIsCorpusManifest { role: Symbol, identity: ObjectId }
   | BindingLocatorCollision { role: Symbol, identity: ObjectId }
-  | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
-  | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
+  | RequiredDependencyRemoved { dependency: RoleDependency, removed_role: Symbol }
+  | DependencyKindUnsupportedForRoleRequirementIntegration { dependent: Symbol, required: Symbol, kind: Symbol }
 
-// THE REFUSAL ARM IS MergeRefused, NOT CouldNotLand, and that is a claim about what this layer
+// THE REFUSAL ARM IS RoleRequirementIntegrationRefused, NOT CouldNotLand, and that is a claim about what this layer
 // can establish rather than a naming preference. "Could not land" asserts TERMINALITY, and the
-// engine cannot establish it: DependencyKindUnsupportedForMerge may mean this implementation has
+// engine cannot establish it: DependencyKindUnsupportedForRoleRequirementIntegration may mean this implementation has
 // not modeled the relation yet, and TargetRootMissing may mean an incomplete fetch rather than a
 // permanently invalid target. Whether an engine refusal is terminal, machine-owned, or awaiting
 // more work is a decision above this module, so naming the arm for the terminal conclusion would
 // be the same overclaim as a status ledger reporting DONE for work that merely compiled.
 //
-// THE ARM NAMES ARE MERGE-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
+// THE ARM NAMES ARE OPERATION-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
 // DEFINITIONS. gunbc.native_scm_interaction_contract already declares ChoiceRequired and
 // CouldNotLand, as arms of its user-facing NativeScmPrimaryOutcome, with different payloads.
 // The resolver ADMITS duplicate top-level definitions and silently selects one with no
 // diagnostic (measured in #8707), so re-declaring those names does not shadow locally -- it
-// makes the corpus-wide binding for that name arbitrary, which is how a merge-engine change
+// makes the corpus-wide binding for that name arbitrary, which is how an integration-engine change
 // reached unrelated witnesses that never import this module.
 //
 // WHAT IS NOT CLAIMED HERE: that the engine outcome and the presentation outcome are
-// different CONCEPTS. "The merge needs a choice" and "the merge could not land" are the same
+// different CONCEPTS. "The integration needs a choice" and "the integration could not land" are the same
 // two facts at two layers, and the contract carrier says it holds no engine. Whether these
 // should be ONE authority with a projection, rather than two shapes with qualified names, is
 // a real section 3 question this change does not settle -- it removes the corpus-wide
@@ -278,7 +254,7 @@ type AuthoredRoleState {
   alternatives: List<DesiredRoleValue>
 }
 
-// CONTESTED, NOT CHOICE-REQUIRED. Same correction as MergeRefused: an engine observation must not
+// CONTESTED, NOT CHOICE-REQUIRED. Same correction as RoleRequirementIntegrationRefused: an engine observation must not
 // be named for a stronger downstream conclusion. That distinct alternatives EXIST is what this
 // module establishes. That a USER must choose between them requires proving they survive the
 // admitted equivalence quotient, that the candidate population is closed, that no further machine
@@ -289,10 +265,10 @@ type AuthoredRoleState {
 // all fabricated plausible output, and each silently discards an authored requirement. Requiring a
 // role present and requiring it absent is the same question in a different costume, so it lands on
 // the same arm rather than being quietly resolved in favour of either.
-type MergeOutcome
-  = Merged { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
-  | MergeRolesContested { role: Symbol, alternatives: List<DesiredRoleValue> }
-  | MergeRefused { cause: MergeRefusal }
+type RoleRequirementIntegrationOutcome
+  = RoleRequirementsIntegrated { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
+  | RoleRequirementsContested { role: Symbol, alternatives: List<DesiredRoleValue> }
+  | RoleRequirementIntegrationRefused { cause: RoleRequirementIntegrationRefusal }
 
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
   match label {
@@ -310,6 +286,8 @@ fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
     NodeRecordAbsent { identity: i } => TargetUnreadable { cause: TargetRootMissing { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       TargetUnreadable { cause: TargetRootIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      TargetUnreadable { cause: TargetRootIsCorpusManifest { identity: i } }
     NodeRecordFound(record) =>
       TargetRead {
         roles: reverse(fold(record.children, init: [], f: fn(acc, stored) {
@@ -328,7 +306,7 @@ fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
 
 type TargetReadOutcome
   = TargetRead { roles: List<ResolvedRole> }
-  | TargetUnreadable { cause: MergeRefusal }
+  | TargetUnreadable { cause: RoleRequirementIntegrationRefusal }
 
 fn role_named(roles: List<ResolvedRole>, role: Symbol) -> ResolvedRole? {
   fold(roles, init: none, f: fn(found, r) {
@@ -370,11 +348,11 @@ fn upsert_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<Resolv
   }
 }
 
-type MergeApplyAcc {
+type RoleRequirementApplyAcc {
   store: ObjectStore
   roles: List<ResolvedRole>
   authored: List<AuthoredRoleState>
-  refusal: MergeRefusal?
+  refusal: RoleRequirementIntegrationRefusal?
 }
 
 // A ROLE AUTHORED TWICE ACROSS PROPOSALS IS A QUESTION, and it is detected against what was
@@ -452,7 +430,7 @@ fn first_contested_role(authored: List<AuthoredRoleState>) -> AuthoredRoleState?
 // because normalizing a present binding stores the node, which can refuse on its own.
 type NormalizeOutcome
   = Normalized { store: ObjectStore, desired: DesiredRoleValue }
-  | NormalizeRefused { cause: MergeRefusal }
+  | NormalizeRefused { cause: RoleRequirementIntegrationRefusal }
 
 fn normalize_requirement(store: ObjectStore, req: Requirement) -> NormalizeOutcome {
   match req {
@@ -487,15 +465,15 @@ fn role_value_of_desired(desired: DesiredRoleValue) -> RoleValue {
 // THE FOLD NO LONGER SHORT-CIRCUITS ON A CONTEST. It records every authored alternative and keeps
 // going, so the contested set is complete and order-independent; the contest is reported after the
 // whole population has been seen. It still short-circuits on a REFUSAL, because a refusal is a
-// statement about this merge attempt rather than an accumulating property of the population.
-fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
+// statement about this integration attempt rather than an accumulating property of the population.
+fn apply_requirement(acc: RoleRequirementApplyAcc, req: Requirement) -> RoleRequirementApplyAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent => {
       let role = requirement_role(r: req)
       match normalize_requirement(store: acc.store, req: req) {
         NormalizeRefused { cause: cause } =>
-          MergeApplyAcc {
+          RoleRequirementApplyAcc {
             store: acc.store,
             roles: acc.roles,
             authored: acc.authored,
@@ -514,7 +492,7 @@ fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
                 },
               )
             }
-          MergeApplyAcc {
+          RoleRequirementApplyAcc {
             store: store,
             roles: next_roles,
             authored: record_alternative(
@@ -542,10 +520,10 @@ fn role_name_listed(names: List<Symbol>, role: Symbol) -> Bool {
 }
 
 fn effective_dependencies(
-  target_dependencies: List<MergeDependency>,
-  proposal_dependencies: List<MergeDependency>,
+  target_dependencies: List<RoleDependency>,
+  proposal_dependencies: List<RoleDependency>,
   authored: List<Symbol>,
-) -> List<MergeDependency> {
+) -> List<RoleDependency> {
   concat(
     reverse(fold(target_dependencies, init: [], f: fn(acc, dep) {
       if role_name_listed(names: authored, role: dep.dependent) {
@@ -562,7 +540,7 @@ fn effective_dependencies(
 // function only ever REFUSES -- it never edits a role to repair a broken dependency. A frontier that
 // could rewrite its dependents would turn "g is affected by f" into permission to rewrite g, and the
 // authored proposal would stop being the only thing that decides what the result contains.
-fn validate_dependency(roles: List<ResolvedRole>, dep: MergeDependency) -> MergeRefusal? {
+fn validate_dependency(roles: List<ResolvedRole>, dep: RoleDependency) -> RoleRequirementIntegrationRefusal? {
   if kind_is_supported(kind: dep.kind) {
     if kind_propagates_removal(kind: dep.kind) {
       if role_is_present(roles: roles, role: dep.dependent) {
@@ -581,7 +559,7 @@ fn validate_dependency(roles: List<ResolvedRole>, dep: MergeDependency) -> Merge
     }
   } else {
     Present {
-      value: DependencyKindUnsupportedForMerge {
+      value: DependencyKindUnsupportedForRoleRequirementIntegration {
         dependent: dep.dependent,
         required: dep.required,
         kind: kind_name(kind: dep.kind),
@@ -592,8 +570,8 @@ fn validate_dependency(roles: List<ResolvedRole>, dep: MergeDependency) -> Merge
 
 fn validate_dependencies(
   roles: List<ResolvedRole>,
-  deps: List<MergeDependency>,
-) -> MergeRefusal? {
+  deps: List<RoleDependency>,
+) -> RoleRequirementIntegrationRefusal? {
   fold(deps, init: none, f: fn(found, dep) {
     match found {
       Present { value: _ } => found
@@ -602,12 +580,12 @@ fn validate_dependencies(
   })
 }
 
-type MergeRootAcc {
+type RoleRequirementRootAcc {
   edges: List<Edge>
-  refusal: MergeRefusal?
+  refusal: RoleRequirementIntegrationRefusal?
 }
 
-fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> MergeRootAcc {
+fn root_edge_step(store: ObjectStore, acc: RoleRequirementRootAcc, r: ResolvedRole) -> RoleRequirementRootAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -633,21 +611,23 @@ fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> Mer
 // The wildcard is now a match on the cause, so a third checkout refusal cannot be absorbed either:
 // it will fail to compile here instead of arriving as a fourth spelling of "missing". Found by
 // external review of gunbc#9891, which is also the review that added the arm this consumer ignored.
-fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
+fn root_edge_for(store: ObjectStore, acc: RoleRequirementRootAcc, role: Symbol, object: ObjectId) -> RoleRequirementRootAcc {
   match checkout_node_target(store: store, target: SemanticNodeTarget { locator: object }) {
     CheckoutRefused { cause: cause } =>
-      MergeRootAcc {
+      RoleRequirementRootAcc {
         edges: acc.edges,
         refusal: Present {
           value: match cause {
             MissingObject { identity: _ } => TargetChildMissing { role: role, identity: object }
             ObjectIsAuthoredSource { identity: _ } =>
               TargetChildIsAuthoredSource { role: role, identity: object }
+            ObjectIsCorpusManifest { identity: _ } =>
+              TargetChildIsCorpusManifest { role: role, identity: object }
           },
         },
       }
     CheckedOut { program: program } =>
-      MergeRootAcc {
+      RoleRequirementRootAcc {
         edges: concat([Edge { label: Named { name: role }, target: program }], acc.edges),
         refusal: none,
       }
@@ -664,18 +644,37 @@ fn root_node_of(edges: List<Edge>) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
 }
 
-fn merge(
+// RESIDUE THIS RENAME DID NOT CLOSE, AND DOES NOT CLAIM TO. `target` and `target_dependencies`
+// arrive as INDEPENDENT arguments, and nothing in this signature proves the second was derived from
+// the first. A caller may supply an empty or foreign dependency population, which can admit a
+// removal that some real use still required, or fabricate a `RequiredDependencyRemoved` refusal
+// about a relation this target does not have. That is the same subject-binding class gunbc#10295
+// closed at filesystem grain by DERIVING the path from the carrier rather than accepting it beside
+// the token -- here it is unclosed, at role-dependency grain.
+//
+// IT IS RECORDED RATHER THAN REPAIRED because this change is a root RENAME and repairing it would
+// widen an authority cut into a semantics change. Moving `RoleDependency` to the proposal authority
+// gives the carrier its right home; it does NOT bind the population, and this row exists so the move
+// is not read as having done so. The operation has no production caller today, so the seam is
+// currently reachable only from witnesses.
+//
+// NEXT-RUNG TRIGGER, naming the capability rather than an artifact: the target's dependency
+// population is DERIVED from the target commit inside this module, so no caller can supply one --
+// at which point the parameter does not exist and this row has no subject. That must land before
+// the first production caller, because a production caller is exactly what makes the seam
+// exploitable rather than theoretical.
+fn integrate_role_requirements(
   store: ObjectStore,
   target: Commit,
-  target_dependencies: List<MergeDependency>,
+  target_dependencies: List<RoleDependency>,
   proposals: List<Proposal>,
-) -> MergeOutcome {
+) -> RoleRequirementIntegrationOutcome {
   match target_roles(store: store, target: target) {
-    TargetUnreadable { cause: cause } => MergeRefused { cause: cause }
+    TargetUnreadable { cause: cause } => RoleRequirementIntegrationRefused { cause: cause }
     TargetRead { roles: base } => {
       let applied = fold(
         proposals,
-        init: MergeApplyAcc {
+        init: RoleRequirementApplyAcc {
           store: store,
           roles: base,
           authored: [],
@@ -688,16 +687,16 @@ fn merge(
         },
       )
       match applied.refusal {
-        Present { value: cause } => MergeRefused { cause: cause }
+        Present { value: cause } => RoleRequirementIntegrationRefused { cause: cause }
         Absent =>
           match first_contested_role(authored: applied.authored) {
             Present { value: contested } =>
-              MergeRolesContested {
+              RoleRequirementsContested {
                 role: contested.role,
                 alternatives: contested.alternatives,
               }
             Absent =>
-              finish_merge(
+              finish_role_requirement_integration(
                 applied: applied,
                 target_dependencies: target_dependencies,
                 proposals: proposals,
@@ -726,43 +725,43 @@ fn authored_role_name(a: AuthoredRoleState) -> Symbol {
 //
 // Prepending each proposal's dependencies REVERSED, then reversing once at the end, restores the
 // original order at a total cost proportional to the output.
-fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency> {
+fn all_proposal_dependencies(proposals: List<Proposal>) -> List<RoleDependency> {
   reverse(
     fold(proposals, init: [], f: fn(acc, p) { concat(reverse(p.dependencies), acc) })
   )
 }
 
-fn finish_merge(
-  applied: MergeApplyAcc,
-  target_dependencies: List<MergeDependency>,
+fn finish_role_requirement_integration(
+  applied: RoleRequirementApplyAcc,
+  target_dependencies: List<RoleDependency>,
   proposals: List<Proposal>,
-) -> MergeOutcome {
+) -> RoleRequirementIntegrationOutcome {
   let deps = effective_dependencies(
     target_dependencies: target_dependencies,
     proposal_dependencies: all_proposal_dependencies(proposals: proposals),
     authored: authored_role_names(authored: applied.authored),
   )
   match validate_dependencies(roles: applied.roles, deps: deps) {
-    Present { value: cause } => MergeRefused { cause: cause }
+    Present { value: cause } => RoleRequirementIntegrationRefused { cause: cause }
     Absent => {
       let built = fold(
         applied.roles,
-        init: MergeRootAcc { edges: [], refusal: none },
+        init: RoleRequirementRootAcc { edges: [], refusal: none },
         f: fn(acc, r) { root_edge_step(store: applied.store, acc: acc, r: r) },
       )
       match built.refusal {
-        Present { value: cause } => MergeRefused { cause: cause }
+        Present { value: cause } => RoleRequirementIntegrationRefused { cause: cause }
         Absent =>
           match store_node(
             store: applied.store,
             n: root_node_of(edges: reverse(built.edges)),
           ) {
             LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-              MergeRefused {
+              RoleRequirementIntegrationRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
             Stored { store: store, node: node } =>
-              Merged {
+              RoleRequirementsIntegrated {
                 store: store,
                 commit: Commit { root: node_target_of(reference: node) },
                 roles: applied.roles,

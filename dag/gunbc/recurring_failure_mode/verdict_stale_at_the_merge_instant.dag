@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data verdict_stale_at_the_merge_instant: RecurringFailureMode = RecurringFailureMode {
+  identity: "verdict_stale_at_the_merge_instant" as NonEmptyStr,
+
+  receipts: [
+    "**a head merges carrying a verdict that was reached against a base main has since moved away from, so the evidence certifies a combination that no longer exists.** INVALID STATE: the verdict is real, terminal and green; the tree it was computed over is not the tree that results from the merge, and nothing at the merge instant represents the age of the verdict or the distance between those two trees. ",
+
+    "**SCOPED FIRST, BECAUSE MIS-SCOPING THIS IS WHAT SENT THE FIRST TWO READINGS OF THIS OUTAGE WRONG: this class is ANCILLARY TO THE 2026-09-03 OUTAGE AND IS EXPLICITLY NOT ITS CAUSE.** gunbc#9981 (8b2323f4145) merged at 20:29Z with its last verdict FIFTY-TWO MINUTES stale. It added `exact_duplicate_match_arm_not_refused`, a NEW identity colliding with nothing, onto a tree that had already been broken for forty minutes -- main went red at 19:49Z. So #9981 neither created the duplicate declarations nor could its own contents have collided with anything; it merged INTO a break rather than causing one. The cause is filed as `duplicate_declaration_arrives_through_a_clean_merge`, and the landing that carried it as `head_landed_by_hand_before_its_own_verification_reported`. ",
+
+    "IT IS FILED ANYWAY BECAUSE THE CLASS IS REAL AND ITS SPECIMEN IS CLEAN: the same measurement that clears #9981 of causing the outage exhibits, in one record, a merge admitted on evidence about a base fifty-two minutes gone. Declining to file it because this instance was harmless would leave the class known only inside a narrative that concluded it was not to blame. ",
+
+    "HARM: a merge is a JOIN of two trees, and a verdict on either side alone is evidence about a part. Where a verdict is stale, the result of the merge has been tested by nobody -- and, as here, main may already carry a refusal the incoming head has never met, so a lane can merge cleanly into a tree that cannot resolve and read its own green as evidence that it can. ",
+
+    "RECOGNITION RULE: at any landing, compare the time of the head's last terminal verdict with the time of the merge, and the base that verdict was computed over with the base actually merged into. Staleness is a fact about a PAIR, so it is not visible in either record alone -- the run page shows a green run and the merge page shows a merge, and only the join of the two shows that they are about different trees. ",
+
+    "DISTINCT FROM `head_landed_by_hand_before_its_own_verification_reported`, which is the case where there is NO terminal verdict on the landing head at all: there the evidence is absent, here it exists and is about the wrong subject, and the second cannot be repaired by waiting longer for the first. DISTINCT ALSO FROM `stale_base_branch_reads_as_pending_work`, which is an ANALYST reading a stale base as unfinished work; this row is a LANDING taken on a stale verdict. ",
+
+    "RUNG FOUND AT: mitigatable, by habit and by whoever notices main is red. ",
+
+    "CEILING: structurally guaranteed, by the same construction that closes the row above it -- a merge queue verifies the QUEUED REF, which is the join rather than either side, so a verdict about a superseded base cannot be the evidence a landing rests on. That single construction discharges both rows, which is a reason to price it once rather than twice. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: `gunbc.guarantee_stall` `merge_admission_terminal_verdict_stall` -- a landing path whose precondition is a terminal verdict over the MERGED tree, sufficient to refuse a landing whose evidence was computed over a base the target has moved off. A staleness threshold expressed in minutes does not discharge it: it makes the same wrong subject acceptable below some age, which is the same class with a parameter.",
+  ],
+
+  evidence: [],
+}

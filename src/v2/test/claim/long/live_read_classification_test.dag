@@ -32,7 +32,7 @@ import v2.std.live_read {
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, TypeNode }
+import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Transform, TypeNode }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index {
   FnArrowDecl,
@@ -297,7 +297,7 @@ fn selection_atom_node(lexeme: String) -> Node {
 
 fn selection_body_node(callee: String) -> Node {
   Node {
-    kind: TypeNode { connective: Conj },
+    kind: ComputationNode { behavior: Transform },
     children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
     occurrence_id: OccurrenceSynthetic
   }

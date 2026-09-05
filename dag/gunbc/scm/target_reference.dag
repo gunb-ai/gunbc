@@ -32,6 +32,7 @@ import extdeps.languages.json.parse {
 import gunbc.scm.json_member {
   MemberReadRefusal,
   MemberReadSubjectNotObject,
+  MemberReadMissing,
   MemberReadDuplicated,
   MemberReadWrongShape,
   MemberString,
@@ -42,6 +43,7 @@ import gunbc.scm.json_member {
   unexpected_member_key,
 }
 import gunbc.scm.object_store { ObjectId }
+import gunbc.scm.load_standing { LoadStanding, LoadDocumentMalformed }
 
 // WHAT CAN BE WRONG WITH THE SPELLING, and nothing about who was asking. Every arm here is a defect
 // in the reference itself, so every arm means the same thing to all three callers. An unresolved
@@ -52,6 +54,31 @@ type TargetReferenceRefusal
   | TargetReferenceUnexpectedMember { key: String }
   | TargetReferenceNotOneArm { found: Int }
   | TargetReferenceUncontainedDigestInvalid { found: String }
+
+// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3 -- and this
+// function exists because the alternative was measured. Every arm above means "the reference is
+// spelled wrongly", which is the same fact to all three callers, so each of them classifying it
+// inline put ONE decision under three authorities. Two copies already existed and the object table
+// was about to add a third; they agreed only because nobody had yet had a reason to disagree.
+//
+// Every arm is malformed rather than unsupported, and that is not a default. A reference carrying
+// two arms, no arms, or an unreadable digest is not something a newer writer might legitimately
+// emit -- the two-arm spelling is fixed by this module at every version -- so telling a reader to
+// stand aside for a newer protocol would name a remedy that cannot help.
+fn target_reference_load_standing(cause: TargetReferenceRefusal) -> LoadStanding {
+  match cause {
+    TargetReferenceMemberReadRefused { cause: m } =>
+      match m {
+        MemberReadSubjectNotObject => LoadDocumentMalformed
+        MemberReadMissing { key: _ } => LoadDocumentMalformed
+        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+      }
+    TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
+    TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
+    TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+  }
+}
 
 // A WELL-FORMED REFERENCE IS NOT YET AN IDENTITY. The contained arm carries the reference TEXT, not
 // an object -- the caller resolves it against its own positions and names its own refusal when that

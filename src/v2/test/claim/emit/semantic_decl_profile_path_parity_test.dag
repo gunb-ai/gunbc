@@ -5,19 +5,55 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_serialize_profile_bundle_node,
   rust_target_model
 }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
   decode_semantic_decl_serialize_profile_bundle,
   semantic_decl_emission_from_target,
+  semantic_decl_profile_binding_spellings,
   semantic_decl_profile_lex_rules
 }
 import v2.std.compilers.lexing { LexRules }
-import v2.std.compilers.target_model { lex_rules_literal_for_class }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { bound_spelling_from_map, lex_rules_literal_for_class }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.text { String }
 
 fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: rules, token_class: token_class)
+}
+
+fn binding_spelling(binding_spellings: Map<Symbol, String>, binding: Symbol) -> Outcome<String> {
+  bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
+}
+
+// Compare one lex row from the bundle-decoded lex against the emission-derived lex.
+fn lex_in_bundle_matches_emission(direct_lex: LexRules, emission_lex: LexRules, token_class: Symbol) -> Bool {
+  match lex_literal(rules: direct_lex, token_class: token_class) {
+    Accepted { value: dv, diagnostics: _ } =>
+      match lex_literal(rules: emission_lex, token_class: token_class) {
+        Accepted { value: ev, diagnostics: _ } => dv == ev
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Compare one binding spelling from the bundle-decoded profile against the emission-derived profile.
+fn binding_in_bundle_matches_emission(
+  direct_bindings: Map<Symbol, String>,
+  emission_bindings: Map<Symbol, String>,
+  binding: Symbol
+) -> Bool {
+  match binding_spelling(binding_spellings: direct_bindings, binding: binding) {
+    Accepted { value: dv, diagnostics: _ } =>
+      match binding_spelling(binding_spellings: emission_bindings, binding: binding) {
+        Accepted { value: ev, diagnostics: _ } => dv == ev
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
@@ -35,6 +71,59 @@ test fn bundle_node_profile_matches_target_emission_profile() -> Bool {
                     Accepted { value: direct_kw, diagnostics: _ } =>
                       match lex_literal(rules: emission_lex, token_class: ^rust_token_kw_enum) {
                         Accepted { value: emission_kw, diagnostics: _ } => direct_kw == emission_kw
+                        Rejected { diagnostics: _ } => false
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Parity control: the serialized profile bundle (rust_semantic_decl_serialize_profile_bundle_node)
+// agrees with the profile derived from the emission. Every lex row (12 token classes) and every
+// binding spelling (6 keys) is compared, so perturbing either representation of a row turns this
+// claim red. The two are authored separately and nothing else holds them to the same content.
+// The witness pays a full serialize+decode on this one identity, which is the reason the
+// consumers do not: they derive the profile from the staging fixture instead.
+test fn all_bundle_rows_match_emission_profile() -> Bool {
+  match decode_semantic_decl_serialize_profile_bundle(
+    bundle: rust_semantic_decl_serialize_profile_bundle_node()
+  ) {
+    Accepted { value: direct, diagnostics: _ } =>
+      match semantic_decl_profile_lex_rules(profile: direct) {
+        Accepted { value: direct_lex, diagnostics: _ } =>
+          match semantic_decl_profile_binding_spellings(profile: direct) {
+            Accepted { value: direct_bindings, diagnostics: _ } =>
+              match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
+                Accepted { value: emission, diagnostics: _ } =>
+                  match semantic_decl_profile_lex_rules(profile: emission.enum_serialize_profile) {
+                    Accepted { value: emission_lex, diagnostics: _ } =>
+                      match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
+                        Accepted { value: emission_bindings, diagnostics: _ } =>
+                          lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_struct)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_struct_copy)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_enum)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_derive_enum_copy)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_kw_struct)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_kw_enum)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_generic_lt)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_generic_gt)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_lbrace)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_colon)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_comma)
+                          && lex_in_bundle_matches_emission(direct_lex: direct_lex, emission_lex: emission_lex, token_class: ^rust_token_rbrace)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^rust_decl_derive_enum_copy_binding)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^Bool)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^True)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^False)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^rust_decl_derive_enum_binding)
+                          && binding_in_bundle_matches_emission(direct_bindings: direct_bindings, emission_bindings: emission_bindings, binding: ^rust_decl_derive_struct_binding)
                         Rejected { diagnostics: _ } => false
                       }
                     Rejected { diagnostics: _ } => false

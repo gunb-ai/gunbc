@@ -1,4 +1,4 @@
-module test.claim.scm_merge_witness
+module test.claim.scm_role_requirement_integration_witness
 
 import std.types { Bool, Int, String, List }
 
@@ -35,30 +35,34 @@ import gunbc.scm.checkout { Commit }
 
 import v2.std.dependency { DataDependsOn, Contains, PlacementDependsOn, BarrierBefore }
 
-import gunbc.scm.merge {
+import gunbc.scm.proposal {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,
   Proposal,
-  MergeDependency,
-  MergeOutcome,
-  Merged,
-  MergeRolesContested,
+  RoleDependency,
+}
+import gunbc.scm.role_requirement_integration {
+  RoleRequirementIntegrationOutcome,
+  RoleRequirementsIntegrated,
+  RoleRequirementsContested,
   DesiredRoleValue,
   DesiredBindingPresent,
   DesiredBindingAbsent,
-  MergeRefused,
-  MergeRefusal,
+  RoleRequirementIntegrationRefused,
+  RoleRequirementIntegrationRefusal,
   TargetRootIsAuthoredSource,
+  TargetRootIsCorpusManifest,
   TargetChildIsAuthoredSource,
+  TargetChildIsCorpusManifest,
   RequiredDependencyRemoved,
-  DependencyKindUnsupportedForMerge,
+  DependencyKindUnsupportedForRoleRequirementIntegration,
   ResolvedRole,
   RoleValue,
   PreservedFromTarget,
   ProvidedByProposal,
   RemovedByProposal,
-  merge,
+  integrate_role_requirements,
 }
 
 // NAMES ARE QUALIFIED BECAUSE A TOP-LEVEL DEFINITION IS CORPUS-WIDE. `leaf` and `bind` are
@@ -66,7 +70,7 @@ import gunbc.scm.merge {
 // The resolver admits duplicate top-level definitions and silently selects one (#8707), so a
 // generic helper name here is not a local convenience -- it makes the binding for that name
 // arbitrary across every module in a shared scope.
-fn merge_witness_leaf(name: Symbol) -> Node {
+fn integration_witness_leaf(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
@@ -74,7 +78,7 @@ fn scope_of(edges: List<Edge>) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
 }
 
-fn merge_witness_bind(name: Symbol, target: Node) -> Edge {
+fn integration_witness_bind(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
@@ -107,7 +111,7 @@ fn identity_or(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
 // THE SOURCE FIXTURE'S ROOT IS AN UNRESOLVED TARGET, AND THAT IS THE ONLY SHAPE IT COULD HAVE.
 // store_authored_source hands back an AuthoredSourceObjectRef, which no node-requiring position
 // accepts, so the file's LOCATOR is what reaches the commit -- a bare address whose kind nothing has
-// established. That is exactly the state merge must resolve and refuse on, and it is still fully
+// established. That is exactly the state the integration must resolve and refuse on, and it is still fully
 // authorable, which is why this claim survives the reference types rather than being deleted by
 // them.
 fn source_store_or_empty(outcome: SourceStoreOutcome) -> ObjectStore {
@@ -137,15 +141,15 @@ fn fixture_with(edges: List<Edge>) -> Fixture {
 }
 
 fn fallback_id() -> ObjectId {
-  match store_node(store: empty_store(), n: merge_witness_leaf(name: ^fallback)) {
+  match store_node(store: empty_store(), n: integration_witness_leaf(name: ^fallback)) {
     Stored { store: _, node: node } => node.locator
     LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
   }
 }
 
-fn add_k_proposal(deps: List<MergeDependency>) -> Proposal {
+fn add_k_proposal(deps: List<RoleDependency>) -> Proposal {
   Proposal {
-    requirements: [RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K) }],
+    requirements: [RequireBinding { role: ^k, value: integration_witness_leaf(name: ^K) }],
     dependencies: deps,
   }
 }
@@ -157,19 +161,19 @@ fn remove_f_proposal() -> Proposal {
   }
 }
 
-fn outcome_is_merged(o: MergeOutcome) -> Bool {
+fn outcome_is_integrated(o: RoleRequirementIntegrationOutcome) -> Bool {
   match o {
-    Merged { store: _, commit: _, roles: _ } => true
-    MergeRolesContested { role: _, alternatives: _ } => false
-    MergeRefused { cause: _ } => false
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => true
+    RoleRequirementsContested { role: _, alternatives: _ } => false
+    RoleRequirementIntegrationRefused { cause: _ } => false
   }
 }
 
-fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
+fn integrated_roles(o: RoleRequirementIntegrationOutcome) -> List<ResolvedRole> {
   match o {
-    Merged { store: _, commit: _, roles: roles } => roles
-    MergeRolesContested { role: _, alternatives: _ } => []
-    MergeRefused { cause: _ } => []
+    RoleRequirementsIntegrated { store: _, commit: _, roles: roles } => roles
+    RoleRequirementsContested { role: _, alternatives: _ } => []
+    RoleRequirementIntegrationRefused { cause: _ } => []
   }
 }
 
@@ -178,15 +182,15 @@ fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
 // the diagnostic exists to do, so `usage_site` is asserted alongside the dependent, the requirement
 // and the removed role.
 fn refusal_locates(
-  o: MergeOutcome,
+  o: RoleRequirementIntegrationOutcome,
   dependent: Symbol,
   required: Symbol,
   usage_site: Symbol,
 ) -> Bool {
   match o {
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
-    MergeRefused { cause: cause } =>
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
+    RoleRequirementsContested { role: _, alternatives: _ } => false
+    RoleRequirementIntegrationRefused { cause: cause } =>
       match cause {
         RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
           ((dep.dependent as String) == (dependent as String))
@@ -195,10 +199,12 @@ fn refusal_locates(
             && ((removed as String) == (required as String))
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
+        DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: _ } => false
       }
   }
 }
@@ -241,14 +247,14 @@ fn role_absent_from_result(roles: List<ResolvedRole>, role: Symbol) -> Bool {
 // and the same usage site. The single varying fact is which source that row requires.
 fn paired_fixture() -> Fixture {
   fixture_with(edges: [
-    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
-    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
+    integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F)),
+    integration_witness_bind(name: ^h, target: integration_witness_leaf(name: ^H)),
   ])
 }
 
 fn paired_proposals(required: Symbol) -> List<Proposal> {
   [
-    add_k_proposal(deps: [MergeDependency {
+    add_k_proposal(deps: [RoleDependency {
       dependent: ^k,
       required: required,
       kind: DataDependsOn,
@@ -268,13 +274,13 @@ fn paired_proposals(required: Symbol) -> List<Proposal> {
 // proves this row is genuinely in the traversed population.
 test fn independent_add_and_delete_both_land() -> Bool {
   let fx = paired_fixture()
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: paired_proposals(required: ^h),
   )
-  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+  outcome_is_integrated(o: out) && role_absent_from_result(roles: integrated_roles(o: out), role: ^f)
 }
 
 // ARM B -- DEPENDENT. Same target, same two authored operations, same dependency kind, same
@@ -282,7 +288,7 @@ test fn independent_add_and_delete_both_land() -> Bool {
 // `f` instead of `h`. Deleting `f` while `k` still reads it must refuse, located at the use.
 test fn dependent_add_and_delete_refuses() -> Bool {
   let fx = paired_fixture()
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
@@ -293,17 +299,17 @@ test fn dependent_add_and_delete_refuses() -> Bool {
 
 // EDGE-PRESENCE CONTROL. Arm A's row, at the same position in the same fixture, but declared with an
 // unsupported kind. If this refuses, the row Arm A supplies is genuinely read; if Arm A could pass
-// while this one silently merged, the dependency population would be inert and Arm A's green would
+// while this one silently integrated, the dependency population would be inert and Arm A's green would
 // mean nothing. This is what stops the pair from proving the outcomes through unrelated fixture
 // behaviour while the dependency input goes unconsumed.
 test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
   let fx = paired_fixture()
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [
-      add_k_proposal(deps: [MergeDependency {
+      add_k_proposal(deps: [RoleDependency {
         dependent: ^k,
         required: ^h,
         kind: BarrierBefore,
@@ -313,26 +319,28 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     ],
   )
   match out {
-    MergeRefused { cause: cause } =>
+    RoleRequirementIntegrationRefused { cause: cause } =>
       match cause {
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^barrier_before as String)
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
+    RoleRequirementsContested { role: _, alternatives: _ } => false
   }
 }
 
 // CONTAINMENT IS NOT PROPAGATION -- THE DISCRIMINATING FORM. `g` and `f` share a container and
 // nothing else; a container-based algorithm believes `g` depends on `f` for that reason alone, which
 // is what the `Contains` row states. `f` is then REMOVED. Because containment does not propagate a
-// removal, `g` is untouched and the merge lands.
+// removal, `g` is untouched and the integration lands.
 //
 // THE ROW HAS TO SURVIVE TO THE VALIDATOR FOR THIS TO MEAN ANYTHING, and an earlier version of this
 // claim did not clear that bar. It stated the row as `dependent: f`, and since the proposal authored
@@ -342,17 +350,17 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
 // never authored, so the row reaches the validator and the mutation bites.
 test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
   let fx = fixture_with(edges: [
-    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
-    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+    integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F)),
+    integration_witness_bind(name: ^g, target: integration_witness_leaf(name: ^G)),
   ])
   let g_id = identity_or(
-    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^G)),
+    outcome: store_node(store: empty_store(), n: integration_witness_leaf(name: ^G)),
     fallback: fallback_id(),
   )
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
-    target_dependencies: [MergeDependency {
+    target_dependencies: [RoleDependency {
       dependent: ^g,
       required: ^f,
       kind: Contains,
@@ -360,8 +368,8 @@ test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
     }],
     proposals: [remove_f_proposal()],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^g, expected: g_id)
 }
 
 // A SUPPORTED KIND IN THE SAME POSITION DOES REFUSE. Identical to the claim above in every respect --
@@ -369,13 +377,13 @@ test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
 // rather than Contains. Without this, "Contains did not refuse" could mean the row was never read.
 test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
   let fx = fixture_with(edges: [
-    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
-    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+    integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F)),
+    integration_witness_bind(name: ^g, target: integration_witness_leaf(name: ^G)),
   ])
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
-    target_dependencies: [MergeDependency {
+    target_dependencies: [RoleDependency {
       dependent: ^g,
       required: ^f,
       kind: DataDependsOn,
@@ -392,24 +400,24 @@ test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
 // can reach it. Saying otherwise would credit the claim with catching something it cannot catch.
 test fn an_independent_sibling_is_preserved_exactly() -> Bool {
   let fx = fixture_with(edges: [
-    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
-    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+    integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F)),
+    integration_witness_bind(name: ^g, target: integration_witness_leaf(name: ^G)),
   ])
   let g_id = identity_or(
-    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^G)),
+    outcome: store_node(store: empty_store(), n: integration_witness_leaf(name: ^G)),
     fallback: fallback_id(),
   )
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [Proposal {
-      requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+      requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F2) }],
       dependencies: [],
     }],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^g, expected: g_id)
 }
 
 // A DEPENDENCY REPAIRED IN THE SAME PROPOSAL IS NOT A VIOLATION. The target's `k -> f` edge describes
@@ -418,14 +426,14 @@ test fn an_independent_sibling_is_preserved_exactly() -> Bool {
 // coordinated change.
 test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
   let fx = fixture_with(edges: [
-    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
-    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
-    merge_witness_bind(name: ^k, target: merge_witness_leaf(name: ^K)),
+    integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F)),
+    integration_witness_bind(name: ^h, target: integration_witness_leaf(name: ^H)),
+    integration_witness_bind(name: ^k, target: integration_witness_leaf(name: ^K)),
   ])
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
-    target_dependencies: [MergeDependency {
+    target_dependencies: [RoleDependency {
       dependent: ^k,
       required: ^f,
       kind: DataDependsOn,
@@ -433,10 +441,10 @@ test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
     }],
     proposals: [Proposal {
       requirements: [
-        RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K2) },
+        RequireBinding { role: ^k, value: integration_witness_leaf(name: ^K2) },
         RequireBindingAbsent { role: ^f },
       ],
-      dependencies: [MergeDependency {
+      dependencies: [RoleDependency {
         dependent: ^k,
         required: ^h,
         kind: DataDependsOn,
@@ -444,7 +452,7 @@ test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
       }],
     }],
   )
-  outcome_is_merged(o: out)
+  outcome_is_integrated(o: out)
 }
 
 // ORDER IS NOT AUTHORITY. Both arms answer identically with the proposals swapped -- and both use
@@ -452,39 +460,39 @@ test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
 // that made the original Arm A undiscriminating.
 test fn arm_a_is_order_independent() -> Bool {
   let fx = paired_fixture()
-  let forward = merge(
+  let forward = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: paired_proposals(required: ^h),
   )
-  let backward = merge(
+  let backward = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
-    proposals: [remove_f_proposal(), add_k_proposal(deps: [MergeDependency {
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [RoleDependency {
       dependent: ^k,
       required: ^h,
       kind: DataDependsOn,
       usage_site: ^u,
     }])],
   )
-  outcome_is_merged(o: forward) && outcome_is_merged(o: backward)
+  outcome_is_integrated(o: forward) && outcome_is_integrated(o: backward)
 }
 
 test fn arm_b_is_order_independent() -> Bool {
   let fx = paired_fixture()
-  let forward = merge(
+  let forward = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: paired_proposals(required: ^f),
   )
-  let backward = merge(
+  let backward = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
-    proposals: [remove_f_proposal(), add_k_proposal(deps: [MergeDependency {
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [RoleDependency {
       dependent: ^k,
       required: ^f,
       kind: DataDependsOn,
@@ -499,11 +507,11 @@ test fn arm_b_is_order_independent() -> Bool {
 // never validated against. Widening the classifier is then a deliberate act with its own controls,
 // not a silent consequence of an edge appearing in the population.
 test fn an_unsupported_dependency_kind_refuses() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
-  let out = merge(
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
-    target_dependencies: [MergeDependency {
+    target_dependencies: [RoleDependency {
       dependent: ^f,
       required: ^somewhere,
       kind: PlacementDependsOn,
@@ -512,49 +520,51 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     proposals: [],
   )
   match out {
-    MergeRefused { cause: cause } =>
+    RoleRequirementIntegrationRefused { cause: cause } =>
       match cause {
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^placement_depends_on as String)
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetRootIsAuthoredSource { identity: _ } => false
+        TargetRootIsCorpusManifest { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         TargetChildIsAuthoredSource { role: _, identity: _ } => false
+        TargetChildIsCorpusManifest { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
+    RoleRequirementsContested { role: _, alternatives: _ } => false
   }
 }
 
 // A REAL CONTEST REPORTS EVERY DISTINCT ALTERNATIVE, and the assertion counts them. One proposal
 // requires f = F2, another requires f absent: two distinct requested states, so two alternatives.
-fn contested_alternative_count(o: MergeOutcome) -> Int {
+fn contested_alternative_count(o: RoleRequirementIntegrationOutcome) -> Int {
   match o {
-    MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
-    Merged { store: _, commit: _, roles: _ } => 0
-    MergeRefused { cause: _ } => 0
+    RoleRequirementsContested { role: _, alternatives: alternatives } => length(alternatives)
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => 0
+    RoleRequirementIntegrationRefused { cause: _ } => 0
   }
 }
 
-fn contested_at_role(o: MergeOutcome, role: Symbol) -> Bool {
+fn contested_at_role(o: RoleRequirementIntegrationOutcome, role: Symbol) -> Bool {
   match o {
-    MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRefused { cause: _ } => false
+    RoleRequirementsContested { role: at, alternatives: _ } => (at as String) == (role as String)
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => false
+    RoleRequirementIntegrationRefused { cause: _ } => false
   }
 }
 
 test fn two_distinct_requests_for_one_role_are_contested() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
-  let out = merge(
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [
       Proposal {
-        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F2) }],
         dependencies: [],
       },
       remove_f_proposal(),
@@ -565,37 +575,37 @@ test fn two_distinct_requests_for_one_role_are_contested() -> Bool {
 
 // AGREEMENT IS NOT A CONTEST. Two proposals requiring the SAME object at one role agree, and an
 // earlier revision reported that as a choice -- fabricating a question whose alternatives are
-// identical. This is the discriminating claim for that fix: the same authoring twice must MERGE,
+// identical. This is the discriminating claim for that fix: the same authoring twice must INTEGRATE,
 // not ask. Its mirror below does the same for two absence requirements.
 test fn the_same_request_authored_twice_is_not_a_contest() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
-  let out = merge(
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [
       Proposal {
-        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F2) }],
         dependencies: [],
       },
       Proposal {
-        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F2) }],
         dependencies: [],
       },
     ],
   )
-  outcome_is_merged(o: out)
+  outcome_is_integrated(o: out)
 }
 
 test fn absence_authored_twice_is_not_a_contest() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
-  let out = merge(
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [remove_f_proposal(), remove_f_proposal()],
   )
-  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+  outcome_is_integrated(o: out) && role_absent_from_result(roles: integrated_roles(o: out), role: ^f)
 }
 
 // THE CONTESTED SET IS COMPLETE UNDER ANY ORDER. Three proposals requesting three different
@@ -603,23 +613,23 @@ test fn absence_authored_twice_is_not_a_contest() -> Bool {
 // the first competitor would report two, and WHICH two would depend on arrival order -- the
 // order-is-not-authority law broken in the one place its violation is invisible from a single run.
 test fn every_distinct_alternative_is_accumulated_regardless_of_order() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
   let a = Proposal {
-    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F1) }],
+    requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F1) }],
     dependencies: [],
   }
   let b = Proposal {
-    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+    requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F2) }],
     dependencies: [],
   }
   let c = Proposal {
-    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F3) }],
+    requirements: [RequireBinding { role: ^f, value: integration_witness_leaf(name: ^F3) }],
     dependencies: [],
   }
-  let forward = merge(
+  let forward = integrate_role_requirements(
     store: fx.store, target: fx.target, target_dependencies: [], proposals: [a, b, c],
   )
-  let backward = merge(
+  let backward = integrate_role_requirements(
     store: fx.store, target: fx.target, target_dependencies: [], proposals: [c, b, a],
   )
   (contested_alternative_count(o: forward) == 3)
@@ -628,105 +638,111 @@ test fn every_distinct_alternative_is_accumulated_regardless_of_order() -> Bool 
 
 // SILENCE PRESERVES.// SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
 test fn an_empty_proposal_set_preserves_the_target() -> Bool {
-  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let fx = fixture_with(edges: [integration_witness_bind(name: ^f, target: integration_witness_leaf(name: ^F))])
   let f_id = identity_or(
-    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^F)),
+    outcome: store_node(store: empty_store(), n: integration_witness_leaf(name: ^F)),
     fallback: fallback_id(),
   )
-  let out = merge(
+  let out = integrate_role_requirements(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [],
   )
-  outcome_is_merged(o: out)
-    && role_holds_target_object(roles: merged_roles(o: out), role: ^f, expected: f_id)
+  outcome_is_integrated(o: out)
+    && role_holds_target_object(roles: integrated_roles(o: out), role: ^f, expected: f_id)
 }
 
 // ------------------------------------------------------------------------------------------------
-// THE TWO WRONG-KIND ARMS, EXECUTED THROUGH THE PRODUCTION `merge` FUNCTION.
+// THE TWO WRONG-KIND ARMS, EXECUTED THROUGH THE PRODUCTION `integrate_role_requirements` FUNCTION.
 //
-// Both arms were added to MergeRefusal when the store grew a second kind of object, and both were
+// Both arms were added to RoleRequirementIntegrationRefusal when the store grew a second kind of object, and both were
 // initially reachable only as match arms in this file's readers returning `false` -- imported to
 // satisfy exhaustiveness and never produced by any input. That is the specification-without-execution
 // shape DESIGN section 5 names, and an arm nothing constructs is indistinguishable from an arm that
 // cannot be constructed. External review of gunbc#9891 called it, correctly.
 //
 // Each claim is paired with a control that substitutes a NODE at the same position, so the refusal is
-// attributable to the object's KIND rather than to the fixture being unmergeable.
-fn merge_witness_source_store() -> SourceStoreOutcome {
+// attributable to the object's KIND rather than to the fixture being unintegrable.
+fn integration_witness_source_store() -> SourceStoreOutcome {
   store_authored_source(store: empty_store(), text: "not a program\n")
 }
 
-fn merge_witness_source_fixture() -> Fixture {
-  let outcome = merge_witness_source_store()
+fn integration_witness_source_fixture() -> Fixture {
+  let outcome = integration_witness_source_store()
   Fixture {
     store: source_store_or_empty(outcome: outcome),
     target: Commit { root: source_root_or(outcome: outcome, fallback: fallback_id()) },
   }
 }
 
-// WHERE THE CHILD ARM IS WITNESSED, AND WHY NOT HERE. A proposal cannot reach
-// TargetChildIsAuthoredSource: `RequireBinding` carries a `Node`, so every role value a proposal
-// supplies is stored through store_node and is a semantic node by construction. The only way a role
-// value names a file is for the TARGET ROOT's own child edge to point at one, and the only producer
-// of that shape is the decoder resolving an edge position into an authored entry. So that claim lives
-// beside the document builder, in test.claim.scm_commit_closure_json_v2_witness, where the input can
-// actually be constructed -- rather than here, where it would need a constructor the model correctly
-// does not offer.
-fn merge_refusal_tag(o: MergeOutcome) -> String {
+// WHERE THE CHILD ARMS ARE WITNESSED, AND WHY NOT HERE. A proposal cannot reach
+// TargetChildIsAuthoredSource or TargetChildIsCorpusManifest: `RequireBinding` carries a `Node`, so
+// every role value a proposal supplies is stored through store_node and is a semantic node by
+// construction. The only way a role value names a file or a manifest is for the TARGET ROOT's own
+// child edge to point at one, and the only producer of that shape is a decoder resolving an edge
+// position into a non-node entry.
+//
+// That producer is now the OBJECT TABLE, not the commit closure. This note used to send a reader to
+// test.claim.scm_commit_closure_json_v2_witness, which was right while a closure document carried a
+// mixed table; under v4 that document admits nodes only and cannot construct the input at all. The
+// claims live in test.claim.scm_object_table_json_witness, where the mixed table is the subject --
+// rather than here, where they would need a constructor the model correctly does not offer.
+fn integration_refusal_tag(o: RoleRequirementIntegrationOutcome) -> String {
   match o {
-    Merged { store: _, commit: _, roles: _ } => "merged"
-    MergeRolesContested { role: _, alternatives: _ } => "contested"
-    MergeRefused { cause: cause } =>
+    RoleRequirementsIntegrated { store: _, commit: _, roles: _ } => "integrated"
+    RoleRequirementsContested { role: _, alternatives: _ } => "contested"
+    RoleRequirementIntegrationRefused { cause: cause } =>
       match cause {
         TargetRootMissing { identity: _ } => "root_missing"
         TargetRootIsAuthoredSource { identity: _ } => "root_source"
+        TargetRootIsCorpusManifest { identity: _ } => "root_manifest"
         TargetChildMissing { role: _, identity: _ } => "child_missing"
         TargetChildIsAuthoredSource { role: _, identity: _ } => "child_source"
+        TargetChildIsCorpusManifest { role: _, identity: _ } => "child_manifest"
         BindingLocatorCollision { role: _, identity: _ } => "collision"
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => "dependency"
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => "kind"
+        DependencyKindUnsupportedForRoleRequirementIntegration { dependent: _, required: _, kind: _ } => "kind"
       }
   }
 }
 
-// A MERGE TARGET WHOSE ROOT IS A FILE refuses naming the authored source, not TargetRootMissing --
+// AN INTEGRATION TARGET WHOSE ROOT IS A FILE refuses naming the authored source, not TargetRootMissing --
 // the file is present, and telling an operator their target root is missing sends them looking for
 // something that is there.
-test fn merge_a_target_root_that_is_a_file_refuses_as_authored_source() -> Bool {
-  let fx = merge_witness_source_fixture()
-  merge_refusal_tag(
-    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+test fn integrating_over_a_target_root_that_is_a_file_refuses_as_authored_source() -> Bool {
+  let fx = integration_witness_source_fixture()
+  integration_refusal_tag(
+    o: integrate_role_requirements(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
   ) == "root_source"
 }
 
-// CONTROL: the same shape with a NODE root merges, so the refusal above is about the kind and not
+// CONTROL: the same shape with a NODE root integrates, so the refusal above is about the kind and not
 // about an empty proposal list or a single-object store.
-test fn merge_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
+test fn integrating_over_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
   let fx = paired_fixture()
-  merge_refusal_tag(
-    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
-  ) == "merged"
+  integration_refusal_tag(
+    o: integrate_role_requirements(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "integrated"
 }
 
 // THE CHILD ARM, WITNESSED WHERE ITS INPUT CAN NOW BE BUILT.
 //
 // This claim used to live beside the closure-document builder, because a document was the only thing
 // that could put a file into a child edge. It is not any more: a contained edge target is resolved
-// before the decoder writes it, so that document refuses at decode and never reaches merge.
+// before the decoder writes it, so that document refuses at decode and never reaches the integration.
 //
 // The arm is still reachable, and this is the shape that reaches it. A child edge may carry an
 // UNRESOLVED target -- a bare locator whose kind nothing has established, which is what a partial
 // closure's uncontained reference decodes to -- and the store here holds a FILE at that locator. So
-// merge resolves the role value and must refuse naming the child's KIND. Against the wildcard this
+// the integration resolves the role value and must refuse naming the child's KIND. Against the wildcard this
 // PR removed, which mapped every checkout refusal to TargetChildMissing, it reports "child_missing"
 // for an object that is present: that is the discriminating red.
 //
 // The record is built through insert_from_structure rather than by hand, because ObjectRecord is
 // sole_constructor -- the fixture chooses the STRUCTURE and the store derives the identity, so this
 // target is incomplete-by-construction and never dishonest.
-fn merge_witness_role_over_a_file_fixture() -> Fixture {
+fn integration_witness_role_over_a_file_fixture() -> Fixture {
   match store_authored_source(store: empty_store(), text: "not a program\n") {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
       Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: fallback_id() } } }
@@ -746,17 +762,17 @@ fn merge_witness_role_over_a_file_fixture() -> Fixture {
   }
 }
 
-test fn merge_a_role_whose_value_is_a_file_refuses_as_authored_source() -> Bool {
-  let fx = merge_witness_role_over_a_file_fixture()
-  merge_refusal_tag(
-    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+test fn integrating_a_role_whose_value_is_a_file_refuses_as_authored_source() -> Bool {
+  let fx = integration_witness_role_over_a_file_fixture()
+  integration_refusal_tag(
+    o: integrate_role_requirements(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
   ) == "child_source"
 }
 
-// CONTROL, one fact apart: the same assembly with a NODE under the child edge merges. Without it a
-// merge that refused every hand-assembled target would satisfy the claim above.
-fn merge_witness_role_over_a_node_fixture() -> Fixture {
-  match store_node(store: empty_store(), n: merge_witness_leaf(name: ^child)) {
+// CONTROL, one fact apart: the same assembly with a NODE under the child edge integrates. Without it
+// an integration that refused every hand-assembled target would satisfy the claim above.
+fn integration_witness_role_over_a_node_fixture() -> Fixture {
+  match store_node(store: empty_store(), n: integration_witness_leaf(name: ^child)) {
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
       Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: i } } }
     Stored { store: with_child, node: child } =>
@@ -775,9 +791,9 @@ fn merge_witness_role_over_a_node_fixture() -> Fixture {
   }
 }
 
-test fn merge_a_role_whose_value_is_a_node_merges() -> Bool {
-  let fx = merge_witness_role_over_a_node_fixture()
-  merge_refusal_tag(
-    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
-  ) == "merged"
+test fn integrating_a_role_whose_value_is_a_node_integrates() -> Bool {
+  let fx = integration_witness_role_over_a_node_fixture()
+  integration_refusal_tag(
+    o: integrate_role_requirements(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "integrated"
 }

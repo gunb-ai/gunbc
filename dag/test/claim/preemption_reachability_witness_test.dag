@@ -188,7 +188,7 @@ test fn w_opaque_host_call_surface_is_grounded_in_the_dispatch_roster() -> Bool 
 // becoming parallel-representation debt in the meantime.
 test fn w_grandfather_population_matches_the_grounded_surface() -> Bool {
   match opaque_host_call_surface() {
-    OpaqueHostCallSurfaceUngrounded { unresolved: _, not_free_call: _ } => false
+    OpaqueHostCallSurfaceUngrounded { unresolved: _, not_free_call: _, wrong_dispatch_site: _ } => false
     OpaqueHostCallSurfaceGrounded { operations: ops } =>
       (ops |> all(o =>
         claim_preemption_admission(OpaqueHostCallUnbounded { operation: o }) == true
