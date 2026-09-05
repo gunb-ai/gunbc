@@ -382,6 +382,12 @@ type Ampere = Measure<ElectricCurrent, One, Nat>
 // pitch with hundred-micrometre traces, which whole millimetres cannot express at all. Two
 // declarations of it were briefly authored in parallel and one was deleted — the concept is one,
 // and its reasons accumulate here rather than forking the type.
+// A LENGTH FINER THAN THE MICROMETRE, because a mesh chord error is genuinely sub-micrometre and
+// rounding it into micrometres would report the safest possible value -- zero -- for exactly the
+// deviations small enough to round away. The carrier is the same Length axis one decade down, not a
+// new quantity: DESIGN section 2's horizontal move, the way CubicMillimeter already reuses Nano.
+type Nanometer = Measure<Length, Nano, Nat>
+
 type Micrometer = Measure<Length, Micro, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
@@ -708,6 +714,21 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
+}
+
+fn nanometer(count: Nat) -> Nanometer {
+  Measure { count: count }
+}
+
+fn nanometer_count(n: Nanometer) -> Nat {
+  measure_count(n)
+}
+
+// EXACT IN THIS DIRECTION ONLY. A micrometre is a thousand nanometres, so widening never loses
+// anything; the reverse would floor, and a floored chord error is an error bound that flatters
+// itself, so no narrowing conversion is offered here.
+fn micrometer_to_nanometer(m: Micrometer) -> Nanometer {
+  nanometer(count: micrometer_count(m: m) * 1000)
 }
 
 fn micrometer(count: Nat) -> Micrometer {

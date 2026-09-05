@@ -48,6 +48,12 @@ data transport_close_read_as_completion: RecurringFailureMode = RecurringFailure
     "Against `absorbing_fallback`: that arm WIDENS on ignorance and is merely expensive; this arm reports a fragment as an answer and is silently wrong, which is below the ladder rather than on it. ",
 
     "Against `unbacked_execution_claim`: there prose asserts a relation no authority backs; here a machine-generated artifact asserts a completion no protocol event backs, and it is more dangerous precisely because a `stop_reason` field reads as evidence.)",
+
+    "**THE SAME MECHANISM ON THE SESSION-LIFECYCLE AXIS, filed here rather than as a new class because only the axis differs** (calm-eagle-759, 2026-09-05). Substitute a work session for the stream: THE SESSION ENDED and THE OBLIGATION WAS DISCHARGED are two facts, and archiving a session was read as the second. RECEIPT: `dashboard-ops archive` on a lane closed its work item, and that item had been filed specifically to OWN a DESIGN section 4b next-rung trigger. The capability was never delivered; the item closed because the session did. A trigger is retired by its trigger and by nothing else, never by the item tracking it being closed. ",
+
+    "WHAT MAKES THIS AXIS WORSE THAN THE TRANSPORT ONE IS THAT NOTHING IS WRONG AT THE MOMENT IT HAPPENS. A severed stream at least leaves a fragment that a terminator check could contradict. The archive is CORRECT about the session and asserts nothing whatever about the obligation, so there is no field to check and no consumer to disagree -- the loss is of TRACKING, not of data. It is therefore silent everywhere the closed item is not cited. In the receipt it surfaced only because the item id had been written into a pull request body about to merge, where the sentence claiming the trigger had an owner had quietly become false. ",
+
+    "The same archive call had a second effect on a third subject: it orphaned a pull request the lane had published five seconds earlier. The practice repair is to archive on THE LANE'S OWN STATEMENT that it has published nothing, never on a poll taken before the archive call -- a lane that is finishing up is precisely a lane about to publish. Recognition rule for the general axis: when a lifecycle event closes a container, enumerate what the container OWNED that the event says nothing about.)",
   ],
 
   evidence: [],

@@ -547,11 +547,22 @@ mod compiler_tests {
     /// path, reds in the right file and passes for the text-boundary subject it is not.
     ///
     /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
-    /// compiles two emitted crates, which is minutes rather than milliseconds, and
-    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It
-    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib
-    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and
-    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    /// compiles two emitted crates, which is minutes rather than milliseconds.
+    ///
+    /// THE JUSTIFICATION THAT STOOD HERE NAMED A DELETED JOB. It said `repo_self_test_command`
+    /// runs the whole --lib suite on every push and pull request, and concluded "it is THEREFORE
+    /// ENROLLED AND OPT-IN". The 2026-09-04 runner-capacity ruling deleted that job --
+    /// `witnesses.yml` has ZERO occurrences of `cargo test` -- so the premise that "therefore"
+    /// rested on is gone. The loss is a declared drop, `gunbc.rung_drop`
+    /// `rust_unit_tests_off_the_merge_path`.
+    ///
+    /// WHAT IS TRUE: this arm is compiled into the seed lib and RUNNABLE ON DEMAND via
+    /// `cargo test --release -p v1-compiler --lib fixture_closure_rustc_discrimination --
+    /// --ignored`. NO CI path invokes it. The `#[ignore]` is a cost decision, but it is not what
+    /// decides standing -- an ignored test is still compiled, and a non-ignored test in a suite
+    /// nothing invokes is equally off the path. What decides is the invocation and the result
+    /// CONSUMER, and there is no consumer. Nothing here may be cited as coverage that executes on
+    /// the merge path.
     #[test]
     #[ignore]
     fn fixture_closure_rustc_discrimination() {
@@ -588,9 +599,12 @@ mod compiler_tests {
     ///
     /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
     /// generations and starts a server, which is tens of minutes rather than milliseconds,
-    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
-    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
-    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and it is RUNNABLE ON DEMAND, on no CI path: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. The sentence that stood here said
+    /// repo_self_test_command runs the whole --lib suite on every push and concluded this arm is
+    /// ENROLLED AND OPT-IN; the 2026-09-04 runner-capacity ruling deleted that job, so the
+    /// premise is gone (`witnesses.yml` has ZERO `cargo test`; declared drop `gunbc.rung_drop`
+    /// `rust_unit_tests_off_the_merge_path`). An #[ignore] is a cost decision
     /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
     #[test]
     #[ignore]
@@ -730,6 +744,84 @@ mod compiler_tests {
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
             "the representation-identical cast control must COMPILE -- an unsupported-cast panic emitted for any of its six casts is a type error at the declared return -- and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR. That one's arms are two
+    /// COMPILER behaviours over ONE source, and no pair of fixture FILES can be those arms --
+    /// files vary the source and hold the compiler fixed. This does not discharge that ceiling
+    /// row, which stays at MeaningDiscriminatorExecutedNotEnrolled (codex review 60742).
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`: a type argument's
+    /// Rust identity is decided from the declaration visible in the module, never from the
+    /// syntactic position that happened to render it. `test.claim`
+    /// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of
+    /// that decision across every outer renderer and STAYS ENROLLED (DESIGN 4b(4): a climb deletes
+    /// lower-rung production machinery, never the evidence). This arm is the half that witness
+    /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never
+    /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
+    ///
+    /// WHAT THE TWO ARMS ARE, AND WHAT THEY DO NOT ISOLATE. Both declare the same coproduct
+    /// `Marker = Alpha | Beta`. The control puts `Alpha` and `Beta` in the RULED POSITION --
+    /// arguments of an applied type node -- where they become distinct zero-sized markers, and
+    /// its emitted crate COMPILES. The red puts `Alpha` in a NON-APPLIED position, a record
+    /// field, and returns that `Alpha`-typed field from a function declared to return `Marker`;
+    /// its emitted crate is REFUSED at that return. So a green here is not "some crate compiled"
+    /// and the red is not "something in the tree is broken".
+    ///
+    /// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, and an earlier revision of this
+    /// description claimed it did (native comment review 5120541804). The arms also differ in
+    /// their RETURN CONTRACT -- the control returns an `Int` read through a wrapper -- and the
+    /// measured E0308 lands AT the return, so the return contract is load-bearing for the refusal
+    /// rather than incidental. What the pair characterizes is two CONCRETE CONSTRUCTIONS, not a
+    /// single-variable experiment over position.
+    ///
+    /// THE RED IS A KNOWN HOLE, NOT A WALL WORKING, and it is named as one so nobody reads its red
+    /// as coverage. It is `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`
+    /// at that row's own filed FIRST instance, which the row records was never committed to this
+    /// repository as a runnable file. It is committed here as one. When the wall climbs -- type
+    /// position resolution consulting the TYPE namespace alone -- the arm flips to SourceRefused
+    /// and is KEPT; what changes is this pair's expectation, not the fixture's existence.
+    ///
+    /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH
+    /// an `Alpha` type and a `Marker::Alpha` variant: the field annotation binds the former, the
+    /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,
+    /// `expected Marker, found Alpha`. E0573 was predicted from the ceiling row and did NOT
+    /// reproduce -- both arms declare their markers LOCALLY, so neither exercises the
+    /// imported-marker construction where those classifiers diverge, and the prediction was
+    /// mis-scoped from the start. The expectation is the route's adjudicated class. See
+    /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is
+    /// deliberately not claimed from one construction.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the three pairs beside it: this arm spawns cargo
+    /// and compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED
+    /// AND OPT-IN -- `cargo test --release -p v1-compiler --lib
+    /// phantom_marker_identity_fixture_closure_discrimination -- --ignored`. An #[ignore] is a
+    /// cost decision and NOT a rung: nothing here may be cited as coverage that executes on the
+    /// merge path, and the phantom-marker ceiling carrier may not be flipped to
+    /// MeaningDiscriminatorEnrolled on the strength of it.
+    #[test]
+    #[ignore]
+    fn phantom_marker_identity_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_phantom_marker_identity_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("phantom-marker-identity {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the applied-marker fixture must COMPILE, and the non-applied-field-plus-parent-return fixture must reach rustc and be refused in its own emitted module with the attributed E0308 this pair claims; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
@@ -3290,6 +3382,7 @@ mod compiler_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -3537,6 +3630,7 @@ mod compiler_tests {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
+                module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -3863,8 +3957,9 @@ mod compiler_tests {
         );
     }
 
-    fn item_carrying_properties(
+    fn item_of_kind(
         name: &str,
+        kind: crate::v1_std_core::ParsedModuleItemKind,
         property_names: Vec<&str>,
     ) -> std::rc::Rc<crate::v1_std_core::Node> {
         let mut props: im::Vector<std::rc::Rc<crate::v1_std_core::Node>> = im::Vector::new();
@@ -3873,6 +3968,7 @@ mod compiler_tests {
         }
         std::rc::Rc::new(crate::v1_std_core::Node {
             properties: std::rc::Rc::new(props),
+            module_item_kind: kind,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }
@@ -3896,55 +3992,68 @@ mod compiler_tests {
             || crate::v1_compiler_emit_core_support::is_type_decl_item(item, source_indices)
     }
 
-    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THE DISCRIMINATING ROW IS THE CAPABILITY-LESS ONE.
-    // `resource Network` and `resource AuthContext` declare no capabilities, so they carry no
-    // children, no body, no params and no connective -- they ARE bare leaves by shape, which is
-    // why the emit side read them as type items while v1.compiler.parse read them as resources.
-    // That disagreement is what made the type-occurrence census refuse with
+    // A RESOURCE ITEM IS NOT A TYPE ITEM, AND THIS ROW SURVIVED THE CLIMB THAT DELETED WHAT IT
+    // ORIGINALLY GUARDED. It landed with gunbc#10350, where the emit side excluded resources by
+    // deriving a predicate from the parser's parsed_item_carries_resource_entries. That exclusion
+    // is gone: the item's KIND is now carried on the node by the parse constructor, so these
+    // predicates read it instead of excluding by name. DESIGN section 4b(4) is explicit that a
+    // climb deletes the lower-rung PRODUCTION handling and keeps the evidence, so the rows below
+    // are unchanged in what they assert and differ only in stamping each fixture with the kind
+    // its constructor would have given it. The third row, which pinned the parse-side and
+    // emit-side readers to the same answer, is deleted rather than restamped -- there is no
+    // longer a second reader for it to agree with, and asserting an authority agrees with itself
+    // asserts nothing.
+    //
+    // THE DISCRIMINATING ROW IS THE CAPABILITY-LESS RESOURCE. `resource Network` and
+    // `resource AuthContext` declare no capabilities, so they carry no children, no body, no
+    // params and no connective -- they ARE bare leaves by shape, which is why the emit side read
+    // them as type items while v1.compiler.parse read them as resources. That disagreement is
+    // what made the type-occurrence census refuse with
     // CensusUnavailable { cause: DeclarationDomainDisagrees }, and both readers previously AGREED
     // they were types, so the pair was invisible until the readers were separated.
     //
-    // THE THIRD ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by COUNTING
-    // properties is the shape v1.compiler.parse already had to repair: `type X sole_constructor`
-    // carries a property too, and counting swallowed 202 sole-constructor types across 100
-    // modules into the resource bucket. So a sole-constructor-only item must still read as a type
-    // item, and this row goes red if the exclusion is ever re-spelled as a property count.
+    // THE SOLE-CONSTRUCTOR ROW IS THE ONE THAT KEEPS THIS FROM OVER-CORRECTING. Excluding by
+    // COUNTING properties is the shape v1.compiler.parse already had to repair: `type X
+    // sole_constructor` carries a property too, and counting swallowed 202 sole-constructor types
+    // across 100 modules into the resource bucket. A sole-constructor type must still read as a
+    // type item, and this row goes red if a property count is ever re-spelled here.
     #[test]
     fn a_resource_item_is_not_read_as_a_type_item() {
         let source_indices = std::rc::Rc::new(HashMap::new());
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemResource, ModuleItemTypeDeclaration,
+        };
 
         // POSITIVE CONTROL: a bare leaf carrying no properties at all is still a type item.
-        let plain = item_carrying_properties("Symbol", Vec::new());
+        let plain = item_of_kind("Symbol", ModuleItemTypeDeclaration, Vec::new());
         assert!(
             reads_as_a_type_item(plain, source_indices.clone()),
             "positive control: a property-free bare leaf must still read as a type item"
         );
 
-        // THE DISCRIMINATOR: resource entries present. Removing the exclusion turns this true.
-        let resource_like =
-            item_carrying_properties("Network", vec!["kind", "mode", "acquire", "release"]);
+        // THE DISCRIMINATOR: a resource whose SHAPE is indistinguishable from that bare leaf.
+        // Every conjunct of the old shape test holds; only the carried kind separates them, so
+        // dropping the kind conjunct turns this row red.
+        let resource_like = item_of_kind(
+            "Network",
+            ModuleItemResource,
+            vec!["kind", "mode", "acquire", "release"],
+        );
         assert!(
-            !reads_as_a_type_item(resource_like.clone(), source_indices.clone()),
+            !reads_as_a_type_item(resource_like, source_indices.clone()),
             "a capability-less resource item must NOT read as a type item"
         );
 
         // THE OVER-CORRECTION GUARD: sole_constructor is a TYPE modifier, not a resource entry.
-        let sole_constructor_type = item_carrying_properties("Wrapper", vec!["sole_constructor"]);
+        let sole_constructor_type = item_of_kind(
+            "Wrapper",
+            ModuleItemTypeDeclaration,
+            vec!["sole_constructor"],
+        );
         assert!(
-            reads_as_a_type_item(sole_constructor_type.clone(), source_indices.clone()),
+            reads_as_a_type_item(sole_constructor_type, source_indices.clone()),
             "a sole_constructor type must still read as a type item"
         );
-
-        // THE TWO READERS AGREE, which is the exact fact the census join measures and the fact
-        // whose absence made it refuse. Stated as an equality so it fails from either side.
-        for item in [resource_like, sole_constructor_type] {
-            assert_eq!(
-                crate::v1_compiler_parse::parsed_item_carries_resource_entries(item.clone()),
-                !reads_as_a_type_item(item.clone(), source_indices.clone()),
-                "parse-side and emit-side readers must agree on {}",
-                item.name
-            );
-        }
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).

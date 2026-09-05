@@ -427,6 +427,19 @@ fn emit_slice_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_slice_unit_file(spec: spec)))
 }
 
+// THE USER-MANAGER ENVIRONMENT FOR UNITS THAT START OR OBSERVE USER UNITS. Both the serve unit (POST
+// /dispatch starts a worker) and the belt unit (spawns reviewers and auditors, reads every attempt
+// unit's SubState and ExecMainStatus) run as system services under the service principal; the user
+// manager they must reach is addressed by the principal's uid (gunbc.live_deploy.spec
+// gunbc_service_uid). Emitted as two Environment= lines rather than resolved at runtime because the
+// unit file is the authority the deploy installs and the oracle witness pins.
+fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective> {
+  [
+    Environment { assignment: join(["XDG_RUNTIME_DIR=/run/user/", to_string(uid)], "") as NonEmptyStr },
+    Environment { assignment: join(["DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/", to_string(uid), "/bus"], "") as NonEmptyStr },
+  ]
+}
+
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   let port = to_string(svc.listen.port)
@@ -437,12 +450,13 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    service: [
+    service: concat([
       ServiceType { mode: "simple" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
@@ -453,7 +467,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
       ], "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
-    ],
+    ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -474,7 +488,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    service: [
+    service: concat([
       ServiceType { mode: "oneshot" as NonEmptyStr },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
@@ -483,12 +497,13 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Environment { assignment: join([
         belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
       ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
       ], "") as NonEmptyStr },
-    ],
+    ])),
     install: NotInstallable,
   }
 }

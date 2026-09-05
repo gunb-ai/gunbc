@@ -6,7 +6,22 @@ import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap_status { signoff_accepts }
+import gunbc.roadmap_status { signoff_accepts, line_ticket }
+import gunbc.roadmap_spawner { node_title }
+import gunbc.roadmap.roadmap_review_role {
+  ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
+  CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_all_approved, review_reconcile,
+  CriterionApproved, review_brief,
+}
+import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria, review_criterion_keys }
+import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
+  dispatch_review_unit_name, dispatch_review_unit_argv,
+  dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
+  dispatch_audit_unit_name, dispatch_audit_unit_argv,
+}
+import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -67,14 +82,23 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
+  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_observe_backend,
+}
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
+  DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
+  dispatch_attempt_unit_name,
+  attempt_unit_observation,
+  worker_process_from_attempt_unit,
   DispatchSpawnPlan,
   DispatchSpawnReady,
   DispatchSpawnRefused,
   dispatch_spawn_commands_for_instance,
+  dispatch_spawn_commands_for_resolved_instance,
   dispatch_capability_program,
   dispatch_attempt_key,
   dispatch_attempt_key_path_for_instance,
@@ -188,6 +212,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
+  dispatch_base_branch,
 }
 import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
@@ -235,7 +260,7 @@ import gunbc.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.roadmap_verification_receipt {
+import gunbc.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   VerificationSubject,
   VerificationSubjectObservation,
   VerificationSubjectObserved,
@@ -338,13 +363,21 @@ import gunbc.git_diff_change_window {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.fleet_desired_observe {
-  fleet_revision_standing,
+  admitted_revision_standing,
   FleetRevisionStanding,
   RevisionConverged, RevisionDrifted, RevisionUnobserved,
 }
-import extdeps.git { shape_git_rev_parse_head_args }
-import gunbc.roadmap_dispatch_actuator { host_exec_argv }
-import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
+import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
+import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
+  ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
+  ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
+  continuation_decision, attempt_origin_turn,
+}
+import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -368,7 +401,10 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentComplete,
   WorkflowSegmentFailed,
   WorkflowSegmentRefused,
+  WorkflowSegmentStopped,
   VerificationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
 }
 import gunbc.roadmap_presentation {
   activity_view_from_progress,
@@ -557,6 +593,7 @@ fn belt_attempt_state_initialize_for_instance(
   attempt_key: String,
   admission_receipt: String,
   launch: LaunchIdentity,
+  turn: Int,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -566,10 +603,23 @@ fn belt_attempt_state_initialize_for_instance(
     ),
     content: attempt_key,
   )
+  let turn_write = Filesystem.Write(
+    path: dispatch_attempt_continuation_turn_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: to_string(value: turn),
+  )
   if !key_write.success {
     AttemptStateInitializationFailed {
       step: "attempt-key-write",
       detail: key_write.error,
+    }
+  } else if !turn_write.success {
+    AttemptStateInitializationFailed {
+      step: "attempt-continuation-turn-write",
+      detail: turn_write.error,
     }
   } else {
     let admission_write = Filesystem.Write(
@@ -952,6 +1002,50 @@ fn belt_persist_oracle_pin_for_instance(
   }
 }
 
+// THE TWO EXECUTION PHASES A CONTAINER NEEDS, kept as two because the belt already treats them
+// differently: the CREATE step is the one whose failure means no container exists to clean up,
+// while a failure in the START steps leaves a created container that must be torn down. Splitting
+// by phase rather than by step count is what lets a single-step container and a four-step one share
+// that error handling unchanged.
+//
+// The systemd container does all its work in the create step -- a transient unit is started with
+// its command, its properties and its output redirection in one call -- so its start phase is
+// empty. An empty step list is executed as a no-op by belt_exec_steps, which is the honest encoding
+// of "this container has nothing further to do", not a skipped check.
+fn belt_session_container_create_steps(container: DispatchSessionContainer) -> List<BeltExecStep> {
+  match container {
+    TmuxSessionContainer {
+      spawn,
+      default_shell: _,
+      remain_on_exit: _,
+      event_pipe: _,
+      provider_start: _,
+    } =>
+      [BeltExecStep { step: "tmux-session-create", command: spawn }]
+    SystemdUnitContainer { run } =>
+      [BeltExecStep { step: "harness-unit-start", command: run }]
+  }
+}
+
+fn belt_session_container_start_steps(container: DispatchSessionContainer) -> List<BeltExecStep> {
+  match container {
+    TmuxSessionContainer {
+      spawn: _,
+      default_shell,
+      remain_on_exit,
+      event_pipe,
+      provider_start,
+    } =>
+      [
+        BeltExecStep { step: "tmux-default-shell", command: default_shell },
+        BeltExecStep { step: "tmux-remain-on-exit", command: remain_on_exit },
+        BeltExecStep { step: "tmux-event-pipe", command: event_pipe },
+        BeltExecStep { step: "provider-start", command: provider_start },
+      ]
+    SystemdUnitContainer { run: _ } => []
+  }
+}
+
 fn belt_created_session_cleanup_detail(
   instance: HostDashboardInstance,
   session_name: String,
@@ -1299,6 +1393,28 @@ fn belt_provider_preflight_for_instance(
         step: "cursor-provider-preflight",
         detail: "cursor dispatch is not yet wired on this actuator path",
       }
+    GunbcHarnessProvider =>
+      match harness_observe_backend() {
+        HarnessBackendServing { model: _ } => ProviderPreflightOk
+        HarnessBackendModelAbsent { model: m, advertised: a } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-model",
+            detail: join([
+              "the harness backend is reachable but does not advertise ", m,
+              "; it advertises: ", a,
+            ], ""),
+          }
+        HarnessBackendUnreachable { url: u } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-reachability",
+            detail: join(["the harness backend did not answer ", u], ""),
+          }
+        HarnessBackendUnreadable { cause: c } =>
+          ProviderPreflightRefused {
+            step: "harness-backend-model-list",
+            detail: join(["the harness backend answered unreadably: ", c], ""),
+          }
+      }
   }
 }
 
@@ -1562,12 +1678,108 @@ fn belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
   )
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  match dispatch_spawn_commands_for_instance(
+  match belt_continuation_decision_for_instance(instance: instance, node: node) {
+    ContinuationRefused { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "continuation",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ContinuationHold { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "continuation-hold",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ContinuationFresh { reason: _ } =>
+      belt_actuate_spawn_with_origin(
+        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
+      )
+    ContinuationContinue { origin } =>
+      belt_actuate_spawn_with_origin(
+        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        attempt_key: attempt_key, session_name: session_name, origin: origin,
+      )
+  }
+}
+
+// WHETHER THIS SPAWN CONTINUES THE NODE'S PRIOR ATTEMPT. The facts come from the same attempts
+// ledger the commit and verify passes read, so the decision sees exactly the provider state and
+// verification segment the dashboard shows; an unobservable ledger refuses here as it does there,
+// because a spawn that cannot tell whether committed work exists must not start over on top of it.
+fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      ContinuationRefused { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let mine = attempts |> filter(p => p.node_id == node.node as String)
+      match mine.first() {
+        Absent => continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent)
+        Present { value: p } =>
+          continuation_decision(
+            prior: Present { value: PriorAttemptFacts {
+              attempt_key: p.attempt_key,
+              branch: p.branch,
+              worker_terminal: belt_provider_is_terminal(provider: p.provider),
+              verification: belt_verification_segment(progress: p),
+              review: belt_review_segment(progress: p),
+              goal_audit: belt_goal_audit_segment(progress: p),
+            } },
+            prior_turn: belt_continuation_turn_read_for_instance(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
+          )
+      }
+    }
+  }
+}
+
+fn belt_continuation_turn_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ContinuationTurnRead {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = dispatch_attempt_continuation_turn_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: dispatch_attempt_continuation_turn_basename,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => ContinuationTurnAbsent
+    FilesystemFileRead { path: _, content } =>
+      match parse_int(s: trim(content)) {
+        Present { value: n } => ContinuationTurnKnown { turn: n }
+        Absent => ContinuationTurnUnreadable { reason: join(["continuation-turn holds \"", trim(content), "\", not an integer"], "") }
+      }
+    FilesystemFileIndeterminate { cause } => ContinuationTurnUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ContinuationTurnUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ContinuationTurnUnreadable { reason: cause }
+  }
+}
+
+fn belt_actuate_spawn_with_origin(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  workdir: String,
+  admission_receipt: String,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  probed_at: String,
+  attempt_key: String,
+  session_name: String,
+  origin: AttemptOrigin,
+) -> BeltSpawnOutcome {
+  match belt_resolved_spawn_plan(
     instance: instance,
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
-    request: default_provider_selection_request(),
+    origin: origin,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1603,6 +1815,7 @@ fn belt_actuate_spawn_exec_modeled(
         attempt_key: attempt_key,
         admission_receipt: admission_receipt,
         launch: launch,
+        turn: attempt_origin_turn(origin: origin),
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -1632,12 +1845,7 @@ fn belt_actuate_spawn_exec_modeled(
               }
             ExecStepsOk =>
               match belt_exec_steps(
-                steps: [
-                  BeltExecStep {
-                    step: "tmux-session-create",
-                    command: cmds.tmux_spawn,
-                  },
-                ],
+                steps: belt_session_container_create_steps(container: cmds.session_container),
                 workdir: workdir,
               ) {
                 ExecStepFailed { step, detail } =>
@@ -1656,24 +1864,7 @@ fn belt_actuate_spawn_exec_modeled(
                   }
                 ExecStepsOk =>
                   match belt_exec_steps(
-                    steps: [
-                      BeltExecStep {
-                        step: "tmux-default-shell",
-                        command: cmds.tmux_default_shell,
-                      },
-                      BeltExecStep {
-                        step: "tmux-remain-on-exit",
-                        command: cmds.tmux_remain_on_exit,
-                      },
-                      BeltExecStep {
-                        step: "tmux-event-pipe",
-                        command: cmds.tmux_event_pipe,
-                      },
-                      BeltExecStep {
-                        step: "provider-start",
-                        command: cmds.provider_start,
-                      },
-                    ],
+                    steps: belt_session_container_start_steps(container: cmds.session_container),
                     workdir: workdir,
                   ) {
                     ExecStepsOk =>
@@ -1869,6 +2060,46 @@ fn belt_uuid_dash(v: String) -> String {
   substring(s: v, start: 20, end: 32)))))))))
 }
 
+// THE SPAWN CONSUMES THE SELECTION THE ADMISSION ALREADY MADE, rather than re-deriving it through
+// the vendor selector.
+//
+// This call used to hand default_provider_selection_request() to the vendor path, which then chose
+// a provider for itself. That was already a second decision beside dispatch_actuator_selection --
+// two answers to "who executes this attempt", reconciled by both happening to say Codex -- and it
+// became visible the moment they could disagree: the dispatch receipt reported provider
+// "gunbc-harness" from the first decision while the spawn refused with the vendor selector's
+// "no provider offer is selection-eligible" from the second. One route reporting another route's
+// refusal is the forked-authority shape DESIGN section 3 names.
+//
+// dispatch_spawn_commands_for_resolved_instance already existed for exactly this: it takes the
+// resolved executor and skips the inventory entirely. So the selection is made once, and the spawn
+// consumes it.
+fn belt_resolved_spawn_plan(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+  origin: AttemptOrigin,
+) -> DispatchSpawnPlan {
+  match dispatch_actuator_selection(node_sizing: node.sizing) {
+    DispatchActuatorSelectionRefused { reason } =>
+      DispatchSpawnRefused {
+        step: "dispatch-selection" as NonEmptyStr,
+        detail: reason as String,
+      }
+    DispatchActuatorSelectionOk { provider, effort, process_fingerprint: _ } =>
+      dispatch_spawn_commands_for_resolved_instance(
+        instance: instance,
+        node: node,
+        session_uuid: session_uuid,
+        attempt_key: attempt_key,
+        provider: provider,
+        effort: effort,
+        origin: origin,
+      )
+  }
+}
+
 fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
   belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
 }
@@ -2004,6 +2235,7 @@ type BeltTickReceipt {
   launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
+  commit_pass: BeltPassOutcome,
   verify_pass: BeltPassOutcome,
   publish_pass: BeltPassOutcome,
 }
@@ -2028,7 +2260,7 @@ type BeltTickReceiptRead
 // DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt there would
 // answer for two instances. A note describing a home the implementation did not and could not
 // safely use is the stale-authority class of DESIGN section 3.
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v4"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v5"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -2149,7 +2381,11 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                       BeltPassOutcomeUnreadable { reason: r } =>
                         BeltTickReceiptUnreadable { reason: r }
                       BeltPassOutcomeDecoded { outcome: teardown_pass } =>
-                        match belt_pass_outcome_from_member(doc: doc, key: "verify_pass") {
+                        match belt_pass_outcome_from_member(doc: doc, key: "commit_pass") {
+                          BeltPassOutcomeUnreadable { reason: r } =>
+                            BeltTickReceiptUnreadable { reason: r }
+                          BeltPassOutcomeDecoded { outcome: commit_pass } =>
+                            match belt_pass_outcome_from_member(doc: doc, key: "verify_pass") {
                           BeltPassOutcomeUnreadable { reason: r } =>
                             BeltTickReceiptUnreadable { reason: r }
                           BeltPassOutcomeDecoded { outcome: verify_pass } =>
@@ -2171,6 +2407,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                           launches: launches,
                                           spawn_pass: spawn_pass,
                                           teardown_pass: teardown_pass,
+                                          commit_pass: commit_pass,
                                           verify_pass: verify_pass,
                                           publish_pass: publish_pass,
                                         }
@@ -2188,6 +2425,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -2299,6 +2537,7 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     join(receipt.launches |> map(l => serialize_json(v: launch_identity_json(id: l))), ","), "|",
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
+    belt_pass_outcome_key(o: receipt.commit_pass), "|",
     belt_pass_outcome_key(o: receipt.verify_pass), "|",
     belt_pass_outcome_key(o: receipt.publish_pass),
   ], "")
@@ -2366,6 +2605,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
+    json_kv(key: "commit_pass", value: belt_pass_outcome_json(o: receipt.commit_pass)),
     json_kv(key: "verify_pass", value: belt_pass_outcome_json(o: receipt.verify_pass)),
     json_kv(key: "publish_pass", value: belt_pass_outcome_json(o: receipt.publish_pass)),
   ])
@@ -2498,8 +2738,11 @@ type BeltTickResult {
   reconcile: BeltReconcile,
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
+  commit_outcomes: List<BeltCommitOutcome>,
   verify_outcomes: List<BeltVerifyOutcome>,
   publish_outcomes: List<BeltPublishOutcome>,
+  review_outcomes: List<BeltReviewOutcome>,
+  audit_outcomes: List<BeltReviewOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -2776,19 +3019,30 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        commit_outcomes: [],
         verify_outcomes: [],
         publish_outcomes: [],
+        review_outcomes: [],
+        audit_outcomes: [],
       }
-    TickPassesRun =>
+    TickPassesRun => {
+      let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
+      let verify_outcomes = belt_verify_attempts_after_commit(instance: instance, committed: commit_outcomes)
+      let review_outcomes = belt_review_attempts_after_verify(instance: instance, verified: verify_outcomes)
+      let audit_outcomes = belt_audit_attempts_after_verify(instance: instance, verified: verify_outcomes)
       BeltTickResult {
         host_refusal: pass.host_refusal,
         wholesale: TickPassesRun,
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
-        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+        commit_outcomes: commit_outcomes,
+        verify_outcomes: verify_outcomes,
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+        review_outcomes: review_outcomes,
+        audit_outcomes: audit_outcomes,
       }
+    }
   }
 }
 
@@ -2954,14 +3208,23 @@ fn belt_run_once_in(
 ) -> BeltTickResult {
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      BeltTickResult {
-        host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
-        wholesale: TickPassesRun,
-        reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
-        spawn_outcomes: [],
-        teardown_outcomes: [],
-        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
-        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+      {
+        let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
+        let verify_outcomes = belt_verify_attempts_after_commit(instance: instance, committed: commit_outcomes)
+        let review_outcomes = belt_review_attempts_after_verify(instance: instance, verified: verify_outcomes)
+        let audit_outcomes = belt_audit_attempts_after_verify(instance: instance, verified: verify_outcomes)
+        BeltTickResult {
+          host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
+          wholesale: TickPassesRun,
+          reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
+          spawn_outcomes: [],
+          teardown_outcomes: [],
+          commit_outcomes: commit_outcomes,
+          verify_outcomes: verify_outcomes,
+          publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+          review_outcomes: review_outcomes,
+          audit_outcomes: audit_outcomes,
+        }
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       belt_tick_for_instance(
@@ -3045,6 +3308,10 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
     json_kv(key: "verified", value: json_int(n: belt_tick_verify_recorded_count(t: t))),
     json_kv(key: "verify_outcomes", value: json_array(elements: t.verify_outcomes |> map(o => belt_verify_outcome_json(o: o)))),
+    json_kv(key: "commit_outcomes", value: json_array(elements: t.commit_outcomes |> map(o => belt_commit_outcome_json_value(o: o)))),
+    json_kv(key: "publish_outcomes", value: json_array(elements: t.publish_outcomes |> map(o => belt_publish_outcome_json_value(o: o)))),
+    json_kv(key: "review_outcomes", value: json_array(elements: t.review_outcomes |> map(o => belt_review_outcome_json(o: o)))),
+    json_kv(key: "audit_outcomes", value: json_array(elements: t.audit_outcomes |> map(o => belt_review_outcome_json(o: o)))),
   ])
 }
 
@@ -3365,9 +3632,21 @@ fn belt_sessions_observe() -> BeltObserve {
   )
 }
 
+// NO PANE MEANS ASK THE OTHER CONTAINER, NOT CONCLUDE ABSENCE. An attempt is held by exactly one
+// container -- a tmux pane for the vendor CLIs, a transient unit for the gunbc harness -- so these
+// are two observations over DISJOINT populations rather than a precise reading with a widened
+// fallback behind it. Answering WorkerProcessAbsent from a missing pane reported every unit-backed
+// attempt as a worker that never started, which is what the dashboard showed while three workers
+// were running.
+//
+// The order is pane-then-unit only because the pane observation is already in hand; it is not a
+// preference between them. A vendor attempt whose pane is genuinely gone asks the manager, gets
+// not-found, and answers WorkerProcessAbsent exactly as before -- so this adds a population without
+// changing the answer for the one that already worked.
 fn attempt_process_for_node(
   panes: BeltAttemptPanes,
   node_id: String,
+  attempt_key: String,
 ) -> WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
@@ -3379,7 +3658,13 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent => WorkerProcessAbsent
+        Absent => {
+          let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+          worker_process_from_attempt_unit(
+            observation: attempt_unit_observation(unit: unit),
+            unit: unit,
+          )
+        }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -3789,6 +4074,7 @@ fn belt_workflow_progress_for_attempt_ref(
       process: attempt_process_for_node(
         panes: panes,
         node_id: attempt.node_id,
+        attempt_key: attempt.attempt_key,
       ),
       validation_summary: belt_validation_summary_for_node(
         instance: instance,
@@ -3803,6 +4089,8 @@ fn belt_workflow_progress_for_attempt_ref(
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       publication_source: ReceiptSourceAbsent,
+      review: [],
+      goal_audit: [],
     })
   } else {
     let current_key = trim(key_read.content)
@@ -3840,6 +4128,7 @@ fn belt_workflow_progress_for_attempt_ref(
       node_id: attempt.node_id,
       attempt_key: current_key,
       branch: branch,
+      base_branch: dispatch_base_branch(instance: instance),
       head: head,
     )
     let verification_selection = match head {
@@ -3888,6 +4177,16 @@ fn belt_workflow_progress_for_attempt_ref(
       attempt_key: current_key,
       subject: publication_subject,
     )
+    let review_evidence = match head {
+      WorktreeHeadUnobserved { reason: _ } => []
+      WorktreeHeadObserved { revision } =>
+        belt_review_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
+    }
+    let audit_evidence = match head {
+      WorktreeHeadUnobserved { reason: _ } => []
+      WorktreeHeadObserved { revision } =>
+        belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
+    }
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
@@ -3912,6 +4211,7 @@ fn belt_workflow_progress_for_attempt_ref(
       process: attempt_process_for_node(
         panes: panes,
         node_id: attempt.node_id,
+        attempt_key: current_key,
       ),
       validation_summary: belt_validation_summary_for_node(
         instance: instance,
@@ -3927,6 +4227,8 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
+      review: review_evidence,
+      goal_audit: audit_evidence,
     })
   }
 }
@@ -3945,6 +4247,149 @@ fn belt_workflow_progress_for_attempt_ref(
 // Validations run in a detached checkout of the observed head, never the mutable implementation
 // worktree. The checkout path is head-addressed and idempotent: a tree at the same revision is
 // reused; one at a different revision refuses rather than validating the wrong commit.
+// THE COMMIT PASS. Verification checks out the worktree HEAD (belt_verify_attempt_for_instance), so
+// an attempt's uncommitted work was never what got verified. This pass runs after teardown and
+// before verify on the same tick: it reads the worktree's NUL-separated status through the same
+// capability program the head observation uses, hands provider state and status text to the pure
+// decision in gunbc.roadmap.roadmap_belt_commit, and only on CommitNeeded stages everything and
+// commits with the decided message. Every refusal is typed and carried into the tick receipt as
+// commit_pass; verify is made data-dependent on these outcomes so it observes the committed head.
+type BeltCommitOutcome
+  = CommitRecorded { node_id: String, message: String }
+  | CommitSkipped { node_id: String, reason: String }
+  | CommitFailed { node_id: String, detail: String }
+  | CommitDeferred { node_id: String, reason: String }
+
+fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
+  belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: args,
+    ),
+    workdir: worktree,
+  )
+}
+
+fn belt_commit_exec_detail(step: String, outcome: BeltExecOutcome) -> String {
+  match outcome {
+    ExecOk { stdout: _ } => join([step, " succeeded"], "")
+    ExecFailed { program, exit_code, stderr } =>
+      join([step, ": ", program, " exited ", to_string(exit_code), ": ", stderr], "")
+    ExecRefused { program, reason } => join([step, ": ", program, " refused: ", reason], "")
+  }
+}
+
+fn belt_commit_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltCommitOutcome {
+  let node_id = progress.node_id
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: progress.attempt_key,
+  )
+  match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
+    ExecFailed { program, exit_code, stderr } =>
+      CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout } =>
+      match belt_commit_decision(provider: progress.provider, node_id: node_id, attempt_key: progress.attempt_key, entries_nul: stdout) {
+        CommitNotNeeded { reason } => CommitSkipped { node_id: node_id, reason: reason as String }
+        CommitNeeded { message } =>
+          match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_add_all_args()) {
+            ExecOk { stdout: _ } =>
+              match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_commit_message_args(message: message as String)) {
+                ExecOk { stdout: _ } => CommitRecorded { node_id: node_id, message: message as String }
+                ExecFailed { program, exit_code, stderr } =>
+                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+                ExecRefused { program, reason } =>
+                  CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "commit", outcome: ExecRefused { program: program, reason: reason }) }
+              }
+            ExecFailed { program, exit_code, stderr } =>
+              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+            ExecRefused { program, reason } =>
+              CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "add", outcome: ExecRefused { program: program, reason: reason }) }
+          }
+      }
+  }
+}
+
+fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
+  match o {
+    CommitRecorded { node_id, message } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "message", value: json_string(s: message))])
+    CommitSkipped { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+    CommitFailed { node_id, detail } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
+    CommitDeferred { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+  }
+}
+
+fn belt_commit_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltCommitOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [ CommitDeferred { node_id: "", reason: join(["the attempts ledger is unobservable, so no attempt can be committed: ", reason], "") } ]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_commit_attempt_for_instance(instance: instance, progress: progress))
+  }
+}
+
+fn belt_verify_attempts_after_commit(
+  instance: HostDashboardInstance,
+  committed: List<BeltCommitOutcome>,
+) -> List<BeltVerifyOutcome> {
+  let _commit_count = count(committed)
+  belt_verify_attempts_for_instance(instance: instance)
+}
+
+fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
+  match o {
+    CommitRecorded { node_id: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => true
+    CommitDeferred { node_id: _, reason: _ } => false
+  }
+}
+
+fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
+  match o {
+    CommitRecorded { node_id: _, message: _ } => true
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+    CommitDeferred { node_id: _, reason: _ } => false
+  }
+}
+
+fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassOutcome {
+  let ledger_refusals = outcomes |> filter(o => match o {
+    CommitDeferred { node_id: nid, reason: _ } => nid == ""
+    CommitRecorded { node_id: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+  })
+  if count(ledger_refusals) > 0 {
+    match ledger_refusals.first() {
+      Present { value: CommitDeferred { node_id: _, reason: r } } => BeltPassRefused { reason: r }
+      _ => BeltPassRefused { reason: "the attempts ledger is unobservable" }
+    }
+  } else if any(outcomes, o => belt_commit_outcome_is_failure(o: o)) {
+    BeltPassFailed { reason: "one or more attempt worktrees could not be committed" }
+  } else if any(outcomes, o => belt_commit_outcome_is_recorded(o: o)) {
+    BeltPassRecorded
+  } else {
+    BeltPassDeferred { reason: "no attempt needed a commit on this tick" }
+  }
+}
+
 type BeltVerifyOutcome
   = VerifyDeferred { node_id: String, reason: String }
   | VerifyRecorded {
@@ -4357,8 +4802,7 @@ fn belt_verify_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  match progress.provider {
-    ProviderCompleted { activity: _ } =>
+  if belt_provider_is_terminal(provider: progress.provider) {
       match belt_lookup_node(node_id: progress.node_id) {
         AuthorityProjectionRefused { detail: detail } =>
           VerifyDeferred {
@@ -4534,11 +4978,29 @@ fn belt_verify_attempt_for_instance(
           }
         }
       }
-    _ =>
-      VerifyDeferred {
-        node_id: progress.node_id,
-        reason: "the agent obligation is not satisfied, so there is nothing to verify yet",
-      }
+  } else {
+    VerifyDeferred {
+      node_id: progress.node_id,
+      reason: "the agent obligation is not satisfied: the agent has not reached a terminal state, so there is nothing to verify yet",
+    }
+  }
+}
+
+// A TERMINAL WORKER IS VERIFIED WHETHER IT FINISHED, FAILED, OR SPENT ITS BUDGET. Two belt-dispatched
+// attempts exhausted their round budget with partial work in the worktree (then reported as
+// turn.failed, now as turn.budget_exhausted); gating verification
+// on ProviderCompleted alone left that work unjudged. The verdict is the judge of partial work, and
+// publication is gated on the verdict, so verifying a failed provider's head is strictly more honest
+// than skipping it. Only a running or not-yet-started worker has nothing to verify.
+fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
+  match provider {
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => true
+    ProviderFailed { activity: _, detail: _ } => true
+    ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderEventsRefused { activity: _, detail: _ } => false
   }
 }
 
@@ -5272,6 +5734,19 @@ fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
 
+// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. belt_run_once_json
+// above is bound to the srv1 live instance; run on any other host it ticks a nonexistent layout and
+// reports refusals about the wrong machine. This entry takes the workdir as its argument and returns
+// the full per-attempt commit, verify and publish outcomes as one JSON document for a reader.
+fn belt_run_once_json_in(spawn_workdir: String) -> String {
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      join(["{\"refused\": \"spawn workdir does not match a known dashboard instance repo root: ", w, "\"}"], "")
+    DashboardInstanceResolved { instance } =>
+      serialize_json(v: belt_tick_result_json_value(t: belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)))
+  }
+}
+
 
 // Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually
 // click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly
@@ -5453,7 +5928,14 @@ fn belt_launch_host_standing_for_instance_with_capacity(
       match belt_transition_admission_for_instance(instance: instance) {
         ActuationRefused { reason } => launch_host_halt_transition(instance_id: instance_id, reason: reason)
         ActuationAdmitted =>
-          match launch_host_stage_revision(instance_id: instance_id, revision: fleet_revision_standing(repo: instance.repo_root)) {
+          match launch_host_stage_revision(
+            instance_id: instance_id,
+            revision: admitted_revision_standing(
+              repo: instance.repo_root,
+              remote: instance.admitted_revision.remote,
+              ref_name: instance.admitted_revision.ref_name,
+            ),
+          ) {
             HostRevisionHalted { standing } => standing
             HostRevisionConverged { revision } =>
               LaunchHostObserved {
@@ -5892,14 +6374,16 @@ type BeltPublishOutcome
 // bases can reach different outcomes about one head; the value belongs in the subject, is recorded
 // in the receipt, and is compared when a consumer checks it.
 //
-// It must not become a parameter nobody supplies: threading it up the belt produces a call chain
-// where every caller passes the same literal — spelling-repeated-N-times, not one authority. When a
-// roadmap node can target a base other than the repository default, this reads that fact from the
-// node; the receipt already records what was used, so the change is visible in the evidence.
+// THE BASE IS THE INSTANCE'S DISPATCH BASE, read from the one row that already decides where attempts
+// branch from (gunbc.roadmap_dashboard_instance dispatch_base_branch), never the repository default:
+// a srv2 attempt dispatched from origin/srv2-deploy was offered against main with the whole deploy
+// branch in its diff before this (2026-09-05). Every caller passes the instance's derivation, not a
+// literal, so there is still one authority; the receipt records what was used.
 fn belt_publication_subject_for(
   node_id: String,
   attempt_key: String,
   branch: String,
+  base_branch: NonEmptyStr,
   head: WorktreeHeadObservation,
 ) -> PublicationSubjectObservation {
   match head {
@@ -5922,7 +6406,7 @@ fn belt_publication_subject_for(
             attempt_key: attempt_key,
             repository: gunbc_repository,
             branch: branch as NonEmptyStr,
-            expected_base: gunbc_repository.default_branch as NonEmptyStr,
+            expected_base: base_branch,
             expected_head: revision as CommitSha,
           },
         }
@@ -6002,6 +6486,406 @@ fn belt_publish_write_outcome(
   }
 }
 
+// PUBLICATION IS ADMITTED ONLY ON A PASSED VERIFICATION VERDICT (gunbc.roadmap.roadmap_publish_admission).
+// The evidence is read exactly as the verify pass writes it: the current selection for this head,
+// the receipt file it addresses, and the subject the node and attempt pin; anything short of a
+// decoded receipt whose verdict is ValidationPassed withholds, and the belt records the withholding
+// as a typed deferral rather than publishing an unverified head.
+fn belt_publish_admission_for(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  subject: RoadmapPublicationSubject,
+) -> PublishAdmission {
+  let selection = belt_verification_selection_observe(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+    head_sha: subject.expected_head as String,
+  )
+  let source = belt_verification_receipt_source(
+    instance: instance,
+    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt_key,
+    selection: selection,
+  )
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } =>
+      PublishWithheld { reason: join(["the roadmap authority could not be projected: ", detail], "") as NonEmptyStr }
+    NodeMissing =>
+      PublishWithheld { reason: "the attempt's node is not declared in the roadmap" as NonEmptyStr }
+    NodeFound { node } =>
+      match belt_verification_subject_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        branch: subject.branch as String,
+        head: subject.expected_head,
+        selection: selection,
+      ) {
+        VerificationSubjectUnobserved { reason } =>
+          PublishWithheld { reason: join(["the verification subject is unobserved: ", reason], "") as NonEmptyStr }
+        VerificationSubjectObserved { subject: expected } =>
+          match verification_file_evidence_for(expected: expected, source: source) {
+            VerificationFileAbsent =>
+              PublishWithheld { reason: "no verification receipt exists for this head yet" as NonEmptyStr }
+            VerificationFileUnreadable { reason } =>
+              PublishWithheld { reason: join(["the verification receipt for this head is unreadable: ", reason], "") as NonEmptyStr }
+            VerificationFileDecoded { evidence } =>
+              match publish_admission(evidence: evidence) {
+                PublishWithheld { reason } => PublishWithheld { reason: reason }
+                PublishAdmitted =>
+                  belt_review_admission(
+                    instance: instance,
+                    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                    attempt_key: attempt_key,
+                    head_sha: subject.expected_head as String,
+                  )
+              }
+          }
+      }
+  }
+}
+
+// PUBLICATION NEEDS THE REVIEW'S APPROVAL AS WELL AS THE VERIFICATION'S PASS. The two judge different
+// things -- the check answers whether the oracle is green, the review answers whether the change is
+// the thing the goal asked for -- and either alone has passed work that was not the work (the earlier
+// attempts that went green on a narrow oracle). Absent, unreadable, undecodable, cannot-judge and
+// changes-requested all withhold, each with its own reason; only a decoded approve admits.
+fn belt_review_admission(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> PublishAdmission {
+  let evidence = belt_review_evidence(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  let audit = belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  if !review_all_approved(evidence: evidence) {
+    PublishWithheld { reason: join(["the review has not approved every criterion: ", (review_reconcile(evidence: evidence)).detail], "") as NonEmptyStr }
+  } else if !goal_audit_approved(evidence: audit) {
+    PublishWithheld { reason: join(["the goal audit has not approved this head: ", (goal_audit_reconcile(evidence: audit)).detail], "") as NonEmptyStr }
+  } else {
+    PublishAdmitted
+  }
+}
+
+// THE AUDIT'S EVIDENCE IS A ROSTER OF ONE, read the same way a review criterion is, from the audit
+// directory and the auditor's unit.
+fn belt_audit_evidence(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> List<CriterionReviewEvidence> {
+  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  let source = match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: dispatch_attempt_audit_verdict_basename(head_sha: head_sha),
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => ReviewReceiptAbsent
+    FilesystemFileRead { path: _, content } => ReviewReceiptPresent { text: content }
+    FilesystemFileIndeterminate { cause } => ReviewReceiptUnreadable { detail: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ReviewReceiptUnreadable { detail: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ReviewReceiptUnreadable { detail: cause }
+  }
+  let unit = dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key)
+  [ CriterionReviewEvidence {
+    criterion_key: goal_audit_criterion_key,
+    source: source,
+    process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit),
+  } ]
+}
+
+fn belt_goal_audit_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
+  fold(progress.segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      match s.kind {
+        GoalAuditWorkflowSegment => Present { value: s }
+        _ => none
+      }
+  })
+}
+
+// THE AUDIT PASS: one auditor per verified head, spawned beside the reviewers on the same tick, with
+// the review's reconciliation so far in its brief. Same idempotence as the review pass: a recorded
+// verdict or a running unit skips; an exited unit without a verdict is a named failure, not respawned.
+fn belt_audit_attempts_after_verify(instance: HostDashboardInstance, verified: List<BeltVerifyOutcome>) -> List<BeltReviewOutcome> {
+  let _verify_count = count(verified)
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [ ReviewDeferred { node_id: "", criterion: goal_audit_criterion_key, reason: join(["the attempts ledger is unobservable, so no attempt can be audited: ", reason], "") } ]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_audit_attempt_for_instance(instance: instance, progress: progress))
+  }
+}
+
+fn belt_audit_attempt_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> BeltReviewOutcome {
+  match belt_verification_segment(progress: progress) {
+    Absent => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the attempt carries no verification segment" }
+    Present { value: v } =>
+      match v.state {
+        WorkflowSegmentComplete => belt_audit_verified_attempt(instance: instance, progress: progress, verification_detail: v.detail)
+        _ => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+      }
+  }
+}
+
+fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> BeltReviewOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
+  let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
+  match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
+    ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the attempt worktree head could not be read: ", stderr], "") }
+    ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: reason }
+    ExecOk { stdout } => {
+      let head = trim(stdout)
+      match (belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head)).first() {
+        Absent => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the audit evidence roster is empty, which the constructor does not permit" }
+        Present { value: e } =>
+          match e.source {
+            ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "an audit verdict is recorded for this head" }
+            ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: detail }
+            ReviewReceiptAbsent =>
+              match e.process {
+                WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "an auditor is running" }
+                WorkerProcessExited { exit_code, last_command: _ } =>
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
+                WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: reason as String }
+                WorkerProcessAbsent => belt_audit_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail)
+              }
+          }
+      }
+    }
+  }
+}
+
+fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match belt_lookup_node(node_id: progress.node_id) {
+    AuthorityProjectionRefused { detail } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["roadmap authority projection refused: ", detail], "") }
+    NodeMissing => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the roadmap authority declares no node with this id, so there is no approved goal to audit against" }
+    NodeFound { node } =>
+      match instance.toolchain.systemd_run {
+        Absent => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the toolchain declares no systemd-run; the auditor needs a transient unit" }
+        Present { value: systemd_run } => {
+          let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
+          match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_merge_base_args(left: instance.dispatch_base_ref as String, right: head)), workdir: worktree) {
+            ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["the audit base could not be computed: ", stderr], "") }
+            ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: reason }
+            ExecOk { stdout: base } => {
+              let ticket = line_ticket(item: node.line)
+              let review_detail = match belt_review_segment(progress: progress) { Present { value: r } => r.detail  Absent => "no review segment" }
+              let brief = goal_audit_brief(
+                node_id: progress.node_id,
+                headline: node_title(item: node.line),
+                boundary: match ticket { Present { value: t } => t.brief  Absent => "" },
+                displaced_cost: match ticket { Present { value: t } => t.displaced_cost  Absent => "" },
+                handback: match ticket { Present { value: t } => t.handback  Absent => "" },
+                acceptance_command: execution_contract_validation_summary(contract: node.execution, environment: instance.execution_environment),
+                verification_detail: verification_detail,
+                review_detail: review_detail,
+                base_sha: trim(base),
+                head_sha: head,
+                verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
+              )
+              let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
+              match belt_exec(
+                cmd: dispatch_audit_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head),
+                workdir: worktree,
+              ) {
+                ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
+                ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// ONE EVIDENCE ROW PER DECLARED CRITERION, whatever is on disk: a criterion with no verdict and no
+// reviewer is present in the list as awaiting, so the reconciliation's denominator is the criteria
+// roster, never the files that happen to exist.
+fn belt_review_evidence(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> List<CriterionReviewEvidence> {
+  map(review_criteria, c => CriterionReviewEvidence {
+    criterion_key: c.key,
+    source: belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: c.key),
+    process: belt_review_process(node_id: node_id as String, attempt_key: attempt_key, criterion_key: c.key),
+  })
+}
+
+fn belt_review_receipt_source(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+  criterion_key: String,
+) -> ReviewReceiptSource {
+  let dir = dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => ReviewReceiptAbsent
+    FilesystemFileRead { path: _, content } => ReviewReceiptPresent { text: content }
+    FilesystemFileIndeterminate { cause } => ReviewReceiptUnreadable { detail: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ReviewReceiptUnreadable { detail: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ReviewReceiptUnreadable { detail: cause }
+  }
+}
+
+fn belt_review_process(node_id: String, attempt_key: String, criterion_key: String) -> WorkerProcessEvidence {
+  let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
+  worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)
+}
+
+fn belt_review_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
+  fold(progress.segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      match s.kind {
+        ReviewWorkflowSegment => Present { value: s }
+        _ => none
+      }
+  })
+}
+
+// THE REVIEW PASS: for every attempt whose verification passed and whose head has no verdict and no
+// reviewer, spawn one reviewer unit against the attempt worktree. It runs after verify on the same
+// tick so a head verified now is reviewed now; the verdict is read on the next tick, as the worker's
+// terminal is. A reviewer that exited without a verdict is a failure named here and NOT respawned --
+// the retained unit keeps the fact stable, and a loop of reviewers would be the absorbing fallback.
+type BeltReviewOutcome
+  = ReviewSpawned { node_id: String, criterion: String, unit: String }
+  | ReviewSkipped { node_id: String, criterion: String, reason: String }
+  | ReviewDeferred { node_id: String, criterion: String, reason: String }
+  | ReviewFailed { node_id: String, criterion: String, detail: String }
+
+fn belt_review_attempts_after_verify(instance: HostDashboardInstance, verified: List<BeltVerifyOutcome>) -> List<BeltReviewOutcome> {
+  let _verify_count = count(verified)
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [ ReviewDeferred { node_id: "", criterion: "", reason: join(["the attempts ledger is unobservable, so no attempt can be reviewed: ", reason], "") } ]
+    WorkflowAttemptsObserved { attempts } =>
+      attempts |> flat_map(progress => belt_review_attempt_for_instance(instance: instance, progress: progress))
+  }
+}
+
+fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> List<BeltReviewOutcome> {
+  match belt_verification_segment(progress: progress) {
+    Absent => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "the attempt carries no verification segment" } ]
+    Present { value: v } =>
+      match v.state {
+        WorkflowSegmentComplete => belt_review_verified_attempt(instance: instance, progress: progress, verification_detail: v.detail)
+        _ => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+      }
+  }
+}
+
+fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> List<BeltReviewOutcome> {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
+  let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
+  match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
+    ExecFailed { program: _, exit_code: _, stderr } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: join(["the attempt worktree head could not be read: ", stderr], "") } ]
+    ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: reason } ]
+    ExecOk { stdout } => {
+      let head = trim(stdout)
+      map(review_criteria, c => belt_review_criterion(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail, criterion: c))
+    }
+  }
+}
+
+fn belt_review_criterion(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String, criterion: ReviewCriterion) -> BeltReviewOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: criterion.key) {
+    ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: progress.node_id, criterion: criterion.key, reason: "a verdict is recorded for this head and criterion" }
+    ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: detail }
+    ReviewReceiptAbsent =>
+      match belt_review_process(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: criterion.key) {
+        WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, criterion: criterion.key, reason: "a reviewer is running" }
+        WorkerProcessExited { exit_code, last_command: _ } =>
+          ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
+        WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: reason as String }
+        WorkerProcessAbsent =>
+          belt_review_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail, criterion: criterion)
+      }
+  }
+}
+
+fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String, criterion: ReviewCriterion) -> BeltReviewOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match belt_lookup_node(node_id: progress.node_id) {
+    AuthorityProjectionRefused { detail } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: join(["roadmap authority projection refused: ", detail], "") }
+    NodeMissing => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: "the roadmap authority declares no node with this id, so there is no goal to review against" }
+    NodeFound { node } =>
+      match instance.toolchain.systemd_run {
+        Absent => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
+        Present { value: systemd_run } => {
+          let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
+          match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_merge_base_args(left: instance.dispatch_base_ref as String, right: head)), workdir: worktree) {
+            ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: join(["the review base could not be computed: ", stderr], "") }
+            ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: reason }
+            ExecOk { stdout: base } => {
+              let ticket = line_ticket(item: node.line)
+              let brief = review_brief(
+                criterion: criterion,
+                node_id: progress.node_id,
+                headline: node_title(item: node.line),
+                boundary: match ticket { Present { value: t } => t.brief  Absent => "" },
+                out_of_scope: match ticket { Present { value: t } => t.out_of_scope  Absent => "" },
+                red_control: match ticket { Present { value: t } => t.red_control  Absent => "" },
+                acceptance_command: execution_contract_validation_summary(contract: node.execution, environment: instance.execution_environment),
+                base_sha: trim(base),
+                head_sha: head,
+                verification_detail: verification_detail,
+                verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: criterion.key),
+              )
+              let unit = dispatch_review_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: criterion.key)
+              match belt_exec(
+                cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: criterion.key),
+                workdir: worktree,
+              ) {
+                ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: criterion.key, unit: unit as String }
+                ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: reason }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn belt_review_outcome_json(o: BeltReviewOutcome) -> JsonValue {
+  match o {
+    ReviewSpawned { node_id, criterion, unit } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "spawned")), json_kv(key: "unit", value: json_string(s: unit))])
+    ReviewSkipped { node_id, criterion, reason } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "detail", value: json_string(s: reason))])
+    ReviewDeferred { node_id, criterion, reason } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "detail", value: json_string(s: reason))])
+    ReviewFailed { node_id, criterion, detail } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "detail", value: json_string(s: detail))])
+  }
+}
+
 fn belt_publish_attempt_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
@@ -6019,6 +6903,7 @@ fn belt_publish_attempt_for_instance(
       node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
       attempt_key: attempt_key,
     ),
+    base_branch: dispatch_base_branch(instance: instance),
     head: belt_worktree_head_observe(
       instance: instance,
       worktree: attempt_worktree,
@@ -6054,50 +6939,61 @@ fn belt_publish_attempt_for_instance(
             attempt_key: attempt_key,
             head_sha: subject.expected_head as String,
           )
-          match belt_publish_gate(
+          match belt_publish_admission_for(
+            instance: instance,
             node_id: node_id,
+            attempt_key: attempt_key,
             subject: subject,
-            existing: belt_publication_receipt_source(
-              instance: instance,
-              node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-              attempt_key: attempt_key,
-              subject: PublicationSubjectObserved { subject: subject },
-            ),
           ) {
-            PublishHalted { outcome } => outcome
-            PublishProceed =>
-              match publication_answer_standing(
-                instance_root: instance.instance_root as String,
-                subject: subject,
-              ) {
-                AnswerSpoolRefused { reason } =>
-                  PublishEvidenceUnreadable {
-                    node_id: node_id,
-                    detail: join([
-                      "the publication helper's spool refused, so it is unknown whether this head has been published: ",
-                      reason,
-                    ], ""),
+            PublishWithheld { reason } =>
+              PublishDeferred { node_id: node_id, reason: join(["publication withheld: ", reason as String], "") }
+            PublishAdmitted =>
+            match belt_publish_gate(
+              node_id: node_id,
+              subject: subject,
+              existing: belt_publication_receipt_source(
+                instance: instance,
+                node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                attempt_key: attempt_key,
+                subject: PublicationSubjectObserved { subject: subject },
+              ),
+            ) {
+              PublishHalted { outcome } => outcome
+              PublishProceed =>
+                match publication_answer_standing(
+                  instance_root: instance.instance_root as String,
+                  subject: subject,
+                  worktree: attempt_worktree,
+                ) {
+                  AnswerSpoolRefused { reason } =>
+                    PublishEvidenceUnreadable {
+                      node_id: node_id,
+                      detail: join([
+                        "the publication helper's spool refused, so it is unknown whether this head has been published: ",
+                        reason,
+                      ], ""),
+                    }
+                  AnswerAwaited { request_path } =>
+                    PublishRequested {
+                      node_id: node_id,
+                      head_sha: subject.expected_head as String,
+                      request_path: request_path,
+                    }
+                  AnswerReady { receipt } => {
+                    let write = Filesystem.Write(
+                      path: path,
+                      content: publication_receipt_json(receipt: receipt),
+                    )
+                    belt_publish_write_outcome(
+                      node_id: node_id,
+                      subject: subject,
+                      receipt: receipt,
+                      write_success: write.success,
+                      write_error: write.error,
+                    )
                   }
-                AnswerAwaited { request_path } =>
-                  PublishRequested {
-                    node_id: node_id,
-                    head_sha: subject.expected_head as String,
-                    request_path: request_path,
-                  }
-                AnswerReady { receipt } => {
-                  let write = Filesystem.Write(
-                    path: path,
-                    content: publication_receipt_json(receipt: receipt),
-                  )
-                  belt_publish_write_outcome(
-                    node_id: node_id,
-                    subject: subject,
-                    receipt: receipt,
-                    write_success: write.success,
-                    write_error: write.error,
-                  )
                 }
-              }
+            }
           }
         }
       }
@@ -6161,6 +7057,8 @@ fn belt_verification_presentation_detail(
           join(["Verification failed · ", segment.detail], "")
         WorkflowSegmentRefused =>
           join(["Verification refused · ", segment.detail], "")
+        WorkflowSegmentStopped =>
+          join(["Verification stopped · ", segment.detail], "")
         WorkflowSegmentActive =>
           join(["Verification running · ", progress.validation_summary], "")
         WorkflowSegmentPending =>
@@ -6192,15 +7090,21 @@ fn belt_verification_presentation_detail(
 }
 
 // THE EXECUTION STANDING IS OBSERVED AT THE MINT SITE from the instance the tick ran for and the
-// revision standing of that instance's tree -- the same fleet_revision_standing read the dispatch
-// preflight makes -- and the mode is the production row the tick itself consumed. A drifted or
+// revision standing of that instance's tree -- the same admitted_revision_standing read the
+// dispatch preflight makes, against the same per-instance admitting ref, because a tick receipt
+// that answered from a different authority than the gate would report a revision the gate never
+// admitted -- and the mode is the production row the tick itself consumed. A drifted or
 // unobservable revision withholds the binding rather than recording a revision the tick did not
 // serve.
 fn belt_tick_execution_standing_for_instance(
   instance: HostDashboardInstance,
   mode: SpawnMode,
 ) -> BeltTickExecutionStanding {
-  match fleet_revision_standing(repo: instance.repo_root) {
+  match admitted_revision_standing(
+    repo: instance.repo_root,
+    remote: instance.admitted_revision.remote,
+    ref_name: instance.admitted_revision.ref_name,
+  ) {
     RevisionConverged { revision: r } =>
       TickExecuted {
         instance_id: instance.instance_id as String,
@@ -6235,6 +7139,10 @@ fn belt_tick_receipt_from_result(
     teardown_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_teardown_pass_outcome_from(host_refusal: result.host_refusal, teardown_outcomes: result.teardown_outcomes)
+    }),
+    commit_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
+      TickPassesRun => belt_commit_pass_outcome_from(outcomes: result.commit_outcomes)
     }),
     verify_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }

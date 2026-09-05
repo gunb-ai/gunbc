@@ -159,6 +159,43 @@ test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> B
     && !any(dirs, d => string_contains(s: d as String, pattern: "*"))
 }
 
+// THE NON-INTERACTIVE FLAG IS PRESENT, NOT OMITTED. The hand-spelled predecessor carried its own
+// "sudo " prefix and omitted -n, so a missing NOPASSWD grant would hang waiting for a tty prompt
+// rather than refusing immediately. RED IS AUTHORABLE: drop "-n" from sudo_elevate and this goes
+// false before any host waits for a deadlocked sudo.
+test fn witness_shell_command_is_non_interactive() -> Bool {
+  let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
+  let rendered = executor_privileged_operation_shell_command(op: op)
+  string_contains(s: rendered, pattern: "'-n'")
+}
+
+// THE BINARY IS CITED BY ABSOLUTE PATH. A bare "sudo" lets PATH decide which binary crosses the
+// privilege boundary (extdeps.sudo.elevation lines 29-38). The hand-spelled predecessor carried a
+// bare "sudo " prefix. RED IS AUTHORABLE: change sudo_elevate's binary path to a bare name and
+// this goes false.
+test fn witness_shell_command_cites_absolute_sudo_path() -> Bool {
+  let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
+  let rendered = executor_privileged_operation_shell_command(op: op)
+  string_contains(s: rendered, pattern: "'/usr/bin/sudo'")
+}
+
+// THE PERTURBATION COMPANION: the OLD hand-spelled form, for discrimination evidence.
+// If the function is ever reverted to the hand-spelled "sudo " prefix (missing -n and bare binary),
+// this test goes red — proving the fix is load-bearing and the distinguishing properties above
+// are testing the authority rather than a coincidental string match.
+test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool {
+  let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
+  let rendered = executor_privileged_operation_shell_command(op: op)
+  let old_form = join([
+    "sudo ",
+    join(
+      map(executor_privileged_operation_argv(op: op), w => posix_single_quote(spelling: w as String)),
+      " ",
+    )
+  ], "")
+  rendered != old_form
+}
+
 // THE JOIN, ASSERTED THROUGH THE PRODUCTION PATH. This is the witness the module exists for: the
 // command the emitted provisioning script RUNS and the command the sudoers file GRANTS are the same
 // word vector, reached from opposite ends of the tree. The left side comes from
@@ -175,7 +212,7 @@ test fn witness_executed_command_is_the_granted_command() -> Bool {
   let op = RemoveDirectoryTree { path: slot }
   let argv = executor_privileged_operation_argv(op: op)
   executed.remove_command
-    == join(["sudo ", join(map(argv, w => posix_single_quote(spelling: w as String)), " ")], "")
+    == executor_privileged_operation_shell_command(op: op)
     && executor_privileged_operation_sudoers_command(op: op)
       == join(map(argv, w => w as String), " ")
 }

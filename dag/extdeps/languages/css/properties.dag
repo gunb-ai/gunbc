@@ -25,6 +25,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type CssPropertyName
   = AlignItems
+  | Animation
+  | AnimationDelay
+  | AnimationDuration
+  | TransformOrigin
   | Background
   | Border
   | BorderBottom
@@ -85,6 +89,10 @@ type CssPropertyName
 fn css_property_wire(p: CssPropertyName) -> String {
   match p {
     AlignItems => "align-items"
+    Animation => "animation"
+    AnimationDelay => "animation-delay"
+    AnimationDuration => "animation-duration"
+    TransformOrigin => "transform-origin"
     Background => "background"
     Border => "border"
     BorderBottom => "border-bottom"

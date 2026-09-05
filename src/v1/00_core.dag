@@ -9,6 +9,7 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -88,7 +89,7 @@ type InferredNode
 // type for unreachable code. The name stays empty because there is genuinely no type
 // to name; what consumers match on is the fact, via type_is_divergent.
 fn divergent_type() -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 }
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
@@ -365,6 +366,39 @@ type CompilerDiagnostic
       missing_realization_fact: String,
       span: SourceSpan
     }
+
+
+// SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
+// They were three hand-maintained allowlists -- is_error_diagnostic, is_interpreter_blocking_diagnostic
+// and is_discovery_corpus_advisory_typecheck_diagnostic -- each a separate wildcard match over this
+// coproduct, kept in agreement by an author remembering to touch all three. That is one concept with
+// three names, and the fork it predicts had already happened: ComplexityUnknown sat in the
+// blocking-false list and in NO advisory list, so it was rendered while counted by neither total.
+// A witness that the three lists agree would be validation standing where construction was available;
+// it can be satisfied by editing one declaration while the others still lie.
+//
+// WHY A PRODUCT AND NOT A THREE-ARM SUM. Severity does not follow from gate disposition. Measured over
+// all 55 variants, the (error, blocking, advisory) space has FOUR occupied points, and two of them share
+// a gate answer while disagreeing on severity: six advisory members are non-error, and
+// ServiceConfigReferenceJudgmentDeferred and DeclaredTypeInhabitanceUndecided are advisory AND error.
+// A single disposition sum cannot answer is_error without flipping those two.
+//
+// THE THIRD GATE ARM IS NAMED FOR THE STATE, NOT FOR ITS ONE OCCUPANT. Rendered and counted by neither
+// total is a real coordinate, not a quirk of ComplexityUnknown, and a second member must be forced to
+// name its own reason rather than inherit one.
+type DiagnosticSeverity
+  = SeverityError
+  | SeverityNonError
+
+type DiagnosticGateDisposition
+  = GateBlocking
+  | GateAdvisoryTypecheck
+  | GateRenderedUncounted { reason: String }
+
+type DiagnosticDisposition {
+  severity: DiagnosticSeverity
+  gate: DiagnosticGateDisposition
+}
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -686,17 +720,88 @@ fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurren
 // variant. Everything else counts against no row. A new variant that should be budgeted is added in
 // this fn, next to the variants it joins.
 
-fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+// THE SINGLE AUTHORITY for a diagnostic's severity and its gate disposition. Every predicate below
+// derives from this one total function, so the three allowlists that used to answer independently no
+// longer exist and cannot disagree.
+//
+// EXHAUSTIVE BY CONSTRUCTION -- there is no wildcard. A new variant does not compile until an author
+// states its disposition, which is what makes the omission unwritable rather than merely detectable:
+// v1.compiler.patterns refuses a closed-coproduct match missing a constructor with NonExhaustiveMatch,
+// naming the missing member. diagnostic_to_span and diagnostic_to_message already read this coproduct
+// exhaustively, so this is the established form in this module and not a new burden.
+fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
   match d {
-    UnlistedImportUse { name: _, span: _ } => false
-    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => false
-    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => false
-    UnlistedVariantValueUse { name: _, span: _ } => false
-    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
-    ReceiverTypeUnestablished { method: _, span: _ } => false
+    UnresolvedImport { module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingExport { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    VariantNotFound { variant: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    FieldNotFound { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodNotFound { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    InternalError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ComplexityUnknown { func_name: _, reason: _, span: _ } =>
+      DiagnosticDisposition {
+        severity: SeverityError,
+        gate: GateRenderedUncounted { reason: "complexity analysis is the only producer, and its violations are reported to the author without gating the corpus: they are errors about a function's cost shape rather than about its meaning, so blocking would stop the line on a cost fact and counting them as advisory would enter them in the discovery-corpus frontier they do not belong to. Preserved as measured; whether this coordinate should stay occupied is an open question and not settled here." }
+      }
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
-      !is_where_refinement_unenforced_advisory_reason(reason: r)
-    _ => true
+      if is_where_refinement_unenforced_advisory_reason(reason: r) {
+        DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+      } else {
+        DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+      }
+    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    OptionalCastNotEliminated { source_type: _, target_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
+    UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    UnlistedVariantValueUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    AmbiguousReference { name: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DataReferenceVisibilityBudgetExceeded { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallArgumentDuplicate { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallPositionalDeficit { callee: _, parameter: _, supplied: _, required: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallNamedArgOnFunctionValue { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    OccurrenceTransportViolation { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
+    TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+  }
+}
+
+fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match diagnostic_disposition(d: d).severity {
+    SeverityError => true
+    SeverityNonError => false
   }
 }
 
@@ -832,48 +937,65 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // trigger would inherit the credibility of a prediction that just died, so whatever that trigger
 // eventually becomes is argued fresh.
 
-data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
+// THE SCAFFOLD STATE BEHIND THE TRIGGER BELOW, held here as an annotation because it is rationale
+// rather than program data. owner: v1.compiler.infer, the 00_core diagnostic partition. lane:
+// where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a
+// closed-string sum, and any unlisted reason fails closed to blocking. bound: the deferral strings
+// 04_infer emits today; classifier, eval and equivalence arms must change together until the
+// authority lands.
+//
+// WHY THE TRIGGER WAS RENAMED, recorded because a meaning fork that is silently corrected leaves
+// the next reader unable to tell two capabilities were ever confused. This row formerly cited
+// feature:where-refinement-predicate-coproduct, a name that was carried at seven sites for THREE
+// different capabilities: this one, the predicate declaration authority in
+// gunbc.where_refinement_predicate_vocabulary, and refinement evidence at non-literal positions in
+// std.content_hash and std.decimal. DESIGN 4b(3) retires a drop by its trigger and by nothing else,
+// so satisfying the shared name here would have retired the predicate row while every string
+// classifier it names still stood.
+//
+// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below,
+// which is mirrored verbatim into the stage0 seed, so the rename roughly DOUBLED a commentary row
+// that ships in the compiler. DESIGN 4c names that shape exactly: rationale belongs in an annotation,
+// and 4c's own history is the receipt -- making `//` a parse error did not make commentary
+// unwritable, it made the corpus hoist comments into `data ...: String` rows, and the first cleanup
+// swept 215 of them. This was very nearly the 216th. Moving it here removes it from the emitted seed
+// entirely, because annotations are captured on a lexical channel disjoint from semantic occurrence
+// allocation and reach no target bytes.
+//
+// THE CARRIER BELOW IS TYPED, AND WHICH TYPE IT IS WAS THE CONTESTED PART. gunbc.rung_drop was
+// proposed as the terminal and is the WRONG one: its RungDropReason is a closed coproduct of
+// LostAsPassenger, DeletedWithoutReplacement and ReplacementStaged -- three ways a guarantee FELL --
+// and nothing fell here. This row declares that an interim construction exists and names what ends
+// it, so forcing it into rung_drop would require lying about which arm applied. DESIGN 5 says a
+// dissolution condition describes how admitted debt ends, and std.dissolution DissolutionCondition
+// is the type for exactly that, used by gunbc.compile_diagnostic_census
+// compile_diagnostic_census_hand_rust_dissolve_trigger and by
+// gunbc.where_refinement_predicate_vocabulary where_refinement_unenrolled_predicate_dissolve_trigger.
+// The scaffold CONTEXT -- owner, lane, interim, bound -- stays above as rationale, because it is not
+// the condition; only the condition is data.
+data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match d {
-    ComplexityUnknown { func_name: _, reason: _, span: _ } => false
-    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
-      !is_where_refinement_unenforced_advisory_reason(reason: r)
-    UnlistedImportUse { name: _, span: _ } => false
-    UnlistedVariantValueUse { name: _, span: _ } => false
-    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
-    ReceiverTypeUnestablished { method: _, span: _ } => false
-    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
-    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => false
-    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => false
-    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => false
-    _ => true
+  match diagnostic_disposition(d: d).gate {
+    GateBlocking => true
+    GateAdvisoryTypecheck => false
+    GateRenderedUncounted { reason: _ } => false
   }
 }
 
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match d {
-    UnlistedImportUse { name: _, span: _ } => true
-    UnlistedVariantValueUse { name: _, span: _ } => true
-    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
-    ReceiverTypeUnestablished { method: _, span: _ } => true
-    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
-    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => true
-    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => true
-    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => true
-    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
-      is_where_refinement_unenforced_advisory_reason(reason: r)
-    _ => false
+  match diagnostic_disposition(d: d).gate {
+    GateBlocking => false
+    GateAdvisoryTypecheck => true
+    GateRenderedUncounted { reason: _ } => false
   }
 }
 
 fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
-  if is_interpreter_blocking_diagnostic(d: d) == false {
-    false
-  } else if is_discovery_corpus_advisory_typecheck_diagnostic(d: d) {
-    false
-  } else {
-    true
+  match diagnostic_disposition(d: d).gate {
+    GateBlocking => true
+    GateAdvisoryTypecheck => false
+    GateRenderedUncounted { reason: _ } => false
   }
 }
 
@@ -893,6 +1015,26 @@ type DeclaredFuncSig {
 type DeclaredFuncEnv {
   signatures: Map<String, DeclaredFuncSig>
 }
+
+// The module-item kind a node was CONSTRUCTED as, carried from the parse constructor that already
+// knew it. It is a positive authority: no consumer re-derives an item's kind from the ABSENCE of
+// body / transport / children / properties, because a discriminator built from absence fails
+// silently toward whichever bucket absence defines -- v1.compiler.parse parsed_module_item_kind
+// records the two fail-opens that rule was ruled from. `NotAModuleItem` is what every expression,
+// type-expression, field, variant, param and synthetic node carries: it says this node was never
+// constructed as a module item, which is a DIFFERENT statement from `ModuleItemUnrecognized`, the
+// value the parser's own item-error constructor stamps when the leading keyword was not one of the
+// item keywords it recognises. Constructions that rebuild an existing node propagate the field from
+// the node they rebuild, so an item keeps the kind its constructor gave it across resolve,
+// inference and emission.
+type ParsedModuleItemKind
+  = ModuleItemTypeDeclaration
+  | ModuleItemFunction
+  | ModuleItemDataValue
+  | ModuleItemService
+  | ModuleItemResource
+  | ModuleItemUnrecognized
+  | NotAModuleItem
 
 type Node {
   occurrence_identity: NodeOccurrenceIdentity
@@ -915,6 +1057,7 @@ type Node {
   has_non_tail_self_call: Bool
 
   match_pattern: MatchPattern?
+  module_item_kind: ParsedModuleItemKind
   expr_data: ExprData
 }
 
@@ -939,7 +1082,7 @@ fn make_expr_node(occurrence_identity: NodeOccurrenceIdentity, expr_data: ExprDa
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: expr_data
   }
 }
 
@@ -952,7 +1095,7 @@ fn make_named_expr_node(occurrence_identity: NodeOccurrenceIdentity, name: Strin
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: expr_data
   }
 }
 
@@ -977,7 +1120,7 @@ fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprE
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
-    match_pattern: none, expr_data: ExprError { kind: kind, message: message }
+    match_pattern: none, module_item_kind: NotAModuleItem, expr_data: ExprError { kind: kind, message: message }
   }
 }
 
@@ -990,7 +1133,7 @@ fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, val
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1004,7 +1147,7 @@ fn make_arm_node(occurrence_identity: NodeOccurrenceIdentity, pattern: MatchPatt
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: Present { value: pattern },
-    expr_data: NoExprData
+    module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1016,7 +1159,7 @@ fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: Str
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1037,7 +1180,7 @@ fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: Strin
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1048,7 +1191,7 @@ fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_na
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: Present { value: binding }, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: Present { value: binding }, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1067,7 +1210,7 @@ fn make_text_part_node(occurrence_identity: NodeOccurrenceIdentity, text: String
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
-    expr_data: ExprLiteral { value: LitStr { value: text } }
+    module_item_kind: NotAModuleItem, expr_data: ExprLiteral { value: LitStr { value: text } }
   }
 }
 
@@ -1079,7 +1222,7 @@ fn make_interp_part_node(occurrence_identity: NodeOccurrenceIdentity, expr: Node
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1091,7 +1234,7 @@ fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ty
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1103,7 +1246,7 @@ fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: S
     params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1163,7 +1306,7 @@ fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, ty
     params: [], inferred: none, return_cardinality: cardinality,
     uses: [], body: none, transport: none, properties: concat(from_key_properties, type_expr.properties),
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1220,7 +1363,7 @@ fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1661,7 +1804,7 @@ fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: body, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1697,7 +1840,7 @@ fn rest_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_url: No
 }
 
 fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
-  let shell_marker = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let shell_marker = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
     Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
@@ -1709,7 +1852,7 @@ fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -1956,12 +2099,14 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
-    || name == transport_auth_basic_key || name == transport_tls_key
+    || name == transport_auth_basic_key 
+    || name == transport_tls_key
 }
 
 fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
 }
+
 
 fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
@@ -1993,7 +2138,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
     properties: node.properties, type_annotation: node.type_annotation,
     is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
-    match_pattern: node.match_pattern, expr_data: node.expr_data
+    match_pattern: node.match_pattern, module_item_kind: node.module_item_kind, expr_data: node.expr_data
   }
 }
 
@@ -2168,13 +2313,13 @@ fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, import
     params: imports, inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
 fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   let wildcard_marker = if is_all {
-    Present { value: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
+    Present { value: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData } }
   } else { none }
   Node { occurrence_identity: occurrence_identity,
     name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
@@ -2182,7 +2327,7 @@ fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: wildcard_marker, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
   }
 }
 
@@ -2203,7 +2348,7 @@ fn module_items(n: Node) -> List<Node> {
 }
 
 fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan) -> Node {
-  Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 }
 
 fn kernel_span(name: String) -> SourceSpan {
@@ -2296,15 +2441,15 @@ fn provenance_reported_file(p: TypeDeclarationProvenance) -> String {
   }
 }
 
-data unit_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data hash_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data bool_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data string_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data hash_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data int_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data float_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+data none_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 data tuple_type_name: String = "Tuple"
-data error_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+data error_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: file, start: start, end: end }
@@ -2480,11 +2625,11 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, expr_data: n.expr_data }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, expr_data: n.expr_data }
 }
 
 fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {

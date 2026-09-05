@@ -2,14 +2,20 @@ module test.claim.generated_artifact_merge_driver_real_execution
 
 import std.logic { Bool }
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, FilePath, GitRef }
+import std.types { String, FilePath, GitRef, NonEmptyStr }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import gunbc.generated_artifact_merge_driver {
   expected_generated_artifact_merge_driver_sh,
   generated_artifact_merge_driver_config_value_at,
+  generated_artifact_merge_driver_row_identity_extraction_expressions,
+  generated_artifact_merge_driver_row_extractor_function,
 }
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import extdeps.tools.sed
+import extdeps.tools.sed { sed_script_arguments }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
@@ -23,6 +29,7 @@ type MergeDivergenceObservation {
   merge_exit_code: Int
   unmerged_stage_count: Int
   worktree_content: String
+  printed_diagnostics: String
   setup_ok: Bool
 }
 
@@ -49,7 +56,7 @@ fn write_witness_generated_projection(repo: FilePath, content: String) -> Bool {
   Filesystem.Write(path: witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
 }
 
-fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
+fn seed_witness_repository(repo: FilePath, driver_value: String, heal_paths: List<String>) -> Bool {
   let initialized = git.Core.InitInRepo(repo: repo).success
   let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid").success
   let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc merge driver witness").success
@@ -62,7 +69,7 @@ fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
     path: witness_repo_file(repo: repo, name: witness_driver_script_name),
     content: expected_generated_artifact_merge_driver_sh(
       regen_command: ci_heal_author_commit_regen_command,
-      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+      heal_regenerated_paths: heal_paths
     ),
   ).success
   let attributes = Filesystem.Write(
@@ -102,20 +109,22 @@ fn observe_witness_merge(repo: FilePath, ours_touches_artifact: Bool) -> MergeDi
     merge_exit_code: merged.exit_code,
     unmerged_stage_count: count(unmerged.entries),
     worktree_content: after.content,
+    printed_diagnostics: merged.stderr,
     setup_ok: theirs && ours_branch == 0 && ours_written && ours_staged == 0 && ours_committed == 0 && after.success,
   }
 }
 
-fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
+fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool, heal_paths: List<String>) -> MergeDivergenceObservation {
   let dir = shell.Mktemp.Dir()
   let repo = dir.path
-  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value)
+  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value, heal_paths: heal_paths)
   let observed = observe_witness_merge(repo: repo, ours_touches_artifact: ours_touches_artifact)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   MergeDivergenceObservation {
     merge_exit_code: observed.merge_exit_code,
     unmerged_stage_count: observed.unmerged_stage_count,
     worktree_content: observed.worktree_content,
+    printed_diagnostics: observed.printed_diagnostics,
     setup_ok: dir.success && seeded && observed.setup_ok && cleaned.success,
   }
 }
@@ -143,6 +152,7 @@ test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: true,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code != 0
@@ -155,6 +165,7 @@ test fn divergent_generated_artifact_merge_under_true_driver_silently_drops_thei
   let observed = observe_generated_artifact_merge(
     driver_value: witness_retired_take_ours_driver_value,
     ours_touches_artifact: true,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code == 0
@@ -166,9 +177,253 @@ test fn one_sided_generated_artifact_change_merges_clean_by_real_execution() -> 
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: false,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code == 0
     && observed.unmerged_stage_count == 0
     && observed.worktree_content == witness_theirs_content
+}
+
+// THE ENROLLED RED FOR THE DARK-ROW CHECK, IN TWO HALVES THAT ONLY MEAN ANYTHING TOGETHER (DESIGN
+// section 4b(4)). test.claim.generated_artifact_merge_driver_recipe asserts over the EMITTED SCRIPT
+// and says so in its own header: those reads "cannot claim the command RUNS", and they name this
+// module as the wet arm that would. This is that arm. The two subjects are different claims and only
+// the second is the one the recipe's readers depend on:
+//
+//   printed_step_two_carries_the_row_extractor -- executes a real merge and reads what the driver
+//   ACTUALLY PRINTED after bash expansion. A string read over the emitted bytes proves an escape was
+//   APPLIED; it cannot distinguish a correct escape from a wrong one. Doubling the wrong character,
+//   or escaping $ and killing the $merged_path the driver defines, both produce escaped bytes and a
+//   recipe that still does not work -- and both pass the emitted-bytes assert while failing this one.
+//
+//   row_extractor_names_a_row_that_went_dark -- executes THOSE SAME expressions, through real sed,
+//   over a fixture ledger and over the same ledger with one row of EACH shape removed.
+//
+// THE SECOND ASSERTS A COVERAGE JOIN, NOT NON-EMPTINESS, and that distinction is this recipe's own
+// history rather than a general principle applied from outside. Non-emptiness proves ACQUISITION and
+// nothing else: it passes identically at one extracted row, at forty, and at all-but-one. The hole
+// that was live on this recipe was exactly the case it cannot see -- a correct program pointed at a
+// row shape it could not match, which rendered perfectly and read ZERO of the rung-drop rows while
+// reporting a pass it never measured. Nothing in the recipe compared what it extracted against what
+// was there to extract. So the fixture is built FROM the two rosters the projections are generated
+// from, carries BOTH row spellings, and requires the extraction to name every rostered row on both
+// sides. Dropping either sed clause reds this; a nonzero check would stay green on half its subject.
+//
+// The fixture also carries a prose bullet per failure-mode row, mirroring the projection's shape, so
+// a program that matched every top-level bullet would over-count and red too. Only the correct
+// extraction is green, in both directions.
+//
+// ONE MANGLED CHARACTER SILENCES BOTH PROJECTIONS, NOT ONE, and that is why the extraction is
+// asserted as a whole rather than per clause: sed refuses the ENTIRE program on an invalid
+// backreference, so a broken first clause takes the intact second clause down with it. Measured on
+// the reverted escape -- zero rows from a 157-row fixture carrying both spellings, not 36.
+//
+// WHAT THIS WITNESS DOES NOT COVER, stated so nobody later reads it as covering more than it does.
+// Step 2 compares TWO SNAPSHOTS -- `<base-ref>` against `HEAD` -- and this fixture adjudicates
+// neither the binding nor the comparison. It reads ONE snapshot by construction: it writes the
+// ledger it extracts from, in the same run, from the same in-memory roster values it reconciles
+// against, so there is no ref, no `git show`, and no second revision anywhere in the path. The
+// recipe's own binding has a ceiling of its own: `<base-ref>` is printed as a literal placeholder
+// for the lane to substitute, so what it resolves to is outside the modeled guarantee -- observed at
+// that boundary, not proven here.
+//
+// THE NEIGHBOUR, cited rather than duplicated: gunbc.rostered_row_join asks whether every DECLARED
+// row of a type is rostered. This asks whether the recipe's extractor names every ROSTERED row of a
+// projection. Same shape of oracle -- an identity join against an independent population rather than
+// a count compared with itself -- on two different subjects, and neither subsumes the other: a row
+// can be rostered and unnamed by the extractor, and named by the extractor while never declared.
+
+fn witness_failure_mode_rows() -> List<String> {
+  map(recurring_failure_mode_roster, r => r.identity as String)
+}
+
+fn witness_rung_drop_rows() -> List<String> {
+  map(rung_drop_roster, r => r.subject)
+}
+
+data witness_dark_failure_mode_row: String = "empty_capture_read_as_clean_result"
+data witness_ledger_path: String = "fixture_ledger.md"
+
+fn witness_dark_rung_drop_row() -> String {
+  fold(witness_rung_drop_rows(), init: "", f: (acc, row) => if acc == "" { row } else { acc })
+}
+
+fn witness_failure_mode_index_line(row: String) -> String {
+  join(["- `", row, "`\n"], "")
+}
+
+// The prose bullet the extraction must SKIP: a top-level bullet whose first token is bold text
+// rather than a backquoted identifier, which is how the real projection carries a row body.
+fn witness_failure_mode_prose_line(row: String) -> String {
+  join(["- **", row, " stated as prose** (a receipt sentence.)\n"], "")
+}
+
+fn witness_rung_drop_heading_line(row: String) -> String {
+  join(["### ", row, " — declared 2026-09-05\n"], "")
+}
+
+fn witness_ledger_text(failure_modes: List<String>, rung_drops: List<String>) -> String {
+  concat(
+    fold(failure_modes, init: "", f: (acc, row) =>
+      concat(acc, concat(witness_failure_mode_index_line(row: row), witness_failure_mode_prose_line(row: row)))
+    ),
+    fold(rung_drops, init: "", f: (acc, row) => concat(acc, witness_rung_drop_heading_line(row: row)))
+  )
+}
+
+type LedgerExtraction {
+  names: List<String>
+  ok: Bool
+}
+
+fn witness_extraction_names(failure_modes: List<String>, rung_drops: List<String>) -> LedgerExtraction {
+  let dir = shell.Mktemp.Dir()
+  let path = witness_repo_file(repo: dir.path, name: witness_ledger_path)
+  let written = Filesystem.Write(
+    path: path,
+    content: witness_ledger_text(failure_modes: failure_modes, rung_drops: rung_drops),
+  ).success
+  let extracted = sed.Sed.ScriptsSuppressAutoPrint(
+    arguments: sed_script_arguments(
+      expressions: generated_artifact_merge_driver_row_identity_extraction_expressions
+    ),
+    path: path as NonEmptyStr,
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  LedgerExtraction {
+    names: extracted.lines,
+    ok: dir.success && written && extracted.exit_code == 0 && cleaned.success,
+  }
+}
+
+// THE RECONCILIATION IS THREE SETS, NOT ONE NUMBER, because a cardinality equality is a SUMMARY of
+// an identity join and not the join. Two mutations preserve the count and pass it: substituting an
+// unrelated identity for an expected one, and duplicating one expected identity while dropping
+// another. Both are enrolled below as their own controls, and the plain removal case is enrolled
+// beside them precisely because it CANNOT tell a count check from an identity check -- it passes
+// under both, so on its own it proves nothing about which one was built.
+fn row_occurrences(names: List<String>, row: String) -> Int {
+  fold(names, init: 0, f: (acc, name) => if name == row { acc + 1 } else { acc })
+}
+
+fn missing_rows(expected: List<String>, extracted: List<String>) -> List<String> {
+  expected |> filter(row => row_occurrences(names: extracted, row: row) == 0)
+}
+
+fn unexpected_rows(expected: List<String>, extracted: List<String>) -> List<String> {
+  extracted |> filter(row => row_occurrences(names: expected, row: row) == 0)
+}
+
+fn duplicated_rows(expected: List<String>, extracted: List<String>) -> List<String> {
+  expected |> filter(row => row_occurrences(names: extracted, row: row) > 1)
+}
+
+fn extraction_names_row(extraction: LedgerExtraction, row: String) -> Bool {
+  row_occurrences(names: extraction.names, row: row) > 0
+}
+
+fn witness_rostered_rows() -> List<String> {
+  append(witness_failure_mode_rows(), items: witness_rung_drop_rows())
+}
+
+data witness_unrostered_identity: String = "not_a_rostered_row_identity"
+
+// The heal population is a PARAMETER of the emitter, so this observation binds the witness's own
+// artifact path into it rather than reaching for a real ledger path. Step 2 is printed by the heal
+// case arm only, and the alternative -- reproducing a real projection inside a temp repo -- would
+// need a directory Filesystem.Write cannot create and would make the witness depend on the live
+// ledger's shape. The step text is unparameterized, so what this arm prints for the witness path is
+// byte-identical to what it prints for every real one.
+test fn driver_printed_step_two_carries_the_row_extractor_by_real_execution() -> Bool {
+  let observed = observe_generated_artifact_merge(
+    driver_value: witness_refusing_driver_value(),
+    ours_touches_artifact: true,
+    heal_paths: [witness_generated_path],
+  )
+  observed.setup_ok
+    && observed.merge_exit_code != 0
+    && string_contains(
+         s: observed.printed_diagnostics,
+         pattern: generated_artifact_merge_driver_row_extractor_function()
+       )
+}
+
+// THE ACCEPTING POSITIVE CONTROL. Acquisition and expectation are asserted as SEPARATE facts and
+// deliberately not folded: `ok` says the fixture was written and sed ran to completion, and the three
+// empty sets say what it read reconciles with the rosters. An expected-non-empty subject that yields
+// nothing is NOT automatically an acquisition failure -- a complete read may have correctly
+// established that the rows are gone -- so collapsing the two would manufacture an explanation for a
+// refusal rather than report one.
+test fn row_extractor_reconciles_with_both_rosters_by_real_execution() -> Bool {
+  let expected = witness_rostered_rows()
+  let extraction = witness_extraction_names(
+    failure_modes: witness_failure_mode_rows(),
+    rung_drops: witness_rung_drop_rows(),
+  )
+  extraction.ok
+    && count(missing_rows(expected: expected, extracted: extraction.names)) == 0
+    && count(unexpected_rows(expected: expected, extracted: extraction.names)) == 0
+    && count(duplicated_rows(expected: expected, extracted: extraction.names)) == 0
+}
+
+// THE REMOVAL CASE: one row of EACH spelling deleted, and both must be named. It is the consumer
+// consequence the recipe actually promises -- the difference names WHICH rows went dark -- and it is
+// the one control that says nothing about count-versus-identity, which is why the two below exist.
+test fn row_extractor_names_a_row_that_went_dark_by_real_execution() -> Bool {
+  let expected = witness_rostered_rows()
+  let dark_rung_drop = witness_dark_rung_drop_row()
+  let extraction = witness_extraction_names(
+    failure_modes: witness_failure_mode_rows() |> filter(row => row != witness_dark_failure_mode_row),
+    rung_drops: witness_rung_drop_rows() |> filter(row => row != dark_rung_drop),
+  )
+  let missing = missing_rows(expected: expected, extracted: extraction.names)
+  extraction.ok
+    && count(missing) == 2
+    && row_occurrences(names: missing, row: witness_dark_failure_mode_row) == 1
+    && row_occurrences(names: missing, row: dark_rung_drop) == 1
+    && count(unexpected_rows(expected: expected, extracted: extraction.names)) == 0
+}
+
+// MUTATION A -- SUBSTITUTION, AND THE COUNT IS UNCHANGED. One expected identity is removed and one
+// unrostered identity is added in its place, so extracted == rostered exactly as in the accepting
+// control. A cardinality check passes here. The join must name BOTH sides of the substitution.
+test fn row_extractor_refuses_a_substituted_identity_by_real_execution() -> Bool {
+  let expected = witness_rostered_rows()
+  let extraction = witness_extraction_names(
+    failure_modes: append(
+      witness_failure_mode_rows() |> filter(row => row != witness_dark_failure_mode_row),
+      items: [witness_unrostered_identity]
+    ),
+    rung_drops: witness_rung_drop_rows(),
+  )
+  let missing = missing_rows(expected: expected, extracted: extraction.names)
+  let unexpected = unexpected_rows(expected: expected, extracted: extraction.names)
+  extraction.ok
+    && count(extraction.names) == count(expected)
+    && count(missing) == 1
+    && row_occurrences(names: missing, row: witness_dark_failure_mode_row) == 1
+    && count(unexpected) == 1
+    && row_occurrences(names: unexpected, row: witness_unrostered_identity) == 1
+}
+
+// MUTATION B -- DUPLICATION, AND THE COUNT IS AGAIN UNCHANGED. One expected identity is removed and
+// another is written twice, so the extraction still carries exactly as many names as the rosters do.
+// A cardinality check passes here too. Only a multiplicity-aware join sees it, which is why the
+// duplicate set is a THIRD set rather than a property of the other two.
+test fn row_extractor_refuses_a_duplicated_identity_by_real_execution() -> Bool {
+  let expected = witness_rostered_rows()
+  let dark_rung_drop = witness_dark_rung_drop_row()
+  let extraction = witness_extraction_names(
+    failure_modes: witness_failure_mode_rows() |> filter(row => row != witness_dark_failure_mode_row),
+    rung_drops: append(witness_rung_drop_rows(), items: [dark_rung_drop]),
+  )
+  let missing = missing_rows(expected: expected, extracted: extraction.names)
+  let duplicated = duplicated_rows(expected: expected, extracted: extraction.names)
+  extraction.ok
+    && count(extraction.names) == count(expected)
+    && count(missing) == 1
+    && row_occurrences(names: missing, row: witness_dark_failure_mode_row) == 1
+    && count(duplicated) == 1
+    && row_occurrences(names: duplicated, row: dark_rung_drop) == 1
 }

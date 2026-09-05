@@ -1,0 +1,74 @@
+module extdeps.package_managers.conda_forge
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "mamba.readthedocs.io/en/latest/user_guide/micromamba.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.package_managers.conda_forge",
+      decl_name: "micromamba_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data micromamba_program: NonEmptyStr = "micromamba"
+
+data conda_forge_channel: NonEmptyStr = "conda-forge"
+
+// WHY THIS MANAGER AND NOT APT, recorded because the opposite was asserted here first and was wrong.
+// The two SONAMEs the OCP wheel links against are carried by system packages on a Debian host, and
+// installing them there needs root, which no session container has. That fact is true and was the
+// whole content of an earlier claim that provisioning was impossible inside the container and had to
+// become someone's image change. It does not follow. Root is a property of ONE provider, not of the
+// requirement: conda-forge carries the same SONAMEs as ordinary packages resolved into a prefix the
+// invoking user owns, so the requirement is satisfiable here with no privilege at all. The earlier
+// claim generalised from a single manager's refusal to the environment, and DESIGN section 5 names
+// the move that followed from it -- the objects were sideloaded out of .deb archives instead, which
+// is the workaround arm: the obstacle was a dependency-manager choice, and routing around it hid
+// exactly the choice that needed making.
+//
+// THE PIN IS THE PREFIX, NOT A COMMAND FLAG. A create names every package and its version in one
+// solve, so the environment either resolves as a whole or refuses as a whole; installing into an
+// existing prefix one package at a time lets a later solve silently move an earlier one.
+
+// NOT sole_constructor: there is no admission decision to make about a name-plus-version pair, and
+// a mint gate that admits everything is a seal claiming a check that does not exist.
+type CondaPackageRequirement {
+  package_name: NonEmptyStr
+  version: NonEmptyStr
+}
+
+fn conda_package_name(r: CondaPackageRequirement) -> NonEmptyStr { r.package_name }
+fn conda_package_version(r: CondaPackageRequirement) -> NonEmptyStr { r.version }
+
+fn conda_requirement_spec(r: CondaPackageRequirement) -> String {
+  concat(concat(r.package_name as String, "="), r.version as String)
+}
+
+// ONE SOLVE OVER THE WHOLE REQUIREMENT LIST, into a prefix the caller names. The prefix is a
+// parameter rather than a declared constant because where an environment lives is a deployment fact
+// about the invoking host, not a fact about conda-forge -- DESIGN section 3 puts that in the
+// workflow layer and keeps it out of extdeps.
+fn micromamba_create_command(prefix: String, requirements: List<CondaPackageRequirement>) -> ArgvCommand {
+  argv_command(
+    program: micromamba_program,
+    arguments: concat(
+      ["create", "--yes", "--prefix", prefix, "--channel", conda_forge_channel as String],
+      map(requirements, r => conda_requirement_spec(r: r)),
+    ),
+  )
+}

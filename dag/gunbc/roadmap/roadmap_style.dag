@@ -5,6 +5,9 @@ import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl, css_block,
   serialize_rules, reduced_motion_block,
 }
+import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
+import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration }
+import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class }
 import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
@@ -17,7 +20,7 @@ import gunbc.design.scale {
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FocusRole, BoundaryRole,
+  FigureRole, FigureHaloRole, FocusRole, BoundaryRole,
 }
 import gunbc.site.moodboard { figure_rules }
 import gunbc.roadmap_interaction {
@@ -47,6 +50,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
   activity_located_reason_class, session_facts_class,
   dashboard_instance_class,
 }
@@ -307,9 +311,91 @@ fn band_root_css() -> String {
   )
 }
 
+
+// The round strip: a flex row of time-weighted segments. Read rounds take the dim text material so
+// they recede; a write round takes the figure material so it reads at a glance as the event it is;
+// a reasoning round (no tool call) takes the figure halo, the palette's softest figure member, so
+// thinking sits between reading and writing in weight and stays on the palette (operator, 2026-09-05:
+// pleasant, neutral, nothing alarming); an unmeasured round is outlined rather than filled, so "not
+// observed" never paints as either.
+data round_fill_cycle: MotionCycle = MotionCycle { name: "round-fill", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Transform, value: "scaleX(0)")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: "scaleX(1)")] }] }
+data round_fill_timing: TimingToken = TimingToken { name: "round-fill", duration_ms: 800, easing: "ease-out" }
+data round_pulse_cycle: MotionCycle = MotionCycle { name: "round-pulse", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Opacity, value: "1")] }, Keyframe { offset_percent: 50, decls: [decl(prop: Opacity, value: "0.55")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Opacity, value: "1")] }] }
+data round_pulse_timing: TimingToken = TimingToken { name: "round-pulse", duration_ms: 3000, easing: "ease-in-out" }
+
+// THE FILL SCHEDULE REACHES A SEGMENT AS CUSTOM PROPERTIES, NEVER AS INLINE ANIMATION LONGHANDS. The
+// page used to write animation-delay and animation-duration inline per segment for the replay; an
+// inline longhand outranks every stylesheet rule, so on the live segment it also overrode the pulse
+// rule's 3000ms and the pulse ran at the fill's 120ms floor -- the "flashing" the operator saw
+// (2026-09-05). The segment now carries --fill-delay and --fill-duration; these longhands read them,
+// and they sit AFTER the fill shorthand and BEFORE the pulse shorthand, so the pulse's own timing is
+// the last word on a live segment by cascade order rather than by anything inline.
+data round_fill_delay_var: String = "fill-delay"
+data round_fill_duration_var: String = "fill-duration"
+
+fn round_fill_schedule_decls() -> List<CssDecl> {
+  [
+    decl(prop: AnimationDelay, value: join(["var(--", round_fill_delay_var, ", 0ms)"], "")),
+    decl(prop: AnimationDuration, value: join(["var(--", round_fill_duration_var, ", ", to_string(round_fill_timing.duration_ms), "ms)"], "")),
+  ]
+}
+
+fn activity_round_strip_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: "0"),
+      decl(prop: Height, value: "6px"),
+      decl(prop: MarginTop, value: "4px"),
+      decl(prop: MarginBottom, value: "4px"),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: TransformOrigin, value: "left center"),
+      role_decl(prop: Background, r: TextDimRole),
+      decl(prop: Opacity, value: "0.45"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: [
+      decl(prop: MinWidth, value: "3px"),
+      decl(prop: TransformOrigin, value: "left center"),
+      role_decl(prop: Background, r: FigureRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_reason_class }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: TransformOrigin, value: "left center"),
+      role_decl(prop: Background, r: FigureHaloRole),
+      decl(prop: Opacity, value: "0.7"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_remaining_class }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
+      decl(prop: Opacity, value: "0.12"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: TransformOrigin, value: "left center"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: BoxShadow, value: "inset 0 0 0 1px currentColor"),
+      decl(prop: Opacity, value: "0.35"),
+    ] },
+    AmbientRule { selector: ClassSelector { name: activity_round_read_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_write_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_unmeasured_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_reason_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    StaticRule { selector: ClassSelector { name: activity_round_read_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_write_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_unmeasured_class }, decls: round_fill_schedule_decls() },
+    StaticRule { selector: ClassSelector { name: activity_round_reason_class }, decls: round_fill_schedule_decls() },
+    AmbientRule { selector: ClassSelector { name: activity_round_live_class }, cycle: round_pulse_cycle, timing: round_pulse_timing, repeat: RunForever },
+  ]
+}
+
 fn roadmap_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules(),
-    concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
+    concat(figure_rules(), concat(activity_round_strip_rules(), roadmap_behavior_rules(rows: roadmap_behaviors))))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
@@ -477,6 +563,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "surface-link" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: TextDecoration, value: "none"),
     ] },
     StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
       decl(prop: FontWeight, value: "600"),
@@ -945,6 +1036,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ], "") }, decls: [
       decl(prop: Color, value: "var(--band-loud)"),
       decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"stopped\"]",
+    ], "") }, decls: [
+      role_decl(prop: Color, r: TextRole),
     ] },
     StaticRule { selector: ClassSelector { name: activity_evidence_row_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),

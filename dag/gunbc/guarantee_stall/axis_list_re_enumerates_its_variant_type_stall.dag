@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall
 
-import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
 // WHY THIS IS A STALL AND NOT A DECLARED DROP, stated first because the wrong carrier was the
 // first thing proposed for it. A gunbc.rung_drop records a REGRESSION -- a class that held a rung
@@ -49,9 +49,36 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // precedent for classifying a missing LANGUAGE capability as AwaitsOneGrounding rather than
 // ClimbableButUnbuilt, and the reasoning is the same here: the climb is not merely unstarted, it
 // is unavailable with every construction the language currently offers.
+//
+// THE CURRENT RUNG IS Mitigatable AND NOT OutsideTheLadder, CORRECTED BY EXPERIMENT AFTER THIS ROW
+// WAS FIRST FILED AT ZERO. The first version asserted that nothing was established. That was
+// measurably false and the measurement is cheap to repeat: add an eighth variant to
+// CalibrationResolutionArm, leave the axis list at seven, and run the report. It does not succeed
+// having measured 24 of 28 -- IT FAILS TO RESOLVE, twice:
+//
+//   error: non-exhaustive match: missing variant(s) HypotheticalEighthArm   (two sites)
+//
+// `resolution_arm_label` and `arm_of_resolution` are TOTAL matches over the axis type, so growing
+// the type stops the author loudly and NAMES THE NEW VARIANT at the moment of the edit. That is a
+// real mitigation and it belongs on the ladder.
+//
+// WHAT IT DOES NOT DO, WHICH IS WHY THE STALL STANDS. Exhaustiveness forces the author to edit the
+// two matches; it does not force them to append to the LIST. The silent state needs three steps --
+// add the variant, satisfy both matches, then forget the list -- and after the third the
+// population shrinks with no diagnostic anywhere. So the invalid state remains WRITABLE and safety
+// depends on a human completing an edit the compiler stopped them in the middle of, which is
+// exactly rung 1 and exactly why the ceiling is still four.
+//
+// AND A COUNT FACT CONSUMED BY THE ADMISSION PATH DOES NOT CLIMB THIS, which is recorded because
+// it is the obvious proposal and it was made. A `list_length(arms) == 7` fact fires when the LIST
+// SHRINKS. On type GROWTH the list is still seven and the fact is still seven, they agree, and the
+// check is GREEN ON PRECISELY THE HAZARD THIS ROW NAMES -- a wall permanently green on its own
+// subject, which DESIGN 4b calls a decoration and warns will be cited as coverage. It would also
+// be a third authority for one population. The measurement above is what settles it: the failing
+// edit was run, and the count fact would not have moved.
 data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeStall {
   subject: "an axis list enumerates by hand the variants of the coproduct it must cover, so a variant absent from the list silently shrinks the declared population and an incomplete traversal reports success",
-  current: OutsideTheLadder,
+  current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
     grounding: "constructor enumeration for a declared coproduct: a fold over the variants of a coproduct TYPE, not over an authored list of them, so an axis list is derived rather than written",
@@ -62,5 +89,5 @@ data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeS
       "gunbc.tools.reference_binding_provenance_calibration calibration_resolution_arms",
     ],
   },
-  next_rung_trigger: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is DESIGN section 4b(3)'s trigger naming less than the capability it restores",
+  next_rung_trigger: climbs_when(capability: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is DESIGN section 4b(3)'s trigger naming less than the capability it restores"),
 }
