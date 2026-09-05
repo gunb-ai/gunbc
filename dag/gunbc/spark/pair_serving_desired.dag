@@ -17,37 +17,34 @@ import gunbc.spark.serving_engine {
   UnestablishedReservationAccountingOnUnifiedPool,
   spark_memory_enforcer_admits,
 }
-import gunbc.spark.fabric_link_desired {
-  SparkFabricPair, Srv5Srv6, Srv7Srv8, spark_fabric_pair_hosts, render_spark_fabric_pair,
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.fabric_switch_observed {
+  FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire,
+  FabricLaneObserved, fabric_lane_for_host,
 }
-import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve }
-import gunbc.fleet_intent_network { operator_host_srv7 }
 
-// SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A PAIR, NOT A HOST. DeepSeek V4 Flash does
-// not fit one Spark's unified pool, so the desired serving state is one vLLM engine spanning two
-// fabric-paired units at tensor-parallel 2, each host running one rank. This module is the root of
-// that desired state. It replaces, not refines, the per-host Ollama row in
-// gunbc.spark.serving_desired: while both stand, the Ollama row keeps answering for the serving
-// axis and the withholding rows in serving_convergence_withholding keep every Spark out of it; the
-// cut that flips spark_serving_desired_engine to this module's engine and discharges those rows is
-// one transition, because a serving fleet is gap-intolerant (DESIGN §3, replacement migrations).
+// SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
+// Flash does not fit one Spark's unified pool, so the desired serving state is one vLLM engine
+// spanning every unit of a fabric group at tensor-parallel N, one rank per host. The group and its
+// membership come from the switch (gunbc.spark.fabric_switch_observed: the four legs of one 400G
+// cage), never from a spelled list, and N is the member count. This module is the root of that
+// desired state and replaced the per-pair root of the same name on 2026-09-05, when the direct
+// pair cables came out and the switched fabric went in; the module keeps its file so the
+// consumers' import lines stay put while the subject widens.
 //
 // What this module decides, and refuses to decide:
 //   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
 //     1048576 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
-//   - max-num-seqs is BY MEASURED POOL, and until that measurement is a row the unit refuses --
-//     a fabricated count would be exactly the plausible output §5 forbids;
-//   - each rank's host address and interface are resolved through the SWITCHED rail
-//     (gunbc.spark.fabric_rail_desired over the observed lane), never spelled here; the direct-cable
-//     pair rows in fabric_link_desired no longer describe a wire and are not consulted;
-//   - a pair whose host still holds an undischarged llama.cpp RPC peer reservation is refused, the
-//     same wall test.claim.spark_llama_cpp_rpc_witness holds over the cell-role roster;
-//   - the head rank is an observed fact per pair (which host carries the serve process and the
-//     Ray node address), recorded in spark_pair_serving_head with its basis, never derived from
-//     list order.
+//   - max-num-seqs is BY MEASURED POOL of the first launch of that group; until a group's pool has
+//     been read from its own engine, the unit carries the first pair's measured 32 as the admission
+//     count and the pool row records that it is inherited, not measured;
+//   - each rank's host address and interface are resolved through the switched rail
+//     (gunbc.spark.fabric_rail_desired over the observed lane), never spelled here;
+//   - a group whose member still holds an undischarged llama.cpp RPC peer reservation is refused;
+//   - the head rank is an attributable row per group, never list order.
 
 type SparkPairServingRole = PairHead | PairWorker
 
@@ -58,45 +55,41 @@ fn spark_pair_serving_role_wire(role: SparkPairServingRole) -> NonEmptyStr {
   }
 }
 
-// max-num-seqs is sized from the measured KV pool of the pair, so it carries the measurement's basis.
 type SparkPairServingSeqCapacity
   = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// Measured on 2026-09-05 from the engine's own startup line (gunbc.spark.pair_serving_observed
-// first_pair_kv_pool): 4,632,182 tokens of KV, 4.42x concurrency at the 1M context. 32 is the
-// value the launch script settled on and records its reason for: at 16 the 24-stream aggregate
-// is never reached however much pool is free. The pool is not the limiter; max-num-seqs is.
+// The first pair's pool (gunbc.spark.pair_serving_observed first_pair_kv_pool) sized max-num-seqs at
+// 32; a group of four has a larger pool per rank and the same admission count until its own launch
+// line is read back, at which point this row moves to that measurement.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
   max_num_seqs: first_pair_vllm_serve.max_num_seqs,
-  basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String], "") as NonEmptyStr,
+  basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the first pair's captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String, "; inherited by groups until their own launch line is read"], "") as NonEmptyStr,
 }
 
 // "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
-// resource isolation off, which extdeps.ray.threshold_memory_monitor resolves to no enforcing
-// monitor. The kernel's own killer is the one enforcer left standing on every Linux host.
+// resource isolation off. The kernel's own killer is the one enforcer left standing on every host.
 data spark_pair_serving_ray_monitor_refresh: Millisecond = millisecond(count: 0)
 data spark_pair_serving_ray_resource_isolation_enabled: Bool = false
 data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
 
-// The pairs promoted to pair serving. srv7/srv8 wait on the RPC release receipt; srv9/srv11 wait
-// on their fabric pair being observed and enrolled in fabric_link_desired; srv10 is the RMA unit.
-data spark_pair_serving_pairs: List<SparkFabricPair> = [Srv5Srv6]
+// The groups promoted to serving. Group A first: its head srv6 carries the JIT caches and the front
+// door the harness already points at. Group B follows once A's launch line is read back.
+data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
 
-// WHICH HOST IS THE HEAD IS OBSERVED, NOT DERIVED FROM LIST ORDER. For the first pair the serve
-// process, the head unit and the Ray node address are all on srv6 (pair_serving_observed); for
-// srv7/srv8 the front door observed on 2026-09-02 is srv7. A derivation from the fabric row's
-// endpoint order would have named srv5, which is the worker.
-fn spark_pair_serving_head(pair: SparkFabricPair) -> HostIdentity {
-  match pair {
-    Srv5Srv6 => first_pair_observed_head
-    Srv7Srv8 => operator_host_srv7
+// WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
+// (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the
+// operator named first of that batch; an arbitrary choice among identical units, written down.
+fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
+  match group {
+    FabricGroupA => first_pair_observed_head
+    FabricGroupB => operator_host_srv9
   }
 }
 
-fn spark_pair_serving_engine_args(max_num_seqs: Nat) -> VllmEngineArgs {
+fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
-    tensor_parallel_size: 2,
+    tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
     max_model_len: token_count(count: 1048576),
     max_num_seqs: max_num_seqs,
@@ -106,7 +99,7 @@ fn spark_pair_serving_engine_args(max_num_seqs: Nat) -> VllmEngineArgs {
 }
 
 type SparkPairServingParticipant {
-  pair: SparkFabricPair
+  group: FabricGroup
   role: SparkPairServingRole
   host: HostIdentity
   host_ip: Ipv4Address
@@ -115,12 +108,12 @@ type SparkPairServingParticipant {
 
 type SparkPairServingUnit
   = SparkPairServingUnitReady {
-      pair: SparkFabricPair
+      group: FabricGroup
       engine: ServingEngine
       head: SparkPairServingParticipant
-      worker: SparkPairServingParticipant
+      workers: List<SparkPairServingParticipant>
     }
-  | SparkPairServingUnitRefused { pair: SparkFabricPair, cause: NonEmptyStr }
+  | SparkPairServingUnitRefused { group: FabricGroup, cause: NonEmptyStr }
 
 fn enforcer_refusal_wire(cause: EnforcerRefusal) -> String {
   match cause {
@@ -137,41 +130,62 @@ type PairParticipantResolution
   = ParticipantResolved { participant: SparkPairServingParticipant }
   | ParticipantUnresolved { cause: NonEmptyStr }
 
-fn spark_pair_serving_participant(
-  pair: SparkFabricPair,
-  role: SparkPairServingRole,
-  host: HostIdentity,
-) -> PairParticipantResolution {
+fn spark_pair_serving_participant(group: FabricGroup, role: SparkPairServingRole, host: HostIdentity) -> PairParticipantResolution {
   match fabric_lane_for_host(host: host) {
     Present { value: o } =>
       ParticipantResolved {
-        participant: SparkPairServingParticipant { pair: pair, role: role, host: host, host_ip: fabric_rail_address_of(o: o), lane: o },
+        participant: SparkPairServingParticipant { group: group, role: role, host: host, host_ip: fabric_rail_address_of(o: o), lane: o },
       }
     Absent =>
       ParticipantUnresolved { cause: join([host as String, " is not observed on the switched fabric, so it has no rail address"], "") as NonEmptyStr }
   }
 }
 
-fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServingSeqCapacity) -> SparkPairServingUnit {
-  let hosts = spark_fabric_pair_hosts(pair: pair)
+type ParticipantsResolution
+  = ParticipantsResolved { participants: List<SparkPairServingParticipant> }
+  | ParticipantsUnresolved { cause: NonEmptyStr }
+
+fn resolution_cause(r: PairParticipantResolution) -> List<NonEmptyStr> {
+  match r {
+    ParticipantUnresolved { cause: c } => [c]
+    ParticipantResolved { participant: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+fn resolution_participant(r: PairParticipantResolution) -> List<SparkPairServingParticipant> {
+  match r {
+    ParticipantResolved { participant: p } => [p]
+    ParticipantUnresolved { cause: _ } => [] as List<SparkPairServingParticipant>
+  }
+}
+
+fn spark_pair_serving_workers(group: FabricGroup, hosts: List<HostIdentity>) -> ParticipantsResolution {
+  let resolved = map(hosts, h => spark_pair_serving_participant(group: group, role: PairWorker, host: h))
+  match first(flat_map(resolved, r => resolution_cause(r: r))) {
+    Present { value: c } => ParticipantsUnresolved { cause: c }
+    Absent => ParticipantsResolved { participants: flat_map(resolved, r => resolution_participant(r: r)) }
+  }
+}
+
+fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSeqCapacity) -> SparkPairServingUnit {
+  let hosts = fabric_group_hosts(g: group)
   let reserved = filter(hosts, h => llama_cpp_rpc_host_holds_undischarged_reservation(host: h))
-  if length(reserved) > 0 {
+  if length(hosts) < 2 {
+    SparkPairServingUnitRefused { group: group, cause: "a serving group needs at least two hosts on the fabric" as NonEmptyStr }
+  } else if length(reserved) > 0 {
     SparkPairServingUnitRefused {
-      pair: pair,
+      group: group,
       cause: join([
-        "pair member(s) still hold an undischarged llama.cpp RPC peer reservation, and no release receipt exists: ",
+        "group member(s) still hold an undischarged llama.cpp RPC peer reservation, and no release receipt exists: ",
         join(map(reserved, h => h as String), ", "),
       ], "") as NonEmptyStr,
     }
   } else {
     match capacity {
       SeqCapacityUnmeasured =>
-        SparkPairServingUnitRefused {
-          pair: pair,
-          cause: "max-num-seqs is sized by the measured KV pool of the pair and no measurement row exists" as NonEmptyStr,
-        }
+        SparkPairServingUnitRefused { group: group, cause: "max-num-seqs is sized by a measured KV pool and no measurement row exists" as NonEmptyStr }
       SeqCapacityMeasured { max_num_seqs: n, basis: _ } => {
-        let args = spark_pair_serving_engine_args(max_num_seqs: n)
+        let args = spark_pair_serving_engine_args(tensor_parallel: length(hosts), max_num_seqs: n)
         match spark_memory_enforcer_admits(
           memory_kind: UnifiedShared,
           enforcers: spark_pair_serving_declared_enforcers,
@@ -180,54 +194,60 @@ fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServin
           backend: args.distributed_executor_backend,
         ) {
           EnforcerRefused { cause: c } =>
-            SparkPairServingUnitRefused { pair: pair, cause: join(["memory enforcer law refuses the tuple: ", enforcer_refusal_wire(cause: c)], "") as NonEmptyStr }
-          EnforcerAdmitted { enforcer: _ } =>
-            match first(filter(hosts, h => host_identity_eq(a: h, b: spark_pair_serving_head(pair: pair)))) {
-              Absent => SparkPairServingUnitRefused { pair: pair, cause: "the observed head is not a host of its own fabric pair" as NonEmptyStr }
-              Present { value: head_host } =>
-                match first(filter(hosts, h => !host_identity_eq(a: h, b: head_host))) {
-                  Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists one host twice" as NonEmptyStr }
-                  Present { value: worker_host } =>
-                    match spark_pair_serving_participant(pair: pair, role: PairHead, host: head_host) {
-                      ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
-                      ParticipantResolved { participant: head } =>
-                        match spark_pair_serving_participant(pair: pair, role: PairWorker, host: worker_host) {
-                          ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
-                          ParticipantResolved { participant: worker } =>
-                            SparkPairServingUnitReady { pair: pair, engine: VllmServing { args: args }, head: head, worker: worker }
-                        }
-                    }
-                }
+            SparkPairServingUnitRefused { group: group, cause: join(["memory enforcer law refuses the tuple: ", enforcer_refusal_wire(cause: c)], "") as NonEmptyStr }
+          EnforcerAdmitted { enforcer: _ } => {
+            let head_host = spark_pair_serving_head(group: group)
+            if !any(hosts, h => host_identity_eq(a: h, b: head_host)) {
+              SparkPairServingUnitRefused { group: group, cause: "the attributed head is not a host of its own fabric group" as NonEmptyStr }
+            } else {
+              match spark_pair_serving_participant(group: group, role: PairHead, host: head_host) {
+                ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { group: group, cause: c }
+                ParticipantResolved { participant: head } =>
+                  match spark_pair_serving_workers(group: group, hosts: filter(hosts, h => !host_identity_eq(a: h, b: head_host))) {
+                    ParticipantsUnresolved { cause: c } => SparkPairServingUnitRefused { group: group, cause: c }
+                    ParticipantsResolved { participants: ws } =>
+                      SparkPairServingUnitReady { group: group, engine: VllmServing { args: args }, head: head, workers: ws }
+                  }
+              }
             }
+          }
         }
       }
     }
   }
 }
 
-fn spark_pair_serving_unit(pair: SparkFabricPair) -> SparkPairServingUnit {
-  spark_pair_serving_unit_with(pair: pair, capacity: spark_pair_serving_seq_capacity)
+fn spark_pair_serving_unit(group: FabricGroup) -> SparkPairServingUnit {
+  spark_pair_serving_unit_with(group: group, capacity: spark_pair_serving_seq_capacity)
 }
 
-data spark_pair_serving_desired: List<SparkPairServingUnit> = map(spark_pair_serving_pairs, p => spark_pair_serving_unit(pair: p))
+data spark_pair_serving_desired: List<SparkPairServingUnit> = map(spark_pair_serving_groups, g => spark_pair_serving_unit(group: g))
+
+fn spark_pair_serving_unit_hosts(u: SparkPairServingUnit) -> List<HostIdentity> {
+  match u {
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } => concat([h.host], map(ws, w => w.host))
+    SparkPairServingUnitRefused { group: _, cause: _ } => [] as List<HostIdentity>
+  }
+}
 
 fn spark_pair_serving_desired_hosts() -> List<HostIdentity> {
-  flat_map(spark_pair_serving_desired, u =>
-    match u {
-      SparkPairServingUnitReady { pair: _, engine: _, head: h, worker: w } => [h.host, w.host]
-      SparkPairServingUnitRefused { pair: _, cause: _ } => []
-    })
+  flat_map(spark_pair_serving_desired, u => spark_pair_serving_unit_hosts(u: u))
+}
+
+fn participant_wire(p: SparkPairServingParticipant) -> String {
+  join([p.host as String, "@", render_ipv4_address(addr: p.host_ip) as String], "")
 }
 
 fn spark_pair_serving_unit_wire(unit: SparkPairServingUnit) -> String {
   match unit {
-    SparkPairServingUnitReady { pair: p, engine: _, head: h, worker: w } =>
+    SparkPairServingUnitReady { group: g, engine: _, head: h, workers: ws } =>
       join([
-        "pair ", render_spark_fabric_pair(pair: p),
-        " head=", h.host as String, "@", render_ipv4_address(addr: h.host_ip) as String,
-        " worker=", w.host as String, "@", render_ipv4_address(addr: w.host_ip) as String,
+        "group ", fabric_group_wire(g: g) as String,
+        " tp=", to_string(1 + length(ws)),
+        " head=", participant_wire(p: h),
+        " workers=", join(map(ws, w => participant_wire(p: w)), ","),
       ], "")
-    SparkPairServingUnitRefused { pair: p, cause: c } =>
-      join(["pair ", render_spark_fabric_pair(pair: p), " refused: ", c as String], "")
+    SparkPairServingUnitRefused { group: g, cause: c } =>
+      join(["group ", fabric_group_wire(g: g) as String, " refused: ", c as String], "")
   }
 }

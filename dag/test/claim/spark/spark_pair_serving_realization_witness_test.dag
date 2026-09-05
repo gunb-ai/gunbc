@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
-import gunbc.spark.fabric_link_desired { Srv5Srv6 }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
@@ -20,25 +19,25 @@ fn w_unit_text(u: SparkPairUnitRender) -> String {
   }
 }
 
-fn w_realized(f: fn(SparkPairHostRealization, SparkPairHostRealization) -> Bool) -> Bool {
+fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) -> Bool) -> Bool {
   match w_first() {
     Absent => false
     Present { value: r } =>
       match r {
-        SparkPairRealizationRefused { pair: _, cause: _ } => false
-        SparkPairRealized { pair: _, head: h, worker: w } => f(h, w)
+        SparkPairRealizationRefused { group: _, cause: _ } => false
+        SparkPairRealized { group: _, head: h, workers: ws } => f(h, ws)
       }
   }
 }
 
 // THE FIRST PAIR RENDERS, AND THE ENGINE LINE CARRIES THE WHOLE TUPLE AND NOTHING THE OPERATOR
-// FORBADE: TP=2 over Ray, 1M context, 32 sequences, fp8_ds_mla, 0.82, the deepseek_v4 parser with
+// FORBADE: TP=4 over Ray (the group's four hosts), 1M context, 32 sequences, fp8_ds_mla, 0.82, the deepseek_v4 parser with
 // auto tool choice, prefix caching, and no --max-num-batched-tokens.
 test fn the_head_unit_serves_the_tuple_and_never_the_forbidden_flag() -> Bool {
-  w_realized(f: fn(h, _w) {
+  w_realized(f: fn(h, _ws) {
     let t = w_unit_text(u: h.unit)
     string_contains(s: t, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve /weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1 ")
-      && string_contains(s: t, pattern: " --tensor-parallel-size 2 --distributed-executor-backend ray --max-model-len 1048576 --max-num-seqs 32 --enable-auto-tool-choice --tool-call-parser deepseek_v4 --kv-cache-dtype fp8_ds_mla --gpu-memory-utilization 0.82 --enable-prefix-caching")
+      && string_contains(s: t, pattern: " --tensor-parallel-size 4 --distributed-executor-backend ray --max-model-len 1048576 --max-num-seqs 32 --enable-auto-tool-choice --tool-call-parser deepseek_v4 --kv-cache-dtype fp8_ds_mla --gpu-memory-utilization 0.82 --enable-prefix-caching")
       && string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split --host 0.0.0.0 --port 30000")
       && !string_contains(s: t, pattern: "--max-num-batched-tokens")
   })
@@ -48,7 +47,7 @@ test fn the_head_unit_serves_the_tuple_and_never_the_forbidden_flag() -> Bool {
 // Ray session, start the head at the pair's rail-0 endpoint, then the engine; stdout appended to
 // the host log the pool line is read from; on-failure restart is what waits for the worker.
 test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_stdout() -> Bool {
-  w_realized(f: fn(h, _w) {
+  w_realized(f: fn(h, _ws) {
     let t = w_unit_text(u: h.unit)
     string_contains(s: t, pattern: join([
         "ExecStartPre=/usr/bin/docker start gunbc-spark-pair\n",
@@ -62,13 +61,15 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
   })
 }
 
-// THE WORKER HOLDS ITS RANK WITH `ray start --block` AND IS ALWAYS RESTARTED, which is the rejoin
-// supervision the polling script did by hand: a new head session ends the raylet, the unit returns.
-test fn the_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
-  w_realized(f: fn(_h, w) {
-    let t = w_unit_text(u: w.unit)
-    string_contains(s: t, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --address=192.168.110.14:6379 --node-ip-address=192.168.110.11 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412 --block")
-      && string_contains(s: t, pattern: "Restart=always")
+// EVERY WORKER HOLDS ITS RANK WITH `ray start --block` AND IS ALWAYS RESTARTED, which is the rejoin
+// supervision the polling script did by hand; group A has three workers, each joining the head's rail
+// address from its own.
+test fn every_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
+  w_realized(f: fn(_h, ws) {
+    length(ws) == 3
+      && all(ws, w => string_contains(s: w_unit_text(u: w.unit), pattern: "Restart=always"))
+      && any(ws, w => string_contains(s: w_unit_text(u: w.unit), pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --address=192.168.110.14:6379 --node-ip-address=192.168.110.11 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412 --block"))
+      && any(ws, w => string_contains(s: w_unit_text(u: w.unit), pattern: "--node-ip-address=192.168.110.13 "))
   })
 }
 
@@ -76,14 +77,14 @@ test fn the_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
 // This is the 2026-09-05 drift made unwritable: an identity join against the image's own roster of
 // baked names, with the head's values equal to its leg netdev, RDMA device and rail address.
 test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric() -> Bool {
-  w_realized(f: fn(h, w) {
+  w_realized(f: fn(h, ws) {
     spark_pair_container_env_covers_every_baked_name(env: h.container.env)
-      && spark_pair_container_env_covers_every_baked_name(env: w.container.env)
+      && all(ws, w => spark_pair_container_env_covers_every_baked_name(env: w.container.env))
       && any(h.container.env, e => (e.name as String) == "TP_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
       && any(h.container.env, e => (e.name as String) == "NCCL_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
       && any(h.container.env, e => (e.name as String) == "NCCL_IB_HCA" && e.value == "rocep1s0f1")
       && any(h.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.14")
-      && any(w.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.11")
+      && any(ws, w => any(w.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.11"))
       && any(h.container.env, e => (e.name as String) == "RAY_memory_monitor_refresh_ms" && e.value == "0")
   })
 }
@@ -91,7 +92,7 @@ test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric()
 // THE CONTAINER IS CREATED FROM THE RUNTIME BUILT ON THE PINNED DIGEST, with the run configuration
 // the pair was observed with, plus the JIT cache bound to a host directory so a recreate keeps it.
 test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_config() -> Bool {
-  w_realized(f: fn(h, _w) {
+  w_realized(f: fn(h, _ws) {
     let a = h.create.arguments
     (h.create.program as String) == "/usr/bin/docker"
       && any(a, x => x == "gunbc-spark-pair-runtime:ray-2.58.0")

@@ -27,8 +27,7 @@ import extdeps.systemd.unit_file {
   serialize_systemd_unit_file,
 }
 import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
-import gunbc.spark.fabric_link_desired { SparkFabricPair, render_spark_fabric_pair }
-import gunbc.spark.fabric_switch_observed { FabricLaneObserved }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, FabricGroup, fabric_group_wire }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
@@ -357,8 +356,8 @@ type SparkPairHostRealization {
 }
 
 type SparkPairRealization
-  = SparkPairRealized { pair: SparkFabricPair, head: SparkPairHostRealization, worker: SparkPairHostRealization }
-  | SparkPairRealizationRefused { pair: SparkFabricPair, cause: NonEmptyStr }
+  = SparkPairRealized { group: FabricGroup, head: SparkPairHostRealization, workers: List<SparkPairHostRealization> }
+  | SparkPairRealizationRefused { group: FabricGroup, cause: NonEmptyStr }
 
 fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, unit: fn(DockerCreateSpec) -> SparkPairUnitRender) -> SparkPairHostRealization? {
   let env = spark_pair_container_env(lane: lane)
@@ -370,19 +369,28 @@ fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, uni
   }
 }
 
+fn spark_pair_worker_realizations(head: FabricLaneObserved, workers: List<SparkPairServingParticipant>) -> List<SparkPairHostRealization>? {
+  let realized = flat_map(workers, w =>
+    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_file(head: head, self: w.lane, spec: spec) }) {
+      Present { value: r } => [r]
+      Absent => [] as List<SparkPairHostRealization>
+    })
+  if length(realized) == length(workers) { Present { value: realized } } else { none }
+}
+
 fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
   match unit {
-    SparkPairServingUnitRefused { pair: p, cause: c } => SparkPairRealizationRefused { pair: p, cause: c }
-    SparkPairServingUnitReady { pair: p, engine: e, head: h, worker: w } =>
+    SparkPairServingUnitRefused { group: g, cause: c } => SparkPairRealizationRefused { group: g, cause: c }
+    SparkPairServingUnitReady { group: g, engine: e, head: h, workers: ws } =>
       match e {
-        OllamaServing { profile: _ } => SparkPairRealizationRefused { pair: p, cause: "a pair unit carries an Ollama engine, which has no pair realization" as NonEmptyStr }
+        OllamaServing { profile: _ } => SparkPairRealizationRefused { group: g, cause: "a group unit carries an Ollama engine, which has no group realization" as NonEmptyStr }
         VllmServing { args: args } =>
           match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_file(args: args, head: h.lane, spec: spec) }) {
-            Absent => SparkPairRealizationRefused { pair: p, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
+            Absent => SparkPairRealizationRefused { group: g, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
             Present { value: head_real } =>
-              match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_file(head: h.lane, self: w.lane, spec: spec) }) {
-                Absent => SparkPairRealizationRefused { pair: p, cause: "the worker's container environment does not cover every interface name the image bakes" as NonEmptyStr }
-                Present { value: worker_real } => SparkPairRealized { pair: p, head: head_real, worker: worker_real }
+              match spark_pair_worker_realizations(head: h.lane, workers: ws) {
+                Absent => SparkPairRealizationRefused { group: g, cause: "a worker's container environment does not cover every interface name the image bakes" as NonEmptyStr }
+                Present { value: worker_reals } => SparkPairRealized { group: g, head: head_real, workers: worker_reals }
               }
           }
       }
@@ -398,10 +406,10 @@ fn spark_pair_realizations() -> List<SparkPairRealization> {
 fn spark_pair_unit_name_for_host(host: HostIdentity) -> NonEmptyStr? {
   first(flat_map(spark_pair_realizations(), r =>
     match r {
-      SparkPairRealizationRefused { pair: _, cause: _ } => []
-      SparkPairRealized { pair: _, head: h, worker: w } =>
+      SparkPairRealizationRefused { group: _, cause: _ } => [] as List<NonEmptyStr>
+      SparkPairRealized { group: _, head: h, workers: ws } =>
         if host_identity_eq(a: h.host, b: host) { [spark_pair_head_unit_name] }
-        else if host_identity_eq(a: w.host, b: host) { [spark_pair_worker_unit_name] }
-        else { [] }
+        else if any(ws, w => host_identity_eq(a: w.host, b: host)) { [spark_pair_worker_unit_name] }
+        else { [] as List<NonEmptyStr> }
     }))
 }
