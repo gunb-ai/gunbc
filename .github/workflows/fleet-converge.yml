@@ -16,9 +16,9 @@ on:
         options: [plan, launch_environment_plan, spark_serving_plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_bootstrap, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
-        description: Spark target host for spark_serving_plan and the spark_* modes (srv5 or srv6); apply reads the subject off the plan artifact
+        description: Spark target host for spark_serving_plan and the spark_* modes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact
         required: false
-        options: [srv5, srv6]
+        options: [srv5, srv6, srv7, srv8, srv9, srv10, srv11]
         type: choice
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match.

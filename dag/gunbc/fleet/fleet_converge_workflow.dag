@@ -85,6 +85,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name }
+import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
@@ -103,7 +104,12 @@ import std.types { NonEmptyStr, List, String, Int }
 // an artifact the current run did not produce.
 data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
-data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
+// THE TARGET CHOICES ARE THE ROSTERED SPARKS, DERIVED, NOT SPELLED. The literal pair here refused the
+// first bootstrap dispatch against srv7 with an HTTP 422 from GitHub -- the workflow admitted two of
+// seven enrolled units because the list was typed when there were two. The choice list is now the
+// administrator credential roster (gunbc.spark.credential_workflow), which is itself an identity join
+// with procurement, so enrolling a Spark makes it dispatchable and nothing else can.
+data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
 data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "app_control_plane_observe", "microvm_host_converge", "guest_image_observe", "guest_image_converge", "microvm_boot_probe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_bootstrap", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
 
@@ -1043,7 +1049,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "target",
-          description: Present { value: "Spark target host for spark_serving_plan and the spark_* modes (srv5 or srv6); apply reads the subject off the plan artifact" },
+          description: Present { value: "Spark target host for spark_serving_plan and the spark_* modes (any rostered Spark, srv5..srv11); apply reads the subject off the plan artifact" },
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_spark_target_options },
