@@ -13110,6 +13110,87 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
     None
 }
 
+/// Collect a directory listing's entry names, REFUSING rather than narrowing.
+///
+/// Every arm here was previously a silent drop into a listing that then reported
+/// `success: true`, and each drop produced a population smaller than the directory while
+/// claiming to be the directory. `filesystem_io::filesystem_entry_presence` establishes an
+/// absence from non-membership in that population, so a narrowed listing mints
+/// `FilesystemEstablishedAbsence` for an entry that exists -- the absorbing fallback
+/// (`could not enumerate` widened into `enumerated, nothing more`) sitting underneath the
+/// module built to make absence honest, in the seed where no `.dag` wall can observe it.
+///
+/// The three refusals are three different facts and each says which:
+///
+/// - ADVANCEMENT. `read_dir` returning its iterator does not mean iteration succeeds; the
+///   API permits an error at any step, and iteration may continue afterwards -- so what a
+///   discarding filter collects is not even guaranteed to be a prefix, merely a subset.
+/// - REPRESENTATION. A native name that is not valid UTF-8 has no faithful spelling in this
+///   listing encoding. The refusal says the representation is unsupported. It does not
+///   invent a host I/O error and it does not report the entry missing.
+/// - AMBIGUITY. A name containing the LINE FEED that joins this listing makes one entry
+///   indistinguishable from two: `"prefix\nrepo.json"` and the pair `"prefix"`,
+///   `"repo.json"` produce identical bytes, and the membership predicate answers
+///   `repo.json` present for both. That is a fabricated PRESENCE -- the dual of the false
+///   absence above -- and admitting the queried name does not constrain it, because the
+///   collision is in the RETURNED name. Escaping it here without a matching decoder would
+///   introduce a second representation, so the listing refuses while this encoding stands.
+///
+/// Carriage return is deliberately NOT refused. It does not collide under the exact-`\n`
+/// join and split, and inventing a refusal for it here would be a restriction with no
+/// demonstrated defect behind it. Its disposition belongs to the structured-listing cut
+/// that retires this encoding, alongside the LF case.
+///
+/// The accumulated names are dropped on refusal rather than returned as a diagnostic
+/// payload: this function's caller has one listing channel, and a partial population
+/// reachable through it is a partial population that will be read as the listing.
+fn collect_listing_entry_names(entries: std::fs::ReadDir) -> Result<Vec<String>, String> {
+    // The DirEntry -> name projection is total and lives here; every DECISION lives in the
+    // function below, so the specimen that injects an advancement error exercises the same
+    // code this call reaches rather than a second implementation of enumeration.
+    collect_listing_names_from(entries.map(|entry| entry.map(|admitted| admitted.file_name())))
+}
+
+fn collect_listing_names_from(
+    entries: impl Iterator<Item = std::io::Result<std::ffi::OsString>>,
+) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = Vec::new();
+    for entry in entries {
+        let native = match entry {
+            Ok(native) => native,
+            Err(advance) => {
+                return Err(format!(
+                    "directory enumeration failed after {} entr(ies) were read, so this listing \
+                     accounts for no known portion of the directory and establishes no absence: {}",
+                    names.len(),
+                    advance
+                ))
+            }
+        };
+        let name = match native.into_string() {
+            Ok(name) => name,
+            Err(native) => {
+                return Err(format!(
+                    "directory entry name {:?} is not valid UTF-8, and this listing encoding \
+                     carries Unicode names only, so the entry cannot be represented faithfully. \
+                     The rendering shown is a diagnostic and is not the operational pathname",
+                    native
+                ))
+            }
+        };
+        if name.contains('\n') {
+            return Err(format!(
+                "directory entry name {:?} contains a line feed, which is the delimiter this \
+                 listing encoding joins entries with, so one entry would be indistinguishable \
+                 from two and a membership test could answer yes for an entry that is not there",
+                name
+            ));
+        }
+        names.push(name);
+    }
+    Ok(names)
+}
+
 fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -13733,21 +13814,26 @@ fn dispatch_file(
                     &format!("[file] list {}", path),
                 );
                 return match std::fs::read_dir(&path) {
-                    Ok(entries) => {
-                        let mut names: Vec<String> = entries
-                            .filter_map(|e| e.ok())
-                            .filter_map(|e| e.file_name().into_string().ok())
-                            .collect();
-                        names.sort();
-                        let content = names.join("\n");
-                        Ok(FileResult {
-                            success: true,
-                            byte_count: content.len() as i64,
+                    Ok(entries) => match collect_listing_entry_names(entries) {
+                        Ok(mut names) => {
+                            names.sort();
+                            let content = names.join("\n");
+                            Ok(FileResult {
+                                success: true,
+                                byte_count: content.len() as i64,
+                                path,
+                                error: String::new(),
+                                content,
+                            })
+                        }
+                        Err(error) => Ok(FileResult {
+                            success: false,
+                            byte_count: 0,
                             path,
-                            error: String::new(),
-                            content,
-                        })
-                    }
+                            error,
+                            content: String::new(),
+                        }),
+                    },
                     Err(e) => Ok(FileResult {
                         success: false,
                         byte_count: 0,
@@ -21766,6 +21852,117 @@ mod opaque_host_call_reach_tests {
                 ],
             },
             "both operations must appear, in first-reach order, without the repeat"
+        );
+    }
+}
+
+/// THE LISTING COLLECTOR'S OWN EVIDENCE.
+///
+/// Every specimen here enters `collect_listing_names_from`, which is the function the production
+/// `list` verb reaches through a total projection -- not a second implementation of enumeration.
+/// A fixture that started from an already-failed listing would exercise the downstream `.dag`
+/// fold and leave the host producer, which is where the information was lost, untested.
+#[cfg(test)]
+mod listing_collector_refuses_rather_than_narrowing {
+    use super::collect_listing_names_from;
+
+    fn ok(name: &str) -> std::io::Result<std::ffi::OsString> {
+        Ok(std::ffi::OsString::from(name))
+    }
+
+    fn advancement_error() -> std::io::Result<std::ffi::OsString> {
+        Err(std::io::Error::other(
+            "host stopped advancing the directory iterator",
+        ))
+    }
+
+    /// THE DECISIVE ONE. An ordinary name is read, then advancement fails. Discarding that error
+    /// returned the one name collected so far as a COMPLETE listing, and non-membership in it then
+    /// established an absence for every entry the iterator never reached.
+    #[test]
+    fn an_advancement_error_after_one_entry_refuses_rather_than_returning_the_prefix() {
+        let refusal =
+            collect_listing_names_from([ok("ordinary-name"), advancement_error()].into_iter())
+                .expect_err("an enumeration that failed partway is not a listing");
+        assert!(
+            refusal.contains("directory enumeration failed after 1 entr(ies)"),
+            "the refusal must say how far enumeration got: {refusal}"
+        );
+        assert!(
+            refusal.contains("establishes no absence"),
+            "the refusal must say what it does not authorize: {refusal}"
+        );
+    }
+
+    /// AND THE ERROR NEED NOT COME LAST. Rust permits iteration to continue after an error, so
+    /// what a discarding filter collects is not even guaranteed to be a PREFIX of the directory --
+    /// it is an arbitrary subset. This specimen is the one that makes "prefix" the wrong word.
+    #[test]
+    fn an_advancement_error_between_two_entries_refuses_rather_than_returning_a_subset() {
+        let refusal =
+            collect_listing_names_from([ok("first"), advancement_error(), ok("third")].into_iter())
+                .expect_err("a subset of the directory is not the directory");
+        assert!(refusal.contains("after 1 entr(ies)"), "{refusal}");
+    }
+
+    /// A native name this listing encoding cannot carry is refused, not dropped. The old code
+    /// discarded it into a `success: true` listing, which claims a completeness it does not have.
+    #[test]
+    fn a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let native = std::ffi::OsString::from_vec(vec![0x66, 0x80, 0x66]);
+            let refusal = collect_listing_names_from([ok("ordinary"), Ok(native)].into_iter())
+                .expect_err("an unrepresentable name is not an absent one");
+            assert!(refusal.contains("not valid UTF-8"), "{refusal}");
+            assert!(
+                refusal.contains("is not the operational pathname"),
+                "the diagnostic rendering must not be mistaken for the real name: {refusal}"
+            );
+        }
+    }
+
+    /// THE FABRICATED PRESENCE, WHICH IS THE DUAL OF THE FALSE ABSENCE. One entry named
+    /// "prefix\nrepo.json" joins to exactly the bytes two entries "prefix" and "repo.json" join
+    /// to, so the newline-delimited membership predicate answers `repo.json` PRESENT for a
+    /// directory that holds no such entry. Admitting the QUERIED name does not reach this: the
+    /// collision is in the name the directory RETURNED.
+    #[test]
+    fn a_returned_name_containing_the_delimiter_refuses_rather_than_fabricating_an_entry() {
+        let refusal = collect_listing_names_from([ok("prefix\nrepo.json")].into_iter()).expect_err(
+            "a name that collides with the delimiter cannot be carried by this encoding",
+        );
+        assert!(refusal.contains("contains a line feed"), "{refusal}");
+        assert!(refusal.contains("indistinguishable from two"), "{refusal}");
+    }
+
+    /// CARRIAGE RETURN IS DELIBERATELY ADMITTED. It does not collide under the exact-`\n` join and
+    /// split, so refusing it here would be a restriction with no defect behind it -- the inverse of
+    /// leaving one standing on a lapsed justification. This claim is what keeps the LF refusal from
+    /// silently widening into "any control character".
+    #[test]
+    fn a_returned_name_containing_a_carriage_return_is_still_admitted() {
+        let names = collect_listing_names_from([ok("odd\rname")].into_iter())
+            .expect("carriage return does not collide with the delimiter");
+        assert_eq!(names, vec!["odd\rname".to_string()]);
+    }
+
+    /// THE CONTROLS, and they are what keep the repair from being "refuse every listing".
+    #[test]
+    fn an_empty_directory_is_still_a_successful_empty_listing() {
+        assert_eq!(
+            collect_listing_names_from(std::iter::empty()).expect("an empty directory listed fine"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn an_ordinary_populated_directory_still_lists() {
+        assert_eq!(
+            collect_listing_names_from([ok("repo.json"), ok("objects")].into_iter())
+                .expect("an ordinary directory listed fine"),
+            vec!["repo.json".to_string(), "objects".to_string()]
         );
     }
 }

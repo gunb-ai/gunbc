@@ -19,11 +19,15 @@ Three facts qualify that, and the first two cut against widening:
 
 - **No existing consumer enumerates.** Every one of the eight modules that consume the listing feeds
   it straight into `filesystem_entry_presence`, which answers *membership* — is this one name in this
-  directory. Not one iterates the entries; not one needs `EntryKind`. The blob is adequate for every
-  consumer that exists. A corpus walk would be the first consumer needing enumeration, and the first
-  needing kind.
-- **So enumeration is a new capability, not a failing carrier.** That is close to the shape review has
-  flagged repeatedly: a representation built ahead of its boundary.
+  directory. Not one iterates the entries; not one needs `EntryKind`. ~~The blob is adequate for every
+  consumer that exists.~~ **SUPERSEDED — see §10.** The blob is not adequate for its existing
+  consumers: its producer silently narrows the population it returns, so the membership answers built
+  on it are unsound on two paths. That existing consumers ask only membership does not save a
+  population the producer already narrowed.
+- ~~**So enumeration is a new capability, not a failing carrier.**~~ **SUPERSEDED — see §10.** It is
+  both. Enumeration and `EntryKind` are new capability; the listing is *also* a failing carrier, and
+  the failure is live on main. The repair therefore comes first and does not wait on the capability
+  that discovered it.
 - **But the blob is a workaround whose justification has lapsed.** `filesystem_io` justifies the
   substring test by saying newline-wrapping makes the test line-exact "without needing a split the
   interpreter does not offer". That is false today: `split` is a builtin string method — declared in
@@ -375,6 +379,33 @@ as the second half of a live fail-open was the same defect this lane keeps findi
 finding: asserting a population without checking whether the distinction reaches a consumer. The
 correction is recorded rather than quietly edited, because a design document that silently agrees
 with whatever was true last is not evidence of anything.
+
+### A third defect, which review found and I had missed: fabricated presence
+
+The two drops narrow the population. There is a third path that *widens* the answer, and it is the
+exact dual.
+
+While the newline wire stands, a returned name containing a line feed makes one entry
+indistinguishable from two. These produce identical bytes:
+
+```
+one entry:    "prefix\nrepo.json"
+two entries:  "prefix", "repo.json"
+```
+
+`filesystem_listing_names_entry` searches for a newline-delimited occurrence, so it answers
+`repo.json` **present** in both cases. That is a fabricated presence, and admitting the *queried*
+name does not protect against it — `admit_filesystem_entry_name` constrains what a caller may ask,
+and the collision is in the name the directory *returned*.
+
+So the repair has two directions to close, not one: a listing may not silently shrink, and it may not
+silently claim an entry it does not hold. Both belong to 1A, because both are live under the current
+encoding.
+
+Carriage return is deliberately **not** given a matching refusal. It does not collide under the
+exact-`\n` join and split, and minting a refusal for it here would be a restriction with no
+demonstrated defect behind it — the inverse error of leaving one standing on a lapsed justification.
+Its disposition belongs with the LF case to the cut that retires this encoding.
 
 ### What that implies for sequencing
 
