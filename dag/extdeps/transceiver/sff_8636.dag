@@ -1,0 +1,249 @@
+module extdeps.transceiver.sff_8636
+
+import std.nat { Nat }
+import std.types { Bool, String, List }
+import std.measure { SymbolRate, symbol_rate, symbol_rate_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.ethernet.link_mode {
+  LinkMode, Modulation, Nrz, Pam4, modulation_eq, link_mode_eq,
+  ieee_25gbase_cr, ieee_100gbase_cr4,
+}
+
+// THE MANAGEMENT EEPROM OF A QSFP MODULE OR CABLE LEG -- AND THE REASON A PART NUMBER IS NOT A LINK
+// CONTRACT.
+//
+// The fact this module exists to carry is one nobody in this fleet knew until it cost half a fabric:
+// a passive copper breakout cable is FIELD-PROGRAMMED. What rate a leg negotiates is decided by bytes
+// in its EEPROM, not by the SKU on the invoice and not by the copper. Two legs of the same part
+// number, flashed differently, are two different products. So an order placed against a part number
+// alone is an order with the contract left blank.
+//
+// This is a SPECIFICATION module: it owns the SFF-8636 field layout and what the bytes mean. It owns
+// no cable. A specific part is its own subject in its own vendor module, per DESIGN section 3's
+// external upstream decomposition, and it carries a reading of these fields rather than redefining
+// them.
+//
+// WHAT THIS MODULE MAY AND MAY NOT CONCLUDE. It reads bytes and reports findings about bytes. It
+// does not certify hardware: no reading here establishes that a given assembly will carry a given
+// mode, and a leg whose coding is impeccable can still fail electrically.
+//
+// THE OBSERVED DEFECT MUST STAY REPRESENTABLE. An earlier head said the delivered cable "would have
+// had no constructor", which is backwards: a model that cannot record a contradictory EEPROM cannot
+// record the incident it exists to handle. Inventory and receipt reconciliation must be able to hold
+// missing, malformed and rejected components. What loses its constructor is an ADMITTED PURCHASE
+// lacking sufficient evidence -- never the observation of a bad part.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "snia.org/technology-communities/sff/specifications"
+  }
+}
+
+// ================= BYTE 128: IDENTIFIER =================
+//
+// Unmodelled codes are CARRIED, not refused. An identifier this lane has not read from SFF-8024 is a
+// gap in our reading, not a defect in the module -- refusing it would make the corpus unable to
+// record a part it can plainly observe. This is a typed, located carrier and not a widening
+// fallback: nothing downstream may treat `IdentifierUnmodelled` as any particular module type.
+type TransceiverIdentifier
+  = QsfpPlus
+  | Qsfp28
+  | QsfpDd
+  | IdentifierUnmodelled { code: Nat }
+
+fn transceiver_identifier_from_byte(code: Nat) -> TransceiverIdentifier {
+  if code == 13 {
+    QsfpPlus
+  } else if code == 17 {
+    Qsfp28
+  } else if code == 24 {
+    QsfpDd
+  } else {
+    IdentifierUnmodelled { code: code }
+  }
+}
+
+// ================= BYTE 139: ENCODING =================
+//
+// The encoding byte is what carries modulation. SFF-8636 added the PAM4 value (0x08) when 50G-per-
+// lane PMDs arrived; the older 64B/66B value (0x05) implies NRZ line signalling.
+type Sff8636Encoding
+  = EncodingUnspecified
+  | Encoding64b66b
+  | EncodingPam4
+  | EncodingUnmodelled { code: Nat }
+
+fn sff8636_encoding_from_byte(code: Nat) -> Sff8636Encoding {
+  if code == 0 {
+    EncodingUnspecified
+  } else if code == 5 {
+    Encoding64b66b
+  } else if code == 8 {
+    EncodingPam4
+  } else {
+    EncodingUnmodelled { code: code }
+  }
+}
+
+// The modulation an encoding implies, or Absent where the byte does not decide one. Absent is a
+// refusal to guess, not a default: a coding whose modulation is undecidable cannot be checked for
+// consistency, and the constructor below treats that as unverifiable rather than as agreement.
+fn sff8636_encoding_modulation(e: Sff8636Encoding) -> Modulation? {
+  match e {
+    Encoding64b66b => Present { value: Nrz }
+    EncodingPam4 => Present { value: Pam4 }
+    EncodingUnspecified => none
+    EncodingUnmodelled { code: c } => none
+  }
+}
+
+// ================= BYTE 140: NOMINAL SIGNALLING RATE (BAUD) =================
+//
+// BYTE 140 IS DENOMINATED IN 100 MBd -- SYMBOLS, NOT BITS. The first version of this module typed it
+// as Bandwidth, which is the same units conflation the sibling link_mode module exists to prevent,
+// authored inside the module written to prevent it. It carries SymbolRate now, so the mistake is a
+// type error rather than a reading error.
+//
+// The trap is partly upstream: `ethtool -m` labels this field "BR, nominal" and prints Mb/s, so a
+// reader who trusts the tool's unit inherits the conflation. The specification's unit governs here.
+//
+// 0xFF IS AN ESCAPE, NOT A RATE. SFF-8636 specifies that 255 means the nominal rate exceeds what one
+// byte can express and the real figure lives in byte 222, in units of 250 MBd.
+//
+// THIS MATTERS FOR THE CABLE THAT PROMPTED THE MODULE, and is flagged as a hypothesis rather than a
+// finding. `ethtool -m` reported "BR, nominal: 25500 Mb/s" on the delivered legs. 25500 is exactly
+// 255 x 100 -- the escape value multiplied out and rendered as though it were a measurement. Whether
+// byte 140 actually holds 0xFF, and what byte 222 then says, was NOT read in this lane: it needs the
+// raw dump (`ethtool -m <dev> raw on`), not the decoded view. Until that is read, a leg whose byte
+// 140 is 255 carries NominalRateEscaped and NOT a 25.5 GBd claim, because recording an escape marker
+// as a measurement is the fabrication this whole subject exists to catch.
+type Sff8636NominalRate
+  = NominalRateDirect { rate: SymbolRate }
+  | NominalRateEscaped
+
+fn sff8636_nominal_rate_from_byte140(code: Nat) -> Sff8636NominalRate {
+  if code == 255 {
+    NominalRateEscaped
+  } else {
+    NominalRateDirect { rate: symbol_rate(code * 100000000) }
+  }
+}
+
+// Byte 222, the extended field the escape points at, in units of 250 MBd.
+fn sff8636_nominal_rate_from_byte222(code: Nat) -> SymbolRate {
+  symbol_rate(code * 250000000)
+}
+
+// ================= BYTE 192: EXTENDED SPECIFICATION COMPLIANCE =================
+//
+// This is the byte the ConnectX-7 reads to decide which rates to enable, so it is the byte the whole
+// incident turns on. The code is carried as its raw value with the modes it attests, where this lane
+// has read them.
+//
+// WHAT IS NOT ESTABLISHED: the code that WOULD attest 100GBASE-CR2. SFF-8024 assigns one, this lane
+// did not read it against a copy of the specification, and writing a plausible value here would be a
+// fabricated citation of exactly the kind that caused the problem being modelled. The refusal below
+// does not need it -- internal inconsistency is decidable without knowing the right answer -- so the
+// gap blocks nothing except the eventual positive control. Its trigger is one reading of SFF-8024
+// Table 4-4.
+type ExtendedCompliance sole_constructor {
+  code: Nat
+  attested_modes: List<LinkMode>
+}
+
+// 0x0B. Read from the delivered cable, and its meaning read from the ethtool decode the operator
+// captured: "100GBASE-CR4 or 25GBASE-CR CA-L". Both attested modes are NRZ at 25G per lane, which is
+// what makes the PAM4 encoding byte beside it a contradiction rather than a nuance.
+data ext_compliance_0x0b: ExtendedCompliance = ExtendedCompliance {
+  code: 11,
+  attested_modes: [ieee_100gbase_cr4, ieee_25gbase_cr],
+}
+
+// ================= THE LEG CODING, AND WHAT ITS BYTES CAN AND CANNOT DECIDE =================
+//
+// A coding carries BOTH extended-compliance codes. SFF-8636 provides a secondary code at byte 116
+// beside the primary at byte 192, and SFF-8024 permits a module supporting several encodings to
+// report the one belonging to its PRIMARY PRODUCT APPLICATION. The first version of this module read
+// only byte 192 and byte 139 and declared their disagreement a contradiction; that predicate is not
+// sound over a multi-application module, and the overreach was caught in review.
+type Sff8636LegCoding sole_constructor {
+  identifier: TransceiverIdentifier
+  primary_compliance: ExtendedCompliance
+  secondary_compliance: ExtendedCompliance?
+  encoding: Sff8636Encoding
+  nominal_rate: Sff8636NominalRate
+}
+
+// THREE FINDINGS, NOT ONE REFUSAL. Collapsing these would let the strongest claim absorb the weakest
+// evidence, which is how a decoder's ignorance turns into an accusation against a part.
+//
+//   Contradictory        -- every attested mode under the OBSERVED profile disagrees with the
+//                           encoding byte. A claim about these bytes, not about the hardware.
+//   InsufficientEvidence -- nothing in the observed bytes attests the mode the operator requires.
+//                           THIS IS WHERE THE DELIVERED FS CABLE LANDS: 0x0B attests 25G-per-lane
+//                           modes and nothing attests 100GBASE-CR2, which is why the ConnectX-7
+//                           refuses to enable 100G_2X. It is a strictly weaker and strictly more
+//                           defensible finding than "this EEPROM is self-contradictory".
+//   NotUnderstood        -- the decoder has no row for what it read. An unknown code must never
+//                           become a proven contradiction merely because this model lacks a row for
+//                           it; that is the decoder's gap, not the module's defect.
+type Sff8636CodingFinding
+  = CodingConsistentWithRequest { coding: Sff8636LegCoding }
+  | CodingContradictsEncoding { encoding_modulation: Modulation, attested_mode: LinkMode }
+  | CodingInsufficientForRequestedMode { requested: LinkMode, coding: Sff8636LegCoding }
+  | CodingNotUnderstood { encoding: Sff8636Encoding }
+
+// Every mode attested by either compliance code. The union is the observable profile; reading only
+// the primary is what made the earlier predicate unsound.
+fn sff8636_attested_modes(coding: Sff8636LegCoding) -> List<LinkMode> {
+  match coding.secondary_compliance {
+    Present { value: sec } =>
+      concat(coding.primary_compliance.attested_modes, sec.attested_modes)
+    Absent => coding.primary_compliance.attested_modes
+  }
+}
+
+// THE QUESTION IS ALWAYS RELATIVE TO A REQUESTED MODE. There is no such thing as a coding that is
+// "correct" in the abstract -- only one that does or does not attest what this endpoint pair needs.
+// Asking it without a request is what let the earlier version imagine it could judge a part alone.
+fn sff8636_assess_leg_coding(
+  coding: Sff8636LegCoding,
+  requested: LinkMode,
+) -> Sff8636CodingFinding {
+  let attested = sff8636_attested_modes(coding: coding)
+  if any(attested, m => link_mode_eq(a: m, b: requested)) {
+    CodingConsistentWithRequest { coding: coding }
+  } else {
+    match sff8636_encoding_modulation(e: coding.encoding) {
+      Absent => CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+      Present { value: enc_mod } => {
+        let agreeing = filter(attested, m => modulation_eq(a: m.modulation, b: enc_mod))
+        match agreeing.first() {
+          Absent =>
+            match attested.first() {
+              Present { value: bad } =>
+                CodingContradictsEncoding { encoding_modulation: enc_mod, attested_mode: bad }
+              Absent => CodingNotUnderstood { encoding: coding.encoding }
+            }
+          Present { value: ok } =>
+            CodingInsufficientForRequestedMode { requested: requested, coding: coding }
+        }
+      }
+    }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.transceiver.sff_8636",
+      decl_name: "Sff8636LegCoding",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
