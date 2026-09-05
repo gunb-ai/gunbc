@@ -152,6 +152,7 @@ import gunbc.recurring_failure_mode.one_disposition_defined_jointly_by_independe
 import gunbc.recurring_failure_mode.wait_keyed_on_a_resource_whose_arrivals_outpace_its_service { wait_keyed_on_a_resource_whose_arrivals_outpace_its_service }
 import gunbc.recurring_failure_mode.emitter_residual_renders_inert_text { emitter_residual_renders_inert_text }
 import gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional { kind_carried_but_its_fields_stay_optional }
+import gunbc.recurring_failure_mode.claim_edit_changes_execution_policy_outside_reported_cost_delta { claim_edit_changes_execution_policy_outside_reported_cost_delta }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -295,4 +296,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   wait_keyed_on_a_resource_whose_arrivals_outpace_its_service,
   emitter_residual_renders_inert_text,
   kind_carried_but_its_fields_stay_optional,
+  claim_edit_changes_execution_policy_outside_reported_cost_delta,
 ]
