@@ -68,6 +68,7 @@ use crate::std_syntax::BinOp::{
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_type_application::TypeApplication;
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
     kernel_type_set,
@@ -320,6 +321,7 @@ pub struct ResolvedFormal {
     pub declared_type: Rc<Node>,
     pub declaration_bound_conformance: Rc<Node>,
     pub substitution_basis: Rc<Node>,
+    pub product_application: Option<Rc<TypeApplication<Rc<Node>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -327,6 +329,7 @@ pub struct ResolvedCallFormal {
     pub formal_index: i64,
     pub formal: Rc<ResolvedFormal>,
     pub matched_argument_index: Option<i64>,
+    pub produced_product_application: Option<Rc<TypeApplication<Rc<Node>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

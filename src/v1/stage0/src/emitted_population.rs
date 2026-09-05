@@ -89,6 +89,7 @@
 // src/std_target_representation.rs
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
+// src/std_type_application.rs
 // src/std_types.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
