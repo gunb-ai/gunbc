@@ -369,7 +369,7 @@ fn covered_count(v: GateStandingVerdict) -> Int {
 fn cause_labels(v: GateStandingVerdict) -> List<NonEmptyStr> {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => ["standing-refused-unwell-formed"],
-    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => ["standing-refused-other-fabric_subject"],
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => ["standing-refused-other-subject"],
     StandingRefusedLedgerIsOfAnotherRevision {} => ["standing-refused-other-revision"],
     StandingRefusedLedgerIsNotCandidateBound {} => ["standing-refused-not-candidate-bound"],
     StandingDerived { covered, uncovered } => map(uncovered, s => match s {
@@ -409,7 +409,7 @@ test fn removing_the_evidence_collapses_standing_without_touching_well_formednes
 // evidence about another tree is not evidence of no coverage.
 test fn a_ledger_of_another_subject_refuses_rather_than_deriving_zero() -> Bool {
   let v = gate_standing(one_gate_two_obligations(), nominated_rows(), fabric_ledger_of("bbbbbbbbbbbbbbbb"), [fabric_passing_row()], commit_a(), fabric_subject("aaaaaaaaaaaaaaaa"))
-  fabric_standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-other-fabric_subject")
+  fabric_standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-other-subject")
 }
 
 test fn evidence_that_errored_earns_nothing() -> Bool {
@@ -884,7 +884,7 @@ test fn a_ledger_whose_subject_is_not_a_digest_refuses_by_name() -> Bool {
     plannable_roster(),
     ledger_with_header(ledger_fixture_commit, "zz", every_nomination_passing()),
     ledger_fixture_commit)
-  !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-fabric_subject-unrecognized offending=zz"
+  !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-subject-unrecognized offending=zz"
 }
 
 // AN ADJUDICATED COMMIT THE HOST COULD NOT READ MUST NOT DEGRADE INTO "ADJUDICATE ANYWAY".
