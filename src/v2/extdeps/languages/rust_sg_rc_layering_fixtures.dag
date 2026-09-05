@@ -1,0 +1,123 @@
+module v2.extdeps.languages.rust_sg_rc_layering_test
+
+import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.rust {
+  rust_named_edge,
+  rust_reference_layer_tokens,
+  rust_sg2_binding_spellings,
+  rust_sg2_lex_rules,
+  rust_sg_rc_use_site_ownership_catalog,
+  rust_type_expression_projection_bundle_node
+}
+import v2.std.collection { List, empty_map }
+import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  target_model_emit_transforms_empty,
+  target_reference_layer_tokens_node,
+  target_use_site_ownership_catalog_node
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node { Conj, Edge, Node, TypeNode }
+
+// Cost fixtures for v2.test.manual.sg_rc_layering. Five of that module's claims demanded
+// rust_sg2_type_expr_target_model(); each is rewired to whichever fixture below carries what it
+// actually reads. The claims are not changed, and sg_rc_target() itself is left in place for
+// sg_rc_outcome_inner_sg2_args_preserved, which runs translate_type_expression_project and is a
+// different demand shape (it is also a floor_cost_debt row, so its identity is roster-named).
+//
+// The mechanism is that a smaller TargetModel is cheaper to BUILD. Which part of it was expensive
+// is a question for the instrument, not for this comment: per DESIGN section 4c no annotation can
+// carry a cost measurement, so the figures live only in required_floor_claim_cost.tsv and the
+// rewiring above is authored from what each claim READS, which is decidable from source.
+
+fn sg_rc_layering_fixture_bundle(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sg_rc_layering_fixture_reference_layer_tokens_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_reference_layer_tokens,
+    target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+  )
+}
+
+// THE LIVE RUST CATALOG, DELIBERATELY. sg_rc_probe_heap_param_without_row_rejects asserts that
+// rust's own catalog carries no OwnershipAtFunctionParameter row for the probe-heap carrier, and
+// the wrap witnesses depend on rust's rows disagreeing by position
+// (docs/plans/rc-ownership-wrap-decision-design.md). A synthetic row set would agree with itself,
+// so those claims would stay green while testing a different question.
+fn sg_rc_layering_fixture_ownership_catalog_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_use_site_ownership_realizations,
+    target: target_use_site_ownership_catalog_node(
+      rows: rust_sg_rc_use_site_ownership_catalog()
+    )
+  )
+}
+
+fn sg_rc_layering_fixture_type_expression_projection_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_type_expression_projection,
+    target: rust_type_expression_projection_bundle_node()
+  )
+}
+
+// target_translation_rules_budget reads this edge through target_bundle_child, which REFUSES when
+// it is absent, so the serialize path needs it present. Its only use is node_subtree_count as a
+// recursion budget, and the production sg2 bundle carries the same empty conj node here.
+fn sg_rc_layering_fixture_translation_rules_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_translation_rules,
+    target: sg_rc_layering_fixture_bundle(children: Empty)
+  )
+}
+
+// The two edges wrap_decision_gate reads by name. value_semantics_carriers is absent here exactly
+// as it is absent from the production sg2 bundle, and an absent edge decodes to the empty carrier
+// list rather than refusing. No lex rules and no binding spellings: nothing on the wrap-gate or
+// value-expression path consults either.
+fn sg_rc_layering_gate_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: sg_rc_layering_fixture_bundle(
+      children: [
+        sg_rc_layering_fixture_reference_layer_tokens_edge(),
+        sg_rc_layering_fixture_ownership_catalog_edge()
+      ]
+    ),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: Empty,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// The serialize target keeps rust's production lex rules and binding spellings, because
+// sg_rc_f1_dual_boundary_holds asserts the exact rendered text "Rc<Diagnostics>" and
+// "Diagnostics": lex_rules_literal spells the projection's open and close tokens out of the lex
+// rules, and type_expr_spelling_for_atom spells the carrier out of the binding map. Those two
+// values ARE that claim's subject, so substituting cheaper ones would change what it tests.
+fn sg_rc_layering_serialize_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: sg_rc_layering_fixture_bundle(
+      children: [
+        sg_rc_layering_fixture_translation_rules_edge(),
+        sg_rc_layering_fixture_type_expression_projection_edge()
+      ]
+    ),
+    lex: ModeledLexRules { root: rust_sg2_lex_rules() },
+    binding_spellings: rust_sg2_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: Empty,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}

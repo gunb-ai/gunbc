@@ -25,7 +25,10 @@ import v2.extdeps.languages.dag {
   dag_match_if_body_fixture
 }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
-import v2.extdeps.languages.rust_test { rust_match_target_model_staging }
+import v2.extdeps.languages.rust_execution_test {
+  rust_execution_match_target,
+  rust_execution_match_runtime_target
+}
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
@@ -325,7 +328,7 @@ fn emit_match_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
 fn emit_match_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_match_eval_subject(tree: tree),
-    target: rust_match_target_model_staging()
+    target: rust_execution_match_target()
   )
 }
 
@@ -398,7 +401,7 @@ fn emit_match_eval_unbuildable_run(tree: InferredTree) -> TestClaimRun<Node, Run
     source_outcome: outcome_accepted(
       value: Medium { carried: emit_match_eval_unbuildable_source_text, fidelity: Lossless }
     ),
-    target: rust_match_target_model_staging()
+    target: rust_execution_match_runtime_target()
   )
 }
 
@@ -454,7 +457,7 @@ test fn emit_host_match_eval_only_accepts() -> Bool {
 test fn emit_host_match_emit_only_accepts() -> Bool {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      match emit(tree: tree, target: rust_match_target_model_staging()) {
+      match emit(tree: tree, target: rust_execution_match_target()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
