@@ -46,6 +46,7 @@
 // src/std_algebra.rs
 // src/std_checked_arithmetic.rs
 // src/std_coercion.rs
+// src/std_compiler_entry.rs
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs

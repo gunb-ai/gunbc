@@ -43,6 +43,7 @@ import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
 import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
+import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
 import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
@@ -89,7 +90,7 @@ import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_bas
 // `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`. `NextRungTrigger` now
 // carries the operative half as `capability` and the asked lanes as modeled
 // `DashboardWorkItemReferent` rows in `awaiting`, and `every_stall_trigger_is_admitted` refuses a
-// capability that spells a referent back into itself. Two rows were migrated by that change --
+// capability that spells a referent back into itself. The rows migrated by that change --
 // `operation_argv_binding_wall_stall`, `external_model_scope_live_cover_stall`,
 // `observation_heartbeat_lockstep_stall` and `gitattributes_committed_emit_drift_stall` -- four,
 // not the three this paragraph's dated reading counts, because that reading enumerated the nodes
@@ -189,6 +190,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   runner_activation_safety_stall,
   declaration_index_fixture_exemption_classification_stall,
   floor_cost_basis_boundedness_stall,
+  axis_list_re_enumerates_its_variant_type_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

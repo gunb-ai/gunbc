@@ -5,7 +5,7 @@ import extdeps.crypto.hash { sha256_digest }
 import extdeps.github.actions_runner { ActionsRunnerRelease }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
-import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
 import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
 import gunbc.runner_guest_image {
   GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
@@ -14,7 +14,8 @@ import gunbc.runner_guest_image {
   ArtifactNotMeasured,
   guest_artifact_verdict, guest_artifact_verdict_admits_build,
   runner_guest_image_name, runner_guest_image_path, runner_guest_tree_dir,
-  runner_guest_agent_unit, runner_guest_agent_unit_path, runner_guest_agent_wants_path,
+  runner_guest_agent_unit, runner_guest_agent_unit_path,
+  runner_guest_agent_drop_in_path, runner_guest_agent_target_drop_in,
   runner_guest_image_size, runner_guest_image_filesystem,
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -119,16 +120,38 @@ test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
     && string_contains(s: text, pattern: "StandardOutput=journal+console")
     && string_contains(s: text, pattern: "Type=oneshot")
     && string_contains(s: text, pattern: "WantedBy=multi-user.target")
+    && string_contains(s: text, pattern: "ExecStopPost=")
 }
 
-// THE ENABLE PLACEMENT IS THE SAME UNIT UNDER THE TARGET'S WANTS DIRECTORY, both derived from the
-// image root. A unit written only to /etc/systemd/system is never started.
-test fn the_agent_is_placed_where_the_default_target_reaches_it() -> Bool {
-  let a = runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image)
-  let w = runner_guest_agent_wants_path(root: "/r", image: gunbc_runner_guest_image)
-  a != w
-    && string_contains(s: a, pattern: "/etc/systemd/system/gunbc-runner-agent.service")
-    && string_contains(s: w, pattern: "/etc/systemd/system/multi-user.target.wants/gunbc-runner-agent.service")
+// THE REGRESSION CONTROL FOR THE ACTIVATION DEFECT, and it is written against the mechanism systemd
+// actually reads rather than against the unit's own text.
+//
+// The previous witness here asserted that `WantedBy=multi-user.target` appeared in the unit and that
+// a second file landed under multi-user.target.wants/. Both assertions were TRUE and the image still
+// did not start its agent: systemd's dependency loader skips any entry in a .wants/ directory that is
+// not a symlink, so the second file was inert. A correct assertion over the wrong subject -- it could
+// never have gone red for the reason that mattered.
+//
+// This asserts the drop-in instead: a `<target>.d/*.conf` fragment carrying `Wants=` naming the
+// service, which is merged into the target by the ordinary drop-in path and has no symlink
+// requirement. The red is a build that stops emitting that fragment, or emits one that does not name
+// the unit -- which is exactly the state the merged image was in.
+test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool {
+  let path = runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image)
+  let body = serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in())
+  string_contains(s: path, pattern: "/etc/systemd/system/multi-user.target.d/")
+    && string_contains(s: path, pattern: ".conf")
+    && string_contains(s: body, pattern: "[Unit]")
+    && string_contains(s: body, pattern: "Wants=gunbc-runner-agent.service")
+    && path != runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image)
+}
+
+// NOTHING IS WRITTEN INTO A .wants/ DIRECTORY ANY MORE, and this says so directly. A future author
+// restoring the "just copy the unit into .wants/" shortcut reds here even if the drop-in above still
+// stands, because the failure mode was an INERT file that looked like activation.
+test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool {
+  !string_contains(s: runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
+    && !string_contains(s: runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
 }
 
 // THE mke2fs OPERAND CARRIES ITS UNIT. An unsuffixed fs-size is a BLOCK count, so a builder that
