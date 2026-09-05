@@ -5,9 +5,12 @@ import v2.compiler.translate { translate_apply_use_site_ownership_to_projected_b
 import v2.compiler.wrap_decision { wrap_decision_gate, wrap_decision_flow_gate }
 import v2.extdeps.languages.rust {
   rust_named_edge,
-  rust_sg2_type_expr_target_model,
   rust_sg_rc_use_site_ownership_catalog,
   rust_type_expression_projection
+}
+import v2.extdeps.languages.rust_wrap_decision_test {
+  wrap_decision_composite_target,
+  wrap_decision_minimal_target
 }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -58,7 +61,7 @@ import v2.std.text { String }
 // reds together says less than one whose profile names which witness guards which arm.
 
 fn wrap_decision_sg_rc_target() -> TargetModel {
-  rust_sg2_type_expr_target_model()
+  wrap_decision_minimal_target()
 }
 
 fn wrap_decision_bundle_absent_target() -> TargetModel {
@@ -427,7 +430,7 @@ fn wrap_decision_composite_boundary_result() -> Node {
   match translate_apply_use_site_ownership_to_projected_boundary(
     projected: wrap_decision_composite_projected(),
     source_for_binding: wrap_decision_composite_source(),
-    target: wrap_decision_sg_rc_target(),
+    target: wrap_decision_composite_target(),
     projection: rust_type_expression_projection(),
     use_site: OwnershipAtStructField
   ) {

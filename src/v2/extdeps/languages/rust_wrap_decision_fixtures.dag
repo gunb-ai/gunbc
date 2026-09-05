@@ -1,0 +1,88 @@
+module v2.extdeps.languages.rust_wrap_decision_test
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.rust {
+  rust_named_edge,
+  rust_reference_layer_tokens,
+  rust_sg_rc_use_site_ownership_catalog,
+  rust_type_expression_projection_bundle_node
+}
+import v2.std.collection { empty_map }
+import v2.std.compilers.lexing { VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  target_model_emit_transforms_empty,
+  target_reference_layer_tokens_node,
+  target_use_site_ownership_catalog_node
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node { Conj, Node, TypeNode }
+
+// Minimal fixture for single-position claims — only the catalog edges needed
+// by wrap_decision_gate are present; lex, binding_spellings, etc. are empty.
+fn wrap_decision_minimal_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_use_site_ownership_realizations,
+          target: target_use_site_ownership_catalog_node(
+            rows: rust_sg_rc_use_site_ownership_catalog()
+          )
+        ),
+        rust_named_edge(
+          name: ^target_model_edge_reference_layer_tokens,
+          target: Node {
+            kind: TypeNode { connective: Conj },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+          }
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// Richer fixture for composite claims that reach type_expression_projection
+// and reference_layer_tokens content via translate_apply_wrap_gate_to_type_shell.
+fn wrap_decision_composite_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_use_site_ownership_realizations,
+          target: target_use_site_ownership_catalog_node(
+            rows: rust_sg_rc_use_site_ownership_catalog()
+          )
+        ),
+        rust_named_edge(
+          name: ^target_model_edge_reference_layer_tokens,
+          target: target_reference_layer_tokens_node(
+            tokens: rust_reference_layer_tokens()
+          )
+        ),
+        rust_named_edge(
+          name: ^target_model_edge_type_expression_projection,
+          target: rust_type_expression_projection_bundle_node()
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
