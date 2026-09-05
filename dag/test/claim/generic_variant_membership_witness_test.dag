@@ -1,0 +1,98 @@
+module test.claim.generic_variant_membership_witness
+
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture, MultiModuleCompileFixtureOutcome,
+  FixtureCompileRefused, FixtureCompileCompleted,
+  fixture_source, compile_fixture, fixture_blocking_rows
+}
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The manifest is the entire nested compilation population. Neither the fixture's
+// types nor its imports are supplied by the live tree. A harness refusal cannot
+// satisfy either the negative or the positive control.
+fn compile_membership_source(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [fixture_source(path: "membership.dag", content: source)],
+    entry: "membership.dag"
+  })
+}
+
+fn generic_membership_source(constructor: String) -> String {
+  concat("module membership\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder { r: Out<Int> }\nfn probe() -> Holder { Holder { r: ", constructor, " } }\n")
+}
+
+fn membership_source_refuses_foreign_owner(source: String, owner_shape: String) -> Bool {
+  match compile_membership_source(source: source) {
+    FixtureCompileRefused { module_count: modules, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (fixture_blocking_rows(rows: rows) |> any(row =>
+        row.diagnostic_class == "TypeMismatch" && row.subject_name == owner_shape))
+    _ => false
+  }
+}
+
+test fn generic_position_refuses_foreign_constructor() -> Bool {
+  membership_source_refuses_foreign_owner(
+    source: generic_membership_source(constructor: "Zed { q: 1 }"),
+    owner_shape: "Coproduct(Other)"
+  )
+}
+
+test fn generic_position_accepts_its_own_constructor() -> Bool {
+  membership_source_is_clean(source: generic_membership_source(constructor: "Acc { value: 1 }"))
+}
+
+fn membership_source_is_clean(source: String) -> Bool {
+  match compile_membership_source(source: source) {
+    FixtureCompileCompleted { module_count: modules, emitted_files: files, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (files |> count) > 0 && (rows |> count) == 0
+    _ => false
+  }
+}
+
+// A generic payload is still unconstrained by its owner. Fixing owner membership
+// must not require that every type variable inside a valid constructor be ground.
+test fn generic_payload_remains_admissible_inside_its_owner() -> Bool {
+  membership_source_is_clean(source: "module membership\ntype Out<T> = | Acc { value: T } | Rej\nfn wrap<T>(value: T) -> Out<T> { Acc { value: value } }\n")
+}
+
+// Baseline 03a3b91fb4c1 emits this advisory: direct-call inhabitance
+// deliberately judges the unbound substitution basis. Preserve that measured
+// verdict while proving callable application completes and emits an artifact.
+test fn generic_function_application_remains_callable() -> Bool {
+  match compile_membership_source(source: "module membership\nfn identity<T>(x: T) -> T { x }\nfn probe() -> Int { identity(x: 1) }\n") {
+    FixtureCompileCompleted { module_count: modules, emitted_files: files, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      modules == 1 && (files |> count) > 0 && (rows |> count) == 1
+        && (rows |> all(row => !row.blocking
+          && row.diagnostic_class == "DeclaredTypeInhabitanceUndecided"
+          && row.subject_name == "direct call argument for parameter 'x'"))
+    _ => false
+  }
+}
+
+// A positive source control, not coverage of field_expected's callable disjunct:
+// parsed Arrow types carry an ident_span, as do synthetic make_callable_type
+// results, so the preceding span disjunct already supplies the expected context.
+test fn generic_callable_field_remains_accepted() -> Bool {
+  membership_source_is_clean(source: "module membership\ntype Functions<T> { run: fn(T) -> T }\nfn functions<T>() -> Functions<T> { Functions { run: x => x } }\n")
+}
+
+// Callable types are identified by their Arrow, independently of arity. They
+// remain outside nominal-constructor membership at field positions. The unary
+// parameter is also applied. Applying a nullary parameter f() refuses on the
+// 03a3 baseline (c42b1096), so that separate gap cannot validate this change.
+test fn callable_fields_and_unary_application_remain_accepted() -> Bool {
+  membership_source_is_clean(source: "module membership\ntype Functions { zero: fn() -> Int, one: fn(Int) -> Int }\nfn zero() -> Int { 0 }\nfn one(x: Int) -> Int { x }\nfn functions() -> Functions { Functions { zero: zero, one: one } }\nfn use_one(f: fn(Int) -> Int) -> Int { f(1) }\nfn probe() -> Int { use_one(f: one) }\n")
+}
+
+// The same refusing instrument must reach the pre-existing non-generic wall.
+// This remains useful if the generic judgment is removed: only the generic RED
+// should change its answer, while both controls still pass.
+test fn monomorphic_position_still_refuses_foreign_constructor() -> Bool {
+  membership_source_refuses_foreign_owner(
+    source: "module membership\ntype A1 = | Aye { q: Int }\ntype B1 = | Bee { q: Int }\ntype Holder { r: A1 }\nfn probe() -> Holder { Holder { r: Bee { q: 1 } } }\n",
+    owner_shape: "Coproduct(B1)"
+  )
+}

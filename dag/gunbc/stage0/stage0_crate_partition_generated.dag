@@ -40,6 +40,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_coercion",
         "extdeps_currency_currency",
         "std_decl_ref",
+        "std_type_application",
         "std_keyed_row",
         "std_keyed_roster",
         "std_roster_frontier",

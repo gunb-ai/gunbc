@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.direct_generic_application_admits_a_distinct_phantom_argument
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data direct_generic_application_admits_a_distinct_phantom_argument: RecurringFailureMode = RecurringFailureMode {
+  identity: "direct_generic_application_admits_a_distinct_phantom_argument" as NonEmptyStr,
+  receipts: [
+    "HARM: a direct call accepts a value with a different phantom type argument from its declared parameter. The runtime fields agree, but the declared type identities do not. This is the values-inhabit-declared-types floor of DESIGN section 4b. ",
+    "MEASUREMENT: origin/main at 03a3b91fb4c1ea7e408df2cb484f475d75080a7f, BuildBuddy invocation 5e149d38-87ae-483c-a249-b1dbb54babb1. The one-source v1-to-Rust fixture declares type First, type Second, type Record<P> { n: Int }, fn take(q: Record<First>) -> Int { q.n }, and fn probe(q: Record<Second>) -> Int { take(q: q) }. It resolves one source, emits six files, and reports zero diagnostics. ",
+    "SPEAKING CONTROL: on the same baseline binary, spelling the two positions through FirstRecord = Record<First> and SecondRecord = Record<Second> refuses TypeMismatch. A matching alias passed to a generic Record<P> parameter completes with zero diagnostics. The distinction is therefore enforced for these alias spellings but absent for the direct applications. ",
+    "MECHANISM, DISCRIMINATED: invocation 3abd8f6f-db2c-491a-9dc4-b06d8017b8df shows ResolvedFormal.declared_type and the raw actual retain First/Second; only the older conformance consumer receives Product(Record)/Product(Record). Invocation 2a450014-5839-4264-bdc8-8ded09b39871 enters the successor applied_type_argument_conflicts for both marker shapes. Adding fields to First and Second yields two DeclaredTypeNotInhabited diagnostics; the bare pair still emits zero. The existing declaration-reference lookup identifies both bare declarations exactly, but applied_type_argument_identity_known requires structure and abstains. Both instrumented builds were throwaway hand-edited-mirror probes, restored, not generated implementation artifacts. ",
+    "RUNG FOUND AT AND CURRENT RUNG: OutsideTheLadder. This row records an executed silent acceptance, not a completed repair. The ceiling is structural refusal derived from constructor identity and all applied arguments. ",
+    "NEXT-RUNG TRIGGER: the existing successor uses established declaration identity to distinguish bare markers, with declaration-bound application ownership preserved through alias routing at the direct-call declared position, with an executed negative for distinct arguments, positives for equal arguments and equivalent aliases, and a mutation that reopens the acceptance. A rendered type name or a diagnostic variant is not this evidence. ",
+    "CORPUS INTENT: std.measure declares PerSecond, PerMinute, PerHour, PerMonth, and Once as bare types, and states that billing unit is part of the fact. The fixture reproduces that marker shape, but a direct MoneyRate<PerMinute>/MoneyRate<PerHour> corpus-import fixture has not yet been measured; this row does not turn source similarity into execution evidence. ",
+    "RELATED CLASS: gunbc.recurring_failure_mode.generic_position_admits_a_foreign_constructor records a foreign owner admitted at a generic position because a generic declaration was classified as callable. This row concerns different applications of the SAME owner; repairing that guard alone leaves this specimen accepted. ",
+    "WHY EXISTING GREEN EVIDENCE DID NOT COVER THIS: test.claim.phantom_marker_type_argument_identity_witness tests distinct marker rendering and preservation across outer renderers. It does not ask whether a value with one argument is refused at a position declaring another. Its rendering claims remain valid and need an inhabitance sibling, not replacement. Its markers are coproduct variants; this measured fixture uses bare marker declarations, so no production-path coverage of the variant shape is claimed here. ",
+  ],
+  evidence: [],
+}

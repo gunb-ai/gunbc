@@ -1,5 +1,7 @@
 module v1.compiler.dag_collect
 
+import std.type_application { TypeApplication }
+
 import v1.std.core {
   Node,
   InferredNode, Resolved,
@@ -113,13 +115,23 @@ fn dag_collect_call_formals(expr_data: ExprData, slots: Map<String, DagCollectSl
           fold(plan, init: slots, f: (acc, application) =>
             let acc = dag_collect_insert_slots(node: application.formal.declared_type, slots: acc, collision_errors: collision_errors)
             let acc = dag_collect_insert_slots(node: application.formal.declaration_bound_conformance, slots: acc, collision_errors: collision_errors)
-            dag_collect_insert_slots(node: application.formal.substitution_basis, slots: acc, collision_errors: collision_errors)
+            let acc = dag_collect_insert_slots(node: application.formal.substitution_basis, slots: acc, collision_errors: collision_errors)
+            let acc = dag_collect_product_application(value: application.formal.product_application, slots: acc, collision_errors: collision_errors)
+            dag_collect_product_application(value: application.produced_product_application, slots: acc, collision_errors: collision_errors)
           )
         _ => slots
       }
       Absent => slots
     }
     _ => slots
+  }
+}
+
+fn dag_collect_product_application(value: TypeApplication<Node>?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
+  match value {
+    Present { value: application } => fold(application.arguments, init: slots, f: (acc, arg) =>
+      dag_collect_insert_slots(node: arg, slots: acc, collision_errors: collision_errors))
+    Absent => slots
   }
 }
 

@@ -3,6 +3,8 @@
 
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_decl_ref::DeclField;
+use crate::std_decl_ref::DeclField::{NamedField, WholeDeclaration};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -28,6 +30,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
+pub use crate::std_type_application::TypeApplication;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
@@ -633,13 +636,31 @@ pub fn dag_emit_check_node_refs(
                                                     .clone(),
                                                 key_to_id.clone(),
                                             ),
-                                            dag_emit_check_ref_target(
-                                                application
-                                                    .formal
-                                                    .clone()
-                                                    .substitution_basis
-                                                    .clone(),
-                                                key_to_id.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    dag_emit_check_ref_target(
+                                                        application
+                                                            .formal
+                                                            .clone()
+                                                            .substitution_basis
+                                                            .clone(),
+                                                        key_to_id.clone(),
+                                                    ),
+                                                    dag_emit_check_product_application(
+                                                        application
+                                                            .formal
+                                                            .clone()
+                                                            .product_application
+                                                            .clone(),
+                                                        key_to_id.clone(),
+                                                    ),
+                                                ),
+                                                dag_emit_check_product_application(
+                                                    application
+                                                        .produced_product_application
+                                                        .clone(),
+                                                    key_to_id.clone(),
+                                                ),
                                             ),
                                         ),
                                     ))
@@ -1189,8 +1210,38 @@ pub fn serialize_resolved_call_formal(
     value: Rc<ResolvedCallFormal>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"formal_index\": ".to_string(), (value.formal_index.clone()).to_string()), ", \"parameter_identity\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(value.formal.clone().parameter_identity.clone())), ", \"declared_type\": ".to_string()), serialize_node_ref(value.formal.clone().declared_type.clone(), key_to_id.clone())), ", \"declaration_bound_conformance\": ".to_string()), serialize_node_ref(value.formal.clone().declaration_bound_conformance.clone(), key_to_id.clone())), ", \"substitution_basis\": ".to_string()), serialize_node_ref(value.formal.clone().substitution_basis.clone(), key_to_id.clone())), ", \"product_application\": ".to_string()), serialize_product_application(value.formal.clone().product_application.clone(), key_to_id.clone())), ", \"produced_product_application\": ".to_string()), serialize_product_application(value.produced_product_application.clone(), key_to_id.clone())), ", \"matched_argument_index\": ".to_string()), match value.matched_argument_index.clone() {
+    Some(index) => (index.clone()).to_string(),
+    std::option::Option::None => "null".to_string(),
+}), "}".to_string())
+}
+
+pub fn dag_emit_check_product_application(
+    value: Option<Rc<TypeApplication<Rc<Node>>>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match value.clone() {
+        Some(application) => Rc::new({
+            let mut __result = Vec::new();
+            for arg in application.arguments.clone().iter().cloned() {
+                __result.extend(
+                    (*dag_emit_check_ref_target(arg.clone(), key_to_id.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        }),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn serialize_product_application(
+    value: Option<Rc<TypeApplication<Rc<Node>>>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
+    match value.clone() {
+        Some(application) => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -1198,48 +1249,44 @@ pub fn serialize_resolved_call_formal(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "{\"formal_index\": ".to_string(),
-                                                    (value.formal_index.clone()).to_string(),
-                                                ),
-                                                ", \"parameter_identity\": ".to_string(),
-                                            ),
-                                            crate::v1_compiler_dag_collect_support::json_quote(
-                                                value.formal.clone().parameter_identity.clone(),
-                                            ),
+                                        "{\"owner\": {\"module_path\": ".to_string(),
+                                        crate::v1_compiler_dag_collect_support::json_quote(
+                                            application.owner.clone().module_path.clone(),
                                         ),
-                                        ", \"declared_type\": ".to_string(),
                                     ),
-                                    serialize_node_ref(
-                                        value.formal.clone().declared_type.clone(),
-                                        key_to_id.clone(),
-                                    ),
+                                    ", \"decl_name\": ".to_string(),
                                 ),
-                                ", \"declaration_bound_conformance\": ".to_string(),
+                                crate::v1_compiler_dag_collect_support::json_quote(
+                                    application.owner.clone().decl_name.clone(),
+                                ),
                             ),
-                            serialize_node_ref(
-                                value.formal.clone().declaration_bound_conformance.clone(),
-                                key_to_id.clone(),
-                            ),
+                            ", \"field\": ".to_string(),
                         ),
-                        ", \"substitution_basis\": ".to_string(),
+                        match (*application.owner.clone().field.clone()).clone() {
+                            DeclField::WholeDeclaration => "null".to_string(),
+                            DeclField::NamedField {
+                                field_name: field_name,
+                                ..
+                            } => crate::v1_compiler_dag_collect_support::json_quote(
+                                field_name.clone(),
+                            ),
+                        },
                     ),
-                    serialize_node_ref(
-                        value.formal.clone().substitution_basis.clone(),
-                        key_to_id.clone(),
-                    ),
+                    "}, \"arguments\": [".to_string(),
                 ),
-                ", \"matched_argument_index\": ".to_string(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for arg in application.arguments.clone().iter().cloned() {
+                        __result.push(serialize_node_ref(arg.clone(), key_to_id.clone()));
+                    }
+                    __result
+                })
+                .join(&", ".to_string()),
             ),
-            match value.matched_argument_index.clone() {
-                Some(index) => (index.clone()).to_string(),
-                std::option::Option::None => "null".to_string(),
-            },
+            "]}".to_string(),
         ),
-        "}".to_string(),
-    )
+        std::option::Option::None => "null".to_string(),
+    }
 }
 
 pub fn serialize_call_semantics(

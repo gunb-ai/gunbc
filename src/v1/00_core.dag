@@ -1,5 +1,7 @@
 module v1.std.core
 
+import std.type_application { TypeApplication }
+
 import std.source_annotation { AnnotationAttachmentRefusal, annotation_attachment_refusal_origin, annotation_attachment_refusal_message }
 import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
 import std.syntax {
@@ -191,12 +193,14 @@ type ResolvedFormal {
   declared_type: Node
   declaration_bound_conformance: Node
   substitution_basis: Node
+  product_application: TypeApplication<Node>?
 }
 
 type ResolvedCallFormal {
   formal_index: Int
   formal: ResolvedFormal
   matched_argument_index: Int?
+  produced_product_application: TypeApplication<Node>?
 }
 
 type MethodSemantics

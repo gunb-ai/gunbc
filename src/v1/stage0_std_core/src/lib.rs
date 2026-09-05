@@ -33,6 +33,9 @@ pub mod extdeps_currency_currency;
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_type_application.rs"]
+pub mod std_type_application;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_keyed_row.rs"]
 pub mod std_keyed_row;
 #[rustfmt::skip]
