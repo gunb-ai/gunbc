@@ -2,7 +2,7 @@ module gunbc.fabric_gate_coverage
 
 import std.types { List, NonEmptyStr, Bool }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
-import extdeps.git.object_store { GitObjectId }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import v2.workflow.floor_terminal_ledger {
   WitnessIdentity,
   RepositorySnapshot,
@@ -321,7 +321,18 @@ fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
 // consumer's question -- the same shape as the FCI-5 counterexample where a receipt genuinely
 // admitted for another Work satisfied a trigger while the mutation survived. Relevance to the
 // obligation is a relation this module must establish and may not inherit.
-type StandingCause
+// THESE NAMES ARE FABRIC-SCOPED BECAUSE BARE NAMES RESOLVE CORPUS-WIDE. This module first
+// declared them as StandingCause, standing_for, render_disposition, render_cause and
+// render_standing, each of which already had a declarer elsewhere in the corpus -- and
+// render_disposition's other declarer is floor_terminal_ledger_wire, a module this one IMPORTS.
+//
+// gunbc.bare_name_fork_lens states the mechanism exactly: two modules declaring one bare name is
+// an error at neither declaration, only at a CALL SITE, and only under a closure containing both
+// declarers. A per-entry compile contains one and reports clean; the floor's whole-corpus
+// preparation contains both and refuses. That is why this was invisible to every check available
+// to me and visible only to the gate -- and why the diagnostic pointed at
+// frontier_ingestion_probe, a module I never touched.
+type GateStandingCause
   = NominationHasNoObservation { witness: WitnessIdentity }
   | NominationIsHeldAsAKnownRed { witness: WitnessIdentity }
   | ObservedWrongTerminal { witness: WitnessIdentity }
@@ -330,7 +341,7 @@ type StandingCause
 
 type ObligationStanding
   = Covered { gate: NonEmptyStr, mutation: NonEmptyStr, witness: WitnessIdentity }
-  | NotCovered { gate: NonEmptyStr, mutation: NonEmptyStr, cause: StandingCause }
+  | NotCovered { gate: NonEmptyStr, mutation: NonEmptyStr, cause: GateStandingCause }
 
 // Standing is refused wholesale when the census is refused: a partition computed over a roster known
 // to disagree with its authority would report coverage for obligations that may not exist.
@@ -435,7 +446,7 @@ fn expectation_is_to_hold(expectation: ClaimExpectation) -> Bool {
 // cause. Note that exactly-one is required of the BINDING, not of the witness: a declaration may
 // deliberately discharge two obligations, but an ambiguous or duplicated observation may never be
 // counted as coverage.
-fn standing_for(
+fn gate_standing_for(
   e: MutationEnrolment,
   observations: List<NominationObservation>,
 ) -> ObligationStanding {
@@ -463,19 +474,6 @@ fn is_covered(s: ObligationStanding) -> Bool {
   match s {
     Covered { gate, mutation, witness } => true,
     NotCovered { gate, mutation, cause } => false,
-  }
-}
-
-fn git_object_id_eq(a: GitObjectId, b: GitObjectId) -> Bool {
-  match a {
-    GitSha1ObjectId { digest } => match b {
-      GitSha1ObjectId { digest: other } => digest.hex == other.hex,
-      GitSha256ObjectId { digest: other } => false,
-    },
-    GitSha256ObjectId { digest } => match b {
-      GitSha256ObjectId { digest: other } => digest.hex == other.hex,
-      GitSha1ObjectId { digest: other } => false,
-    },
   }
 }
 
@@ -557,7 +555,7 @@ fn derive_standing(
   match gate_coverage(gates, enrolments) {
     CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
     CoverageTotal { discharged, undischarged } => {
-      let all_standings = map(concat(discharged, undischarged), e => standing_for(e, observations))
+      let all_standings = map(concat(discharged, undischarged), e => gate_standing_for(e, observations))
       StandingDerived {
         covered: filter(all_standings, s => is_covered(s)),
         uncovered: filter(all_standings, s => !is_covered(s)),
@@ -658,7 +656,7 @@ fn disposition_is_ordinarily_planned(d: RequiredFloorDisposition) -> Bool {
   }
 }
 
-fn render_disposition(d: RequiredFloorDisposition) -> String {
+fn render_ordinary_disposition(d: RequiredFloorDisposition) -> String {
   match d {
     Planned => "planned",
     PlannedAsChangedWitness => "planned-as-changed-witness",
@@ -687,7 +685,7 @@ fn render_incompatibility(i: PlanningIncompatibility) -> String {
   concat(concat("  UNPLANNABLE ", i.gate as String),
     concat(concat("|", i.mutation as String),
       concat(concat("|", witness_identity_qualified_name(identity: i.witness)),
-             concat("|", render_disposition(i.disposition)))))
+             concat("|", render_ordinary_disposition(i.disposition)))))
 }
 
 // ── THE RETAINED CONSUMER ──────────────────────────────────────────────────────────────────────
@@ -720,7 +718,7 @@ fn standing_refused(text: String) -> FabricStandingReport {
   FabricStandingReport { holds: false, text: text }
 }
 
-fn render_cause(cause: StandingCause) -> String {
+fn render_gate_standing_cause(cause: GateStandingCause) -> String {
   match cause {
     NominationHasNoObservation { witness } =>
       concat("no-observation:", witness_identity_qualified_name(identity: witness)),
@@ -734,14 +732,14 @@ fn render_cause(cause: StandingCause) -> String {
   }
 }
 
-fn render_standing(s: ObligationStanding) -> String {
+fn render_obligation_standing(s: ObligationStanding) -> String {
   match s {
     Covered { gate, mutation, witness } =>
       concat(concat("  covered ", gate as String), concat(concat("|", mutation as String),
         concat("|", witness_identity_qualified_name(identity: witness)))),
     NotCovered { gate, mutation, cause } =>
       concat(concat("  UNCOVERED ", gate as String), concat(concat("|", mutation as String),
-        concat("|", render_cause(cause)))),
+        concat("|", render_gate_standing_cause(cause)))),
   }
 }
 
@@ -823,8 +821,8 @@ fn render_standing_verdict(v: GateStandingVerdict) -> FabricStandingReport {
             concat(concat(" covered=", covered.length() as String),
                    concat(concat(" broken=", broken.length() as String),
                           concat(" declared-undischarged=", declared.length() as String)))),
-          concat(lines_of(map(broken, s => render_standing(s))),
-                 lines_of(map(covered, s => render_standing(s))))),
+          concat(lines_of(map(broken, s => render_obligation_standing(s))),
+                 lines_of(map(covered, s => render_obligation_standing(s))))),
       }
     },
   }
