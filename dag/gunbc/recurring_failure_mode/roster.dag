@@ -150,6 +150,8 @@ import gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_
 import gunbc.recurring_failure_mode.edit_range_bounded_by_a_neighbour_rather_than_the_target { edit_range_bounded_by_a_neighbour_rather_than_the_target }
 import gunbc.recurring_failure_mode.one_disposition_defined_jointly_by_independent_matches { one_disposition_defined_jointly_by_independent_matches }
 
+import gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments { generic_application_admits_distinct_unit_variant_arguments }
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
@@ -289,4 +291,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   comparison_keyed_on_part_of_the_identity_it_compares,
   edit_range_bounded_by_a_neighbour_rather_than_the_target,
   one_disposition_defined_jointly_by_independent_matches,
+  generic_application_admits_distinct_unit_variant_arguments,
 ]
