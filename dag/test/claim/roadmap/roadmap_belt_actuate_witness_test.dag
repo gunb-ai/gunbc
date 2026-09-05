@@ -1,7 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
-import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -1095,8 +1094,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
       },
     },
     publication_source: ReceiptSourceAbsent,
-    review_source: ReviewReceiptAbsent,
-    review_process: WorkerProcessAbsent,
+    review: [],
   })
 }
 
@@ -1180,8 +1178,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
         },
       },
       publication_source: ReceiptSourceAbsent,
-      review_source: ReviewReceiptAbsent,
-      review_process: WorkerProcessAbsent,
+      review: [],
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>

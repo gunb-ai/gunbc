@@ -1,6 +1,5 @@
 module gunbc.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent }
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -11,11 +10,12 @@ import gunbc.roadmap_status { signoff_accepts, line_ticket }
 import gunbc.roadmap_spawner { node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
-  review_verdict_decode, ReviewVerdictDecoded, ReviewVerdictUndecodable, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
-  review_verdict_detail, review_brief,
+  CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_all_approved, review_reconcile,
+  CriterionApproved, review_brief,
 }
+import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criteria, review_criterion_keys }
 import gunbc.roadmap_dispatch_actuator {
-  dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance,
+  dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
   dispatch_review_unit_name, dispatch_review_unit_argv,
 }
 import extdeps.git { shape_git_merge_base_args }
@@ -4076,8 +4076,7 @@ fn belt_workflow_progress_for_attempt_ref(
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       publication_source: ReceiptSourceAbsent,
-      review_source: ReviewReceiptAbsent,
-      review_process: WorkerProcessAbsent,
+      review: [],
     })
   } else {
     let current_key = trim(key_read.content)
@@ -4163,12 +4162,11 @@ fn belt_workflow_progress_for_attempt_ref(
       attempt_key: current_key,
       subject: publication_subject,
     )
-    let review_receipt = match head {
-      WorktreeHeadUnobserved { reason: _ } => ReviewReceiptAbsent
+    let review_evidence = match head {
+      WorktreeHeadUnobserved { reason: _ } => []
       WorktreeHeadObserved { revision } =>
-        belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
+        belt_review_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
     }
-    let review_process = belt_review_process(node_id: attempt.node_id, attempt_key: current_key)
     workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
@@ -4209,8 +4207,7 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
-      review_source: review_receipt,
-      review_process: review_process,
+      review: review_evidence,
     })
   }
 }
@@ -6607,19 +6604,28 @@ fn belt_review_admission(
   attempt_key: String,
   head_sha: String,
 ) -> PublishAdmission {
-  match belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha) {
-    ReviewReceiptAbsent => PublishWithheld { reason: "no review verdict exists for this head yet" as NonEmptyStr }
-    ReviewReceiptUnreadable { detail } => PublishWithheld { reason: join(["the review verdict for this head is unreadable: ", detail], "") as NonEmptyStr }
-    ReviewReceiptPresent { text } =>
-      match review_verdict_decode(text: text) {
-        ReviewVerdictUndecodable { reason } => PublishWithheld { reason: join(["the review verdict is undecodable: ", reason], "") as NonEmptyStr }
-        ReviewVerdictDecoded { verdict: ReviewApproved { summary: _ } } => PublishAdmitted
-        ReviewVerdictDecoded { verdict: ReviewChangesRequested { reasons } } =>
-          PublishWithheld { reason: join(["the review requested changes: ", review_verdict_detail(v: ReviewChangesRequested { reasons: reasons })], "") as NonEmptyStr }
-        ReviewVerdictDecoded { verdict: ReviewCannotJudge { reason } } =>
-          PublishWithheld { reason: join(["the reviewer could not judge this head: ", reason], "") as NonEmptyStr }
-      }
+  let evidence = belt_review_evidence(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  if review_all_approved(evidence: evidence) {
+    PublishAdmitted
+  } else {
+    PublishWithheld { reason: join(["the review has not approved every criterion: ", (review_reconcile(evidence: evidence)).detail], "") as NonEmptyStr }
   }
+}
+
+// ONE EVIDENCE ROW PER DECLARED CRITERION, whatever is on disk: a criterion with no verdict and no
+// reviewer is present in the list as awaiting, so the reconciliation's denominator is the criteria
+// roster, never the files that happen to exist.
+fn belt_review_evidence(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> List<CriterionReviewEvidence> {
+  map(review_criteria, c => CriterionReviewEvidence {
+    criterion_key: c.key,
+    source: belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: c.key),
+    process: belt_review_process(node_id: node_id as String, attempt_key: attempt_key, criterion_key: c.key),
+  })
 }
 
 fn belt_review_receipt_source(
@@ -6627,14 +6633,15 @@ fn belt_review_receipt_source(
   node_id: RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
+  criterion_key: String,
 ) -> ReviewReceiptSource {
   let dir = dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  let path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
+  let path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key)
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: join([head_sha, ".json"], ""),
+    name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ) {
@@ -6646,8 +6653,8 @@ fn belt_review_receipt_source(
   }
 }
 
-fn belt_review_process(node_id: String, attempt_key: String) -> WorkerProcessEvidence {
-  let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key)
+fn belt_review_process(node_id: String, attempt_key: String, criterion_key: String) -> WorkerProcessEvidence {
+  let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
   worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)
 }
 
@@ -6668,74 +6675,80 @@ fn belt_review_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
 // terminal is. A reviewer that exited without a verdict is a failure named here and NOT respawned --
 // the retained unit keeps the fact stable, and a loop of reviewers would be the absorbing fallback.
 type BeltReviewOutcome
-  = ReviewSpawned { node_id: String, unit: String }
-  | ReviewSkipped { node_id: String, reason: String }
-  | ReviewDeferred { node_id: String, reason: String }
-  | ReviewFailed { node_id: String, detail: String }
+  = ReviewSpawned { node_id: String, criterion: String, unit: String }
+  | ReviewSkipped { node_id: String, criterion: String, reason: String }
+  | ReviewDeferred { node_id: String, criterion: String, reason: String }
+  | ReviewFailed { node_id: String, criterion: String, detail: String }
 
 fn belt_review_attempts_after_verify(instance: HostDashboardInstance, verified: List<BeltVerifyOutcome>) -> List<BeltReviewOutcome> {
   let _verify_count = count(verified)
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      [ ReviewDeferred { node_id: "", reason: join(["the attempts ledger is unobservable, so no attempt can be reviewed: ", reason], "") } ]
+      [ ReviewDeferred { node_id: "", criterion: "", reason: join(["the attempts ledger is unobservable, so no attempt can be reviewed: ", reason], "") } ]
     WorkflowAttemptsObserved { attempts } =>
-      map(attempts, progress => belt_review_attempt_for_instance(instance: instance, progress: progress))
+      attempts |> flat_map(progress => belt_review_attempt_for_instance(instance: instance, progress: progress))
   }
 }
 
-fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> BeltReviewOutcome {
+fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> List<BeltReviewOutcome> {
   match belt_verification_segment(progress: progress) {
-    Absent => ReviewSkipped { node_id: progress.node_id, reason: "the attempt carries no verification segment" }
+    Absent => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "the attempt carries no verification segment" } ]
     Present { value: v } =>
       match v.state {
         WorkflowSegmentComplete => belt_review_verified_attempt(instance: instance, progress: progress, verification_detail: v.detail)
-        _ => ReviewSkipped { node_id: progress.node_id, reason: "verification has not passed for this head" }
+        _ => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
       }
   }
 }
 
-fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> BeltReviewOutcome {
+fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> List<BeltReviewOutcome> {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
   let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
   match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
-    ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, reason: join(["the attempt worktree head could not be read: ", stderr], "") }
-    ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, reason: reason }
+    ExecFailed { program: _, exit_code: _, stderr } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: join(["the attempt worktree head could not be read: ", stderr], "") } ]
+    ExecRefused { program: _, reason } => [ ReviewDeferred { node_id: progress.node_id, criterion: "", reason: reason } ]
     ExecOk { stdout } => {
       let head = trim(stdout)
-      match belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head) {
-        ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: progress.node_id, reason: "a review verdict is recorded for this head" }
-        ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: progress.node_id, detail: detail }
-        ReviewReceiptAbsent =>
-          match belt_review_process(node_id: progress.node_id, attempt_key: progress.attempt_key) {
-            WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, reason: "a reviewer is running against this head" }
-            WorkerProcessExited { exit_code, last_command: _ } =>
-              ReviewFailed { node_id: progress.node_id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
-            WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, reason: reason as String }
-            WorkerProcessAbsent =>
-              belt_review_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail)
-          }
-      }
+      map(review_criteria, c => belt_review_criterion(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail, criterion: c))
     }
   }
 }
 
-fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
+fn belt_review_criterion(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String, criterion: ReviewCriterion) -> BeltReviewOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: criterion.key) {
+    ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: progress.node_id, criterion: criterion.key, reason: "a verdict is recorded for this head and criterion" }
+    ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: detail }
+    ReviewReceiptAbsent =>
+      match belt_review_process(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: criterion.key) {
+        WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, criterion: criterion.key, reason: "a reviewer is running" }
+        WorkerProcessExited { exit_code, last_command: _ } =>
+          ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
+        WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: reason as String }
+        WorkerProcessAbsent =>
+          belt_review_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail, criterion: criterion)
+      }
+  }
+}
+
+fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String, criterion: ReviewCriterion) -> BeltReviewOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   match belt_lookup_node(node_id: progress.node_id) {
-    AuthorityProjectionRefused { detail } => ReviewDeferred { node_id: progress.node_id, reason: join(["roadmap authority projection refused: ", detail], "") }
-    NodeMissing => ReviewDeferred { node_id: progress.node_id, reason: "the roadmap authority declares no node with this id, so there is no goal to review against" }
+    AuthorityProjectionRefused { detail } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: join(["roadmap authority projection refused: ", detail], "") }
+    NodeMissing => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: "the roadmap authority declares no node with this id, so there is no goal to review against" }
     NodeFound { node } =>
       match instance.toolchain.systemd_run {
-        Absent => ReviewDeferred { node_id: progress.node_id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
+        Absent => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
         Present { value: systemd_run } => {
           let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
           match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_merge_base_args(left: instance.dispatch_base_ref as String, right: head)), workdir: worktree) {
-            ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, reason: join(["the review base could not be computed: ", stderr], "") }
-            ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, reason: reason }
+            ExecFailed { program: _, exit_code: _, stderr } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: join(["the review base could not be computed: ", stderr], "") }
+            ExecRefused { program: _, reason } => ReviewDeferred { node_id: progress.node_id, criterion: criterion.key, reason: reason }
             ExecOk { stdout: base } => {
               let ticket = line_ticket(item: node.line)
               let brief = review_brief(
+                criterion: criterion,
                 node_id: progress.node_id,
                 headline: node_title(item: node.line),
                 boundary: match ticket { Present { value: t } => t.brief  Absent => "" },
@@ -6745,16 +6758,16 @@ fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptP
                 base_sha: trim(base),
                 head_sha: head,
                 verification_detail: verification_detail,
-                verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
+                verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head, criterion_key: criterion.key),
               )
-              let unit = dispatch_review_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
+              let unit = dispatch_review_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key, criterion_key: criterion.key)
               match belt_exec(
-                cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head),
+                cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: criterion.key),
                 workdir: worktree,
               ) {
-                ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, unit: unit as String }
-                ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-                ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, detail: reason }
+                ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: criterion.key, unit: unit as String }
+                ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: criterion.key, detail: reason }
               }
             }
           }
@@ -6765,14 +6778,14 @@ fn belt_review_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptP
 
 fn belt_review_outcome_json(o: BeltReviewOutcome) -> JsonValue {
   match o {
-    ReviewSpawned { node_id, unit } =>
-      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "outcome", value: json_string(s: "spawned")), json_kv(key: "unit", value: json_string(s: unit))])
-    ReviewSkipped { node_id, reason } =>
-      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "detail", value: json_string(s: reason))])
-    ReviewDeferred { node_id, reason } =>
-      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "detail", value: json_string(s: reason))])
-    ReviewFailed { node_id, detail } =>
-      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "detail", value: json_string(s: detail))])
+    ReviewSpawned { node_id, criterion, unit } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "spawned")), json_kv(key: "unit", value: json_string(s: unit))])
+    ReviewSkipped { node_id, criterion, reason } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "detail", value: json_string(s: reason))])
+    ReviewDeferred { node_id, criterion, reason } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "detail", value: json_string(s: reason))])
+    ReviewFailed { node_id, criterion, detail } =>
+      json_object(members: [json_kv(key: "node", value: json_string(s: node_id)), json_kv(key: "criterion", value: json_string(s: criterion)), json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "detail", value: json_string(s: detail))])
   }
 }
 

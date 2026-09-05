@@ -1,6 +1,5 @@
 module test.claim.roadmap_workflow_command_witness
 
-import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_workflow_command {
   Supersedes,
@@ -108,8 +107,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
       reason: "legacy attempt has no observed head",
     },
     publication_source: ReceiptSourceAbsent,
-    review_source: ReviewReceiptAbsent,
-    review_process: WorkerProcessAbsent,
+    review: [],
   })
   match activity_view_from_progress(progress: progress) {
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>

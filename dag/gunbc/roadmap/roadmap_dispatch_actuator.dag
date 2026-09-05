@@ -1051,29 +1051,36 @@ fn dispatch_attempt_review_dir_for_instance(
   ], "")
 }
 
+// Every review artifact is addressed by head AND criterion: one reviewer per criterion, so one verdict,
+// one event stream, one scratch and one log per criterion, never shared between them.
 fn dispatch_attempt_review_verdict_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   head_sha: String,
+  criterion_key: String,
 ) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".json"], "")
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".", criterion_key, ".json"], "")
 }
 
-fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/provider-events.jsonl"], "")
+fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: String) -> String {
+  join([head_sha, ".", criterion_key, ".json"], "")
 }
 
-fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/harness-request.json"], "")
+fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".provider-events.jsonl"], "")
 }
 
-fn dispatch_attempt_review_log_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/reviewer-stdout.log"], "")
+fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".harness-request.json"], "")
 }
 
-fn dispatch_review_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["gunbc-review-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+fn dispatch_attempt_review_log_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, ".reviewer-stdout.log"], "")
+}
+
+fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
+  join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
 }
 
 // THE REVIEWER'S UNIT: the worker's confinement with ONE writable path, the review directory. The
@@ -1138,15 +1145,16 @@ fn dispatch_review_unit_argv(
   worktree_path: String,
   brief: String,
   head_sha: String,
+  criterion_key: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: systemd_run_program as String,
     args: systemd_run_user_transient_arguments(
-      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
       properties: dispatch_review_unit_properties(
         instance: instance,
         working_directory: instance.repo_root as String,
-        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
         review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
       ),
       setenv_bindings: [],
@@ -1156,9 +1164,9 @@ fn dispatch_review_unit_argv(
         worktree_path: worktree_path,
         brief: brief,
         timeout_program: instance.toolchain.timeout as String,
-        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-        verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha),
+        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+        verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: criterion_key),
       ),
     ),
   )

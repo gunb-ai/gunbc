@@ -1,7 +1,6 @@
 module test.claim.verification_evidence_addressing_witness_test
 
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
-import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent }
 import std.types { Bool, String, NonEmptyStr, List, CommitSha }
 import std.content_hash {
   Fnv1a64Structural,
@@ -371,8 +370,7 @@ fn fixture_evidence(
       },
     },
     publication_source: ReceiptSourceAbsent,
-    review_source: ReviewReceiptAbsent,
-    review_process: WorkerProcessAbsent,
+    review: [],
   }
 }
 
