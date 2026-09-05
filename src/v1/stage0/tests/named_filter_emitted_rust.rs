@@ -93,10 +93,10 @@ fn main() {
     use std::rc::Rc;
     use named_filter_probe::{FilterProbeItem, records, scalars};
     let input = Rc::new(im::vector![
-        Rc::new(FilterProbeItem { value: -1 }),
-        Rc::new(FilterProbeItem { value: 2 }),
-        Rc::new(FilterProbeItem { value: 0 }),
-        Rc::new(FilterProbeItem { value: 3 }),
+        FilterProbeItem { value: -1 },
+        FilterProbeItem { value: 2 },
+        FilterProbeItem { value: 0 },
+        FilterProbeItem { value: 3 },
     ]);
     let output = records(input.clone());
     assert_eq!(output.iter().map(|item| item.value).collect::<Vec<_>>(), vec![2, 3]);
@@ -120,6 +120,8 @@ fn main() {
         ))
         .arg("--extern")
         .arg(format!("im={}", unique_rlib(deps, "im").display()))
+        .arg("--extern")
+        .arg(format!("serde={}", unique_rlib(deps, "serde").display()))
         .arg("-o")
         .arg(scratch.0.join("specimen"))
         .output()
