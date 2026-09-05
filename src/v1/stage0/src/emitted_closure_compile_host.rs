@@ -1412,9 +1412,9 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
 /// invokes rustc.
 ///
 /// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the same
-/// coproduct `Quantity = Time | Memory`. The green arm puts `Time` and `Memory` in the RULED
+/// coproduct `Marker = Alpha | Beta`. The green arm puts `Alpha` and `Beta` in the RULED
 /// POSITION — arguments of an applied type node — where they become distinct zero-sized markers
-/// and the emitted crate compiles. The red arm puts `Time` in a NON-APPLIED position, a record
+/// and the emitted crate compiles. The red arm puts `Alpha` in a NON-APPLIED position, a record
 /// field, where it is a constructor standing where rustc requires a type. So a green here is not
 /// "some crate compiled" and the red is not "something in the tree is broken": the only variable
 /// is the position.
