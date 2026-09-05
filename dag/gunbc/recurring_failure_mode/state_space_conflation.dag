@@ -8,162 +8,94 @@ data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
 
   receipts: [
     "state-space conflation (an `Option`/`None` meaning >2 things — split into named variants; its most-repeated form here is **not-applicable rendered as malformed** — one reason symbol over \"the input is wrong\" and \"this strategy had nothing to say about it\", which have opposite owners and opposite repairs. ",
-
     "Found three times in three stages by one lane (#8801 and #8828 in body lowering, `parse_g0_tokens_remain` in parse), always by reading the producer and never from the message. ",
-
     "Recognition rule: if the arm sits downstream of a search, lookup or alternative that returned `Absent`, it is not-applicable and needs its own reason. ",
-
     "A SECOND FORM, which does not match that shape and is the same class: **a dichotomy stated over a domain with three states.** Specimen (gunbc#9324): the `floor_resource_sample` comment documented `pswpin` rising with `pgmajfault` as swap and `pgmajfault` rising with `pswpin` flat as mapping churn — two arms over three states, since BOTH FLAT is quiet. ",
-
     "Churn is a defect this lane owns and quiet is the absence of one, so the missing arm inverts the verdict. ",
-
     "The mechanism of the misread is what the recognition rule keys on: `pgmajfault rises` and `pswpin flat` are two conditions and only their CONJUNCTION is churn, so a reader matching on the cheaper condition alone selects churn for a state that satisfies `pswpin flat` and nothing else — which zero-and-zero does. ",
-
     "**Recognition rule for this form: for every arm of a stated dichotomy, enumerate the domain and check that each arm's conditions are required jointly.** What made it invisible rather than merely wrong is that BOTH readers landed on the same arm — 26 intervals so classified by one and 6 by another, neither having compared notes — and agreement reads as confirmation. ",
-
     "THAT IS A PROMPT TO RE-DERIVE, NOT A DIAGNOSTIC, and the distinction is load-bearing: convergent readings are equally produced by shared assumptions, a common heuristic, ambiguity in the subject, or one reader having anchored on the other, and n=2 on one specimen cannot separate those from a defect in the rule. ",
-
     "What survives is only the weaker direction — agreement between readers of one rule is not independent evidence about that rule, because the shared input is a shared potential defect, so it licenses re-deriving from the domain and never a conclusion about which cause produced it.) **A THIRD FORM, and the one that is hardest to rank because nothing is wrong today: A STATE THAT IS ALREADY LOAD-BEARING AND CARRIED AS AN AD-HOC SPELLING RATHER THAN A CONSTRUCTOR.** Specimen (2026-09-01): the identity key threaded through v1.compiler.coercion has THREE inhabitants -- a real declaring module path, the synthetic <kernel:NAME> that v1.std.core kernel_span mints for kernel nodes, and the empty string meaning unknown -- while every consumer discriminates only empty from non-empty. ",
-
     "lookup_checkpoint and type_realization_decision therefore read <kernel:String> as a KNOWN declaration and proceed to the spelling-keyed arm; decl_file_declares_structurally compares that synthetic identity against a roster of real paths with contains, which no <kernel:NAME> can ever match, so the structural gate is unreachable for a kernel-resolved reference BY CONSTRUCTION rather than by decision. ",
-
     "The key reaches those gates with exactly that value through type_reference_decl_file, from v1.compiler.emit coerce_primitive_type and v1.compiler.emit_rust rust_named_type_base and rust_applied_type_base. ",
-
     "**What makes this the third form rather than an instance of the first two is the evidence that the state is REAL: the tree already handles it, three times, by string prefix.** numeric_realization_declaring_modules carries the literal \"<kernel:\" as a row in a roster of MODULE PATHS; is_kernel_minted_file is a substring predicate over the same spelling; and resolved_node_is_kernel_identity_for_name owns the same fact by EXACT EQUALITY, its own note recording that a substring or prefix test is a second, weaker authority for it. THE CITED MODULE WAS WRONG AND IS NOW ALSO MOVED: no module v1.compiler.env exists; the declaration lived in v1.compiler.infer_env and was relocated (XL-0B, 2026-09-04) into v1.std.core, beside the kernel_span whose output it compares against, because v1.std.core declaration_provenance_of could not import it without closing a cycle and so re-derived the same comparison in place -- a fourth recogniser this row had not counted. Cite it at v1.std.core. The relocated body asks kernel_span; the one it replaced inlined the format literally. ",
-
     "**Recognition rule for this form: when a value's domain is carried in a type that cannot express one of its inhabitants, look for the inhabitant being recognised by SPELLING somewhere -- a prefix test, a magic string in a roster of real values, a sentinel. ",
-
     "Each such site is a consumer that already knows the state exists, and their number is the count of authorities the missing constructor has spawned.** NO WRONG ANSWER IS CLAIMED FOR THE SPECIMEN AND NONE WAS MEASURED: for the kernel names reaching those gates today the spelling-keyed answer is the correct one, which is exactly why it never surfaced -- the class is filed on the state space, not on an output, and a form that produces no incident is the one that will be found last. ",
-
     "**CLIMB RECEIPT (2026-09-02), appended rather than replacing the filing above, because DESIGN section 4b(4) keeps a class's discriminating evidence enrolled AFTER the climb rather than dissolving it with the production machinery.** The missing constructor now exists: std.coercion TypeDeclarationProvenance is CorpusDeclared | KernelMinted | DeclarationIdentityAbsent, minted by v1.std.core declaration_provenance_of, which decides the kernel arm by EXACT EQUALITY against kernel_span -- the minter itself -- rather than by a prefix test over its output. ",
-
     "All four spelling authorities this row counted are gone: the literal \"<kernel:\" row is deleted from numeric_realization_declaring_modules, is_kernel_minted_file is deleted, and the two gates that substring-compared a synthetic identity against real paths now take the coproduct, so the structural gate's unreachability for a kernel-resolved reference stops being BY CONSTRUCTION and becomes BY DECISION -- a named arm answering false. ",
-
     "**WHAT IS NOT CLAIMED, because this row's own honesty is the thing being climbed:** no wrong answer was found before and none is fixed now; every answer is preserved bit for bit, which is why the climb is in the STATE SPACE and not in an output. ",
-
     "The empty-string inhabitant is likewise gone from the channel, and the bare-table answer it used to reach silently is now the named ground GroundedByUnidentifiedBareRow, so a declared rung drop that was previously indistinguishable from a properly-keyed answer is countable and refusable. ",
-
     "**THE RECOGNITION RULE IS CORROBORATED AND THE CORROBORATION IS INDEPENDENT.** gunbc.type_reference_decl_file_occurrence_census reached this same four-authority set from the opposite direction -- that census asked what each of thirty-nine occurrences NEEDS, this row asked what the identity key can HOLD -- and the counts agreed. ",
-
     "**WHAT SURVIVES UNCLIMBED, stated so the row is not read as closed:** CorpusDeclared still carries a file path matched by contains, so the surviving arm answers WHAT A DECLARATION REALIZES AS positionally. ",
-
     "v1.compiler.infer_env global_bare_fallback_invariant already states the terminal key for it -- filepaths are irrelevant, the declared module path is the containment tree -- and re-keying that arm needs a declaration reference at each gate, which is a separate change.\n\n**A FOURTH FORM, MEASURED 2026-09-02 (quick-crab-396), AND IT SITS IN THE INTERPRETER RATHER THAN IN ANY MODEL: DECLARED OPTIONAL AND CONSTRUCTED ABSENT ARE TWO STATES WEARING ONE SPELLING.** A record field declared `T?` is read by authors -- and by this document's own §2 reasoning about optional carriers -- as optional-with-a-none-default. ",
-
     "It is not. ",
-
     "A literal that OMITS the field typechecks, and a later read of that field REFUSES at evaluation with `NoSuchField { type_name, field }`. ",
-
     "So `T?` means mandatory-at-construction-and-typed-optional, and the two states the spelling conflates are `the field is absent because the author wrote none` and `the field is absent because the literal predates it`. ",
-
     "EVIDENCE, a two-row probe with a positive control, which is what makes it a finding rather than a conjecture about one type: `type Widget { name: String  tag: Int? }` with `Widget { name: \"w\" }` refuses on `.tag` with `NoSuchField { type_name: \"Widget\", field: \"tag\" }`, while `Widget { name: \"w\", tag: Present { value: 3 } }.tag` reads back correctly -- so the mechanism is neither `reads fail` nor `this type is broken`, it is omission-with-no-default, and it is GENERAL to any record type. ",
-
     "RUNG: this is FAIL-CLOSED and explicitly NOT silent wrongness -- the interpreter refuses rather than answering the false that a reader would expect -- which is the whole of the good news and it is what sets the rung at mitigatable rather than below the ladder. ",
-
     "WHAT THE CORPUS CURRENTLY BELIEVES INSTEAD, and this is the reason the row exists: two carriers filed this on 2026-08-27 as `a nested compile is not evaluable in the interpreter, refusing with NoSuchField Node.ident` -- v1.tests.claim.reference_derived_disposition_census_witness_test and a sibling paragraph in v1.compiler.emit_rust. ",
-
     "Nested compiles are one POPULATION that happens to construct Nodes through helpers omitting v1.std.core Node's `ident` and then read it; they are not the class, and the repair that description suggests (route around the nested pipeline with a host builtin) does not touch the cause. ",
-
     "**POPULATION: UNENUMERATED, and stated as such rather than guessed.** It is every record type in the corpus carrying an optional field together with a literal that omits it; `v1.std.core Node.ident` is one specimen and the probe above is another. ",
-
     "NEXT-RUNG TRIGGER, a capability and not an artifact: construction that supplies every declared field, so that a literal omitting an optional field is either unwritable or carries the absent value -- at which point the distinction between the two absences is made at construction and no read can encounter a field that was never written. ",
-
     "NOT REPAIRED HERE BY RULING: a defaulting change alters evaluation semantics corpus-wide and needs its own subject, population and review. ",
-
     "**A FIFTH FORM, MEASURED 2026-09-03, AND IT IS THE FIRST ONE WHERE THE DECLARATION ALREADY EXISTED: ONE SENTINEL CARRYING TWO FACTS WHILE A TYPED DECLARATION SAYS THEY ARE DISTINCT.** std.algebra free_monoid_collection_templates declares first and last as [ReceiverSelf] -> OptionalOf { inner: ReceiverElement }, and positional get as [ReceiverSelf, Int] -> the same. ",
-
     "So the result is an optional OF THE ELEMENT: where the element type is itself optional the two absences are distinct levels. ",
-
     "The v1 interpreter's arm bodies returned items.front().cloned().unwrap_or(Value::Null), collapsing 'the collection had no first element' and 'the first element is itself absent' into one Value::Null, because in the interpreter Null is both the absent-marker and a legal element value. ",
-
     "DISCRIMINATING RED, executed on both arms, not asserted: over [none, Present { value: 2 }] -- a list of length TWO whose first element is absent -- the interpreter took the OUTER Absent arm (answering 'the list is empty') while emitted Rust answered Present { Absent }. ",
-
     "Positive control [5,6].first() returned 5 in both. ",
-
     "WHAT MAKES THIS FORM DIFFERENT FROM THE PRECEDING FOUR, and why it is filed as a receipt on this row rather than as its own class: THE MISSING CONSTRUCTOR WAS NOT MISSING. ",
-
     "The declaration existed, was mirrored into the seed as std_algebra.rs, and was READ BY THE TYPE CHECKER -- v1.compiler.infer_method walks algebra_templates_for_profile matching on name, which is why std.target_representation representation_spelling_for typechecks with `-> RepresentationSpelling<R>?` returning `|> first` directly. ",
-
     "The EVALUATOR in the same binary referenced std_algebra zero times. ",
-
     "One binary, one declaration, the type checker honouring it and the evaluator contradicting it. ",
-
     "THE RUNG THIS SAT AT WAS NOT A RUNG: the interpreter did not refuse, it answered confidently and wrongly, which DESIGN section 4b places OUTSIDE the ladder. ",
-
     "A REPAIR EXISTS AND IS DELIBERATELY UNLANDED (gunbc#10187, DRAFT, not merged): the two arms WOULD build optional_present/optional_absent, mirroring map_lookup_as_optional, which already performs exactly this for maps -- and the reason it is withheld is the PRIOR FILING recorded below, not an unfinished implementation. ",
-
     "NO CLIMB IS CLAIMED BY THIS ROW. ",
-
     "The class stands where it stood -- 'decided by call site, not value shape, so a stored V = Optional<T> payload is never mistaken for an already-wrapped result' -- prior art in the same file rather than a new mechanism. ",
-
     "THE REALIZATION PICTURE IS THE PART FUTURE READERS SHOULD NOT FLATTEN, AND IT HAS THREE COLUMNS RATHER THAN ONE VERDICT. ",
-
     "VERIFIED BY EXECUTION: rust emission nests faithfully; and the python and typescript TYPE CONSTRUCTORS cannot carry the nesting at all -- typing.Optional[typing.Optional[int]] EVALUATES TO typing.Optional[int] and compares equal, and in the typescript realization `{0} | undefined` the absent element and the absent selection are the same value (undefined === undefined). ",
-
     "No method template can repair that, because the type it would have to return does not exist in those targets; a boxed encoding would be a different realization of Optional, not a better template. ",
-
     "REFUTED BY EXECUTION: the inference that go is faithful BECAUSE its optional row is `*{0}` and **T is a legal Go type. ",
-
     "The row permits the nesting and the emitter did not do it -- go emitted *int64 for a declared Optional<Optional<Int>>. ",
-
     "THE ROW PREDICTS CAPABILITY, NOT BEHAVIOUR, and that is the transferable lesson here: the python collapse and the go faithfulness were derived the same way, from the optional row, and only one survived execution. ",
-
     "UNOBSERVED: what python and go emission actually ANSWER end-to-end, because for this input neither artifact runs -- go returns two values from single-return signatures and references an undefined Present, python uses Optional and Present with neither imported nor defined. ",
-
     "Those sit in accepted_source_emits_uncompilable_target and are UPSTREAM of this class; the denotation question is not reachable there until the artifacts compile. ",
-
     "NO REFUSAL IS FILED FOR THOSE PATHS AND THAT IS DELIBERATE. ",
-
     "A refusal on unrepresentable nesting would be a wall in front of a hole, and for typescript it would be unreachable in any case: main.rs parses only rust | python | go | dag and RenderTarget has no TypeScript variant, so no fixture can drive that path and any check over it would be permanently green by construction. ",
-
     "Recorded here as an OBSERVED BOUNDARY with its evidence rather than as a check that establishes nothing. ",
-
     "PRIOR FILING, FOUND AFTER THE REPAIR WAS WRITTEN AND BEFORE IT LANDED, WHICH IS WHY THE REPAIR IS DEFERRED RATHER THAN SHIPPED: this seam is ALREADY FILED as audit-queue item 0 of docs/plans/compiler-guarantee-recovery-gap-analysis.md (2026-08-27, from gunbc#9491), and extdeps.bmc.pid_control_decode carries the minimal reproduction inline plus an admitted workaround -- it renames its own field to magnitude on exactly this ground and claims no compiler guarantee. ",
-
     "Item 0 states the class as TWO questions and warns the eventual owner not to collapse them. ",
-
     "(1) MEMBER-SELECTION POLICY: v1.compiler.infer_lookup field_summary_for_type opens `if field == \"value\" && normed_opt` and unwraps otherwise, so FIELD ACCESS THROUGH AN OPTIONAL AUTO-UNWRAPS FOR EVERY SPELLING EXCEPT `value` -- which item 0 calls a language-semantics decision, not obviously a bug, with three candidate answers. ",
-
     "(2) TYPE CONFORMANCE, below floor independently of (1): a record-valued expression accepted where an Int is required. ",
-
     "THAT PRIOR FILING RECLASSIFIES THIS ROW'S OWN REPAIR AND THE RECLASSIFICATION IS THE POINT. ",
-
     "The type path ALREADY treats first() as optional and silently unwraps field access through it; the evaluator returned a bare element, so that unwrap was a no-op. ",
-
     "Making the evaluator construct a real Present{...} therefore does not merely expose consumers that depended on a flattening -- it makes the EVALUATOR INCONSISTENT WITH AN AUTO-UNWRAP THE TYPE CHECKER STILL PERFORMS, in the opposite direction from where the two halves started, which is not a climb. ",
-
     "Honouring the declaration at the evaluator requires the matching evaluator-side unwrap, and that IS item 0(1)'s open policy question. ",
-
     "SO THE INTERPRETER/EMITTED DIVERGENCE AND ITEM 0(1) ARE THE SAME SEAM APPROACHED FROM TWO SIDES, AND WHOEVER SETTLES THE MEMBER-SELECTION POLICY OWNS THE EVALUATOR REPAIR TOO. ",
-
     "Filing them as separate subjects would split one decision across two owners. ",
-
     "CORROBORATION FOR ITEM 0(2), independently re-derived here with a control rather than taken from the filing: four arms on a binary BUILT FROM MAIN -- `fn f() -> Bool { 5 }` refuses with 1 error (the positive control, proving the return check is not globally dead), while `fn f() -> Bool { xs().first() }` over a plain List<Int> compiles with ZERO diagnostics. ",
-
     "Same result under a binary containing the repair, so the gap is pre-existing and not created by any change here. ",
-
     "That is corroboration of a class filed five days ago and is NOT a second finding; a second row for a filed class is the nicknaming refusal at the ledger layer. ",
-
     "NEXT-RUNG TRIGGER, named as a capability: GENERATED ARM BODIES WHOSE RETURN TYPE DERIVES FROM THE ALGEBRA TEMPLATE, so the collapse becomes unwritable rather than merely wrong. ",
-
     "Today the arm SELECTION is generated -- v1_interpreter_dispatch_generated.rs -- but from gunbc.v1_interpreter_primitive_surface, a roster that carries no return type and does not import std.algebra. ",
-
     "Two rosters name first, neither references the other, and the hand-written body honoured neither; that fork is why the arm and its declared type were separable by hand at all. ",
-
     "A POINTER TO ONE SPECIMEN OF THIS SHAPE IN THIS LEDGER'S OWN TOOLING, 2026-09-03: a referential-closure check over these rosters that JOINS BY NAME cannot see two declarations sharing one name whose CONTENT differs. ",
-
     "Measured by injection -- main's `recurrence_ledger_scoped_below_the_recurrence` duplicated with a pre-rename spelling of a symbol it cites, 9006 bytes against 8993 -- a name-grain check reports nothing rostered-undeclared and nothing declared-unrostered and PASSES, while the tree carries a citation to a symbol with zero declarations. ",
-
     "The guard's state space has no cell for content divergence, so its count is the same either way. ",
-
-    "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent. ",
+    "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent " ",
+    "**A SIXTH FORM, whose consequence is not a bad message but a SILENT SAFETY HOLE: a `Bool` return carrying a three-valued question, where the collapsed value is the ADMITTING one.** Specimen (gunbc#10337, 2026-09-04): `where_refinement_brand_nominal_mismatch` returned `Bool` over three outcomes -- these are distinct declarations, these are the same declaration, and I CANNOT TELL which declarations these are. The third collapsed onto `false` with the second, and the consumer read `false` as admit, so a cast whose brand identity could not be determined was ACCEPTED. ",
+    "The paired sentinel made it concrete: the declaration-key producer returned the empty string for a type with no declaring span and the consumer guarded on `key != \"\"`, so absence of identity was spelled as a value and read as permission. ",
+    "**WHAT DISTINGUISHES THIS FORM FROM THE EARLIER ONES IS THE DIRECTION OF THE COLLAPSE.** They produce a wrong or unrankable ANSWER; this one produces NO ANSWER AT ALL on the collapsed arm, because the admitting value is indistinguishable from a genuine pass. A wall with this defect emits no diagnostic, so no red exists for review to find and no population exists to count -- the type's inadequacy is the safety hole rather than a symptom of one. ",
+    "**Recognition rule for this form: for every `Bool` that gates a refusal, ask which value means UNKNOWN. If unknown shares a value with permitted, the predicate cannot refuse what it cannot determine, and the wall has a hole exactly the size of its unknown set.** ",
+    "**AND A NEW DETECTION ROUTE FOR THIS CLASS, which is why the specimen is worth its length: the earlier receipts in this row were found by READING the producer. This one was invisible to reading in the strong sense -- it was read, and approved, by three separate reviews of the diff, and by its own author who had rejected the identical fail-open shape in a competing design an hour earlier.** It was settled by EXECUTING a fixture: `fn f(a: String where brand(\"x\"))` is an inline brand-carrying type with no declaration site, it parses and compiles, and it admitted one brand into a different brand -- the exact violation the wall's own refusing arm exists to catch. ",
+    "Reading establishes that an arm is reachable IN PRINCIPLE; only executing establishes that the state is AUTHORABLE and that the hole is live. Per DESIGN section 4b, the authorability question is decided by what a FIXTURE can hand the compiler, never by what the accepted corpus happens to contain. ",
+    "CLIMB, and it is construction rather than a better check: the key producer now returns `String?` so an undeterminable key is NOT REPRESENTABLE, and the predicate returns a four-variant `BrandNominalVerdict` so no consumer can inherit an answer from a magic value. Fixing only the sentinel would have closed the instance and left the `Bool` free to spawn the collapse again at the next consumer -- the return TYPE was the authority at fault, not the arm " ",
     "CI CHECK-RENDERING INSTANCE, 2026-09-04, import-cut lane, AND ITS RECEIPT IS THAT ONE COLLAPSED SYMBOL PRODUCED ERRORS IN BOTH DIRECTIONS. `gh pr checks` renders cancelled, failure and timed_out into a single `fail` glyph, and the dashboard digest inherits that rendering. Measured on gunbc run 33875856188: the jobs API reports required-witnesses-build, heal-generated-artifacts and required-witnesses-floor as conclusion=cancelled with a ZERO-LENGTH steps array, and the aggregating witnesses job as conclusion=failure with 3 steps -- while the rollup showed four identical fails and the digest reported the PR as failing. ",
-
     "THE TWO STATES HAVE OPPOSITE OWNERS AND OPPOSITE REPAIRS, which is this row's recurring form: a real red means the branch is broken and its author must fix it; a cancellation means NOTHING ABOUT THE BRANCH WAS OBSERVED and there is no signal to act on. Collapsed into one glyph, the second is indistinguishable from the first. ",
-
     "THE RECEIPT, and it is why this instance is worth carrying rather than being one more example: the SAME collapse has already produced the opposite error. Cancelled-read-as-PASSED merged gunbc PR 8059. Cancelled-read-as-FAILED, here, manufactures a defect in a branch nobody tested and sends an author to debug against no signal. One symbol, one rendering layer, errors in both directions -- which demonstrates that the harm is not a mis-set threshold but the conflation itself, since no reading of a symbol that means two things can be right in both cases. ",
-
-    "REPAIR: take the verdict from the jobs API `conclusion` field, never from `gh pr checks` or a digest, and treat an EMPTY steps array or an empty log as UNOBSERVED rather than as a result. The tell that the rendering is lying is shape rather than content -- several independent jobs ending at an identical short duration, because real work does not fail identically.)",
-
+    "REPAIR: take the verdict from the jobs API `conclusion` field, never from `gh pr checks` or a digest, and treat an EMPTY steps array or an empty log as UNOBSERVED rather than as a result. The tell that the rendering is lying is shape rather than content -- several independent jobs ending at an identical short duration, because real work does not fail identically.) ",
+    "A SEVENTH FORM, AND THE ONE WORTH THE MOST BECAUSE A REPAIR PRODUCED IT (2026-09-04, import-cut lane, gunbc#10454, found by independent adjudication and confirmed in source). A review correctly refused two hand-rolled variant-to-Bool predicates over a coproduct -- the structural-equality residue DESIGN section 6 names -- and the repair replaced them with a total String projection, `unobservable_reason`, returning the refusal text or `\"\"` for the two OBSERVED verdicts. The refusal was then decided by asking whether that string was empty. So `\"\"` carried TWO meanings, this observation does not refuse and this observation refuses but recorded no reason, and an `Unobservable` with an empty reason was folded away as OBSERVED: the digest stayed empty and the command returned ExitSuccess while the roster could not testify about its subject. That is the EXACT defect the pull request existed to remove, re-entering through its own fix. ",
+    "WHAT MAKES IT A DISTINCT FORM RATHER THAN ANOTHER EXAMPLE: the earlier forms are collapses that were AUTHORED. This one was INTRODUCED BY A CORRECT REPAIR of a different class, in the same motion, and it was invisible for the usual reason plus one more -- no production site constructed the bad value, so no run could exhibit it. The residue removal was right, the projection was right, and the sentinel was the only wrong part; a reviewer checking that the predicates were gone would find them gone. RECOGNITION RULE: when a repair replaces a decision with a PROJECTION, ask what the projection's empty or default value means, and whether the decision now rests on it. A refusal must be driven by the verdict, never by the presence of its prose. ",
+    "AND IT SHARPENS THE AUTHORABILITY RULE THIS ROW ALREADY CARRIES. Not reachable on the corpus is not a defence: DESIGN section 4b asks whether the RED is AUTHORABLE, not whether it fires today, and a fixture constructed the empty-reason refusal in one line. The repair drives the refusal off the canonical verdict projection instead, and its discriminating red -- a refusal with no reason must still refuse -- flips alone when the text-driven form is restored, while the original stale-citation red and the observed-verdict control both hold. A hole that only stays shut because nobody happens to author the bad input is not a wall.",
   ],
 
   evidence: [],
