@@ -14087,22 +14087,24 @@ impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier {
 
 /// Build the accept-any ureq agent for `InsecureAcceptAnyCert` rest transport rows.
 /// Uses `builder_with_provider` with an explicit ring provider (avoids the process-default
-/// crypto-provider ambiguity that would panic on this machine). The `with_protocol_versions`
-/// call returns a `Result`; in practice ring always supports TLS 1.2 and 1.3, so this path
-/// never returns an error — but the `.expect()` is a genuine panic if the invariant holds,
-/// and DESIGN §5 asks for a typed refusal. A future lane should turn this into `Result` and
-/// propagate the error through `dispatch_rest`'s return type.
-fn rest_accept_any_agent() -> ureq::Agent {
+/// crypto-provider ambiguity that would panic on this machine). Returns an `Err` message
+/// if the ring provider does not support the requested TLS versions — in practice ring
+/// supports TLS 1.2 and 1.3, so this path never returns an error on any current platform
+/// (DESIGN §5: a typed refusal rather than a panic).
+fn rest_accept_any_agent() -> Result<ureq::Agent, String> {
     let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
     let config = rustls::client::ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
-        .expect("ring provider supports TLS 1.2 and 1.3")
+        .map_err(|_| {
+            "ring provider does not support TLS 1.2 and 1.3 — cannot build accept-any TLS agent"
+                .to_string()
+        })?
         .dangerous()
         .with_custom_certificate_verifier(std::sync::Arc::new(RestAcceptAnyVerifier))
         .with_no_client_auth();
-    ureq::builder()
+    Ok(ureq::builder()
         .tls_config(std::sync::Arc::new(config))
-        .build()
+        .build())
 }
 
 /// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
@@ -14112,7 +14114,7 @@ fn rest_accept_any_agent() -> ureq::Agent {
 fn rest_tls_posture_interp_disposition(posture: &str) -> Result<Option<ureq::Agent>, String> {
     match posture {
         "VerifyPeer" => Ok(None),
-        "InsecureAcceptAnyCert" => Ok(Some(rest_accept_any_agent())),
+        "InsecureAcceptAnyCert" => rest_accept_any_agent().map(Some),
         other => Err(format!(
             "rest transport tls: unrecognized posture '{}'",
             other
@@ -19800,15 +19802,14 @@ mod dispatch_rest_decision_tests {
     #[test]
     fn tls_posture_disposition_fails_closed() {
         // VerifyPeer (and absent) proceed on the stock verifier; InsecureAcceptAnyCert selects
-        // the accept-any agent; an unknown posture refuses.
+        // the accept-any agent (wrapped in Result, which is Ok(Agent)); an unknown posture refuses.
         assert!(matches!(
             rest_tls_posture_interp_disposition("VerifyPeer"),
             Ok(None)
         ));
-        assert!(matches!(
-            rest_tls_posture_interp_disposition("InsecureAcceptAnyCert"),
-            Ok(Some(_))
-        ));
+        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert")
+            .unwrap()
+            .is_some());
         assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
     }
 
