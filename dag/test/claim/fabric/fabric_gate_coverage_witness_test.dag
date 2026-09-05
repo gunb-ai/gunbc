@@ -26,7 +26,10 @@ import gunbc.fabric_gate_coverage {
   ObligationStanding,
   GateStandingVerdict,
   gate_standing,
+  FabricStandingReport,
+  adjudicate_published_ledger,
 }
+import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 
 // THE RED IS AUTHORED HERE, DELIBERATELY. A coverage lens run only over the roster it ships with can
 // never be observed refusing, because that roster is maintained to be total -- and a check whose
@@ -520,4 +523,171 @@ test fn the_successful_result_carries_the_gate_mutation_module_and_function_it_w
   let assoc = covered_association(gate_standing(one_gate_two_obligations(), nominated_rows(),
     ledger_at(commit_a(), "aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa")))
   assoc.length() == 1 && any(assoc, a => a == "FCI-X|m|t|w_m")
+}
+
+// ── THE PRODUCTION ENTRY, EXERCISED OVER REAL LEDGER BYTES ─────────────────────────────────────
+//
+// These do not construct a GateStandingVerdict and inspect it; they build the ARTIFACT the floor
+// publishes, hand it to the entry the CI step calls, and read the report that decides the step's
+// exit code. Anything between -- the parse, the header admission, the projection of wire rows into
+// observations, the roster fold -- is exercised because the entry runs it, not because a fixture
+// asserts it.
+//
+// THE ROWS ARE DERIVED FROM THE ROSTER, NEVER TRANSCRIBED. Naming the enrolled witnesses as string
+// literals here would make the positive control agree with a copy of the roster rather than with
+// the roster, and a rename would leave the control green while production went red. So the
+// nominations are read out of fabric_mutation_enrolments and rendered through the same qualified
+// name the wire renders.
+data ledger_fixture_commit: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data ledger_other_commit: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data ledger_fixture_subject: String = "0123456789abcdef"
+
+fn name_already_in(seen: List<String>, name: String) -> Bool {
+  fold(seen, init: false, f: (acc, s) => if s == name { true } else { acc })
+}
+
+// ONE NAME PER NOMINATED WITNESS. Two enrolments may name one witness deliberately -- a declaration
+// can discharge two mutations -- and publishing that witness twice would make the ledger say the
+// floor observed it twice, which the standing derivation refuses BY DESIGN. The duplicate would be
+// the fixture's, not the repository's.
+fn nominated_witness_names() -> List<String> {
+  fold(fabric_mutation_enrolments(), init: [], f: (acc, e) => match e.discharge {
+    Undischarged { reason, restoration_trigger } => acc,
+    DischargedByWitness { witness } => {
+      let name = witness_identity_qualified_name(identity: witness)
+      if name_already_in(acc, name) { acc } else { concat(acc, [name]) }
+    },
+  })
+}
+
+fn ledger_row(name: String, expectation: String, tag: String) -> String {
+  concat(concat(name, "\t"), concat(expectation, concat("\t", concat(tag, "\t"))))
+}
+
+fn ledger_text(snapshot: String, subject: String, rows: List<String>) -> String {
+  concat(
+    concat("gunbc-terminal-ledger/2\t", concat(snapshot, concat("\t", concat(subject, "\t0000000000000000")))),
+    concat(
+      fold(rows, init: "", f: (acc, r) => concat(acc, concat("\n", r))),
+      concat("\n#end\t", concat(rows.length() as String, "\t0000000000000000"))))
+}
+
+fn every_nomination_passing() -> List<String> {
+  map(nominated_witness_names(), n => ledger_row(n, "expect-hold", "returned-true"))
+}
+
+fn report_holds(r: FabricStandingReport) -> Bool { r.holds }
+
+fn report_text(r: FabricStandingReport) -> String { r.text }
+
+// THE POSITIVE CONTROL. A ledger bound to the adjudicated commit, naming every nominated witness
+// once as returned-true, must let the step pass -- and the declared-undischarged rows must NOT red
+// it, which is the arm that would otherwise make this wall unconditionally closed.
+test fn a_ledger_where_every_nomination_returned_true_lets_the_step_pass() -> Bool {
+  report_holds(adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit))
+}
+
+// THE DISCRIMINATING RED, AND IT IS AUTHORABLE IN THIS REPOSITORY: deleting or renaming an enrolled
+// witness removes its row from the published ledger, which is exactly this input.
+test fn a_ledger_missing_one_nomination_reds_the_step() -> Bool {
+  let all = every_nomination_passing()
+  !report_holds(adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, all.skip(n: 1)),
+    ledger_fixture_commit))
+}
+
+// THE TAG IS LOAD-BEARING AND NOT MERELY PRESENT. A row for every nomination, one of them observed
+// returning false, must red: presence in the ledger is not evidence that a witness established
+// anything.
+test fn a_nomination_observed_returning_false_reds_the_step() -> Bool {
+  let names = nominated_witness_names()
+  let rows = concat(
+    map(names.skip(n: 1), n => ledger_row(n, "expect-hold", "returned-true")),
+    map(take(names, 1), n => ledger_row(n, "expect-hold", "returned-false")))
+  !report_holds(adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, rows),
+    ledger_fixture_commit))
+}
+
+// A WITNESS THE FLOOR HOLDS AS A KNOWN RED DISCHARGES NOTHING, even when its own claim returned
+// true -- the floor's expectation is bookkeeping about a tolerated red, not evidence for a gate.
+test fn a_nomination_held_as_a_known_red_reds_the_step() -> Bool {
+  let names = nominated_witness_names()
+  let rows = concat(
+    map(names.skip(n: 1), n => ledger_row(n, "expect-hold", "returned-true")),
+    map(take(names, 1), n => ledger_row(n, "expect-red", "returned-true")))
+  !report_holds(adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, rows),
+    ledger_fixture_commit))
+}
+
+// THE SAME WITNESS OBSERVED TWICE IS AMBIGUOUS EVIDENCE, NOT DOUBLE EVIDENCE.
+test fn a_nomination_observed_twice_reds_the_step() -> Bool {
+  let all = every_nomination_passing()
+  !report_holds(adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, concat(all, take(all, 1))),
+    ledger_fixture_commit))
+}
+
+// THE REVISION GUARD, IN PRODUCTION SHAPE. A complete, entirely passing ledger of ANOTHER commit
+// establishes nothing about this tree, and the refusal names that rather than reporting a coverage
+// gap -- the two have different remedies.
+test fn a_complete_ledger_of_another_revision_refuses_by_name() -> Bool {
+  let r = adjudicate_published_ledger(
+    ledger_text(ledger_other_commit, ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-of-another-revision"
+}
+
+// A LOCAL RUN'S LEDGER NAMES NO COMMIT, so it cannot be bound to one; it must refuse rather than
+// adjudicate as though the tree it was produced from were this one.
+test fn an_unpublished_ledger_refuses_as_not_candidate_bound() -> Bool {
+  let r = adjudicate_published_ledger(
+    ledger_text("unpublished", ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-is-not-candidate-bound"
+}
+
+// AN UNREADABLE FILE IS NOT AN EMPTY POPULATION. The refusal must say the ledger could not be read,
+// never report zero covered obligations, which is what a parse failure folded into an empty list
+// would look like to every consumer.
+test fn an_unreadable_ledger_refuses_rather_than_reading_as_empty() -> Bool {
+  let r = adjudicate_published_ledger("nope", ledger_fixture_commit)
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=ledger-unreadable reason=ledger-shorter-than-header-and-footer"
+}
+
+// A HEADER WHOSE SNAPSHOT IS NEITHER A COMMIT NOR THE UNPUBLISHED TOKEN IS A LEDGER THIS ENTRY
+// DOES NOT UNDERSTAND, and it says so with the offending text rather than guessing.
+test fn a_ledger_whose_snapshot_is_not_a_commit_refuses_by_name() -> Bool {
+  let r = adjudicate_published_ledger(
+    ledger_text("not-a-commit", ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=ledger-snapshot-unrecognized offending=not-a-commit"
+}
+
+test fn a_ledger_whose_subject_is_not_a_digest_refuses_by_name() -> Bool {
+  let r = adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, "zz", every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-subject-unrecognized offending=zz"
+}
+
+// AN ADJUDICATED COMMIT THE HOST COULD NOT READ MUST NOT DEGRADE INTO "ADJUDICATE ANYWAY".
+test fn an_unreadable_adjudicated_commit_refuses_by_name() -> Bool {
+  let r = adjudicate_published_ledger(
+    ledger_text(ledger_fixture_commit, ledger_fixture_subject, every_nomination_passing()),
+    "not-a-commit")
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=adjudicated-revision-unrecognized offending=not-a-commit"
+}
+
+// THE ROSTER ACTUALLY HAS NOMINATIONS. Every red above would pass vacuously against an empty
+// nomination list -- "missing one row" from zero rows is still zero -- so the population the other
+// witnesses depend on is asserted rather than assumed.
+test fn the_roster_nominates_at_least_one_witness() -> Bool {
+  nominated_witness_names().length() > 0
 }

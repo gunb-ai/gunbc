@@ -615,8 +615,12 @@ fn count_identity_in(seen: List<DeclarationRef>, id: DeclarationRef) -> Int {
 // occurrence: the third and later copies see a count of 2 or more and add nothing, so one duplicated
 // identity still yields one cause without a separate already-named population to rescan.
 //
-// This is O(n*distinct), not linear, and that is a floor rather than a shortcut: exact duplicate
-// detection needs a map, set or ordering to beat it, and std carries none -- std.keyed_roster, the
+// The saving is a constant factor, not an asymptotic one: the prefix carries every occurrence, so
+// count_identity_in scans i elements at step i and the comparison count is n*(n-1)/2 regardless of
+// how many identities are distinct. Emitting only on the second occurrence bounds the number of
+// CAUSES, not the number of elements scanned. This is quadratic, and that is a floor rather than a
+// shortcut: exact duplicate detection needs a map, set or ordering to beat it, and std carries none
+// -- std.keyed_roster, the
 // repo's canonical duplicate-detection authority, documents itself as O(n^2) worst case in its own
 // header for exactly this reason. It is not consumed here because it answers a different question:
 // it locates the FIRST duplicate as evidence, where a roster scan owes one cause per duplicated

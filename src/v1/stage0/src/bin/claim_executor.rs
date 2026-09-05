@@ -274,6 +274,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut fabric_gate_standing_mode = false;
+    let mut fabric_gate_standing_ledger =
+        v1_compiler::cli_run::fabric_gate_standing::TERMINAL_LEDGER_PATH.to_string();
+    let mut fabric_gate_standing_commit: Option<String> = None;
     let mut regen_round_cost_mode = false;
     let mut regen_affected_set_mode = false;
     let mut regen_affected_scope = false;
@@ -360,6 +364,26 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
+            }
+            // ADJUDICATE THE FLOOR'S PUBLISHED LEDGER AGAINST gunbc.fabric_gate_coverage. It runs
+            // no witness and prepares no subject: it reads the artifact the floor already wrote
+            // and folds the enrolment roster over it, so its cost is a parse and a fold rather
+            // than a second execution of the floor's population.
+            "--fabric-gate-standing" => {
+                fabric_gate_standing_mode = true;
+            }
+            "--fabric-gate-standing-ledger" => {
+                i += 1;
+                fabric_gate_standing_ledger =
+                    require_value(&args, i, "--fabric-gate-standing-ledger")?;
+            }
+            // THE COMMIT UNDER ADJUDICATION, REQUIRED RATHER THAN DEFAULTED. Defaulting it to the
+            // ledger's own header would make the revision comparison agree with itself, which is
+            // the one thing this argument exists to prevent.
+            "--adjudicated-commit" => {
+                i += 1;
+                fabric_gate_standing_commit =
+                    Some(require_value(&args, i, "--adjudicated-commit")?);
             }
             // ONE PRICED REGEN ROUND: seed build, the same `--required-regen` emit, install of
             // what drifted, rebuild from the installed seed, diff — every phase on two clocks,
@@ -1120,6 +1144,47 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             Err(ExitCode::from(1))
         };
+    }
+
+    if fabric_gate_standing_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        // THE DEFAULT IS AN INDEPENDENT READ OF THE CHECKED-OUT TREE, NOT A DEFAULT AT ALL IN THE
+        // SENSE section 5 forbids. The ledger's header carries what the floor was TOLD it was
+        // running at, which on CI is GITHUB_SHA; this reads what the working tree IS. Two
+        // instruments, so the comparison can fail. Taking the value from the ledger, or from the
+        // same environment variable the floor read, would make it agree with itself.
+        let commit = match fabric_gate_standing_commit {
+            Some(commit) => commit,
+            None => match v1_compiler::cli_run::fabric_gate_standing::head_commit_of_worktree() {
+                Ok(commit) => commit,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+        };
+        match v1_compiler::cli_run::fabric_gate_standing::adjudicate_published_ledger(
+            &roots,
+            &fabric_gate_standing_ledger,
+            &commit,
+        ) {
+            Ok(report) => {
+                eprintln!("{}", report.text);
+                return if report.holds {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                return Err(ExitCode::from(1));
+            }
+        }
     }
 
     if required_emit_compile_mode {

@@ -528,6 +528,23 @@ fn witnesses_lane_measurement_command(measurement_receipt: String) -> ArgvComman
   required_ci_lane_command(lane: required_ci_lane_witnesses, measurement_receipt: measurement_receipt)
 }
 
+// THE FLOOR'S PUBLISHED LEDGER, ADJUDICATED AGAINST THE FABRIC GATE ROSTER. Same binary, same
+// source roots, same single argv authority as every other mode here -- a lane word is not passed
+// because this is not a lane: it runs no phase and no witness, it reads the artifact the witnesses
+// lane already published. No commit operand either: the binary reads the checked-out tree's HEAD,
+// which is a different instrument from the GITHUB_SHA the floor stamped into the header, and
+// passing one here would name a policy the caller does not own.
+fn fabric_gate_standing_command() -> ArgvCommand {
+  claim_executor_command(
+    mode_flag: "--fabric-gate-standing",
+    operands: fold(
+      witness_layer_roots,
+      init: [],
+      f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+    ),
+  )
+}
+
 // The build lane: regen's first-generation comparison and the v2 emission compile.
 fn build_lane_run_command() -> ArgvCommand {
   required_ci_lane_command(lane: required_ci_lane_build, measurement_receipt: "")

@@ -240,11 +240,20 @@ fn parse_expectation(wire: String) -> ClaimExpectation? {
 // A BUDGET TERMINAL CARRYING "WITHIN LIMITS" IS A CONTRADICTORY PAIRING, not a third reading of
 // the cost. It gets its own tag rather than being folded into either real arm: folding it would
 // publish a refusal or a completion that no measurement supports.
+// THE ONE TAG THAT MEANS "THIS WITNESS ESTABLISHED ITS PROPERTY", named because a second reader
+// now joins on it. A consumer reading a published ledger back has no ClaimAttemptTerminal to match
+// on -- the artifact carries a tag and a detail -- so the predicate it needs is "the tag this
+// renderer emits for Returned-and-holds". Spelling that literal a second time in the consumer
+// would be a nickname for a fact this module owns (DESIGN section 3): the renderer could change
+// the tag and the consumer would keep testing the old spelling, silently answering false for every
+// row. One row, read by the renderer and by the reader.
+data ledger_returned_true_tag: String = "returned-true"
+
 fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
   match terminal {
     Returned { observation: o } =>
       match o {
-        ObservedVerdict { holds: h } => if h { "returned-true" } else { "returned-false" }
+        ObservedVerdict { holds: h } => if h { ledger_returned_true_tag } else { "returned-false" }
         ObservationUnrepresentable { reason: _ } => "returned-unreadable"
       }
     RuntimeErrored { message: _ } => "runtime-errored"
@@ -772,7 +781,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "returned-unreadable" {
     Present { value: ObservationUnreadableBeforeVerdict }
   } else {
-  if row.terminal_tag == "returned-true" {
+  if row.terminal_tag == ledger_returned_true_tag {
     match row.expectation {
       ExpectedToHold => Present { value: Passed }
       ExpectedRed => Present { value: KnownRedNowPassing }

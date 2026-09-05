@@ -210,8 +210,9 @@ mod emitted_closure_compile_host;
 #[cfg(test)]
 #[path = "evaluation_budget_consequence_falsifier_host.rs"]
 mod evaluation_budget_consequence_falsifier_host;
+pub mod fabric_gate_standing;
 pub(crate) mod shared_fill;
-pub(crate) mod terminal_ledger_publish;
+pub mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,

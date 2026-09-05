@@ -13,6 +13,16 @@ import v2.workflow.floor_terminal_ledger {
   LedgerBinding,
 }
 import std.materialization_provider { Fnv1a64Structural }
+import std.content_hash { fnv1a64_structural_hex_digest }
+import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
+import v2.workflow.floor_terminal_ledger_wire {
+  LedgerReadback,
+  LedgerReadbackRow,
+  RepositorySnapshotAdmission,
+  admit_repository_snapshot_wire,
+  ledger_returned_true_tag,
+  parse_ledger,
+}
 
 // WHY THIS EXISTS, STATED AS THE FAILURE IT ANSWERS. gunbc.fabric_ci_program declares, per gate, the
 // mutations that discriminate its exit predicate. Nothing joined those declarations to the evidence
@@ -29,16 +39,27 @@ import std.materialization_provider { Fnv1a64Structural }
 //
 // THE CLASS THIS BELONGS TO. A coverage claim computed from a roster is a different object from a
 // coverage claim written beside one. This is the second: the roster of gates is the authority, the
-// enrolment list is measured against it, and the disagreement is typed. What it does NOT do is
-// verify that a named witness EXISTS or EXECUTES. The next-rung trigger is therefore the WHOLE
-// RELATION, not the single question of whether something ran -- "did it run" leaves three of this
-// module's own acknowledged gaps open (ran at another revision; ran here but established the wrong
-// terminal observation; more than one binding claims the obligation). TRIGGER (DESIGN 4b(3)): a
-// carrier joining exact gate obligation x exact witness DECLARATION x adjudicated revision x
-// expected terminal refusal-or-identity observation, admitting exactly one covered binding per
-// obligation, SUFFICIENT FOR a row to be refused when its witness did not run, ran elsewhere, ran and
-// observed something else, or is claimed by a second binding. Until that capability exists a DischargedByWitness row is an author's claim about a
-// symbol, and this module's honest rung is that it makes that claim ENUMERABLE AND TOTAL, not true.
+// enrolment list is measured against it, and the disagreement is typed.
+//
+// THE TRIGGER THIS PARAGRAPH USED TO CARRY HAS FIRED, AND THE RUNG STATEMENT IS REWRITTEN RATHER
+// THAN LEFT STANDING. It read that the module could not verify that a named witness EXISTS or
+// EXECUTES, and named as its trigger a carrier joining exact gate obligation x exact witness
+// declaration x adjudicated revision x expected terminal observation, admitting exactly one
+// covered binding per obligation. That carrier is `gate_standing` and its production caller is
+// `adjudicate_published_ledger`, which reads the terminal ledger the required floor publishes on
+// every run, refuses a ledger bound to another revision, and derives one standing per obligation.
+// A nomination whose witness did not run, ran as a tolerated known red, returned something other
+// than a held verdict, or was observed twice is REFUSED, and the refusal reds a required step.
+//
+// WHAT IS STILL NOT ESTABLISHED, stated so the climb is not read as further than it went. First,
+// the join key is the qualified name the wire carries, not the declaration -- see
+// NominationObservation. Second, a witness that ran and passed is evidence that a claim of that
+// name holds, never that the claim discriminates the MUTATION the roster enrols it against; that
+// relation is authored and this module cannot read it. TRIGGER (DESIGN 4b(3)): a mutation carrier
+// the witness itself names -- an enrolment the WITNESS declares rather than the roster asserts --
+// SUFFICIENT FOR a witness renamed onto a different property to stop discharging the obligation it
+// was enrolled for. Third, the prepared-subject half of the revision binding has no production
+// caller; its own trigger is stated at `adjudicate_published_ledger`.
 type MutationDischarge
   = DischargedByWitness { witness: WitnessIdentity }
   | Undischarged { reason: NonEmptyStr, restoration_trigger: NonEmptyStr }
@@ -102,8 +123,12 @@ fn gate_declares_mutation(gates: List<FabricCiGate>, gate: NonEmptyStr, mutation
 // twice: a count over the full population plus a second scan, which is the copied-accumulator cost
 // defect §6 says is always fixed regardless of realized n. Carrying the prefix emits exactly when an
 // identity's prefix count is 1 -- its SECOND occurrence -- so a third copy adds nothing and no
-// already-named population needs rescanning. That is O(n*distinct), and it is a floor rather than a
-// shortcut: exact duplicate detection needs a map, set or ordering to beat it and std carries none.
+// already-named population needs rescanning. The saving is a constant factor -- one traversal
+// instead of two -- and NOT an asymptotic one: the prefix holds every occurrence, not the distinct
+// ones, so count_name_in scans i elements at step i and the comparison count is n*(n-1)/2. This is
+// quadratic, and it is a floor rather than a shortcut: exact duplicate detection needs a map, set or
+// ordering to beat it and std carries none. Emitting only on the second occurrence bounds the number
+// of causes, not the number of elements scanned.
 type NameScan {
   prefix: List<NonEmptyStr>
   causes: List<CoverageRefusal>
@@ -316,8 +341,55 @@ fn witness_identity_eq(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
   a.module_path == b.module_path && a.function == b.function
 }
 
-fn rows_naming(rows: List<ClaimTerminalRow>, witness: WitnessIdentity) -> List<ClaimTerminalRow> {
-  filter(rows, r => witness_identity_eq(r.identity, witness))
+// THE ADJUDICATION SUBJECT IS AN OBSERVATION, NOT A ROW TYPE, AND THAT IS WHAT LETS ONE CORE SERVE
+// BOTH READERS. The witnesses hand this module typed ClaimTerminalRows; production hands it rows
+// PARSED BACK from a published ledger, which carry a wire tag and a qualified name and no
+// ClaimAttemptTerminal at all. Keying the standing logic on either row type would have forked the
+// adequacy question in two -- one typed, one string-keyed -- and the fork would be invisible,
+// because each half would be green against its own fixtures while disagreeing about which witness
+// discharges an obligation. So both row types PROJECT into this one carrier and the standing
+// derivation has a single definition.
+//
+// THE JOIN KEY IS THE QUALIFIED NAME BECAUSE THAT IS WHAT THE ARTIFACT CARRIES. A published ledger
+// row has no module/function pair to join on; it has the one string the wire renders from that
+// pair. This is spelling-keyed where declaration identity would be preferable, and it is forced
+// rather than chosen: the identity is reconstructible only through the same encoding. What keeps
+// it honest is that the encoding has ONE producer -- witness_identity_qualified_name -- used by the
+// renderer and by this projection, so the two sides cannot disagree about the spelling.
+type NominationObservation {
+  qualified: String
+  expectation: ClaimExpectation
+  holds: Bool
+}
+
+fn observation_of_terminal_row(r: ClaimTerminalRow) -> NominationObservation {
+  NominationObservation {
+    qualified: witness_identity_qualified_name(identity: r.identity),
+    expectation: r.expectation,
+    holds: terminal_holds(r.terminal),
+  }
+}
+
+// THE READBACK PROJECTION READS THE TAG, NOT A RECONSTRUCTED TERMINAL, AND THE DIFFERENCE IS
+// HONESTY ABOUT WHAT THE ARTIFACT HOLDS. Inverting the wire into a ClaimAttemptTerminal is not
+// total: BudgetRefused renders one detail string from three fields, so a reconstruction would have
+// to invent the cpu and wall figures it lost. Inventing them to satisfy a type is the fabricated
+// plausible output DESIGN section 5 forbids. The one fact this adjudication needs -- did the
+// witness return and hold -- IS carried losslessly, by exactly one tag, and that tag is named by
+// its producer rather than respelled here.
+fn observation_of_readback_row(r: LedgerReadbackRow) -> NominationObservation {
+  NominationObservation {
+    qualified: r.qualified,
+    expectation: r.expectation,
+    holds: r.terminal_tag == ledger_returned_true_tag,
+  }
+}
+
+fn observations_naming(
+  observations: List<NominationObservation>,
+  witness: WitnessIdentity,
+) -> List<NominationObservation> {
+  filter(observations, o => o.qualified == witness_identity_qualified_name(identity: witness))
 }
 
 // ADEQUACY IS "THE WITNESS ESTABLISHED ITS PROPERTY", NOT "THE CLAIM AGREED WITH THE ROSTER".
@@ -361,20 +433,20 @@ fn expectation_is_to_hold(expectation: ClaimExpectation) -> Bool {
 // counted as coverage.
 fn standing_for(
   e: MutationEnrolment,
-  rows: List<ClaimTerminalRow>,
+  observations: List<NominationObservation>,
 ) -> ObligationStanding {
   match e.discharge {
     Undischarged { reason, restoration_trigger } =>
       NotCovered { gate: e.gate, mutation: e.mutation, cause: NotNominated {} },
     DischargedByWitness { witness } => {
-      let seen = rows_naming(rows, witness)
+      let seen = observations_naming(observations, witness)
       if seen.length() == 0 {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationHasNoObservation { witness: witness } }
       } else if seen.length() > 1 {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: SeveralObservationsForOneNomination { witness: witness } }
-      } else if !all(seen, r => expectation_is_to_hold(r.expectation)) {
+      } else if !all(seen, o => expectation_is_to_hold(o.expectation)) {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationIsHeldAsAKnownRed { witness: witness } }
-      } else if !all(seen, r => terminal_holds(r.terminal)) {
+      } else if !all(seen, o => o.holds) {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: ObservedWrongTerminal { witness: witness } }
       } else {
         Covered { gate: e.gate, mutation: e.mutation, witness: witness }
@@ -423,6 +495,24 @@ fn gate_standing(
   adjudicated_revision: RepositorySnapshot,
   adjudicated_subject: Fnv1a64Structural,
 ) -> GateStandingVerdict {
+  gate_standing_over_observations(
+    gates,
+    enrolments,
+    binding,
+    map(rows, r => observation_of_terminal_row(r)),
+    adjudicated_revision,
+    adjudicated_subject,
+  )
+}
+
+fn gate_standing_over_observations(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+  binding: LedgerBinding,
+  observations: List<NominationObservation>,
+  adjudicated_revision: RepositorySnapshot,
+  adjudicated_subject: Fnv1a64Structural,
+) -> GateStandingVerdict {
   match binding.repository_snapshot {
     UnpublishedWorkingTree => StandingRefusedLedgerIsNotCandidateBound {},
     PublishedCommit { commit } => match adjudicated_revision {
@@ -439,7 +529,7 @@ fn gate_standing(
           match gate_coverage(gates, enrolments) {
             CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
             CoverageTotal { discharged, undischarged } => {
-              let all_standings = map(concat(discharged, undischarged), e => standing_for(e, rows))
+              let all_standings = map(concat(discharged, undischarged), e => standing_for(e, observations))
               StandingDerived {
                 covered: filter(all_standings, s => is_covered(s)),
                 uncovered: filter(all_standings, s => !is_covered(s)),
@@ -448,5 +538,199 @@ fn gate_standing(
           }
         },
     },
+  }
+}
+
+// ── THE RETAINED CONSUMER ──────────────────────────────────────────────────────────────────────
+//
+// EVERYTHING ABOVE IS A DECISION PROCEDURE WITH NO PRODUCTION CALLER, AND A DECISION PROCEDURE
+// NOTHING CALLS IS SPECIFICATION WITHOUT EXECUTION. The witnesses establish that gate_standing
+// refuses what it should refuse; they establish nothing about the repository, because their rows
+// are fixtures. What makes the derivation a fact about THIS tree is a caller that hands it the
+// ledger the required floor actually published, at the revision under adjudication.
+//
+// THE SUBJECT IS THE PUBLISHED ARTIFACT, NOT A SECOND MEASUREMENT. The floor already renders
+// v2.workflow.floor_terminal_ledger_wire's ledger on every required run; this entry reads that same
+// file back through that same grammar. It runs no witness, prepares no subject and walks no corpus,
+// so its cost is one parse plus one fold over the enrolment roster -- the incremental read, decode
+// and adjudication the operator ruling requires of a step that lives inside an existing lane. A
+// second execution of the floor's population here would be the cut `fabric-evidence` job wearing a
+// step's name, which the workflow authority forbids by its own restoration condition.
+//
+// THE TWO ADJUDICATED ARGUMENTS ARE THE CALLER'S, DELIBERATELY. The revision and the prepared
+// subject say WHAT THIS RUN IS ADJUDICATING, and reading them out of the same file that supplies
+// the evidence would make the comparison a tautology -- the ledger would agree with itself and the
+// revision wall would be permanently green. They arrive from the run's own environment, so a ledger
+// left over from another commit is refused rather than believed.
+type FabricStandingReport {
+  holds: Bool
+  text: String
+}
+
+fn standing_refused(text: String) -> FabricStandingReport {
+  FabricStandingReport { holds: false, text: text }
+}
+
+fn render_cause(cause: StandingCause) -> String {
+  match cause {
+    NominationHasNoObservation { witness } =>
+      concat("no-observation:", witness_identity_qualified_name(identity: witness)),
+    NominationIsHeldAsAKnownRed { witness } =>
+      concat("held-as-known-red:", witness_identity_qualified_name(identity: witness)),
+    ObservedWrongTerminal { witness } =>
+      concat("wrong-terminal:", witness_identity_qualified_name(identity: witness)),
+    SeveralObservationsForOneNomination { witness } =>
+      concat("several-observations:", witness_identity_qualified_name(identity: witness)),
+    NotNominated {} => "not-nominated",
+  }
+}
+
+fn render_standing(s: ObligationStanding) -> String {
+  match s {
+    Covered { gate, mutation, witness } =>
+      concat(concat("  covered ", gate as String), concat(concat("|", mutation as String),
+        concat("|", witness_identity_qualified_name(identity: witness)))),
+    NotCovered { gate, mutation, cause } =>
+      concat(concat("  UNCOVERED ", gate as String), concat(concat("|", mutation as String),
+        concat("|", render_cause(cause)))),
+  }
+}
+
+fn render_refusal(r: CoverageRefusal) -> String {
+  match r {
+    GateIdDeclaredSeveralTimes { gate } => concat("  duplicate-gate ", gate as String),
+    MutationDeclaredSeveralTimes { gate, mutation } =>
+      concat(concat("  duplicate-mutation ", gate as String), concat("|", mutation as String)),
+    MutationHasNoEnrolmentRow { gate, mutation } =>
+      concat(concat("  unenrolled-mutation ", gate as String), concat("|", mutation as String)),
+    MutationHasSeveralEnrolmentRows { gate, mutation } =>
+      concat(concat("  several-enrolments ", gate as String), concat("|", mutation as String)),
+    EnrolmentNamesUnknownGate { gate, mutation } =>
+      concat(concat("  unknown-gate ", gate as String), concat("|", mutation as String)),
+    EnrolmentNamesUndeclaredMutation { gate, mutation } =>
+      concat(concat("  undeclared-mutation ", gate as String), concat("|", mutation as String)),
+  }
+}
+
+fn lines_of(items: List<String>) -> String {
+  fold(items, init: "", f: (acc, line) => concat(acc, concat("\n", line)))
+}
+
+// WHAT REDS IS A BROKEN CLAIM OF COVERAGE, NOT A DECLARED GAP, AND GETTING THAT BACKWARDS WOULD
+// HAVE MADE THIS STEP UNCONDITIONALLY RED.
+//
+// The enrolment roster is a coproduct on purpose: a mutation is either discharged by a named
+// witness or DECLARED UNDISCHARGED with a restoration trigger. Most rows are the second today.
+// Reddening on every uncovered obligation would therefore fail every run from the first one, which
+// is the mirror of the vacuous check -- a wall whose verdict does not depend on the repository
+// establishes nothing in either direction, and one that is always red gets disabled rather than
+// fixed. So an Undischarged row is REPORTED and does not decide the step; it is already visible,
+// countable and carrying its trigger.
+//
+// What reds is a NOMINATION THAT DOES NOT STAND: the roster claims a witness discharges a mutation
+// and the published ledger says that witness did not run, ran as a tolerated known red, returned
+// something other than a held verdict, or was observed more than once. That is the state a prose
+// coverage claim used to be able to reach unchallenged, and it is authorable in this repository by
+// deleting or renaming an enrolled witness -- which is what makes this a wall rather than a
+// decoration. Both refusal families remain red: an unwell-formed roster and a ledger of the wrong
+// revision are failures of the adjudication itself, not declared debt.
+// A ROW THE ROSTER NEVER CLAIMED. NotNominated is the ONLY cause that means "no coverage was
+// asserted"; every other cause means a coverage assertion failed to stand.
+fn standing_is_undeclared(s: ObligationStanding) -> Bool {
+  match s {
+    Covered { gate, mutation, witness } => false,
+    NotCovered { gate, mutation, cause } => match cause {
+      NotNominated {} => true,
+      NominationHasNoObservation { witness } => false,
+      NominationIsHeldAsAKnownRed { witness } => false,
+      ObservedWrongTerminal { witness } => false,
+      SeveralObservationsForOneNomination { witness } => false,
+    },
+  }
+}
+
+fn render_standing_verdict(v: GateStandingVerdict) -> FabricStandingReport {
+  match v {
+    StandingRefusedUnwellFormedEnrolment { refusals } =>
+      standing_refused(concat(
+        concat("FCI-STANDING refused=unwell-formed-enrolment refusals=", refusals.length() as String),
+        lines_of(map(refusals, r => render_refusal(r))))),
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } =>
+      standing_refused(concat(
+        concat("FCI-STANDING refused=ledger-of-another-subject observed=", observed.digest),
+        concat(" adjudicated=", adjudicated.digest))),
+    StandingRefusedLedgerIsOfAnotherRevision {} =>
+      standing_refused("FCI-STANDING refused=ledger-of-another-revision"),
+    StandingRefusedLedgerIsNotCandidateBound {} =>
+      standing_refused("FCI-STANDING refused=ledger-is-not-candidate-bound"),
+    StandingDerived { covered, uncovered } => {
+      let broken = filter(uncovered, s => !standing_is_undeclared(s))
+      let declared = filter(uncovered, s => standing_is_undeclared(s))
+      FabricStandingReport {
+        holds: broken.length() == 0,
+        text: concat(
+          concat(
+            concat("FCI-STANDING verdict=", if broken.length() == 0 { "nominations-stand" } else { "nomination-broken" }),
+            concat(concat(" covered=", covered.length() as String),
+                   concat(concat(" broken=", broken.length() as String),
+                          concat(" declared-undischarged=", declared.length() as String)))),
+          concat(lines_of(map(broken, s => render_standing(s))),
+                 lines_of(map(covered, s => render_standing(s))))),
+      }
+    },
+  }
+}
+
+// WHAT THIS ENTRY BINDS INDEPENDENTLY, AND WHAT IT DOES NOT -- STATED HERE BECAUSE THE ALTERNATIVE
+// IS A PERMANENTLY GREEN COMPARISON WEARING A WALL'S NAME.
+//
+// THE REVISION IS INDEPENDENTLY BOUND. The ledger header carries the commit the FLOOR was told it
+// was running at; the caller supplies the commit of the tree it is standing in, read by a different
+// instrument in a different process. A ledger left in target/ by an earlier run of another commit
+// therefore refuses, which is the whole failure this guard exists for.
+//
+// THE PREPARED SUBJECT IS NOT. Recomputing it here would be the whole-tree preparation this step
+// exists to avoid paying twice, and no other artifact of the run carries it, so the only value
+// available to compare against is the one the ledger itself states. Passing that value in would be
+// a comparison whose passing value is also its broken value -- green whether or not the subject is
+// right -- so this entry does not take one, and the subject guard's production standing is DROPPED
+// rather than faked. TRIGGER (DESIGN 4b(3)): an output of the floor step carrying this run's
+// prepared-subject digest, SUFFICIENT FOR this adjudication to compare the ledger's header against
+// a digest it did not read out of the ledger. The guard itself stays live and covered by witnesses
+// through gate_standing, which every fixture exercises; what is dropped is its production caller.
+fn adjudicate_published_ledger(
+  ledger_text: String,
+  adjudicated_commit_hex: String,
+) -> FabricStandingReport {
+  match parse_ledger(text: ledger_text) {
+    LedgerUnreadable { reason, at } =>
+      standing_refused(concat("FCI-STANDING refused=ledger-unreadable reason=", reason as String)),
+    LedgerRead { repository_snapshot, prepared_subject, roster_identity, rows, footer_row_count_wire, footer_digest } =>
+      match admit_repository_snapshot_wire(wire: repository_snapshot) {
+        SnapshotWireUnrecognized { offending } =>
+          standing_refused(concat("FCI-STANDING refused=ledger-snapshot-unrecognized offending=", offending)),
+        SnapshotAdmitted { snapshot: observed_snapshot } =>
+          match admit_repository_snapshot_wire(wire: adjudicated_commit_hex) {
+            SnapshotWireUnrecognized { offending } =>
+              standing_refused(concat("FCI-STANDING refused=adjudicated-revision-unrecognized offending=", offending)),
+            SnapshotAdmitted { snapshot: adjudicated_snapshot } =>
+              match fnv1a64_structural_hex_digest(hex: prepared_subject) {
+                Absent =>
+                  standing_refused(concat("FCI-STANDING refused=ledger-subject-unrecognized offending=", prepared_subject)),
+                Present { value: observed_subject } =>
+                  render_standing_verdict(gate_standing_over_observations(
+                    fabric_ci_gates(),
+                    fabric_mutation_enrolments(),
+                    LedgerBinding {
+                      repository_snapshot: observed_snapshot,
+                      prepared_subject: observed_subject,
+                    },
+                    map(rows, r => observation_of_readback_row(r)),
+                    adjudicated_snapshot,
+                    observed_subject,
+                  )),
+              },
+          },
+      },
   }
 }
