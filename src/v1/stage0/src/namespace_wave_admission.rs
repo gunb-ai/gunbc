@@ -1431,115 +1431,147 @@ pub struct TransitionAdmission {
 /// shorter branches rather than against the rule: the roster is small precisely because the
 /// deletion comes due on touch.
 
-/// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
-/// entries above number themselves against a sequence that other lanes are appending to
-/// concurrently, so a number chosen on this branch would be wrong by the time it merged.
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10459). All seven parsed-item-kind
+/// vocabulary rows are deleted, and `PARSED_ITEM_KIND_VOCABULARY_LABEL` with them. No ordinal is
+/// claimed, for the reason the entry below gives.
 ///
-/// #10459 is the declared next-rung trigger for the resource-exclusion validator family: the emit
-/// side stopped INFERRING what an item is from its shape and started READING a positive kind the
-/// parse constructors stamp. The kind therefore has to sit on `Node`, and `Node` is declared in
-/// `v1.std.core`, which cannot import `v1.compiler.parse` -- acyclicity, the import graph's one
-/// structural law. So `ParsedModuleItemKind` and its variants MOVE from `v1.compiler.parse` into
-/// `v1.std.core`: a move, not a copy, so no second authority for "what kind of item is this"
-/// survives the change, which is the whole point of the trigger.
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE, which is the standard that entry set for
+/// itself: it asked for the deletion to be decided by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than by trusting its own prose. The
+/// required namespace-wave phase did exactly that and reported all seven as CONSUMED ADMISSION by
+/// identity, 7 of 7, refusing this change until they were removed. gunbc#10459 is in main, so base
+/// and head bind each spelling to `v1.std.core` identically and no run can produce those deltas.
 ///
-/// SEVEN BINDING SITES IN `v1.compiler.parse` therefore bind the same spellings to a different
-/// declaring module -- six in `parsed_module_item_role`, one in `stamp_parsed_module_items` -- a
-/// `TargetChanged` delta by construction and exactly the motion this wall exists to make visible.
-/// `NotAModuleItem` is not among them: it is authored by this change and has no base binding to
-/// change.
+/// FOURTH COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six, gunbc#10300's
+/// two, and gunbc#10324's two. The roster's own note that the toll is proportional to how long a
+/// branch stays open is not an observation this branch can dispute: it has now paid on two separate
+/// touches, and the second cohort came due only because the first merge conflict held it open long
+/// enough for gunbc#10459 to land.
+
+/// SECRET MANAGER ACCESS ENSURE MOVES TO THE AUTH LAYER (2026-09-05, gunbc#10514). No ordinal is
+/// claimed, following the entry above and for the reason it gives: the numbered entries count
+/// against a sequence other lanes append to concurrently, so a number picked on this branch is
+/// wrong by the time it merges. This branch proved that empirically -- it authored a
+/// TWENTY-SEVENTH TRANSITION, and main had moved underneath it before the merge, which is the
+/// third such renumber this roster records rather than the first.
 ///
-/// THE OTHER DELTAS ARE NOT ADMITTED HERE BECAUSE THE WALL ALREADY ADJUDICATES THEM: the new
-/// `gunbc.recurring_failure_mode` roster rows report `ExplicitlyEvaluatedZeroDelta`, and the removed
-/// `v1.compiler.emit_core_support -> v1.compiler.parse` membership reports
-/// `SameDeclarationIdentityRebind` -- the emit side dropping the import it no longer needs once the
-/// shape predicates are deleted. Admitting a row the wall already decides would be a second
-/// authority for one decision.
+/// Eight bindings across two modules resolve to a new target, which is `TargetChanged` and is not
+/// auto-admitted. `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` move from `gunbc.spark.secret_access_ensure` to
+/// `gunbc.auth.gcp_secret_access`.
 ///
-/// THIS ENTRY ONCE CLAIMED THE gunbc#10439 DELETION AND NO LONGER DOES, WHICH IS THE POINT OF
-/// SAYING SO. An earlier revision, authored when this branch was the first to touch the roster after
-/// #10439 merged, said the six serving-engine rows "are deleted by this change". gunbc#10445 landed
-/// that deletion first. Leaving the sentence standing would have made this block assert an act it
-/// did not perform -- true on the branch that wrote it, false the moment another lane discharged the
-/// same obligation.
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the module
+/// path named the reconciler's FIRST CONSUMER rather than the fact it owns. That held while
+/// spark-administrator-password was the only secret it bound, and stopped holding when the
+/// gunbai-ci App key became a second caller in a different domain and had to reach into the spark
+/// namespace for a fact that was never about spark. DESIGN section 3 homes a fact by its LAYER, so
+/// the reconciler lands in the auth layer and the spark module keeps a wrapper naming its own
+/// target.
 ///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10459 merges. The base then binds
-/// each spelling to `v1.std.core`, no run can produce these deltas, and all seven report CONSUMED
-/// rather than stale -- coming due on this roster's own next touch. Adjudicate that deletion by the
-/// declaring-module join, joining each row against main's tree by its own (module, in_declaration,
-/// spelling, target) tuple rather than trusting this sentence, because a trigger sentence is not
-/// evidence that the trigger fired.
-const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
-    "parsed module item kind vocabulary move gunbc#10459 2026-09-05";
+/// THE LEAF IS UNCHANGED AND THE DECLARER MOVED, which is the shape this roster exists to
+/// adjudicate rather than auto-admit. Every one of those spellings is identical on both sides; only
+/// the declaring module differs. The wall keys on the leaf segment, sees the target move, and
+/// refuses -- correctly, because a symbol changing modules is real membership motion and not the
+/// requalification the leaf key is invariant under.
+///
+/// ONE CHANGE CLASS, NOT TWO. The standing rule is that a wave which both requalifies and moves a
+/// symbol is two classes in one diff. This is the second alone: nothing here is requalified, every
+/// spelling is imported under the leaf it always had, and what moved is the declaration behind it.
+///
+/// THIS BRANCH'S OWN DISSOLUTION ENTRY FOR THE gunbc#10324 ROWS IS DROPPED, NOT RENUMBERED, the
+/// same disposition the entries above record for four earlier collisions. This branch had authored
+/// one (numbered thirty-fifth at the time) deleting both `host_converge_for_identity` rows,
+/// adjudicated by its own required run reporting them CONSUMED, 2 of 2. Main discharged that
+/// deletion first. It happened ONCE, and two entries would leave two authorities for one event.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10514 merges. Main then carries the
+/// reconciler in `gunbc.auth.gcp_secret_access`, base and head bind each spelling identically, no
+/// run can produce these deltas, and all eight report CONSUMED rather than stale -- coming due on
+/// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+const SECRET_ACCESS_ENSURE_MOVE_LABEL: &str =
+    "gunbc#10514 access-grant widening: the Secret Manager access ensure moves to the auth layer, \
+     from gunbc.spark.secret_access_ensure to gunbc.auth.gcp_secret_access";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemDataValue",
-            target: "v1.std.core",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenReady",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemFunction",
-            target: "v1.std.core",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenUnavailable",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemResource",
-            target: "v1.std.core",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "read_supplied_access_token",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemService",
-            target: "v1.std.core",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "secret_access_ensure_for",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemTypeDeclaration",
-            target: "v1.std.core",
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenReady",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemUnrecognized",
-            target: "v1.std.core",
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenUnavailable",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "stamp_parsed_module_items",
-            spelling: "ModuleItemUnrecognized",
-            target: "v1.std.core",
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "read_supplied_access_token",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_ensure",
+            spelling: "secret_access_ensure_for",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

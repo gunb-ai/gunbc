@@ -163,6 +163,38 @@ fn gcp_cells_bindings(cs: List<GcpIamBindingCell>) -> List<GcpBinding> {
 // Ownership is asked per CELL. Owning (member M, role accessor) does not confer authority over
 // (member M, role admin): that grant may exist for a reason this caller cannot see, so it is
 // preserved even though the member is one the caller recognises.
+// THE POLICY VERSION IS A FUNCTION OF WHAT THE POLICY CONTAINS, NOT A FIELD TO COPY FORWARD.
+// Google requires schema version 3 for any setIamPolicy whose document carries a conditional
+// binding, and rejects a policy that contains a condition while declaring version 1. An earlier
+// revision of the reconciler copied observed.version into the assembled policy unconditionally, so
+// adding the first conditional cell to an ordinary version-1 policy produced a document that
+// asserted version 1 and carried a condition -- invalid by construction, and invisible here because
+// nothing in this module had an opinion about the field.
+//
+// THE POPULATION IS final_cells, WHICH INCLUDES PRESERVED FOREIGN CELLS, and that is the case a
+// desired-only scan would miss: a foreign conditional binding we are preserving makes the document
+// conditional even when the cell WE author carries no condition. Reading only our own desired set
+// would then write version 1 over a policy that still contains someone else's condition.
+//
+// THE otherwise ARM IS observed.version AND NOT 1, which is what makes removal of the last
+// conditional binding correct without a second scan over the observation. Removing the final
+// condition from a version-3 policy takes this arm, keeps version 3, and stays valid -- Google's own
+// removal examples preserve version 3 in exactly that situation. Spelling the arm as a literal 1
+// would downgrade that write and is the counterexample this shape avoids rather than repairs.
+//
+// Reads are the other half and are NOT this function's business: a caller that never requests
+// representation version 3 is handed conditions it cannot see, whatever this returns.
+fn gcp_cell_is_conditioned(c: GcpIamBindingCell) -> Bool {
+  match c.condition {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn gcp_policy_version_for(final_cells: List<GcpIamBindingCell>, observed_version: Int) -> Int {
+  if any(final_cells, c => gcp_cell_is_conditioned(c: c)) { 3 } else { observed_version }
+}
+
 fn reconcile_gcp_policy(
   observed: GcpPolicy,
   desired_owned: List<GcpIamBindingCell>,
@@ -182,7 +214,7 @@ fn reconcile_gcp_policy(
       policy: GcpPolicy {
         bindings: gcp_cells_bindings(cs: final_cells),
         etag: observed.etag,
-        version: observed.version
+        version: gcp_policy_version_for(final_cells: final_cells, observed_version: observed.version)
       },
       added: added,
       removed: removed,
