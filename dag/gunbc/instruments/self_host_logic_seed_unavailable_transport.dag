@@ -50,12 +50,12 @@ fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
-  let subject_present = list_length(items: filter(files, p: fn(f) { ends_with(s: f, suffix: "/std_logic.rs") })) > 0
+  let subject_present = list_length(items: filter(files, p: fn(f) { f.ends_with(suffix: "/std_logic.rs") })) > 0
   fold_list(
     xs: files,
     empty: true,
     cons: fn(ok, path) {
-      if ends_with(s: path, suffix: "/v1_rt.rs") {
+      if path.ends_with(suffix: "/v1_rt.rs") {
         ok
       } else {
         let read = Filesystem.Read(path: path)
