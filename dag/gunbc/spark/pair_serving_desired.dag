@@ -2,7 +2,7 @@ module gunbc.spark.pair_serving_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count, percent }
+import std.measure { token_count, percent, Millisecond, millisecond }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
@@ -11,9 +11,10 @@ import extdeps.vllm.engine_args {
 }
 import gunbc.spark.serving_engine {
   ServingEngine, VllmServing,
-  MemoryEnforcerKind, KernelOomKiller, RayThresholdMonitor, HostMemGuard,
+  MemoryEnforcerKind, KernelOomKiller, memory_enforcer_kind_wire,
   EnforcerVerdict, EnforcerAdmitted, EnforcerRefused,
   EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer, DeviceReservationCountingEnforcerOnUnifiedPool,
+  UnestablishedReservationAccountingOnUnifiedPool,
   spark_memory_enforcer_admits,
 }
 import gunbc.spark.fabric_link_desired {
@@ -34,7 +35,7 @@ import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarge
 //
 // What this module decides, and refuses to decide:
 //   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
-//     262144 context, Ray executor with its memory monitor disabled); nothing here re-derives it;
+//     262144 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
 //   - max-num-seqs is BY MEASURED POOL, and until that measurement is a row the unit refuses --
 //     a fabricated count would be exactly the plausible output §5 forbids;
 //   - which two hosts form a pair is the fabric's fact (gunbc.spark.fabric_link_desired), and each
@@ -62,9 +63,11 @@ type SparkPairServingSeqCapacity
 // refuses until this row is replaced by a SeqCapacityMeasured carrying that observation's basis.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityUnmeasured
 
-// Ray's threshold monitor counts the device reservation and must not run on a unified pool; the
-// kernel's own killer is the one enforcer left standing, and it is present on every Linux host.
-data spark_pair_serving_ray_monitor_disabled: Bool = true
+// "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
+// resource isolation off, which extdeps.ray.threshold_memory_monitor resolves to no enforcing
+// monitor. The kernel's own killer is the one enforcer left standing on every Linux host.
+data spark_pair_serving_ray_monitor_refresh: Millisecond = millisecond(count: 0)
+data spark_pair_serving_ray_resource_isolation_enabled: Bool = false
 data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
 
 data spark_pair_serving_rail: SparkFabricRail = Rail0
@@ -101,20 +104,14 @@ type SparkPairServingUnit
     }
   | SparkPairServingUnitRefused { pair: SparkFabricPair, cause: NonEmptyStr }
 
-fn enforcer_kind_wire(kind: MemoryEnforcerKind) -> String {
-  match kind {
-    RayThresholdMonitor => "ray threshold monitor"
-    HostMemGuard => "host memory guard"
-    KernelOomKiller => "kernel oom killer"
-  }
-}
-
 fn enforcer_refusal_wire(cause: EnforcerRefusal) -> String {
   match cause {
     NoEnforcerDeclared => "no memory enforcer declared"
     MoreThanOneEnforcer { count: n } => join(["more than one memory enforcer live: ", to_string(n)], "")
     DeviceReservationCountingEnforcerOnUnifiedPool { kind: k } =>
-      join(["a device-reservation-counting enforcer on the unified pool: ", enforcer_kind_wire(kind: k)], "")
+      join(["a device-reservation-counting enforcer on the unified pool: ", memory_enforcer_kind_wire(kind: k) as String], "")
+    UnestablishedReservationAccountingOnUnifiedPool { kind: k } =>
+      join(["an enforcer whose device-reservation accounting is unestablished, on the unified pool: ", memory_enforcer_kind_wire(kind: k) as String], "")
   }
 }
 
@@ -163,7 +160,8 @@ fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServin
         match spark_memory_enforcer_admits(
           memory_kind: UnifiedShared,
           enforcers: spark_pair_serving_declared_enforcers,
-          ray_monitor_disabled: spark_pair_serving_ray_monitor_disabled,
+          resource_isolation_enabled: spark_pair_serving_ray_resource_isolation_enabled,
+          monitor_refresh: spark_pair_serving_ray_monitor_refresh,
           backend: args.distributed_executor_backend,
         ) {
           EnforcerRefused { cause: c } =>
