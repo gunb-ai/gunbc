@@ -25,13 +25,13 @@ type ReviewReason {
   reason: String
 }
 
-type ReviewVerdict
+type HeadVerdict
   = ReviewApproved { summary: String }
   | ReviewChangesRequested { reasons: List<ReviewReason> }
   | ReviewCannotJudge { reason: String }
 
 type ReviewVerdictDecode
-  = ReviewVerdictDecoded { verdict: ReviewVerdict }
+  = ReviewVerdictDecoded { verdict: HeadVerdict }
   | ReviewVerdictUndecodable { reason: String }
 
 // THE VERDICT FILE AS OBSERVED, before decoding. Absent and unreadable are different facts with
@@ -128,7 +128,7 @@ fn review_verdict_of_word(doc: JsonValue, word: String) -> ReviewVerdictDecode {
   }
 }
 
-fn review_verdict_key(v: ReviewVerdict) -> String {
+fn review_verdict_key(v: HeadVerdict) -> String {
   match v {
     ReviewApproved { summary: _ } => "approved"
     ReviewChangesRequested { reasons: _ } => "changes_requested"
@@ -140,7 +140,7 @@ fn review_reason_text(r: ReviewReason) -> String {
   join([r.path, ": ", r.reason], "")
 }
 
-fn review_verdict_detail(v: ReviewVerdict) -> String {
+fn review_verdict_detail(v: HeadVerdict) -> String {
   match v {
     ReviewApproved { summary } => summary
     ReviewChangesRequested { reasons } => join(map(reasons, r => review_reason_text(r: r)), "; ")

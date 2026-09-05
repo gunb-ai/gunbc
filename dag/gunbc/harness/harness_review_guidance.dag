@@ -166,8 +166,8 @@ fn harness_reviewer_guidance_at(verdict_path: String, verdict_shape: String) -> 
     review_grounded(premise: CapabilityWithheld { capability: CommitOrPublish }, module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     review_grounded(premise: VerdictFileAt { path: verdict_path }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
     review_grounded(premise: VerdictShapeIs { shape: verdict_shape }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_shape_text"),
-    review_grounded(premise: VerdictWordMeans { word: ApproveWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
-    review_grounded(premise: VerdictWordMeans { word: RequestChangesWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
-    review_grounded(premise: VerdictWordMeans { word: CannotJudgeWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+    review_grounded(premise: VerdictWordMeans { word: ApproveWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "HeadVerdict"),
+    review_grounded(premise: VerdictWordMeans { word: RequestChangesWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "HeadVerdict"),
+    review_grounded(premise: VerdictWordMeans { word: CannotJudgeWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "HeadVerdict"),
   ]
 }
