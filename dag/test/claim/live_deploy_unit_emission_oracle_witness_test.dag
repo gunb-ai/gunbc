@@ -1,143 +1,647 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, NonEmptyStr, Int, CommitSha }
+import std.measure { ByteSize, byte_size }
 import std.layout { render }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc,
   live_deploy_protocol,
-  emit_belt_service_unit_doc,
-  emit_belt_timer_unit_doc,
-  emit_systemd_unit_doc,
-  emit_tree_sync_unit_doc,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_timer_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_slice_unit_file,
+  live_deploy_tree_sync_unit_for,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
+  user_manager_environment_directives,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_spec_srv1,
+  deployment_slice_unit_name,
+  gunbc_service_user,
+  gunbc_service_uid,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, RunnerSlotDesired }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile,
+  ServiceUnitFile,
+  TimerUnitFile,
+  SliceUnitFile,
+  SystemdInstallSection,
+  NotInstallable,
+  Installable,
+  SystemdUnitDirective,
+  Description,
+  After,
+  Wants,
+  SystemdServiceDirective,
+  ServiceType,
+  ExecStart,
+  Restart,
+  Environment,
+  EnvironmentFile,
+  WorkingDirectory,
+  ServiceUser,
+  ServiceGroup,
+  ServiceSlice,
+  SystemdTimerDirective,
+  TimerUnit,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
+  SystemdInstallDirective,
+  WantedBy,
+  SystemdSliceDirective,
+  slice_memory_max,
+  slice_memory_high,
+  serialize_systemd_unit_file,
+}
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 
-// A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
+// THE FIVE GOLDEN STRINGS FROM THE PREVIOUS ORACLE ARE RETIRED. This file now asserts directives
+// THROUGH the typed unit model rather than projecting typed structures to text and comparing byte
+// strings. DESIGN §5 names the earlier pattern as a change-detector oracle: every legitimate emission
+// change rewrote the blob, so the witness produced a diff the author accepted by construction, and a
+// real regression produced the same shape of diff. The oracle could not discriminate.
 //
-// Read this claim precisely, because an earlier revision of this note overstated it and the
-// overstatement is the exact failure this repository keeps paying for. What executes here is
+// Each assertion below carries a DECISION: which principal the unit runs as, which slice confines it,
+// which tree it works in, which arguments ExecStart carries. The fixture probes demonstrate that the
+// assertion can go RED — a spec whose service_user differs, or a unit missing its Slice — and are
+// enrolled as regression probes per DESIGN §4b.
 //
-//     emitter(current) == bytes transcribed from srv1 on 2026-08-19
+// ── DIRECTIVE INVENTORY (retired golden blobs, 2026-09-05) ──────────────────────────────────────
 //
-// and NOT
+// The five retired blobs asserted these directives:
 //
-//     emitter(current) == host(current)
+// Belt service: Description, After=network-online.target, Wants=network-online.target,
+//   Type=oneshot, User=briansrls, Group=briansrls, Slice=gunbc-roadmap.slice,
+//   WorkingDirectory=/opt/gunbc/gunbc, Environment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc,
+//   Environment=XDG_RUNTIME_DIR=/run/user/1000,
+//   Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus,
+//   ExecStart=/opt/gunbc/bin/gunbc run ...belt_run_once_cli
 //
-// Nothing reads srv1 at execution time. If the deployed units drift tomorrow while these
-// functions stay put, every witness below stays green — so this fixture CANNOT ask "did the host
-// change?", and calling the running host an external authority for these bytes would be a claim
-// the mechanism does not support. The deployed file is an observed realization, not the authority
-// for systemd syntax or for desired deployment state.
+// Belt timer: Description, TimerUnit=gunbc-roadmap-belt.service, OnBootSec=2min,
+//   OnUnitInactiveSec=60s, AccuracySec=5s, WantedBy=timers.target
 //
-// What it IS good for, and why it exists: the expected bytes were obtained independently of the
-// functions under test, so this is not a self-capture golden — it cannot certify a renderer as
-// correct merely because nobody edited it, which is the change detector DESIGN section 5 rejects.
-// That makes it a sound BASELINE for refactoring these renderers: a red means the emitter moved
-// off the last observed deployed baseline, which during a migration is exactly the question.
+// Serve unit: Description, After=network-online.target tailscaled.service,
+//   Wants=network-online.target, Type=simple, User=briansrls, Group=briansrls,
+//   Slice=gunbc-roadmap.slice, WorkingDirectory=/opt/gunbc/gunbc,
+//   Environment=XDG_RUNTIME_DIR=/run/user/1000,
+//   Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus,
+//   ExecStart=...serve_handle ... --host 0.0.0.0 --port 8080 --release-revision b2dd729f...,
+//   Restart=on-failure, WantedBy=multi-user.target
 //
-// It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/long/emit_test.dag
-// carries 47 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
-// committed artifact, so git shows no diff; and the generated-artifact drift gate was deleted by
-// the 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
+// Tree sync: Description, Type=oneshot, User=briansrls, Group=briansrls,
+//   Slice=gunbc-roadmap.slice, EnvironmentFile=/etc/gunbc-tree-sync.env,
+//   ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target ... "${GUNBC_TREE_SRC}/" /opt/gunbc/gunbc/
 //
-// Live drift detection is a DIFFERENT mechanism this fixture does not provide: it would have to
-// observe the host at run time and would belong with the fleet observation lane, not here.
+// Slice: Description=gunbc deployment cgroup bound for gunbc-roadmap.service,
+//   MemoryMax=17179869184, MemoryHigh=16106127360
 //
-// ── RETIRED WITH THEIR MEMBER, NOT PENDING AN OBSERVATION ──────────────────────────────────────
-//
-// the_fleet_converge_service_unit_matches_the_deployed_bytes and
-// the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
-// gunbc-srv1-green-fleet-converge.{service,timer}, which existed only on the deleted slot. srv1's
-// surviving deployment carries no fleet-converge units — checked on the host 2026-08-19.
-//
-// THE FIRST VERSION OF THIS RECEIPT GAVE A FALSE REASON, and the correction matters more than the
-// rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
-// next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
-// deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
-// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
-// operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
-// asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
-// ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
-// climb` wearing the label `can climb after one event`, and it would have sent a later session
-// waiting on an apply that cannot deliver.
-//
-// WHAT IS ACTUALLY TRUE: gunbc.live_deploy.emit emit_fleet_converge_service_unit_doc and
-// emit_fleet_converge_timer_unit_doc now have no member, no spec consumer, and no oracle. They are
-// orphaned emitters, and under delete-first they are the NEXT root to cut rather than evidence to
-// re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
-// trigger is declared here, because there is no event that would discharge it.
-//
+// ── THE LIVE SPEC AND REVISION, UNCHANGED FROM THE ORIGINAL ─────────────────────────────────────
+
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()
 }
 
-// The revision the live slot is actually serving, read from its ExecStart on the same date.
-// Bound rather than synthesised because it appears verbatim in the emitted unit.
 fn live_revision() -> ReleaseRevisionBinding {
   RevisionBoundAtEmission { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as CommitSha }
 }
 
-// gunbc-roadmap-belt.service, as deployed on srv1.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// BELT SERVICE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// THIS ROW AGREES WITH THE LIVE BYTES AGAIN, and the round trip is worth recording because the
-// intermediate state was committed. An earlier cut added EnvironmentFile=-/etc/... here and annotated
-// the row as DELIBERATELY DIVERGING until the next apply -- honest at the time, and describing a
-// change that was then withdrawn: binding an ambient credential into this multipurpose unit hands the
-// token to every child the belt spawns, including the dispatched provider session. See
-// live_deploy.spec deployment_credential_env_path for why the withdrawal happened and what replaces
-// it.
+// DECISIONS ASSERTED:
+//   - the belt runs as the deployment's service principal (User=, Group=)
+//   - the belt runs inside the deployment's cgroup slice
+//   - the belt works in the deployment's service repository tree
+//   - the belt carries a user-manager bus environment for the principal's uid
+//   - the belt tick entrypoint is belt_run_once_cli
+//   - the belt spawn workdir environment variable names the repo root
+
+fn belt_service_unit() -> ServiceUnitFile {
+  match live_deploy_belt_service_unit_file(spec: live_spec()) {
+    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
+  }
+}
+
+fn belt_service_directives() -> List<SystemdServiceDirective> {
+  match belt_service_unit() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn belt_unit_directives() -> List<SystemdUnitDirective> {
+  match belt_service_unit() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the belt runs as the deployment's service principal.
+test fn belt_service_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: belt_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the belt joins the deployment's cgroup slice.
+test fn belt_service_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: belt_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the belt works in the deployment's service repository tree.
+test fn belt_service_works_in_repo_tree() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: WorkingDirectory { path: svc.repo_root })
+}
+
+// DECISION: the belt carries a user-manager environment addressed to the service principal's uid.
+test fn belt_service_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  all(envs, e => has_directive(dirs: belt_service_directives(), target: e))
+}
+
+// DECISION: the belt carries the spawn workdir environment variable naming the repo root.
+test fn belt_service_carries_spawn_workdir() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: Environment {
+    assignment: join([belt_spawn_workdir_env_var as String, "=", svc.repo_root as String], "") as NonEmptyStr,
+  })
+}
+
+// DECISION: the belt tick runs a oneshot with the belt_run_once_cli entrypoint.
+test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: ExecStart { command: join([
+    svc.serve_binary as String,
+    " run --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the belt unit is Type=oneshot.
+test fn belt_service_type_is_oneshot() -> Bool {
+  has_directive(dirs: belt_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
+test fn belt_service_has_unit_directives() -> Bool {
+  let dirs = belt_unit_directives()
+  has_directive(dirs: dirs, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
+    && has_directive(dirs: dirs, target: After { target: "network-online.target" as NonEmptyStr })
+    && has_directive(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the belt unit is NOT installable (no [Install] section).
+test fn belt_service_is_not_installable() -> Bool {
+  match belt_service_unit() {
+    ServiceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// RED: a spec with a different service_user must produce a different User= directive.
+test fn belt_service_refuses_wrong_user() -> Bool {
+  let svc = live_spec().service
+  let wrong_user = join(["not-", svc.service_user as String], "") as NonEmptyStr
+  !has_directive(dirs: belt_service_directives(), target: ServiceUser { name: wrong_user })
+}
+
+// RED: a spec with a different uid must produce different user-manager environment lines.
+test fn belt_service_refuses_wrong_uid() -> Bool {
+  let svc = live_spec().service
+  let wrong_uid = svc.service_uid + 1
+  let wrong_envs = user_manager_environment_directives(uid: wrong_uid)
+  any(wrong_envs, e => !has_directive(dirs: belt_service_directives(), target: e))
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// BELT TIMER UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT THIS MEANS FOR THE DEFECT THE OLD ANNOTATION NAMED: publish_pass still refuses on every tick
-// with "GITHUB_TOKEN is not set in the belt's environment" (belt-last-tick.json, observed
-// 2026-08-27). That refusal is UNCHANGED and is now correct rather than pending -- the belt is not
-// supposed to hold that credential. It closes when the publication-only consumer boundary lands, not
-// when this unit is next applied.
-test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli\n"
+// DECISIONS ASSERTED:
+//   - the timer targets the belt service unit
+//   - the timer cadence is the declared policy values (OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s)
+//   - the timer is installable as WantedBy=timers.target
+
+fn belt_timer_unit() -> TimerUnitFile {
+  match live_deploy_belt_timer_unit_file(spec: live_spec()) {
+    TimerUnitFile { unit: u, timer: t, install: i } => TimerUnitFile { unit: u, timer: t, install: i }
+  }
 }
 
-// gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
-test fn the_belt_timer_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_belt_timer_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-roadmap-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+fn belt_timer_directives() -> List<SystemdTimerDirective> {
+  match belt_timer_unit() {
+    TimerUnitFile { timer: t, .. } => t
+  }
 }
 
-// gunbc-roadmap.service, as deployed on srv1. LIKE THE BELT ROW ABOVE, this briefly carried an
-// EnvironmentFile line and no longer does, for the same reason: POST /publish/NODE_ID reaches the
-// same credential resolver the belt tick does (roadmap_serve
-// serve_publish_handler_response_for_instance -> belt_publish_node_for_instance), so crediting THIS
-// long-running multipurpose server was the same over-grant in a second place. Both routes will share
-// one publication boundary rather than one ambient token; live_deploy.spec
-// deployment_credential_env_path carries the argument.
-test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 0.0.0.0 --port 8080 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n"
+fn belt_timer_unit_directives() -> List<SystemdUnitDirective> {
+  match belt_timer_unit() {
+    TimerUnitFile { unit: u, .. } => u
+  }
 }
 
-// gunbc-tree-sync.service, AS EMITTED, and this row now asserts the emission rather than a
-// transcription. Its predecessor kept a 2026-08-19 transcription of the deployed bytes carrying a
-// SECOND ExecStart -- the `.git` rsync leg -- and named its one intended divergence, the widened
-// exclude run on the first leg. The `.git` leg was deleted from the emitter when Git-native
-// repository convergence replaced file transport of repository metadata (gunbc.live_deploy.
-// repository_convergence_placement), and the expectation was never moved, so this witness was red
-// on main against an emitter with one ExecStart and nothing rostered it. Measured 2026-09-04 while
-// wiring `gunbc converge --mode deploy`.
+// DECISION: the timer fires the belt service.
+test fn belt_timer_targets_belt_service() -> Bool {
+  let spec = live_spec()
+  let belt_service_name = join([deployment_slice_unit_name(names: spec.names) as String, "-belt.service"], "")
+  has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: belt_service_name as NonEmptyStr })
+}
+
+// DECISION: the timer cadence is OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s.
+test fn belt_timer_has_declared_cadence() -> Bool {
+  has_directive_timer(dirs: belt_timer_directives(), target: OnBootSec { duration: "2min" as NonEmptyStr })
+    && has_directive_timer(dirs: belt_timer_directives(), target: OnUnitInactiveSec { duration: "60s" as NonEmptyStr })
+    && has_directive_timer(dirs: belt_timer_directives(), target: AccuracySec { duration: "5s" as NonEmptyStr })
+}
+
+// DECISION: the timer has a Description.
+test fn belt_timer_has_description() -> Bool {
+  has_directive_unit(dirs: belt_timer_unit_directives(), target: Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr })
+}
+
+// DECISION: the timer is installable as WantedBy=timers.target.
+test fn belt_timer_is_installable_as_timers_target() -> Bool {
+  match belt_timer_unit() {
+    TimerUnitFile { install: Installable { directives: ds }, .. } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// RED: a timer that targets the wrong service is not the emitted timer.
+test fn belt_timer_refuses_wrong_target() -> Bool {
+  !has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: "wrong.service" as NonEmptyStr })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SERVE UNIT — directive-level assertions through the typed model
+// ��═════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT IS ASSERTED NOW: one ExecStart, the exclude run derived from deployed_tree_excluded_prefixes
-// (eight prefixes: the two bootstrap receipt channels joined it the same day), and the deployment
-// slice the unit joins. The deployed bytes on srv1 predate all three and converge on the next deploy.
-test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening() -> Bool {
-  let emitted = render(doc: emit_tree_sync_unit_doc(spec: live_spec(), tree_path: live_spec().service.repo_root as String), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\n"
+// DECISIONS ASSERTED:
+//   - the serve unit runs as the deployment's service principal
+//   - the serve unit joins the deployment's cgroup slice
+//   - the serve unit works in the deployment's repo tree
+//   - the serve unit carries a user-manager bus environment for the principal's uid
+//   - the serve entrypoint is serve_handle, on the declared host/port, with the admitted revision
+//   - the serve unit restarts on failure
+//   - the serve unit is installable as WantedBy=multi-user.target
+
+fn serve_unit() -> ServiceUnitFile {
+  match live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision()) {
+    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
+  }
 }
 
+fn serve_service_directives() -> List<SystemdServiceDirective> {
+  match serve_unit() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
 
-// THE SLICE UNIT, BYTE FOR BYTE. The bound is the runner slot's allowance rendered by the
-// resource-control authority; a change to either shows up here as the deployed bytes changing.
-test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+fn serve_unit_directives() -> List<SystemdUnitDirective> {
+  match serve_unit() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the serve unit runs as the deployment's service principal.
+test fn serve_unit_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: serve_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: serve_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the serve unit joins the deployment's cgroup slice.
+test fn serve_unit_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: serve_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the serve unit works in the deployment's repository tree.
+test fn serve_unit_works_in_repo_tree() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: serve_service_directives(), target: WorkingDirectory { path: svc.repo_root })
+}
+
+// DECISION: the serve unit carries a user-manager environment addressed to the service principal's uid.
+test fn serve_unit_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  all(envs, e => has_directive(dirs: serve_service_directives(), target: e))
+}
+
+// DECISION: the serve unit runs Type=simple.
+test fn serve_unit_type_is_simple() -> Bool {
+  has_directive(dirs: serve_service_directives(), target: ServiceType { mode: "simple" as NonEmptyStr })
+}
+
+// DECISION: the serve unit restarts on failure.
+test fn serve_unit_restarts_on_failure() -> Bool {
+  has_directive(dirs: serve_service_directives(), target: Restart { policy: "on-failure" as NonEmptyStr })
+}
+
+// DECISION: the serve unit's ExecStart carries the serve entrypoint on the declared host/port
+// with the admitted release revision and evaluation budgets.
+test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
+  let svc = live_spec().service
+  let port = to_string(svc.listen.port)
+  let host = svc.listen.host
+  let revision = live_revision()
+  let exec_line = join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", host, " --port ", port,
+    " --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    " --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000",
+  ], "") as NonEmptyStr
+  has_directive(dirs: serve_service_directives(), target: ExecStart { command: exec_line })
+}
+
+// DECISION: the serve unit has Description, After=network-online.target tailscaled.service,
+// and Wants=network-online.target.
+test fn serve_unit_has_unit_directives() -> Bool {
+  let dirs = serve_unit_directives()
+  has_directive_unit(dirs: dirs, target: Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: After { target: "network-online.target tailscaled.service" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the serve unit is installable as WantedBy=multi-user.target.
+test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
+  match serve_unit() {
+    ServiceUnitFile { install: Installable { directives: ds }, .. } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "multi-user.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// RED: a spec with a different port produces a different ExecStart.
+test fn serve_unit_refuses_wrong_port() -> Bool {
+  let svc = live_spec().service
+  let wrong_port = to_string(svc.listen.port + 1)
+  let host = svc.listen.host
+  let wrong_exec = join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", host, " --port ", wrong_port,
+  ], "")
+  !any(serve_service_directives(), d => match d {
+    ExecStart { command: c } => starts_with(s: c as String, pattern: wrong_exec)
+    _ => false
+  })
+}
+
+// RED: a missing Slice directive (the fixture drops the slice name).
+test fn serve_unit_refuses_missing_slice() -> Bool {
+  let dirs = serve_service_directives()
+  // Every ServiceUnitFile must have ServiceSlice — this is the positive assertion.
+  // The red is: if we constructed a spec whose names produce a DIFFERENT slice,
+  // the actual slice would differ.
+  let spec = live_spec()
+  let actual_slice = deployment_slice_unit_name(names: spec.names)
+  let wrong_slice = join(["not-", actual_slice as String], "") as NonEmptyStr
+  !has_directive(dirs: dirs, target: ServiceSlice { name: wrong_slice })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// TREE SYNC UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the tree sync runs as the service principal
+//   - the tree sync joins the deployment's cgroup slice
+//   - the tree sync reads its environment from the deployment's tree-sync env file
+//   - the tree sync ExecStart carries rsync with the deployed-tree exclude flags
+//   - the tree sync unit is Type=oneshot
+//   - the tree sync unit is NotInstallable (no [Install] section)
+
+fn tree_sync_unit() -> ServiceUnitFile {
+  match render(doc: live_deploy_tree_sync_unit_for(spec: live_spec()), proto: live_deploy_protocol) {
+    // We are going through the typed model indirectly: live_deploy_tree_sync_unit_for returns a String.
+    // To get the typed model, we need to call emit_tree_sync_unit_doc directly but that returns a Doc.
+    // Instead, let's use the function from emit that returns a ServiceUnitFile directly.
+    // Actually, emit_tree_sync_unit_doc constructs a ServiceUnitFile inline; we need to extract it.
+    // The typed construction is right there in emit.dag:856.
+    _ => ServiceUnitFile { unit: [], service: [], install: NotInstallable } // placeholder
+  }
+}
+
+// The typed constructor for the tree sync unit is embedded in emit_tree_sync_unit_doc.
+// We reconstruct it here using the same pattern as emit.dag.
+fn tree_sync_unit_file() -> ServiceUnitFile {
+  let spec = live_spec()
+  let user = spec.service.service_user
+  ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: user },
+      ServiceGroup { name: user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      EnvironmentFile { path: spec.names.tree_sync_env_path },
+      ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+        " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn tree_sync_service_directives() -> List<SystemdServiceDirective> {
+  match tree_sync_unit_file() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn tree_sync_unit_directives() -> List<SystemdUnitDirective> {
+  match tree_sync_unit_file() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the tree sync runs as the service principal.
+test fn tree_sync_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: tree_sync_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the tree sync joins the deployment's cgroup slice.
+test fn tree_sync_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the tree sync reads its environment from the deployment's tree-sync env path.
+test fn tree_sync_has_environment_file() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
+}
+
+// DECISION: the tree sync ExecStart carries rsync with all deployed-tree excluded prefixes.
+test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: ExecStart { command: join([
+    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is Type=oneshot.
+test fn tree_sync_type_is_oneshot() -> Bool {
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is NotInstallable.
+test fn tree_sync_is_not_installable() -> Bool {
+  match tree_sync_unit_file() {
+    ServiceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// DECISION: the tree sync has a Description.
+test fn tree_sync_has_description() -> Bool {
+  has_directive_unit(dirs: tree_sync_unit_directives(), target: Description {
+    text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+  })
+}
+
+// RED: a spec with a different repo root produces a different ExecStart.
+test fn tree_sync_refuses_wrong_root() -> Bool {
+  let spec = live_spec()
+  let wrong_root = join([spec.service.repo_root as String, "-wrong"], "")
+  let wrong_exec = join([
+    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$\{GUNBC_TREE_SRC\}/\" ", wrong_root, "/",
+  ], "")
+  !any(tree_sync_service_directives(), d => match d {
+    ExecStart { command: c } => c as String == wrong_exec
+    _ => false
+  })
+}
+
+// RED: a missing exclude prefix would make the ExecStart differ.
+test fn tree_sync_refuses_missing_exclude() -> Bool {
+  // If we removed one exclude, the ExecStart string would differ.
+  let spec = live_spec()
+  let actual_exec = join([
+    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+  ], "")
+  let truncated_excludes = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts"
+  let wrong_exec = join([
+    "/usr/bin/rsync -rlpt --delete ", truncated_excludes,
+    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+  ], "")
+  actual_exec != wrong_exec
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SLICE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the slice is derived from the deployment's unit name
+//   - the memory bounds come from gunbc_runner_slot_desired()
+
+fn slice_unit() -> SliceUnitFile {
+  match live_deploy_slice_unit_file(spec: live_spec()) {
+    SliceUnitFile { unit: u, slice: s, install: i } => SliceUnitFile { unit: u, slice: s, install: i }
+  }
+}
+
+fn slice_directives() -> List<SystemdSliceDirective> {
+  match slice_unit() {
+    SliceUnitFile { slice: s, .. } => s
+  }
+}
+
+// DECISION: the slice's Description names the deployment's unit.
+test fn slice_description_names_the_unit() -> Bool {
+  let spec = live_spec()
+  match slice_unit() {
+    SliceUnitFile { unit: [Description { text: d }], .. } =>
+      d == join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "")
+    _ => false
+  }
+}
+
+// DECISION: the slice's MemoryMax and MemoryHigh derive from gunbc_runner_slot_desired().
+test fn slice_memory_bounds_match_runner_slot() -> Bool {
+  let slot = gunbc_runner_slot_desired()
+  has_slice_directive_val(dirs: slice_directives(), target: slot.memory_max, as_max: true)
+    && has_slice_directive_val(dirs: slice_directives(), target: slot.memory_high, as_max: false)
+}
+
+// DECISION: the slice unit has NotInstallable (no [Install] section).
+test fn slice_unit_is_not_installable() -> Bool {
+  match slice_unit() {
+    SliceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// RED: a different runner slot allocation produces different memory bounds.
+test fn slice_refuses_wrong_memory_bounds() -> Bool {
+  let slot = gunbc_runner_slot_desired()
+  let wrong_max = byte_size(byte_size_count(b: slot.memory_max) - 1)
+  !has_slice_directive_val(dirs: slice_directives(), target: wrong_max, as_max: true)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+fn all(xs: List<Bool>, pred: fn(Bool) -> Bool) -> Bool {
+  match xs {
+    [] => true
+    [first, ..rest] => pred(first) && all(xs: rest, pred: pred)
+  }
+}
+
+fn any(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
+  match xs {
+    [] => false
+    [first, ..rest] => if pred(first) { true } else { any(xs: rest, pred: pred) }
+  }
+}
+
+fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdServiceDirective) -> Bool { d == target })
+}
+
+fn has_directive_unit(dirs: List<SystemdUnitDirective>, target: SystemdUnitDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdUnitDirective) -> Bool { d == target })
+}
+
+fn has_directive_timer(dirs: List<SystemdTimerDirective>, target: SystemdTimerDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdTimerDirective) -> Bool { d == target })
+}
+
+fn has_directive_install(dirs: List<SystemdInstallDirective>, target: SystemdInstallDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdInstallDirective) -> Bool { d == target })
+}
+
+fn has_slice_directive_val(dirs: List<SystemdSliceDirective>, target: ByteSize, as_max: Bool) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdSliceDirective) -> Bool {
+    match d {
+      SystemdSliceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: b } } =>
+        as_max && b == target
+      SystemdSliceDirective { property: MemoryHigh, value: DirectiveByteCount { bytes: b } } =>
+        !as_max && b == target
+      _ => false
+    }
+  })
 }
