@@ -744,8 +744,50 @@ fn floor_route_gap_expectation_chunk_05() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// THE STEP 0 CALIBRATION REPORT'S WET EVIDENCE, enrolled on the same basis as chunk_05 above and
+// measured the same way. Required-floor run 33978797098 at 06c7740cb1 executed all four
+// identities and observed the identical typed refusal for each: the hermetic route has no arm for
+// Dir, because shell.Mktemp.Dir declares no mock_response, so the claim refuses before a temporary
+// directory can exist. The operation and ground below are READ FROM THAT RUN, not inferred -- the
+// enrollment was deliberately withheld until the measurement existed, because a roster row written
+// from a guess is a transcribed number wearing a data row's clothes.
+//
+// WHAT DISCHARGES THE HOLD IS THE WET TERMINAL, NEVER THE ENROLLMENT. The same run recorded
+// [local-repo-wet] scheduled=22 admitted=22 refusals=0 with all four of these observed=passed, and
+// the changed-witness projection then read standing=hermetic-route-gap-held-and-wet-passed for
+// each. Enrollment alone would record a gap and prove nothing; the pair is what establishes that
+// the witness reached its subject somewhere.
+//
+// WHY THE WITNESS CANNOT BE MADE HERMETIC, stated because the diagnostic offers mocking as one of
+// its three remedies and it is the wrong one HERE. These four exist to prove that the REAL report
+// writes the REAL matrix to a REAL path before it refuses -- the defect they were written against
+// was a write arm that accepted a zero-byte file. A mocked Dir and a mocked Write would satisfy
+// every assertion while the operator still received nothing, which is the fabricated-plausible-
+// output failure the witnesses exist to catch. The route is supplied by the wet lane instead.
+//
+// THE PAIR IS NOT ENFORCED BY ANYTHING AND THAT IS A KNOWN GAP. A local_repo_wet_schedule row and
+// a row here are both required and neither references the other; nothing refuses a witness that
+// has one and not the other. This module and v2.workflow.local_repo_wet_terminal were carrying
+// that fact only in prose, on one half each, when this enrollment was written -- the third time in
+// one day a two-part enrollment was supplied one part at a time.
+fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_real_report_refuses_on_the_measured_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_real_report_succeeds_on_a_sound_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_refusing_report_still_wrote_the_matrix_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.provenance_calibration_report_real_execution.the_written_payload_is_the_measured_matrix_and_not_another_one", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Empty {} } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Empty {} } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
