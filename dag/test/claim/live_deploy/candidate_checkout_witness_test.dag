@@ -300,10 +300,20 @@ test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
 // side, this reds — which is the only mechanical thing standing between the two readings drifting into
 // disagreeing about which bytes the deploy installs.
 test fn the_rsync_flags_derive_from_the_same_exclusion_set_the_filter_reads() -> Bool {
-  let expected_flags = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home"
+  let expected_flags = "--exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts"
   deployed_tree_rsync_exclude_flags() == expected_flags
-    && length(deployed_tree_excluded_prefixes) == 6
-    && join(deployed_tree_excluded_prefixes, ",") == "target,.git,.claude,.gunbc,target-codex,.cargo-home"
+    && length(deployed_tree_excluded_prefixes) == 8
+    && join(deployed_tree_excluded_prefixes, ",") == "target,.git,.claude,.gunbc,target-codex,.cargo-home,.gunbc-build-receipts,.gunbc-converge-receipts"
+}
+
+// THE VERB'S OWN RECEIPT MUST NOT REFUSE THE VERB. `gunbc converge --mode deploy` runs from the deploying
+// checkout and the launcher writes its receipt channel under the cwd; the first deploy through the verb
+// refused CandidateCheckoutNotClean on the previous attempt's receipt. Both bootstrap channels are host
+// state the deploy neither ships nor admits on, and the segment rule still holds beside them.
+test fn the_bootstrap_receipt_channels_are_not_deployed() -> Bool {
+  !path_is_deployed(path: ".gunbc-converge-receipts/receipt-446101-0")
+    && !path_is_deployed(path: ".gunbc-build-receipts/receipt-1-0")
+    && path_is_deployed(path: ".gunbc-converge-receiptsx/y")
 }
 
 // THE OBSERVED BLOCKER, AS A CLAIM. A real operator deploy from a checkout carrying nine stale

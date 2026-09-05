@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data edit_pass_that_matched_nothing_reports_success: RecurringFailureMode = RecurringFailureMode {
+  identity: "edit_pass_that_matched_nothing_reports_success" as NonEmptyStr,
+
+  receipts: [
+    "**an edit pass that matched nothing reports success** (a scripted deletion, rename or rewrite whose locator binds to the WRONG CONSTRUCT finds zero subjects, changes zero bytes, and exits zero -- and a pass that acted on nothing is byte-for-byte indistinguishable from a pass that correctly had nothing to act on. ",
+
+    "INVALID STATE: an edit pass whose outcome is consumed as done while nothing establishes that its locator ever bound to the intended subject. ",
+
+    "IT IS THE EMPTY-CAPTURE CLASS MOVED FROM READING TO WRITING, and the move is what makes it worse. An empty capture yields a false all-clear about someone else's artifact; an empty edit yields a false all-clear about an obligation THE AUTHOR OWES, so the debt stays on the roster while the commit message says it was paid. ",
+
+    "SPECIMEN, 2026-09-04, gunbc#10324, paying a consumed-admission obligation on NAMESPACE_TRANSITION_ADMISSIONS. The pass anchored the array on the literal `&[`. That substring occurs FIRST in the declaration's TYPE ANNOTATION -- `&[TransitionAdmission]` -- so the parser bound to a 19-character body, walked it, found zero rows, deleted zero rows and would have reported the obligation paid with an EMPTY DIFF. ",
+
+    "The wall would then have refused the next push for the same two rows, against a branch whose own entry claimed to have deleted them. ",
+
+    "WHY IT SURVIVES REVIEW: every part reads correct in isolation. The locator is a real substring of the real declaration, the brace walk is correct code, the exit status is honest, and a reviewer reading the diff sees a plausible dissolution entry beside no row changes -- which is exactly what a legitimately-already-empty roster also looks like. ",
+
+    "THE DISCRIMINATOR IS A DENOMINATOR ASSERTION, NOT A LOUDER LOCATOR: assert `examined == kept + deleted` and require `examined` to equal the population counted by an INDEPENDENT instrument before consuming the result. Here that assertion reported 4 = 2 + 2 and the earlier broken pass reported examined=0, which is what separated the two cases. ",
+
+    "The independence matters: a grep of `TransitionAdmission {` over the same file answers ONE HIGHER than the roster, because it counts the struct DEFINITION alongside the rows -- so the cross-check must be a different instrument, not the same one re-run. ",
+
+    "RUNG FOUND AT: mitigatable, and only where the assertion is written. Absent it the class is silent wrongness, because no arm of the pass ever refuses. ",
+
+    "CEILING: mechanically preventable. An edit pass is an ordinary program, so its subject count is decidable and a harness can require every pass to declare an expected population and refuse when the match count is zero or disagrees. ",
+
+    "NEXT-RUNG TRIGGER: a shared edit-pass harness that takes the subject population as a REQUIRED input and refuses on a zero or mismatched match count, so the assertion is structural rather than per-author diligence. An author remembering to write the assertion does NOT retire this row -- that is the state the specimen was already in, and it held only because this branch had been burned once already.)",
+
+    "**THE MIRROR CASE, AND IT WIDENS THIS ROW'S INVALID STATE RATHER THAN ANNOTATING IT** (calm-eagle-759, 2026-09-05). This row already names a locator binding to the WRONG CONSTRUCT as the cause, but states the outcome only as zero subjects and zero bytes. The wrong-construct binding has a second outcome, and it is the worse one: the locator finds a REAL match that is not the intended subject, and ACTS on it. RECEIPT: a pass meant to remove one arm from a specific function searched the whole file for a variant name that also appears in two other matches over the same coproduct, bound to the first, and edited a different function entirely. The identity was (enclosing function, variant) and the locator carried only the variant. ",
+
+    "WHY THE MIRROR MATTERS FOR THE TRIGGER STATED ABOVE: a harness that refuses on a zero or mismatched COUNT does not catch it, because the count is right -- one match was expected and exactly one was found. It was simply the wrong one. So the required input is not the population SIZE but the population IDENTITY, and this row's trigger should be read as demanding the latter. In the receipt the only signal was an incidental echo of the removed line, which ended in a span-returning arm where a disposition was expected. ",
+
+    "The neighbouring row is comparison_keyed_on_part_of_the_identity_it_compares -- the locator keyed on a proper component of a composite identity -- and that is the same defect applied to a WRITE rather than to a comparison. Both are separate from edit_range_bounded_by_a_neighbour_rather_than_the_target, where the locator binds correctly and only the extent overreaches.)",
+  ],
+
+  evidence: [],
+}

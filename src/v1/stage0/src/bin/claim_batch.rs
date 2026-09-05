@@ -1030,6 +1030,20 @@ fn run() -> Result<ExitCode, ExitCode> {
             "[cast-profile] kernel_calls={kernel_calls} type_lookup_calls={lookup_calls} \
              type_lookup_items={lookup_items}"
         );
+        let (data_eval_lookups, data_eval_evals) =
+            v1_compiler::v1_interpreter::data_eval_counters();
+        eprintln!(
+            "[data-profile] data_eval_lookups={data_eval_lookups} data_eval_evals={data_eval_evals} \
+             data_eval_cache_hit_ratio={}",
+            if data_eval_lookups > 0 {
+                format!(
+                    "{:.2}%",
+                    ((data_eval_lookups - data_eval_evals) as f64 / data_eval_lookups as f64) * 100.0
+                )
+            } else {
+                "N/A".to_string()
+            }
+        );
     }
 
     emit_rss_measurement("per-shard-peak-rss");
@@ -1057,6 +1071,19 @@ fn run() -> Result<ExitCode, ExitCode> {
 }
 
 fn main() -> ExitCode {
+    // THE SAME BIND claim_executor performs, and it is here because the validation of that
+    // change found this binary refusing where the other one would have proceeded: claim_batch
+    // asked for its budget on a remote action bound by nothing, took the correct
+    // HostBudgetUnreadable refusal, and no witness could run. Two entry points reach the same
+    // resolve, so a limit bound by only one of them leaves the other exactly as unbounded as
+    // before — and it is claim_batch that runs a `.dag` witness, so the developer route to the
+    // witness corpus stays dead without this.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return ExitCode::FAILURE;
+    }
     match run() {
         Ok(code) => code,
         Err(code) => code,

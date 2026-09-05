@@ -45,6 +45,7 @@ import v2.std.fn_index {
   FnArrowDecl,
   atom_identities_in_node,
   call_reachable_decls,
+  param_names_of,
   fn_arrow_decl_facts_live,
   is_path_like_lexeme
 }
@@ -355,12 +356,6 @@ fn flow_scan_algebra(
     init: fn(n) { flow_scan_init(n: n, param_names: param_names, data_inits: data_inits) },
     step: flow_scan_step
   }
-}
-
-fn param_names_of(decl: FnArrowDecl) -> List<String> {
-  fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
-    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
-  })
 }
 
 fn flows_in_node(

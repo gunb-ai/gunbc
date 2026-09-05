@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.wait_keyed_on_a_resource_whose_arrivals_outpace_its_service
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data wait_keyed_on_a_resource_whose_arrivals_outpace_its_service: RecurringFailureMode = RecurringFailureMode {
+  identity: "wait_keyed_on_a_resource_whose_arrivals_outpace_its_service" as NonEmptyStr,
+
+  receipts: [
+    "**a gate waits for a shared resource to become idle, and that resource's ARRIVAL RATE exceeds its SERVICE RATE, so the release condition is an absorbing state no amount of patience resolves** (INVALID STATE: a wait whose release predicate is 'nothing is currently in flight on R', where work arrives at R faster than R completes it. HARM: the gate does not gate. The occasions it releases are GAPS IN TRAFFIC rather than the condition being satisfied, so what looks like the guard working is the arrival process pausing. ",
+
+    "THE FAILURE IS SILENT IN THE DIRECTION OF PATIENCE, WHICH IS WHY IT SURVIVES REVIEW AND OPERATION ALIKE. Nothing goes wrong. Nothing is corrupted, nothing is skipped, and no one is visibly blocked -- the waiter simply waits, reports that it is waiting, and is believed. The entire cost is throughput that nobody attributes to the guard, and a guard that never fires is indistinguishable from a guard that is working from every seat including the author's. Contrast the failure mode everyone watches for, where a broken wait releases too early and something downstream breaks loudly. ",
+
+    "IT IS NOT absorbing_fallback, AND THE MECHANISMS ARE OPPOSITE. That class WIDENS in order to avoid refusing -- it answers, and the answer is the superset. This one never reaches its release condition at all and therefore never answers. They are adjacent because both convert a deficit into something that reads as normal operation, and they need opposite repairs: the absorbing fallback must be made to refuse, and this one must be given a release condition that is actually reachable. ",
+
+    "RECOGNITION RULE, AND IT MUST BE ASKED BEFORE THE WAIT IS WRITTEN, because after-the-fact detection is close to impossible by construction. The rule is NOT 'check whether the resource is busy' -- that is precisely the observation the guard already makes, and it reads healthy every time. It is the RATE COMPARISON: what is the arrival rate of the thing I am waiting to drain, and what is its service rate? If arrivals win, the wait is an absorbing state, and the correct move is to key the gate on something that terminates. ",
+
+    "SPECIMEN, and the CLAIM IS THE RELATION rather than any number (bright-ram-778's measurement, 2026-09-05, cited to its producer so a reader re-derives it rather than trusting a transcription). A merge gate was keyed on 'main has no required run in flight'. The producer is `gh api \"repos/gunb-ai/gunbc/actions/workflows/witnesses.yml/runs?branch=main&per_page=8\"`: created_at deltas give the arrival rate, created_at to updated_at gives the service rate. Arrivals are faster than service, so an in-flight run on main is the STEADY STATE and the release condition is almost never true. The one occasion the gate released was a gap in pushes. Note that created_at is ISO with a Z and is safe to compare as a string, unlike git's %ad, which carries per-commit timezone offsets and is not. ",
+
+    "THE REPAIR IS TO KEY ON A TERMINATING FACT: main's LAST COMPLETED run and its verdict, rather than the absence of a running one. A completed run always exists once the workflow has ever run, so the predicate terminates, and it answers the question the gate actually cared about -- is the base healthy -- rather than a proxy that happens to be unreachable. ",
+
+    "Next-rung trigger, named as the capability and not as an artifact: A WAIT'S RELEASE CONDITION IS ACCOMPANIED BY EVIDENCE THAT IT IS REACHABLE, sufficient to refuse a gate whose predicate is an absorbing state -- for a rate-based wait that means the arrival and service rates of the awaited resource, measured rather than assumed. Until such evidence is required, this is review diligence at the point the wait is authored, which is mitigatable only, and the review question is the rate comparison above.)",
+  ],
+
+  evidence: [],
+}

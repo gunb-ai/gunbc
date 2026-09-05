@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 mod required_floor_runner;
+pub mod rostered_row_join;
 mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -3440,7 +3441,8 @@ pub(crate) fn string_list_data_from_module_source(
         .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
     for item in module.children.iter() {
         if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+            || item.module_item_kind
+                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
         }
@@ -12062,6 +12064,7 @@ thread_local! {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
             message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
@@ -19385,7 +19388,10 @@ pub fn handle_serve(
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
                 ),
-                Ok((method, path, body)) => {
+                // Idle or cleanly-closed connection: no request was made, so the
+                // connection is dropped without a response.
+                Ok(None) => {}
+                Ok(Some((method, path, body))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
@@ -19511,9 +19517,18 @@ pub fn handle_serve(
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
+///
+/// `Ok(None)` means NO REQUEST WAS EVER MADE on this connection: the peer opened
+/// it and either sent nothing before the read timeout, or closed it cleanly at a
+/// request boundary. That is not a malformed request and must not be answered
+/// with 400. Browsers routinely open speculative preconnect sockets and send
+/// nothing on them, so answering those with an error surfaces a spurious "bad
+/// request: Resource temporarily unavailable (os error 11)" to the operator.
+/// "The client sent something malformed" and "the client has not spoken yet" are
+/// different facts with different remedies; only the first is a 400.
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<(String, String, String), String> {
+) -> Result<Option<(String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -19522,9 +19537,28 @@ fn serve_read_request(
         .map_err(|e| format!("set_read_timeout: {}", e))?;
     let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
     let mut request_line = String::new();
-    let mut head_bytes = reader
-        .read_line(&mut request_line)
-        .map_err(|e| format!("read request line: {}", e))?;
+    let mut head_bytes = match reader.read_line(&mut request_line) {
+        Ok(n) => n,
+        Err(e) => {
+            // A read timeout that yielded no bytes is an idle connection, not a
+            // malformed one. Anything else, or a timeout mid-request-line, is a
+            // real read failure and keeps its typed 400.
+            if request_line.is_empty()
+                && matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                )
+            {
+                return Ok(None);
+            }
+            return Err(format!("read request line: {}", e));
+        }
+    };
+    if head_bytes == 0 {
+        // Clean EOF before any request line: the peer closed at a request
+        // boundary. Nothing was asked, so there is nothing to answer.
+        return Ok(None);
+    }
     if head_bytes > MAX_HEAD {
         return Err(format!(
             "request line of {} bytes exceeds the {} byte serve head limit",
@@ -19586,7 +19620,7 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok((method, target, body))
+    Ok(Some((method, target, body)))
 }
 
 fn serve_write_response(
@@ -20488,6 +20522,7 @@ mod closure_bare_disposition_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
@@ -36292,7 +36327,6 @@ pub fn extdeps_shape_transport_policy_module_facts(
     module_path: &str,
 ) -> ExtdepsShapeTransportPolicyModuleFacts {
     use crate::v1_compiler_emit::effective_operation_transport;
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     use crate::v1_std_core::{
         field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData,
     };
@@ -36376,7 +36410,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
 
     let mut embedded_facts: Vec<ExtdepsEmbeddedFactRaw> = Vec::new();
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name.is_empty() {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name.is_empty()
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36493,7 +36529,6 @@ fn project_external_authority_named_data(
     data_name: &str,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     let path = source_path_for_module_path(module_path.to_string());
     if try_resolve_extdeps_module_source_path(&path).is_none() {
         return ExternalAuthorityAnchorProjection::Refused {
@@ -36502,7 +36537,9 @@ fn project_external_authority_named_data(
     }
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != data_name {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != data_name
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36526,9 +36563,10 @@ fn read_external_authority_anchor_from_items(
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != "extdeps_external_authority_anchor"
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -37895,6 +37933,11 @@ mod sigs_env_flat_parents {
         Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
             name: fn_name.to_string(),
             params: Rc::new(im::vector![]),
+            resolved_formals: Rc::new(
+                crate::v1_compiler_infer_sigs::ResolvedFormals::KernelGroundedFormals {
+                    formals: Rc::new(im::vector![]),
+                },
+            ),
             inferred: crate::v1_std_core::leaf_node_with_span(
                 std::rc::Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
@@ -40715,17 +40758,73 @@ fn spawn_floor_heartbeat() {
     // the leaf recorded zero high events while its parent slices recorded 141M, so the level
     // that is throttling is not the level that owns the limit, and only the walk shows it.
     let mut beat: u64 = 0;
+    // THE STALL WINDOW, OPENED HERE AT SPAWN rather than at the first beat, for the same reason
+    // `started` and `cpu_baseline_ms` are taken here: so the FIRST emitted sample closes a real
+    // window (spawn to beat one) instead of a sentinel. Opening it inside the loop left every run
+    // printing `na` on its first beat, which is worst exactly where this line matters most -- a
+    // short green run that ends after one beat would carry no comparable stall figure at all,
+    // which is the observability hole this repair exists to close (review 59540).
+    //
+    // The line already carried `cpu_ms` and a cumulative `majflt`, and neither is the refusal's
+    // quantity: `cpu_ms` is utime PLUS stime, and the kernel bills reclaim labour to the faulting
+    // process as system time, so it reads a pure treadmill as roughly one-third computing. A
+    // census over 60 recent floor runs reconstructed a share from those fields and ranked a
+    // REFUSING run healthier than a green one, which is what a reconstruction from the wrong
+    // quantity buys.
+    //
+    // These deltas feed `memory_governor`'s own mirrors, so this is one producer read twice, at a
+    // second window, rather than a second computation that agrees today and drifts later.
+    let mut stall_window = match (
+        crate::memory_governor::self_major_faults(),
+        crate::memory_governor::self_user_cpu_ms(),
+    ) {
+        (Some(major_faults), Some(self_user_cpu_ms)) => {
+            Some(required_floor_runner::FloorStallWindow {
+                started: std::time::Instant::now(),
+                major_faults,
+                self_user_cpu_ms,
+            })
+        }
+        // Unreadable counters stay unreadable: the sentinel survives for platforms with no
+        // procfs, where a check that cannot observe must not fabricate a reading.
+        _ => None,
+    };
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
         let seam = FLOOR_SEAM
             .lock()
             .map(|g| g.clone())
             .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        // Read both counters through the governor's readers -- `self_user_cpu_ms` is utime alone
+        // BY CONSTRUCTION, which is the whole point of routing through it rather than re-reading
+        // /proc here as the resource sample does.
+        let now_faults = crate::memory_governor::self_major_faults();
+        let now_user_cpu = crate::memory_governor::self_user_cpu_ms();
+        let stall_fields = match (&stall_window, now_faults, now_user_cpu) {
+            (Some(prev), Some(f), Some(c)) => required_floor_runner::floor_stall_metric_fields(
+                prev.started.elapsed().as_millis() as u64,
+                Some(f.saturating_sub(prev.major_faults)),
+                Some(c.saturating_sub(prev.self_user_cpu_ms)),
+            ),
+            // A window that cannot be read has no figures, and renders the sentinel rather than
+            // a zero -- a zero share is the most severe reading this line can carry, so
+            // fabricating one manufactures a stall. With the window opened at spawn this arm is
+            // reached only where the counters themselves do not read.
+            _ => required_floor_runner::floor_stall_metric_fields(0, None, None),
+        };
+        if let (Some(f), Some(c)) = (now_faults, now_user_cpu) {
+            stall_window = Some(required_floor_runner::FloorStallWindow {
+                started: std::time::Instant::now(),
+                major_faults: f,
+                self_user_cpu_ms: c,
+            });
+        }
         eprintln!(
-            "[floor-heartbeat] wall_s={} phase={} {}",
+            "[floor-heartbeat] wall_s={} phase={} {} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample(cpu_baseline_ms)
+            floor_resource_sample(cpu_baseline_ms),
+            stall_fields
         );
         beat += 1;
         if beat % 10 == 0 {
@@ -41919,7 +42018,8 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
     run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
-    run_nested_refinement_cast_discrimination, FixtureClosureOutcome,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

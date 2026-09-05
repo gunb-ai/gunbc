@@ -273,6 +273,26 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
   }
 }
 
+// The three deleted-lane rung drops cite this exact identity as their countable. A prefix-only
+// control over `v2.test.` cannot establish that a `test.claim.` workflow witness is admitted,
+// and the prior absence left it discovered but declined on every required run. Pin the cited
+// row, rather than a synthetic neighbour, so removing its exact-module gate admission reds.
+test fn w_deleted_lane_countable_is_planned_by_the_required_gate() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.witness_floor_workflow_consolidation_witness_test",
+    identity: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_deleted_lanes_do_not_return"
+  ) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
 // THE GATE DECLINES ON THE AUTHORED MODULE NAME, and a product witness that is neither long nor
 // a fixture member lands here rather than in Planned. This is the RED for the 2026-08-29 static
 // required gate: before the arm existed this site was planned.

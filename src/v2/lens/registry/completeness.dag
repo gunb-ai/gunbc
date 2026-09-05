@@ -36,6 +36,7 @@ data lens_registry_completeness_known_infra_roster: List<FrontierRow> = [
   infra_row(unit: "v2.lens.reference_deps", reason: "reference-edge fact producer, not an enforcing lens"),
   infra_row(unit: "v2.lens.module_impact_query", reason: "direction-typed reading over the module-graph edge population (produces an ImpactReading consumed by selection/CI, with no verdict authority and no remedy), not an enforcing lens"),
   infra_row(unit: "v2.lens.testgen", reason: "test-generation machinery, not an enforcing lens"),
+  infra_row(unit: "v2.lens.fn_index_depth_agreement", reason: "measurement instrument behind two claims in v2.std.fn_index -- that the depth-one atom reader equals the fold_node reader gunbc#10156 replaced, and how much of the call graph a depth-one read at a declaration root cannot see. It carries a ProcessExit verdict so the claims are re-derivable rather than transcribed (DESIGN section 6), and it reads the whole-corpus fn_arrow_decl_facts_live acquisition, so it is deliberately not a floor subject and adjudicates no production population. Not an enforcing lens"),
   infra_row(unit: "v2.lens.vacuity_self_application_fixture", reason: "self-application fixture data consumed by the vacuity-lens consumer-witness (PR #7620), not itself an enforcing lens")
 ]
 

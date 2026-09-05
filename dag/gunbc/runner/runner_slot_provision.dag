@@ -14,7 +14,7 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
   membership_added_count,
 }
-import gunbc.ownership { Ownership }
+import gunbc.ownership { Ownership, Owned }
 import gunbc.executor_privileged_operation {
   EnsureOwnedDirectory,
   RemoveDirectoryTree,
@@ -64,9 +64,104 @@ data runner_slot_provision_scaffold: Disposition = Scaffold {
 
 type RunnerSlotMemberAt = NonEmptyStr
 
+// WHAT THE HOST SAYS ABOUT A SLOT TREE, CARRIED ON THE OBSERVED MEMBER. Ownership used to return
+// Absent for every observed slot because the observer read only directory names, so every
+// out-of-roster tree refused OwnershipUnknown forever and 45 dead runner trees sat on srv2 at two
+// gigabytes each. A tree is a retired incarnation of a gunbc-managed slot when four observed facts
+// agree: its name is in this host's slot grammar (the allocation authority's own rendering round-
+// trips through it), its `.runner` registration is absent OR ephemeral, and its unit is neither
+// active nor enabled. That tree was created by this reconcile's own ADD arm and abandoned by a
+// width change, so it is Owned and teardown-eligible. Anything else -- a persistently registered
+// tree, an unreadable registration, an active unit, a name outside the grammar such as the
+// operator scripts in the base dir -- stays OwnershipUnknown and refuses exactly as before.
+// Desired members are constructed from names and carry Unobserved, which ownership never admits;
+// only an observation can make a member removable.
+//
+// REGISTRATION IS A KIND, NOT A BOOL. `registered: Bool` read only the file's presence, and on
+// srv2 two trees (srv2-11, srv2-12) carried a `.runner` beside a unit dead since June: the file
+// says `Ephemeral: True`, and an ephemeral registration is unregistered by GitHub after one job
+// (extdeps.github.actions_runner actions_runner_registration_decode), so those trees were retired
+// incarnations that a Bool could not distinguish from a live persistent registration. The
+// persistent arm still refuses: deciding it needs an org-scoped observation this executor does
+// not hold.
+type RunnerSlotRegistration
+  = SlotUnregistered
+  | SlotRegisteredPersistent
+  | SlotRegisteredEphemeral
+  | SlotRegistrationUnreadable { reason: String }
+
+type RunnerSlotProvenance
+  = SlotProvenanceUnobserved
+  | SlotProvenanceObserved {
+      in_host_grammar: Bool
+      registration: RunnerSlotRegistration
+      unit_active: Bool
+      unit_enabled: Bool
+    }
+
+fn runner_slot_registration_is_retired(r: RunnerSlotRegistration) -> Bool {
+  match r {
+    SlotUnregistered => true
+    SlotRegisteredEphemeral => true
+    SlotRegisteredPersistent => false
+    SlotRegistrationUnreadable { reason: _ } => false
+  }
+}
+
+fn runner_slot_registration_wire(r: RunnerSlotRegistration) -> String {
+  match r {
+    SlotUnregistered => "unregistered"
+    SlotRegisteredPersistent => "registered"
+    SlotRegisteredEphemeral => "ephemeral"
+    SlotRegistrationUnreadable { reason: _ } => "registration-unreadable"
+  }
+}
+
 type RunnerSlotMember {
   instance_name: NonEmptyStr
   slot_dir: NonEmptyStr
+  provenance: RunnerSlotProvenance
+}
+
+fn runner_slot_provenance_is_retired_incarnation(p: RunnerSlotProvenance) -> Bool {
+  match p {
+    SlotProvenanceUnobserved => false
+    SlotProvenanceObserved { in_host_grammar: g, registration: r, unit_active: a, unit_enabled: e } =>
+      g && runner_slot_registration_is_retired(r: r) && !a && !e
+  }
+}
+
+fn runner_slot_provenance_wire(p: RunnerSlotProvenance) -> String {
+  match p {
+    SlotProvenanceUnobserved => "unobserved"
+    SlotProvenanceObserved { in_host_grammar: g, registration: r, unit_active: a, unit_enabled: e } =>
+      join([
+        if g { "grammar" } else { "foreign" }, ",",
+        runner_slot_registration_wire(r: r), ",",
+        if a { "active" } else { "inactive" }, ",",
+        if e { "enabled" } else { "disabled" },
+      ], "")
+  }
+}
+
+// THE NAME IS IN THE HOST'S GRAMMAR IFF THE ALLOCATION AUTHORITY RENDERS IT BACK. `<host>-<index>`
+// is split, the index parsed, and the identity re-rendered through runner_slot_instance_name; a
+// name that survives the round trip was produced by that renderer, zero-padding and all. No
+// ceiling on the index is assumed, because retired trees come from widths that no longer exist.
+fn runner_slot_name_in_host_grammar(host: HostIdentity, instance_name: NonEmptyStr) -> Bool {
+  let name = instance_name as String
+  let parts = name.split("-")
+  let index_text = fold(parts, init: "", f: (acc, p) => p)
+  if length(parts) != 2 || !starts_with(s: name, prefix: concat(host as String, "-")) {
+    false
+  } else {
+    match parse_int(s: index_text) {
+      Absent => false
+      Present { value: i } =>
+        i > 0
+          && (runner_slot_instance_name(slot: RunnerSlotIdentity { host: host, slot_index: i }) as String) == name
+    }
+  }
 }
 
 type RunnerSlotObservation
@@ -82,6 +177,16 @@ fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMem
   RunnerSlotMember {
     instance_name: name,
     slot_dir: runner_slot_instance_dir(instance_name: name),
+    provenance: SlotProvenanceUnobserved,
+  }
+}
+
+fn runner_slot_member_observed(instance_name: String, provenance: RunnerSlotProvenance) -> RunnerSlotMember {
+  let name = instance_name as NonEmptyStr
+  RunnerSlotMember {
+    instance_name: name,
+    slot_dir: runner_slot_instance_dir(instance_name: name),
+    provenance: provenance,
   }
 }
 
@@ -152,8 +257,20 @@ fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool
 // ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than
 // fabricated Owned (review 49707).
 
-fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+fn runner_slot_retired_incarnation_ownership() -> Ownership? {
+  Present { value: Owned }
+}
+
+fn runner_slot_unknown_ownership() -> Ownership? {
   Absent
+}
+
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+  if runner_slot_provenance_is_retired_incarnation(p: m.provenance) {
+    runner_slot_retired_incarnation_ownership()
+  } else {
+    runner_slot_unknown_ownership()
+  }
 }
 
 fn runner_slot_membership_reconcile(
@@ -202,6 +319,7 @@ type RunnerSlotProvisionPlan {
   membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
+  teardown_scripts: List<String>
 }
 
 // THE ONE PLACE THE GRANT ROSTER MEETS THE INSTALL SHAPE. extdeps.github.actions_runner describes
@@ -280,8 +398,29 @@ fn runner_slot_provision_plan(
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
+    teardown_scripts: flat_map(membership.actions, a =>
+      match a {
+        MemberRemoved { at: _, from: m } =>
+          [executor_privileged_operation_shell_command(op: RemoveDirectoryTree { path: m.slot_dir })]
+        MemberAdded { at: _, to: _ } => []
+        MemberChanged { at: _, from: _, to: _ } => []
+        MemberRemovalRefused { from: _, cause: _ } => []
+        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      }
+    ),
   }
 }
+
+// THE TEARDOWN ARGV IS THE ONE THE GRANT ROSTER ALREADY SPELLS for desired slot dirs
+// (runner_slot_privileged_operations enrolls RemoveDirectoryTree per desired member), rendered
+// through the same seam. What the roster does NOT enroll is a retired tree outside the desired
+// range, because sudoers is derived from desired state at deploy time and cannot name a population
+// observed at plan time. On a host whose sudoers has been narrowed to the model, a retired-tree
+// removal therefore refuses at apply (sudo -n fails under set -e, locked_apply_exit_code nonzero,
+// receipt red) rather than silently succeeding; on a host still carrying the wide rm grant it
+// succeeds. Closing that gap is a grant-roster question -- enrolling the host's whole slot grammar
+// rather than its current width -- and is declared here rather than solved by widening sudoers.
+data runner_slot_teardown_grant_note: String = "retired-tree removal rides RemoveDirectoryTree through executor_privileged_operation_shell_command; the grant roster enrolls only desired slot dirs, so on a narrowed host the removal refuses at apply and the climb is to enroll the slot grammar rather than the current width"
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
   membership_added_count(plan: plan.membership) > 0

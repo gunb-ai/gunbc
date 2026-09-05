@@ -4,6 +4,9 @@ import std.logic { Bool }
 import std.types { list_length, NonEmptyStr, List, String }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
+  actions_runner_registration_decode,
+  ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
+  ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
   actions_runner_release_2_336_0,
   actions_runner_binary_artifact_for_arch,
   actions_runner_download_url,
@@ -23,6 +26,15 @@ import gunbc.runner_host_deploy {
   RunnerHostDeploy,
 }
 import gunbc.runner_slot_provision {
+  runner_slot_member_ownership,
+  runner_slot_member_observed,
+  runner_slot_name_in_host_grammar,
+  RunnerSlotProvenance,
+  SlotProvenanceObserved,
+  SlotProvenanceUnobserved,
+  RunnerSlotRegistration, SlotUnregistered, SlotRegisteredPersistent, SlotRegisteredEphemeral, SlotRegistrationUnreadable,
+  runner_slot_provenance_wire,
+  RunnerSlotMemberAt,
   desired_runner_slot_members,
   runner_slot_membership_reconcile,
   runner_slot_provision_plan,
@@ -40,7 +52,18 @@ import gunbc.runner_slot_provision {
   runner_slot_converge_verdict,
   runner_slot_member_from_instance_name,
 }
-import gunbc.membership_reconcile { membership_added_count }
+import gunbc.membership_reconcile {
+  membership_added_count,
+  MembershipPlan,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  OwnershipUnknown,
+}
+import gunbc.ownership { Owned }
+import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host, host_fabric_slot_count, host_memory_admitted_width }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
@@ -109,10 +132,12 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
     RunnerSlotMember {
       instance_name: "wfix-01" as NonEmptyStr,
       slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
+      provenance: SlotProvenanceUnobserved,
     },
     RunnerSlotMember {
       instance_name: "wfix-02" as NonEmptyStr,
       slot_dir: "/opt/actions-runner/wfix-02" as NonEmptyStr,
+      provenance: SlotProvenanceUnobserved,
     },
   ]
   let plan = runner_slot_membership_reconcile(
@@ -129,6 +154,7 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
         RunnerSlotMember {
           instance_name: "wfix-01" as NonEmptyStr,
           slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
+          provenance: SlotProvenanceUnobserved,
         },
       ]
       let plan = runner_slot_provision_plan(
@@ -149,6 +175,7 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
     RunnerSlotMember {
       instance_name: "srv3-01" as NonEmptyStr,
       slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+      provenance: SlotProvenanceUnobserved,
     },
   ]
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
@@ -348,4 +375,136 @@ test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
          == gunbc_runner_slots_per_host(host: operator_host_srv4)
     && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
          == gunbc_runner_slots_per_host(host: operator_host_srv1)
+}
+
+
+// THE THREE PROVENANCE OUTCOMES, EACH DISCRIMINATING. A retired incarnation is Owned and plans
+// REMOVE with a rm argv through the privileged seam; a tree that is registered, or whose unit is
+// active or enabled, keeps OwnershipUnknown and refuses; a name outside the host grammar -- the
+// operator scripts that share the base dir -- refuses regardless of what its unit reads say.
+fn provenance_witness_member(name: String, p: RunnerSlotProvenance) -> RunnerSlotMember {
+  runner_slot_member_observed(instance_name: name, provenance: p)
+}
+
+fn provenance_witness_reconcile(observed: List<RunnerSlotMember>) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  runner_slot_membership_reconcile(desired: [], observed: observed)
+}
+
+test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
+  let retired = provenance_witness_member(
+    name: "wfix-40",
+    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+  )
+  (runner_slot_member_ownership(m: retired) == Present { value: Owned })
+    && (provenance_witness_reconcile(observed: [retired]).actions |> all(a => match a {
+      MemberRemoved { at: _, from: m } => (m.instance_name as String) == "wfix-40"
+      MemberAdded { at: _, to: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+    }))
+    && (provenance_witness_reconcile(observed: [retired]).actions |> count) == 1
+}
+
+test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
+  let live = [
+    provenance_witness_member(name: "wfix-41", p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredPersistent, unit_active: false, unit_enabled: false }),
+    provenance_witness_member(name: "wfix-42", p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: true, unit_enabled: false }),
+    provenance_witness_member(name: "wfix-43", p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: true }),
+    provenance_witness_member(name: "wfix-44", p: SlotProvenanceUnobserved),
+  ]
+  (live |> all(m => runner_slot_member_ownership(m: m) == Absent))
+    && (provenance_witness_reconcile(observed: live).actions |> all(a => match a {
+      MemberRemovalRefused { from: _, cause: OwnershipUnknown } => true
+      MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRemoved { at: _, from: _ } => false
+      MemberAdded { at: _, to: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+    }))
+}
+
+// srv2-11 and srv2-12 on 2026-09-04: `.runner` present with Ephemeral=True, unit inactive and
+// disabled since June. GitHub had already unregistered them (ephemeral registrations end after
+// one job), so the tree is a retired incarnation; a Bool registration flag refused it forever.
+test fn a_dead_ephemeral_registration_is_a_retired_incarnation() -> Bool {
+  let ghost = provenance_witness_member(
+    name: "wfix-11",
+    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredEphemeral, unit_active: false, unit_enabled: false },
+  )
+  (runner_slot_member_ownership(m: ghost) == Present { value: Owned })
+    && (provenance_witness_reconcile(observed: [ghost]).actions |> count) == 1
+    && string_contains(s: runner_slot_provenance_wire(p: ghost.provenance), pattern: "ephemeral")
+}
+
+// RED controls on the same shape: an ACTIVE ephemeral registration is a live runner, and an
+// unreadable registration file decides nothing.
+test fn an_active_ephemeral_registration_and_an_unreadable_one_still_refuse() -> Bool {
+  let live = provenance_witness_member(
+    name: "wfix-12",
+    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredEphemeral, unit_active: true, unit_enabled: true },
+  )
+  let unreadable = provenance_witness_member(
+    name: "wfix-13",
+    p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegistrationUnreadable { reason: "not json" }, unit_active: false, unit_enabled: false },
+  )
+  runner_slot_member_ownership(m: live) == Absent && runner_slot_member_ownership(m: unreadable) == Absent
+}
+
+data fixture_runner_registration_ephemeral: String = "{\"AgentId\":\"1\",\"AgentName\":\"wfix-11-1-1\",\"Ephemeral\":\"True\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
+data fixture_runner_registration_persistent: String = "{\"AgentId\":\"2\",\"AgentName\":\"wfix-01\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
+
+test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
+  let ephemeral = match actions_runner_registration_decode(raw: fixture_runner_registration_ephemeral) {
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => true
+    _ => false
+  }
+  let persistent = match actions_runner_registration_decode(raw: fixture_runner_registration_persistent) {
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => true
+    _ => false
+  }
+  let garbage = match actions_runner_registration_decode(raw: "not json") {
+    ActionsRunnerRegistrationUnreadable { reason: _ } => true
+    _ => false
+  }
+  let widened = match actions_runner_registration_decode(raw: "{\"Ephemeral\":\"maybe\"}") {
+    ActionsRunnerRegistrationUnreadable { reason } => string_contains(s: reason, pattern: "outside")
+    _ => false
+  }
+  ephemeral && persistent && garbage && widened
+}
+
+test fn a_name_outside_the_host_grammar_refuses_even_when_dead() -> Bool {
+  let script = provenance_witness_member(
+    name: "jit-runner.sh",
+    p: SlotProvenanceObserved { in_host_grammar: false, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+  )
+  runner_slot_member_ownership(m: script) == Absent
+}
+
+test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool {
+  let host = "wfix" as HostIdentity
+  runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-40" as NonEmptyStr)
+    && runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-01" as NonEmptyStr)
+    && !runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-1" as NonEmptyStr)
+    && !runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-00" as NonEmptyStr)
+    && !runner_slot_name_in_host_grammar(host: host, instance_name: "srv2-40" as NonEmptyStr)
+    && !runner_slot_name_in_host_grammar(host: host, instance_name: "jit-runner.sh" as NonEmptyStr)
+    && !runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-40-x" as NonEmptyStr)
+}
+
+test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
+    Absent => false
+    Present { value: artifact } => {
+      let retired = provenance_witness_member(
+        name: "wfix-40",
+        p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
+      )
+      let plan = runner_slot_provision_plan(deploy: fixture_five_slot_deploy(), artifact: artifact, observed: [retired])
+      (plan.teardown_scripts |> count) == 1
+        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "/opt/actions-runner/wfix-40")))
+        && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "-rf")))
+    }
+  }
 }

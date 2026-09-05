@@ -16,6 +16,8 @@ use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
     field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
@@ -460,6 +462,8 @@ pub fn check_service_method_call_node(
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
                                                 match_pattern: std::option::Option::None,
+                                                module_item_kind:
+                                                    ParsedModuleItemKind::NotAModuleItem,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -478,6 +482,7 @@ pub fn check_service_method_call_node(
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),

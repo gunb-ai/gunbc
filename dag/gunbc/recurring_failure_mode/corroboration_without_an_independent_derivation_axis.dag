@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data corroboration_without_an_independent_derivation_axis: RecurringFailureMode = RecurringFailureMode {
+  identity: "corroboration_without_an_independent_derivation_axis" as NonEmptyStr,
+
+  receipts: [
+    "**corroboration without an independent derivation axis** (a second reader reaches the same conclusion as the first, and the agreement is counted as confirmation -- but both readings ran the same query over the same lexical projection of the same subject, so the second signature carries no information the first did not. ",
+
+    "TWO SIGNATURES, ONE EVIDENCE LINEAGE. What makes it dangerous is that it looks exactly like independent replication from the outside, and it is REPORTED as replication: the second reader honestly says they checked. ",
+
+    "Specimen, measured 2026-09-04 on gunbc: two sessions independently concluded that HTTP listing pagination was modelled in this tree. Both read `extdeps.github.github` `default_per_page` and the `per_page` fields that consume it, and both substituted PAGE SIZE for CONTINUATION CLOSURE. ",
+
+    "The tree in fact carried no page parameter, no cursor advance, no Link-header handling and no page fold anywhere, so every listing read in the repository was capped at its first page -- and `extdeps.github.github` declared a `Pagination` type with `per_page`, `cursor` and `has_next` fields that NOTHING consumed, which is a shape with no execution behind it. ",
+
+    "**THE THREE CLAIMS THE SUBJECT ACTUALLY CARRIED, and conflating them is the mechanism rather than an incidental error: page SIZE (how many items one request asks for), cursor SHAPE (how the next request is named), and continuation CLOSURE (whether the sequence of requests was consumed until the authority said there was no next).** ",
+
+    "Only the first appears lexically in a request declaration. The third appears nowhere unless a fold exists, so a lexical reading can only ever return evidence about the first, and both readings returned it. ",
+
+    "**Recognition rule: when a second reading agrees, ask which DERIVATION AXIS it changed.** If both readings are the same query over the same projection, the agreement is one observation reported twice. A reading corroborates only when it moves an axis -- operation-graph reachability rather than token presence, an EXECUTING transition rather than a declaration, or a controlled multi-page mutation rather than a read of the shape that would serve one. ",
+
+    "Any one of those was available and cheap here, and any one would have returned the truth on first contact. ",
+
+    "**Distinct from `authority_substitution`, where prose invents an A-to-B arrow that no carrier states:** here every sentence either reader wrote about `per_page` was TRUE, and the defect is that a true fact about claim one was accepted as an answer about claim three. ",
+
+    "Distinct from `bound_shaped_closure`, which is about a CONSUMER concluding a requirement is discharged because a real number satisfied it; this is about two readers' agreement being read as evidence when it is one reading counted twice. ",
+
+    "Distinct from `reachability_read_as_occupancy`: that class is one substitution made once, this class is the reason such a substitution SURVIVES review. ",
+
+    "**DISTINCT FROM `population_selector_that_cannot_admit_a_counterexample`, and the boundary is stated rather than assumed because the two rows were filed the same night off the same specimen.** That row is about how a POPULATION is enumerated: a lexical proxy for the predicate makes the verdict unfalsifiable by construction, and this corroboration failure appears there as a receipt explaining why nobody caught it. THIS row is about when a SECOND READING is evidence at all, and it fires with a perfectly well-formed population -- two readers can share one lineage while reading a log, a dashboard or a diff, where no enumeration is involved and no proxy was adopted. ",
+
+    "**THE SUBJECT SPLIT IS THE SHARPEST TELL THAT THEY ARE DIFFERENT OBJECTS RATHER THAN TWO NAMES FOR ONE, and an earlier draft of this paragraph drew the line in the wrong place.** It claimed the discriminator was DECIDABILITY -- that the sibling row was statically decidable with ceiling 3 and a constructor for a trigger, against this row being undecidable at ceiling 1. That reading is refuted on the sibling row itself, which withdrew both the rung and the ceiling: whether a selector can admit a counterexample is a SEMANTIC relation between two expressions, not a shared-symbol question a lens can read, so that row is a ratchet at ceiling 1 for the same reason this one is. Two rows that are both undecidable cannot be told apart by decidability. **THE DISCRIMINATOR IS THE SUBJECT.** That row is about how a POPULATION WAS CONSTRUCTED -- a lexical proxy for the predicate makes the verdict unfalsifiable by construction, and this corroboration failure appears there as a receipt explaining why nobody caught it. THIS row is a property of the RELATIONSHIP BETWEEN TWO READERS, and it fires with a perfectly well-formed population: two readers can share one lineage while reading a log, a dashboard or a diff, where no enumeration exists and no proxy was adopted. A repair that closes either one leaves the other exactly where it stood. ",
+
+    "**RUNG FOUND AT: 1 (mitigatable)** -- the error was caught by a third reader who changed the axis, which is a person and not a mechanism. ",
+
+    "**CEILING: 1, and the reason is decidability rather than unbuilt work.** Whether two readings share an unstated premise is a property of how two agents derived a conclusion, not of any artifact in the tree; DESIGN section 5 names this the ratchet-forever case, and calling it mechanically preventable would be the `never` trap. ",
+
+    "What IS decidable, and was therefore repaired rather than rostered, is the specimen's own class: a truncated listing is unconstructible FOR ANY CONSUMER THAT READS THROUGH THE FOLD, because `std.page_fold` `PageFoldOutcome` carries the items only on the arm reached when the serving authority itself declared the listing closed, every other arm is a typed, located refusal carrying no partial result, and `PageFoldState` is `sole_constructor` so a closed-looking state cannot be forged to reach that arm without an authority that said the listing ended. ",
+
+    "**THE SCOPE OF THAT SENTENCE IS THE FOLD, NOT THE TREE, AND THE DIFFERENCE IS THE WHOLE REASON THIS ROW EXISTS.** No production listing operation consumes `std.page_fold` yet: the GitHub listing surfaces still expose only a page-size parameter, nothing imports `extdeps.github.pagination`, and `page_fold_live` is reached today only by its own witnesses. So every real listing read in this repository is STILL capped at its first page, and the repair to date is that the capability now exists and is executable rather than that any caller has been moved onto it. Writing this row as though the class were closed would be the same substitution the row is about -- a shape that exists read as a capability that runs -- committed by the very entry that names it. ",
+
+    "**THE REMAINING INTEGRATION OBLIGATION, stated so it can be checked rather than remembered:** one real paginated operation -- `extdeps.github.workflow_runs` `ListForRef` is the intended first -- must demand pages through `page_fold_live` and close on the authority's own Link-header end, with its own live-upstream witness. Until a production caller reads through the fold, the tree's truncation is mitigated by nothing at all; it is merely now REPAIRABLE without further modeling. That work is deliberately scoped out of the PR that landed this row, and this sentence is what makes its absence countable instead of forgotten. ",
+
+    "The `Pagination` type with no consumers was deleted in the same motion, since a declared shape with no execution behind it is the surface this class reads as capability. ",
+
+    "**NEXT-RUNG TRIGGER: none, and stating that honestly is the point** -- this row is a review-time recognition rule, and enumerating agreements more carefully does not retire it. What retires an INSTANCE is the axis change: name, before looking, what a second reading would have to execute for its agreement to mean anything.)",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,147 @@
+module gunbc.live_deploy.effect_leaf
+
+import std.types { String, NonEmptyStr }
+import v2.std.effect_plan { EffectPlan, Do }
+import v2.std.orchestration { FailFast }
+import v2.std.operation_argv { OperationRef, operation_argv_bind_text }
+import v2.workflow.effect_plan_bash_materialize {
+  BashBoundOperationInvocation,
+  EffectPlanBashMaterialized,
+  EffectPlanBashMaterializationRefused,
+  bash_bind_operation_invocation,
+  bash_bind_operation_invocation_elevated,
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label,
+}
+
+data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ live-deploy operation leaf could not be materialized from its extdeps declaration: "
+
+// THE MUTATION LEAVES NAME AN OPERATION, THEY DO NOT CARRY A COMMAND. A leaf here is a
+// BashBoundOperationInvocation -- an extdeps operation row plus that row's OWN declared inputs bound
+// by name -- and its argv is derived from the declaration by shell_materialize_operation_argv. The
+// carrier is the one that landed in Wave A/B (v2.std.effect_plan Do{effect} over
+// v2.std.operation_argv BoundOperationInvocation, materialized by
+// v2.workflow.effect_plan_bash_materialize); no second vocabulary for "a mutating host operation"
+// is minted here, and the host-effect lane's HostEffect surface is untouched.
+//
+// WHAT ACTUALLY DISSOLVED, since Pipeline wrapping is explicitly not completion: the words the host
+// runs are no longer authored in this repository at all. They previously travelled as
+// argv-builder -> quoted text -> String, where the argv builder was a SECOND spelling of the same
+// `transport shell { argv: [...] }` row -- a fork the live_deploy witnesses could only test for
+// equality, never remove. Deriving argv from the row deletes the fork where this was its last
+// consumer: extdeps.dpkg dpkg_status_argv and extdeps.apt apt_install_argv are deleted with it. The
+// systemctl argv builders are NOT deleted and this does not claim they are -- gunbc.host_effect_realize
+// still consumes them through gunbc.live_deploy.operations, so they are a surviving fork with a
+// different owner, and saying otherwise here would be the census error this repository keeps
+// re-learning: a symbol is dead when its consumers are counted, not when one of them stops calling.
+//
+// FAIL-CLOSED IS PRESERVED AND LOCATED. A materialization refusal (unknown row, undeclared input
+// bound, declared input unbound, NUL in an argument) renders effect_plan_bash_refusal_label behind
+// a marker that is not valid shell, exactly as bash_intent_command_or_poison does for the grammar
+// path -- the step fails loudly and names which operation and which cause, rather than a
+// hand-spelled fallback standing in for the refused command (DESIGN section 5: refuse, never widen).
+fn deploy_effect_command(inv: BashBoundOperationInvocation) -> String {
+  match effect_plan_bash_materialize(plan: EffectPlan {
+    steps: [Do { effect: inv }],
+    on_failure: FailFast,
+  }) {
+    EffectPlanBashMaterialized { source: source } => source
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      concat(
+        live_deploy_effect_materialization_refused_poison,
+        effect_plan_bash_refusal_label(refusal: refusal),
+      )
+  }
+}
+
+data live_deploy_systemctl_operation_path: String = "dag/extdeps/systemd/systemctl.dag"
+data live_deploy_systemctl_operation_service: String = "systemd.Systemctl"
+data live_deploy_systemctl_unit_input: String = "unit"
+
+data live_deploy_apt_operation_path: String = "dag/extdeps/package_managers/apt.dag"
+data live_deploy_apt_operation_service: String = "apt.PackageManager"
+data live_deploy_dpkg_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
+data live_deploy_dpkg_operation_service: String = "dpkg.Package"
+data live_deploy_package_input: String = "package"
+
+// EVERY MUTATION ON THIS HOST CROSSES A PRIVILEGE BOUNDARY, so these constructors elevate rather
+// than taking a `privileged` flag: the deploy principal is the unprivileged CI-runner account
+// (emit_deploy_principal_note), and a systemctl mutation it could issue unelevated does not exist.
+// The package READ (dpkg -s) is the one leaf that does not, which is why it alone binds unelevated.
+fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_elevated(
+    at: OperationRef {
+      path: live_deploy_systemctl_operation_path,
+      service: live_deploy_systemctl_operation_service,
+      operation: operation,
+    },
+    bindings: [operation_argv_bind_text(
+      name: live_deploy_systemctl_unit_input,
+      text: unit as String,
+    )],
+  )
+}
+
+fn systemctl_daemon_reload_effect() -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_elevated(
+    at: OperationRef {
+      path: live_deploy_systemctl_operation_path,
+      service: live_deploy_systemctl_operation_service,
+      operation: "DaemonReload",
+    },
+    bindings: [],
+  )
+}
+
+fn systemctl_enable_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
+  systemctl_unit_effect(operation: "Enable", unit: unit)
+}
+
+fn systemctl_restart_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
+  systemctl_unit_effect(operation: "Restart", unit: unit)
+}
+
+// apt-get install IS elevated and dpkg -s is NOT, and the asymmetry is the two operations'
+// own: installing writes the package database, querying it reads. The former `privileged: Bool`
+// parameter made that a caller's choice at both leaves; here the read has no elevated form to pass.
+fn apt_install_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_elevated(
+    at: OperationRef {
+      path: live_deploy_apt_operation_path,
+      service: live_deploy_apt_operation_service,
+      operation: "Install",
+    },
+    bindings: [operation_argv_bind_text(
+      name: live_deploy_package_input,
+      text: package as String,
+    )],
+  )
+}
+
+fn apt_install_unelevated_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation(
+    at: OperationRef {
+      path: live_deploy_apt_operation_path,
+      service: live_deploy_apt_operation_service,
+      operation: "Install",
+    },
+    bindings: [operation_argv_bind_text(
+      name: live_deploy_package_input,
+      text: package as String,
+    )],
+  )
+}
+
+fn dpkg_status_effect(package: NonEmptyStr) -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation(
+    at: OperationRef {
+      path: live_deploy_dpkg_operation_path,
+      service: live_deploy_dpkg_operation_service,
+      operation: "Status",
+    },
+    bindings: [operation_argv_bind_text(
+      name: live_deploy_package_input,
+      text: package as String,
+    )],
+  )
+}

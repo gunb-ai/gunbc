@@ -33,7 +33,9 @@ data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = Recu
 
     "incidental_denominator_as_wall is a guard that holds by an upstream coincidence that genuinely holds; here the guard holds over a population it never read. ",
 
-    "CEILING 3, structurally guaranteed, and decidable: a check whose subject is a VALUE it receives rather than a scope its implementation re-derives cannot range over less than it claims, because the claim and the range are then one object. ",
+    "CEILING 3, structurally guaranteed and decidable, BUT SCOPED TO THIS CLASS'S EXECUTING FORMS AND NOT TO THE CLASS (scope amended when the ninth form landed): a check whose subject is a VALUE it receives rather than a scope its implementation re-derives cannot range over less than it claims, because the claim and the range are then one object. ",
+
+    "That derivation needs an executing check with an input. Every form above it is one, so the limit was never visible and the ceiling read as belonging to the class when it belongs to a sub-case: where the subject is a WRITTEN SURFACE a human is supposed to read completely, the claim and the range stay TWO objects and cannot inherit this ceiling. The ninth form below is that sub-case and carries no rung of its own. ",
 
     "NEXT-RUNG TRIGGER, named as a capability: the guarded population is passed to the check as a constructed value carrying its own extent, sufficient that no check can name a subject its input does not contain. ",
 
@@ -109,7 +111,27 @@ data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = Recu
 
     "That sentence is this row's INVALID STATE restated, so a new row would have been a second authority for a rostered fact -- the DESIGN section 2 failed decomposition, committed inside the ledger that exists to prevent it, which is the same self-demonstration the seventh form records. ",
 
-    "The class was already here; only the recency observation was new.",
+    "The class was already here; only the recency observation was new. ",
+
+    "A NINTH FORM, WHERE THE SUBJECT ITSELF MOVED UNDER THE CHECK (2026-09-05, adjudicated in jolly-dove-86, measured on gunbc#10552). It is numbered ninth because this row already carried an eighth; the brief that commissioned it said eighth, and the row is the authority on its own count. ",
+
+    "STATEMENT: a repair changes the SUBJECT that the earlier observation described. Completeness and correctness must be established against the FINAL SUBJECT, with the selection boundary explicit; finding the newly inserted wording is not that establishment. ",
+
+    "THE REASONING UNDER IT: checked revision A, plus edit A to B, does not equal checked revision B, without a preservation argument or a renewed inspection. The escape clause is not decoration -- RENEWED INSPECTION DISCHARGES IT, and reading the final text once IS an adjudication. No impossibility is claimed here: an earlier draft said such a sweep can never close, and that was refuted, because renewed reading is the only mechanism that actually works. ",
+
+    "RUNG: this form carries NONE. It is the sub-case the amended ceiling above excludes -- the subject is a written surface, so no input can be constructed to carry its extent, and the claim and the range remain two objects. ",
+
+    "SPECIMEN ONE, three reviews that ranged over less than the row they reviewed: 5120939460, 5121228544 and 5121282475, none of which reached `test.claim.phantom_marker_type_argument_identity_witness` -- the file the row under repair CITES -- where two corrected-away formulations stood verbatim. The enumeration found them; no reviewer did. ",
+
+    "SPECIMEN TWO, and it is what fixes the UNIT of repair: a repair landed at the QUOTED text, left the FRAMING sentence directly above it standing, and left a dependent two paragraphs BELOW it standing too -- one that never quoted the premise it rested on (`a trigger whose owner has ceased to exist is retired by nothing at all`). That dependent contained none of the repair's search terms precisely because it RESTED on the premise rather than quoting it. ",
+
+    "So the unit of repair is the ENTAILMENT NEIGHBOURHOOD of the premise -- framing above, dependents below, sibling surfaces -- and it is BIDIRECTIONAL. A phrase-keyed sweep is keyed on quotation, and entailment does not quote. ",
+
+    "REFUSED TRIGGER, recorded WITH its reason so it is not re-proposed: `enroll the sweep in CI`. Mechanisation moves the INVOCATION, not the SUBJECT -- the same incomplete phrase search would execute reliably over the same incomplete subject, so the trigger would fire while the capability stayed dead, which is exactly the DESIGN section 4b(3) grain mismatch between a loss sentence and its trigger. Rung 2 needs an adequate subject definition, a valid checking relation AND a consumer; automation supplies only the third. ",
+
+    "THE NEIGHBOUR CHECKED AND EXCLUDED, using that row's own bounding text: selection_view_read_as_population is a set produced by a MEASUREMENT threshold and read as the population. Here nothing is measured and nothing is filtered -- the range was simply never as wide as the sentence beside it, which is this row's invariant, so the form is filed here and not minted. ",
+
+    "The corroborating receipt from the row's own repair day: a phrase-keyed sweep certified that repair clean and missed four survivors, because the live one read `WHAT ACTUALLY HOLDS THIS CLASS AT 2` and matched none of the guessed patterns. The form applies to writing the form.",
   ],
 
   evidence: [],

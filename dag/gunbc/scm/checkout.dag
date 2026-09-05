@@ -1,6 +1,6 @@
 module gunbc.scm.checkout
 
-import std.types { List, String }
+import std.types { List, String, NonEmptyStr }
 
 import v2.std.node { Node, Edge, node_synthetic }
 
@@ -24,6 +24,20 @@ import gunbc.scm.object_store {
   find_node_record,
   resolve_node_target,
   node_target_of,
+  AuthoredSourceContent,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
+  find_authored_source_record,
+  CorpusManifestEntry,
+  CorpusManifestObjectRef,
+  CorpusManifestFound,
+  CorpusManifestAbsent,
+  CorpusManifestIsAuthoredSource,
+  CorpusManifestIsSemanticNode,
+  find_corpus_manifest_record,
+  authored_source_target_locator,
 }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
@@ -42,9 +56,14 @@ type Commit {
 // bytes that are right there, which is the not-applicable-rendered-as-malformed failure -- the two
 // have opposite remedies. It is also not silently skippable: reconstructing the node without that
 // child would hand back a program the commit does not name.
+// A THIRD NEGATIVE, NAMED FOR WHAT IT FOUND. A corpus manifest at a required node is not a file and
+// not an absence: it is repository inventory sitting where a program was named. Reporting it as
+// either would hand back a well-formed refusal about the wrong object kind, and only one of the
+// three has a remedy that is even the same shape.
 type CheckoutRefusal
   = MissingObject { identity: ObjectId }
   | ObjectIsAuthoredSource { identity: ObjectId }
+  | ObjectIsCorpusManifest { identity: ObjectId }
 
 type CheckoutOutcome
   = CheckedOut { program: Node }
@@ -100,6 +119,8 @@ fn checkout_node_target(store: ObjectStore, target: SemanticNodeTarget) -> Check
     NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
     NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }
@@ -130,6 +151,8 @@ fn checkout_object(store: ObjectStore, identity: SemanticNodeObjectRef) -> Check
     NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordIsCorpusManifest { identity: i } =>
+      CheckoutRefused { cause: ObjectIsCorpusManifest { identity: i } }
     NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }
@@ -202,10 +225,103 @@ fn commit_of_root(root: SemanticNodeTarget) -> Commit {
 // program is the STORE'S fact -- the repository holds the commit and has lost an object it needs.
 // One is a bad argument, the other is damage, and collapsing them would hand a user "no such commit"
 // for a commit that plainly exists in their log.
+// RECOVERING THE AUTHORED CORPUS IS NOT RECONSTRUCTING A PROGRAM, and this is where a repository
+// checkout stopped being the semantic `checkout` above.
+//
+// `checkout` reconstructs a `Node` from a semantic root and keeps that contract unchanged: it is a
+// program-level operation with a program-level subject, and it is still the right verb for anyone
+// holding a semantic root. What it CANNOT be is the repository checkout, because a repository commit
+// now freezes an authored snapshot (gunbc#10522 section 5), and reconstructing a program from it would
+// require successful semantic ingestion of every file -- so a repository holding a malformed file, or
+// source for a language this build cannot ingest, would become uncheckoutable. Freezing exactly that
+// corpus is the thing the manifest exists to make possible.
+//
+// So recovery walks manifest entries and resolves each to its authored bytes. It requires no
+// ingestion, and the value it answers is authored content per path.
+type RecoveredSourceFile {
+  path: NonEmptyStr
+  content: AuthoredSourceContent
+}
+
+// THE PER-ENTRY REFUSALS NAME THE PATH, because "some source is missing" is not actionable and the
+// path is the only thing the operator can act on. All three non-success arms of the authored-source
+// lookup are preserved: a locator that is EMPTY and a locator OCCUPIED BY THE WRONG KIND are
+// different repairs, and folding them together would report an occupied locator as absent.
+type CorpusRecoveryRefusal
+  = CorpusEntrySourceMissing { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsSemanticNode { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsCorpusManifest { path: NonEmptyStr, source: ObjectId }
+
+type CorpusRecovery
+  = CorpusRecovered { files: List<RecoveredSourceFile> }
+  | CorpusRecoveryRefused { cause: CorpusRecoveryRefusal }
+
+type CorpusRecoveryAcc {
+  files: List<RecoveredSourceFile>
+  refusal: CorpusRecoveryRefusal?
+}
+
+fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusManifestEntry) -> CorpusRecoveryAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match find_authored_source_record(
+        store: store,
+        identity: authored_source_target_locator(target: entry.source)
+      ) {
+        AuthoredSourceFound(record) =>
+          CorpusRecoveryAcc {
+            files: concat(acc.files, [RecoveredSourceFile { path: entry.path, content: record.content }]),
+            refusal: acc.refusal,
+          }
+        AuthoredSourceAbsent { identity: id } =>
+          CorpusRecoveryAcc {
+            files: acc.files,
+            refusal: Present { value: CorpusEntrySourceMissing { path: entry.path, source: id } },
+          }
+        AuthoredSourceIsSemanticNode { identity: id } =>
+          CorpusRecoveryAcc {
+            files: acc.files,
+            refusal: Present { value: CorpusEntrySourceIsSemanticNode { path: entry.path, source: id } },
+          }
+        AuthoredSourceIsCorpusManifest { identity: id } =>
+          CorpusRecoveryAcc {
+            files: acc.files,
+            refusal: Present { value: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: id } },
+          }
+      }
+  }
+}
+
+// RECOVERABILITY IS A SEPARATE QUESTION FROM SNAPSHOT DESIGNATION, and this function is where the
+// second one is answered. The mint decides only that a commit names a manifest of the required kind;
+// whether that manifest's sources are present is this observation, performed against a particular
+// store at a particular time. A found manifest establishes nothing about its entries.
+fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> CorpusRecovery {
+  match fold(
+    entries,
+    init: CorpusRecoveryAcc { files: [], refusal: none },
+    f: fn(acc, e) { recover_entry_step(store: store, acc: acc, entry: e) },
+  ) {
+    CorpusRecoveryAcc { files: files, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => CorpusRecoveryRefused { cause: cause }
+        Absent => CorpusRecovered { files: files }
+      }
+  }
+}
+
+// THE SNAPSHOT-KIND REFUSALS ARE SEPARATE FROM THE RECOVERY REFUSAL, because "this commit does not
+// name a snapshot" and "this snapshot's sources are not all here" have different owners: the first is
+// a fact about the commit, the second about this store's current contents. Reporting a wrong-kind
+// root as an unrecoverable corpus would name the wrong subject to whoever has to fix it.
 type RepositoryCheckout
-  = RepositoryCheckedOut { repository: RepositoryEnvelope, program: Node }
+  = RepositoryCheckedOut { repository: RepositoryEnvelope, corpus: List<RecoveredSourceFile> }
   | CheckoutReferenceUnresolved { reference: RepositoryCommitRef }
-  | CheckoutProgramUnreconstructable { reference: RepositoryCommitRef, cause: CheckoutRefusal }
+  | CheckoutSnapshotMissingFromStore { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutSnapshotIsAuthoredSource { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutSnapshotIsSemanticNode { reference: RepositoryCommitRef, root: ObjectId }
+  | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusRecoveryRefusal }
 
 // THIS WRITES NOTHING. It answers a NEW envelope with the selection moved, leaving its argument
 // untouched, so the verb stays a pure transform over facts the repository already holds. Persisting
@@ -218,18 +334,27 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitR
   match commit_at_reference(commits: repo.commits, reference: reference) {
     Absent => CheckoutReferenceUnresolved { reference: reference }
     Present { value: selected } =>
-      match checkout(store: repo.store, commit: commit_of_root(root: node_target_of(reference: selected.root))) {
-        CheckoutRefused { cause: cause } =>
-          CheckoutProgramUnreconstructable { reference: reference, cause: cause }
-        CheckedOut { program: program } =>
-          RepositoryCheckedOut {
-            repository: RepositoryEnvelope {
-              store: repo.store,
-              commits: repo.commits,
-              commit_allocator: repo.commit_allocator,
-              checked_out: Present { value: reference },
-            },
-            program: program,
+      match find_corpus_manifest_record(store: repo.store, identity: selected.root.locator) {
+        CorpusManifestAbsent { identity: id } =>
+          CheckoutSnapshotMissingFromStore { reference: reference, root: id }
+        CorpusManifestIsAuthoredSource { identity: id } =>
+          CheckoutSnapshotIsAuthoredSource { reference: reference, root: id }
+        CorpusManifestIsSemanticNode { identity: id } =>
+          CheckoutSnapshotIsSemanticNode { reference: reference, root: id }
+        CorpusManifestFound(record) =>
+          match recover_corpus(store: repo.store, entries: record.entries) {
+            CorpusRecoveryRefused { cause: cause } =>
+              CheckoutCorpusUnrecoverable { reference: reference, cause: cause }
+            CorpusRecovered { files: files } =>
+              RepositoryCheckedOut {
+                repository: RepositoryEnvelope {
+                  store: repo.store,
+                  commits: repo.commits,
+                  commit_allocator: repo.commit_allocator,
+                  checked_out: Present { value: reference },
+                },
+                corpus: files,
+              }
           }
       }
   }

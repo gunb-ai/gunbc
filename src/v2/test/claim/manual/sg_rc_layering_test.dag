@@ -55,6 +55,20 @@ fn sg_rc_serialized_type_text(emitted: Node) -> String {
   }
 }
 
+// The f1 text claims serialize against sg_rc_layering_serialize_target(), which carries rust's
+// production lex rules and binding spellings -- the two values those assertions are ABOUT -- and
+// nothing else. sg_rc_serialized_type_text above stays on the full sg2 model for
+// sg_rc_outcome_inner_sg2_args_preserved, which projects a type expression and reads more of it.
+fn sg_rc_f1_serialized_type_text(emitted: Node) -> String {
+  match target_serialize_source_from_model(
+    target: sg_rc_layering_serialize_target(),
+    emitted: emitted
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => sg_rc_fail_text
+  }
+}
+
 fn sg_rc_outcome_node_source_type() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
@@ -109,11 +123,11 @@ test fn sg_rc_outcome_inner_sg2_args_preserved() -> Bool {
 }
 
 fn sg_rc_f1_rc_type_text() -> String {
-  sg_rc_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc))
+  sg_rc_f1_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc))
 }
 
 fn sg_rc_f1_owned_type_text() -> String {
-  sg_rc_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerOwned))
+  sg_rc_f1_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerOwned))
 }
 
 fn sg_rc_diagnostics_identity_value() -> TargetValueExpression {
@@ -160,7 +174,7 @@ test fn sg_rc_f2_return_value_holds() -> Bool {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: sg_rc_diagnostics_identity_value(),
     source_carrier: target_carrier_diagnostics_node(),
-    target: sg_rc_target(),
+    target: sg_rc_layering_gate_target(),
     use_site: OwnershipAtFunctionReturn
   ) {
     Accepted { value: wrapped, diagnostics: _ } =>
@@ -176,7 +190,7 @@ test fn sg_rc_f2_param_value_holds() -> Bool {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: sg_rc_diagnostics_identity_value(),
     source_carrier: target_carrier_diagnostics_node(),
-    target: sg_rc_target(),
+    target: sg_rc_layering_gate_target(),
     use_site: OwnershipAtFunctionParameter
   ) {
     Accepted { value: wrapped, diagnostics: _ } =>
@@ -191,7 +205,7 @@ test fn sg_rc_f2_param_value_holds() -> Bool {
 test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_probe_heap_node(),
-    target: sg_rc_target(),
+    target: sg_rc_layering_gate_target(),
     use_site: OwnershipAtFunctionParameter
   ) {
     Rejected { diagnostics: _ } => true
@@ -221,7 +235,7 @@ test fn sg_rc_value_rc_wrap_tagged() -> Bool {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: inner,
     source_carrier: target_carrier_diagnostics_node(),
-    target: sg_rc_target(),
+    target: sg_rc_layering_gate_target(),
     use_site: OwnershipAtBindingProjection
   ) {
     Accepted { value: wrapped, diagnostics: _ } =>

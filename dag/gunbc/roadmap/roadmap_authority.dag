@@ -56,6 +56,8 @@ import gunbc.roadmap_acceptance_history_observation {
   acceptance_history_integrity_verdict_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract {
+  GunbcClaimValidation,
+  ExecutionContract,
   ExecutionContractUnspecified,
   contract_has_closing_validation,
   closing_contract_authoring_contract,
@@ -361,10 +363,30 @@ fn superseded(identity: String,
 // the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a
 // fixture — a raw shell literal reappearing in that transport module reds it for real.
 
+// THE BINDING NOW DISCRIMINATES, which is the half observation_raw_print_retirement_contract_note
+// records this contract as deliberately not supplying. It named
+// corpus_dag_compile_clean_transport_clean_holds -- an ALREADY-GREEN validation -- so Verify proved
+// only that the path RUNS: admission, argv derivation, receipt production. A verifier that returned
+// green unconditionally was indistinguishable from a working one, because nothing it ran could
+// return anything else.
+//
+// It now names a validation that FAILS TODAY. usb_gadget_setup_script prefixes "set -e" and joins
+// rendered shell lines, so the witness asserting no shell control word is red, and the red is this
+// node's own acceptance condition rather than a planted fixture: the node asks for a described
+// operation instead of written shell text, and the witness asserts exactly that no shell text is
+// produced. The transition red -> green IS the work being finished.
+//
+// THE WITNESS IS ENROLLED IN floor_expected_red, NOT QuarantineProbeExpectRed, and the difference
+// is executional rather than stylistic. The sibling note above recommends the quarantine cadence,
+// and that recommendation is STALE: std.witness_admission records that falsifier.yml -- the
+// workflow scheduling QuarantineProbeExpectRed -- was deleted at 611fd02770 (#8283), so every row
+// classified into that cadence "has read as covered ever since despite executing nowhere".
+// Enrolling here would have put a deliberately-red acceptance test somewhere it never runs, which
+// is the failure that note itself documents. The floor executes.
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
-    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+    entry: "dag/test/claim/shell_to_dag_stub_witness_test.dag" as FilePath,
+    function: "usb_gadget_setup_emits_no_shell_control_word" as NonEmptyStr,
   )
 }
 
@@ -1750,11 +1772,114 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    with_execution(active_small(
+      identity: "rn_7K3QH2M9XWP4NVB8RD6TSCA5EJ",
+      id: "harness-thinking-and-write-briefs",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_cli.dag",
+      t: fields(
+        headline: "Run the worker on DeepSeek V4 Flash with thinking on, straight at the engines, from briefs it can finish",
+        boundary: "The harness posts to the Spark vLLM engines directly on the chat-completions shape with Think Max as the request switch, decodes inline reasoning client-side, replays it, and derives its deadline from the engine's own decode rate. A write brief names files small enough to hold whole and the decisions already made.",
+        displaced_cost: "A day of runs with 0 files changed: briefs naming one file when the change spans its importers, a co-tenanted router killing every long step, a deadline that could not cover max_tokens, and agents deliberating modeling decisions a brief should have made.",
+        first_slice: "Engine roster and replica pick, Think Max kwargs, client decode and replay, engine-derived floor; witnesses on each; one mechanical brief green first try (roadmap_belt_commit).",
+        red_control: "A worker whose request goes through any process other than an engine refuses; a deadline shorter than max_tokens at the declared floor is a witness failure; a brief that makes the agent decide a modeling question is a research brief, not a write brief.",
+        out_of_scope: "No research phase in the workflow yet, no transport retry, no per-round source recording.",
+        handback: "The harness config rows, the engine roster, the brief-sizing rule recorded in memory, and the measured runs t08a/t09a1/t09b2 as receipts."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/harness_chat_shape_test.dag" as FilePath,
+      function: "the_replica_pick_is_deterministic_and_covers_the_roster" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
+      identity: "rn_2XG8VDT4MJQ7BWN5HRC3PYE6KA",
+      id: "roadmap-verify-to-publish-phase",
+      owner: "roadmap",
+      path: "dag/gunbc/roadmap/roadmap_publish_admission.dag",
+      t: fields(
+        headline: "The roadmap commits, verifies, and opens the pull request itself once verification passes",
+        boundary: "After the provider completes, the belt commits the attempt worktree, verifies the committed head in a detached checkout, admits publication only on a ValidationPassed receipt for that exact head, and the token-holding helper pushes the branch and opens the pull request, then answers with what GitHub shows.",
+        displaced_cost: "Verification was checking out an uncommitted worktree's head, publication never consulted the verdict, and no operation existed to push or create a pull request, so every attempt stalled in the Agent segment and a human harvested by hand.",
+        first_slice: "One real attempt through the belt on the srv2 instance that ends with a bound pull request receipt.",
+        red_control: "A head whose verification receipt is absent, unreadable, failed, or legacy is deferred with a named reason and never pushed; a rejected push is a typed refusal and never forced; the helper never composes a bound receipt from the create call without observing GitHub again.",
+        out_of_scope: "No research/write/verify/diagnose phase iteration yet; the side measurement harness is not yet retired into dispatch.",
+        handback: "The commit pass, admission module, actuation module and helper wiring on srv2-deploy, each witnessed, and the first bound receipt."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/roadmap/roadmap_publish_admission_witness_test.dag" as FilePath,
+      function: "a_passed_verdict_admits_publication" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
+      identity: "rn_5MRT8VKC2XNQ4WHJ7PBD3ZGE9A",
+      id: "roadmap-round-strip-pulse-follows-the-worker",
+      owner: "dashboard",
+      path: "dag/gunbc/roadmap/roadmap_presentation.dag",
+      t: fields(
+        headline: "The round strip's pulse follows the worker process, not the row's open state",
+        boundary: "WorkRowView carries worker_alive: Bool, true only when the attempt's WorkerProcessEvidence is WorkerProcessRunning; the page passes it as the strip's live flag so a finished attempt's last segment stops pulsing while its row still has open obligations.",
+        displaced_cost: "The first belt-dispatched attempt kept pulsing after its worker exited, because live was read from ActiveWork (the row still has verify and publish ahead) rather than from the process; a viewer cannot tell a working attempt from a dead one, which is the one thing the strip exists to show.",
+        first_slice: "In gunbc.roadmap_presentation: add worker_alive: Bool as the last field of WorkRowView; add fn worker_alive_from_process(process: WorkerProcessEvidence) -> Bool matching WorkerProcessRunning { command: _ } => true, WorkerProcessExited { exit_code: _, last_command: _ } => false, WorkerProcessAbsent => false, WorkerProcessUnobserved { reason: _ } => false (import WorkerProcessEvidence and the four variants from gunbc.worker_lifecycle); add a worker_alive: Bool parameter to work_row_view and set the field; copy the field in family_subject_row. In gunbc.roadmap_page: activity_region_nodes gains a third parameter live: Bool and passes it to round_strip_nodes instead of the literal true; its caller passes view.worker_alive. Beside daily_row_rounds add fn daily_row_worker_alive(node_id, attempts, attempts_refused) -> Bool built exactly the way daily_row_rounds is built: attempts refused => false, no attempt => false, Present { value: p } => worker_alive_from_process(process: p.process); the daily row builder passes worker_alive: daily_row_worker_alive(...) and node_work_row_view passes worker_alive: false. Every other WorkRowView constructor (gunbc.roadmap_sandbox fixture_specimen_view and fixture_ready_view; test.claim.roadmap.roadmap_presentation_witness_test fx_row and fx_family_member_row; test.claim.long.roadmap_page_witness_test parity_specimen_view) gets worker_alive: false, except the sandbox fixture_active_view which passes worker_alive: true so the lab's active specimen still pulses. The oracle already exists and is red: dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag declares the_pulse_follows_the_worker_process over worker_alive_from_process; do not edit that file, make it green.",
+        red_control: "A row whose worker has exited renders no activity-round-live class; worker_alive_from_process(WorkerProcessAbsent) is false; the witness fails if any arm is missing.",
+        out_of_scope: "No change to how liveness is observed (the process evidence stays as the belt reports it); no live re-render.",
+        handback: "The field, the fold, the page flag, the fixtures updated, and the witness green."
+      )
+    ), e: ExecutionContract {
+      validations: [
+        GunbcClaimValidation {
+          entry: "dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag" as FilePath,
+          function: "the_pulse_follows_the_worker_process" as NonEmptyStr,
+        },
+        GunbcClaimValidation {
+          entry: "dag/test/claim/roadmap/roadmap_sandbox_render_witness_test.dag" as FilePath,
+          function: "the_sandbox_page_renders_with_its_strip_lab" as NonEmptyStr,
+        },
+      ],
+      extra_capabilities: [],
+    }),
+
+    with_execution(active_small(
+      identity: "rn_2CTLBL7QKX4MWN8VRZ5HYD3JPE",
+      id: "roadmap-continuation-turn-label",
+      owner: "dashboard",
+      path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag",
+      t: fields(
+        headline: "One function names a continuation turn, and the brief prefix uses it",
+        boundary: "gunbc.roadmap.roadmap_attempt_continuation gains fn continuation_turn_label(turn: Int) -> String returning the text turn <turn> of <continuation_turn_cap>, for example turn 2 of 3; continuation_brief_prefix builds its opening from that function instead of joining the pieces itself, so the row and the brief will name the turn with one authority.",
+        displaced_cost: "The dashboard cannot yet say which turn of a lineage a row is on, and the brief prefix already spells the phrase inline; a second spelling on the row would be the nicknaming DESIGN section 3 forbids, so the label is made once before the row consumes it.",
+        first_slice: "In dag/gunbc/roadmap/roadmap_attempt_continuation.dag only: add fn continuation_turn_label(turn: Int) -> String { join([\"turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap)], \"\") } beside continuation_turn_cap; then in continuation_brief_prefix replace the four joined pieces \"CONTINUATION: this is turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap) with the two pieces \"CONTINUATION: this is \", continuation_turn_label(turn: turn). Nothing else changes. The oracle already exists and is red: dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag declares the_turn_label_names_the_turn_and_the_cap over continuation_turn_label; do not edit that file, make it green. The existing witness a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief in dag/test/claim/roadmap/roadmap_attempt_continuation_witness_test.dag must stay green (it looks for the text turn 2 of 3 in the prefix).",
+        red_control: "continuation_turn_label(turn: 2) is exactly turn 2 of 3; a prefix that stops containing turn 2 of 3 turns the existing continuation witness red.",
+        out_of_scope: "No change to the row rendering yet; no change to the cap; no other file.",
+        handback: "The function, the prefix using it, and both witnesses green."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag" as FilePath,
+      function: "the_turn_label_names_the_turn_and_the_cap" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
+      identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",
+      id: "roadmap-round-strip-percolator",
+      owner: "dashboard",
+      path: "dag/gunbc/harness/harness_throughput.dag",
+      t: fields(
+        headline: "Show an attempt's rounds filling in like a commit graph, at a fixed playback length however long the run",
+        boundary: "Each attempt row carries a strip of time-proportional round segments (read, write, unmeasured) that replays in 2.4 seconds regardless of round count, with the live segment pulsing; the design material gains keyframed ambient motion as a modeled rule, silenced under reduced motion.",
+        displaced_cost: "The dashboard showed no sign that a worker was alive or how it spent its time, so a stalled attempt and a working one looked the same.",
+        first_slice: "AmbientRule in the design material, the playback schedule with its floor, the sandbox lab with replay and slow controls; next, per-round sources read and the connection arcs.",
+        red_control: "A 40ms write round stays visible at the floor; a 300-round run does not overflow the strip; the last segment pulses only for an active row.",
+        out_of_scope: "No live re-render without reload; no per-file read diversity yet.",
+        handback: "The strip on every active row, the lab on /sandbox, and the playback witness."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/harness_throughput_test.dag" as FilePath,
+      function: "playback_compresses_the_run_into_a_fixed_window_with_a_floor" as NonEmptyStr,
+    )),
+
+    ticket_row(
       identity: "rn_0PJXVP9KNDXZFHXMDM9XQ7TTSX",
       id: "commit-writer-admission",
-      owner: "generated-artifact",
-      path: "docs/plans/generated-file-conflict-policy.md",
+      done: false,
       t: fields(
         headline: "One admission predicate that every commit writer must pass before it may write",
         boundary: "Admission consumes a complete staged-index observation whose population must equal the exact staged index, never a caller-selected list, with two independent refusal arms: any unmerged index stage refuses typed and located with the affected path, and the staged blobs are inspected for the complete conflict-marker grammar, so a file collapsed to stage zero with markers inside refuses. Text classification is observed, never caller-declared; a fixture exemption is a provenance receipt bound to the same staged path and blob, never a path allowlist. The pre-commit hook stays fast local feedback; the predicate at the writer's boundary is the enforcement.",
@@ -2489,11 +2614,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_large(
+    ticket_row(
       identity: "rn_RPKBFCD41FZGDV48TJKRJYQ8J2",
       id: "confidence-semantic-impact-query",
-      owner: "confidence",
-      path: "src/v2/lens/module_graph.dag",
+      done: false,
       t: fields(
         headline: "Ask what depends on this exact thing, and get an explained, honest answer",
         boundary: "Given an exact graph subject and one or more semantic node identities, return direct and transitive dependencies or dependents, explanation paths, production and test consumers, and an explicit completeness standing. Git diffs, paths, line and column coordinates, and natural-language questions are adapters into this semantic query — they are not its identity grain. The reading consumes the existing single edge authority as data and never grows a second edge producer; where the finest grain is unavailable, the standing says so with its trigger rather than answering coarser and calling it fine.",
@@ -3414,9 +3538,21 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // worth enforcing would be enforced at MINT time by construction, not by editing identities already
 // in the graph.
 
+fn node_sizing_is_declared(n: RoadmapNode) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+  }
+}
+
+// AN UNSIZED NODE IS UNPLANNED, AND NOTHING ABOUT IT IS SCHEDULED -- including the task to write its
+// closing check. Before this filter a ticket_row (Unsized) still minted a Sized closing-contract task
+// that sat in Ready, so parking a node by unsizing it moved the node out of Ready and put a task
+// for it straight back in (operator observation, 2026-09-04).
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_sizing_is_declared(n: n))
     |> filter(n => node_lacks_closing_validation(n: n))
     |> filter(n => node_is_startable_for_accepted(n: n, accepted: accepted))
 }
@@ -3584,8 +3720,8 @@ fn preamble() -> List<MarkdownBlock> {
 // hidden lane as retained and unexplained rather than as decided.
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main",
-  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence"],
+  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main + the harness, roadmap workflow and dashboard lanes",
+  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard"],
 }
 
 fn projected_roadmap_nodes_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {

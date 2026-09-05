@@ -8,7 +8,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
   DispatchLiveSession,
   CodexDispatchProvider,
-  dispatch_provider_instance_for,
+  dispatch_provider_instance_for_kind,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -103,7 +103,7 @@ fn live_with_process(process: WorkerProcessEvidence) -> DispatchLiveSession {
     windows: 1,
     lease_verdict: Converged,
     worker: worker_observation_without_provider_probe_for_process(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
       process: process,
     ),
   }

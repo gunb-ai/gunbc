@@ -4,15 +4,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  membership_reconcile,
-  membership_plan_admitting_outcome,
-  membership_write_count,
-  membership_removal_count,
-  membership_refusal_count,
-}
-import gunbc.ownership { Ownership, Owned }
 import gunbc.repository { gunbc_repository }
 import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
@@ -82,6 +73,15 @@ import extdeps.transports.rest {
   RestBodyUndecodable,
 }
 import v2.std.collection { Absent, Present }
+import extdeps.github.github { Repository }
+import gunbc.world_converge {
+  WorldObservation, WorldObserved, WorldUnobservable,
+  WorldDifference, WorldInAgreement, WorldDiverged,
+  WorldActuation, WorldActuationRefused,
+  WorldConvergenceHandler,
+  WorldConverged, WorldNotConverged,
+  world_converge,
+}
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
 //
@@ -100,12 +100,20 @@ import v2.std.collection { Absent, Present }
 // gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
 // repository stays green while nothing it produces can block a merge any more.
 //
-// So this module is the ordinary converged-authority treatment, following gunbc.repo_local_git_config
-// exactly: DESIRED state is declared, the live state is OBSERVED, the two are RECONCILED, drift is
-// APPLIED, and the result is READ BACK and verified against desired again -- convergence is claimed
-// only from the post-apply read, never from the apply's own success. The read-back is what makes it
-// a converged authority rather than a fire-and-hope actuator, and it is the half a hand-run `gh api`
-// command has never had.
+// This module binds the repository subject to gunbc.world_converge: DESIRED state is declared, the
+// live state is OBSERVED, and the two are RECONCILED through the one global convergence shape. Live
+// drift currently reaches a typed actuation hold because the API read cannot carry the bypass-actor
+// roster that a whole-ruleset PUT would overwrite. Until then this binding is read-only by
+// construction.
+//
+// DISSOLVE-ON, NAMED AS A CAPABILITY AND NOT AS THE CHANGE EXPECTED TO CARRY IT: an admitted
+// actuation realization that writes the desired ruleset WITHOUT destroying the live bypass-actor
+// roster, and a post-apply read-back that observes the roster survived. #10204 is where that work
+// is signed, and #10204 MERGING IS NOT THE TRIGGER -- it retires this standing only if it delivers
+// that capability. A write that preserves the roster but cannot read back afterwards leaves the
+// hazard unobserved and does not retire it either. This grain is stated because the note above
+// `merge_queue_projection_refusal` in this same module records what the other grain cost: a trigger
+// naming less than the capability it governs, satisfied while the capability stayed dead.
 //
 // THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
 // gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
@@ -285,6 +293,38 @@ fn merge_queue_check_response_timeout() -> Minute {
   measure_add(a: witness_floor_lane_timeout, b: merge_queue_response_margin)
 }
 
+// THE CONTENTION THIS PROPOSAL TARGETS IS MEASURED, NOT ARGUED FROM FIRST PRINCIPLES, AND THE
+// INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED. Re-derive over any window with:
+//
+//   git log origin/main --since='12 hours ago' --oneline | wc -l
+//   git log origin/main --since='12 hours ago' --oneline -- docs/design-failure-modes.md | wc -l
+//   git log origin/main --since='12 hours ago' --format='%h %ad' --date=format:'%H:%M' -- docs/design-failure-modes.md
+//
+// Run on 2026-09-04 against origin/main it reported 48 landings, of which 14 touched
+// `docs/design-failure-modes.md` -- a generated projection whose merge driver REFUSES whenever both
+// sides changed it since the base. THE REFUSAL IS CERTAIN ONLY WHEN BOTH SIDES MOVED, and that is a
+// conditional rather than a universal: a branch that touched the projection collides only once main
+// also touches it, which the same command puts at 14 of 48 landings rather than at certainty. A
+// branch that lands quickly may never collide, and one was open beside this measurement that never
+// did. What the rate governs is EXPOSURE: the probability of a collision grows with how long a
+// branch stays open against that churn, so the cost falls on exactly the branches that wait --
+// which is every branch waiting on a queue position. The last three intervals from that same
+// command were 06:44, 08:08, 08:17.
+//
+// THE NUMBER THAT DECIDES IT IS NOT THE RATE BUT ITS RELATION TO THE VALIDATION TIME. When the
+// interval between collisions falls below the time to get a resolved head through the required
+// aggregate, resolving promptly CANNOT WIN: every resolution is obsolete before the run that would
+// validate it finishes, and resolving faster makes it worse, because each attempt is a new head, a
+// fresh queue position, and a fresh set of voided approvals. Three lanes were in that state
+// simultaneously on the date above, and one branch ran six regenerate-then-remerge cycles and
+// converged zero times.
+//
+// A QUEUE IS EXACTLY THE MECHANISM THAT DISSOLVES THAT, and this is the argument for the proposal
+// rather than a complaint about the file: serialised landing resolves each conflict ONCE, against a
+// base that cannot move underneath the resolution while it is being validated. The alternative
+// available without a queue -- resolve once, at the moment of landing, and let the branch sit behind
+// its base until then -- is the same discipline enforced by hand, which is why it works and why it
+// does not scale past the lanes willing to observe it.
 data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
   grouping_strategy: AllGreenGrouping,
   merge_method: QueueSquash,
@@ -392,41 +432,6 @@ fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> Ruleset
       ),
     }
   }
-}
-
-// THE CONTEXT ROSTER IS RECONCILED, NOT COMPARED. gunbc.membership_reconcile is the repository's
-// grain-agnostic desired-vs-observed diff and it answers the question this module actually has:
-// which contexts are missing, which are present that should not be, and which cannot be acted on.
-// Ownership is Owned rather than Ensured -- the opposite of gunbc.repo_local_git_config's choice,
-// and deliberately so. There, a binding absent from desired is someone else's git config and is
-// never torn down. Here, "witnesses is the ONE required context" is the whole claim: an extra
-// required context is exactly the drift this module exists to see, so a removal must be PLANNED
-// rather than refused. Ensured would have made the module blind to the additive half of its own
-// subject.
-type RequiredContextMemberAt = String
-
-fn required_context_key(c: RequiredStatusCheckWire) -> String { c.context }
-fn required_context_key_eq(a: String, b: String) -> Bool { a == b }
-fn required_context_value_eq(a: RequiredStatusCheckWire, b: RequiredStatusCheckWire) -> Bool {
-  a.integration_id == b.integration_id
-}
-fn required_context_ownership(_: RequiredStatusCheckWire) -> Ownership? {
-  Present { value: Owned }
-}
-
-fn required_context_reconcile(
-  observed: List<RequiredStatusCheckWire>,
-) -> MembershipPlan<RequiredStatusCheckWire, RequiredContextMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
-      desired: desired_required_status_checks(),
-      observed: observed,
-      key_of: required_context_key,
-      key_eq: required_context_key_eq,
-      value_eq: required_context_value_eq,
-      ownership_of: required_context_ownership,
-    ),
-  )
 }
 
 // EVERY WAY THE LIVE RULESET CAN DISAGREE WITH DESIRED, AS A VALUE. A Bool verdict here would be
@@ -774,6 +779,31 @@ fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> Non
   }
 }
 
+// STANDING, RECORDED SO THE NEXT READER DOES NOT MISTAKE THIS FOR THE ACTUATION GATE: no production
+// path calls this any more. Its consumer was the whole-ruleset actuate root, which world
+// convergence replaced, and repo_ruleset_actuation_admission deliberately does NOT route through
+// it -- folding two facts into one Present is what inverted two causes, and the admission must name
+// WHICH fact holds actuation rather than only THAT one does.
+//
+// AN EARLIER VERSION OF THIS NOTE CARRIED A TRIGGER THAT HAS SINCE FIRED WITHOUT RETIRING ANYTHING,
+// which is recorded rather than quietly replaced, because a trigger nobody re-reads after the event
+// that fires it is the failure this repository keeps paying for -- usually as a trigger naming less
+// than the capability it governs and being satisfied while that capability stays dead, and here as
+// its mirror. It read: dissolve-on the admission constructing its own located causes, at which
+// point this prose either has a consumer again or has nothing left to say. The admission now does
+// construct its own located causes, and NEITHER arm is what happened. The helper did not get a
+// consumer back, by design. But it does not have nothing left to say either: it answers a coarser
+// question -- may converge actuate AT ALL -- for which one refusal genuinely suffices, and it says
+// so in prose no cause carries, that applying desired would DELETE what the projection omits.
+//
+// SO THE HONEST STANDING IS THE THIRD ONE: a correct answer to a question no production path
+// currently asks, kept alive by the two claims that execute over it and by nothing else. That is
+// admissible only while it cannot be mistaken for the gate, which is what this note is for.
+// dissolve-on, named as a capability rather than an event this time: an executing claim asserting
+// the DELETE-hazard prose through repo_ruleset_actuation_admission's own located causes. At that
+// point the last thing this helper says uniquely is said on the production path, and the helper
+// goes with the two claims that read it. Nothing smaller retires it -- in particular, the admission
+// merely HAVING located causes does not, which is exactly the mistake the fired trigger made.
 fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
   let unexpected = rule_unexpected_divergences(observed: rule_types)
   if length(unexpected) == 0 {
@@ -1075,21 +1105,6 @@ type RepoRulesetConvergedEvidence {
   reader_cannot_bypass: Bool
 }
 
-fn apply_desired_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetReadRefusal? {
-  let r = github.Rulesets.Update(
-    auth_token: "",
-    owner: owner,
-    repo: repo,
-    ruleset_id: ruleset_id,
-    name: gunbc_passing_ci_ruleset_name,
-    target: ruleset_target_wire_label(t: desired_ruleset_target),
-    enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
-    conditions: desired_ruleset_conditions(),
-    rules: desired_ruleset_rules(),
-  )
-  read_refusal_of_outcome(outcome: r.outcome)
-}
-
 fn converged_evidence_of(
   writes: Int,
   removals: Int,
@@ -1124,20 +1139,136 @@ fn converged_evidence_of(
   }
 }
 
-// THE CONVERGENCE CLAIM COMES FROM THE POST-APPLY READ AND FROM NOTHING ELSE. A 200 on the PUT says
-// GitHub accepted a request; it does not say the ruleset now denies a merge that lacks the required
-// context. So the apply's own success is never the evidence -- the second observation is, and it is
-// judged by the same divergence fold the pre-apply read went through. That is the whole difference
-// between this module and the `gh api` command it replaces.
-fn repo_ruleset_converge_actuate_at(
-  owner: String,
-  repo: String,
+type RepositoryRulesetConvergenceSubject {
+  repository: Repository
+  ruleset_id: Int
+}
+
+// FIVE HELD STANDINGS, NOT ONE HELD FLAG, AND THE SPLIT IS A CORRECTNESS FIX RATHER THAN DETAIL.
+// An earlier shape folded the bypass halves into one cause and mapped the signed-projection half
+// onto an unsigned-desire cause, which INVERTED both: it reported that a live bypass actor EXISTS
+// where the truth is that this reader CANNOT SEE whether any do -- top-as-answer standing in for
+// top-as-ignorance, the conflation DESIGN section 5 names -- and it told an operator to sign a
+// desire that is already signed and merely unprojectable. A refusal that misnames its own cause
+// sends the reader to fix the wrong thing, which is worse than a refusal that says less.
+type RepositoryRulesetConvergenceRefusal
+  = RepositoryRulesetObservationRefused { cause: RulesetReadRefusal }
+  | RepositoryRulesetActuationRealizationUnbound { ruleset_id: Int }
+  | RepositoryRulesetUnexpectedLiveRule { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetBypassRosterUnobservable { ruleset_id: Int, reader: NonEmptyStr, detail: NonEmptyStr }
+  | RepositoryRulesetObservedLiveBypassActors { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: Int, detail: NonEmptyStr }
+  | RepositoryRulesetDriftUnrepaired { ruleset_id: Int, drift: NonEmptyStr }
+
+type RepositoryRulesetActuationAdmission
+  = RepositoryRulesetActuationAdmitted
+  | RepositoryRulesetActuationRefused { cause: RepositoryRulesetConvergenceRefusal }
+
+// THE ORDERED CAUSE MAPPING FOR AN OBSERVED RULESET, SPLIT OUT SO THAT EVERY ARM IS REACHABLE BY AN
+// EXECUTING CLAIM. This is not a second authority and not a test double: it is the mapping, and
+// `repo_ruleset_actuation_admission` above has no copy of it -- that function now only decides
+// readable-versus-unreadable and hands the observed case here. A fixture-only reimplementation
+// would have proved a duplicate rather than this.
+//
+// WHY THE SIGNED REFUSAL ARRIVES AS A PARAMETER AND THE REST DO NOT. The other three arms are
+// decided by values a caller already supplies through the observation, so a claim can reach them by
+// varying the observation. The signed-policy arm is not: `signed_desire_projection_refusal` is
+// nullary and folds two module-scope globals, so while this repository's merge queue is unsigned
+// that arm is unreachable through ANY observation and no claim could discriminate it.
+//
+// AN UNREACHABLE ARM IS EXACTLY THE ARM THAT NEEDS ONE. This branch was WRONG while it was
+// unreachable -- it reported a signed-but-unprojectable policy as "not signed", sending an operator
+// to sign what was already signed -- and it was unreachability that let the inversion sit. "The
+// source reads correctly today" is not a wall against the same inversion returning at the first
+// sign-off, which is the moment the arm goes live and the moment it is first read.
+//
+// The parameter is therefore the seam that makes the arm testable WITHOUT relocating the policy:
+// production passes `signed_desire_projection_refusal()` and nothing about which policy is signed
+// moves out of this module.
+fn repo_ruleset_observed_actuation_admission(
   ruleset_id: Int,
-) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
-  let before = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
-  match before {
-    RulesetUnreadable { cause: c } =>
-      NotConverged { reason: render_read_refusal(cause: c), applied: before }
+  bypass_roster: BypassActorRosterObservation,
+  rule_types: List<RulesetRuleType>,
+  signed_projection_refusal: NonEmptyStr?,
+) -> RepositoryRulesetActuationAdmission {
+  match bypass_roster {
+    BypassRosterUnavailable { reader: r, cause: rc } => RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetBypassRosterUnobservable {
+        ruleset_id: ruleset_id,
+        reader: r,
+        detail: rc,
+      },
+    }
+    BypassRosterObserved { actors: actors } =>
+      if length(actors) > 0 {
+        RepositoryRulesetActuationRefused {
+          cause: RepositoryRulesetObservedLiveBypassActors {
+            ruleset_id: ruleset_id,
+            detail: join(map(actors, a => concat(
+              concat(concat(a.actor_type, "/"), to_string(a.actor_id)),
+              concat(" mode=", a.bypass_mode),
+            )), "; ") as NonEmptyStr,
+          },
+        }
+      } else {
+        let unexpected = rule_unexpected_divergences(observed: rule_types)
+        if length(unexpected) > 0 {
+          RepositoryRulesetActuationRefused {
+            cause: RepositoryRulesetUnexpectedLiveRule {
+              ruleset_id: ruleset_id,
+              detail: render_divergences(ds: unexpected) as NonEmptyStr,
+            },
+          }
+        } else {
+          match signed_projection_refusal {
+            Present { value: detail } => RepositoryRulesetActuationRefused {
+              cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable {
+                ruleset_id: ruleset_id,
+                detail: detail,
+              },
+            }
+            Absent => RepositoryRulesetActuationRefused {
+              cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: ruleset_id },
+            }
+          }
+        }
+      }
+  }
+}
+
+// This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
+// later change swaps out. It decides ONE question -- may this tree actuate -- and it answers with
+// the fact that holds it, because for a refusal the cause IS the answer: an operator reads it to
+// learn what to go and change, and every one of these five states has a different remedy.
+//
+// IT READS THE OBSERVED VALUES DIRECTLY RATHER THAN THROUGH THE COMBINED HELPERS, and that is the
+// correctness point rather than a stylistic one. bypass_roster_projection_refusal answers Present
+// for BOTH an unreadable roster and an observed non-empty one, and merge_queue_projection_refusal
+// answers Present for BOTH an unexpected live rule and a signed policy the projection cannot carry.
+// Each helper is right for the question IT asks -- may converge actuate at all -- where one refusal
+// suffices. Routing a CAUSE through them inverts two facts. It reports that a live bypass actor
+// EXISTS when the truth is that this reader CANNOT SEE whether any do, which is top-as-answer
+// standing in for top-as-ignorance and is asserted rather than merely widened; and it tells an
+// operator that a desire is UNSIGNED when the refusal exists precisely BECAUSE it is signed and
+// unprojectable, sending them to sign something already signed.
+//
+// THE UNOBSERVABLE ARM IS THE ONE THAT MATTERS TODAY, not a latent case: under the credential this
+// repository has, a live ruleset GET omits bypass_actors on every read, and GitHub omits that field
+// both when the roster is empty and when the reader may not see it. So the live path is exactly the
+// one the inverted cause was lying about. It carries the reader identity, because the refusal is a
+// property of the credential rather than of the moment, and a retry cannot discharge it.
+//
+// The terminal arm is RepositoryRulesetActuationRealizationUnbound: with nothing held, this tree
+// still carries no admitted write realization, and admission may never silently become a write.
+// #10204 owns the read-back transaction after operator sign-off.
+fn repo_ruleset_actuation_admission(
+  subject: RepositoryRulesetConvergenceSubject,
+  observed: RulesetObservation,
+) -> RepositoryRulesetActuationAdmission {
+  match observed {
+    RulesetUnreadable { cause: c } => RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetObservationRefused { cause: c },
+    }
     RulesetObserved {
       name: _,
       enforcement: _,
@@ -1146,133 +1277,189 @@ fn repo_ruleset_converge_actuate_at(
       include: _,
       exclude: _,
       rule_types: rt,
-      standing: st,
+      standing: _,
       merge_queue: _,
       bypass_roster: br,
-    } => {
-      let plan = required_context_reconcile(observed: observed_required_checks(standing: st))
-      let refusals = membership_refusal_count(plan: plan)
-      match bypass_roster_projection_refusal(roster: br) {
-        Present { value: cause } => NotConverged { reason: cause, applied: before }
-        Absent =>
-      match merge_queue_projection_refusal(rule_types: rt) {
-        Present { value: cause } => NotConverged { reason: cause, applied: before }
-        Absent =>
-      if refusals > 0 {
-        NotConverged {
-          reason: render_divergence(d: RequiredContextUnactionable { count: refusals }),
-          applied: before,
-        }
-      } else {
-        let writes = membership_write_count(plan: plan)
-        let removals = membership_removal_count(plan: plan)
-        let divergences_before = observation_divergences(observation: before)
-        if length(divergences_before) == 0 {
-          Converged {
-            evidence: converged_evidence_of(writes: 0, removals: 0, observation: before),
-            applied: before,
-          }
-        } else {
-          match apply_desired_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id) {
-            Present { value: c } =>
-              NotConverged {
-                reason: concat("ruleset apply refused: ", render_read_refusal(cause: c)),
-                applied: before,
-              }
-            Absent => {
-              let after = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
-              match after {
-                RulesetUnreadable { cause: rc } =>
-                  NotConverged {
-                    reason: concat("ruleset read-back after apply: ", render_read_refusal(cause: rc)),
-                    applied: after,
-                  }
-                _ => {
-                  let remaining = observation_divergences(observation: after)
-                  if length(remaining) == 0 {
-                    Converged {
-                      evidence: converged_evidence_of(
-                        writes: writes,
-                        removals: removals,
-                        observation: after,
-                      ),
-                      applied: after,
-                    }
-                  } else {
-                    NotConverged {
-                      reason: concat(
-                        "ruleset read-back after apply still diverges: ",
-                        render_divergences(ds: remaining),
-                      ),
-                      applied: after,
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      }
-      }
-    }
+    } => repo_ruleset_observed_actuation_admission(
+      ruleset_id: subject.ruleset_id,
+      bypass_roster: br,
+      rule_types: rt,
+      signed_projection_refusal: signed_desire_projection_refusal(),
+    )
   }
 }
 
-fn repo_ruleset_verify_at(
-  owner: String,
-  repo: String,
-  ruleset_id: Int,
-) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
-  let observed = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
+fn world_repo_ruleset_observation(
+  observed: RulesetObservation,
+) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
   match observed {
-    RulesetUnreadable { cause: c } =>
-      NotConverged { reason: render_read_refusal(cause: c), applied: observed }
-    _ => {
-      let divergences = observation_divergences(observation: observed)
-      if length(divergences) == 0 {
-        Converged {
-          evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
-          applied: observed,
-        }
-      } else {
-        NotConverged { reason: render_divergences(ds: divergences), applied: observed }
-      }
+    RulesetUnreadable { cause: cause } => WorldUnobservable {
+      cause: RepositoryRulesetObservationRefused { cause: cause },
     }
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } => WorldObserved { value: observed }
   }
 }
 
-data repo_ruleset_converge_entry: String = "dag/gunbc/repo/repo_ruleset.dag"
-data repo_ruleset_converge_function: String = "converge"
-data repo_ruleset_verify_function: String = "verify"
+fn world_observe_repo_ruleset(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
+  let observed = observe_repo_ruleset(
+    owner: subject.repository.owner,
+    repo: subject.repository.name,
+    ruleset_id: subject.ruleset_id,
+  )
+  world_repo_ruleset_observation(observed: observed)
+}
 
-// VERIFY IS READ-ONLY AND CONVERGE WRITES, AND THEY ARE TWO ENTRY POINTS RATHER THAN ONE WITH A
-// FLAG. A flag whose effect is "do not actuate" is a mode on one operation; two entry points make
-// the read-only path unable to write by construction, which is what a verifier enrolled in an
-// automated run needs. NEITHER IS ENROLLED IN CI BY THIS CHANGE, and that is stated so the module
-// is not read as wider than it is: what lands here is the authority, the read-back and the typed
-// verdict. Enrolling `verify` as a required phase is a separate change with its own operator
-// agreement, and until it happens the wall is a route somebody runs, not a gate.
+fn world_repo_ruleset_differences(
+  _: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+) -> WorldDifference<RulesetDivergence> {
+  let divergences = observation_divergences(observation: observed)
+  if length(divergences) == 0 {
+    WorldInAgreement
+  } else {
+    WorldDiverged { differences: divergences }
+  }
+}
+
+// An admitted subject still refuses here, and the cause it refuses with must name the state the
+// admission ESTABLISHED rather than one it ruled out. Admission is reached only once the bypass
+// roster projects, no live rule is unexpected, and no signed policy is left unrepresented -- so a
+// cause asserting any of those would assert the negation of what was just decided. No such cause
+// remains constructible: the five located causes carry no unsigned-desire standing at all, which
+// is the earlier inversion having been fixed in the type rather than in the arm. The honest cause
+// is RepositoryRulesetDriftUnrepaired, AND IT CARRIES THE DRIFT RATHER THAN NAMING ONLY THE MISSING
+// WRITER. This function is reached only when the difference step already found divergences -- the
+// fold routes agreement to the unchanged receipt and never calls apply -- so EVERY refusal returned
+// here is returned in the presence of a computed, discarded-if-unused divergence list. An earlier
+// revision took `_: List<RulesetDivergence>` and answered
+// RepositoryRulesetActuationRealizationUnbound, which reported a name, enforcement, target or
+// required-context drift as "no admitted actuation realization": the failure status survived and the
+// LOCATED CAUSE did not, which is §5's typed-and-located diagnostic losing its located half, and §3's
+// replacement erasing a distinction the thing it replaced preserved -- the former verifier rendered
+// the concrete divergences. Review 60298 caught it. #10204 owns the read-back transaction after
+// operator sign-off; admission still cannot silently become a write, and this arm still refuses.
+//
+// THE HOLD ARMS DELIBERATELY STILL WIN OVER THE DRIFT, and that is not the same concealment. A hold
+// means the admission question could not be answered safely at all -- an unobservable bypass roster,
+// an unexpected live rule, a signed policy this projection cannot carry. Those are typed and located
+// about their own subject, and reporting drift instead of them would answer a question nobody asked
+// while suppressing a safety refusal. What §5 forbids is losing the located cause, not ordering two
+// located causes.
+// THE NAMED KERNEL, SPLIT OUT SO A CLAIM CAN REACH IT. The handler adapter below takes the context
+// positionally as `_: Bool`, which no witness can supply by name, so the decision would otherwise be
+// reachable only through a live read. This is the same split `world_repo_ruleset_observation`
+// already carries behind `world_observe_repo_ruleset`, and it exists for the same reason: a
+// diagnostic with no way to be asserted is a diagnostic nobody can hold to its claim.
+// NOTHING IS HELD AND THE ONLY OBJECTION IS THE MISSING WRITER. Enumerated rather than written as a
+// wildcard so that a seventh cause cannot silently join the drift-reporting branch: a new hold added
+// later must be classified here by hand, which is the fail-closed direction.
+fn repo_ruleset_hold_is_only_the_unbound_writer(
+  cause: RepositoryRulesetConvergenceRefusal,
+) -> Bool {
+  match cause {
+    RepositoryRulesetActuationRealizationUnbound { ruleset_id: _ } => true
+    RepositoryRulesetObservationRefused { cause: _ } => false
+    RepositoryRulesetUnexpectedLiveRule { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetBypassRosterUnobservable { ruleset_id: _, reader: _, detail: _ } => false
+    RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: _, detail: _ } => false
+    RepositoryRulesetDriftUnrepaired { ruleset_id: _, drift: _ } => false
+  }
+}
+
+fn repo_ruleset_drift_actuation(
+  subject: RepositoryRulesetConvergenceSubject,
+  observed: RulesetObservation,
+  differences: List<RulesetDivergence>,
+) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
+  let drift_refusal = WorldActuationRefused {
+    cause: RepositoryRulesetDriftUnrepaired {
+      ruleset_id: subject.ruleset_id,
+      drift: render_divergences(ds: differences) as NonEmptyStr,
+    },
+  }
+  match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
+    RepositoryRulesetActuationAdmitted => drift_refusal
+    RepositoryRulesetActuationRefused { cause: cause } =>
+      if repo_ruleset_hold_is_only_the_unbound_writer(cause: cause) {
+        drift_refusal
+      } else {
+        WorldActuationRefused { cause: cause }
+      }
+  }
+}
+
+fn world_repo_ruleset_apply(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+  differences: List<RulesetDivergence>,
+) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
+  repo_ruleset_drift_actuation(subject: subject, observed: observed, differences: differences)
+}
+
+fn world_repo_ruleset_unchanged_receipt(
+  _: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+  observed: RulesetObservation,
+) -> RepoRulesetConvergedEvidence {
+  converged_evidence_of(writes: 0, removals: 0, observation: observed)
+}
+
+type RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler<RepositoryRulesetConvergenceSubject, Bool, RulesetObservation, RulesetDivergence, RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal>
+
+data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler {
+  observe: world_observe_repo_ruleset,
+  differences: world_repo_ruleset_differences,
+  apply: world_repo_ruleset_apply,
+  unchanged_receipt: world_repo_ruleset_unchanged_receipt,
+}
+
+// The repository binding is read-only until an actuation realization can write the desired ruleset
+// while preserving every live bypass actor AND read back that it survived -- the capability stated
+// at the module note above, not the merge of the change expected to carry it. Drift reaches one of
+// the located causes of
+// RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetDriftUnrepaired -- which
+// RENDERS THE DIVERGENCES -- when no earlier hold fires; there is no mutating entry point beside
+// the world-convergence root.
 func verify() -> ProcessExit {
-  match repo_ruleset_verify_at(
-    owner: gunbc_repository.owner,
-    repo: gunbc_repository.name,
-    ruleset_id: gunbc_passing_ci_ruleset_id,
+  match world_converge(
+    subject: RepositoryRulesetConvergenceSubject {
+      repository: gunbc_repository,
+      ruleset_id: gunbc_passing_ci_ruleset_id,
+    },
+    context: false,
+    handler: repo_ruleset_world_convergence_handler,
   ) {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: r, applied: _ } =>
-      exit_failure(reason: concat("repo ruleset verify refused: ", r))
-  }
-}
-
-func converge() -> ProcessExit {
-  match repo_ruleset_converge_actuate_at(
-    owner: gunbc_repository.owner,
-    repo: gunbc_repository.name,
-    ruleset_id: gunbc_passing_ci_ruleset_id,
-  ) {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: r, applied: _ } =>
-      exit_failure(reason: concat("repo ruleset converge refused: ", r))
+    WorldConverged { subject: _, observed: _, receipt: _ } => ExitSuccess
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservationRefused { cause: cause } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id } } =>
+      exit_failure(reason: concat("repo ruleset verify refused: no admitted actuation realization for ruleset ", to_string(id)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetDriftUnrepaired { ruleset_id: id, drift: drift } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset has drifted from the desired projection, for ruleset ", to_string(id)), concat(" -- ", drift as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnexpectedLiveRule { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset carries a rule this projection cannot express, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetBypassRosterUnobservable { ruleset_id: id, reader: reader, detail: detail } } =>
+      exit_failure(reason: concat(concat(concat("repo ruleset verify refused: this reader (", reader as String), concat(") CANNOT SEE whether the ruleset grants any bypass actor, for ruleset ", to_string(id))), concat(" -- not an observation that one exists -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservedLiveBypassActors { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset grants bypass actors the desired projection does not declare, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
+    WorldNotConverged { subject: _, refusal: RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: id, detail: detail } } =>
+      exit_failure(reason: concat(concat("repo ruleset verify refused: the merge queue IS signed off and the desired projection cannot carry the signed policy, for ruleset ", to_string(id)), concat(" -- signing again fixes nothing -- ", detail as String)))
   }
 }

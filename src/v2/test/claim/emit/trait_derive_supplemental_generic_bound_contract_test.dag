@@ -72,9 +72,9 @@ import v2.extdeps.languages.rust {
   rust_free_monoid_collection_primary_choice,
   rust_hash_set_supplemental_generic_bound_contract_blockers,
   rust_set_collection_hash_choice,
-  rust_set_collection_primary_choice,
-  rust_target_model
+  rust_set_collection_primary_choice
 }
+import v2.extdeps.languages.rust_test { rust_sgb_target_model_staging }
 import v2.std.algebra {
   fold_list_node
 }
@@ -1038,7 +1038,7 @@ test fn nested_generic_contract_round_trip_preserves_keyed_authority() -> Bool {
 }
 
 test fn rust_vec_target_bundle_round_trip_preserves_im_vector_policy() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       sgb_choice_matches_exact(
@@ -1049,7 +1049,7 @@ test fn rust_vec_target_bundle_round_trip_preserves_im_vector_policy() -> Bool {
 }
 
 test fn rust_vec_debug_contract_requires_clone_from_im_vector_authority() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1072,7 +1072,7 @@ test fn rust_vec_debug_contract_requires_clone_from_im_vector_authority() -> Boo
 }
 
 test fn rust_vec_partial_eq_contract_requires_clone_from_im_vector_authority() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1095,7 +1095,7 @@ test fn rust_vec_partial_eq_contract_requires_clone_from_im_vector_authority() -
 }
 
 test fn rust_vec_serialize_contract_requires_clone_from_im_vector_authority() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1118,7 +1118,7 @@ test fn rust_vec_serialize_contract_requires_clone_from_im_vector_authority() ->
 }
 
 test fn rust_vec_deserialize_contract_requires_clone_from_im_vector_authority() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1141,7 +1141,7 @@ test fn rust_vec_deserialize_contract_requires_clone_from_im_vector_authority() 
 }
 
 test fn rust_vec_clone_contract_remains_explicit_empty_from_im_vector_authority() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1161,7 +1161,7 @@ test fn rust_vec_clone_contract_remains_explicit_empty_from_im_vector_authority(
 }
 
 test fn rust_vec_unmodeled_ord_contract_refuses_as_missing() -> Bool {
-  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+  match free_monoid_collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1176,7 +1176,7 @@ test fn rust_vec_unmodeled_ord_contract_refuses_as_missing() -> Bool {
 }
 
 test fn rust_set_target_bundle_round_trip_preserves_both_production_policies() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       sgb_choice_matches_exact(
@@ -1199,7 +1199,7 @@ test fn rust_set_target_bundle_round_trip_preserves_both_production_policies() -
 }
 
 test fn rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1222,7 +1222,7 @@ test fn rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority() -
 }
 
 test fn rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1245,7 +1245,7 @@ test fn rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authorit
 }
 
 test fn rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1270,7 +1270,7 @@ test fn rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set
 }
 
 test fn rust_btree_set_deserialize_contract_requires_ord_and_clone_from_im_ord_set_authority() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
@@ -1295,7 +1295,7 @@ test fn rust_btree_set_deserialize_contract_requires_ord_and_clone_from_im_ord_s
 }
 
 test fn rust_hash_set_serialize_contract_is_known_zero_after_bundle_decode() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match decoded.alternatives {
@@ -1323,7 +1323,7 @@ test fn rust_hash_set_serialize_contract_is_known_zero_after_bundle_decode() -> 
 }
 
 test fn rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers() -> Bool {
-  match collection_realization_from_target(target: rust_target_model()) {
+  match collection_realization_from_target(target: rust_sgb_target_model_staging()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: decoded, diagnostics: _ } =>
       match decoded.alternatives {

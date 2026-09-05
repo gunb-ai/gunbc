@@ -1,7 +1,12 @@
 module gunbc.scm.object_store
 
 import std.types { List, Bool, Int, String, NonEmptyStr }
-import std.content_hash { content_hash_atom, content_hash_tagged_structural }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  Fnv1a64Structural,
+}
 import v2.std.node {
   Hash,
   Node,
@@ -106,6 +111,14 @@ type AuthoredSourceObjectRef sole_constructor {
   locator: ObjectId
 }
 
+// A CORPUS MANIFEST IS A THIRD BRAND, NOT A NODE AND NOT A FILE. It names authored sources by
+// canonical path; it is the thing a repository commit freezes. Its brand is minted here for the
+// same reason the other two are -- `sole_constructor` refuses cross-module construction, so no
+// caller can brand a locator it merely holds.
+type CorpusManifestObjectRef sole_constructor {
+  locator: ObjectId
+}
+
 // THE JOIN, so a consumer that genuinely handles both kinds -- persistence, a copy between stores,
 // a resolver at a document boundary -- says so in one type instead of taking a bare locator and
 // re-deciding. It is a sum rather than a supertype for the reason ScmObject is: a shared shape with
@@ -114,11 +127,13 @@ type AuthoredSourceObjectRef sole_constructor {
 type ScmObjectRef
   = SemanticNodeRef(SemanticNodeObjectRef)
   | AuthoredSourceRef(AuthoredSourceObjectRef)
+  | CorpusManifestRef(CorpusManifestObjectRef)
 
 fn scm_object_ref_locator(reference: ScmObjectRef) -> ObjectId {
   match reference {
     SemanticNodeRef(r) => r.locator
     AuthoredSourceRef(r) => r.locator
+    CorpusManifestRef(r) => r.locator
   }
 }
 
@@ -159,6 +174,55 @@ fn node_target_locator(target: SemanticNodeTarget) -> ObjectId {
 
 fn node_target_of(reference: SemanticNodeObjectRef) -> SemanticNodeTarget {
   SemanticNodeTarget { locator: reference.locator }
+}
+
+// THE AUTHORED-SOURCE TARGET IS THE SAME PROPOSITION FOR THE OTHER KIND: "an authored source is
+// required at locator L". A manifest entry states it, and the store alone answers it.
+//
+// IT IS A SEPARATE TYPE FROM SemanticNodeTarget RATHER THAN ONE `Target` CARRYING A KIND, because a
+// walk that took a kind-tagged target could read the tag and proceed on the wrong branch. With two
+// types, a manifest walk that tried to follow a node edge does not compile. Store membership and
+// EDGE ADMISSIBILITY are separate axes: adding the manifest to `ScmObject` below does not make it a
+// legal `StoredEdge` target, and `StoredEdge.target` stays exactly `SemanticNodeTarget`.
+type AuthoredSourceTarget {
+  locator: ObjectId
+}
+
+fn authored_source_target_locator(target: AuthoredSourceTarget) -> ObjectId {
+  target.locator
+}
+
+fn authored_source_target_of(reference: AuthoredSourceObjectRef) -> AuthoredSourceTarget {
+  AuthoredSourceTarget { locator: reference.locator }
+}
+
+// THE MANIFEST TARGET IS THE THIRD REQUIREMENT: "a corpus manifest is required at locator L".
+//
+// IT EXISTS FOR A CONSUMER, NOT FOR SYMMETRY, and the distinction matters because a family of
+// helpers minted to complete a visual pattern is the redundant work DESIGN section 2 prices. The
+// consumer is `mint_repository_commit`: once a repository commit freezes a corpus manifest, the
+// mint must RECEIVE a manifest requirement before it can establish whether the supplied store
+// satisfies it. That is the same shape the mint already uses for semantic nodes -- accept a target,
+// resolve it against `repository.store`, retain the reference from the record actually found.
+//
+// SO IT IS A REQUIREMENT, NOT A REFERENCE, and the two are not interchangeable. Constructing this
+// asserts what is REQUIRED and forges nothing, which is why it is publicly constructible while
+// `CorpusManifestObjectRef` above is `sole_constructor`: a reference is obtained from a record the
+// store actually produced. There is deliberately no target-to-reference conversion here -- an
+// unchecked one would let a caller brand a locator it merely holds, which is the thing the brand
+// exists to refuse.
+//
+// AND IT CARRIES NO Resolved | Unresolved STATE, for the reason the SemanticNodeTarget note above
+// gives at length: whether a particular store satisfies a requirement is an OBSERVATION, and an
+// observation does not belong inside the proposition. `find_corpus_manifest_record` is the sole
+// authority for that decision, and its three non-success arms -- absent, occupied by a semantic
+// node, occupied by an authored source -- are the populations a consumer must keep apart.
+type CorpusManifestTarget {
+  locator: ObjectId
+}
+
+fn corpus_manifest_target_locator(target: CorpusManifestTarget) -> ObjectId {
+  target.locator
 }
 
 type StoredEdge {
@@ -254,9 +318,42 @@ type AuthoredSourceRecord sole_constructor {
 // follows edges an authored source does not have -- and saying so is the point. A shared supertype
 // with an optional children list would have let each of those consumers read an empty list and
 // proceed, which is the empty-observation narrow.
+// THE MANIFEST ENTRY IS PATH TO AUTHORED SOURCE, AND DELIBERATELY NOTHING ELSE.
+//
+// gunbc#9891 finding 6 phrased this as `path -> semantic_root -> authored_source_identity`. The
+// semantic half does not belong here, and the reason is deeper than whether it is constructible
+// today: a semantic root is a DERIVED INGESTION RESULT. Its value depends on the source object, the
+// corpus context and its imports, the ingestion rule, the language and rule versions, and possibly
+// source-root and target configuration. Carrying it here would fuse an INPUT with a REALIZATION
+// RESULT, and would make a manifest unauthorable for malformed or not-yet-ingested source --
+// precisely the corpora a source-control system must still be able to freeze.
+//
+// The semantic relation therefore lives in its own carrier keyed by (manifest, ingestion rule), and
+// the case that proves the split is a comment-only edit: the authored bytes change so the manifest
+// identity changes, while the semantic root does not.
+// THE PATH IS A NonEmptyStr AND NOT A FRESH `CorpusPath` BRAND, deliberately. A canonical corpus
+// path has real structure -- ordered segments, no empty segment, no `..` -- and a type that captured
+// it would be worth having. An alias of `String` under a new name would NOT capture it: it would be
+// a second name for the string, which is the section 3 nicknaming this lane's previous PR existed to
+// remove. So the weaker honest carrier stands until the structure is modeled.
+//
+// WIDENING TRIGGER, naming the capability rather than an artifact: a path type whose construction
+// refuses an empty segment and a parent-directory segment, at which point this field takes it and
+// every manifest entry gains that guarantee by construction rather than by convention here.
+type CorpusManifestEntry {
+  path: NonEmptyStr
+  source: AuthoredSourceTarget
+}
+
+type CorpusManifestRecord sole_constructor {
+  identity: CorpusManifestObjectRef
+  entries: List<CorpusManifestEntry>
+}
+
 type ScmObject
   = SemanticNodeObject(ObjectRecord)
   | AuthoredSourceObject(AuthoredSourceRecord)
+  | CorpusManifestObject(CorpusManifestRecord)
 
 fn scm_object_identity(object: ScmObject) -> ObjectId {
   scm_object_ref_locator(reference: scm_object_ref(object: object))
@@ -269,6 +366,7 @@ fn scm_object_ref(object: ScmObject) -> ScmObjectRef {
   match object {
     SemanticNodeObject(record) => SemanticNodeRef(record.identity)
     AuthoredSourceObject(record) => AuthoredSourceRef(record.identity)
+    CorpusManifestObject(record) => CorpusManifestRef(record.identity)
   }
 }
 
@@ -383,8 +481,16 @@ fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject
             emit_dependency(store: store, acc: inner, identity: child.target.locator)
           }
         )
+      CorpusManifestObject(record) =>
+        fold(
+          record.entries,
+          init: acc,
+          f: fn(inner, entry) {
+            emit_dependency(store: store, acc: inner, identity: entry.source.locator)
+          }
+        )
     }
-    OrderAcc { emitted: concat(after_children.emitted, [object]) }
+    OrderAcc { emitted: concat([object], after_children.emitted) }
   }
 }
 
@@ -397,12 +503,18 @@ fn emit_dependency(store: ObjectStore, acc: OrderAcc, identity: ObjectId) -> Ord
   }
 }
 
+// THE ACCUMULATOR PREPENDS AND IS REVERSED ONCE HERE, which is what preserves child-before-parent
+// output without copying a growing list on every emitted object. `emitted_holds` still scans that
+// list linearly, and that is a DIFFERENT defect with a different retirement -- a keyed collection --
+// so it stays; repeatedly copying an accumulator was never covered by that deferral.
 fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
-  fold(
-    store.objects,
-    init: OrderAcc { emitted: [] },
-    f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
-  ).emitted
+  reverse(
+    fold(
+      store.objects,
+      init: OrderAcc { emitted: [] },
+      f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
+    ).emitted
+  )
 }
 
 fn empty_store() -> ObjectStore {
@@ -434,6 +546,7 @@ type NodeRecordLookup
   = NodeRecordFound(ObjectRecord)
   | NodeRecordAbsent { identity: ObjectId }
   | NodeRecordIsAuthoredSource { identity: ObjectId }
+  | NodeRecordIsCorpusManifest { identity: ObjectId }
 
 fn find_node_record(store: ObjectStore, identity: ObjectId) -> NodeRecordLookup {
   match find_object(store: store, identity: identity) {
@@ -442,6 +555,43 @@ fn find_node_record(store: ObjectStore, identity: ObjectId) -> NodeRecordLookup 
       match object {
         SemanticNodeObject(record) => NodeRecordFound(record)
         AuthoredSourceObject(_) => NodeRecordIsAuthoredSource { identity: identity }
+        CorpusManifestObject(_) => NodeRecordIsCorpusManifest { identity: identity }
+      }
+  }
+}
+
+type AuthoredSourceLookup
+  = AuthoredSourceFound(AuthoredSourceRecord)
+  | AuthoredSourceAbsent { identity: ObjectId }
+  | AuthoredSourceIsSemanticNode { identity: ObjectId }
+  | AuthoredSourceIsCorpusManifest { identity: ObjectId }
+
+fn find_authored_source_record(store: ObjectStore, identity: ObjectId) -> AuthoredSourceLookup {
+  match find_object(store: store, identity: identity) {
+    Absent => AuthoredSourceAbsent { identity: identity }
+    Present { value: object } =>
+      match object {
+        AuthoredSourceObject(record) => AuthoredSourceFound(record)
+        SemanticNodeObject(_) => AuthoredSourceIsSemanticNode { identity: identity }
+        CorpusManifestObject(_) => AuthoredSourceIsCorpusManifest { identity: identity }
+      }
+  }
+}
+
+type CorpusManifestLookup
+  = CorpusManifestFound(CorpusManifestRecord)
+  | CorpusManifestAbsent { identity: ObjectId }
+  | CorpusManifestIsSemanticNode { identity: ObjectId }
+  | CorpusManifestIsAuthoredSource { identity: ObjectId }
+
+fn find_corpus_manifest_record(store: ObjectStore, identity: ObjectId) -> CorpusManifestLookup {
+  match find_object(store: store, identity: identity) {
+    Absent => CorpusManifestAbsent { identity: identity }
+    Present { value: object } =>
+      match object {
+        CorpusManifestObject(record) => CorpusManifestFound(record)
+        SemanticNodeObject(_) => CorpusManifestIsSemanticNode { identity: identity }
+        AuthoredSourceObject(_) => CorpusManifestIsAuthoredSource { identity: identity }
       }
   }
 }
@@ -520,6 +670,15 @@ type SourceStoreOutcome
   = SourceStored { store: ObjectStore, source: AuthoredSourceObjectRef }
   | SourceLocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
 
+type CorpusManifestStoreOutcome
+  = CorpusManifestStored { store: ObjectStore, manifest: CorpusManifestObjectRef }
+  | CorpusManifestDuplicatePath { path: NonEmptyStr }
+  | CorpusManifestLocatorCollision {
+      identity: ObjectId,
+      existing: ScmObject,
+      incoming: ScmObject
+    }
+
 // WHAT A STORE DOES WITH AN INCOMING OBJECT, ASKED ONCE. Present-and-equal is idempotent, present-
 // and-different is a refusal, absent is an append -- and the first two collapse into one arm here
 // because the caller does nothing different with them: it hands back the brand it derived either
@@ -576,17 +735,50 @@ fn records_equal(left: ObjectRecord, right: ObjectRecord) -> Bool {
 // canonical objects, so the answer here is false and insert_derived refuses -- the same treatment as
 // two different nodes. Answering true would let a file silently satisfy a checkout that wanted a
 // program, which is the fabricated plausible output this module's collision arm exists to remove.
+// STRUCTURAL, NOT BY DIGEST, for the reason records_equal is: both objects are already under one
+// locator by the time this is asked, so comparing their digests would answer true by construction
+// and the 64-bit collision this whole arm exists to catch would pass. The projection mirrors
+// labeled_children_of_stored -- a named top-level function rather than a lambda, because a lambda
+// whose parameter type must be inferred from a field access does not infer in this corpus.
+type ManifestEntryComparand {
+  path: NonEmptyStr
+  source: ObjectId
+}
+
+fn manifest_entry_comparand(entry: CorpusManifestEntry) -> ManifestEntryComparand {
+  ManifestEntryComparand {
+    path: entry.path,
+    source: authored_source_target_locator(target: entry.source),
+  }
+}
+
+fn manifest_comparands(entries: List<CorpusManifestEntry>) -> List<ManifestEntryComparand> {
+  map(entries, e => manifest_entry_comparand(entry: e))
+}
+
+fn manifest_entries_equal(left: CorpusManifestRecord, right: CorpusManifestRecord) -> Bool {
+  manifest_comparands(entries: left.entries) == manifest_comparands(entries: right.entries)
+}
+
 fn objects_equal(left: ScmObject, right: ScmObject) -> Bool {
   match left {
     SemanticNodeObject(l) =>
       match right {
         SemanticNodeObject(r) => records_equal(left: l, right: r)
         AuthoredSourceObject(_) => false
+        CorpusManifestObject(_) => false
       }
     AuthoredSourceObject(l) =>
       match right {
         SemanticNodeObject(_) => false
         AuthoredSourceObject(r) => l.content == r.content
+        CorpusManifestObject(_) => false
+      }
+    CorpusManifestObject(l) =>
+      match right {
+        SemanticNodeObject(_) => false
+        AuthoredSourceObject(_) => false
+        CorpusManifestObject(r) => manifest_entries_equal(left: l, right: r)
       }
   }
 }
@@ -625,6 +817,121 @@ fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome
         existing: existing,
         incoming: object,
       }
+  }
+}
+
+data corpus_manifest_tag: NonEmptyStr = "gunbc.scm.corpus_manifest"
+data corpus_manifest_entry_tag: NonEmptyStr = "gunbc.scm.corpus_manifest.entry"
+
+// THE MANIFEST'S IDENTITY IS THE FUNCTION IT DENOTES, NOT THE ORDER SOMEBODY ENUMERATED IT IN.
+//
+// The entry digest combines the path with the source locator rather than hashing either alone, so
+// moving a file to a new path is a different manifest even though the bytes are untouched -- which
+// is the whole point of a manifest as opposed to a set of sources.
+//
+// ORDER USED TO BE SIGNIFICANT, AND THAT WAS WRONG. This note said a manifest hashing
+// order-insensitively "would claim a canonicalization this module does not perform" -- an accurate
+// description of the code and the wrong conclusion about which side should move. The design
+// authority says a manifest is a canonical corpus path -> exact authored-source target, which
+// denotes a FUNCTION; an ordered list of pairs is a multimap, and the gap between them is
+// observable: the same associations enumerated in a different order had different identities, so a
+// host directory traversal order could change what a commit freezes.
+//
+// So the canonicalization is performed here, at the one place a manifest is built, rather than
+// declared absent. Entries sort by path, and two entries sharing a path REFUSE -- a path naming two
+// sources is not a function, and picking first or last would be the silent selection DESIGN section
+// 5 forbids. The same source at two distinct paths stays representable, because that is a function.
+// The locator needs no conversion: `ObjectId` is `Hash` is `Fnv1a64Structural`, so it is already
+// the structural digest this combines with. A conversion helper here would be a second name for the
+// identity function on that type.
+fn corpus_manifest_entry_identity(entry: CorpusManifestEntry) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: entry.path),
+    right: entry.source.locator,
+  )
+}
+
+fn corpus_manifest_identity(entries: List<CorpusManifestEntry>) -> ObjectId {
+  content_hash_tagged_structural(
+    tag: corpus_manifest_tag,
+    payload: fold(
+      entries,
+      init: content_hash_atom(value: corpus_manifest_tag),
+      f: fn(acc, entry) {
+        content_hash_combine_structural(
+          left: acc,
+          right: corpus_manifest_entry_identity(entry: entry),
+        )
+      },
+    ),
+  )
+}
+
+// THE CANONICAL ORDER IS BY PATH, and it is applied before the identity is derived rather than
+// beside it, so no caller can obtain a manifest whose stored entries and hashed entries disagree.
+fn canonical_manifest_entries(entries: List<CorpusManifestEntry>) -> List<CorpusManifestEntry> {
+  sort_by(entries, fn(e) { e.path as String })
+}
+
+// A DUPLICATE PATH IS FOUND ON THE CANONICAL ORDER, so the comparison is against the immediately
+// preceding entry rather than against every earlier one -- the quadratic scan a set membership test
+// would need is bought by the sort that has already happened.
+type ManifestPathScan {
+  previous: String?
+  duplicate: NonEmptyStr?
+}
+
+fn manifest_path_step(acc: ManifestPathScan, entry: CorpusManifestEntry) -> ManifestPathScan {
+  match acc.duplicate {
+    Present { value: _ } => acc
+    Absent =>
+      match acc.previous {
+        Present { value: previous } =>
+          if previous == (entry.path as String) {
+            ManifestPathScan {
+              previous: Present { value: entry.path as String },
+              duplicate: Present { value: entry.path },
+            }
+          } else {
+            ManifestPathScan { previous: Present { value: entry.path as String }, duplicate: none }
+          }
+        Absent =>
+          ManifestPathScan { previous: Present { value: entry.path as String }, duplicate: none }
+      }
+  }
+}
+
+fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr? {
+  fold(
+    entries,
+    init: ManifestPathScan { previous: none, duplicate: none },
+    f: fn(acc, entry) { manifest_path_step(acc: acc, entry: entry) }
+  ).duplicate
+}
+
+fn store_corpus_manifest(
+  store: ObjectStore,
+  entries: List<CorpusManifestEntry>
+) -> CorpusManifestStoreOutcome {
+  let canonical = canonical_manifest_entries(entries: entries)
+  match a_duplicated_manifest_path(entries: canonical) {
+    Present { value: path } => CorpusManifestDuplicatePath { path: path }
+    Absent =>
+  let reference = CorpusManifestObjectRef {
+    locator: corpus_manifest_identity(entries: canonical),
+  }
+  let object = CorpusManifestObject(
+    CorpusManifestRecord { identity: reference, entries: canonical },
+  )
+  match insert_admission(store: store, object: object) {
+    AdmitStored(next) => CorpusManifestStored { store: next, manifest: reference }
+    AdmitCollision { existing: existing } =>
+      CorpusManifestLocatorCollision {
+        identity: reference.locator,
+        existing: existing,
+        incoming: object,
+      }
+  }
   }
 }
 

@@ -13,7 +13,7 @@ import extdeps.color.srgb {
 import gunbc.design.interaction_cause {
   InteractionCause, PointerApproach, FocusAcquired, PressEngaged, ObservedStateEntered,
 }
-import extdeps.languages.css.properties { CssPropertyName, Transition, css_property_wire }
+import extdeps.languages.css.properties { CssPropertyName, Transition, Animation, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
 // Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION.
 // ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope
@@ -126,6 +126,20 @@ type TimingToken {
   duration_ms: Milliseconds
   easing: String
 }
+
+type Keyframe {
+  offset_percent: Int
+  decls: List<CssDecl>
+}
+
+type MotionCycle {
+  name: String
+  frames: List<Keyframe>
+}
+
+type AmbientRepeat
+  = RunOnce
+  | RunForever
 
 data respond_fast: TimingToken = TimingToken { name: "respond", duration_ms: 90, easing: "ease-out" }
 
@@ -258,6 +272,7 @@ type BuildRule
       base_decls: List<CssDecl>,
       response_decls: List<CssDecl>,
     }
+  | AmbientRule { selector: SelectorSubject, cycle: MotionCycle, timing: TimingToken, repeat: AmbientRepeat }
 
 fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> String {
   match shape {
@@ -302,6 +317,8 @@ fn css_block(selector: String, decls: List<CssDecl>) -> String {
 fn serialize_rule(rule: BuildRule) -> String {
   match rule {
     StaticRule { selector, decls } => css_block(selector: selector_subject_wire(s: selector), decls: decls)
+    AmbientRule { selector, cycle, timing, repeat } =>
+      css_block(selector: selector_subject_wire(s: selector), decls: [decl(prop: Animation, value: ambient_animation_value(cycle: cycle, timing: timing, repeat: repeat))])
     ResponseRule { subject, shape, trigger, transition_props: _, timing: _, base_decls, response_decls } => {
       let hot = css_block(
         selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
@@ -380,6 +397,7 @@ fn carrier_add_item(carriers: List<TransitionCarrier>, selector: String, item: T
 fn base_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => acc
     ResponseRule { subject, shape, trigger: _, transition_props, timing, base_decls: _, response_decls: _ } =>
       carrier_add_item(
         carriers: acc,
@@ -392,6 +410,7 @@ fn hot_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
   let base = base_transition_carriers(rules: rules)
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => acc
     ResponseRule { subject, shape, trigger, transition_props, timing, base_decls: _, response_decls: _ } => {
       let base_selector = response_base_selector(subject: subject, shape: shape)
       let redundant = match carrier_named(carriers: base, selector: base_selector) {
@@ -422,13 +441,52 @@ fn serialize_transition_carriers(carriers: List<TransitionCarrier>) -> String {
   join(map(carriers, c => css_block(selector: c.selector, decls: [transition_items_decl(items: c.items)])), "\n")
 }
 
+fn ambient_animation_value(cycle: MotionCycle, timing: TimingToken, repeat: AmbientRepeat) -> String {
+  let count = match repeat {
+    RunOnce => "1 both"
+    RunForever => "infinite"
+  }
+  join([cycle.name, " ", to_string(timing.duration_ms), "ms ", timing.easing, " ", count], "")
+}
+
+fn serialize_keyframe(frame: Keyframe) -> String {
+  css_block(selector: join([to_string(value: frame.offset_percent), "%"], ""), decls: frame.decls)
+}
+
+fn serialize_cycle(cycle: MotionCycle) -> String {
+  join(["@keyframes ", cycle.name, " { ", join(map(cycle.frames, f => serialize_keyframe(frame: f)), " "), " }"], "")
+}
+
+fn cycle_add_once(cycles: List<MotionCycle>, c: MotionCycle) -> List<MotionCycle> {
+  let found = fold(cycles, init: false, f: (acc, x) => acc || x.name == c.name)
+  if found { cycles } else { concat(cycles, [c]) }
+}
+
+fn ambient_cycles(rules: List<BuildRule>) -> List<MotionCycle> {
+  fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => acc
+    AmbientRule { selector: _, cycle, timing: _, repeat: _ } => cycle_add_once(cycles: acc, c: cycle)
+  })
+}
+
+fn ambient_selectors(rules: List<BuildRule>) -> List<String> {
+  fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => acc
+    AmbientRule { selector, cycle: _, timing: _, repeat: _ } => add_selector_once(selectors: acc, s: selector_subject_wire(s: selector))
+  })
+}
+
 fn serialize_rules(rules: List<BuildRule>) -> String {
   let blocks = join(map(rules, r => serialize_rule(rule: r)), "\n")
+  let cycles = join(map(ambient_cycles(rules: rules), c => serialize_cycle(cycle: c)), "\n")
   let carriers = all_transition_carriers(rules: rules)
+  let with_cycles = if cycles == "" { blocks } else { join([cycles, blocks], "\n") }
   if carriers.length() == 0 {
-    blocks
+    with_cycles
   } else {
-    join([blocks, serialize_transition_carriers(carriers: carriers)], "\n")
+    join([with_cycles, serialize_transition_carriers(carriers: carriers)], "\n")
   }
 }
 
@@ -440,12 +498,13 @@ fn add_selector_once(selectors: List<String>, s: String) -> List<String> {
 fn reduced_motion_block(rules: List<BuildRule>) -> String {
   let selectors = fold(all_transition_carriers(rules: rules), init: [], f: (acc, c) =>
     add_selector_once(selectors: acc, s: c.selector))
-  if selectors.length() == 0 {
+  let stills = map(ambient_selectors(rules: rules), s => css_block(selector: s, decls: [decl(prop: Animation, value: "none")]))
+  if selectors.length() == 0 && stills.length() == 0 {
     ""
   } else {
     join([
       "@media (prefers-reduced-motion: reduce) { ",
-      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), " "),
+      join(concat(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), stills), " "),
       " }",
     ], "")
   }

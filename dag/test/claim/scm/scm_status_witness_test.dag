@@ -1,12 +1,17 @@
 module test.claim.scm_status_witness
 
-import std.types { Bool, String, List, Int }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision,
   SemanticNodeTarget,
+  CorpusManifestTarget, CorpusManifestEntry,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest, corpus_manifest_target_locator, object_id_eq,
+  SourceStored, SourceLocatorCollision, store_authored_source,
+  authored_source_target_of, authored_source_target_locator,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
@@ -14,6 +19,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
@@ -44,6 +50,34 @@ fn status_witness_atom(name: Symbol) -> Node {
 
 type StatusWitnessStored { store: ObjectStore, identity: SemanticNodeTarget }
 
+// A commit root is an authored snapshot, so the fixture freezes one: real bytes, and a manifest
+// naming them, rather than a manifest over a locator nothing occupies.
+type StatusWitnessSnapshot { store: ObjectStore, identity: CorpusManifestTarget }
+
+fn status_witness_snapshot(path: NonEmptyStr, text: String) -> StatusWitnessSnapshot {
+  match store_authored_source(store: empty_store(), text: text) {
+    SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
+      StatusWitnessSnapshot { store: empty_store(), identity: CorpusManifestTarget { locator: id } }
+    SourceStored { store: with_source, source: source } =>
+      match store_corpus_manifest(
+        store: with_source,
+        entries: [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }]
+      ) {
+        CorpusManifestDuplicatePath { path: _ } =>
+          StatusWitnessSnapshot {
+            store: with_source,
+            identity: CorpusManifestTarget {
+              locator: authored_source_target_locator(target: authored_source_target_of(reference: source)),
+            },
+          }
+        CorpusManifestLocatorCollision { identity: id, existing: _, incoming: _ } =>
+          StatusWitnessSnapshot { store: with_source, identity: CorpusManifestTarget { locator: id } }
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          StatusWitnessSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+      }
+  }
+}
+
 fn status_witness_stored(name: Symbol) -> StatusWitnessStored {
   match store_node(store: empty_store(), n: status_witness_atom(name: name)) {
     Stored { store: store, node: node } =>
@@ -67,7 +101,7 @@ fn status_witness_empty_repository() -> RepositoryEnvelope {
 }
 
 fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
-  let held = status_witness_stored(name: ^r1)
+  let held = status_witness_snapshot(path: "r1.dag" as NonEmptyStr, text: "module r1")
   let base = RepositoryEnvelope {
     store: held.store,
     commits: [],
@@ -84,6 +118,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
     RepositoryCommitMintRootMissing { root: _ } => base
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => base
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => base
     RepositoryCommitMintParentMissing { parent: _ } => base
   }
 }
@@ -155,7 +190,9 @@ test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
   status_checkout_is_resolvable(status: s)
     && s.commit_count == 1
     && match s.checkout {
-      CheckedOutCommit { root: _, message: message } => message == "first"
+      CheckedOutCommit { root: root, message: message } =>
+      message == "first"
+        && object_id_eq(left: root.locator, right: corpus_manifest_target_locator(target: status_witness_snapshot(path: "r1.dag" as NonEmptyStr, text: "module r1").identity))
       CheckedOutCommitMissing { reference: _ } => false
       NothingCheckedOut => false
     }

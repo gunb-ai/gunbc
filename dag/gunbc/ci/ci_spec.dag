@@ -1,5 +1,13 @@
 module gunbc.ci_spec
+import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
+import extdeps.github.org_admin_auth {
+  github_app_installation_access_token_url,
+  github_app_jwt_backdate_seconds,
+  github_app_jwt_lifetime_seconds,
+}
 import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
@@ -67,10 +75,14 @@ import v2.std.orchestration {
   EnvSet,
   EnvUnset,
   EscalationLevel,
+  Exit,
   FailFast,
+  If,
+  IntNe,
   LogMatches,
   Pipeline,
   PipelineStep,
+  Predicate,
   Retry,
   Run
 }
@@ -708,6 +720,11 @@ data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget 
   function: "fleet_converge_launch_environment_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_spark_serving_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_spark_serving_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_allocation_store_plan_wet",
@@ -721,6 +738,21 @@ data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarg
 data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/org_actions_converge.dag",
   function: "org_actions_converge_wet",
+}
+
+// THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
+// this repository's ordering law is what keeps them apart: an observation reports a host's standing
+// and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
+// runs on. Fusing them behind one mode would mean there was no way to ask a host what it holds
+// without also changing what it holds.
+data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_observe_wet",
+}
+
+data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_converge_wet",
 }
 
 data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -805,6 +837,18 @@ data gunbc_ci_heal_verify_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "main",
 }
 
+// THE DECLARATION IS OBSERVED BEFORE THE ACTUATOR RUNS, WHICH IS THE ONLY MOMENT IT EXISTS. The
+// regeneration overwrites every committed projection from this checkout's authorities, so after it
+// no reader can report what the write repaired -- the defect and the evidence for it disappear
+// together. This target runs ahead of it, reads the committed bytes while they are still the
+// drifted ones, and writes the trailer lines the commit step folds into heal's message. It is
+// ordered against the WRITE rather than against a named entry, because the step this job uses to
+// regenerate has already been repointed once.
+data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/generated_artifact_gate.dag",
+  function: "heal_repair_declaration",
+}
+
 data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/repo/repo_local_git_config.dag",
   function: "converge",
@@ -842,16 +886,19 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 25 declarations, 25 entries. That equality is the thing nothing checks.
+// Counted at authoring: 26 declarations, 26 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_launch_environment_plan_target,
+    gunbc_ci_fleet_converge_spark_serving_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
+    gunbc_ci_runner_guest_image_observe_target,
+    gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
@@ -867,6 +914,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
+    gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_repo_local_git_config_target,
     gunbc_ci_heal_dispatch_target
@@ -1269,6 +1317,16 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
+fn gunbc_ci_fleet_converge_spark_serving_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_spark_serving_plan_target.entry,
+    function: gunbc_ci_fleet_converge_spark_serving_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1332,13 +1390,275 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   )
 }
 
+// THE ORG-ADMIN CREDENTIAL IS MINTED IN-RUN FROM THE App KEY THE FLEET ALREADY HOLDS; NO HUMAN
+// TOKEN EXISTS. The interim in docs/plans/org-admin-credential-acquisition.md asked the operator to
+// mint a fine-grained PAT and paste it into an Actions secret. That step was never taken, and it
+// was never necessary: the gunbai-ci GitHub App (gunbc.auth.github_apps gunbai_ci_declared) is
+// installed on the organization, its private key sits in Secret Manager behind the same WIF read
+// the fleet key uses, and the runner installer already mints registration tokens with it. So this
+// prelude follows the fleet-key lifecycle exactly -- WIF token by env, the SecretRef's own access
+// URL, a 0600 file under RUNNER_TEMP, a trap armed before the key touches disk -- then signs a
+// ten-minute RS256 JWT with openssl, exchanges it for a one-hour installation token
+// (extdeps.github.org_admin_auth installation_token_citation), wipes the key, and exports the token
+// into THIS step's environment only. Nothing reaches GITHUB_ENV; the trap unsets it on exit.
+//
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED (the lesson gunbc_ci_fleet_key_agent_prelude's
+// administrator sibling records): the mint POST writes its headers and body to files, and anything
+// but 201 refuses with the status line, so a revoked key, a removed installation and a missing
+// permission each surface as what they are rather than as a JSON decode traceback.
+fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/org-admin-app-key\"") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/org-admin-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "JWT_FILE=\"$RUNNER_TEMP/org-admin-app-jwt\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_HEADERS=\"$RUNNER_TEMP/org-admin-token-headers\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_BODY=\"$RUNNER_TEMP/org-admin-token-body\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" \"$RUNNER_TEMP/org-admin-app-key-sm-body\"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: "SM_BODY=\"$RUNNER_TEMP/org-admin-app-key-sm-body\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
+          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          "\")\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
+          org_admin_app_key_unreadable_message(
+            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+            http_status: "$SM_CODE"
+          ),
+          "\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$SM_BODY\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "NOW=$(date +%s)") },
+    Do { run: ci_retry_body_run(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
+    Do { run: ci_retry_body_run(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
+          to_string(github_app_jwt_backdate_seconds),
+          "))\" \"$((NOW+",
+          to_string(github_app_jwt_lifetime_seconds),
+          "))\" \"",
+          to_string(gunbai_ci_declared.app_id.value),
+          "\" | b64url)"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' -D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
+          github_app_installation_access_token_url(installation_id: gunbai_ci_declared_installation_id.value),
+          "\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
+          org_admin_installation_token_refused_message(
+            installation: "gunbai-ci",
+            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+          ),
+          "\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_ORG_ADMIN_TOKEN") },
+    Do { run: ci_retry_body_run(command: "export GH_TOKEN=\"$GUNBC_ORG_ADMIN_TOKEN\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"org-admin: installation token minted in-run for app ",
+          gunbai_ci_declared.slug as String,
+          " installation ",
+          to_string(gunbai_ci_declared_installation_id.value),
+          " (one-hour lifetime; key wiped; token held in this step's environment only)\""
+        ], "")
+      )
+    }
+  ]
+}
+
+// THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
+// GET /app/hook/config authenticate as the APP; the installation access token that
+// gunbc_ci_org_admin_app_token_prelude exports reaches NEITHER, and that prelude wipes both
+// the key and the JWT the instant it has its installation token.
+//
+// The alternative considered was retaining that prelude's JWT across its whole step. It was
+// rejected on exposure, not on diff size: the App JWT can mint installation tokens for every
+// installation of the App, so it is strictly more powerful than the installation token beside
+// it, and keeping it resident for a whole step widens the window on the strongest credential
+// in the system to save one Secret Manager read. This prelude instead re-reads the key,
+// signs a JWT bounded by github_app_jwt_lifetime_seconds, and wipes the key immediately.
+//
+// ONLY THE PATH IS EXPORTED. GUNBC_APP_JWT_HEADER_FILE names a 0600 file holding the
+// Authorization header; the token never enters an argv (where /proc would expose it to every
+// process on the runner) and never enters the converge process's own environment. The trap
+// wipes the file whether the step succeeds, fails, or is cancelled.
+// THE KEY-UNREADABLE GUARD, AS A MODELED BRANCH RATHER THAN AN OPAQUE SHELL STRING (review 60996).
+// The first cut wrote `if [ "$APP_SM_CODE" != 200 ]; then ...; exit 1; fi` inside a Run command, so
+// the branch, its body and its exit were three shell facts the substrate could not see -- a
+// pipeline reader could not tell this step branches at all. std.orchestration already models
+// exactly this: Predicate.IntNe is the integer test, If carries the arms, and Exit carries the
+// status, with bash emission in v2.extdeps.languages.bash_orch_if and operand-alphabet refusal in
+// 05_emit_orchestration (^orch_emit_int_ne_operand_invalid), so metachar injection is unwritable at
+// emit rather than trusted. The remaining Run commands here are single non-branching invocations,
+// which Do is the modeled carrier for; the control flow is what had to stop being a string.
+fn app_jwt_key_unreadable_message() -> String {
+  join([
+    "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for ",
+    secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+    " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT."
+  ], "")
+}
+
+fn app_jwt_key_unreadable_guard() -> PipelineStep {
+  If {
+    cond: IntNe { lhs: "\"$APP_SM_CODE\"", rhs: "200" },
+    then_: Pipeline {
+      steps: [
+        Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
+        Do { run: ci_retry_body_run(command: join(["echo \"", app_jwt_key_unreadable_message(), "\" >&2"], "")) },
+        Exit { status: "1" }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "APP_KEY_FILE=\"$RUNNER_TEMP/app-jwt-key\"") },
+    Do { run: ci_retry_body_run(command: "APP_SM_HDR=\"$RUNNER_TEMP/app-jwt-sm-header\"") },
+    Do { run: ci_retry_body_run(command: "APP_SM_BODY=\"$RUNNER_TEMP/app-jwt-sm-body\"") },
+    Do { run: ci_retry_body_run(command: "GUNBC_APP_JWT_HEADER_FILE=\"$RUNNER_TEMP/app-jwt-header\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "app_jwt_cleanup() { rm -f \"$APP_KEY_FILE\" \"$APP_SM_HDR\" \"$APP_SM_BODY\" \"$GUNBC_APP_JWT_HEADER_FILE\"; unset GUNBC_APP_JWT_HEADER_FILE; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap app_jwt_cleanup EXIT") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$APP_SM_HDR\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "APP_SM_CODE=\"$(curl -sS -o \"$APP_SM_BODY\" -w '%\{http_code}' -H @\"$APP_SM_HDR\" \"",
+          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          "\")\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_HDR\"") },
+    app_jwt_key_unreadable_guard(),
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$APP_SM_BODY\" > \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
+    Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
+    Do { run: ci_retry_body_run(command: "APP_JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | app_b64url)") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "APP_JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((APP_NOW-",
+          to_string(github_app_jwt_backdate_seconds),
+          "))\" \"$((APP_NOW+",
+          to_string(github_app_jwt_lifetime_seconds),
+          "))\" \"",
+          to_string(gunbai_ci_declared.app_id.value),
+          "\" | app_b64url)"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "APP_JWT_SIG=$(printf '%s.%s' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$APP_KEY_FILE\" | app_b64url)") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" \"$APP_JWT_SIG\" > \"$GUNBC_APP_JWT_HEADER_FILE\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$GUNBC_APP_JWT_HEADER_FILE\"") },
+    Do { run: ci_retry_body_run(command: "unset APP_JWT_HEADER APP_JWT_PAYLOAD APP_JWT_SIG") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_APP_JWT_HEADER_FILE") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"app-control-plane: short-lived App JWT minted in-run for app ",
+          gunbai_ci_declared.slug as String,
+          " (",
+          to_string(github_app_jwt_lifetime_seconds),
+          "s lifetime; key wiped; header file 0600, path exported, contents never in argv or environment)\""
+        ], "")
+      )
+    }
+  ]
+}
+
+fn gunbc_ci_app_control_plane_converge_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_app_jwt_prelude(),
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet/app_control_plane_converge.dag",
+    function: "app_control_plane_converge_wet",
+    claim_run: false,
+    receipt_rel: Present { value: "target/app-control-plane-observation-receipt.txt" }
+  )
+}
+
 fn gunbc_ci_org_actions_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_actions_converge_target.entry,
     function: gunbc_ci_org_actions_converge_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_observe_target.entry,
+    function: gunbc_ci_runner_guest_image_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_converge_target.entry,
+    function: gunbc_ci_runner_guest_image_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
 
@@ -1569,9 +1889,11 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 // being green on a merge candidate IS the statement that every path this invoke would write is
 // already at its fixed point -- hence no git diff, and no second heal.
 //
-// TWO BOUNDARIES, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The phase covers the
-// REGISTRY, roughly 35 artifacts including DESIGN.md, ROADMAP.md and the workflow emissions; the
-// stage0 mirror population is the separate RegenPhase. A generated `.rs` outside both --
+// TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
+// GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
+// DESIGN.md, ROADMAP.md and the workflow emissions) AND the stage0 mirror population formerly
+// adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
+// their independently-green terminal outcomes are gone. A generated `.rs` outside both --
 // `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
 // landed there without its projection and merged green. That is a real coverage gap about a THIRD
 // population and it is not this loop's: `main_wet` writes the registry and nothing else, so the
@@ -1601,6 +1923,16 @@ fn gunbc_ci_heal_regen_invoke() -> String {
       claim_run: false,
       receipt_rel: none
     )
+  )
+}
+
+fn gunbc_ci_heal_repair_declaration_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_repair_declaration_target.entry,
+    function: gunbc_ci_heal_repair_declaration_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
@@ -1766,6 +2098,19 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
   ]
 }
 
+// THE MISSING DECLARATION REFUSES; IT DOES NOT COMMIT WITHOUT ONE. The trailer arm below previously
+// read `if [ -s <path> ]; then cat ...; fi`, which omitted the repair trailer whenever the file was
+// absent or empty and committed anyway. That is the exact shape gunbc.ledger_row_coherence
+// ledger_repair_judged_token exists to prevent, reappearing one layer down in shell: a head whose
+// declaration step silently produced nothing would commit with no trailer, and a later reader
+// counting repairs would see zero repairs over an unstated population and read a COVERAGE COLLAPSE
+// as a FIXED DEFECT. The module refuses to let a repair go unrecorded and the shell was still free
+// to let the record itself go missing.
+//
+// EMPTY REFUSES AS WELL AS ABSENT, deliberately rather than incidentally: a run that judged the
+// ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
+// judged. The denominator is zero, which is precisely the state that must never be mistaken for a
+// clean numerator.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
@@ -1789,7 +2134,20 @@ fn ci_heal_shell_lines() -> List<String> {
             "  exit 0",
             "else",
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
-            "  git commit --no-verify -m \"chore: regenerate drifted generated artifacts (ci auto-heal)\"",
+            "  HEAL_MESSAGE_FILE=$(mktemp)",
+            "  printf '%s\\n' \"chore: regenerate drifted generated artifacts (ci auto-heal)\" > \"$HEAL_MESSAGE_FILE\"",
+            concat(
+              concat("  if [ ! -s \"", heal_repair_declaration_artifact_path),
+              concat(
+                "\" ]; then echo \"::error::HealRepairDeclarationMissing path=",
+                concat(
+                  heal_repair_declaration_artifact_path,
+                  " -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population\" >&2; exit 1; fi"
+                )
+              )
+            ),
+            concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
+            "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
             "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
             "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""

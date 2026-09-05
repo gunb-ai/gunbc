@@ -191,27 +191,6 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
 /// does not print advisories as hard errors when the policy row says FloorNotYet.
 pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
-        && matches!(
-            d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
-                | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
-                // A non-blocking variant that is absent from this list is counted by
-                // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
-                // not admit it, so it renders to the terminal while every count the
-                // gate reports reads zero for it. That is a frontier claiming to be
-                // counted while nothing counts it. The three variants below are the
-                // method/conformance walls' non-blocking residue and belong here for
-                // the same reason WhereRefinementUnenforced does.
-                | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
-                // The service-config reference-judgment deferral is non-blocking, so it must
-                // be admitted HERE or it would be counted by neither predicate — rendered to
-                // the terminal while every count the gate reports reads zero for it, which is
-                // the frontier-claiming-to-be-counted failure the comment above names.
-                | crate::v1_std_core::CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. }
-        )
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
@@ -866,7 +845,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             compile_clean_internal_error_histogram_name(message)
         }
         CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
-        CompilerDiagnostic::WhereRefinementUnenforced { predicate, .. } => predicate.clone(),
+        // The NAME joins the predicate AND the deferral reason, because the burn-down this
+        // histogram feeds is a list of deferral CLASSES to close and the reasons do not close
+        // together. "int predicate not implemented" fires both where a range's bounds are
+        // literals and evaluation still declined, and where no evaluator exists at all; keying
+        // on the predicate alone puts an evaluator that exists in the same row as one that does
+        // not, so closing either is invisible here. Keying on the reason alone would instead
+        // spread one deferral class across a row per predicate that happens to hit it.
+        CompilerDiagnostic::WhereRefinementUnenforced {
+            predicate, reason, ..
+        } => format!("{predicate}: {reason}"),
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),

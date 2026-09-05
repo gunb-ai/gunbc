@@ -1,0 +1,663 @@
+module test.claim.scm_object_table_json_witness
+
+// THE OBJECT TABLE'S OWN EVIDENCE, AT THE GRAIN THAT OWNS IT.
+//
+// Every claim here used to live in test.claim.scm_commit_closure_json_v2_witness, driving a whole
+// commit-closure document in order to reach one object-table entry. That was never a fact about
+// closures: the closure was a scaffold around the subject. The v4 cut made the mismatch impossible
+// to keep -- a commit-closure table holds NODES ONLY, so a {source} or {manifest} entry cannot
+// appear in one at all, and the claims did not fail because the behaviour regressed but because
+// their subject moved out from under them.
+//
+// So they follow it. These exercise encode_object_table and decode_object_table directly, with no
+// envelope and no root, which is both the honest grain and a smaller fixture: the mixed table is the
+// thing that has three entry shapes, and it is the thing being asked about.
+//
+// Two consequences of the move worth stating, because they are the reason it is not merely tidier.
+// The manifest claims below had NO home before -- a manifest could not be reached through a closure
+// document even before v4, so the arm shipped with its evidence attached to a document that could
+// not carry it. And the round trips no longer pass through JSON text serialization, which was the
+// closure document's concern; what is asserted is that the TABLE preserves what it was given.
+
+import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
+import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, TypeNode, node_synthetic }
+import extdeps.languages.json.emit { json_object, json_kv, json_array, json_string, json_null, JsonValue }
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  SemanticNodeTarget,
+  StoredEdge,
+  node_target_of,
+  node_target_locator,
+  empty_store,
+  store_node,
+  store_authored_source,
+  object_id_eq,
+  store_object_count,
+  insert_from_structure,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
+  CorpusManifestEntry,
+  store_corpus_manifest,
+  CorpusManifestStored,
+  CorpusManifestLocatorCollision,
+  CorpusManifestDuplicatePath,
+  authored_source_target_of,
+  find_authored_source_record,
+  AuthoredSourceFound,
+  AuthoredSourceAbsent,
+  AuthoredSourceIsSemanticNode,
+  AuthoredSourceIsCorpusManifest,
+  find_corpus_manifest_record,
+  CorpusManifestFound,
+  CorpusManifestAbsent,
+  CorpusManifestIsSemanticNode,
+  CorpusManifestIsAuthoredSource,
+}
+import gunbc.scm.object_table_json {
+  ObjectTableDecodeRefusal,
+  ObjectTableMemberReadRefused,
+  ObjectTableUnexpectedMember,
+  ObjectTableTargetReferenceRefused,
+  ObjectTableEntryRefused,
+  NodeEntryMemberReadRefused,
+  NodeEntryUnexpectedMember,
+  NodeEntryTargetReferenceRefused,
+  NodeEntryUnknownKindTag,
+  NodeEntryUnknownConnectiveTag,
+  NodeEntryUnknownBehaviorTag,
+  NodeEntryUnknownLabelTag,
+  ObjectTableEdgeTargetUnresolved,
+  ObjectTableEdgeTargetIsAuthoredSource,
+  ObjectTableEdgeTargetIsCorpusManifest,
+  ObjectTableManifestPathEmpty,
+  ObjectTableManifestDuplicatePath,
+  ObjectTableManifestSourceUnresolved,
+  ObjectTableManifestSourceIsSemanticNode,
+  ObjectTableManifestSourceIsCorpusManifest,
+  ObjectTableObjectCollision,
+  DecodeAcc,
+  EncodeAcc,
+  encode_object_table,
+  decode_object_table,
+  object_table_load_standing,
+}
+import gunbc.scm.load_standing {
+  LoadStanding, LoadRequirementAtWrongKind,
+}
+import gunbc.scm.supersession { standing_permission_refusal }
+
+// THE CAUSE IS NAMED, NEVER MERELY COUNTED. A claim that asserted "something refused" would be
+// satisfied by a decoder that refused for an unrelated reason, which is how a wrong-owner diagnostic
+// survives review: the assertion is true and the arrow it implies is invented.
+fn ot_cause_tag(acc: DecodeAcc) -> String {
+  match acc.refusal {
+    Absent => "decoded"
+    Present { value: c } =>
+      match c {
+        ObjectTableMemberReadRefused { cause: _ } => "member_read"
+        ObjectTableUnexpectedMember { context: _, key: _ } => "unexpected_member"
+        ObjectTableTargetReferenceRefused { cause: _ } => "target_reference"
+        ObjectTableEntryRefused { cause: e } =>
+          match e {
+            NodeEntryMemberReadRefused { cause: _ } => "member_read"
+            NodeEntryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+            NodeEntryTargetReferenceRefused { cause: _ } => "target_reference"
+            NodeEntryUnknownKindTag { found: _ } => "kind"
+            NodeEntryUnknownConnectiveTag { found: _ } => "connective"
+            NodeEntryUnknownBehaviorTag { found: _ } => "behavior"
+            NodeEntryUnknownLabelTag { found: _ } => "label"
+          }
+        ObjectTableEdgeTargetUnresolved { reference: _ } => "edge_target"
+        ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => "edge_target_source"
+        ObjectTableEdgeTargetIsCorpusManifest { reference: _ } => "edge_target_manifest"
+        ObjectTableManifestPathEmpty => "manifest_path_empty"
+        ObjectTableManifestDuplicatePath { path: _ } => "manifest_duplicate_path"
+        ObjectTableManifestSourceUnresolved { reference: _ } => "manifest_source"
+        ObjectTableManifestSourceIsSemanticNode { reference: _ } => "manifest_source_node"
+        ObjectTableManifestSourceIsCorpusManifest { reference: _ } => "manifest_source_manifest"
+        ObjectTableObjectCollision { identity: _ } => "collision"
+      }
+  }
+}
+
+fn ot_decoded(entries: List<JsonValue>) -> DecodeAcc {
+  decode_object_table(object_values: entries)
+}
+
+fn ot_tag_of(entries: List<JsonValue>) -> String {
+  ot_cause_tag(acc: ot_decoded(entries: entries))
+}
+
+fn ot_source_entry(text: String) -> JsonValue {
+  json_object(members: [json_kv(key: "source", value: json_string(s: text))])
+}
+
+fn ot_empty_node_entry() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        )
+      ),
+      json_kv(key: "children", value: json_array(elements: [])),
+    ]
+  )
+}
+
+fn ot_node_over_position(at: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        )
+      ),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "label", value: json_string(s: "named")),
+                json_kv(key: "name", value: json_string(s: "only_child")),
+                json_kv(
+                  key: "target",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at))]),
+                ),
+              ]
+            )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+fn ot_manifest_entry(path: String, at: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "manifest",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "path", value: json_string(s: path)),
+                json_kv(
+                  key: "source",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at))]),
+                ),
+              ]
+            )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+fn ot_manifest_pair(path_a: String, at_a: String, path_b: String, at_b: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "manifest",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "path", value: json_string(s: path_a)),
+                json_kv(
+                  key: "source",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at_a))]),
+                ),
+              ]
+            ),
+            json_object(
+              members: [
+                json_kv(key: "path", value: json_string(s: path_b)),
+                json_kv(
+                  key: "source",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: at_b))]),
+                ),
+              ]
+            ),
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The source entry
+// ---------------------------------------------------------------------------
+
+// A null `source` is a WRONG-SHAPED source member, not an absent one. The distinction is the whole
+// reason the decoder reads the member before deciding which arm it is in: absence selects another
+// arm, malformedness condemns this one, and collapsing them reports the defect against the wrong key.
+test fn ot_a_null_source_is_a_wrong_shaped_source() -> Bool {
+  ot_tag_of(
+    entries: [json_object(members: [json_kv(key: "source", value: json_null())])]
+  ) == "member_read"
+}
+
+// A DUPLICATED `source` refuses as duplicated rather than being read last-wins or reclassified as a
+// node. This is the arm a naive reader accepts while holding two answers.
+test fn ot_a_duplicated_source_refuses() -> Bool {
+  ot_tag_of(
+    entries: [
+      json_object(
+        members: [
+          json_kv(key: "source", value: json_string(s: "one")),
+          json_kv(key: "source", value: json_string(s: "two")),
+        ]
+      )
+    ]
+  ) == "member_read"
+}
+
+// AN ENTRY CARRYING TWO SHAPES IS NOT ONE ARM. The source read succeeds, so the member set is checked
+// against the authored-source set and `kind`/`children` are unexpected there. This is what keeps
+// shape-sniffing a partition rather than a guess.
+test fn ot_an_entry_carrying_both_shapes_refuses() -> Bool {
+  ot_tag_of(
+    entries: [
+      json_object(
+        members: [
+          json_kv(key: "source", value: json_string(s: "text")),
+          json_kv(
+            key: "kind",
+            value: json_object(
+              members: [
+                json_kv(key: "kind", value: json_string(s: "type")),
+                json_kv(key: "connective", value: json_string(s: "conj")),
+              ]
+            )
+          ),
+          json_kv(key: "children", value: json_array(elements: [])),
+        ]
+      )
+    ]
+  ) == "unexpected_member"
+}
+
+// THE CONTROL for the three above, and it is what makes them about the SOURCE MEMBER rather than
+// about this fixture scaffold: an ordinary authored-source entry decodes.
+test fn ot_an_ordinary_source_entry_decodes() -> Bool {
+  ot_tag_of(entries: [ot_source_entry(text: "text")]) == "decoded"
+}
+
+// ---------------------------------------------------------------------------
+// A semantic edge requires a node, and says so about each wrong kind it finds
+// ---------------------------------------------------------------------------
+
+// A CHILD EDGE NAMING A SOURCE REFUSES, AND NAMES THE SOURCE. Inside the model a StoredEdge's target
+// is a SemanticNodeTarget and this state is unwritable; a document is bytes and can say anything, so
+// this is the boundary where the wall is a typed refusal rather than a constructor.
+test fn ot_a_child_edge_naming_a_source_refuses() -> Bool {
+  ot_tag_of(
+    entries: [ot_source_entry(text: "a carried file\n"), ot_node_over_position(at: "0")]
+  ) == "edge_target_source"
+}
+
+// AND NAMING A MANIFEST REFUSES AS A MANIFEST. This claim had no home before: a corpus manifest could
+// never appear in a commit-closure document, so the arm that refuses one shipped with its evidence
+// attached to a document that could not carry the state. Reporting it as the source case would be a
+// well-formed answer about the wrong object kind.
+test fn ot_a_child_edge_naming_a_manifest_refuses() -> Bool {
+  ot_tag_of(
+    entries: [
+      ot_source_entry(text: "a carried file\n"),
+      ot_manifest_entry(path: "witness/only.dag", at: "0"),
+      ot_node_over_position(at: "1"),
+    ]
+  ) == "edge_target_manifest"
+}
+
+// THE CONTROL, one fact apart: the same node shape over a POSITION THAT HOLDS A NODE decodes. Without
+// it both claims above are satisfied by a decoder that refuses every edge naming a position.
+test fn ot_a_child_edge_naming_a_node_decodes() -> Bool {
+  ot_tag_of(entries: [ot_empty_node_entry(), ot_node_over_position(at: "0")]) == "decoded"
+}
+
+// ---------------------------------------------------------------------------
+// The manifest entry
+// ---------------------------------------------------------------------------
+
+// A MANIFEST ENTRY'S SOURCE REQUIRES AN AUTHORED SOURCE, and the wrong kind there is named for what
+// it found exactly as an edge's is. The asymmetry with an edge is deliberate and is the point: an
+// edge requires a node and refuses a source, an entry requires a source and refuses a node, so a
+// shared "wrong kind" cause would have to mean opposite things in the two positions.
+test fn ot_a_manifest_source_naming_a_node_refuses() -> Bool {
+  ot_tag_of(
+    entries: [ot_empty_node_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  ) == "manifest_source_node"
+}
+
+// A manifest entry naming a position nothing defined is UNRESOLVED, which is a different fact from
+// the wrong kind being there and has a different remedy.
+test fn ot_a_manifest_source_naming_no_position_is_unresolved() -> Bool {
+  ot_tag_of(
+    entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]
+  ) == "manifest_source"
+}
+
+// AN EMPTY PATH REFUSES RATHER THAN BEING CAST. CorpusManifestEntry.path is a NonEmptyStr, so the
+// empty string has no inhabitant to become; the check is what makes the cast honest rather than a
+// second place the invariant is asserted.
+test fn ot_a_manifest_entry_with_an_empty_path_refuses() -> Bool {
+  ot_tag_of(
+    entries: [ot_source_entry(text: "text"), ot_manifest_entry(path: "", at: "0")]
+  ) == "manifest_path_empty"
+}
+
+// A WIRE MANIFEST NAMING ONE PATH TWICE REFUSES, and the refusal is the store's, reached through
+// the decoder rather than restated by it. A manifest denotes a path -> source function; two sources
+// at one path is not one, and answering with either would be the silent selection the store's own
+// refusal exists to prevent.
+test fn ot_a_wire_manifest_with_a_duplicated_path_refuses() -> Bool {
+  ot_tag_of(
+    entries: [
+      ot_source_entry(text: "alpha"),
+      ot_source_entry(text: "beta"),
+      ot_manifest_pair(path_a: "witness/dup.dag", at_a: "0", path_b: "witness/dup.dag", at_b: "1"),
+    ]
+  ) == "manifest_duplicate_path"
+}
+
+// THE DISCRIMINATING CONTROL FOR IT. The same two sources under two DIFFERENT paths is an ordinary
+// manifest, so the refusal above is about the repeated path and not about a two-entry manifest.
+test fn ot_a_wire_manifest_with_two_distinct_paths_decodes() -> Bool {
+  ot_tag_of(
+    entries: [
+      ot_source_entry(text: "alpha"),
+      ot_source_entry(text: "beta"),
+      ot_manifest_pair(path_a: "witness/a.dag", at_a: "0", path_b: "witness/b.dag", at_b: "1"),
+    ]
+  ) == "decoded"
+}
+
+// THE CONTROL: an ordinary manifest over a source it carries decodes.
+test fn ot_an_ordinary_manifest_entry_decodes() -> Bool {
+  ot_tag_of(
+    entries: [ot_source_entry(text: "text"), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  ) == "decoded"
+}
+
+// ---------------------------------------------------------------------------
+// What the table preserves
+// ---------------------------------------------------------------------------
+
+type OtRoundTrip { store: ObjectStore, empty_locator: ObjectId, text_locator: ObjectId, ok: Bool }
+
+fn ot_fallback_id() -> ObjectId {
+  match store_node(
+    store: empty_store(),
+    n: node_synthetic(kind: TypeNode { connective: Atom { identity: ^ot_fallback } }, children: []),
+  ) {
+    Stored { store: _, node: n } => n.locator
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+// BOTH AUTHORED ARMS IN ONE STORE, because the two are distinguished by emptiness and a codec that
+// collapsed them would still round-trip either one alone.
+fn ot_two_source_store() -> OtRoundTrip {
+  match store_authored_source(store: empty_store(), text: "") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      OtRoundTrip { store: empty_store(), empty_locator: ot_fallback_id(), text_locator: ot_fallback_id(), ok: false }
+    SourceStored { store: with_empty, source: empty_ref } =>
+      match store_authored_source(store: with_empty, text: "a \"quoted\" file\n") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+          OtRoundTrip { store: empty_store(), empty_locator: ot_fallback_id(), text_locator: ot_fallback_id(), ok: false }
+        SourceStored { store: both, source: text_ref } =>
+          OtRoundTrip {
+            store: both,
+            empty_locator: empty_ref.locator,
+            text_locator: text_ref.locator,
+            ok: true,
+          }
+      }
+  }
+}
+
+fn ot_reencoded(store: ObjectStore) -> DecodeAcc {
+  decode_object_table(object_values: encode_object_table(store: store).objects)
+}
+
+fn ot_content_at(store: ObjectStore, locator: ObjectId) -> AuthoredSourceContent? {
+  match find_authored_source_record(store: store, identity: locator) {
+    AuthoredSourceFound(record) => Present { value: record.content }
+    AuthoredSourceAbsent { identity: _ } => none
+    AuthoredSourceIsSemanticNode { identity: _ } => none
+    AuthoredSourceIsCorpusManifest { identity: _ } => none
+  }
+}
+
+// THE TWO AUTHORED ARMS STAY DISTINCT ACROSS THE TABLE. An encoder that wrote both as the empty
+// string, or a decoder that read every source as text, would preserve the object COUNT and lose the
+// distinction -- which is why this reads the arms rather than counting objects.
+test fn ot_the_two_authored_arms_stay_distinct() -> Bool {
+  let fx = ot_two_source_store()
+  fx.ok
+    && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
+    && match ot_reencoded(store: fx.store) {
+      DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+        match refusal {
+          Present { value: _ } => false
+          Absent =>
+            match ot_content_at(store: back, locator: fx.empty_locator) {
+              Absent => false
+              Present { value: empty_content } =>
+                match ot_content_at(store: back, locator: fx.text_locator) {
+                  Absent => false
+                  Present { value: text_content } =>
+                    match empty_content {
+                      AuthoredSourceEmpty =>
+                        match text_content {
+                          AuthoredSourceText(_) => true
+                          AuthoredSourceEmpty => false
+                        }
+                      AuthoredSourceText(_) => false
+                    }
+                }
+            }
+        }
+    }
+}
+
+// AND THE IDENTITIES ARE RE-DERIVED RATHER THAN CARRIED. Nothing on the wire asserts an authored
+// source's identity: the decoder hands the bytes to store_authored_source, which derives it by the
+// one rule. So finding the same locator after a round trip is evidence that the rule agreed, not
+// that a field survived.
+test fn ot_an_authored_source_keeps_its_derived_identity() -> Bool {
+  let fx = ot_two_source_store()
+  fx.ok
+    && match ot_reencoded(store: fx.store) {
+      DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+        match refusal {
+          Present { value: _ } => false
+          Absent =>
+            (store_object_count(store: back) == store_object_count(store: fx.store))
+              && match ot_content_at(store: back, locator: fx.text_locator) {
+                Absent => false
+                Present { value: c } =>
+                  match c {
+                    AuthoredSourceText(text) => (text as String) == "a \"quoted\" file\n"
+                    AuthoredSourceEmpty => false
+                  }
+              }
+        }
+    }
+}
+
+// A MANIFEST SURVIVES THE TABLE WITH ITS ENTRIES BOUND TO THEIR PATHS. This is the round trip that
+// could not be written at all before the manifest had a wire form, and it is asserted through the
+// manifest's own lookup rather than an object count, because a count is satisfied by any object of
+// any kind at any identity.
+test fn ot_a_manifest_survives_the_table() -> Bool {
+  match store_authored_source(store: empty_store(), text: "the manifested file\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: with_file, source: file } =>
+      match store_corpus_manifest(
+        store: with_file,
+        entries: [
+          CorpusManifestEntry {
+            path: "witness/only.dag" as NonEmptyStr,
+            source: authored_source_target_of(reference: file),
+          },
+        ],
+      ) {
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => false
+        CorpusManifestDuplicatePath { path: _ } => false
+        CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+          match ot_reencoded(store: with_manifest) {
+            DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+              match refusal {
+                Present { value: _ } => false
+                Absent =>
+                  match find_corpus_manifest_record(store: back, identity: manifest.locator) {
+                    CorpusManifestAbsent { identity: _ } => false
+                    CorpusManifestIsSemanticNode { identity: _ } => false
+                    CorpusManifestIsAuthoredSource { identity: _ } => false
+                    CorpusManifestFound(record) =>
+                      (list_length(items: record.entries) == 1)
+                        && fold(
+                          record.entries,
+                          init: false,
+                          f: fn(seen, e) {
+                            seen
+                              || (((e.path as String) == "witness/only.dag")
+                                && object_id_eq(left: e.source.locator, right: file.locator))
+                          }
+                        )
+                  }
+              }
+          }
+      }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// The standing a wrong-kind requirement produces, and what it permits
+// ---------------------------------------------------------------------------
+
+// THE PREDICAMENT DECIDES THE STANDING, NOT THE SPELLING OF THE REFERENCE.
+//
+// The four wrong-kind arms of this table classified as LoadDocumentMalformed, while the repository
+// reader classifies the SAME predicament reached by an `uncontained` digest as
+// LoadRequirementAtWrongKind. One fact, two standings, chosen by which spelling the writer happened
+// to emit.
+//
+// That is a policy difference, not a wording one: standing_permission_refusal permits the
+// standing-level supersession step for LoadDocumentMalformed alone, so the contained spelling was
+// buying a destructive permission its uncontained twin could not. These claims run the real path --
+// decoder, then classifier, then the permission table -- because constructing the standing by hand
+// would exercise the policy while skipping the classifier that selects the wrong one.
+//
+// Its pair lives in test.claim.scm_repository_envelope_witness, over the uncontained spelling of the
+// same two predicaments; both assert this standing and this refusal.
+fn ot_wrong_kind_barred(entries: List<JsonValue>) -> Bool {
+  match ot_decoded(entries: entries).refusal {
+    Absent => false
+    Present { value: c } =>
+      match object_table_load_standing(cause: c) {
+        LoadRequirementAtWrongKind =>
+          match standing_permission_refusal(standing: LoadRequirementAtWrongKind) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn ot_a_contained_edge_at_a_source_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [ot_source_entry(text: "a carried file\n"), ot_node_over_position(at: "0")]
+  )
+}
+
+test fn ot_a_contained_edge_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [
+      ot_source_entry(text: "a carried file\n"),
+      ot_manifest_entry(path: "witness/only.dag", at: "0"),
+      ot_node_over_position(at: "1"),
+    ]
+  )
+}
+
+test fn ot_a_contained_manifest_source_at_a_node_stands_as_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(
+    entries: [ot_empty_node_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  )
+}
+
+// THE DISCRIMINATOR THAT KEEPS THE THREE ABOVE FROM BEING "EVERY REFUSAL IS WRONG-KIND". An
+// unresolved reference names no occupant at all, so it stays malformed -- and malformed is exactly
+// the standing that DOES permit supersession, which is why the two must not be merged.
+test fn ot_an_unresolved_manifest_source_is_not_a_wrong_kind_requirement() -> Bool {
+  ot_wrong_kind_barred(entries: [ot_manifest_entry(path: "witness/only.dag", at: "9")]) == false
+}
+
+// AN EMPTY MANIFEST ENTRY, so a manifest can be the OCCUPANT rather than only the referrer.
+fn ot_empty_manifest_entry() -> JsonValue {
+  json_object(members: [json_kv(key: "manifest", value: json_array(elements: []))])
+}
+
+// THE FOURTH PAIRING. The three claims above cover edge-at-a-source, edge-at-a-manifest and
+// manifest-source-at-a-node; this is manifest-source-at-a-manifest, which had been standing on its
+// sibling. Four positively-resolved wrong-kind causes, four executed standings, no arm asserted by
+// family resemblance.
+// AND IT IS THE ONE CELL WITH NO COMPANION CAUSE CLAIM, so the standing cannot lean on one. The
+// three contained cells above each have a sibling asserting their exact cause -- edge_target_source,
+// edge_target_manifest, manifest_source_node -- and this pairing has none, so
+// ot_wrong_kind_barred alone would accept three different decoders: the right one, one reporting
+// this manifest as a semantic node (same standing, wrong kind named), and one naming reference "1",
+// the referring entry, instead of "0", its occupant. Neither the classifier nor the permission table
+// reads the payload, so neither would go red.
+//
+// So this claim binds ONE decoded result and asks all three questions of it: the manifest-specific
+// cause, the reference that names the occupant, and the standing and permission that cause produces.
+// Asserting the cause and then calling the entries-taking helper would decode the document twice and
+// leave the two answers unjoined.
+test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
+  match ot_decoded(
+    entries: [ot_empty_manifest_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
+  ).refusal {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        ObjectTableManifestSourceIsCorpusManifest { reference: reference } =>
+          (reference == "0")
+            && match object_table_load_standing(cause: cause) {
+              LoadRequirementAtWrongKind =>
+                match standing_permission_refusal(standing: LoadRequirementAtWrongKind) {
+                  Present { value: _ } => true
+                  Absent => false
+                }
+              _ => false
+            }
+        _ => false
+      }
+  }
+}

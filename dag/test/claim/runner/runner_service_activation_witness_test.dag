@@ -30,6 +30,10 @@ import gunbc.build_cache_instance {
 }
 import gunbc.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
 import gunbc.runner_service_activation {
+  RunnerUnitStandings,
+  RunnerUnitStanding,
+  UnitStandingsObserved,
+  TransitionConverged,
   RunnerActivationReadiness,
   ActivationReadinessObserved,
   ActivationReadinessUnobserved,
@@ -138,7 +142,34 @@ fn witness_plans(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness)
     host_admission: admit_runner_host(deploy: deploy),
     deploy: deploy,
     readiness: readiness,
+    standings: runner_unit_standings_unobserved_no_transaction,
   )
+}
+
+fn witness_plans_with_standings(
+  deploy: RunnerHostDeploy,
+  readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
+) -> List<RunnerTransitionPlan> {
+  runner_activation_plans_for_deploy(
+    host_admission: admit_runner_host(deploy: deploy),
+    deploy: deploy,
+    readiness: readiness,
+    standings: standings,
+  )
+}
+
+fn witness_standings(deploy: RunnerHostDeploy, active: Bool, enabled: Bool) -> RunnerUnitStandings {
+  UnitStandingsObserved {
+    units: map(
+      desired_runner_slot_members(deploy: deploy),
+      m => RunnerUnitStanding {
+        unit: runner_unit_name_of_registration(registration_name: m.instance_name),
+        active: active,
+        enabled: enabled,
+      },
+    ),
+  }
 }
 
 fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> FleetConvergeRequest {
@@ -150,6 +181,7 @@ fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadines
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   }
 }
 
@@ -293,6 +325,7 @@ test fn the_two_refusals_name_their_own_stakes() -> Bool {
         TransitionRefused { transition: _, host_label: _, reason: r, affected_units: _ } =>
           if string_contains(s: r as String, pattern: "durable boot intent") { acc + 1 } else { acc }
         TransitionAdmitted { transition: _, operations: _ } => acc
+        TransitionConverged { transition: _, units: _ } => acc
       },
   ) == 1
 }
@@ -363,6 +396,7 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
       match p {
         TransitionRefused { transition: _, host_label: _, reason: r, affected_units: _ } => r as String
         TransitionAdmitted { transition: _, operations: _ } => acc
+        TransitionConverged { transition: _, units: _ } => acc
       },
   )
   match runner_activation_reachability_stall.blocker {
@@ -401,7 +435,7 @@ test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool 
       AwaitsOneGrounding { grounding: _ } => true
       ClimbableButUnbuilt => true
     }
-    && string_contains(s: runner_activation_safety_stall.next_rung_trigger, pattern: "root-owned")
+    && string_contains(s: runner_activation_safety_stall.next_rung_trigger.capability, pattern: "root-owned")
 }
 
 // THE REFUSAL CARRIES ITS AFFECTED POPULATION, IN BOTH MAGNITUDE AND IDENTITY. A count alone cannot
@@ -457,4 +491,63 @@ test fn a_refusal_cause_containing_an_apostrophe_stays_well_formed() -> Bool {
     init: false,
     f: (acc, l) => acc || string_contains(s: l, pattern: "'\\''"),
   )
+}
+
+
+// A HOST WHOSE UNITS ARE ALREADY ENABLED AND RUNNING PLANS NO TRANSITION AND NO REFUSAL. Readiness
+// is still unobserved here, exactly as production supplies it; what changed is that the planner
+// asked the host first. Before this, srv2's five running units planned two refusals.
+test fn observed_converged_units_plan_no_refusal_under_unobserved_readiness() -> Bool {
+  let deploy = srv3_runner_host_deploy()
+  let plans = witness_plans_with_standings(
+    deploy: deploy,
+    readiness: runner_activation_readiness_unobserved_no_transaction,
+    standings: witness_standings(deploy: deploy, active: true, enabled: true),
+  )
+  runner_activation_refusal_count(plans: plans) == 0
+    && (plans |> all(p => match p {
+      TransitionConverged { transition: _, units: us } => list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+      TransitionAdmitted { transition: _, operations: _ } => false
+      TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => false
+    }))
+}
+
+// ENABLED BUT NOT RUNNING: enable is converged, start still needs the readiness admission and is
+// refused over exactly the units that need it. The refusal population is the discriminator -- a
+// planner that ignored standings would refuse enable as well.
+test fn observed_enabled_inactive_units_refuse_only_the_start_transition() -> Bool {
+  let deploy = srv3_runner_host_deploy()
+  let plans = witness_plans_with_standings(
+    deploy: deploy,
+    readiness: runner_activation_readiness_unobserved_no_transaction,
+    standings: witness_standings(deploy: deploy, active: false, enabled: true),
+  )
+  runner_activation_refusal_count(plans: plans) == 1
+    && (plans |> any(p => match p {
+      TransitionConverged { transition: RunnerEnableTransition, units: _ } => true
+      TransitionConverged { transition: RunnerStartTransition, units: _ } => false
+      TransitionAdmitted { transition: _, operations: _ } => false
+      TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => false
+    }))
+    && (plans |> any(p => match p {
+      TransitionRefused { transition: RunnerStartTransition, host_label: _, reason: _, affected_units: us } =>
+        list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+      TransitionRefused { transition: RunnerEnableTransition, host_label: _, reason: _, affected_units: _ } => false
+      TransitionAdmitted { transition: _, operations: _ } => false
+      TransitionConverged { transition: _, units: _ } => false
+    }))
+}
+
+// UNOBSERVED STANDINGS KEEP THE OLD SHAPE: both transitions refused over every desired unit. This
+// is the control that pins the degradation direction as fail-closed.
+test fn unobserved_standings_refuse_both_transitions_over_every_unit() -> Bool {
+  let deploy = srv3_runner_host_deploy()
+  let plans = witness_plans(deploy: deploy, readiness: runner_activation_readiness_unobserved_no_transaction)
+  runner_activation_refusal_count(plans: plans) == 2
+    && (plans |> all(p => match p {
+      TransitionRefused { transition: _, host_label: _, reason: _, affected_units: us } =>
+        list_length(items: us) == list_length(items: desired_runner_slot_members(deploy: deploy))
+      TransitionAdmitted { transition: _, operations: _ } => false
+      TransitionConverged { transition: _, units: _ } => false
+    }))
 }
