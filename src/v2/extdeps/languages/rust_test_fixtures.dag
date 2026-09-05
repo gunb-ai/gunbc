@@ -45,7 +45,8 @@ import v2.extdeps.languages.rust {
   rust_value_expression_projection,
   rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
-  rust_whitespace_trivia_rule
+  rust_whitespace_trivia_rule,
+  rust_semantic_decl_emission_bundle_node
 }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
@@ -1064,6 +1065,31 @@ fn rust_loop_target_model_staging() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_loop_source_text,
     runtime_row: rust_loop_runtime_row()
+  }
+}
+
+// Semantic-decl-emission fixture: provides the ^target_model_edge_semantic_decl_emission
+// edge (with full production content because tests compare decoded values against live
+// Rust functions) and dead-minimal values for every other TargetModel field that
+// semantic_decl_emission_from_target / emit_semantic_type_decl never read.
+fn rust_semantic_decl_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_semantic_decl_emission,
+          target: rust_semantic_decl_emission_bundle_node()
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4638,3 +4664,23 @@ fn rust_transport_wire_target_model_staging() -> TargetModel {
     runtime_row: rust_runtime_row()
   }
 }
+
+// Minimum-viable TargetModel for tests that never inspect the target contents.
+// Used by vacuity-classification and terminal-gate tests which only check
+// transport mode or execution status, never the TargetModel fields.
+fn rust_minimal_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: HostRuntimeRowAbsent
+  }
+}
+

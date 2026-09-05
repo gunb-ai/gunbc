@@ -505,14 +505,30 @@ fn fabric_cell_unit_name_field(line: String) -> String {
 // still returns a real probe: its namespaces were read, and the pure half decides what an empty
 // expectation means. Supplying the roster from this side would be the observer reporting on what
 // it happened to probe, which is the blindness the observe module's own header rules out.
-func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
+type FabricCellProbeReading sole_constructor {
+  probe: FabricCellHostProbe
+  boundary_readings: List<FabricCellBoundaryReading>
+}
+
+fn fabric_cell_probe_reading_probe(reading: FabricCellProbeReading) -> FabricCellHostProbe {
+  reading.probe
+}
+
+fn fabric_cell_probe_reading_boundaries(reading: FabricCellProbeReading) -> List<FabricCellBoundaryReading> {
+  reading.boundary_readings
+}
+
+// The receipt retains the same boundary readings used to construct the probe. Consumers needing
+// raw values must project this value; independently re-reading the five properties would combine
+// two host instants into one purported observation.
+func fabric_cell_probe_reading_wet(host: HostIdentity) -> FabricCellProbeReading {
   let root = fabric_cell_observe_cells_root()
   let slices = fabric_cell_observe_slice_namespace()
   let acquired = map(
     fabric_cell_expected_slots(host: host),
     s => fabric_cell_acquire_slot(slot: s, cells_root: root, slices: slices),
   )
-  FabricCellHostProbe {
+  let probe = FabricCellHostProbe {
     host: host,
     namespaces: concat(
       [
@@ -529,6 +545,14 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
     ),
     addresses: flat_map(acquired, a => fabric_cell_acquisition_address_entries(acquisition: a)),
   }
+  FabricCellProbeReading {
+    probe: probe,
+    boundary_readings: map(acquired, a => a.boundary_reading),
+  }
+}
+
+func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
+  fabric_cell_probe_reading_probe(reading: fabric_cell_probe_reading_wet(host: host))
 }
 
 // ONE SUBJECT IS ACQUIRED ONCE PER TICK, AND THE PROJECTIONS READ THE VALUE RATHER THAN THE HOST.
@@ -548,6 +572,7 @@ type FabricCellSlotAcquisition {
   cell_root: FabricCellDirectoryObservation
   attempt_root: FabricCellDirectoryObservation
   boundary: List<FabricCellAddressProbeEntry>
+  boundary_reading: FabricCellBoundaryReading
 }
 
 func fabric_cell_acquire_slot(
@@ -556,6 +581,11 @@ func fabric_cell_acquire_slot(
   slices: FabricCellNamespaceProbe,
 ) -> FabricCellSlotAcquisition {
   let cell_root = fabric_cell_observe_cell_root(slot: slot, cells_root: cells_root)
+  let boundary_reading = match fabric_cell_boundary_standing(slot: slot, slices: slices) {
+    BoundaryAsk => fabric_cell_read_boundary(slot: slot)
+    BoundaryUnknownRefuse { cause: cause } => BoundaryReadRefused { cause: cause }
+    BoundaryAbsentNoAsk => BoundaryReadRefused { cause: "cell boundary slice is absent" }
+  }
   FabricCellSlotAcquisition {
     slot: slot,
     cell_root: cell_root,
@@ -563,7 +593,8 @@ func fabric_cell_acquire_slot(
       path: fabric_cell_attempt_root_path(slot: slot),
       parent: fabric_cell_parent_standing_of(parent: cell_root, entry: fabric_cell_attempt_root_entry_name),
     ),
-    boundary: fabric_cell_boundary_address_entries(slot: slot, slices: slices),
+    boundary: fabric_cell_boundary_address_entries(slot: slot, slices: slices, reading: boundary_reading),
+    boundary_reading: boundary_reading,
   }
 }
 
@@ -687,6 +718,7 @@ fn fabric_cell_boundary_standing(
 func fabric_cell_boundary_address_entries(
   slot: RunnerSlotIdentity,
   slices: FabricCellNamespaceProbe,
+  reading: FabricCellBoundaryReading,
 ) -> List<FabricCellAddressProbeEntry> {
   match fabric_cell_boundary_standing(slot: slot, slices: slices) {
     BoundaryAbsentNoAsk => []
@@ -696,7 +728,7 @@ func fabric_cell_boundary_address_entries(
         address: FabricCellResourceBoundaryAddress,
         probe: AddressStateReadRefused { cause: c },
       }]
-    BoundaryAsk => [fabric_cell_boundary_probe_entry(slot: slot)]
+    BoundaryAsk => [fabric_cell_boundary_probe_entry(slot: slot, reading: reading)]
   }
 }
 
@@ -704,13 +736,13 @@ fn fabric_cell_entries_hold_name(entries: List<String>, name: String) -> Bool {
   fold(entries, init: false, f: (acc, e) => acc || e == name)
 }
 
-func fabric_cell_boundary_probe_entry(slot: RunnerSlotIdentity) -> FabricCellAddressProbeEntry {
+fn fabric_cell_boundary_probe_entry(slot: RunnerSlotIdentity, reading: FabricCellBoundaryReading) -> FabricCellAddressProbeEntry {
   FabricCellAddressProbeEntry {
     slot: slot,
     address: FabricCellResourceBoundaryAddress,
     probe: fabric_cell_boundary_address_probe(
       slot: slot,
-      reading: fabric_cell_read_boundary(slot: slot),
+      reading: reading,
     ),
   }
 }

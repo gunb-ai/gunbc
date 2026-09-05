@@ -1213,67 +1213,169 @@ pub struct TransitionAdmission {
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
 ///
-const SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL: &str =
-    "serving engine launch vocabulary move gunbc#10439 2026-09-04";
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10445). All six `gunbc#10439` serving-engine rows
+/// are deleted, and SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL with them. #10439 merged, so this
+/// branch's base carries the relocation, no run can produce those deltas, and the wall reports them
+/// CONSUMED rather than stale -- the death the entry above predicts for itself, coming due on the
+/// first change to touch this roster. That is this change, and the wall's own run at the exact head
+/// is what adjudicated it rather than the trigger sentence.
 
+/// TWENTY-FIFTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
+/// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
+/// designated root, and a table that under v4 admits SEMANTIC NODES ONLY. The table it hosted
+/// answers a different question -- how a store's three object kinds go onto the wire -- and the
+/// repository envelope, which has no closure and no closure root, was importing the closure module
+/// to reach it. One module answering two questions is the meaning fork DESIGN section 3 names, and
+/// the import edge it forced was a consumer resolving through the wrong authority. The codec and
+/// its vocabulary move to `gunbc.scm.object_table_json`, the module the object table is named for.
+///
+/// ONE ROW OF THIS ENTRY WAS REPOINTED WHERE IT SHOULD HAVE BEEN DELETED, AND THE WALL SAID SO
+/// TWICE. Renaming `encode_repository_v2` to `encode_repository_v3` moved the declaration a binding
+/// row is keyed on, and the row was rewritten to name the new spelling on the reasoning that "the
+/// binding it describes still moves". It does not. A RENAMED declaration is a NEW declaration: the
+/// base corpus has no `encode_repository_v3` for a target to have changed FROM, so the run produces
+/// no TargetChanged delta for it at all, and the row matched nothing on two consecutive heads. It is
+/// deleted. `encode_repository_checked`, which kept its name across the change, keeps its row --
+/// which is the distinction the repoint blurred.
+///
+/// THE SAME PR INTRODUCES A THIRD OBJECT KIND. `CorpusManifestObject` gives every kind-specific
+/// lookup a third wrong-kind arm, gives the object-table decoder its manifest causes, and splits
+/// the untyped locator so that an authored-source identity can no longer inhabit a semantic child
+/// position. Those are NEW SPELLINGS, not rebinds -- the base corpus declared none of them.
+///
+/// THE ORDINAL IS TWENTY-FIFTH, AND IT HAS BEEN TWENTY-THIRD AND TWENTY-FOURTH ON EARLIER HEADS OF
+/// THIS BRANCH. Each number was chosen against a base a later merge changed: gunbc#10350's
+/// kernel-identity relocation took twenty-third, and gunbc#10439's Ollama launch vocabulary took
+/// twenty-fourth. Renumbering against the base that actually exists is what the TWENTY-SECOND
+/// TRANSITION prescribes, for the reason it gives: an entry must stay citable by a name that means
+/// one thing.
+///
+/// THIS ENTRY DELETES NOTHING, THOUGH EARLIER HEADS OF THIS BRANCH DELETED TWO COHORTS. The
+/// THIRTIETH and THIRTY-FIRST DISSOLUTIONS above discharged the gunbc#10355 and gunbc#10350 rows on
+/// main first, so by this merge base there is nothing left for this entry to claim credit for. What
+/// this branch contributes is the rows below and nothing else.
+///
+/// THE ROWS BELOW ARE TWO CLASSES UNDER TWO LABELS, BECAUSE THEIR REASONS DIFFER. One label
+/// spanning both would make a single sentence answer for two distinct motions, and a row's only
+/// value is that a reader can check its stated reason against the row itself. A third class was
+/// authored and is deleted below, for the reason given there.
+///
+/// Rows are enumerated by exact identity, never matched on the module pair: a pattern over
+/// (`commit_closure_json_v2` -> `object_table_json`) would silently admit a genuine rebind that
+/// happened to land between those same two modules.
+///
+/// TRIGGER: both sets go when #10445 merges. The base then binds each spelling to the module
+/// named as its target, the deltas stop being producible, and the rows are owed deletion by the
+/// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
+/// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
+/// the exact head.
+/// THERE IS NO MANIFEST-VOCABULARY LABEL, AND THE 38 ROWS THAT CARRIED ONE ARE DELETED. An earlier
+/// head of this branch authored one row per newly authored manifest spelling, each reported as a
+/// `NewPoolCoincidenceResolution` binding delta by the wall at that base. Against the merged base
+/// the wall reports none of them: all 38 came back STALE -- matching no delta in the run -- while
+/// every `TargetChanged` and `AuthoredReferenceResolution` row beside them still matched.
+///
+/// THE ROWS GO RATHER THAN THEIR LABEL BEING REWORDED, because a row that matches no delta is a
+/// standing claim about a motion that is not happening. Carrying it would be the roster's own
+/// version of the defect this branch is made of: a well-formed statement of the right type whose
+/// subject does not exist. The wall decides which rows exist, and it says these do not.
+
+/// `node_target_of` is the sole constructor of `SemanticNodeTarget` in `gunbc.scm.object_store`,
+/// introduced when the untyped locator was split so an authored-source identity can no longer
+/// inhabit a semantic child position. These fixtures could previously write a bare `ObjectId`
+/// there; they now name the constructor, which is a name the base corpus did not declare.
+/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
+/// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
+/// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
+/// `v2.std.fn_index`, where `callees_from_node` already needed it to exclude a declaration's own
+/// parameter names from its callee set. Two `TargetChanged` deltas follow, one per consuming lens,
+/// enumerated by identity rather than admitted by a spelling wildcard, because a wildcard would also
+/// admit a THIRD consumer nobody reviewed.
+///
+/// ITS CONSUMPTION IS DECIDABLE ON THE ORDINARY RULE: once this merges, the base binds the spelling
+/// to `v2.std.fn_index` in both modules, the deltas stop being producible, and these two rows are
+/// owed deletion by the next roster-touching change -- the same rule the two dissolutions below were
+/// paid on.
+///
+/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
+/// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
+/// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
+/// 30 of 30, on this branch's own head -- #10355 has merged, the base now binds each spelling to
+/// `gunbc.scm.proposal`, and the deltas have stopped being producible.
+///
+/// THE DELETION IS OWED BY THIS CHANGE AND NOT BY A LATER ONE, on the roster's own standing rule:
+/// a consumed row's deletion comes due on the roster's next touch, and this change touches the
+/// roster. That rule is what keeps the ledger from growing without bound, and it is why this
+/// dissolution is authored by a PR that has nothing to do with SCM vocabulary.
+///
+/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10300). Both `gunbc#10350` kernel-identity
+/// predicate-relocation rows are deleted, and `KERNEL_IDENTITY_RELOCATION_LABEL` with them. Reported
+/// by identity as `CONSUMED ADMISSION`, 2 of 2, by the required phase on this branch's own head:
+/// #10350 has merged, `v1.compiler.infer::ancestry_binding_is_kernel_identity` and
+/// `v1.compiler.emit_rust::import_name_resolves_to_host_realized_kernel_scalar` both bind
+/// `resolved_node_is_kernel_identity_for_name` to `v1.std.core` at the base, and neither delta is
+/// producible any more.
+///
+/// THE SECOND SUCH PAYMENT ON THIS ONE BRANCH, which is worth recording rather than smoothing over.
+/// The THIRTIETH deleted 30 consumed `gunbc#10355` rows; a merge of main then brought in a fresh
+/// cohort whose own transition had merged in the meantime, and the phase came due again. That is the
+/// treadmill working as designed, not a defect: a long-lived branch touches the roster once per
+/// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
+/// -- is what makes an append-only ledger grow without bound.
+///
+/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10300). All six `gunbc#10439` serving-engine
+/// launch-vocabulary rows are deleted, and `SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL` with them.
+/// Reported by identity as `CONSUMED ADMISSION`, 6 of 6, by the required phase on this branch's own
+/// head: #10439 has merged and none of the six deltas is producible against the base any more.
+///
+/// THE THIRD PAYMENT ON THIS ONE BRANCH, AND THE PATTERN IS NOW THE POINT. The THIRTIETH cleared 30
+/// consumed `gunbc#10355` rows, the THIRTY-FIRST cleared 2 `gunbc#10350` rows, and this clears 6
+/// `gunbc#10439` rows -- three different cohorts, none of them this PR's, each consumed by a merge
+/// that happened while this branch was open. A branch that syncs with main N times touches the
+/// roster N times and owes the payment N times.
+///
+/// THAT IS THE RULE WORKING, NOT FRICTION TO ROUTE AROUND, and it is worth saying plainly because
+/// the tempting reading is the opposite. The alternative to paying on touch is a roster that only
+/// ever grows, where every stale row refuses unrelated changes and the cost lands on whoever is
+/// unlucky enough to touch the file last. Paying three times over one afternoon is the ledger
+/// staying small; it is not the ledger misbehaving.
+///
+/// THIRTY-THIRD DISSOLUTION (2026-09-05, gunbc#10300). All 22 `gunbc#10445` rows are deleted, and
+/// both `SCM_OBJECT_TABLE_CODEC_MOVE_LABEL` and `SCM_NODE_TARGET_CONSTRUCTOR_LABEL` with them --
+/// 17 object-table codec-move rows and 5 semantic-target constructor rows. Reported by identity as
+/// `CONSUMED ADMISSION`, 22 of 22, by the required phase on this branch's own head: #10445 has
+/// merged and none of the deltas is producible against the base any more.
+///
+/// FOURTH PAYMENT, FOURTH COHORT, NONE OF THEM THIS PR'S. The running total on one branch is 30
+/// (#10355) + 2 (#10350) + 6 (#10439) + 22 (#10445) = 60 rows dissolved for work this change has
+/// nothing to do with, because the roster's rule is that a consumed row's deletion comes due on the
+/// roster's next touch and every sync with main is a touch.
+///
+/// THE RATE IS THE OBSERVATION WORTH LEAVING HERE. Four cohorts became consumed inside one open
+/// branch's lifetime, which means main is landing roster-touching transitions faster than a branch
+/// can complete a CI cycle. That is not an argument against the rule -- the ledger is 2 rows rather
+/// than 62 precisely because it is paid on touch -- but it does mean a long-lived branch pays a
+/// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
+/// branches short rather than to defer the payment.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_host_port",
-            spelling: "spark_serving_bind_listen_wire",
-            target: "gunbc.spark.serving_engine",
+            module: "v2.lens.effect_reach",
+            in_declaration: "flows_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
+        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_bind_listen",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_desired",
-            in_declaration: "spark_serving_desired_launch_profile",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_base",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "profile_other_window",
-            spelling: "OllamaServingLaunchProfile",
-            target: "gunbc.spark.serving_engine",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark_serving_release_witness_test",
-            in_declaration: "witness_bind",
-            spelling: "SparkServingBindListen",
-            target: "gunbc.spark.serving_engine",
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carriers_from_reachable_decls",
+            spelling: "param_names_of",
+            target: "v2.std.fn_index",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
