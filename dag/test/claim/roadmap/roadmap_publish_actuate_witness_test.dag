@@ -1,0 +1,16 @@
+module test.claim.roadmap.roadmap_publish_actuate_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+import gunbc.roadmap.roadmap_publish_actuate { pull_request_created_outcome, attempt_branch_refspec }
+
+test fn a_created_pull_request_binds_the_receipt() -> Bool {
+  match pull_request_created_outcome(number: 7, html_url: "https://github.com/x/y/pull/7" as NonEmptyStr) {
+    ReceiptBound { pr_number, url, draft } => pr_number == 7 && url as String == "https://github.com/x/y/pull/7" && draft == false
+    _ => false
+  }
+}
+
+test fn the_attempt_refspec_pushes_the_branch_to_its_own_remote_name() -> Bool {
+  attempt_branch_refspec(branch: "dispatch/n1-aabc" as NonEmptyStr) == "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"
+}

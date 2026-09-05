@@ -706,7 +706,7 @@ fn establish_subject(scope: EmissionScope, render_target: EmissionRenderTarget, 
   if !head.success {
     SubjectUnreadable { cause: "could not read the source revision (git rev-parse HEAD)" }
   } else {
-    let status = git.Inspect.WorkingTreeStatus()
+    let status = git.Inspect.WorkingTreeStatus(repository_path: git.Inspect.Toplevel().path as String)
     if !status.success {
       SubjectUnreadable { cause: "could not read the working-tree standing (git status --porcelain)" }
     } else {

@@ -129,6 +129,22 @@ fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
 }
 
+// THE USER MANAGER IS A DIFFERENT MANAGER, NOT A FLAG ON THE SAME QUERY. `systemctl show` without
+// --user asks the SYSTEM manager, which knows nothing of a unit started by `systemd-run --user`:
+// the answer is not "inactive" but a successful read of a unit that manager never heard of, which
+// is why ShowUserProperty is a distinct operation rather than a boolean on the existing one. A
+// caller that asked the wrong manager would get a plausible empty answer instead of a refusal.
+fn systemctl_show_user_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+  [
+    "systemctl",
+    "--user",
+    "show",
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    "--value",
+  ]
+}
+
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",
@@ -388,6 +404,23 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
+    }
+  }
+
+  operation ShowUserProperty {
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "--user", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user show failed"
+    }
+    mock_response {
+      0 => { value: "active", success: true } "hermetic systemd.Systemctl.ShowUserProperty"
     }
   }
 

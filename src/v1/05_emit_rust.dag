@@ -18,6 +18,8 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   resolved_node_is_kernel_identity_for_name,
   match_pattern_is_irrefutable,
   declaration_provenance_of, type_reference_provenance,
@@ -256,11 +258,9 @@ import v1.compiler.emit_core_support {
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
   apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, has_mock_prefix, extract_test_projections,
-  is_bare_leaf_item
+  is_type_alias_return_node,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item,
+  has_mock_prefix, extract_test_projections
 }
 
 fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
@@ -1821,7 +1821,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -2308,7 +2308,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
   } else { match wire_contract_item {
     Absent => rust_tagged_object_policy()
     Present { value: wc } =>
-      if is_data_def_item(item: wc) {
+      if (wc.module_item_kind == ModuleItemDataValue) {
         match wc.body {
           Absent =>
             rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
@@ -2348,7 +2348,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                           Divergent =>
                             rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                           Resolved { node } =>
-                            if is_data_def_item(item: node) {
+                            if (node.module_item_kind == ModuleItemDataValue) {
                               resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Present { value: node },
                                 source_indices: source_indices,
@@ -2376,7 +2376,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                       Divergent =>
                         rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                       Resolved { node } =>
-                        if is_data_def_item(item: node) {
+                        if (node.module_item_kind == ModuleItemDataValue) {
                           resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Present { value: node },
                             source_indices: source_indices,
@@ -2461,7 +2461,7 @@ fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, s
 }
 
 fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !is_data_def_item(item: item) {
+  if (item.module_item_kind != ModuleItemDataValue) {
     false
   } else if module_defines_local_coproduct_wire_contract_type(module_items: module_items, source_indices: source_indices) {
     false
@@ -2538,7 +2538,7 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.items
-      |> filter(item => is_data_def_item(item: item))
+      |> filter(item => item.module_item_kind == ModuleItemDataValue)
       |> fold(init: acc, f: (item_acc, item) =>
         let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
         let qualified_name = concat(module_name, ".", item_name)
@@ -2638,7 +2638,7 @@ fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: 
 fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<String, Node>) -> Map<String, List<Node>> {
   let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
   let local = typed_module.items
-    |> filter(item => is_data_def_item(item: item))
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
     |> fold(init: empty_map(), f: (acc, item) =>
       insert_scoped_data_item(
         scoped: acc,
@@ -3093,7 +3093,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    let svc_items = tm.items |> filter(item => is_service_item(item: item))
+    let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     svc_items |> fold(init: acc, f: (a, svc) =>
       map_insert(a, authored_name_at(source_indices: tm.type_env.source_indices, node: svc), mod_filename)
@@ -3166,6 +3166,13 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // never "the one module that changed": a change reaches every mirror its reverse closure names,
 // and a selector that could carry only one member would be a bound that cannot express its own
 // answer.
+// THE CRATE-SHAPE DECISIONS IN THIS FUNCTION ARE RETAINED-HOST FACTS, NOT PIPELINE FACTS, AND THAT
+// SPLIT IS WHY ITS has_pipeline BINDING USES THE NARROWER PREDICATE. crate_name, the clap
+// dependency, the generated CLI dispatch file and the compiler test projection all describe the
+// SEED's realization: a clap front end dispatching into hand-authored host Rust. A corpus whose
+// entry declares a different driver carries none of that, so widening these to every pipeline entry
+// would rename its crate and demand a dispatch surface it never asked for. The main is where the
+// two drivers differ, and emit_main_rs branches there.
 fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
@@ -3209,7 +3216,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       module_name: name,
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
-  let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
+  let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
   let cargo = emit_cargo_toml(
     crate_name: crate_name,
@@ -5094,7 +5101,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_contract_item = wire_context_items
     |> filter(i =>
-      is_data_def_item(item: i)
+      i.module_item_kind == ModuleItemDataValue
       && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
     |> first
   let items_str = typed_module.items
@@ -5887,7 +5894,7 @@ fn is_self_referential_opaque_type_resolved(item: Node, source_indices: Map<Stri
 }
 
 fn is_zero_param_self_referential_opaque_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item)
+  is_leaf_type_item(item: item)
     && is_self_referential_opaque_type_resolved(item: item, source_indices: source_indices)
 }
 
@@ -6587,7 +6594,7 @@ INCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the 
 
 fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
-    |> filter(item => is_data_def_item(item: item))
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
     |> flat_map(item => {
       let type_name = match item.type_annotation {
         Present { value: ta } => authored_name_at(source_indices: source_indices, node: ta)
@@ -6803,71 +6810,36 @@ fn emit_non_empty_wrappers() -> String {
   concat(vec_wrapper, "\n\n", set_wrapper)
 }
 
+// EXHAUSTIVE ON THE ITEM KIND. The chain that stood here decided WHICH KIND of item it was
+// looking at from which of the item's optional fields happened to be absent, and its residual arm
+// was the only stop it had. The kind is now read from v1.std.core Node.module_item_kind, stamped by
+// the parse constructor, so this dispatch is a total match: a new ParsedModuleItemKind variant
+// fails to compile here instead of falling through. Two things the kind deliberately does NOT
+// carry, and which therefore stay as walls: the TYPE STRUCTURE axis (Conj/Disj vs leaf vs opaque),
+// which splits one kind and keeps its predicates; and the PRESENCE of body / type_annotation, which
+// stays optional on Node, so the function and data arms match rather than unwrap.
 fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
-  if is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
-  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+  match item.module_item_kind {
+    ModuleItemTypeDeclaration =>
+      if is_type_def_item(item: item) {
+        emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
+      } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
-    } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-      emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
-    } else {
-      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
-        Present { value: host } =>
-          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
-        Absent =>
-          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
-            n: resolved_type(n: item),
-            generic_param_names: [],
-            shared_types: shared_types,
-            source_indices: env.source_indices,
-            scope: scope,
-            imports: imports,
-            registry: registry,
-            module_name: module_name,
-            export_sets: export_sets,
-            typed_modules: typed_modules,
-            module_index: module_index,
-            variant_to_enum: emit_info.variant_to_enum), ";")
-      }
-    }
-  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
-    } else {
-
-      match rust_seed_host_container_base(name: item_text) {
-        Present { value: host } =>
-          let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-          let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-          concat(
-            rust_visibility_prefix(),
-            rust_items().type_alias_keyword,
-            " ",
-            item_text,
-            type_params,
-            " = ",
-            host,
-            "<",
-            generic_names |> map(n => to_pascal(name: n)) |> join(separator: ", "),
-            ">;"
-          )
-        Absent =>
-          if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
-            let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-            let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-            let alias_rhs = resolved_type(n: item)
-            let unused_params = alias_unused_param_names(generic_param_names: generic_names, rhs: alias_rhs, source_indices: env.source_indices)
-            let rhs_str = if unused_params |> count > 0 {
-              concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">")
-            } else {
-              render_rust_alias_rhs_type(
-                n: alias_rhs,
-                generic_param_names: generic_names,
+        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+          rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
+        } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+        } else {
+          match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
+            Present { value: host } =>
+              concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+            Absent =>
+              concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+                n: resolved_type(n: item),
+                generic_param_names: [],
                 shared_types: shared_types,
                 source_indices: env.source_indices,
                 scope: scope,
@@ -6876,79 +6848,151 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                 module_name: module_name,
                 export_sets: export_sets,
                 typed_modules: typed_modules,
-              module_index: module_index,
-              variant_to_enum: emit_info.variant_to_enum)
-            }
-            concat(
-              rust_visibility_prefix(),
-              rust_items().type_alias_keyword,
-              " ",
-              item_text,
-              type_params,
-              " = ",
-              rhs_str,
-              ";"
-            )
-          } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-            emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
-          } else {
-            ""
+                module_index: module_index,
+                variant_to_enum: emit_info.variant_to_enum), ";")
           }
-      }
-    }
-  } else if is_function_item(item: item) {
-    let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
-      Present { value: m } => m
-      Absent => empty_set()
-    }
-    let item_is_tco = is_tco_eligible(name: authored_name(env: env, node: item), body: item.body.value, registry: registry, source_indices: env.source_indices)
-    let fn_read_only = if item_is_tco { empty_set() } else {
-      match map_get(emit_info.read_only_params_index, qualified_name) {
-        Present { value: m } => m
-        Absent => empty_set()
-      }
-    }
-    let fn_emit_info = EmitGraphInfo {
-      type_summaries: emit_info.type_summaries,
-      type_decl_items: emit_info.type_decl_items,
-      fn_decl_items: emit_info.fn_decl_items,
-      recursive_type_set: emit_info.recursive_type_set,
-      fielded_variants: emit_info.fielded_variants,
-      positional_payload_variants: emit_info.positional_payload_variants,
-      shared_types: emit_info.shared_types,
-      ownership_index: emit_info.ownership_index,
-      movable: fn_movable,
-      variant_to_enum: emit_info.variant_to_enum,
-      owned_bindings: empty_set(),
-      read_only_params_index: emit_info.read_only_params_index,
-      read_only_params: fn_read_only,
-      clone_bounded_type_params: emit_info.clone_bounded_type_params,
-      map_key_required_type_names: emit_info.map_key_required_type_names,
-      clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
-      fn_generic_param_names: emit_info.fn_generic_param_names,
-      fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type,
-      expected_type: emit_info.expected_type
-    }
+        }
+      } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
+        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+          rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
+        } else {
 
-    let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
-      Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
-      Absent => false
-    }
-    if is_effectful {
-      emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
-    } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
-    }
-  } else if is_data_def_item(item: item) {
-    emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
-  } else if is_service_def_item(item: item) {
-    emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
-  } else if is_resource_def_item(item: item) {
-    emit_resource_def(item: item, shared_types: shared_types, env: env)
-  } else {
-    concat("compile_error!(\"unhandled item: ", item_text, "\");")
+          match rust_seed_host_container_base(name: item_text) {
+            Present { value: host } =>
+              let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+              let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+              concat(
+                rust_visibility_prefix(),
+                rust_items().type_alias_keyword,
+                " ",
+                item_text,
+                type_params,
+                " = ",
+                host,
+                "<",
+                generic_names |> map(n => to_pascal(name: n)) |> join(separator: ", "),
+                ">;"
+              )
+            Absent =>
+              if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
+                let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+                let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+                let alias_rhs = resolved_type(n: item)
+                let unused_params = alias_unused_param_names(generic_param_names: generic_names, rhs: alias_rhs, source_indices: env.source_indices)
+                let rhs_str = if unused_params |> count > 0 {
+                  concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">")
+                } else {
+                  render_rust_alias_rhs_type(
+                    n: alias_rhs,
+                    generic_param_names: generic_names,
+                    shared_types: shared_types,
+                    source_indices: env.source_indices,
+                    scope: scope,
+                    imports: imports,
+                    registry: registry,
+                    module_name: module_name,
+                    export_sets: export_sets,
+                    typed_modules: typed_modules,
+                  module_index: module_index,
+                  variant_to_enum: emit_info.variant_to_enum)
+                }
+                concat(
+                  rust_visibility_prefix(),
+                  rust_items().type_alias_keyword,
+                  " ",
+                  item_text,
+                  type_params,
+                  " = ",
+                  rhs_str,
+                  ";"
+                )
+              } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
+                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+              } else {
+                ""
+              }
+          }
+        }
+      } else {
+        emit_rust_item_refusal(item_text: item_text, reason: "type declaration matches no declared type structure")
+      }
+    ModuleItemFunction =>
+      match item.body {
+        Present { value: fn_body } => {
+          let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
+            Present { value: m } => m
+            Absent => empty_set()
+          }
+          let item_is_tco = is_tco_eligible(name: authored_name(env: env, node: item), body: fn_body, registry: registry, source_indices: env.source_indices)
+          let fn_read_only = if item_is_tco { empty_set() } else {
+            match map_get(emit_info.read_only_params_index, qualified_name) {
+              Present { value: m } => m
+              Absent => empty_set()
+            }
+          }
+          let fn_emit_info = EmitGraphInfo {
+            type_summaries: emit_info.type_summaries,
+            type_decl_items: emit_info.type_decl_items,
+            fn_decl_items: emit_info.fn_decl_items,
+            recursive_type_set: emit_info.recursive_type_set,
+            fielded_variants: emit_info.fielded_variants,
+            positional_payload_variants: emit_info.positional_payload_variants,
+            shared_types: emit_info.shared_types,
+            ownership_index: emit_info.ownership_index,
+            movable: fn_movable,
+            variant_to_enum: emit_info.variant_to_enum,
+            owned_bindings: empty_set(),
+            read_only_params_index: emit_info.read_only_params_index,
+            read_only_params: fn_read_only,
+            clone_bounded_type_params: emit_info.clone_bounded_type_params,
+            map_key_required_type_names: emit_info.map_key_required_type_names,
+            clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+            fn_generic_param_names: emit_info.fn_generic_param_names,
+            fn_type_env: emit_info.fn_type_env,
+            fn_return_type: emit_info.fn_return_type,
+            expected_type: emit_info.expected_type
+          }
+
+          let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
+            Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
+            Absent => false
+          }
+          if is_effectful {
+            emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: fn_body, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
+          } else {
+            emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: fn_body, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
+          }
+        }
+        Absent => emit_rust_item_refusal(item_text: item_text, reason: "function item carries no body")
+      }
+    ModuleItemDataValue =>
+      match item.type_annotation {
+        Present { value: data_anno } =>
+          match item.body {
+            Present { value: data_value } => {
+              emit_data_def(name: item_text, type_node: data_anno, value: data_value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
+            }
+            Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no value")
+          }
+        Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no declared type")
+      }
+    ModuleItemService =>
+      if item.children |> count == 0 {
+        emit_rust_item_refusal(item_text: item_text, reason: "service declares no operations")
+      } else {
+        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
+      }
+    ModuleItemResource =>
+      emit_resource_def(item: item, shared_types: shared_types, env: env)
+    ModuleItemUnrecognized =>
+      emit_rust_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    NotAModuleItem =>
+      emit_rust_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
+}
+
+fn emit_rust_item_refusal(item_text: String, reason: String) -> String {
+  concat("compile_error!(\"EMIT REFUSED: ", reason, ": ", item_text, "\");")
 }
 
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -15665,12 +15709,131 @@ fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<Cli
   }
 }
 
+// THE ENTRY-POINT FACT IS READ FROM THE CORPUS, NOT MATCHED AGAINST A NAME.
+//
+// This replaced `authored_name_at(...) == "v1.compiler.compile"` at every site that asked whether
+// the corpus carries a compiler pipeline. That predicate did not name the property it was used
+// for: v1's entry is v1.compiler.compile and v2's is v2.compiler.compile, so the literal
+// discriminated WHICH SEED GENERATION WROTE THE COMPILER rather than whether a module is a pipeline
+// entry at all -- a generation discriminator wearing a role predicate's name, which is why no
+// self-emitted compiler could ever satisfy it. Adding a second literal is the same defect twice: it
+// breaks at the next generation and hard-codes a fact about the corpus into the tool that reads it.
+//
+// The fact is carried by the entry module, as a module-scope `data` row annotated
+// std.compiler_entry.CompilerEntryDriver, and this scan reads the declaration. The DRIVER SHAPE
+// rides on the same row because it is a second fact (DESIGN section 3: interface, realization and
+// policy are three facts) -- which module is the entry is the interface, which driver realizes it
+// is realization, and the dispatch selecting a realization is itself realization.
+//
+// TWO ENTRIES IN ONE CORPUS IS AN INVALID STATE AND REFUSES AT ITS OWN GRAIN. One emitted crate
+// has one entry point; a corpus declaring two has no answer to which one the binary runs, and
+// answering with the first would be the silent wrong choice this repair exists to remove.
+//
+// THE AMBIGUOUS CASE IS DECIDED BEFORE THE ABSENT CASE, and that ordering is the whole point.
+// `compiler_pipeline_entry_decl` answers `none` for BOTH zero entries and two, so a corpus with two
+// pipelines would otherwise fall through to `emit_entry_point_absent_main_rs` and report "no entry
+// point" -- loud, but naming the wrong cause, which is the anemic-diagnostic half of DESIGN
+// section 5: a failure arm must refuse with the located facts rather than widen into a neighbouring
+// arm's message. `compiler_pipeline_entry_is_ambiguous` is asked first and emits a refusal naming
+// every colliding module, so the three states -- one entry, none, several -- have three distinct
+// emissions. The RED is authorable: two `.dag` files each carrying a CompilerEntryDriver row.
+
+data compiler_entry_driver_type_name: String = "CompilerEntryDriver"
+
+data compiler_entry_retained_host_driver: String = "RetainedHostCliKernel"
+
+type CompilerPipelineEntryDecl {
+  module_name: String
+  driver: String
+}
+
+fn module_compiler_pipeline_entry_decls(tm: TypedModule) -> List<CompilerPipelineEntryDecl> {
+  let si = tm.type_env.source_indices
+  let module_name = authored_name_at(source_indices: si, node: tm.module)
+  tm.items
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
+    |> flat_map(item => {
+      let type_name = match item.type_annotation {
+        Present { value: ta } => authored_name_at(source_indices: si, node: ta)
+        Absent => ""
+      }
+      if type_name != compiler_entry_driver_type_name {
+        []
+      } else {
+        let driver = match item.body {
+          Present { value: b } => authored_name_at(source_indices: si, node: b)
+          Absent => ""
+        }
+        [CompilerPipelineEntryDecl { module_name: module_name, driver: driver }]
+      }
+    })
+}
+
+fn compiler_pipeline_entry_decls(modules: List<TypedModule>) -> List<CompilerPipelineEntryDecl> {
+  modules |> flat_map(tm => module_compiler_pipeline_entry_decls(tm: tm))
+}
+
+fn compiler_pipeline_entry_decl(modules: List<TypedModule>) -> CompilerPipelineEntryDecl? {
+  let decls = compiler_pipeline_entry_decls(modules: modules)
+  if (decls |> count) == 1 { decls |> first } else { none }
+}
+
+fn corpus_has_compiler_pipeline(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.module_name
+    Absent => ""
+  }
+}
+
+fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_retained_host_driver
+    Absent => false
+  }
+}
+
+fn compiler_pipeline_entry_is_ambiguous(modules: List<TypedModule>) -> Bool {
+  (compiler_pipeline_entry_decls(modules: modules) |> count) > 1
+}
+
+fn compiler_pipeline_entry_module_names(modules: List<TypedModule>) -> String {
+  compiler_pipeline_entry_decls(modules: modules)
+    |> map(d => d.module_name)
+    |> join(separator: ", ")
+}
+
+fn emit_ambiguous_compiler_pipeline_main_rs(module_names: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "compile_error!(\"REFUSED: the corpus declares more than one compiler pipeline entry (",
+      module_names,
+      ") -- one emitted crate has one entry point, so no main can be emitted without choosing among them\");\n"
+    ),
+  }
+}
+
 fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
   emit_gunbc_cli_dispatch_generated_for_rows(crate_name: crate_name, rows: gunbc_cli_generated_dispatch_subcommands())
 }
 
+// THE DIRECT-INGEST DRIVER RETURNS EARLY, AHEAD OF EVERY RETAINED-HOST DECISION IN THIS FUNCTION.
+// Nothing below that branch is true of it: it has no clap surface, no generated dispatch, no
+// PipelineResult and no CandidateCliHost, because those are the seed's realization rather than
+// properties of having an entry point. Rendering it through the retained-host path would emit a
+// main naming v1_compiler.cli_run, which a self-emitted crate does not contain -- trading a correct
+// refusal for a call that does not link.
 fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
-  let has_pipeline = modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
+  let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
+  let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
   let unique_resource_types = unique_strings(items: resource_type_names)
   let resource_imports = unique_resource_types |> flat_map(rname =>
@@ -15701,17 +15864,25 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   }
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
-  if workflow_funcs |> count == 0 && has_pipeline == false {
+  if compiler_pipeline_entry_is_ambiguous(modules: modules) {
+    return emit_ambiguous_compiler_pipeline_main_rs(
+      module_names: compiler_pipeline_entry_module_names(modules: modules)
+    )
+  }
+  if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
+    return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+  }
+  if workflow_funcs |> count == 0 && retained_host_pipeline == false {
     return emit_entry_point_absent_main_rs(crate_name: crate_name)
   }
-  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
-  let binary_name = if has_pipeline { "gunbc" } else { crate_name }
-  let cli_about = if has_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
-  let cli_version_attr = if has_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
-  let cli_struct = if has_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
-  let subcommand_enum = if has_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline) }
-  let pipeline_fns = if has_pipeline { concat(emit_main_pipeline_fns(crate_name: crate_name), emit_candidate_cli_host(crate_name: crate_name)) } else { "" }
-  let main_fn = if has_pipeline {
+  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline, crate_name: crate_name, pipeline_module: pipeline_module)
+  let binary_name = if retained_host_pipeline { "gunbc" } else { crate_name }
+  let cli_about = if retained_host_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
+  let cli_version_attr = if retained_host_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
+  let cli_struct = if retained_host_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
+  let subcommand_enum = if retained_host_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline) }
+  let pipeline_fns = if retained_host_pipeline { concat(emit_main_pipeline_fns(crate_name: crate_name, pipeline_module: pipeline_module), emit_candidate_cli_host(crate_name: crate_name)) } else { "" }
+  let main_fn = if retained_host_pipeline {
     concat(
       "fn main() {\n",
       "    let cli = ", crate_name, "::gunbc_cli_dispatch_generated::Cli::parse();\n",
@@ -15719,9 +15890,9 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
       "    ", crate_name, "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n",
       "}\n")
   } else {
-    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
+    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: retained_host_pipeline, crate_name: crate_name)
   }
-  let diagnostic_fns = if has_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
+  let diagnostic_fns = if retained_host_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
   let content = concat(
     header, crate_use, resource_use, svc_use, mod_uses, "\n",
     cli_struct, "\n\n",
@@ -15731,6 +15902,66 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     diagnostic_fns
   )
   TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
+}
+
+// THE DRIVER FOR A SELF-EMITTED COMPILER, AND WHY IT IS A SHIM RATHER THAN A PROGRAM.
+//
+// Everything this main decides is argv and process status. The compile transaction itself is one
+// modeled call -- compile_dag_source_to_target_text in the entry module -- so the driver logic
+// lives in `.dag` where it can be read, checked and re-emitted, and the Rust authored here stays
+// the part that is genuinely a host boundary: reading a path, writing bytes, choosing an exit
+// status. DESIGN section 7 has the seed shrinking toward zero, and every line of driver logic
+// written as a string literal in this emitter is seed that would have to shrink later.
+//
+// THE THREE EXITS ARE DISTINCT ON PURPOSE. Missing or unreadable input is a USAGE refusal (2) and
+// is not a compile verdict; a rejected compile is (1); a completed compile writes its emitted text
+// to stdout and exits 0. Collapsing the first two would report a typo in a path as a compiler
+// diagnostic.
+//
+// THE REJECTED ARM PRINTS THE DIAGNOSTICS, and the reason it must is that the alternative was
+// tried: this arm shipped as `eprintln!("gunbc: refused: {}", source_path)`, which discards every
+// diagnostic the pipeline produced and hands the operator a refusal naming a file and no cause --
+// loud but content-free, so a compile error and any other rejection are indistinguishable. DESIGN
+// section 5 requires a failure arm to refuse with typed, located facts rather than widen into a
+// bare message, and `Outcome::Rejected` carries `NonEmptyDiagnostics`, so the located causes were
+// present and thrown away. The Accepted arm prints `value.carried` faithfully; this one owes the
+// same fidelity.
+//
+// IT RENDERS THROUGH `{:#?}` BECAUSE v2 HAS NO DIAGNOSTIC RENDERER YET. Every emitted type carries
+// Debug in its derive list, so the dump is complete -- reason, Locus and correction for the head
+// and every tail element. Writing a renderer inline in this emitter would mint a SECOND rendering
+// authority for a fact v2 should own (DESIGN section 3), which is worse than an ugly-but-total
+// dump. WHEN v2 declares a diagnostic renderer, this arm calls it and the `{:#?}` goes away; that
+// is the trigger, and nothing smaller retires it.
+fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+      "fn main() {\n",
+      "    let source_path = match std::env::args().nth(1) {\n",
+      "        Some(path) => path,\n",
+      "        None => { eprintln!(\"REFUSED: no source path given -- usage: ", crate_name, " <source.dag>\"); std::process::exit(2); }\n",
+      "    };\n",
+      "    let source_text = match std::fs::read_to_string(&source_path) {\n",
+      "        Ok(text) => text,\n",
+      "        Err(cause) => { eprintln!(\"REFUSED: could not read {}: {}\", source_path, cause); std::process::exit(2); }\n",
+      "    };\n",
+      "    match &*", crate_name, "::", pipeline_mod, "::compile_dag_source_to_target_text(source_text) {\n",
+      "        ", crate_name, "::v2_std_diagnostic::Outcome::Accepted { value, .. } => {\n",
+      "            print!(\"{}\", value.carried);\n",
+      "            std::process::exit(0);\n",
+      "        }\n",
+      "        ", crate_name, "::v2_std_diagnostic::Outcome::Rejected { diagnostics } => {\n",
+      "            eprintln!(\"REFUSED: {} did not compile\", source_path);\n",
+      "            eprintln!(\"{:#?}\", diagnostics);\n",
+      "            std::process::exit(1);\n",
+      "        }\n",
+      "    }\n",
+      "}\n")
+  }
 }
 
 // THE ENTRY POINT A PIPELINE-FREE CORPUS GETS, AND WHY IT REFUSES RATHER THAN RETURNING.
@@ -15783,13 +16014,13 @@ fn entry_point_absent_refusal_text(crate_name: String) -> String {
     " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run")
 }
 
-fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String) -> String {
+fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String, pipeline_module: String) -> String {
   let mod_names = workflow_funcs |> map(wf => module_to_filename(name: wf.module_name))
   let unique_mods = unique_strings(items: mod_names)
   let use_lines = unique_mods |> map(m => concat("use ", crate_name, "::", m, ";"))
   let base = use_lines |> join(separator: "\n")
   if has_pipeline {
-    let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
+    let pipeline_mod = module_to_filename(name: pipeline_module)
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
       "\nuse im::HashMap;\n",
@@ -16061,8 +16292,8 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
   }
 }
 
-fn emit_main_pipeline_fns(crate_name: String) -> String {
-  let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
+fn emit_main_pipeline_fns(crate_name: String, pipeline_module: String) -> String {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
   let artifact_mod = module_to_filename(name: "v1.compiler.artifact")
   concat(
     emit_collect_dag_files_fn(),
@@ -16149,12 +16380,6 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "        }\n",
     "    }\n",
     "    Ok(())\n",
-    "}\n",
-    "\n",
-    "fn hard_errors(result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> bool {\n",
-    "    result.diagnostics.iter().any(|d| {\n",
-    "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
-    "    })\n",
     "}\n",
     "\n")
 }

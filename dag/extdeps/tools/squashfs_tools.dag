@@ -1,0 +1,49 @@
+module extdeps.tools.squashfs_tools
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/bookworm/squashfs-tools/unsquashfs.1.en.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.squashfs_tools",
+      decl_name: "unsquashfs_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// SQUASHFS-TOOLS, NOT "A SQUASHFS READER". The upstream project publishes `mksquashfs` and
+// `unsquashfs` together and versions them together, so one module is one independently governed
+// upstream rather than a hub over a filesystem format. Only the extract direction is modeled: this
+// repository consumes a published squashfs image and has never authored one, and a builder with no
+// caller is an unconsumed surface (DESIGN section 5).
+// PATH-resolved program name, for the reason recorded once at extdeps.exec.command
+// program_spelling_is_an_observation_claim: no filesystem observation of the host has been made here.
+data unsquashfs_program: NonEmptyStr = "unsquashfs"
+
+// EXTRACT NAMES ITS DESTINATION, AND `-f` IS PART OF THE OPERATION RATHER THAN A CONVENIENCE.
+//
+// unsquashfs REFUSES to write into an existing destination directory unless `-f` is given. A
+// converge that re-extracts over a partially written tree from a previous interrupted run would
+// otherwise fail on the second attempt and succeed only after a manual removal -- an operation that
+// is not idempotent, which is what makes the flag load-bearing here rather than a preference. The
+// destination is a parameter and every caller pins it, so `-f` overwrites a path the caller named.
+fn unsquashfs_extract_command(archive: String, into_directory: String) -> ArgvCommand {
+  argv_command(
+    program: unsquashfs_program,
+    arguments: ["-f", "-d", into_directory, archive],
+  )
+}

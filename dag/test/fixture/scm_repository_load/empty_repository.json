@@ -1,5 +1,5 @@
 {
-  "format": "gunbc-scm-repository-v3",
+  "format": "gunbc-scm-repository-v4",
   "identity_rule": "scm-object-identity-v2",
   "objects": [],
   "next_commit_ordinal": 0,
