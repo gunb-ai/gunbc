@@ -1,6 +1,6 @@
 module gunbc.namespace_cut_subject_observation
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -286,20 +286,42 @@ fn probe_is_host(p: NamespaceCutSubjectProbe) -> Bool {
 // column from this, and a consumer asking "is this PRESENT" compares against this rather than
 // re-matching the coproduct. Raised by codex review 60447 against the fixture, but the duplication
 // was the renderer's first.
+data verdict_word_present: String = "PRESENT"
+data verdict_word_absent: String = "ABSENT"
+data verdict_word_unobservable: String = "UNOBSERVABLE"
+
+// The vocabulary is declared once and consumed by both the projection and the column width, so the
+// width cannot fall out of sync with the words -- which a hardcoded literal could, and did.
+data observation_verdict_words: List<String> = [
+  verdict_word_present,
+  verdict_word_absent,
+  verdict_word_unobservable,
+]
+
 fn observation_verdict(o: SubjectProbeObservation) -> String {
   match o {
-    SubjectProbePresent { probe: _ } => "PRESENT"
-    SubjectProbeAbsent { probe: _ } => "ABSENT"
-    SubjectProbeUnobservable { probe: _, why: _ } => "UNOBSERVABLE"
+    SubjectProbePresent { probe: _ } => verdict_word_present
+    SubjectProbeAbsent { probe: _ } => verdict_word_absent
+    SubjectProbeUnobservable { probe: _, why: _ } => verdict_word_unobservable
   }
 }
 
-// THE COLUMN IS DERIVED, NOT AUTHORED. Padding to the width of the longest verdict keeps the report
-// aligned without a second per-variant literal, so adding a verdict cannot leave the report ragged
-// in a way only a reader would notice.
+// THE COLUMN IS DERIVED, NOT AUTHORED -- and it now is. An earlier cut said this while padding to a
+// hardcoded 13, which is a literal that has to be kept in sync with the verdict vocabulary BY HAND:
+// a verdict longer than twelve characters would have gone ragged or driven repeat_string negative,
+// and the sentence above would still have read as a guarantee. That is DESIGN section 5's own tell
+// for validation standing where construction was available -- the claim satisfied by editing the
+// prose while the realization lies -- reproduced inside the pull request that exists to remove it,
+// and caught by review 60569. The width is now folded from the vocabulary itself, plus one space.
+fn observation_verdict_width() -> Int {
+  fold(observation_verdict_words, init: 0, f: fn(widest, word) {
+    if string_length(s: word) > widest { string_length(s: word) } else { widest }
+  }) + 1
+}
+
 fn observation_verdict_column(o: SubjectProbeObservation) -> String {
   let word = observation_verdict(o: o)
-  concat(word, repeat_string(s: " ", n: 13 - string_length(s: word)))
+  concat(word, repeat_string(s: " ", n: observation_verdict_width() - string_length(s: word)))
 }
 
 fn observation_render(o: SubjectProbeObservation) -> String {
@@ -435,8 +457,39 @@ fn subject_report_lines() -> List<String> {
 // No current construction site passes an empty reason -- all eight carry real text -- but DESIGN
 // section 4b asks whether the RED is AUTHORABLE, not whether it fires on today's corpus, and a
 // fixture can construct that observation trivially. The witness now does exactly that.
+// THE REFUSAL IS CLASSIFIED BY AN EXHAUSTIVE FOLD, NOT BY A LABEL. An earlier cut asked whether
+// observation_verdict equalled the string "UNOBSERVABLE" -- which traded a reason-text sentinel for
+// a VERDICT-LABEL sentinel and was no better in the way that counts: observation_verdict is also the
+// renderer's word source, so a relabelled verdict, or any future refusing state not spelled exactly
+// that way, falls through a String inequality to false. The exhaustive match protected label
+// PRODUCTION and left refusal CLASSIFICATION on an implicit catch-all over the String domain --
+// sitting in the exit criterion's ACCEPTING path, in a module claiming the stronger no-default
+// property.
+//
+// The typed-coproduct repair is a trap and is deliberately not taken: a verdict type would put this
+// function back to matching variants onto true/false, which is the structural-equality residue
+// review 60447 refused. The two obvious repairs are each other's defect. Folding to a LIST of
+// refusing observations escapes both -- the match is total and VALUE-RETURNING rather than a
+// predicate, and the refusal condition becomes a fact about a collection rather than about a
+// spelling, so the compile-time exhaustiveness now sits over the DECISION and not only over the
+// projection. A new variant must say here whether it refuses or it does not compile.
+fn refusals_in_observation(
+  acc: List<SubjectProbeObservation>,
+  o: SubjectProbeObservation
+) -> List<SubjectProbeObservation> {
+  match o {
+    SubjectProbePresent { probe: _ } => acc
+    SubjectProbeAbsent { probe: _ } => acc
+    SubjectProbeUnobservable { probe: _, why: _ } => concat(acc, [o])
+  }
+}
+
+fn observation_refusals(o: SubjectProbeObservation) -> List<SubjectProbeObservation> {
+  refusals_in_observation(acc: [], o: o)
+}
+
 fn observation_refuses(o: SubjectProbeObservation) -> Bool {
-  observation_verdict(o: o) == "UNOBSERVABLE"
+  list_length(items: observation_refusals(o: o)) > 0
 }
 
 // A refusal that carries no reason is still a refusal, and it renders as one rather than vanishing.
@@ -453,12 +506,19 @@ fn unobservable_in_observation(acc: String, o: SubjectProbeObservation) -> Strin
   }
 }
 
-fn row_refuses(r: SubjectObservationRow) -> Bool {
-  any(r.observations, o => observation_refuses(o: o))
+fn refusals_in_row(
+  acc: List<SubjectProbeObservation>,
+  r: SubjectObservationRow
+) -> List<SubjectProbeObservation> {
+  fold(r.observations, init: acc, f: fn(a, o) { refusals_in_observation(acc: a, o: o) })
+}
+
+fn refusals_in_rows(rows: List<SubjectObservationRow>) -> List<SubjectProbeObservation> {
+  fold(rows, init: [], f: fn(a, r) { refusals_in_row(acc: a, r: r) })
 }
 
 fn rows_refuse(rows: List<SubjectObservationRow>) -> Bool {
-  any(rows, r => row_refuses(r: r))
+  list_length(items: refusals_in_rows(rows: rows)) > 0
 }
 
 fn unobservable_in_row(acc: String, r: SubjectObservationRow) -> String {
