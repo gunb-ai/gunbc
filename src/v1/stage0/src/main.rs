@@ -240,10 +240,10 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
 /// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285): a typed
 /// refusal with a `Display`, returned by `Result`, the exit taken at the command boundary.
 ///
-/// `v1.05_emit_rust` `emit_main_rs` now emits the same three refusal arms before wiring the
-/// candidate compile handler. `main.rs` remains a declared hand-maintained divergence for its
-/// other retained host bodies, but executing the emitted compile entry no longer regresses this
-/// boundary to panic-or-ignore semantics.
+/// `v1.05_emit_rust` `emit_compile_target_helpers` now renders the same three refusal arms, and
+/// `emit_main_rs` composes that helper with the candidate compile handler. `main.rs` remains a
+/// declared hand-maintained divergence for its other retained host bodies, but executing the
+/// emitted compile entry no longer regresses this boundary to panic-or-ignore semantics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OutputWriteRefusal {
     OutputDirectoryNotCreated {
