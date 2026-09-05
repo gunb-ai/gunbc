@@ -148,10 +148,7 @@ fn bore_standing() -> ChordStanding {
 // rostered subject must now refuse as MISSING, and it must be distinguishable from a subject that
 // was measured and failed -- those have different remedies.
 test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bool {
-  admission_name(a: admit_export_profile(
-    roster: export_profile_subject_roster,
-    standings: [coupon_standing()],
-  )) == "incomplete"
+  admission_name(a: admit_export_profile(standings: [coupon_standing()])) == "incomplete"
   && coverage_name(c: cover_roster(
     roster: export_profile_subject_roster,
     standings: [coupon_standing()],
@@ -159,14 +156,27 @@ test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bo
 }
 
 // AND THE PAIRED ADMISSION, so the refusal above is not satisfied by a function that refuses
-// everything: a roster naming exactly the one measured subject admits on the same evidence. What
-// changed between the two calls is the DECLARED SUBJECT POPULATION, which is the distinction the
-// old witness could not make.
-test fn w_a_roster_of_exactly_the_measured_subject_admits_on_the_same_evidence() -> Bool {
-  admission_name(a: admit_export_profile(
-    roster: [coupon_top_rung_subject],
-    standings: [coupon_standing()],
-  )) == "admitted"
+// everything. The pairing may NOT be made by handing admission a shorter roster: that is the very
+// state this round closed, and a witness proving a caller-selected denominator admits would be
+// proving the defect. The population is held fixed at the authority roster and the EVIDENCE is
+// completed instead -- every rostered subject measured, every one carrying a requirement it meets.
+test fn w_the_authority_roster_admits_once_every_rostered_subject_is_settled() -> Bool {
+  admission_name(a: admit_export_profile(standings: [
+    coupon_standing(),
+    settled_standing(subject: fan_mounting_hole_subject),
+    settled_standing(subject: fan_bore_subject),
+  ])) == "admitted"
+}
+
+fn settled_standing(subject: ChordSubject) -> ChordStanding {
+  adjudicate_chord(
+    o: probe_observation(subject: subject, undersize: 993),
+    r: DistinctionDeclared {
+      subject: subject,
+      smallest: micrometer(count: 100),
+      authority: "fixture",
+    },
+  )
 }
 
 // A FOREIGN SUBJECT CANNOT STAND IN FOR A MISSING ONE. Equal cardinality is the substitution most
@@ -188,7 +198,6 @@ test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool {
 // requirements being authored, the roster or the adjudication has been weakened.
 test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -> Bool {
   admission_name(a: admit_export_profile(
-    roster: export_profile_subject_roster,
     standings: [coupon_standing(), fan_hole_standing(), bore_standing()],
   )) == "unsettled"
 }
@@ -214,12 +223,14 @@ test fn w_standings_measured_under_different_profiles_refuse() -> Bool {
     o: probe_observation_under(subject: fan_bore_subject, undersize: 993, k: other_profile),
     r: DistinctionDeclared { subject: fan_bore_subject, smallest: micrometer(count: 100), authority: "fixture" },
   )
-  admission_name(a: admit_export_profile(
-    roster: [coupon_top_rung_subject, fan_bore_subject],
-    standings: [a, b],
-  )) == "disagreement"
-  && admission_name(a: admit_export_profile(
-    roster: [coupon_top_rung_subject],
-    standings: [a],
-  )) == "admitted"
+  admission_name(a: admit_export_profile(standings: [
+    a,
+    settled_standing(subject: fan_mounting_hole_subject),
+    b,
+  ])) == "disagreement"
+  && admission_name(a: admit_export_profile(standings: [
+    a,
+    settled_standing(subject: fan_mounting_hole_subject),
+    settled_standing(subject: fan_bore_subject),
+  ])) == "admitted"
 }

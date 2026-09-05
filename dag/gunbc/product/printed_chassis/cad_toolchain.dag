@@ -198,8 +198,27 @@ fn python_requirement_is_met(r: PythonDistributionRequirement, observations: Lis
 // substitutes a partial toolchain or a best-effort run. A CadQuery program executed against a
 // half-provisioned kernel does not produce a worse solid -- it produces no solid and a traceback,
 // and the failure arrives at the point of use rather than at the point of decision.
+// THE READY ARM CARRIES A SEALED TOKEN RATHER THAN BEING ONE. A bare CadToolchainReady is a public
+// constructor: any module could write it and hand it to the sanctioned mint, so the plan's claim
+// that the toolchain was judged rested on nobody choosing to lie. AdmittedCadToolchain has a single
+// constructor and judge_cad_toolchain is its only caller, so the token cannot be forged even though
+// the coproduct that carries it is public.
+//
+// WHAT THIS DOES NOT CLAIM, stated because the neighbouring claim is the tempting one: the token
+// proves the ROSTERS WERE WALKED, not that CadQuery imports. The observations are boundary facts
+// authored outside this graph; no .dag construction can witness a Python import. That residue is a
+// declared boundary obligation under DESIGN section 4b -- observed, never fabricated -- and the
+// instrument field is what keeps it declared rather than silent.
+type AdmittedCadToolchain sole_constructor {
+  provisions: List<SystemLibraryProvision>
+  requirements: List<PythonDistributionRequirement>
+}
+
+fn admitted_provisions(a: AdmittedCadToolchain) -> List<SystemLibraryProvision> { a.provisions }
+fn admitted_requirements(a: AdmittedCadToolchain) -> List<PythonDistributionRequirement> { a.requirements }
+
 type CadToolchainStanding
-  = CadToolchainReady
+  = CadToolchainReady { admitted: AdmittedCadToolchain }
   | CadToolchainSystemLibrariesUnmet { unmet: List<SystemLibraryProvision> }
   | CadToolchainDistributionsUnmet { unmet: List<PythonDistributionRequirement> }
 
@@ -225,7 +244,12 @@ fn judge_cad_toolchain(
     if unmet_distributions.length() > 0 {
       CadToolchainDistributionsUnmet { unmet: unmet_distributions }
     } else {
-      CadToolchainReady
+      CadToolchainReady {
+        admitted: AdmittedCadToolchain {
+          provisions: cad_toolchain_system_provisions,
+          requirements: cad_toolchain_python_requirements,
+        },
+      }
     }
   }
 }
@@ -250,9 +274,21 @@ fn admit_cadquery_execution(
       CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesUnmet { unmet: u } }
     CadToolchainDistributionsUnmet { unmet: u } =>
       CadQueryExecutionRefused { standing: CadToolchainDistributionsUnmet { unmet: u } }
-    CadToolchainReady =>
+    CadToolchainReady { admitted: a } =>
       CadQueryExecutionAdmitted {
-        plan: CadQueryExecutionPlan { command: cadquery_run_program_command(script_path: script_path) },
+        plan: plan_from_admitted_toolchain(admitted: a, script_path: script_path),
       }
+  }
+}
+
+// THE ONLY MINT, AND IT CANNOT BE REACHED WITHOUT THE SEALED TOKEN. Taking AdmittedCadToolchain by
+// value rather than the coproduct is what makes that structural: there is no arm of this function
+// for an unjudged toolchain, because an unjudged toolchain cannot be spelled at this signature.
+fn plan_from_admitted_toolchain(
+  admitted: AdmittedCadToolchain,
+  script_path: String,
+) -> CadQueryExecutionPlan {
+  CadQueryExecutionPlan {
+    command: cadquery_run_program_command(script_path: script_path),
   }
 }

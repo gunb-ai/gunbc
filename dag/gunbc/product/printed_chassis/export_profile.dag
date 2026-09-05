@@ -264,11 +264,14 @@ fn standings_share_one_profile(standings: List<ChordStanding>) -> Bool {
       inner && stl_export_knobs_eq(a: standing_profile(s: st), b: standing_profile(s: other))))
 }
 
-fn admit_export_profile(
-  roster: List<ChordSubject>,
-  standings: List<ChordStanding>,
-) -> ExportProfileAdmission {
-  match cover_roster(roster: roster, standings: standings) {
+// THE ROSTER IS CLOSED OVER, NOT RECEIVED. An earlier revision took the roster as a parameter, which
+// moved the writable denominator one argument to the left rather than removing it: a caller could
+// still name [coupon_top_rung_subject], omit both fan features, and be admitted. The paired witness
+// that watched a one-subject roster admit was exhibiting that state, not closing it. Coverage stays
+// roster-parametric in cover_roster, where varying the roster against fixed evidence is the whole
+// content of the discriminator; production admission may not offer that knob to anyone.
+fn admit_export_profile(standings: List<ChordStanding>) -> ExportProfileAdmission {
+  match cover_roster(roster: export_profile_subject_roster, standings: standings) {
     CoverageMissing { subjects: m } =>
       ExportProfileRefusedIncomplete { coverage: CoverageMissing { subjects: m } }
     CoverageForeign { subjects: f } =>

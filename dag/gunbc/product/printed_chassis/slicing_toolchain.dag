@@ -114,24 +114,67 @@ type OrcaExecutionStanding
   | ExecutionRefused { receipt: NonEmptyStr }
   | ExecutionReady { attempt: AttemptedExecution }
 
-// AN ATTEMPT IS ADMITTED ONLY OVER A HOST THAT CLEARS THE FLOOR, and only from a receipt reporting
-// that the program actually started. Both halves are required: below the floor there is nothing to
-// attempt, and above it an attempt can still refuse.
+// CONSTRUCTOR EXCLUSIVITY IS NOT MINT SOUNDNESS. Sealing AttemptedExecution decided who may mint it;
+// it did not decide what the mint must consume. The previous signature took `started: Bool` beside
+// the call, so the sanctioned judge minted the seal on a caller's say-so and the seal proved only
+// that the caller had said yes. A boolean supplied alongside a call is not evidence -- it is the
+// conclusion, moved one argument to the left, which is the same defect this PR closed on the export
+// denominator.
+//
+// The outcome is therefore a structured observation of a named process: either the loader refused it
+// or it exited with a status. Ready requires a ZERO status from that carrier, so there is no
+// spelling of "it started" that is separable from the process being described.
+//
+// WHAT REMAINS OUTSIDE THE MODEL, and is a declared boundary obligation rather than a rung: the
+// outcome is authored at the boundary by whoever ran the program. No construction in this graph can
+// witness a process. What the shape removes is the UNSTRUCTURED assertion; what it cannot remove is
+// the boundary itself.
+type ProcessOutcome
+  = ProcessFailedToStart { program: NonEmptyStr, loader_diagnostic: NonEmptyStr }
+  | ProcessExited { program: NonEmptyStr, exit_status: Nat, diagnostic: NonEmptyStr }
+
+fn process_outcome_program(o: ProcessOutcome) -> NonEmptyStr {
+  match o {
+    ProcessFailedToStart { program: p, loader_diagnostic: _ } => p
+    ProcessExited { program: p, exit_status: _, diagnostic: _ } => p
+  }
+}
+
+fn process_outcome_diagnostic(o: ProcessOutcome) -> NonEmptyStr {
+  match o {
+    ProcessFailedToStart { program: _, loader_diagnostic: d } => d
+    ProcessExited { program: _, exit_status: _, diagnostic: d } => d
+  }
+}
+
+fn process_outcome_succeeded(o: ProcessOutcome) -> Bool {
+  match o {
+    ProcessFailedToStart { program: _, loader_diagnostic: _ } => false
+    ProcessExited { program: _, exit_status: st, diagnostic: _ } => st == 0
+  }
+}
+
+// AN ATTEMPT IS ADMITTED ONLY OVER A HOST THAT CLEARS THE FLOOR, and only from an outcome describing
+// a process that exited zero. Both halves are required: below the floor there is nothing to attempt,
+// and above it an attempt can still refuse.
 fn judge_orca_execution(
   observation: HostRuntimeObservation,
-  program: NonEmptyStr,
-  started: Bool,
-  receipt: NonEmptyStr,
+  outcome: ProcessOutcome,
 ) -> OrcaExecutionStanding {
   match judge_host_abi(observation: observation) {
     HostAbiUnobserved => ExecutionUnattempted { abi: HostAbiUnobserved }
     BelowObservedArtifactFloor { provided: p, required: r } =>
       ExecutionUnattempted { abi: BelowObservedArtifactFloor { provided: p, required: r } }
     MeetsObservedArtifactFloor { provided: _, required: _ } =>
-      if started {
-        ExecutionReady { attempt: AttemptedExecution { program: program, receipt: receipt } }
+      if process_outcome_succeeded(o: outcome) {
+        ExecutionReady {
+          attempt: AttemptedExecution {
+            program: process_outcome_program(o: outcome),
+            receipt: process_outcome_diagnostic(o: outcome),
+          },
+        }
       } else {
-        ExecutionRefused { receipt: receipt }
+        ExecutionRefused { receipt: process_outcome_diagnostic(o: outcome) }
       }
   }
 }
@@ -150,16 +193,18 @@ fn judge_orca_execution(
 // taken in the environment that will actually run it means anything.
 data container_execution: OrcaExecutionStanding = judge_orca_execution(
   observation: observed_container_glibc,
-  program: "orca-slicer",
-  started: false,
-  receipt: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
+  outcome: ProcessFailedToStart {
+    program: "orca-slicer",
+    loader_diagnostic: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
+  },
 )
 
 data srv2_execution: OrcaExecutionStanding = judge_orca_execution(
   observation: observed_srv2_glibc,
-  program: "orca-slicer",
-  started: false,
-  receipt: "above the floor and refused: 12 sonames unresolved on a host that already carried GTK and pango",
+  outcome: ProcessFailedToStart {
+    program: "orca-slicer",
+    loader_diagnostic: "above the floor and refused: 12 sonames unresolved on a host that already carried GTK and pango",
+  },
 )
 
 // WHAT WOULD RETIRE THE REFUSAL is stated in this module's opening annotation and nowhere else on

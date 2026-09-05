@@ -7,6 +7,7 @@ import product.printed_chassis.slicing_toolchain {
   HostAbiStanding, BelowObservedArtifactFloor, MeetsObservedArtifactFloor, HostAbiUnobserved,
   OrcaExecutionStanding, ExecutionUnattempted, ExecutionRefused, ExecutionReady,
   SliceAdmission, SliceAdmitted, SliceRefused,
+  ProcessOutcome, ProcessExited, ProcessFailedToStart,
   judge_host_abi, judge_orca_execution, admit_slice,
   observed_container_glibc, observed_srv2_glibc, container_execution, srv2_execution,
 }
@@ -44,12 +45,17 @@ fn abi_of(v: GlibcVersion) -> String {
   abi_name(a: judge_host_abi(observation: HostGlibcObserved { version: v, instrument: "fixture" }))
 }
 
-fn attempt(v: GlibcVersion, started: Bool) -> OrcaExecutionStanding {
+// THE FIXTURE SUPPLIES A PROCESS OUTCOME, NOT A BOOLEAN. `started` used to be a Bool handed to the
+// judge beside the call, which meant the sealed attempt was minted on the fixture's word; the
+// outcome carrier makes the two arms describe a process -- a loader refusal, or an exit status.
+fn attempt(v: GlibcVersion, exited_zero: Bool) -> OrcaExecutionStanding {
   judge_orca_execution(
     observation: HostGlibcObserved { version: v, instrument: "fixture" },
-    program: "orca-slicer",
-    started: started,
-    receipt: "fixture",
+    outcome: if exited_zero {
+      ProcessExited { program: "orca-slicer", exit_status: 0, diagnostic: "fixture" }
+    } else {
+      ProcessExited { program: "orca-slicer", exit_status: 1, diagnostic: "fixture" }
+    },
   )
 }
 
@@ -74,23 +80,24 @@ test fn w_a_higher_major_with_a_lower_minor_still_satisfies() -> Bool {
 // only means the loader will not reject the binary for a missing glibc symbol; the rest of the
 // runtime closure is still unproven, so an attempt above the floor may still refuse.
 test fn w_meeting_the_floor_does_not_by_itself_establish_execution() -> Bool {
-  execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), started: false)) == "refused"
-  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), started: true)) == "ready"
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), exited_zero: false)) == "refused"
+  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), exited_zero: true)) == "ready"
 }
 
 // BELOW THE FLOOR THERE IS NOTHING TO ATTEMPT, and that is a different verdict from an attempt that
-// failed -- they have different remedies. A started=true claim below the floor must NOT be honoured,
+// failed -- they have different remedies. A zero-exit outcome below the floor must NOT be honoured,
 // or the ABI check is decorative.
-test fn w_below_the_floor_is_unattempted_even_if_a_caller_claims_it_started() -> Bool {
-  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: true)) == "unattempted"
-  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: false)) == "unattempted"
+test fn w_below_the_floor_is_unattempted_even_when_the_outcome_says_it_exited_zero() -> Bool {
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), exited_zero: true)) == "unattempted"
+  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), exited_zero: false)) == "unattempted"
 }
 
 // AN UNOBSERVED HOST REFUSES rather than being assumed compatible, so the dynamic linker is never
 // the thing that discovers a decision nobody made.
 test fn w_an_unobserved_host_refuses_rather_than_being_assumed_compatible() -> Bool {
   execution_name(e: judge_orca_execution(
-    observation: HostGlibcUnobserved, program: "orca-slicer", started: true, receipt: "fixture",
+    observation: HostGlibcUnobserved,
+    outcome: ProcessExited { program: "orca-slicer", exit_status: 0, diagnostic: "fixture" },
   )) == "unattempted"
 }
 
@@ -103,17 +110,17 @@ test fn w_an_unobserved_host_refuses_rather_than_being_assumed_compatible() -> B
 // it was below the floor. That went red the hour the image moved to Debian 13, exactly as designed.
 // The recorded rows were re-measured; the expectation was not edited to keep them green.
 test fn w_below_the_floor_and_refused_above_it_are_different_failures() -> Bool {
-  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: true)) == "unattempted"
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), exited_zero: true)) == "unattempted"
   && execution_name(e: container_execution) == "refused"
   && execution_name(e: srv2_execution) == "refused"
 }
 
-// AND NO PLAN IS MINTED FROM EITHER, while a started attempt above the floor does mint one -- so the
+// AND NO PLAN IS MINTED FROM EITHER, while a successful attempt above the floor does mint one -- so the
 // refusal is not satisfied by a function that refuses everything.
-test fn w_no_plan_is_minted_from_either_recorded_host_and_one_is_from_a_started_attempt() -> Bool {
+test fn w_no_plan_is_minted_from_either_recorded_host_and_one_is_from_a_successful_attempt() -> Bool {
   admission_name(a: sliced(s: container_execution)) == "refused"
   && admission_name(a: sliced(s: srv2_execution)) == "refused"
-  && admission_name(a: sliced(s: attempt(v: glibc_version(major: 2, minor: 39), started: true)))
+  && admission_name(a: sliced(s: attempt(v: glibc_version(major: 2, minor: 39), exited_zero: true)))
        == "admitted"
 }
 
