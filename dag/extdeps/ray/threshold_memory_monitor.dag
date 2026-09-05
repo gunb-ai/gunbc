@@ -41,6 +41,25 @@ data ray_factory_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data ray_config_macro_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/ray_config.h"
+  }
+}
+
+// THE MASTER AUTHORITY EXISTS ONLY TO GROUND A CONTRAST, AND THAT IS WHY IT IS A SEPARATE ROW.
+// `ray_config_absences` asserts that a field is present on master and absent at the tag. That is a
+// claim about TWO revisions, so citing only the tag would leave half of it ungrounded -- and this
+// module has already been bitten twice by master content sitting under a tag pin. A contrast needs
+// both ends named.
+data ray_config_master_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/master/src/ray/common/ray_config_def.h"
+  }
+}
+
 data ray_threshold_monitor_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -72,6 +91,30 @@ data ray_built_monitors_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+data ray_config_env_spelling_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_config_env_spelling",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_config_macro_authority,
+  further_citations: []
+}
+
+data ray_config_absences_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_config_absences",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ray_config_master_authority]
+}
+
 data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -92,9 +135,10 @@ data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
 // version the fleet runs, in a shape no later reader could detect: the row would name a real
 // repository, a real file and a real revision, and be wrong about one field.
 //
-// So the version is established from the running deployment rather than assumed:
-// `ray.__version__` read inside the serving container, not from a host's site-packages -- the hosts
-// have no Ray at all, which is a fact about where the engine lives and not about whether it is used.
+// The version this module pins is the one the deployment executes rather than the one that was
+// easiest to read. HOW that version was established is a receipt about our fleet and lives in
+// `gunbc.spark`, not here: an extdeps row states which revision it cites, never who observed it or
+// where.
 type RaySourceRevision sole_constructor {
   repository: NonEmptyStr
   tag: NonEmptyStr
@@ -139,9 +183,8 @@ fn ray_config_env_spelling(c: RayThresholdMonitorConfig) -> NonEmptyStr {
 // `count_swap_in_memory_monitor` is carried as an explicit ABSENCE at this revision rather than
 // simply left out. A field that is merely missing from a list is indistinguishable from one nobody
 // looked for, and this one was looked for and found not to exist -- the distinction that keeps the
-// next author from re-adding it off a master search. It matters for us in particular: the Spark
-// hosts carry 16 GiB of swap and are USING it, so whether the monitor counts swap is a live question
-// on this fleet and not a hypothetical one.
+// next author from re-adding it off a master search. WHY it matters to a particular deployment --
+// whether that deployment has swap at all -- is a fleet fact and belongs to the consumer, not here.
 type RayConfigAbsentAtRevision sole_constructor {
   field_name: NonEmptyStr
   absent_at: RaySourceRevision
@@ -152,7 +195,7 @@ data ray_config_absences: List<RayConfigAbsentAtRevision> = [
   RayConfigAbsentAtRevision {
     field_name: "count_swap_in_memory_monitor" as NonEmptyStr,
     absent_at: ray_source_revision_read,
-    ground: "Present on master, absent from ray_config_def.h at ray-2.58.0. Read after an earlier draft of this module nearly cited it from master; the Spark hosts run 16 GiB of swap, so the knob's absence is load-bearing rather than incidental." as NonEmptyStr
+    ground: "Present on master, absent from ray_config_def.h at ray-2.58.0. Present on master and read as absent at the tag; recorded because an earlier draft of this module nearly cited it from master." as NonEmptyStr
   }
 ]
 
@@ -235,7 +278,7 @@ fn ray_monitor_log_format(line: RayMonitorLogLine) -> NonEmptyStr {
     NodeMemoryUncapturable =>
       "Unable to capture node memory. Monitor will not be able to detect memory usage above threshold." as NonEmptyStr
     UserSliceSnapshotFailed =>
-      "Failed to take user and system slice memory snapshot. The threshold memory monitor will not be able to provide resource isolation protection." as NonEmptyStr
+      "Failed to take user and system slice memory snapshot due to: %s. The threshold memory monitor will not be able to provide resource isolation protection." as NonEmptyStr
     ThresholdMonitorDisabled =>
       "ThresholdMemoryMonitor disabled. Specify `RAY_memory_monitor_refresh_ms` > 0 to enable the monitor." as NonEmptyStr
   }
