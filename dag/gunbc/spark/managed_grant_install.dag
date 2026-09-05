@@ -583,12 +583,16 @@ fn spark_grant_credential_requirement(host: HostIdentity, grant: SparkManagedGra
     attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
   )
   join([
-    "REQUIRED: an administrator credential for ", l.bootstrap_principal as String,
-    " on ", l.host as String,
-    ", enrolled at ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+    "REQUIRED: an administrator credential for ", l.subject.bootstrap_principal as String,
+    " on ", l.subject.host as String,
+    ", enrolled at ",
+    match spark_administrator_password_secret_ref_for(host: host) {
+      SparkAdministratorCredentialRefFound { ref: r } => secret_ref_version_resource(ref: r)
+      SparkAdministratorCredentialHostNotEnrolled { host: h } => join(["NO ENROLLED SECRET for ", h as String, " in spark_administrator_credential_roster"], "")
+    },
     " (that name is supplied, never derived; this line states WHICH secret the run needs, and never",
     " that any run holds it)",
-    ". Authorized purpose: ", l.authorized_purpose as String,
+    ". Authorized purpose: ", l.purpose as String,
     ". The credential is materialized only for this step, delivered over stdin, and never enters an",
     " argv, a plan artifact, a workflow input or this receipt. Supplying it is the whole of the",
     " external input -- the mutation itself stays inside convergence and is read back independently.",
