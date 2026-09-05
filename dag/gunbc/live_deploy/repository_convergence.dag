@@ -188,6 +188,34 @@ fn convergence_ref_identity_matches(left: GitRefIdentity, right: GitRefIdentity)
     && left.symref == right.symref
 }
 
+// A SYMBOLIC REF WHOSE TARGET IS THE REF THE TRANSITION MOVES FOLLOWS IT BY CONSTRUCTION. The
+// preservation adjudication compares every non-base ref's identity before and after, and a
+// symref's identity carries the object its target currently resolves to. refs/remotes/origin/HEAD
+// targets refs/remotes/origin/main on every clone git makes, so advancing the base ref moves the
+// symref's resolved object without anyone touching the symref -- and the first live convergence on
+// srv1 (2026-09-04) refused ConvergenceRefRebound on exactly that ref, after the transition had
+// completed correctly. What must be preserved for such a ref is its TARGET: a retargeting is still a
+// rebind and still refuses (a_symref_retargeted_at_the_same_object_refuses); a symref that points
+// at some other ref and moves is still a rebind, because nothing in this transition moved its
+// target. Only the ref that follows the base ref or the primary branch is expected to move, and it
+// is expected to move exactly to where they went.
+fn convergence_ref_follows_transition(r: GitRefIdentity, base_ref: String, primary_branch: String?) -> Bool {
+  r.symref != "" && (r.symref == base_ref || optional_is_value(o: primary_branch, v: r.symref))
+}
+
+fn convergence_ref_preserved(
+  left: GitRefIdentity,
+  right: GitRefIdentity,
+  base_ref: String,
+  primary_branch: String?,
+) -> Bool {
+  if convergence_ref_follows_transition(r: left, base_ref: base_ref, primary_branch: primary_branch) {
+    left.refname == right.refname && left.symref == right.symref
+  } else {
+    convergence_ref_identity_matches(left: left, right: right)
+  }
+}
+
 fn convergence_refs_contain(refs: List<GitRefIdentity>, refname: String, objectname: GitObjectId) -> Bool {
   any(refs, r => convergence_ref_matches(identity: r, refname: refname, objectname: objectname))
 }
@@ -206,7 +234,7 @@ fn convergence_first_rebound_ref(
     r.refname != base_ref && !optional_is_value(o: primary_branch, v: r.refname)
       && match convergence_ref_at(refs: after, refname: r.refname) {
         Absent => false
-        Present { value: seen } => !convergence_ref_identity_matches(left: r, right: seen)
+        Present { value: seen } => !convergence_ref_preserved(left: r, right: seen, base_ref: base_ref, primary_branch: primary_branch)
       }
   )
   match changed.first() {
@@ -238,7 +266,7 @@ fn convergence_first_lost_ref(
 ) -> GitRefIdentity? {
   let moved_or_lost = before |> filter(r =>
     r.refname != base_ref && !optional_is_value(o: primary_branch, v: r.refname)
-      && !(after |> any(a => convergence_ref_identity_matches(left: r, right: a)))
+      && !(after |> any(a => convergence_ref_preserved(left: r, right: a, base_ref: base_ref, primary_branch: primary_branch)))
   )
   moved_or_lost.first()
 }

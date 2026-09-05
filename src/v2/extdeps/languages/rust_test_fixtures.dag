@@ -7,8 +7,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 
 import v2.extdeps.languages.rust {
-  rust_host_build_environment,
   rust_add_declared_inhabitants_root,
+  rust_add_serialize_source_node,
   rust_binding_spellings,
   rust_collection_realization_catalog_node,
   rust_concrete_token_node,
@@ -24,6 +24,7 @@ import v2.extdeps.languages.rust {
   rust_grammar_relation_row_node,
   rust_grammar_sequence_from_concrete_tokens,
   rust_grammar_terminal,
+  rust_host_build_environment,
   rust_ident_lex_rule,
   rust_inhabitant_atom,
   rust_int_literal_lex_rule,
@@ -34,15 +35,18 @@ import v2.extdeps.languages.rust {
   rust_runtime_row,
   rust_selection_policy_node,
   rust_sg_rc_use_site_ownership_catalog,
+  rust_source_text,
   rust_source_text_authority,
   rust_staging_lex,
   rust_target_model_bundle_core,
   rust_target_model_core_edges_with_operators,
+  rust_translation_rules_node,
   rust_type_expression_projection_bundle_node,
   rust_value_expression_projection,
   rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
-  rust_whitespace_trivia_rule
+  rust_whitespace_trivia_rule,
+  rust_semantic_decl_emission_bundle_node
 }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
@@ -327,6 +331,49 @@ fn rust_pick_target_model_staging() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_pick_source_text,
     runtime_row: rust_runtime_row()
+  }
+}
+
+// Supplemental generic bound contract fixture — the heavy test fns call
+// collection_realization_from_target which reads only the collection_realization
+// edge from the bundle. All other TargetModel fields are never asserted about
+// and are replaced with minimal fixtures.
+data rust_sgb_source_text: String = "supplemental_generic_bound_contract_fixture"
+
+fn rust_sgb_target_model_core_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    )
+  ]
+}
+
+fn rust_sgb_target_model_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_sgb_target_model_core_edges(),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rust_sgb_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: [] } }
+}
+
+fn rust_sgb_binding_spellings() -> Map<Symbol, String> {
+  empty_map()
+}
+
+fn rust_sgb_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_sgb_target_model_bundle_core(),
+    lex: rust_sgb_lex(),
+    binding_spellings: rust_sgb_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_sgb_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -1018,6 +1065,31 @@ fn rust_loop_target_model_staging() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_loop_source_text,
     runtime_row: rust_loop_runtime_row()
+  }
+}
+
+// Semantic-decl-emission fixture: provides the ^target_model_edge_semantic_decl_emission
+// edge (with full production content because tests compare decoded values against live
+// Rust functions) and dead-minimal values for every other TargetModel field that
+// semantic_decl_emission_from_target / emit_semantic_type_decl never read.
+fn rust_semantic_decl_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        rust_named_edge(
+          name: ^target_model_edge_semantic_decl_emission,
+          target: rust_semantic_decl_emission_bundle_node()
+        )
+      ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -4413,3 +4485,202 @@ fn rust_shell_exec_run_family_target_model_staging() -> TargetModel {
     runtime_row: rust_shell_exec_run_family_runtime_row()
   }
 }
+
+// ===== rust_binop_emit fixtures =====
+// Replaces rust_target_model_staging() for the producer-emit tests (line 106, target: rust_target_model_staging()).
+// The VEP tests already use rust_target_model_with_operators_and_lex() and remain on that path.
+
+data rust_binop_source_text: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
+
+fn rust_binop_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_param_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_param_y, "y")
+  map_insert(m4, ^dag_binding_type_int, "i32")
+}
+
+
+fn rust_binop_target_model_bundle_core() -> Node {
+  rust_minimal_target_model_bundle_core()
+}
+
+fn rust_binop_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_binop_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_binop_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_binop_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// ===== rust_body_add_emit fixtures =====
+// Replaces rust_target_model_staging() for the two tests that use it directly.
+// Tests 3 and 4 already build their own models via rust_target_model_with_operators_and_lex().
+
+data rust_body_add_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+
+fn rust_body_add_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_param_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_param_y, "y")
+  map_insert(m4, ^dag_binding_type_int, "i32")
+}
+
+
+fn rust_body_add_target_model_bundle_core() -> Node {
+  rust_minimal_target_model_bundle_core()
+}
+
+fn rust_body_add_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_body_add_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_body_add_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_body_add_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// Shared minimal bundle core used by multiple emit-test fixtures.
+// Omits the semantic_decl_emission edge that production rust_target_model_bundle_core includes.
+// Uses production rust_translation_rules_node() and rust_add_serialize_source_node()
+// since fn_add body tests use the same relations.
+
+fn rust_minimal_target_model_core_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_selection_policy,
+      target: rust_selection_policy_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_declared_inhabitants,
+      target: rust_add_declared_inhabitants_root()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: rust_translation_rules_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: rust_add_serialize_source_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_collection_realization,
+      target: rust_collection_realization_catalog_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_use_site_ownership_realizations,
+      target: target_use_site_ownership_catalog_node(
+        rows: rust_sg_rc_use_site_ownership_catalog()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_semantics_carriers,
+      target: target_value_semantics_carriers_node(
+        atoms: rust_value_semantics_carrier_atoms()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_value_expression_projection,
+      target: value_expr_projection_bundle_node(
+        projection: rust_value_expression_projection()
+      )
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_operator_realizations,
+      target: rust_operator_realizations_catalog_node()
+    )
+  ]
+}
+
+fn rust_minimal_target_model_bundle_core() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: rust_minimal_target_model_core_edges(),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// ===== rust_call_emit fixture bundle =====
+// Replaces rust_target_model_bundle_core() in the test's inline TargetModel builder.
+
+fn rust_call_target_model_bundle_core() -> Node {
+  rust_minimal_target_model_bundle_core()
+}
+
+// ===== rust_bind_let_emit fixture bundle =====
+// Replaces rust_target_model_bundle_core() in the test's inline TargetModel builder.
+
+fn rust_bind_let_target_model_bundle_core() -> Node {
+  rust_minimal_target_model_bundle_core()
+}
+
+fn rust_add_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
+  let m1 = map_insert(m0, ^rust_binding_param_x, "x")
+  let m2 = map_insert(m1, ^rust_binding_param_y, "y")
+  let m3 = map_insert(m2, ^dag_binding_param_x, "x")
+  let m4 = map_insert(m3, ^dag_binding_param_y, "y")
+  map_insert(m4, ^dag_binding_type_int, "i32")
+}
+
+fn rust_add_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_minimal_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_add_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text,
+    runtime_row: rust_runtime_row()
+  }
+}
+
+fn rust_transport_wire_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: rust_minimal_target_model_bundle_core(),
+    lex: rust_fn_add_lex(),
+    binding_spellings: rust_add_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: rust_source_text,
+    runtime_row: rust_runtime_row()
+  }
+}
+
+// Minimum-viable TargetModel for tests that never inspect the target contents.
+// Used by vacuity-classification and terminal-gate tests which only check
+// transport mode or execution status, never the TargetModel fields.
+fn rust_minimal_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: HostRuntimeRowAbsent
+  }
+}
+

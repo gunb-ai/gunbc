@@ -243,6 +243,20 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
+    // BEFORE ANY WORK, AND BEFORE ARGUMENTS, because a limit acquired after the first large
+    // allocation bounds nothing that already happened. On a machine that already binds this
+    // process — every self-hosted CI runner — this is a no-op that says so; on an executor with
+    // no limit at all it creates one, so the whole-corpus adjudication can run somewhere the
+    // kernel is enforcing a ceiling instead of thrashing against a machine.
+    // A refused bind STOPS THE LINE: the run asked to be bounded, it is not bounded, and
+    // proceeding would be exactly the escape hatch the request existed to close.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return Err(ExitCode::FAILURE);
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
@@ -640,6 +654,72 @@ fn run() -> Result<ExitCode, ExitCode> {
                             "phase-roster ({} finding(s))",
                             roster_findings.len()
                         ));
+                    }
+
+                    // THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN RIDES THE SAME INGESTION, for
+                    // the same reason the two joins above do: the roster half is a membership
+                    // fact readable only from the parse this phase has already performed, and a
+                    // corpus-wide job per question is what DESIGN §6 refuses. The declared half
+                    // is read through the `data_decl_type_facts` producer — the same walk the
+                    // `v2.std.decl_index` builtin marshals, not a second derivation of it.
+                    //
+                    // IT LIVES IN THE LANE THE PARSE PHASE LIVES IN, whichever that is: it is a
+                    // rider, not a phase, so `RequiredCiPhase::Parse`'s lane ownership answers for
+                    // it and no second routing fact exists to drift. No job is added; the roster of
+                    // required jobs is closed to growth, and this check belongs to a phase that
+                    // already exists.
+                    match v1_compiler::cli_run::rostered_row_join::run_rostered_row_join(
+                        &sweep.index,
+                    ) {
+                        Ok(report) => {
+                            // A GREEN NAMES ITS DENOMINATORS, per row type: declared, rostered
+                            // and CHECKED, so a subject that narrowed is legible from the log
+                            // rather than only from the verdict.
+                            eprintln!(
+                                "required-ci: rostered-row-join sources_accounted={} controls_fired={}",
+                                report.sources_accounted,
+                                report.control_findings.len()
+                            );
+                            for counts in &report.counts {
+                                eprintln!(
+                                    "required-ci: rostered-row-join {} population_of_type={} excluded_other_carrier={} declared={} rostered_names={} checked={} fixture_home={}",
+                                    counts.row_type,
+                                    counts.population_of_type,
+                                    counts.excluded_other_carrier,
+                                    counts.declared,
+                                    counts.rostered,
+                                    counts.checked,
+                                    counts.fixture_home,
+                                );
+                            }
+                            for finding in &report.control_findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join CONTROL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            for finding in &report.findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join FAIL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            if !report.findings.is_empty() {
+                                phase_failures.push(format!(
+                                    "rostered-row-join ({} finding(s))",
+                                    report.findings.len()
+                                ));
+                            }
+                        }
+                        // NO VERDICT IS NOT A GREEN. The declared population being unobtainable
+                        // stops the line under its own name rather than being reported as a
+                        // clean join over nothing.
+                        Err(e) => {
+                            eprintln!("required-ci: rostered-row-join NOT EVALUATED — {e}");
+                            phase_failures.push(
+                                "rostered-row-join (declared population unobtainable)".to_string(),
+                            );
+                        }
                     }
                 }
                 Err(errors) => {

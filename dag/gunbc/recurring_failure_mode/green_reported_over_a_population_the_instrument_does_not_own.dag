@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.green_reported_over_a_population_the_instrument_does_not_own
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data green_reported_over_a_population_the_instrument_does_not_own: RecurringFailureMode = RecurringFailureMode {
@@ -49,12 +50,29 @@ data green_reported_over_a_population_the_instrument_does_not_own: RecurringFail
 
     "The tell is two actuators over one declared population with no join between their denominators. ",
 
-    "NEXT-RUNG TRIGGER, a capability and not an artifact: ONE adjudication over the whole declared generated-artifact population, so that a stale projection is a refusal from the same run that adjudicates the mirrors; failing that, a green that NAMES ITS OWN BOUNDARY -- reporting the artifacts it did not adjudicate rather than a bare count -- which is the weaker form and turns silent non-coverage into a stated one. ",
+    "THE FORMER NEXT-RUNG TRIGGER FIRED ON 2026-09-04, AND IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE. gunbc#10455 deleted RegenPhase from both gunbc.required_ci_phase_roster RequiredCiPhase and its host realization, moved its stage0-mirror adjudicator under the surviving GeneratedArtifactPhase beside the registry-projection adjudicator, runs the second population even when the first refuses, and emits one terminal OK or FAIL naming both populations. A stale projection or drifted mirror now refuses from the SAME phase and neither half can lend its green to the other. ",
 
-    "RUNG: mitigatable. ",
+    "RUNG: mechanically preventable. The invalid source shape remains writable: the bootstrap host can still omit one component call or reintroduce an independently-green phase, and safety depends on the composite phase executing and its permanent controls staying enrolled. It is therefore not structural guarantee or impossibility. ",
 
-    "NOT REPAIRED HERE: extending an actuator's population or splitting its report is a change to the regen authority and does not belong in the diff that discovered it.)",
+    "EXECUTED EVIDENCE FOR THE CLIMB. The permanent floor-discovered controls refuse both asymmetric states -- registry green with a drifted stage0 mirror, and mirrors green with a stale registry projection -- while an all-clean positive control accepts, excluding a compositor that merely refuses everything. On gunbc#10455's required CI execution the announced phase roster omitted regen and the surviving phase reported `generated-artifact OK populations=registry-projections,stage0-mirrors`; independently, the authoring run observed stage0-mirrors 156/156 clean, continued into a typed registry MemoryStallRefusedPageThrash instead of short-circuiting, and emitted the single terminal composite FAIL naming both populations. ",
+
+    "NEXT-RUNG TRIGGER, from mechanically preventable to structurally guaranteed: required-run dispatch and heal-before-push consume an exhaustive adjudicator DERIVED from every arm of gunbc.required_ci_phase_roster DeclaredGeneratedArtifactPopulation, such that adding an arm without an adjudicator is a compile refusal and neither consumer can construct Accepted until every arm returns clean. This is the missing construction; a test that the current two calls remain present would only add another mechanical wall.)",
+    "THREE SPECIMENS FROM THE 2026-09-04 OUTAGE, filed after the climb rather than before it, because they are the record of what the lower rung COST and a class that climbs with no account of that will not be believed the next time it is invoked. (i) THE AUTOMATED-ACTOR FORM, which is strictly worse than the unmeasured half this row was founded on: `#10402` landed an `src/v1/04_infer.dag` change without regenerating `src/v1/stage0/src/v1_compiler_infer.rs`, and on every affected pull request `heal-generated-artifacts` RAN, SUCCEEDED and PUSHED A COMMIT of `1 file changed, 3 insertions(+), 1 deletion(-)` -- that one file being the projection. The drifted mirror was never in heal's population, so heal did not merely fail to notice it: it MANUFACTURED A FRESH GREEN HEAD OVER A TREE ANOTHER REQUIRED PHASE WAS REFUSING, on every affected branch, indefinitely. `wait for the heal push` was therefore not a terminating strategy, and four lanes inherited the same red at once while both gates reported truthfully about their own halves. ",
+
+    "(ii) THE CI-EXECUTED TWO-CELL TABLE, which the founding receipt could not offer because it had local counts only: the same two jobs compared across two runs, main against a branch carrying the regeneration. `required-witnesses-build` main FAILURE with `FAILED PHASE regen`, branch SUCCESS with no such line; `required-witnesses-floor` FAILURE on both with a byte-identical message. Carrying the regeneration flips the owning job on the real acceptance path, and the second red is orthogonal -- a fact establishable only from the one tree in the fleet that had repaired the first half. ",
+
+    "(iii) THE POSITIVE HALF, and the first independent confirmation that resolving the authority and letting heal regenerate is CORRECT rather than merely convenient: an independent local derive of the projection from the merged authorities produced bytes IDENTICAL to heal's, while the mirror hashes differed in the same measurement. Two producers agreeing exactly on the population they share and only one ranging over the population they do not is this row's tell demonstrated in both directions at once. `#10357` later landed two of those regenerated mirrors byte-identical to an independently produced candidate, which is a second confirmation of the same shape. ",
+
+    "THE CLIMB IS COMPLETE IN SCOPE AND NOT IN DENOMINATOR, and this row must say so or it becomes the very thing it names. The unified phase adjudicates both declared populations, but the two arms are not the same instrument and only one of them counts: `population=registry-projections rostered=39 adjudicated=39 matches=38 drifted=1 absent=0 unadjudicated=0` against `population=stage0-mirrors first_generation_equal=true` and NO numeric field whatever. The projection arm is an identity join carrying a conservation assert; the mirror arm is a byte fixed-point over a candidate. So an unregistered MIRROR is still invisible -- a check whose population IS the roster cannot see an artifact missing from the roster -- and `one adjudication over the whole declared population` is true of the phase's SCOPE while remaining false of its DENOMINATOR. ",
+
+    "SECOND NEXT-RUNG TRIGGER, at the mirror arm's own subject grain and distinct from the structural trigger above: a ROSTERED DENOMINATOR for `population=stage0-mirrors`, reporting rostered/adjudicated/unadjudicated with the same conservation the projection arm already carries, sufficient that a stage0 mirror absent from the roster is a REFUSAL rather than an artifact nobody counted. Until that exists the mirror path is weaker than the projection path, and DESIGN 4b(1) makes this row's rung the MINIMUM across its in-scope paths rather than the stronger arm's -- so citing the registry arm's conservation as though it covered the mirrors would be exactly the inflation this class is about.)",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "registry_green_does_not_cover_a_drifted_stage0_mirror", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "mirror_green_does_not_cover_a_stale_registry_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.whole_generated_artifact_adjudication_test", decl_name: "both_declared_populations_clean_is_the_only_green", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run", field: WholeDeclaration },
+
+  ],
 }

@@ -3,6 +3,15 @@ module gunbc.rung_drop.required_gate_bankruptcy
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, RequiredGateBankruptcy }
 
+// WORKFLOW-COUNTABLE PARTIAL CLIMB (2026-09-04): the exact module
+// `test.claim.witness_floor_workflow_consolidation_witness_test` joins the static roster because
+// three standing drops cite one of its rows as their required-path countable. This restores
+// recurring execution for four previously unheld identities in that one module. It follows the
+// 2026-08-31 generated-artifact partial-climb precedent and DOES NOT RETIRE THIS DROP: it moves
+// the static population, while the restoration trigger remains a required run deriving its
+// population from the change over the whole corpus. The roster header records the measured
+// import-closure, strict-preparation, and per-claim wall-clock price from run 33899564106.
+
 data required_gate_bankruptcy: RungDrop = RungDrop {
   identity: "required_gate_bankruptcy" as NonEmptyStr,
 
