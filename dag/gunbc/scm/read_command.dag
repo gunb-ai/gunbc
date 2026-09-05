@@ -127,7 +127,7 @@ fn scm_read_verb_spelling(verb: ScmReadVerb) -> String {
 fn scm_read_log(path: String) -> ScmReadResult<CommitLog> {
   match load_repository(path: path) {
     RepositoryLoadRefused { cause: cause } => ScmReadRepositoryUnavailable { cause: cause }
-    RepositoryLoaded { path: p, envelope: envelope, document: _ } =>
+    RepositoryLoaded { path: p, envelope: envelope } =>
       ScmReadAnswered { path: p, answer: repository_log(envelope: envelope) }
   }
 }
@@ -145,7 +145,7 @@ fn scm_read_log(path: String) -> ScmReadResult<CommitLog> {
 fn scm_read_status(path: String, pending: Proposal) -> ScmReadResult<RepositoryStatus> {
   match load_repository(path: path) {
     RepositoryLoadRefused { cause: cause } => ScmReadRepositoryUnavailable { cause: cause }
-    RepositoryLoaded { path: p, envelope: envelope, document: _ } =>
+    RepositoryLoaded { path: p, envelope: envelope } =>
       ScmReadAnswered { path: p, answer: repository_status(envelope: envelope, pending: pending) }
   }
 }

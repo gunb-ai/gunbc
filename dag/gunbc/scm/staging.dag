@@ -1,37 +1,30 @@
 module gunbc.scm.staging
 
-// THE TWO WRITE VERBS: `add`, WHICH BINDS A PATH, AND `commit`, WHICH FREEZES WHAT IS BOUND.
+// THE CANDIDATE SELECTION A REPOSITORY DOCUMENT CARRIES, AND WHAT CAN BE OBSERVED ABOUT IT.
 //
 // THE CANDIDATE IS A MANIFEST OBJECT, NOT A STAGING AREA, AND THAT DECIDES THE WHOLE MODULE. What an
 // author accumulates before committing is a set of path -> authored-source bindings, which is exactly
 // what a CorpusManifestObject is and exactly what a commit root is. So there is no staging
-// REPRESENTATION here: `add` mints an ordinary manifest object into the ordinary store and moves the
-// envelope's `staged` selection at it. A separate carrier would have been a second answer to one
-// question (DESIGN section 3), owing its own identity rule, its own codec, its own duplicate-path law
-// and its own version axis -- four authorities to keep in step with the four this reuses.
+// REPRESENTATION here: the envelope's `staged` member selects an ordinary manifest object in the
+// ordinary store. A separate carrier would have been a second answer to one question (DESIGN
+// section 3), owing its own identity rule, its own codec, its own duplicate-path law and its own
+// version axis -- four authorities to keep in step with the four this reuses.
 //
-// THAT IS A CLAIM ABOUT REUSE, NOT ABOUT SCALE, and the difference is worth stating because the
-// first draft of this header made the second claim. Reusing the manifest type means the store's
-// existing idempotent insertion collapses an equal canonical record WITHIN ONE STORE. It does not
-// make separately serialized repository documents share a physical store, and it establishes nothing
-// about cross-party deduplication: `ObjectId` is declared a 64-bit non-cryptographic locator, which
-// gunbc.scm.object_store is explicit is not a durable cross-party content-identity guarantee.
-// Persisting a change here also rewrites the whole document -- `save_repository` serializes the
-// envelope, object table and all -- so "staging costs one hash" describes the SELECTION, not the
-// write.
+// THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION ARE NOT HERE. `add` and
+// `commit` are transitions over a repository that must then be PUBLISHED, and publication over a
+// document another writer may be changing is an unsolved obligation in this tree: extdeps.filesystem
+// declares Write, WriteOwnerOnly, WriteCreateNew, Read, Delete and List and NO rename, so the
+// atomic-replace a conditional publication needs cannot be spelled at all. Landing the transitions
+// with no safe publisher would put a lost update behind a success report. They land with that
+// capability, and what lands here is what the read path can already answer truthfully about any
+// document it admits: the effective candidate, its entries, and its standing against the base.
 //
-// WHICH IS WHY `commit` TRANSLATES NOTHING STRUCTURAL. mint_repository_commit takes a
-// CorpusManifestTarget and the candidate is a CorpusManifestObjectRef, so committing projects a
-// locator into a requirement the mint then resolves against the real store -- it does not convert one
-// snapshot form into another, and there is no conversion in which content can be lost.
-//
-// AND WHY COMMITTING DOES NOT CLEAR THE CANDIDATE. "Is there anything to commit" is the comparison of
-// the candidate with the base, so after a commit those denote the same manifest and the comparison is
-// empty by construction. What this removes is a separate unconditional post-commit RESET -- a second
-// write that can erase a newer candidate. It does NOT remove the transition system: this module still
-// has preconditions, ordered mutations, failures and races, and the first draft of this header
-// claimed "no state machine", which was false. See the conditional-publication obligation declared in
-// gunbc.scm.write_command, which is where those races are actually decided.
+// WHAT THAT REUSE IS AND IS NOT, because the first draft of this header overclaimed it. Reusing the
+// manifest type means the store's existing idempotent insertion collapses an equal canonical record
+// WITHIN ONE STORE. It does not make separately serialized repository documents share a physical
+// store, and it establishes nothing about cross-party deduplication: `ObjectId` is declared a 64-bit
+// non-cryptographic locator, which gunbc.scm.object_store is explicit is not a durable cross-party
+// content-identity guarantee.
 //
 // ---------------------------------------------------------------------------------------------
 // THE SELECTION IS WORKSPACE-SCOPED, AND THIS BUILD SUPPORTS ONE WORKSPACE PER DOCUMENT.
@@ -55,13 +48,9 @@ module gunbc.scm.staging
 // selection is keyed by, with the repository's own authority resolving contention over the shared
 // commit allocator, which independent writable copies of that allocator would not.
 
-import std.types { Bool, List, String, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import gunbc.scm.object_store {
   ObjectId,
-  ObjectStore,
-  ScmObject,
-  AuthoredSourceTarget,
-  CorpusManifestTarget,
   CorpusManifestEntry,
   CorpusManifestObjectRef,
   CorpusManifestFound,
@@ -69,27 +58,11 @@ import gunbc.scm.object_store {
   CorpusManifestIsAuthoredSource,
   CorpusManifestIsSemanticNode,
   find_corpus_manifest_record,
-  manifest_entries_binding,
-  store_authored_source,
-  store_corpus_manifest,
-  SourceStored,
-  SourceLocatorCollision,
-  CorpusManifestStored,
-  CorpusManifestDuplicatePath,
-  CorpusManifestLocatorCollision,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommit,
-  RepositoryCommitMint,
-  RepositoryCommitMinted,
-  RepositoryCommitMintAllocatorInvalid,
-  RepositoryCommitMintRootMissing,
-  RepositoryCommitMintRootIsAuthoredSource,
-  RepositoryCommitMintRootIsSemanticNode,
-  RepositoryCommitMintParentMissing,
-  mint_repository_commit,
   commit_at_reference,
 }
 
@@ -103,21 +76,13 @@ import gunbc.scm.repository_envelope {
 // from construction as well as from a document, and the store it carries may be replaced. The same
 // reasoning the commit carrier already states about a retained commit root over a replaced store.
 type StagingRefusal
-  = StagePathEmpty
-  | StageSourceLocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
-  | StageManifestMissingFromStore { staged: ObjectId }
+  = StageManifestMissingFromStore { staged: ObjectId }
   | StageManifestIsAuthoredSource { staged: ObjectId }
   | StageManifestIsSemanticNode { staged: ObjectId }
   | StageBaseUnresolved { reference: RepositoryCommitRef }
   | StageBaseManifestMissingFromStore { root: ObjectId }
   | StageBaseManifestIsAuthoredSource { root: ObjectId }
   | StageBaseManifestIsSemanticNode { root: ObjectId }
-  | StageManifestDuplicatePath { path: NonEmptyStr }
-  | StageManifestLocatorCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
-
-type StagingOutcome
-  = Staged { repository: RepositoryEnvelope, staged: CorpusManifestObjectRef }
-  | StagingRefused { cause: StagingRefusal }
 
 // ---------------------------------------------------------------------------------------------
 // THE CANDIDATE IS A FULL SNAPSHOT, AND `Absent` MEANS NO EXPLICIT OVERRIDE -- NOT AN EMPTY CORPUS.
@@ -216,91 +181,6 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
   }
 }
 
-// `add <path>`: BIND ONE PATH TO THE BYTES THE HOST READ AT IT.
-//
-// THE TEXT ARRIVES AS AN ARGUMENT RATHER THAN BEING READ HERE, and that is the same split
-// gunbc.scm.cli makes for the read verbs: a host observation is not this module's to make, and a
-// staging verb that read the filesystem could not be witnessed at all, because the SCM witnesses
-// refuse at the hermetic boundary. What is decided here -- which path, over which candidate, into
-// which store -- is decided in substrate and is therefore reachable by a claim.
-//
-// THE EMPTY PATH REFUSES RATHER THAN BEING ADMITTED AS A NAME. A manifest entry's path is a
-// NonEmptyStr because a binding whose path names nothing is not a binding, and the emptiness test has
-// to happen before the cast rather than being trusted to it.
-//
-// THE SOURCE IS STORED FIRST AND THE MANIFEST SECOND, WHICH IS THE ONLY ORDER THAT WORKS: the entry
-// names the source's locator, so the locator must exist to be named. A manifest stored over a source
-// that is not there is exactly the partial snapshot the checkout verb has to refuse later, and
-// building it in that order would manufacture one from a healthy input.
-fn stage_authored_source(
-  repository: RepositoryEnvelope,
-  path: String,
-  text: String,
-) -> StagingOutcome {
-  if path == "" {
-    StagingRefused { cause: StagePathEmpty }
-  } else {
-    match staged_entries(repository: repository) {
-      StagedEntriesRefused { cause: c } => StagingRefused { cause: c }
-      StagedEntries { entries: entries } =>
-        match store_authored_source(store: repository.store, text: text) {
-          SourceLocatorCollision { identity: identity, existing: existing, incoming: incoming } =>
-            StagingRefused {
-              cause: StageSourceLocatorCollision {
-                identity: identity,
-                existing: existing,
-                incoming: incoming,
-              }
-            }
-          SourceStored { store: with_source, source: source } =>
-            stage_manifest_binding(
-              repository: repository,
-              store: with_source,
-              entries: manifest_entries_binding(
-                entries: entries,
-                path: path as NonEmptyStr,
-                source: AuthoredSourceTarget { locator: source.locator },
-              ),
-            )
-        }
-    }
-  }
-}
-
-// THE NEW ENVELOPE CARRIES THE STORE THE MANIFEST WAS ADMITTED INTO, NOT THE ONE IT WAS DERIVED FROM.
-// Returning `repository.store` here would hand back a stage pointing at a manifest the store does not
-// hold -- a dangling stage manufactured by the verb whose whole job is to establish one -- and the
-// refusal would surface at the next read, to whoever read it rather than whoever caused it.
-fn stage_manifest_binding(
-  repository: RepositoryEnvelope,
-  store: ObjectStore,
-  entries: List<CorpusManifestEntry>,
-) -> StagingOutcome {
-  match store_corpus_manifest(store: store, entries: entries) {
-    CorpusManifestDuplicatePath { path: path } =>
-      StagingRefused { cause: StageManifestDuplicatePath { path: path } }
-    CorpusManifestLocatorCollision { identity: identity, existing: existing, incoming: incoming } =>
-      StagingRefused {
-        cause: StageManifestLocatorCollision {
-          identity: identity,
-          existing: existing,
-          incoming: incoming,
-        }
-      }
-    CorpusManifestStored { store: with_manifest, manifest: manifest } =>
-      Staged {
-        repository: RepositoryEnvelope {
-          store: with_manifest,
-          commits: repository.commits,
-          commit_allocator: repository.commit_allocator,
-          checked_out: repository.checked_out,
-          staged: Present { value: manifest },
-        },
-        staged: manifest,
-      }
-  }
-}
-
 // THE SELECTED BASE, RESOLVED ONCE. Both the commit verb and the standing projection need to know
 // which snapshot the candidate is being compared against, and both must distinguish "no base" from
 // "a base that cannot be resolved" -- so the resolution is named rather than performed twice.
@@ -369,78 +249,5 @@ fn stage_standing_against_base(
       } else {
         StageDiffersFromBase { candidate: candidate, committed: root }
       }
-  }
-}
-
-// `commit -m <message>`: FREEZE THE CANDIDATE AS A COMMIT AND STAND ON IT.
-//
-// COMMITTING IS CONDITIONED ON THE DERIVED DIFFERENCE, NOT ON THE STAGE POINTER BEING PRESENT. Under
-// the inheritance rule above an absent stage denotes the base's own snapshot, so "there is a stage
-// pointer" and "there is something to commit" are different questions and only the second one licenses
-// a commit. Committing on the first would mint a commit whose root equals its parent's root -- a
-// history row that freezes nothing new, with no way for a later reader to tell it apart from a real
-// one.
-//
-// NOTHING TO COMMIT IS ITS OWN ARM AND NOT A MINT REFUSAL, because it is not a fault in the
-// repository: there is no difference to freeze, and the remedy is to `add` rather than to repair
-// anything. Folding it into the mint's missing-root arm would have named an ObjectId, and there is
-// none to name.
-//
-// THE PARENT IS THE SELECTED BASE, AND ITS ABSENCE IS A ROOT COMMIT RATHER THAN A REFUSAL. That is
-// what `init` produces and what the envelope's header calls an ordinary state.
-//
-// THE NEW COMMIT BECOMES THE SELECTION, AND THE MINT DOES NOT DO THAT. mint_repository_commit
-// deliberately preserves `repository.checked_out` -- it returns the new reference without selecting
-// it -- so a verb that saved the mint's envelope unchanged would append a commit the author is not
-// standing on, and the next commit would take the OLD base as its parent. The selection is published
-// here, explicitly, with the commit.
-//
-// THE CANDIDATE IS LEFT WHERE IT IS. The author is now standing on what they committed, and the
-// candidate already denotes that same manifest -- so the derived difference is empty without a step
-// that makes it so. This removes a post-commit reset, which is a separate unconditional write that
-// could erase a newer candidate; it does not remove the transition, its preconditions, or its
-// failures, and this module does not claim it does.
-type StagedCommit
-  = StagedCommitted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
-  | NothingToCommit { standing: StageStanding }
-  | StagedCommitRefused { mint: RepositoryCommitMint }
-  | StagedCommitCandidateRefused { cause: StagingRefusal }
-
-fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
-  match stage_standing(repository: repository) {
-    StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
-    NoCandidateAndNoBase => NothingToCommit { standing: NoCandidateAndNoBase }
-    StageMatchesBase { candidate: candidate } =>
-      NothingToCommit { standing: StageMatchesBase { candidate: candidate } }
-    StageWithNoBase { candidate: candidate } =>
-      commit_candidate(repository: repository, candidate: candidate, message: message)
-    StageDiffersFromBase { candidate: candidate, committed: _ } =>
-      commit_candidate(repository: repository, candidate: candidate, message: message)
-  }
-}
-
-fn commit_candidate(
-  repository: RepositoryEnvelope,
-  candidate: CorpusManifestObjectRef,
-  message: String,
-) -> StagedCommit {
-  match mint_repository_commit(
-    repository: repository,
-    root: CorpusManifestTarget { locator: candidate.locator },
-    message: message,
-    parent: repository.checked_out,
-  ) {
-    RepositoryCommitMinted { repository: minted, reference: reference } =>
-      StagedCommitted {
-        repository: RepositoryEnvelope {
-          store: minted.store,
-          commits: minted.commits,
-          commit_allocator: minted.commit_allocator,
-          checked_out: Present { value: reference },
-          staged: Present { value: candidate },
-        },
-        reference: reference,
-      }
-    refused => StagedCommitRefused { mint: refused }
   }
 }

@@ -1,12 +1,21 @@
 module test.claim.scm_staging_witness
 
-// THE CONTROLS FOR add / commit, BUILT TO THE FAILURES RATHER THAN TO THE HAPPY PATH.
+// THE CONTROLS FOR THE CANDIDATE SELECTION, BUILT TO THE FAILURES RATHER THAN TO THE HAPPY PATH.
 //
-// Every claim below was chosen because a specific WRONG implementation passes the obvious test. The
-// staging surface's characteristic defect is that its wrong answers are well-formed: a candidate that
-// dropped a file is a valid manifest, a commit that froze the wrong snapshot is a valid commit, and a
-// publication that discarded a concurrent one reports success. So a control that asserts "it worked"
-// discriminates nothing here, and each claim states the mutation it is aimed at.
+// Every claim below was chosen because a specific WRONG implementation passes the obvious test. This
+// surface's characteristic defect is that its wrong answers are well-formed: a candidate that dropped
+// a file is a valid manifest, and a standing computed against the wrong base is a valid standing. So
+// a control that asserts "it worked" discriminates nothing here, and each claim states the mutation
+// it is aimed at.
+//
+// THE FIXTURE BUILDERS ARE THIS FILE'S, AND THAT IS DELIBERATE RATHER THAN A GAP. The verbs that move
+// the selection -- `add` and `commit` -- land with the safe publisher they require, so there is no
+// production transition to reach for here. `stg_staged_or` and `stg_committed_or` compose the object
+// store's own insertion and the envelope's own mint, which are the authorities either verb would use,
+// so a specimen built by them is a state a document can genuinely be in. What they must not become is
+// a second implementation of those verbs' POLICY: they take the happy path and return the input
+// unchanged otherwise, which makes a broken fixture surface as a failed claim rather than as a
+// fixture that quietly compensated.
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
@@ -45,16 +54,17 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.staging {
   StagingRefusal,
-  StagePathEmpty,
   StageBaseUnresolved,
   StageManifestMissingFromStore,
-  StagingOutcome,
-  Staged,
-  StagingRefused,
   StagedEntries,
   StagedEntriesRefused,
   staged_entries,
-  stage_authored_source,
+  EffectiveCandidate,
+  CandidateFromStage,
+  CandidateInheritedFromBase,
+  CandidateEmptyCorpus,
+  CandidateRefused,
+  effective_candidate,
   StageStanding,
   StageMatchesBase,
   StageDiffersFromBase,
@@ -62,12 +72,6 @@ import gunbc.scm.staging {
   NoCandidateAndNoBase,
   StageStandingRefused,
   stage_standing,
-  StagedCommit,
-  StagedCommitted,
-  NothingToCommit,
-  StagedCommitRefused,
-  StagedCommitCandidateRefused,
-  commit_staged,
 }
 import gunbc.scm.checkout {
   RepositoryCheckout,
@@ -95,21 +99,85 @@ fn stg_empty_repository() -> RepositoryEnvelope {
   }
 }
 
-// STAGE-THEN-COMMIT AS ONE HELPER, because every specimen below needs a base and building one by hand
-// each time would let the specimens drift apart in ways the claims do not mention.
+// STAGE-THEN-COMMIT AS TWO HELPERS, because every specimen below needs a base and building one by
+// hand each time would let the specimens drift apart in ways the claims do not mention.
+//
+// BINDING A PATH REPLACES RATHER THAN APPENDING, and that is a fact about what a manifest IS: it
+// denotes a function from path to authored source, so re-staging a path displaces the old binding.
+// Appending instead would hand `store_corpus_manifest` two entries under one path, which refuses --
+// correctly for a malformed manifest, and wrongly as the answer to an ordinary edit. Position is not
+// observable in the result: `canonical_manifest_entries` sorts by path before any identity is derived.
 fn stg_staged_or(repository: RepositoryEnvelope, path: String, text: String) -> RepositoryEnvelope {
-  match stage_authored_source(repository: repository, path: path, text: text) {
-    Staged { repository: next, staged: _ } => next
-    StagingRefused { cause: _ } => repository
+  match staged_entries(repository: repository) {
+    StagedEntriesRefused { cause: _ } => repository
+    StagedEntries { entries: entries } =>
+      match store_authored_source(store: repository.store, text: text) {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => repository
+        SourceStored { store: with_source, source: source } =>
+          match store_corpus_manifest(
+            store: with_source,
+            entries: concat(
+              filter(entries, fn(e) { (e.path as String) != path }),
+              [CorpusManifestEntry {
+                path: path as NonEmptyStr,
+                source: AuthoredSourceTarget { locator: source.locator },
+              }],
+            ),
+          ) {
+            CorpusManifestDuplicatePath { path: _ } => repository
+            CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => repository
+            CorpusManifestStored { store: with_manifest, manifest: manifest } =>
+              RepositoryEnvelope {
+                store: with_manifest,
+                commits: repository.commits,
+                commit_allocator: repository.commit_allocator,
+                checked_out: repository.checked_out,
+                staged: Present { value: manifest },
+              }
+          }
+      }
   }
 }
 
+// THE MINT PRESERVES `checked_out` AND THE SELECTION IS PUBLISHED HERE, which is the same split a
+// commit verb would make: minting appends history, standing on it is a separate decision. A fixture
+// that saved the mint's envelope unchanged would build specimens whose author is not standing on what
+// they committed, and every base-relative claim below would then be measuring the wrong base.
 fn stg_committed_or(repository: RepositoryEnvelope, message: String) -> RepositoryEnvelope {
-  match commit_staged(repository: repository, message: message) {
-    StagedCommitted { repository: next, reference: _ } => next
-    NothingToCommit { standing: _ } => repository
-    StagedCommitRefused { mint: _ } => repository
-    StagedCommitCandidateRefused { cause: _ } => repository
+  match effective_candidate(repository: repository) {
+    CandidateRefused { cause: _ } => repository
+    CandidateEmptyCorpus => repository
+    CandidateFromStage { manifest: m, entries: _ } =>
+      stg_minted_or(repository: repository, candidate: m, message: message)
+    CandidateInheritedFromBase { manifest: m, entries: _ } =>
+      stg_minted_or(repository: repository, candidate: m, message: message)
+  }
+}
+
+fn stg_minted_or(
+  repository: RepositoryEnvelope,
+  candidate: CorpusManifestObjectRef,
+  message: String,
+) -> RepositoryEnvelope {
+  match mint_repository_commit(
+    repository: repository,
+    root: CorpusManifestTarget { locator: candidate.locator },
+    message: message,
+    parent: repository.checked_out,
+  ) {
+    RepositoryCommitMinted { repository: minted, reference: reference } =>
+      RepositoryEnvelope {
+        store: minted.store,
+        commits: minted.commits,
+        commit_allocator: minted.commit_allocator,
+        checked_out: Present { value: reference },
+        staged: Present { value: candidate },
+      }
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repository
+    RepositoryCommitMintRootMissing { root: _ } => repository
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repository
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => repository
+    RepositoryCommitMintParentMissing { parent: _ } => repository
   }
 }
 
@@ -148,68 +216,17 @@ fn stg_bound_path_count(repository: RepositoryEnvelope) -> Int {
 // THE CANDIDATE IS A FULL SNAPSHOT
 // ------------------------------------------------------------------------------------------------
 
-// THE CONTROL FOR THE DATA-LOSS DEFECT THIS MODULE SHIPPED AND CORRECTED. Two files are committed;
-// ONE of them is then re-staged. The claim is about the file that was NOT touched.
+// THE CONTROL FOR THE DATA-LOSS DEFECT THIS MODULE SHIPPED AND CORRECTED.
 //
-// MUTATION IT IS AIMED AT: `manifest_entries_binding` dropping the entries it was given instead of
-// binding one path into them, so the candidate becomes only what the last `add` mentioned.
+// `staged_entries` answered `[]` for an absent stage, so a repository with two committed files and no
+// explicit override read as the EMPTY corpus -- every tracked path staged for deletion, through a
+// valid manifest, with nothing anywhere refusing.
 //
-// IT IS NOT A CONTROL ON THE INHERITANCE RULE, AND THE FIRST WRITING OF THIS NOTE SAID IT WAS. That
-// claim was tested and is false: `commit_candidate` leaves `staged` PRESENT, so this specimen never
-// has an absent stage and never reaches `candidate_inherited_from_base` at all. Reverting the
-// inheritance rule leaves this claim GREEN -- measured, by running exactly that mutation. The
-// inheritance path is reached only where the stage is absent AND a commit is selected, and the claims
-// that do reach it are below. Naming a mutation a claim does not discriminate is the inflation DESIGN section 4b forbids,
-// arriving in the evidence rather than in the production code.
-//
-// THE EXPECTED CONTENT IS FIXED BEFORE THE OPERATION, not read back from the same value the mutation
-// would change: "B0" is written here as a literal, so a candidate that dropped or replaced b.dag
-// cannot agree with it.
-test fn scm_stg_a_first_add_over_history_keeps_every_untouched_path() -> Bool {
-  let base = stg_committed_or(
-    repository: stg_staged_or(
-      repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
-      path: "b.dag",
-      text: "B0",
-    ),
-    message: "two files",
-  )
-  let edited = stg_staged_or(repository: base, path: "a.dag", text: "A1")
-  stg_text_at(repository: edited, path: "a.dag") == "A1"
-    && stg_text_at(repository: edited, path: "b.dag") == "B0"
-    && stg_bound_path_count(repository: edited) == 2
-}
-
-// THE SAME PROPERTY ACROSS A COMMIT, which is the shape an author actually runs and the one the
-// no-clear rule is about. add, commit, add again: the second `add` must extend the corpus the first
-// commit froze.
-//
-// MUTATION IT IS AIMED AT: clearing the candidate on commit. That mutation leaves `status` reporting
-// clean -- which is what the correct code reports too, so a status assertion discriminates nothing --
-// and shows up here, as the first file vanishing from the second candidate.
-//
-// A CLEARING MUTATION AND THE INHERITANCE RULE INTERACT, so this claim's discrimination depends on
-// which is broken. Clearing `staged` alone leaves the base selected, so the inheritance rule supplies
-// the committed snapshot and this claim stays GREEN -- the two states are equivalent, exactly as the
-// review predicted. It goes red when clearing is combined with an inheritance that answers empty,
-// which is the pair that actually loses the file. Stated because the alternative is to believe this
-// claim guards more than it does.
-test fn scm_stg_an_add_after_a_commit_extends_the_committed_corpus() -> Bool {
-  let first = stg_committed_or(
-    repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
-    message: "first",
-  )
-  let second = stg_staged_or(repository: first, path: "b.dag", text: "B0")
-  stg_text_at(repository: second, path: "a.dag") == "A0"
-    && stg_text_at(repository: second, path: "b.dag") == "B0"
-    && stg_bound_path_count(repository: second) == 2
-}
-
-// THE CONTROL THAT ACTUALLY REACHES THE INHERITANCE RULE, ADDED AFTER MEASURING THAT THE TWO CLAIMS
-// ABOVE DO NOT.
-//
-// The inheritance path needs a stage that is ABSENT while a commit is SELECTED, and neither claim
-// above produces one, because committing leaves the stage present.
+// THE PATH IS REACHED ONLY WHERE THE STAGE IS ABSENT AND A COMMIT IS SELECTED, which is a narrower
+// shape than it looks: a repository that has just committed has its stage PRESENT, so the obvious
+// commit-then-read specimen never reaches the inheritance rule at all. That was measured rather than
+// reasoned about -- an earlier writing of this suite had two claims naming this mutation which stayed
+// GREEN under it, and they were deleted rather than left standing as coverage.
 //
 // THIS SPECIMEN CONSTRUCTS THAT SHAPE DIRECTLY, AND THAT IS THE LIMIT OF WHAT IT ESTABLISHES. Two
 // ordinary routes also produce it -- a v4 predecessor document, which records no stage at all, and a
@@ -222,9 +239,12 @@ test fn scm_stg_an_add_after_a_commit_extends_the_committed_corpus() -> Bool {
 // its state through checkout_repository_at rather than constructing an equivalent envelope.
 //
 // MUTATION IT IS AIMED AT: `candidate_inherited_from_base` answering the empty corpus. Under it the
-// `add` below yields a one-entry candidate, `b.dag` is deleted, and nothing refuses -- which is the
-// data-loss defect this module corrected, on the one repository shape that can still reach it.
-test fn scm_stg_an_add_with_no_override_inherits_the_selected_commits_corpus() -> Bool {
+// re-binding below yields a one-entry candidate, `b.dag` is gone, and nothing refuses.
+//
+// THE EXPECTED CONTENT IS FIXED BEFORE THE OPERATION, not read back from the same value the mutation
+// would change: "B0" is written here as a literal, so a candidate that dropped or replaced b.dag
+// cannot agree with it.
+test fn scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() -> Bool {
   let committed = stg_committed_or(
     repository: stg_staged_or(
       repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
@@ -267,56 +287,16 @@ test fn scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() -> Bool {
       StageMatchesBase { candidate: _ } => true
       _ => false
     }
-    && match commit_staged(repository: no_override, message: "again") {
-      NothingToCommit { standing: _ } => true
-      _ => false
-    }
-}
-
-// RE-BINDING A PATH REPLACES ITS BINDING AND DOES NOT DUPLICATE IT. store_corpus_manifest refuses a
-// duplicated path, so a `manifest_entries_binding` that appended without displacing would turn an
-// ordinary second `add` into a refusal -- which is why the count is asserted beside the content.
-test fn scm_stg_staging_one_path_twice_replaces_rather_than_duplicating() -> Bool {
-  let once = stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0")
-  let twice = stg_staged_or(repository: once, path: "a.dag", text: "A1")
-  stg_text_at(repository: twice, path: "a.dag") == "A1" && stg_bound_path_count(repository: twice) == 1
 }
 
 // ------------------------------------------------------------------------------------------------
-// THE DERIVED DIFFERENCE, AND WHAT COMMIT DOES WITH IT
+// THE DERIVED DIFFERENCE AGAINST THE BASE
 // ------------------------------------------------------------------------------------------------
 
-// A COMMIT PUBLISHES THE SELECTION, WHICH THE MINT DOES NOT DO. mint_repository_commit preserves
-// `checked_out` and returns the new reference without selecting it.
-//
-// MUTATION IT IS AIMED AT: saving the mint's envelope unchanged. The commit still appears in the log,
-// so a history assertion passes; what breaks is that the author is left standing on the old commit,
-// and the NEXT commit takes the old parent. Both halves are asserted: the selection resolves to the
-// new reference, and that commit's root is the candidate that was staged.
-test fn scm_stg_a_commit_leaves_the_author_standing_on_what_they_committed() -> Bool {
-  let staged = stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0")
-  match commit_staged(repository: staged, message: "first") {
-    StagedCommitted { repository: after, reference: reference } =>
-      match after.checked_out {
-        Absent => false
-        Present { value: selected } =>
-          selected.identity.ordinal == reference.identity.ordinal
-            && match commit_at_reference(commits: after.commits, reference: selected) {
-              Absent => false
-              Present { value: commit } =>
-                match after.staged {
-                  Absent => false
-                  Present { value: candidate } =>
-                    object_id_eq(left: commit.root.locator, right: candidate.locator)
-                }
-            }
-      }
-    _ => false
-  }
-}
-
-// THE SECOND COMMIT DESCENDS FROM THE FIRST, which is the consequence of the selection being
-// published and is asserted separately because it is a different fact from the selection itself.
+// A SECOND COMMIT DESCENDS FROM THE FIRST, which is `mint_repository_commit` parenting on the
+// selection it is handed. It is asserted here because every base-relative claim below reads the
+// selected commit's root, and a mint that mis-parented would make those claims measure the wrong base
+// while still looking healthy.
 test fn scm_stg_a_second_commit_descends_from_the_first() -> Bool {
   let first = stg_committed_or(
     repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
@@ -345,51 +325,41 @@ test fn scm_stg_a_second_commit_descends_from_the_first() -> Bool {
     }
 }
 
-// COMMITTING TWICE WITH NOTHING CHANGED IN BETWEEN MINTS NOTHING. Under the inheritance rule an
-// absent override denotes the base's own snapshot, so "there is a candidate" and "there is something
-// to commit" are different questions.
+// A REPOSITORY STANDING ON WHAT IT LAST COMMITTED HAS NO DIFFERENCE TO REPORT. Under the inheritance
+// rule "there is a candidate" and "there is a difference" are different questions, and only the second
+// licenses a commit.
 //
-// MUTATION IT IS AIMED AT: committing whenever the stage pointer is present. That mints a commit
-// whose root equals its parent's root -- a history row freezing nothing, indistinguishable to a later
-// reader from a real one.
-test fn scm_stg_committing_an_unchanged_candidate_mints_nothing() -> Bool {
+// MUTATION IT IS AIMED AT: deriving the standing from the presence of the stage pointer rather than
+// from comparing it with the base. That reports a difference on a repository that has none, and a
+// commit verb reading it would mint a row whose root equals its parent's -- a history entry freezing
+// nothing, indistinguishable to a later reader from a real one.
+test fn scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference() -> Bool {
   let first = stg_committed_or(
     repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
     message: "first",
   )
-  match commit_staged(repository: first, message: "again") {
-    NothingToCommit { standing: standing } =>
-      match standing {
-        StageMatchesBase { candidate: _ } => count(first.commits) == 1
-        _ => false
-      }
+  match stage_standing(repository: first) {
+    StageMatchesBase { candidate: _ } => count(first.commits) == 1
     _ => false
   }
 }
 
-// AN EMPTY REPOSITORY HAS NOTHING TO COMMIT, and it reaches that answer through a DIFFERENT standing
-// than the unchanged-candidate case above. Folding the two would lose which of them an operator is in.
-test fn scm_stg_an_empty_repository_has_nothing_to_commit() -> Bool {
-  match commit_staged(repository: stg_empty_repository(), message: "nothing") {
-    NothingToCommit { standing: standing } =>
-      match standing {
-        NoCandidateAndNoBase => true
-        _ => false
-      }
+// AN EMPTY REPOSITORY REACHES "no difference" THROUGH A DIFFERENT STANDING than the one above.
+// Folding the two would lose which of them an operator is in: one has a base and matches it, the
+// other has neither a candidate nor a base, and the remedies are not the same.
+test fn scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() -> Bool {
+  match stage_standing(repository: stg_empty_repository()) {
+    NoCandidateAndNoBase => true
     _ => false
   }
 }
 
-// A CANDIDATE OVER NO HISTORY IS COMMITTABLE, which is the ordinary first commit and must not be
-// confused with the empty case above.
-test fn scm_stg_a_candidate_over_no_history_is_the_first_commit() -> Bool {
+// A CANDIDATE OVER NO HISTORY IS ITS OWN STANDING, and must not be confused with the empty case
+// above: there IS something to freeze here, and there is nothing to compare it against.
+test fn scm_stg_a_candidate_over_no_history_stands_with_no_base() -> Bool {
   let staged = stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0")
   match stage_standing(repository: staged) {
-    StageWithNoBase { candidate: _ } =>
-      match commit_staged(repository: staged, message: "first") {
-        StagedCommitted { repository: after, reference: _ } => count(after.commits) == 1
-        _ => false
-      }
+    StageWithNoBase { candidate: _ } => count(staged.commits) == 0
     _ => false
   }
 }
@@ -432,30 +402,6 @@ test fn scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() ->
         _ => false
       }
     StagedEntries { entries: _ } => false
-  }
-}
-
-// AND STAGING OVER IT REFUSES TOO, rather than starting a fresh corpus on top of a repository whose
-// history it could not read.
-test fn scm_stg_staging_over_an_unresolvable_base_refuses() -> Bool {
-  let dangling = RepositoryEnvelope {
-    store: empty_store(),
-    commits: [],
-    commit_allocator: MintedIdAllocator { next_ordinal: 4 },
-    checked_out: Present { value: RepositoryCommitRef { identity: MintedId { ordinal: 2 } } },
-    staged: none,
-  }
-  match stage_authored_source(repository: dangling, path: "a.dag", text: "A0") {
-    StagingRefused { cause: StageBaseUnresolved { reference: _ } } => true
-    _ => false
-  }
-}
-
-// THE EMPTY PATH REFUSES AND IS NOT ADMITTED AS A NAME.
-test fn scm_stg_the_empty_path_refuses() -> Bool {
-  match stage_authored_source(repository: stg_empty_repository(), path: "", text: "A0") {
-    StagingRefused { cause: StagePathEmpty } => true
-    _ => false
   }
 }
 
@@ -533,10 +479,12 @@ test fn scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() ->
   }
 }
 
-// AND COMMITTING AFTER THAT CHECKOUT DOES NOT REVERT. This is the sequence the checkout rule exists
-// for, run to its end: without the rule the retained candidate freezes the OLD snapshot on top of the
-// new base, and every intermediate observation looks healthy.
-test fn scm_stg_a_commit_after_moving_the_base_does_not_revert_it() -> Bool {
+// AND THE STANDING AFTER THAT CHECKOUT REPORTS NO DIFFERENCE. This is the sequence the checkout rule
+// exists for, run to its end: without the rule the retained candidate still denotes the OLD snapshot,
+// so the repository reads as having the second commit's contents staged over the first -- and a commit
+// verb consuming that standing would freeze a revert nobody asked for, with every intermediate
+// observation looking healthy.
+test fn scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() -> Bool {
   let first = stg_committed_or(
     repository: stg_staged_or(repository: stg_empty_repository(), path: "a.dag", text: "A0"),
     message: "first",
@@ -550,8 +498,8 @@ test fn scm_stg_a_commit_after_moving_the_base_does_not_revert_it() -> Bool {
     Present { value: back_to_first } =>
       match checkout_repository_at(repo: second, reference: back_to_first) {
         RepositoryCheckedOut { repository: moved, corpus: _ } =>
-          match commit_staged(repository: moved, message: "should mint nothing") {
-            NothingToCommit { standing: _ } => count(moved.commits) == 2
+          match stage_standing(repository: moved) {
+            StageMatchesBase { candidate: _ } => count(moved.commits) == 2
             _ => false
           }
         _ => false
@@ -638,24 +586,18 @@ test fn scm_stg_a_committed_repository_reads_back_clean() -> Bool {
 }
 
 test fn scm_staging_witness_suite() -> Bool {
-  scm_stg_a_first_add_over_history_keeps_every_untouched_path() &&
-  scm_stg_an_add_after_a_commit_extends_the_committed_corpus() &&
-  scm_stg_an_add_with_no_override_inherits_the_selected_commits_corpus() &&
+  scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() &&
   scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() &&
-  scm_stg_staging_one_path_twice_replaces_rather_than_duplicating() &&
-  scm_stg_a_commit_leaves_the_author_standing_on_what_they_committed() &&
   scm_stg_a_second_commit_descends_from_the_first() &&
-  scm_stg_committing_an_unchanged_candidate_mints_nothing() &&
-  scm_stg_an_empty_repository_has_nothing_to_commit() &&
-  scm_stg_a_candidate_over_no_history_is_the_first_commit() &&
+  scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference() &&
+  scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() &&
+  scm_stg_a_candidate_over_no_history_stands_with_no_base() &&
   scm_stg_an_edit_after_a_commit_differs_from_its_base() &&
   scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() &&
-  scm_stg_staging_over_an_unresolvable_base_refuses() &&
-  scm_stg_the_empty_path_refuses() &&
   scm_stg_an_empty_file_stages_as_itself() &&
   scm_stg_a_checkout_that_would_discard_staged_work_refuses() &&
   scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() &&
-  scm_stg_a_commit_after_moving_the_base_does_not_revert_it() &&
+  scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() &&
   scm_stg_a_staged_candidate_survives_a_document_round_trip() &&
   scm_stg_an_absent_candidate_survives_as_absent() &&
   scm_stg_a_committed_repository_reads_back_clean()

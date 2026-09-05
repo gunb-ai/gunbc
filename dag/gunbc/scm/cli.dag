@@ -29,9 +29,6 @@ import gunbc.scm.status { RepositoryStatus }
 import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
 import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response, scm_init_cli_response }
 import gunbc.scm.init { ScmInitOutcome, initialize_repository }
-import gunbc.scm.staging { StagingOutcome }
-import gunbc.scm.write_command { ScmWriteResult, ScmCommitResult, scm_add, scm_commit }
-import gunbc.scm.render { scm_add_cli_response, scm_commit_cli_response }
 
 data plain_terminal_capability: RenderCapability = RenderCapability {
   color: false,
@@ -95,35 +92,4 @@ fn scm_init_response(outcome: ScmInitOutcome) -> CliWireResponse {
 
 fn scm_init(directory: String, name: String) -> CliWireResponse {
   scm_init_response(outcome: initialize_repository(directory: directory, name: name))
-}
-
-// THE WRITE VERBS ARE BOUND TO A TERMINAL HERE, AND THE HOST-TOUCHING HALF STAYS IN
-// gunbc.scm.write_command. Unlike the read verbs there is no composition to split off: `scm_add` and
-// `scm_commit` already ARE the load-act-publish composition, so what this module adds is the target
-// and the capability and nothing else. The response functions below take the RESULT, which is what
-// keeps this module's two decisions witnessable.
-fn scm_add_response(result: ScmWriteResult<StagingOutcome>) -> CliWireResponse {
-  scm_add_cli_response(
-    result: result,
-    target: plain_terminal_target,
-    capability: plain_terminal_capability
-  )
-}
-
-fn scm_add_at(path: String, corpus_path: String, source_path: String) -> CliWireResponse {
-  scm_add_response(
-    result: scm_add(path: path, corpus_path: corpus_path, source_path: source_path)
-  )
-}
-
-fn scm_commit_response(result: ScmCommitResult) -> CliWireResponse {
-  scm_commit_cli_response(
-    result: result,
-    target: plain_terminal_target,
-    capability: plain_terminal_capability
-  )
-}
-
-fn scm_commit_at(path: String, message: String) -> CliWireResponse {
-  scm_commit_response(result: scm_commit(path: path, message: message))
 }

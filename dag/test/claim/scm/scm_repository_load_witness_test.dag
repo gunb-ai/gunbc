@@ -56,7 +56,7 @@ data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_fil
 
 test fn scm_rl_a_well_formed_document_loads() -> Bool {
   match load_repository(path: scm_rl_empty_repository_path) {
-    RepositoryLoaded { path: p, envelope: _, document: _ } => p == scm_rl_empty_repository_path
+    RepositoryLoaded { path: p, envelope: _ } => p == scm_rl_empty_repository_path
     _ => false
   }
 }
@@ -175,7 +175,7 @@ test fn scm_rl_a_damaged_document_is_not_a_protocol_gap() -> Bool {
 // have to invent authored bytes the semantic projection discarded.
 test fn scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() -> Bool {
   match load_repository(path: scm_rl_predecessor_v4_path) {
-    RepositoryLoaded { path: p, envelope: envelope, document: _ } =>
+    RepositoryLoaded { path: p, envelope: envelope } =>
       p == scm_rl_predecessor_v4_path
         && match envelope.staged {
           Absent => true
@@ -225,7 +225,7 @@ test fn scm_repository_load_keystone_holds() -> Bool {
 // These drive the SAME fixtures through the real projection.
 fn scm_rl_refusal_text(path: String) -> List<String> {
   match load_repository(path: path) {
-    RepositoryLoaded { path: _, envelope: _, document: _ } => []
+    RepositoryLoaded { path: _, envelope: _ } => []
     RepositoryLoadRefused { cause: cause } => repository_load_refusal_lines(cause: cause)
   }
 }

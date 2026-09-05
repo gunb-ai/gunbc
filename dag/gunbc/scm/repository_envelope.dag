@@ -283,25 +283,30 @@ type RepositoryCommit sole_constructor {
 // A root still identifies the program reconstructed by a commit; the minted reference identifies
 // the commit record that carries that root, message, and ancestry. Two commits may therefore share
 // a root without sharing an identity or making checkout ambiguous.
-// THE STAGE IS A LOCATOR, NOT A STAGING AREA, and that is the whole shape of `add`.
+// THE STAGE IS A LOCATOR, NOT A STAGING AREA, and that is what makes an `add` verb a re-pointing.
+//
+// THE VERB ITSELF IS NOT IN THIS TREE YET, and the sentences below are about the shape this member
+// admits rather than about a landed caller: `add` and `commit` must PUBLISH, and a safe conditional
+// publication cannot be spelled while extdeps.filesystem declares no rename. They land with that
+// capability. What is landed is the member, its codec, and gunbc.scm.staging's observation of it.
 //
 // What an author accumulates before committing is a set of path -> authored-source bindings. That is
 // EXACTLY what a CorpusManifestObject is, and it is exactly what a commit root is, so a separate
 // staging representation would be a second answer to one question (DESIGN section 3) and would need
 // its own identity rule, its own codec, its own duplicate-path law and its own migration. The stage
 // is therefore an ordinary manifest OBJECT in the ordinary store, and this member is one reference
-// into it. `add` mints a new manifest from the old one and moves this pointer; nothing accumulates
+// into it. An `add` mints a new manifest from the old one and moves this pointer; nothing accumulates
 // anywhere else.
 //
-// WHICH MAKES `commit` A RE-DESIGNATION AND NOT A CONVERSION. mint_repository_commit takes a
+// WHICH MAKES A `commit` A RE-DESIGNATION AND NOT A CONVERSION. mint_repository_commit takes a
 // CorpusManifestTarget, which is precisely what this member already holds, so committing translates
 // nothing and can lose nothing in translation.
 //
 // AND MAKES "IS THERE ANYTHING TO COMMIT" DERIVED RATHER THAN STORED. It is the comparison of this
 // locator with the checked-out commit's root, so committing does not have to CLEAR the stage: after a
-// commit this member and that root are the same manifest, and the comparison reports clean by
-// construction. There is no reset step, so there is no reset step to forget, and no third state where
-// a stale flag and the actual objects disagree.
+// commit this member and that root would be the same manifest, and the comparison reports clean by
+// construction. No reset step is required, so there is none to forget, and no third state where a
+// stale flag and the actual objects disagree.
 //
 // ONE SELECTION PER DOCUMENT, WHICH IS ONE WORKSPACE, AND THAT SCOPE IS STATED RATHER THAN HIDDEN.
 // A candidate selection is a fact about one working context's pending intent, not about the
@@ -313,7 +318,7 @@ type RepositoryCommit sole_constructor {
 //
 // ABSENT MEANS NO EXPLICIT OVERRIDE, NOT AN EMPTY CORPUS, and the difference is a data-loss defect
 // rather than a nicety. gunbc.scm.staging derives the effective candidate: with no override it is the
-// checked-out commit's own snapshot, so a first `add` over existing history extends that corpus
+// checked-out commit's own snapshot, so a first `add` over existing history will extend that corpus
 // instead of replacing it with the single path just bound. `Present` over an empty manifest stays a
 // different value -- an author explicitly selecting the empty corpus, which is a deletion of every
 // tracked path and must remain expressible.
