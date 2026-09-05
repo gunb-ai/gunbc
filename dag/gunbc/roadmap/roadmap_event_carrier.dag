@@ -1,0 +1,248 @@
+module gunbc.roadmap.roadmap_event_carrier
+
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, GitRef }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.git {
+  shape_git_fetch_remote_argv, shape_git_reset_hard_argv, shape_git_worktree_add_branch_argv,
+  shape_git_worktree_add_detached_argv, shape_git_checkout_orphan_args, shape_git_commit_allow_empty_args,
+  shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
+}
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
+  RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
+}
+
+// THE CARRIER IS TWO OPERATIONS AND NOTHING ELSE: append one event; read one node's events. Everything
+// about WHERE the events live is a realization behind those two, and this module holds the first one
+// -- a git branch, `roadmap-events`, checked out in a worktree of the instance's repository, one file
+// per event at events/<node>/<id>.json, pushed to origin on every append and fetched before every
+// read. It is the realization because git is what every host already has, it is auditable, and a
+// content-addressed file per event makes concurrent writers converge at the file level (two hosts
+// writing the same event write the same path with the same bytes). It is NOT the design: the model
+// (gunbc.roadmap.roadmap_event_log) knows nothing about branches, and a store or a stream realizes
+// the same two operations later without touching the fold (operator, 2026-09-05: this becomes a
+// widely distributed stateless service; the git ref must be a handler, not the shape).
+//
+// WHAT THIS REALIZATION REFUSES RATHER THAN HIDES. A push the remote rejects (another writer got
+// there first) is EventAppendRefused with the remote's words; the caller re-reads and appends again,
+// and because the event file is content-addressed the retry produces the same file, never a second
+// event. A read whose fetch fails is EventsReadRefused, never a stale set presented as current: the
+// last-fetched state is not "the events", it is "the events as of a fetch that may be old", and the
+// carrier has no way to say how old, so it says nothing.
+data roadmap_events_branch: NonEmptyStr = "roadmap-events" as NonEmptyStr
+data roadmap_events_remote: String = "origin"
+data roadmap_events_dir_segment: String = "events"
+
+// The carrier's host layout: a worktree of the instance repository, beside the instance's other roots.
+type RoadmapEventCarrierLayout {
+  repo_root: FilePath
+  worktree: FilePath
+  git_program: String
+  directory_program: String
+}
+
+// Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
+// instance root the worktree hangs under, and the host's git and directory (install) realizations.
+fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) -> RoadmapEventCarrierLayout {
+  RoadmapEventCarrierLayout {
+    repo_root: instance.repo_root,
+    worktree: join([instance.instance_root as String, "/roadmap-events"], "") as FilePath,
+    git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+    directory_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+  }
+}
+
+fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, git_program: String, directory_program: String) -> RoadmapEventCarrierLayout {
+  RoadmapEventCarrierLayout {
+    repo_root: repo_root,
+    worktree: join([instance_root as String, "/roadmap-events"], "") as FilePath,
+    git_program: git_program,
+    directory_program: directory_program,
+  }
+}
+
+fn roadmap_event_node_dir(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> String {
+  join([layout.worktree as String, "/", roadmap_events_dir_segment, "/", node as String], "")
+}
+
+fn roadmap_event_file_relative(node: RoadmapNodeId, id: RoadmapEventId) -> String {
+  join([roadmap_events_dir_segment, "/", node as String, "/", id as String, ".json"], "")
+}
+
+fn roadmap_event_push_refspec() -> String {
+  join([roadmap_events_branch as String, ":", roadmap_events_branch as String], "")
+}
+
+fn roadmap_event_commit_message(env: RoadmapEventEnvelope) -> String {
+  join(["roadmap event ", env.id as String, " on ", env.event.node as String], "")
+}
+
+type RoadmapEventAppend
+  = EventAppended { id: RoadmapEventId }
+  | EventAlreadyPresent { id: RoadmapEventId }
+  | EventAppendRefused { id: RoadmapEventId, step: String, reason: String }
+
+type RoadmapEventsRead
+  = EventsRead { node: RoadmapNodeId, envelopes: List<RoadmapEventEnvelope> }
+  | EventsReadRefused { node: RoadmapNodeId, step: String, reason: String }
+
+type CarrierExec
+  = CarrierExecOk { stdout: String }
+  | CarrierExecFailed { exit_code: Int, stderr: String }
+
+fn carrier_exec(layout: RoadmapEventCarrierLayout, workdir: String, args: List<String>) -> CarrierExec {
+  carrier_exec_program(program: layout.git_program, workdir: workdir, args: args)
+}
+
+fn carrier_exec_program(program: String, workdir: String, args: List<String>) -> CarrierExec {
+  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
+  if r.success { CarrierExecOk { stdout: r.stdout } } else { CarrierExecFailed { exit_code: r.exit_code, stderr: r.stderr } }
+}
+
+// ENSURE THE WORKTREE. Present: nothing to do. Absent and the remote has the branch: check it out.
+// Absent and the remote has no branch yet: create the orphan branch with one empty commit and push
+// it, so the FIRST event has a parent tree to land in. Each step that fails is named.
+type CarrierEnsure = CarrierReady | CarrierEnsureRefused { step: String, reason: String }
+
+fn roadmap_event_carrier_ensure(layout: RoadmapEventCarrierLayout) -> CarrierEnsure {
+  let probe = Filesystem.List(path: layout.worktree as String)
+  if probe.success {
+    CarrierReady
+  } else {
+    match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_ls_remote_heads_args(remote: roadmap_events_remote, branch: roadmap_events_branch)) {
+      CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "ls-remote", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+      CarrierExecOk { stdout } =>
+        if trim(stdout) != "" {
+          match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["fetch", roadmap_events_remote, join([roadmap_events_branch as String, ":", roadmap_events_branch as String], "")]) {
+            CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "fetch-branch", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+            CarrierExecOk { stdout: _ } =>
+              match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_worktree_add_branch_argv(path: layout.worktree, branch: roadmap_events_branch)) {
+                CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "worktree-add", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                CarrierExecOk { stdout: _ } => CarrierReady
+              }
+          }
+        } else {
+          match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: shape_git_worktree_add_detached_argv(path: layout.worktree, commit: "HEAD" as GitRef)) {
+            CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "worktree-add-detached", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+            CarrierExecOk { stdout: _ } =>
+              match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_checkout_orphan_args(branch: roadmap_events_branch)) {
+                CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "checkout-orphan", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                CarrierExecOk { stdout: _ } =>
+                  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rm", "-rfq", "--cached", "."]) {
+                    CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "orphan-unstage", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                    CarrierExecOk { stdout: _ } =>
+                      match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["clean", "-fdq"]) {
+                        CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "orphan-clean", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                        CarrierExecOk { stdout: _ } =>
+                          match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_allow_empty_args(message: "roadmap events: root")) {
+                            CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "root-commit", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                            CarrierExecOk { stdout: _ } =>
+                              match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", roadmap_events_remote, roadmap_event_push_refspec()]) {
+                                CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "root-push", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                                CarrierExecOk { stdout: _ } => CarrierReady
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+// SYNC TO THE REMOTE'S BRANCH HEAD before reading or appending: fetch, then reset the worktree hard
+// to the remote branch. Local state that was never pushed is discarded here on purpose -- an event
+// that failed to publish is not part of the shared log, and the append reports that refusal itself.
+fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsure {
+  match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["fetch", "-q", roadmap_events_remote, roadmap_events_branch as String]) {
+    CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "fetch", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+    CarrierExecOk { stdout: _ } =>
+      match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["reset", "-q", "--hard", "FETCH_HEAD"]) {
+        CarrierExecFailed { exit_code, stderr } => CarrierEnsureRefused { step: "reset", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+        CarrierExecOk { stdout: _ } => CarrierReady
+      }
+  }
+}
+
+fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent) -> RoadmapEventAppend {
+  let env = roadmap_event_envelope(e: event)
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => EventAppendRefused { id: env.id, step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => EventAppendRefused { id: env.id, step: join(["sync/", step], ""), reason: reason }
+        CarrierReady => {
+          let rel = roadmap_event_file_relative(node: event.node, id: env.id)
+          let path = join([layout.worktree as String, "/", rel], "")
+          let existing = Filesystem.Read(path: path)
+          if existing.success {
+            EventAlreadyPresent { id: env.id }
+          } else {
+            match carrier_exec_program(program: layout.directory_program, workdir: layout.worktree as String, args: ["-d", roadmap_event_node_dir(layout: layout, node: event.node)]) {
+              CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "mkdir", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+              CarrierExecOk { stdout: _ } => {
+              let w = Filesystem.Write(path: path, content: roadmap_event_wire_text(env: env))
+              if !w.success {
+                EventAppendRefused { id: env.id, step: "write", reason: w.error }
+              } else {
+                match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_add_path_args(path: rel)) {
+                  CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "add", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                  CarrierExecOk { stdout: _ } =>
+                    match carrier_exec(layout: layout, workdir: layout.worktree as String, args: shape_git_commit_message_args(message: roadmap_event_commit_message(env: env))) {
+                      CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "commit", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+                      CarrierExecOk { stdout: _ } =>
+                        match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["push", "-q", roadmap_events_remote, roadmap_event_push_refspec()]) {
+                          CarrierExecFailed { exit_code, stderr } => EventAppendRefused { id: env.id, step: "push", reason: join(["the remote refused the push (exit ", to_string(value: exit_code), "); another writer may have appended first — re-read and append again: ", stderr], "") }
+                          CarrierExecOk { stdout: _ } => EventAppended { id: env.id }
+                        }
+                    }
+                }
+              }
+            }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn roadmap_events_decode_all(node: RoadmapNodeId, dir: String, names: List<String>) -> RoadmapEventsRead {
+  let reads = map(filter(names, n => ends_with(s: n, suffix: ".json")), n => Filesystem.Read(path: join([dir, "/", n], "")))
+  if any(reads, r => !r.success) {
+    EventsReadRefused { node: node, step: "read", reason: "one or more event files could not be read" }
+  } else {
+    let decoded = map(reads, r => roadmap_event_decode(text: r.content))
+    if any(decoded, d => match d { RoadmapEventUndecodable { reason: _ } => true  RoadmapEventDecoded { envelope: _ } => false }) {
+      EventsReadRefused { node: node, step: "decode", reason: join(fold(decoded, init: [], f: (acc, d) => match d { RoadmapEventUndecodable { reason } => concat(acc, [reason])  RoadmapEventDecoded { envelope: _ } => acc }), "; ") }
+    } else {
+      EventsRead { node: node, envelopes: fold(decoded, init: [], f: (acc, d) => match d { RoadmapEventDecoded { envelope } => concat(acc, [envelope])  RoadmapEventUndecodable { reason: _ } => acc }) }
+    }
+  }
+}
+
+fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => EventsReadRefused { node: node, step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => EventsReadRefused { node: node, step: join(["sync/", step], ""), reason: reason }
+        CarrierReady => {
+          let dir = roadmap_event_node_dir(layout: layout, node: node)
+          let listing = Filesystem.List(path: dir)
+          if !listing.success {
+            EventsRead { node: node, envelopes: [] }
+          } else {
+            roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
+          }
+        }
+      }
+  }
+}

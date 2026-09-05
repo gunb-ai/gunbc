@@ -1,0 +1,332 @@
+module gunbc.roadmap.roadmap_event_log
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonObject, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// THE ROADMAP EVENT LOG: THE CARRIER FOR EVERYTHING ABOUT A NODE THAT HAS A PULSE. A node's contract
+// lives in the repository and changes by pull request; its judgments are receipts the belt writes;
+// but who holds it, what state it is in, what was tried and what blocked had NO carrier at all --
+// the ticket's update rows are authored in the roadmap authority, so a progress note was a merge to
+// main, and the belt's attempt state is per instance and invisible from any other host (operator,
+// 2026-09-05: "waiting for a main merge is too hard and clunky"; "make sure this is scaling in the
+// right direction, i'll be implementing this as a stateless service one day").
+//
+// WHAT SCALES, BY CONSTRUCTION RATHER THAN BY DISCIPLINE. Events are immutable values addressed by
+// the hash of their canonical bytes, so an append is idempotent: a retry, a replay or two hosts
+// recording the same fact converge on one event instead of two. Each event names the event it
+// follows, so order is CAUSAL, never wall-clock: two writers who never saw each other produce a fork,
+// and the fold reports the fork as a standing of its own rather than picking a winner by timestamp.
+// Status is a pure function of the event set, so any reader anywhere folds the same events to the
+// same answer, which is what makes a stateless service possible. Every operation is per node, so the
+// natural partition is the node id and nothing needs a global order. The transport that holds the
+// events -- a git ref today, a store or a stream later -- is a realization behind the two operations
+// gunbc.roadmap.roadmap_event_carrier names (append one event; read a node's events), never a fact
+// of the model, and nothing here knows which one is bound.
+//
+// THE HASH IS FOR IDENTITY, NOT FOR TRUST. Fnv1a64 is the structural family the substrate already
+// keys content on (std.content_hash); it makes two equal events one event. It does not make an event
+// unforgeable, and the author field is a claim the carrier's principal model must vouch for, which is
+// the carrier's obligation and is not asserted here.
+data roadmap_event_schema: String = "roadmap-event/v1"
+
+type RoadmapEventId = NonEmptyStr where brand("RoadmapEventId")
+
+// THE VOCABULARY, ONE VARIANT PER FACT A SESSION CAN STATE. Claimed and Released bound who holds the
+// node; Progress carries a note; Blocked and HandedBack carry a reason and end the holder's work
+// without finishing it, which is what the roadmap's own hand-back conditions describe; Verified,
+// Reviewed, Audited and Published are the belt's judgments, stated here by REFERENCE to their
+// receipts (an address the reader can resolve) so the log never becomes a second copy of a receipt.
+type RoadmapEventKind
+  = Claimed
+  | Released
+  | Progress { note: NonEmptyStr }
+  | Blocked { reason: NonEmptyStr }
+  | HandedBack { reason: NonEmptyStr }
+  | ReceiptReferenced { obligation: NonEmptyStr, address: NonEmptyStr, verdict: NonEmptyStr }
+
+type RoadmapEvent {
+  node: RoadmapNodeId
+  author: NonEmptyStr
+  parent: RoadmapEventId?
+  kind: RoadmapEventKind
+  recorded_at: String
+}
+
+type RoadmapEventEnvelope {
+  id: RoadmapEventId
+  event: RoadmapEvent
+}
+
+fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
+  match k {
+    Claimed => "claimed"
+    Released => "released"
+    Progress { note: _ } => "progress"
+    Blocked { reason: _ } => "blocked"
+    HandedBack { reason: _ } => "handed_back"
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => "receipt"
+  }
+}
+
+fn roadmap_event_kind_members(k: RoadmapEventKind) -> List<JsonKeyValue> {
+  match k {
+    Claimed => []
+    Released => []
+    Progress { note } => [json_kv(key: "note", value: json_string(s: note as String))]
+    Blocked { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
+    HandedBack { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
+    ReceiptReferenced { obligation, address, verdict } => [
+      json_kv(key: "obligation", value: json_string(s: obligation as String)),
+      json_kv(key: "address", value: json_string(s: address as String)),
+      json_kv(key: "verdict", value: json_string(s: verdict as String)),
+    ]
+  }
+}
+
+// THE CANONICAL BYTES ARE THE IDENTITY'S SUBJECT. Members in a fixed order, the kind as a word plus
+// its own members, the parent as its id or an explicit absent marker, so two writers serialising the
+// same event produce the same bytes and therefore the same id.
+fn roadmap_event_canonical_json(e: RoadmapEvent) -> JsonValue {
+  json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: roadmap_event_schema)),
+    json_kv(key: "node", value: json_string(s: e.node as String)),
+    json_kv(key: "author", value: json_string(s: e.author as String)),
+    json_kv(key: "parent", value: json_string(s: match e.parent { Present { value: p } => p as String  Absent => "" })),
+    json_kv(key: "kind", value: json_string(s: roadmap_event_kind_word(k: e.kind))),
+    json_kv(key: "recorded_at", value: json_string(s: e.recorded_at)),
+  ], roadmap_event_kind_members(k: e.kind)))
+}
+
+fn roadmap_event_canonical_text(e: RoadmapEvent) -> String {
+  serialize_json(v: roadmap_event_canonical_json(e: e))
+}
+
+fn roadmap_event_id(e: RoadmapEvent) -> RoadmapEventId {
+  (content_hash_atom(value: roadmap_event_canonical_text(e: e) as NonEmptyStr)).digest as String as RoadmapEventId
+}
+
+fn roadmap_event_envelope(e: RoadmapEvent) -> RoadmapEventEnvelope {
+  RoadmapEventEnvelope { id: roadmap_event_id(e: e), event: e }
+}
+
+// The wire form carries the id beside the event, so a reader can verify it against the bytes and a
+// decoded event whose id does not match its content is refused as tampered or corrupt, never trusted.
+fn roadmap_event_wire_text(env: RoadmapEventEnvelope) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "id", value: json_string(s: env.id as String)),
+    json_kv(key: "event", value: roadmap_event_canonical_json(e: env.event)),
+  ]))
+}
+
+type RoadmapEventDecode
+  = RoadmapEventDecoded { envelope: RoadmapEventEnvelope }
+  | RoadmapEventUndecodable { reason: String }
+
+fn event_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn event_member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
+  match event_member_string(doc: doc, key: key) {
+    Present { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn roadmap_event_kind_decode(doc: JsonValue, word: String) -> RoadmapEventKind? {
+  if word == "claimed" { Present { value: Claimed } }
+  else if word == "released" { Present { value: Released } }
+  else if word == "progress" {
+    match event_member_nonempty(doc: doc, key: "note") { Present { value: n } => Present { value: Progress { note: n } }  Absent => none }
+  } else if word == "blocked" {
+    match event_member_nonempty(doc: doc, key: "reason") { Present { value: r } => Present { value: Blocked { reason: r } }  Absent => none }
+  } else if word == "handed_back" {
+    match event_member_nonempty(doc: doc, key: "reason") { Present { value: r } => Present { value: HandedBack { reason: r } }  Absent => none }
+  } else if word == "receipt" {
+    match event_member_nonempty(doc: doc, key: "obligation") {
+      Absent => none
+      Present { value: o } =>
+        match event_member_nonempty(doc: doc, key: "address") {
+          Absent => none
+          Present { value: a } =>
+            match event_member_nonempty(doc: doc, key: "verdict") {
+              Absent => none
+              Present { value: v } => Present { value: ReceiptReferenced { obligation: o, address: a, verdict: v } }
+            }
+        }
+    }
+  } else { none }
+}
+
+fn roadmap_event_decode(text: String) -> RoadmapEventDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => RoadmapEventUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "event") {
+        JsonMemberFound { value: ev } =>
+          match event_member_string(doc: doc, key: "id") {
+            Absent => RoadmapEventUndecodable { reason: "no id member" }
+            Present { value: claimed_id } => roadmap_event_decode_body(ev: ev, claimed_id: claimed_id)
+          }
+        _ => RoadmapEventUndecodable { reason: "no event member" }
+      }
+  }
+}
+
+fn roadmap_event_decode_body(ev: JsonValue, claimed_id: String) -> RoadmapEventDecode {
+  match event_member_string(doc: ev, key: "schema") {
+    Absent => RoadmapEventUndecodable { reason: "event has no schema member" }
+    Present { value: s } =>
+      if s != roadmap_event_schema { RoadmapEventUndecodable { reason: join(["schema is ", s, ", expected ", roadmap_event_schema], "") } }
+      else {
+        match event_member_nonempty(doc: ev, key: "node") {
+          Absent => RoadmapEventUndecodable { reason: "event has no node" }
+          Present { value: node } =>
+            match event_member_nonempty(doc: ev, key: "author") {
+              Absent => RoadmapEventUndecodable { reason: "event has no author" }
+              Present { value: author } =>
+                match event_member_string(doc: ev, key: "kind") {
+                  Absent => RoadmapEventUndecodable { reason: "event has no kind" }
+                  Present { value: word } =>
+                    match roadmap_event_kind_decode(doc: ev, word: word) {
+                      Absent => RoadmapEventUndecodable { reason: join(["kind ", word, " is unknown or missing its members"], "") }
+                      Present { value: kind } => {
+                        let parent = match event_member_string(doc: ev, key: "parent") {
+                          Present { value: p } => if p == "" { none } else { Present { value: p as RoadmapEventId } }
+                          Absent => none
+                        }
+                        let e = RoadmapEvent {
+                          node: node as String as RoadmapNodeId,
+                          author: author,
+                          parent: parent,
+                          kind: kind,
+                          recorded_at: match event_member_string(doc: ev, key: "recorded_at") { Present { value: t } => t  Absent => "" },
+                        }
+                        let id = roadmap_event_id(e: e)
+                        if (id as String) != claimed_id {
+                          RoadmapEventUndecodable { reason: join(["id ", claimed_id, " does not match the event's content (", id as String, ")"], "") }
+                        } else {
+                          RoadmapEventDecoded { envelope: RoadmapEventEnvelope { id: id, event: e } }
+                        }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE FOLD. A node's events form a graph by parent; the standing is read from the chain's head. One
+// head is a linear history and the status is the last state-changing event; more than one head is a
+// fork -- two writers who never saw each other -- reported as its own standing with the heads named,
+// because choosing one by clock would be the fabricated answer this substrate refuses. An event whose
+// parent is not in the set is a dangling root: the history is incomplete and the standing says so.
+type RoadmapNodeStanding
+  = NodeOpen
+  | NodeClaimed { by: NonEmptyStr, since: String }
+  | NodeInProgress { by: NonEmptyStr, last_note: NonEmptyStr }
+  | NodeBlocked { by: NonEmptyStr, reason: NonEmptyStr }
+  | NodeHandedBack { by: NonEmptyStr, reason: NonEmptyStr }
+  | NodeForked { heads: List<RoadmapEventId> }
+  | NodeHistoryIncomplete { missing_parents: List<RoadmapEventId> }
+
+fn envelope_has_id(envs: List<RoadmapEventEnvelope>, id: RoadmapEventId) -> Bool {
+  any(envs, e => (e.id as String) == (id as String))
+}
+
+fn envelope_is_parent_of_some(envs: List<RoadmapEventEnvelope>, id: RoadmapEventId) -> Bool {
+  any(envs, e => match e.event.parent { Present { value: p } => (p as String) == (id as String)  Absent => false })
+}
+
+fn roadmap_event_heads(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
+  filter(envs, e => !envelope_is_parent_of_some(envs: envs, id: e.id))
+}
+
+fn roadmap_event_missing_parents(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventId> {
+  fold(envs, init: [], f: (acc, e) => match e.event.parent {
+    Absent => acc
+    Present { value: p } => if envelope_has_id(envs: envs, id: p) { acc } else { concat(acc, [p]) }
+  })
+}
+
+// Walk from a head back to the root, oldest first, so state-changing events apply in causal order.
+fn roadmap_event_chain(envs: List<RoadmapEventEnvelope>, head: RoadmapEventEnvelope, budget: Int) -> List<RoadmapEventEnvelope> {
+  if budget <= 0 {
+    [head]
+  } else {
+    match head.event.parent {
+      Absent => [head]
+      Present { value: p } =>
+        match (filter(envs, e => (e.id as String) == (p as String))).first() {
+          Absent => [head]
+          Present { value: parent } => concat(roadmap_event_chain(envs: envs, head: parent, budget: budget - 1), [head])
+        }
+    }
+  }
+}
+
+fn roadmap_standing_step(acc: RoadmapNodeStanding, env: RoadmapEventEnvelope) -> RoadmapNodeStanding {
+  let e = env.event
+  match e.kind {
+    Claimed => NodeClaimed { by: e.author, since: e.recorded_at }
+    Released => NodeOpen
+    Progress { note } => NodeInProgress { by: e.author, last_note: note }
+    Blocked { reason } => NodeBlocked { by: e.author, reason: reason }
+    HandedBack { reason } => NodeHandedBack { by: e.author, reason: reason }
+    ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+  }
+}
+
+fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStanding {
+  let missing = roadmap_event_missing_parents(envs: envs)
+  if count(missing) > 0 {
+    NodeHistoryIncomplete { missing_parents: missing }
+  } else {
+    let heads = roadmap_event_heads(envs: envs)
+    if count(envs) == 0 {
+      NodeOpen
+    } else if count(heads) != 1 {
+      NodeForked { heads: map(heads, h => h.id) }
+    } else {
+      match heads.first() {
+        Absent => NodeOpen
+        Present { value: head } =>
+          fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: NodeOpen, f: (acc, env) => roadmap_standing_step(acc: acc, env: env))
+      }
+    }
+  }
+}
+
+fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
+  match s {
+    NodeOpen => "open"
+    NodeClaimed { by: _, since: _ } => "claimed"
+    NodeInProgress { by: _, last_note: _ } => "in_progress"
+    NodeBlocked { by: _, reason: _ } => "blocked"
+    NodeHandedBack { by: _, reason: _ } => "handed_back"
+    NodeForked { heads: _ } => "forked"
+    NodeHistoryIncomplete { missing_parents: _ } => "history_incomplete"
+  }
+}
+
+fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
+  match s {
+    NodeOpen => "open"
+    NodeClaimed { by, since } => join(["claimed by ", by as String, if since == "" { "" } else { join([" since ", since], "") }], "")
+    NodeInProgress { by, last_note } => join(["in progress (", by as String, "): ", last_note as String], "")
+    NodeBlocked { by, reason } => join(["blocked (", by as String, "): ", reason as String], "")
+    NodeHandedBack { by, reason } => join(["handed back (", by as String, "): ", reason as String], "")
+    NodeForked { heads } => join(["forked history: ", to_string(value: count(heads)), " heads; two writers recorded without seeing each other"], "")
+    NodeHistoryIncomplete { missing_parents } => join(["history incomplete: ", to_string(value: count(missing_parents)), " parent event(s) not present"], "")
+  }
+}

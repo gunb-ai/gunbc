@@ -1,0 +1,31 @@
+module test.claim.roadmap.roadmap_event_carrier_witness_test
+
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Claimed, roadmap_event_envelope, RoadmapEventId }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout, roadmap_event_node_dir, roadmap_event_file_relative, roadmap_event_push_refspec, roadmap_event_commit_message,
+  roadmap_events_branch, roadmap_events_decode_all, RoadmapEventsRead, EventsRead, EventsReadRefused,
+}
+
+// The carrier's layout is a function of the instance roots: the worktree hangs under the instance
+// root, events are addressed by node and content id, and the push refspec names one branch both ways.
+test fn the_layout_addresses_events_by_node_and_id_under_the_instance_root() -> Bool {
+  let l = roadmap_event_carrier_layout(repo_root: "/repo" as FilePath, instance_root: "/inst" as FilePath, git_program: "/usr/bin/git", directory_program: "/usr/bin/install")
+  let node = "demo-node" as RoadmapNodeId
+  let env = roadmap_event_envelope(e: RoadmapEvent { node: node, author: "s1" as NonEmptyStr, parent: none, kind: Claimed, recorded_at: "t" })
+  (l.worktree as String) == "/inst/roadmap-events"
+    && roadmap_event_node_dir(layout: l, node: node) == "/inst/roadmap-events/events/demo-node"
+    && roadmap_event_file_relative(node: node, id: env.id) == join(["events/demo-node/", env.id as String, ".json"], "")
+    && roadmap_event_push_refspec() == join([roadmap_events_branch as String, ":", roadmap_events_branch as String], "")
+    && string_contains(s: roadmap_event_commit_message(env: env), pattern: "demo-node")
+}
+
+// DISCRIMINATING: a read with no event files is the empty set (a node nobody touched), while a
+// directory holding an undecodable file refuses the whole read rather than dropping the bad file.
+test fn an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read() -> Bool {
+  let node = "demo-node" as RoadmapNodeId
+  let empty = roadmap_events_decode_all(node: node, dir: "/nonexistent/dir", names: [])
+  (match empty { EventsRead { node: _, envelopes } => count(envelopes) == 0  EventsReadRefused { node: _, step: _, reason: _ } => false })
+    && (match roadmap_events_decode_all(node: node, dir: "/nonexistent/dir", names: ["x.json"]) { EventsReadRefused { node: _, step, reason: _ } => step == "read"  EventsRead { node: _, envelopes: _ } => false })
+}
