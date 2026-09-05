@@ -1,0 +1,47 @@
+module extdeps.docker.images.sparkrun_vllm_ds4_gb10
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "hub.docker.com/r/aidendle94/sparkrun-vllm-ds4-gb10"
+  },
+}
+
+// THE vLLM RUNTIME THE SPARK PAIRS RUN, PINNED BY REGISTRY DIGEST. Read back on srv6 on 2026-09-05
+// from `docker image inspect`: repository aidendle94/sparkrun-vllm-ds4-gb10, tag production-ready,
+// arm64/linux, image id b2eb4e6ee5cc, created 2026-05-31. Its history carries the whole build
+// (an overlay of vllm into /opt/env site-packages, a b12x pip install, the CUDA toolchain env), so
+// this row is the runtime closure; the local dsv4-ray:local commits on top of it are not a build.
+data sparkrun_vllm_ds4_gb10_repository: NonEmptyStr = "aidendle94/sparkrun-vllm-ds4-gb10" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_tag: NonEmptyStr = "production-ready" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_digest_sha256_hex: NonEmptyStr = "f869281d869b2a1d418cade7dcbabe65216cb8f54891d5e2e50718c3dc8b630f" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_vllm_version: NonEmptyStr = "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_python: NonEmptyStr = "/opt/env/bin/python3" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_vllm_binary: NonEmptyStr = "/opt/env/bin/vllm" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_ray_binary: NonEmptyStr = "/opt/env/bin/ray" as NonEmptyStr
+data sparkrun_vllm_ds4_gb10_jit_cache_root: NonEmptyStr = "/cache/huggingface" as NonEmptyStr
+
+// The pinned reference every create names: repository@sha256:digest, never the tag alone.
+fn sparkrun_vllm_ds4_gb10_pinned_reference() -> NonEmptyStr {
+  join([sparkrun_vllm_ds4_gb10_repository as String, "@sha256:", sparkrun_vllm_ds4_gb10_digest_sha256_hex as String], "") as NonEmptyStr
+}
+
+// THE IMAGE BAKES INTERFACE NAMES THAT ARE FOREIGN TO EVERY SPARK. Its Config.Env sets
+// GLOO_SOCKET_IFNAME, NCCL_SOCKET_IFNAME, TP_SOCKET_IFNAME, MN_IF_NAME and
+// OMPI_MCA_btl_tcp_if_include to enP7s7 and NODE_IP to 192.168.50.58, the build host's values; on a
+// Spark enP7s7 is the no-carrier RJ45 port. A container from this image must override every one of
+// these at create time from the host's own fabric endpoints, or a process that reads one of them
+// binds to a dead interface. This list is the override obligation, and a render that leaves any of
+// them to the image is the drift observed on the first pair on 2026-09-05.
+data sparkrun_vllm_ds4_gb10_baked_interface_env_names: List<NonEmptyStr> = [
+  "GLOO_SOCKET_IFNAME" as NonEmptyStr,
+  "NCCL_SOCKET_IFNAME" as NonEmptyStr,
+  "TP_SOCKET_IFNAME" as NonEmptyStr,
+  "MN_IF_NAME" as NonEmptyStr,
+  "OMPI_MCA_btl_tcp_if_include" as NonEmptyStr,
+  "NODE_IP" as NonEmptyStr,
+]

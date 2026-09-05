@@ -1,0 +1,363 @@
+module gunbc.spark.pair_serving_realization
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
+import std.nat { Nat }
+import std.measure { Percent, percent_count, token_count_value, millisecond_count }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import extdeps.docker { DockerMount, BindMount }
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping,
+  NamespaceHost, RestartUnlessStopped,
+  docker_create_command, docker_start_command, docker_exec_command,
+}
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
+  sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_binary, sparkrun_vllm_ds4_gb10_ray_binary,
+  sparkrun_vllm_ds4_gb10_jit_cache_root, sparkrun_vllm_ds4_gb10_baked_interface_env_names,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Installable,
+  Description, After, Requires,
+  ServiceType, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, StandardOutput, StandardError,
+  WantedBy,
+  serialize_systemd_unit_file,
+}
+import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
+import gunbc.spark.fabric_link_desired {
+  SparkFabricPair, Rail0, Rail1, FabricEndpoint, fabric_link_identity,
+  spark_fabric_endpoint, FabricEndpointFound, FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
+  render_spark_fabric_pair,
+}
+import gunbc.spark.pair_serving_desired {
+  SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  SparkPairServingParticipant, spark_pair_serving_desired,
+}
+import gunbc.spark.pair_serving_observed { first_pair_model_snapshot, first_pair_ray_head, first_pair_vllm_serve }
+
+// THE PAIR'S REALIZATION IS TWO SYSTEM UNITS AND ONE CONTAINER PER HOST, RENDERED FROM THE DESIRED
+// ROW. This replaces the hand-authored spark-vllm-head.sh, spark-ray-worker.sh and
+// launch_prod_pair.sh observed on the first pair (gunbc.spark.pair_serving_observed); every value
+// they carried by hand is derived here from a row that owns it:
+//   - the runtime is the public image pinned by registry digest, never a local commit;
+//   - the container is created with EVERY interface-bearing environment variable the image bakes
+//     overridden from the host's own fabric endpoints, so no docker exec can inherit the build
+//     host's dead interface again (the 2026-09-05 drift, now unwritable rather than patched);
+//   - the head unit's ExecStartPre releases the Ray session (ray stop, ray start --head) before the
+//     engine starts, which is the operator's "placement group released before launch" precondition
+//     as an ordering fact of the unit, and its stdout is appended to a host log the observation
+//     reads the pool line from afterwards;
+//   - the worker unit runs `ray start --block`, so when the head restarts its session the worker's
+//     raylet exits, the unit's Restart=always brings it back, and it rejoins -- the supervision the
+//     polling loop in spark-ray-worker.sh did by hand;
+//   - the head engine's own Restart=on-failure is what waits for the worker: an engine started
+//     before both GPUs are registered refuses at placement-group creation and is restarted, so no
+//     unit carries a wait loop.
+// The JIT caches the image writes under /cache/huggingface are bound to a host directory, so a
+// recreated container keeps them instead of rebuilding for minutes on first start.
+
+data spark_pair_container_name: NonEmptyStr = "gunbc-spark-pair" as NonEmptyStr
+data spark_pair_head_unit_name: NonEmptyStr = "gunbc-spark-pair-head.service" as NonEmptyStr
+data spark_pair_worker_unit_name: NonEmptyStr = "gunbc-spark-pair-worker.service" as NonEmptyStr
+data spark_pair_head_log_path: NonEmptyStr = "/var/log/gunbc/spark-pair-head.log" as NonEmptyStr
+data spark_pair_worker_log_path: NonEmptyStr = "/var/log/gunbc/spark-pair-worker.log" as NonEmptyStr
+data spark_pair_jit_cache_host_dir: FilePath = "/var/lib/gunbc/spark-pair/jit-cache"
+data spark_pair_weights_container_dir: FilePath = "/weights"
+
+// The hub directory the weights are read from. Observed on the first pair as the operator's own
+// hub cache; a convergence-owned model store is its own slice, so this row cites the observation.
+data spark_pair_weights_host_dir: FilePath = "/home/briansrls/.cache/huggingface/hub"
+
+// Ray's per-node resources as the first pair runs them, cited from the observation; every unit of
+// the pair uses the same triple so the cluster is symmetric.
+data spark_pair_ray_num_cpus: Nat = first_pair_ray_head.num_cpus
+data spark_pair_ray_num_gpus: Nat = first_pair_ray_head.num_gpus
+data spark_pair_ray_object_store_bytes: Nat = first_pair_ray_head.object_store_memory_bytes
+data spark_pair_ray_gcs_port: Port = first_pair_ray_head.gcs_port
+
+// The model the pair serves: the snapshot elected on 2026-09-03 and observed on disk.
+data spark_pair_model_hub_repository: NonEmptyStr = first_pair_model_snapshot.hub_repository
+data spark_pair_model_snapshot_revision: NonEmptyStr = first_pair_model_snapshot.snapshot_revision
+data spark_pair_served_model_name: NonEmptyStr = first_pair_vllm_serve.served_model_name
+data spark_pair_serve_port: Port = first_pair_vllm_serve.port
+data spark_pair_tool_call_parser: NonEmptyStr = first_pair_vllm_serve.tool_call_parser
+
+fn hf_hub_models_dir_name(repository: NonEmptyStr) -> String {
+  join(["models--", join(split(repository as String, "/"), "--")], "")
+}
+
+fn spark_pair_model_path_in_container() -> String {
+  join([
+    spark_pair_weights_container_dir as String, "/",
+    hf_hub_models_dir_name(repository: spark_pair_model_hub_repository),
+    "/snapshots/", spark_pair_model_snapshot_revision as String,
+  ], "")
+}
+
+// vLLM spells the utilization as a fraction; the tuple carries a Percent.
+fn vllm_utilization_wire(p: Percent) -> String {
+  let n = percent_count(p: p)
+  if n >= 100 { "1.0" } else if n >= 10 { join(["0.", to_string(n)], "") } else { join(["0.0", to_string(n)], "") }
+}
+
+fn spark_pair_vllm_serve_argv(args: VllmEngineArgs) -> List<String> {
+  [
+    sparkrun_vllm_ds4_gb10_vllm_binary as String, "serve", spark_pair_model_path_in_container(),
+    "--served-model-name", spark_pair_served_model_name as String,
+    "--host", "0.0.0.0", "--port", to_string(spark_pair_serve_port),
+    "--tensor-parallel-size", to_string(args.tensor_parallel_size),
+    "--distributed-executor-backend", vllm_distributed_executor_backend_wire(backend: args.distributed_executor_backend) as String,
+    "--max-model-len", to_string(token_count_value(t: args.max_model_len)),
+    "--max-num-seqs", to_string(args.max_num_seqs),
+    "--enable-auto-tool-choice",
+    "--tool-call-parser", spark_pair_tool_call_parser as String,
+    "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: args.kv_cache_dtype) as String,
+    "--gpu-memory-utilization", vllm_utilization_wire(p: args.gpu_memory_utilization.fraction),
+    "--enable-prefix-caching",
+  ]
+}
+
+fn spark_pair_ray_stop_argv() -> List<String> {
+  [sparkrun_vllm_ds4_gb10_ray_binary as String, "stop", "--force"]
+}
+
+fn spark_pair_ray_head_argv(head: FabricEndpoint) -> List<String> {
+  [
+    sparkrun_vllm_ds4_gb10_ray_binary as String, "start", "--head",
+    join(["--node-ip-address=", render_ipv4_address(addr: head.address) as String], ""),
+    join(["--port=", to_string(spark_pair_ray_gcs_port)], ""),
+    join(["--num-cpus=", to_string(spark_pair_ray_num_cpus)], ""),
+    join(["--num-gpus=", to_string(spark_pair_ray_num_gpus)], ""),
+    join(["--object-store-memory=", to_string(spark_pair_ray_object_store_bytes)], ""),
+  ]
+}
+
+fn spark_pair_ray_worker_argv(head: FabricEndpoint, self: FabricEndpoint) -> List<String> {
+  [
+    sparkrun_vllm_ds4_gb10_ray_binary as String, "start",
+    join(["--address=", render_ipv4_address(addr: head.address) as String, ":", to_string(spark_pair_ray_gcs_port)], ""),
+    join(["--node-ip-address=", render_ipv4_address(addr: self.address) as String], ""),
+    join(["--num-cpus=", to_string(spark_pair_ray_num_cpus)], ""),
+    join(["--num-gpus=", to_string(spark_pair_ray_num_gpus)], ""),
+    join(["--object-store-memory=", to_string(spark_pair_ray_object_store_bytes)], ""),
+    "--block",
+  ]
+}
+
+// THE ENVIRONMENT THE CONTAINER IS CREATED WITH. Every name the image bakes with the build host's
+// interface is set here from this host's rail endpoints, plus the two engine facts the operator
+// ruled (zero monitor refresh, long context admitted). Set at create, inherited by every exec.
+fn spark_pair_container_env(rail0: FabricEndpoint, rail1: FabricEndpoint) -> List<DockerEnvAssignment> {
+  let rail0_if = rail0.interface as String
+  let rail0_ip = render_ipv4_address(addr: rail0.address) as String
+  [
+    DockerEnvAssignment { name: "GLOO_SOCKET_IFNAME" as NonEmptyStr, value: rail0_if },
+    DockerEnvAssignment { name: "TP_SOCKET_IFNAME" as NonEmptyStr, value: rail0_if },
+    DockerEnvAssignment { name: "NCCL_SOCKET_IFNAME" as NonEmptyStr, value: join([rail0_if, ",", rail1.interface as String], "") },
+    DockerEnvAssignment { name: "MN_IF_NAME" as NonEmptyStr, value: rail0_if },
+    DockerEnvAssignment { name: "OMPI_MCA_btl_tcp_if_include" as NonEmptyStr, value: rail0_if },
+    DockerEnvAssignment { name: "NODE_IP" as NonEmptyStr, value: rail0_ip },
+    DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail0_ip },
+    DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
+    DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
+  ]
+}
+
+fn spark_pair_container_env_covers_every_baked_name(env: List<DockerEnvAssignment>) -> Bool {
+  all(sparkrun_vllm_ds4_gb10_baked_interface_env_names, n => any(env, e => (e.name as String) == (n as String)))
+}
+
+fn spark_pair_container_spec(env: List<DockerEnvAssignment>) -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: spark_pair_container_name,
+    image: sparkrun_vllm_ds4_gb10_pinned_reference(),
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: 10737418240,
+    memlock_unlimited: true,
+    gpus_all: true,
+    devices: [DockerDeviceMapping { host_path: "/dev/infiniband", container_path: "/dev/infiniband", cgroup_permissions: "rwm" as NonEmptyStr }],
+    cap_add: ["IPC_LOCK" as NonEmptyStr],
+    restart: RestartUnlessStopped,
+    mounts: [
+      BindMount { host_path: spark_pair_weights_host_dir, container_path: spark_pair_weights_container_dir, readonly: true },
+      BindMount { host_path: spark_pair_jit_cache_host_dir, container_path: sparkrun_vllm_ds4_gb10_jit_cache_root as FilePath, readonly: false },
+    ],
+    env: env,
+    command: ["sleep", "infinity"],
+  }
+}
+
+// A systemd Exec line is argv joined by spaces; a word carrying whitespace or a quote would need
+// systemd's own quoting, which this render does not model, so such a word is a refusal.
+fn exec_word_is_plain(w: String) -> Bool {
+  !(string_contains(s: w, pattern: " ") || string_contains(s: w, pattern: "\t") || string_contains(s: w, pattern: "\"") || string_contains(s: w, pattern: "'"))
+}
+
+fn exec_line(cmd: ArgvCommand) -> NonEmptyStr? {
+  if exec_word_is_plain(w: cmd.program as String) && all(cmd.arguments, w => exec_word_is_plain(w: w)) {
+    Present { value: join(concat([cmd.program as String], cmd.arguments), " ") as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+type SparkPairUnitRender
+  = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
+  | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
+
+fn spark_pair_head_unit_file(args: VllmEngineArgs, head: FabricEndpoint) -> SparkPairUnitRender {
+  let start = exec_line(cmd: docker_start_command(name: spark_pair_container_name))
+  let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
+  let start_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_head_argv(head: head)))
+  let serve = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_vllm_serve_argv(args: args)))
+  match start {
+    Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "docker start line is not a plain argv" as NonEmptyStr }
+    Present { value: start_line } => match stop_ray {
+      Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "ray stop line is not a plain argv" as NonEmptyStr }
+      Present { value: stop_line } => match start_ray {
+        Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "ray head line is not a plain argv" as NonEmptyStr }
+        Present { value: ray_line } => match serve {
+          Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "vllm serve line is not a plain argv" as NonEmptyStr }
+          Present { value: serve_line } =>
+            SparkPairUnitRendered {
+              unit_name: spark_pair_head_unit_name,
+              text: serialize_systemd_unit_file(file: ServiceUnitFile {
+                unit: [
+                  Description { text: join(["gunbc Spark pair head: Ray session and vLLM engine for ", spark_pair_served_model_name as String], "") as NonEmptyStr },
+                  After { target: "docker.service network-online.target" as NonEmptyStr },
+                  Requires { target: "docker.service" as NonEmptyStr },
+                ],
+                service: [
+                  ServiceType { mode: "simple" as NonEmptyStr },
+                  ExecStartPre { command: start_line },
+                  ExecStartPre { command: stop_line },
+                  ExecStartPre { command: ray_line },
+                  ExecStart { command: serve_line },
+                  ExecStop { command: stop_line },
+                  Restart { policy: "on-failure" as NonEmptyStr },
+                  RestartSec { duration: "30" as NonEmptyStr },
+                  TimeoutStartSec { duration: "0" as NonEmptyStr },
+                  StandardOutput { target: join(["append:", spark_pair_head_log_path as String], "") as NonEmptyStr },
+                  StandardError { target: join(["append:", spark_pair_head_log_path as String], "") as NonEmptyStr },
+                ],
+                install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+              }),
+            }
+        }
+      }
+    }
+  }
+}
+
+fn spark_pair_worker_unit_file(head: FabricEndpoint, self: FabricEndpoint) -> SparkPairUnitRender {
+  let start = exec_line(cmd: docker_start_command(name: spark_pair_container_name))
+  let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
+  let join_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_worker_argv(head: head, self: self)))
+  match start {
+    Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_worker_unit_name, cause: "docker start line is not a plain argv" as NonEmptyStr }
+    Present { value: start_line } => match stop_ray {
+      Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_worker_unit_name, cause: "ray stop line is not a plain argv" as NonEmptyStr }
+      Present { value: stop_line } => match join_ray {
+        Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_worker_unit_name, cause: "ray worker line is not a plain argv" as NonEmptyStr }
+        Present { value: join_line } =>
+          SparkPairUnitRendered {
+            unit_name: spark_pair_worker_unit_name,
+            text: serialize_systemd_unit_file(file: ServiceUnitFile {
+              unit: [
+                Description { text: "gunbc Spark pair worker: Ray rank holder, never routed to directly" as NonEmptyStr },
+                After { target: "docker.service network-online.target" as NonEmptyStr },
+                Requires { target: "docker.service" as NonEmptyStr },
+              ],
+              service: [
+                ServiceType { mode: "simple" as NonEmptyStr },
+                ExecStartPre { command: start_line },
+                ExecStartPre { command: stop_line },
+                ExecStart { command: join_line },
+                ExecStop { command: stop_line },
+                Restart { policy: "always" as NonEmptyStr },
+                RestartSec { duration: "15" as NonEmptyStr },
+                StandardOutput { target: join(["append:", spark_pair_worker_log_path as String], "") as NonEmptyStr },
+                StandardError { target: join(["append:", spark_pair_worker_log_path as String], "") as NonEmptyStr },
+              ],
+              install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+            }),
+          }
+      }
+    }
+  }
+}
+
+type SparkPairHostRealization {
+  host: HostIdentity
+  container: DockerCreateSpec
+  create: ArgvCommand
+  unit: SparkPairUnitRender
+}
+
+type SparkPairRealization
+  = SparkPairRealized { pair: SparkFabricPair, head: SparkPairHostRealization, worker: SparkPairHostRealization }
+  | SparkPairRealizationRefused { pair: SparkFabricPair, cause: NonEmptyStr }
+
+type PairRails
+  = PairRailsFound { rail0: FabricEndpoint, rail1: FabricEndpoint }
+  | PairRailsUnresolved { cause: NonEmptyStr }
+
+fn spark_pair_rails(pair: SparkFabricPair, host: HostIdentity) -> PairRails {
+  match spark_fabric_endpoint(identity: fabric_link_identity(pair: pair, rail: Rail0), host: host) {
+    FabricEndpointFound { endpoint: r0 } =>
+      match spark_fabric_endpoint(identity: fabric_link_identity(pair: pair, rail: Rail1), host: host) {
+        FabricEndpointFound { endpoint: r1 } => PairRailsFound { rail0: r0, rail1: r1 }
+        FabricEndpointHostNotOnLink { identity: _, host: h } => PairRailsUnresolved { cause: join([h as String, " is not on rail 1 of its pair"], "") as NonEmptyStr }
+        FabricEndpointLinkUnresolved { lookup: _ } => PairRailsUnresolved { cause: join(["rail 1 of ", render_spark_fabric_pair(pair: pair), " is not resolvable to one row"], "") as NonEmptyStr }
+      }
+    FabricEndpointHostNotOnLink { identity: _, host: h } => PairRailsUnresolved { cause: join([h as String, " is not on rail 0 of its pair"], "") as NonEmptyStr }
+    FabricEndpointLinkUnresolved { lookup: _ } => PairRailsUnresolved { cause: join(["rail 0 of ", render_spark_fabric_pair(pair: pair), " is not resolvable to one row"], "") as NonEmptyStr }
+  }
+}
+
+fn spark_pair_host_realization(host: HostIdentity, rails: PairRails, unit: fn(FabricEndpoint, FabricEndpoint) -> SparkPairUnitRender) -> SparkPairHostRealization? {
+  match rails {
+    PairRailsUnresolved { cause: _ } => none
+    PairRailsFound { rail0: r0, rail1: r1 } => {
+      let env = spark_pair_container_env(rail0: r0, rail1: r1)
+      if !spark_pair_container_env_covers_every_baked_name(env: env) {
+        none
+      } else {
+        let spec = spark_pair_container_spec(env: env)
+        Present { value: SparkPairHostRealization { host: host, container: spec, create: docker_create_command(spec: spec), unit: unit(r0, r1) } }
+      }
+    }
+  }
+}
+
+fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
+  match unit {
+    SparkPairServingUnitRefused { pair: p, cause: c } => SparkPairRealizationRefused { pair: p, cause: c }
+    SparkPairServingUnitReady { pair: p, engine: e, head: h, worker: w } =>
+      match e {
+        OllamaServing { profile: _ } => SparkPairRealizationRefused { pair: p, cause: "a pair unit carries an Ollama engine, which has no pair realization" as NonEmptyStr }
+        VllmServing { args: args } => {
+          let head_rails = spark_pair_rails(pair: p, host: h.host)
+          let worker_rails = spark_pair_rails(pair: p, host: w.host)
+          match head_rails {
+            PairRailsUnresolved { cause: c } => SparkPairRealizationRefused { pair: p, cause: c }
+            PairRailsFound { rail0: head_r0, rail1: _ } =>
+              match spark_pair_host_realization(host: h.host, rails: head_rails, unit: fn(r0, _r1) { spark_pair_head_unit_file(args: args, head: r0) }) {
+                Absent => SparkPairRealizationRefused { pair: p, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
+                Present { value: head_real } =>
+                  match spark_pair_host_realization(host: w.host, rails: worker_rails, unit: fn(r0, _r1) { spark_pair_worker_unit_file(head: head_r0, self: r0) }) {
+                    Absent => SparkPairRealizationRefused { pair: p, cause: "the worker's rails are unresolved or its container environment does not cover every interface name the image bakes" as NonEmptyStr }
+                    Present { value: worker_real } => SparkPairRealized { pair: p, head: head_real, worker: worker_real }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn spark_pair_realizations() -> List<SparkPairRealization> {
+  map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
+}

@@ -1,0 +1,140 @@
+module extdeps.docker.cli
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/reference/cli/docker/container/create/"
+  },
+}
+
+// docker 29.2.1 on the Sparks (2026-09-05). The program is spelled absolute because a systemd
+// ExecStart= requires an absolute path and the same argv is what the unit renders.
+data docker_binary_path: NonEmptyStr = "/usr/bin/docker" as NonEmptyStr
+
+type DockerRestartPolicy = RestartNo | RestartUnlessStopped | RestartAlways | RestartOnFailure
+
+fn docker_restart_policy_wire(p: DockerRestartPolicy) -> NonEmptyStr {
+  match p {
+    RestartNo => "no" as NonEmptyStr
+    RestartUnlessStopped => "unless-stopped" as NonEmptyStr
+    RestartAlways => "always" as NonEmptyStr
+    RestartOnFailure => "on-failure" as NonEmptyStr
+  }
+}
+
+type DockerNamespaceMode = NamespaceHost | NamespacePrivate
+
+fn docker_namespace_mode_wire(m: DockerNamespaceMode) -> NonEmptyStr {
+  match m {
+    NamespaceHost => "host" as NonEmptyStr
+    NamespacePrivate => "private" as NonEmptyStr
+  }
+}
+
+type DockerDeviceMapping {
+  host_path: FilePath
+  container_path: FilePath
+  cgroup_permissions: NonEmptyStr
+}
+
+type DockerEnvAssignment {
+  name: NonEmptyStr
+  value: String
+}
+
+// Everything `docker create` is told for one container, as the fields the engine exposes back
+// through `docker inspect` (HostConfig, Config, Mounts), so an observation and a desired spec are
+// comparable field by field.
+type DockerCreateSpec {
+  name: NonEmptyStr
+  image: NonEmptyStr
+  network: DockerNamespaceMode
+  ipc: DockerNamespaceMode
+  shm_size_bytes: Nat
+  memlock_unlimited: Bool
+  gpus_all: Bool
+  devices: List<DockerDeviceMapping>
+  cap_add: List<NonEmptyStr>
+  restart: DockerRestartPolicy
+  mounts: List<DockerMount>
+  env: List<DockerEnvAssignment>
+  command: List<String>
+}
+
+fn docker_mount_flag(m: DockerMount) -> List<String> {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      ["--mount", join(["type=bind,src=", h as String, ",dst=", c as String, if ro { ",ro" } else { "" }], "")]
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      ["--mount", join(["type=volume,src=", v as String, ",dst=", c as String, if ro { ",ro" } else { "" }], "")]
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      ["--mount", join(["type=tmpfs,dst=", c as String, ",tmpfs-size=", to_string(n)], "")]
+  }
+}
+
+fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(
+    concat(
+      concat(
+        concat(
+          concat(
+            [
+              "create",
+              "--name", spec.name as String,
+              "--network", docker_namespace_mode_wire(m: spec.network) as String,
+              "--ipc", docker_namespace_mode_wire(m: spec.ipc) as String,
+              "--shm-size", to_string(spec.shm_size_bytes),
+              "--restart", docker_restart_policy_wire(p: spec.restart) as String,
+            ],
+            if spec.memlock_unlimited { ["--ulimit", "memlock=-1:-1"] } else { [] },
+          ),
+          if spec.gpus_all { ["--gpus", "all"] } else { [] },
+        ),
+        flat_map(spec.devices, d => ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]),
+      ),
+      concat(
+        flat_map(spec.cap_add, c => ["--cap-add", c as String]),
+        concat(
+          flat_map(spec.mounts, m => docker_mount_flag(m: m)),
+          flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+        ),
+      ),
+    ),
+    concat([spec.image as String], spec.command),
+  )
+}
+
+fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: docker_create_arguments(spec: spec))
+}
+
+fn docker_start_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["start", name as String])
+}
+
+fn docker_stop_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["stop", name as String])
+}
+
+// `docker exec` runs argv inside a running container; env assignments ride `--env`, never the
+// container's baked environment, so the caller decides every value the process sees.
+fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_binary_path,
+    arguments: concat(
+      concat(["exec"], flat_map(env, e => ["--env", join([e.name as String, "=", e.value], "")])),
+      concat([name as String], argv),
+    ),
+  )
+}
+
+fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
+}

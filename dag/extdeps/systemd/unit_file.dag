@@ -130,6 +130,7 @@ type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
+  | ExecStop { command: NonEmptyStr }
   | ExecStopPost { command: NonEmptyStr }
   | ServiceStandardOutput { stream: SystemdOutputStream }
   | ServiceStandardError { stream: SystemdOutputStream }
@@ -527,6 +528,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceType { mode: v } => join(["Type=", v as String], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    ExecStop { command: v } => join(["ExecStop=", v as String], "")
     ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
     ServiceStandardOutput { stream: v } =>
       join(["StandardOutput=", systemd_output_stream_wire(stream: v)], "")
