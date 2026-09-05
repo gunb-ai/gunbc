@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data comparison_keyed_on_part_of_the_identity_it_compares: RecurringFailureMode = RecurringFailureMode {
+  identity: "comparison_keyed_on_part_of_the_identity_it_compares" as NonEmptyStr,
+
+  receipts: [
+    "**a comparison keys on a PROPER COMPONENT of the identity it is comparing, while both sides carry the whole one** (INVALID STATE: a membership or equality test between two populations whose elements are identified by a composite -- module path plus declaration name, path plus revision, host plus port -- reduces one or both sides to a component before deciding, and the discarded component is present, in scope, and used elsewhere in the same function. HARM: two distinct elements that agree on the retained component are ONE key, so a member of one population is accepted as a member of the other by an element it is not. The wrong answer is per-element and silent: nothing is missing, nothing is unreached, and the diagnostic surface never fires. ",
+
+    "Recognition rule: at the deciding line, is the key equal to the identity, or to a projection of it? The tell is that the DISCARDED component reappears a few lines later to RENDER the finding -- the code already knows the full identity and uses it for the message, having thrown it away for the decision. ",
+
+    "NO ACCOUNTING EQUALITY DETECTS THIS, WHICH IS WHY IT NEEDS ITS OWN ROW. Denominator reconciliation -- checked == declared, checked + excluded == population, subject-narrowing checks of every kind -- verifies that every element was EXAMINED, and every one of them survives here, because the subject was complete and each element received an answer. The defect is in the ANSWER, not in the population, so the whole family of narrowing checks is structurally blind to it. Specimen gunbc#10496, measured across two arms in one dispatch over one corpus: every COUNT line was byte-identical between the correct key and the defective one, and only the discriminating control moved. ",
+
+    "IT PRESENTS AS LATENT AND ITS LATENCY IS AN ACCIDENT, NOT A GUARD. The retained component is usually unique in the corpus that exists on the day it is written, so the defective key answers correctly for every element and the class ships green. Current-corpus uniqueness is not an enforced precondition and stops being true the week someone adds a row, so a repair justified by a collision census expires; the repair has to stand on the key being wrong. ",
+
+    "THE DISCRIMINATING CONTROL IS THE COLLISION, AND NO ORDINARY CONTROL SUBSTITUTES FOR IT: two elements sharing the retained component, differing in the discarded one, with only one of them a member. A control that drops a member and expects it to be reported passes under both the correct and the defective key -- they agree whenever the retained component is unique -- so it proves the check runs and proves nothing about its key. Specimen gunbc#10503: the collision control refuses under the defective key by reporting NOTHING, which the join reads as ControlDidNotFire. ",
+
+    "WHAT THE NEIGHBOURING ROWS DO NOT COVER, checked before this row was filed. check_subject_narrower_than_its_declared_claim is the opposite shape: there the subject is a strict subset of the claim, here the subject is complete and the verdict on a member is wrong. surface_shorthand_preempts_resolved_identity is the nearest neighbour and is genuinely adjacent -- deciding on a spelling where a resolved identity was available -- but its rule is CONSTRUCTION totality over a resolved binding and its trigger repairs evaluator value construction, which leaves a COMPARISON keyed on a component untouched. identity_absent_graph_traversal is the case where no identity is available to key on at all; here it was present on both sides and discarded. incidental_denominator_as_wall names the accidental-safety shape but its invalid state is a destructive operation guarded by an unrelated upstream filter, where this class has nothing guarding it -- the key itself is wrong. ",
+
+    "Next-rung trigger, named as the capability rather than as an artifact: composite identities are carried as a TYPE whose equality is the identity, so a comparison cannot be written against one of its components -- at which point the key and the identity cannot differ and there is nothing for a control to discriminate. Until then this is review diligence plus a per-site collision control, which is mechanically preventable at best.)",
+  ],
+
+  evidence: [],
+}
