@@ -18,6 +18,8 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 import std.algebra { trim }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   resolved_node_is_kernel_identity_for_name,
   match_pattern_is_irrefutable,
   declaration_provenance_of, type_reference_provenance,
@@ -256,11 +258,9 @@ import v1.compiler.emit_core_support {
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
   apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, has_mock_prefix, extract_test_projections,
-  is_bare_leaf_item
+  is_type_alias_return_node,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item,
+  has_mock_prefix, extract_test_projections
 }
 
 fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
@@ -1821,7 +1821,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -2308,7 +2308,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
   } else { match wire_contract_item {
     Absent => rust_tagged_object_policy()
     Present { value: wc } =>
-      if is_data_def_item(item: wc) {
+      if (wc.module_item_kind == ModuleItemDataValue) {
         match wc.body {
           Absent =>
             rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
@@ -2348,7 +2348,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                           Divergent =>
                             rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                           Resolved { node } =>
-                            if is_data_def_item(item: node) {
+                            if (node.module_item_kind == ModuleItemDataValue) {
                               resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Present { value: node },
                                 source_indices: source_indices,
@@ -2376,7 +2376,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                       Divergent =>
                         rust_serde_error_policy(message: "wire_contract: initializer diverges, so it names no VariantEncoding alias")
                       Resolved { node } =>
-                        if is_data_def_item(item: node) {
+                        if (node.module_item_kind == ModuleItemDataValue) {
                           resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Present { value: node },
                             source_indices: source_indices,
@@ -2461,7 +2461,7 @@ fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, s
 }
 
 fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !is_data_def_item(item: item) {
+  if (item.module_item_kind != ModuleItemDataValue) {
     false
   } else if module_defines_local_coproduct_wire_contract_type(module_items: module_items, source_indices: source_indices) {
     false
@@ -2538,7 +2538,7 @@ fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.items
-      |> filter(item => is_data_def_item(item: item))
+      |> filter(item => item.module_item_kind == ModuleItemDataValue)
       |> fold(init: acc, f: (item_acc, item) =>
         let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
         let qualified_name = concat(module_name, ".", item_name)
@@ -2638,7 +2638,7 @@ fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: 
 fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<String, Node>) -> Map<String, List<Node>> {
   let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
   let local = typed_module.items
-    |> filter(item => is_data_def_item(item: item))
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
     |> fold(init: empty_map(), f: (acc, item) =>
       insert_scoped_data_item(
         scoped: acc,
@@ -3093,7 +3093,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    let svc_items = tm.items |> filter(item => is_service_item(item: item))
+    let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     svc_items |> fold(init: acc, f: (a, svc) =>
       map_insert(a, authored_name_at(source_indices: tm.type_env.source_indices, node: svc), mod_filename)
@@ -5094,7 +5094,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_contract_item = wire_context_items
     |> filter(i =>
-      is_data_def_item(item: i)
+      i.module_item_kind == ModuleItemDataValue
       && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
     |> first
   let items_str = typed_module.items
@@ -5887,7 +5887,7 @@ fn is_self_referential_opaque_type_resolved(item: Node, source_indices: Map<Stri
 }
 
 fn is_zero_param_self_referential_opaque_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item)
+  is_leaf_type_item(item: item)
     && is_self_referential_opaque_type_resolved(item: item, source_indices: source_indices)
 }
 
@@ -6587,7 +6587,7 @@ INCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the 
 
 fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
-    |> filter(item => is_data_def_item(item: item))
+    |> filter(item => item.module_item_kind == ModuleItemDataValue)
     |> flat_map(item => {
       let type_name = match item.type_annotation {
         Present { value: ta } => authored_name_at(source_indices: source_indices, node: ta)
@@ -6803,71 +6803,36 @@ fn emit_non_empty_wrappers() -> String {
   concat(vec_wrapper, "\n\n", set_wrapper)
 }
 
+// EXHAUSTIVE ON THE ITEM KIND. The chain that stood here decided WHICH KIND of item it was
+// looking at from which of the item's optional fields happened to be absent, and its residual arm
+// was the only stop it had. The kind is now read from v1.std.core Node.module_item_kind, stamped by
+// the parse constructor, so this dispatch is a total match: a new ParsedModuleItemKind variant
+// fails to compile here instead of falling through. Two things the kind deliberately does NOT
+// carry, and which therefore stay as walls: the TYPE STRUCTURE axis (Conj/Disj vs leaf vs opaque),
+// which splits one kind and keeps its predicates; and the PRESENCE of body / type_annotation, which
+// stays optional on Node, so the function and data arms match rather than unwrap.
 fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
-  if is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
-  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+  match item.module_item_kind {
+    ModuleItemTypeDeclaration =>
+      if is_type_def_item(item: item) {
+        emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
+      } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
-    } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-      emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
-    } else {
-      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
-        Present { value: host } =>
-          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
-        Absent =>
-          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
-            n: resolved_type(n: item),
-            generic_param_names: [],
-            shared_types: shared_types,
-            source_indices: env.source_indices,
-            scope: scope,
-            imports: imports,
-            registry: registry,
-            module_name: module_name,
-            export_sets: export_sets,
-            typed_modules: typed_modules,
-            module_index: module_index,
-            variant_to_enum: emit_info.variant_to_enum), ";")
-      }
-    }
-  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
-    } else {
-
-      match rust_seed_host_container_base(name: item_text) {
-        Present { value: host } =>
-          let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-          let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-          concat(
-            rust_visibility_prefix(),
-            rust_items().type_alias_keyword,
-            " ",
-            item_text,
-            type_params,
-            " = ",
-            host,
-            "<",
-            generic_names |> map(n => to_pascal(name: n)) |> join(separator: ", "),
-            ">;"
-          )
-        Absent =>
-          if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
-            let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-            let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-            let alias_rhs = resolved_type(n: item)
-            let unused_params = alias_unused_param_names(generic_param_names: generic_names, rhs: alias_rhs, source_indices: env.source_indices)
-            let rhs_str = if unused_params |> count > 0 {
-              concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">")
-            } else {
-              render_rust_alias_rhs_type(
-                n: alias_rhs,
-                generic_param_names: generic_names,
+        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+          rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
+        } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+        } else {
+          match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
+            Present { value: host } =>
+              concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+            Absent =>
+              concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+                n: resolved_type(n: item),
+                generic_param_names: [],
                 shared_types: shared_types,
                 source_indices: env.source_indices,
                 scope: scope,
@@ -6876,79 +6841,151 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                 module_name: module_name,
                 export_sets: export_sets,
                 typed_modules: typed_modules,
-              module_index: module_index,
-              variant_to_enum: emit_info.variant_to_enum)
-            }
-            concat(
-              rust_visibility_prefix(),
-              rust_items().type_alias_keyword,
-              " ",
-              item_text,
-              type_params,
-              " = ",
-              rhs_str,
-              ";"
-            )
-          } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-            emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
-          } else {
-            ""
+                module_index: module_index,
+                variant_to_enum: emit_info.variant_to_enum), ";")
           }
-      }
-    }
-  } else if is_function_item(item: item) {
-    let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
-      Present { value: m } => m
-      Absent => empty_set()
-    }
-    let item_is_tco = is_tco_eligible(name: authored_name(env: env, node: item), body: item.body.value, registry: registry, source_indices: env.source_indices)
-    let fn_read_only = if item_is_tco { empty_set() } else {
-      match map_get(emit_info.read_only_params_index, qualified_name) {
-        Present { value: m } => m
-        Absent => empty_set()
-      }
-    }
-    let fn_emit_info = EmitGraphInfo {
-      type_summaries: emit_info.type_summaries,
-      type_decl_items: emit_info.type_decl_items,
-      fn_decl_items: emit_info.fn_decl_items,
-      recursive_type_set: emit_info.recursive_type_set,
-      fielded_variants: emit_info.fielded_variants,
-      positional_payload_variants: emit_info.positional_payload_variants,
-      shared_types: emit_info.shared_types,
-      ownership_index: emit_info.ownership_index,
-      movable: fn_movable,
-      variant_to_enum: emit_info.variant_to_enum,
-      owned_bindings: empty_set(),
-      read_only_params_index: emit_info.read_only_params_index,
-      read_only_params: fn_read_only,
-      clone_bounded_type_params: emit_info.clone_bounded_type_params,
-      map_key_required_type_names: emit_info.map_key_required_type_names,
-      clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
-      fn_generic_param_names: emit_info.fn_generic_param_names,
-      fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type,
-      expected_type: emit_info.expected_type
-    }
+        }
+      } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
+        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+          rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
+        } else {
 
-    let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
-      Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
-      Absent => false
-    }
-    if is_effectful {
-      emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
-    } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
-    }
-  } else if is_data_def_item(item: item) {
-    emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
-  } else if is_service_def_item(item: item) {
-    emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
-  } else if is_resource_def_item(item: item) {
-    emit_resource_def(item: item, shared_types: shared_types, env: env)
-  } else {
-    concat("compile_error!(\"unhandled item: ", item_text, "\");")
+          match rust_seed_host_container_base(name: item_text) {
+            Present { value: host } =>
+              let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+              let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+              concat(
+                rust_visibility_prefix(),
+                rust_items().type_alias_keyword,
+                " ",
+                item_text,
+                type_params,
+                " = ",
+                host,
+                "<",
+                generic_names |> map(n => to_pascal(name: n)) |> join(separator: ", "),
+                ">;"
+              )
+            Absent =>
+              if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
+                let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+                let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+                let alias_rhs = resolved_type(n: item)
+                let unused_params = alias_unused_param_names(generic_param_names: generic_names, rhs: alias_rhs, source_indices: env.source_indices)
+                let rhs_str = if unused_params |> count > 0 {
+                  concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">")
+                } else {
+                  render_rust_alias_rhs_type(
+                    n: alias_rhs,
+                    generic_param_names: generic_names,
+                    shared_types: shared_types,
+                    source_indices: env.source_indices,
+                    scope: scope,
+                    imports: imports,
+                    registry: registry,
+                    module_name: module_name,
+                    export_sets: export_sets,
+                    typed_modules: typed_modules,
+                  module_index: module_index,
+                  variant_to_enum: emit_info.variant_to_enum)
+                }
+                concat(
+                  rust_visibility_prefix(),
+                  rust_items().type_alias_keyword,
+                  " ",
+                  item_text,
+                  type_params,
+                  " = ",
+                  rhs_str,
+                  ";"
+                )
+              } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
+                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+              } else {
+                ""
+              }
+          }
+        }
+      } else {
+        emit_rust_item_refusal(item_text: item_text, reason: "type declaration matches no declared type structure")
+      }
+    ModuleItemFunction =>
+      match item.body {
+        Present { value: fn_body } => {
+          let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
+            Present { value: m } => m
+            Absent => empty_set()
+          }
+          let item_is_tco = is_tco_eligible(name: authored_name(env: env, node: item), body: fn_body, registry: registry, source_indices: env.source_indices)
+          let fn_read_only = if item_is_tco { empty_set() } else {
+            match map_get(emit_info.read_only_params_index, qualified_name) {
+              Present { value: m } => m
+              Absent => empty_set()
+            }
+          }
+          let fn_emit_info = EmitGraphInfo {
+            type_summaries: emit_info.type_summaries,
+            type_decl_items: emit_info.type_decl_items,
+            fn_decl_items: emit_info.fn_decl_items,
+            recursive_type_set: emit_info.recursive_type_set,
+            fielded_variants: emit_info.fielded_variants,
+            positional_payload_variants: emit_info.positional_payload_variants,
+            shared_types: emit_info.shared_types,
+            ownership_index: emit_info.ownership_index,
+            movable: fn_movable,
+            variant_to_enum: emit_info.variant_to_enum,
+            owned_bindings: empty_set(),
+            read_only_params_index: emit_info.read_only_params_index,
+            read_only_params: fn_read_only,
+            clone_bounded_type_params: emit_info.clone_bounded_type_params,
+            map_key_required_type_names: emit_info.map_key_required_type_names,
+            clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+            fn_generic_param_names: emit_info.fn_generic_param_names,
+            fn_type_env: emit_info.fn_type_env,
+            fn_return_type: emit_info.fn_return_type,
+            expected_type: emit_info.expected_type
+          }
+
+          let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
+            Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
+            Absent => false
+          }
+          if is_effectful {
+            emit_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: fn_body, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
+          } else {
+            emit_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: fn_body, registry: registry, scope: scope, shared_types: shared_types, emit_info: fn_emit_info)
+          }
+        }
+        Absent => emit_rust_item_refusal(item_text: item_text, reason: "function item carries no body")
+      }
+    ModuleItemDataValue =>
+      match item.type_annotation {
+        Present { value: data_anno } =>
+          match item.body {
+            Present { value: data_value } => {
+              emit_data_def(name: item_text, type_node: data_anno, value: data_value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
+            }
+            Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no value")
+          }
+        Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no declared type")
+      }
+    ModuleItemService =>
+      if item.children |> count == 0 {
+        emit_rust_item_refusal(item_text: item_text, reason: "service declares no operations")
+      } else {
+        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
+      }
+    ModuleItemResource =>
+      emit_resource_def(item: item, shared_types: shared_types, env: env)
+    ModuleItemUnrecognized =>
+      emit_rust_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    NotAModuleItem =>
+      emit_rust_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
+}
+
+fn emit_rust_item_refusal(item_text: String, reason: String) -> String {
+  concat("compile_error!(\"EMIT REFUSED: ", reason, ": ", item_text, "\");")
 }
 
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -14560,7 +14597,7 @@ data file_read_match_expr: String = "match std::fs::read_to_string(&file_path) {
 
 data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};"
 
-data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
+data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes)\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
 
 data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
 
@@ -15519,10 +15556,67 @@ fn emit_cli_dispatch_host_method(sub: CliSubcommandRow, method: String) -> Strin
 fn emit_candidate_cli_host_method(sub: CliSubcommandRow, method: String) -> String {
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let params = fields |> map(field => concat(field, ": ", cli_dispatch_field_type(sub: sub, field: field))) |> join(separator: ", ")
+  match sub.realization {
+    CliRetainedHostKernel => emit_candidate_compile_host_method(params: params)
+    _ => concat(
+      "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
+      "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
+      "        std::process::exit(2);\n",
+      "    }\n")
+  }
+}
+
+// The compiler entry point is a host boundary, but its DECISION is not hand-authored here:
+// both the seed executable and the emitted candidate call cli_run::compile_emission.  This
+// renderer supplies only the argv/output transport around that shared transaction.  Keeping the
+// transaction shared is what makes a behavioral comparison meaningful: two independently copied
+// compile pipelines can agree on a fixture while disagreeing everywhere the fixture does not ask.
+fn emit_candidate_compile_host_method(params: String) -> String {
   concat(
-    "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
-    "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
-    "        std::process::exit(2);\n",
+    "    fn retained_host_kernel(&self, ", params, ") -> ! {\n",
+    "        let render_targets = parse_render_targets(&target);\n",
+    "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n",
+    "        let subject = match (&entry, &source_roots.is_empty()) {\n",
+    "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n",
+    "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n",
+    "            (None, true) => None,\n",
+    "        };\n",
+    "        if subject.is_none() {\n",
+    "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n",
+    "            std::process::exit(2);\n",
+    "        }\n",
+    "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n",
+    "            subject: subject.unwrap(),\n",
+    "            source_roots: source_roots.iter().cloned().collect(),\n",
+    "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n",
+    "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n",
+    "        });\n",
+    "        match &run.disposition {\n",
+    "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n",
+    "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Refused { phase, cause } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n",
+    "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Completed { emitted_count } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                let multi_target = run.emissions.len() > 1;\n",
+    "                let mut total_diagnostics = 0usize;\n",
+    "                for emission in &run.emissions {\n",
+    "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n",
+    "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n",
+    "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n",
+    "                    render_diagnostics(&emission.result);\n",
+    "                    total_diagnostics += emission.result.diagnostics.len();\n",
+    "                }\n",
+    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n",
+    "                std::process::exit(0);\n",
+    "            }\n",
+    "        }\n",
     "    }\n")
 }
 
@@ -15735,7 +15829,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
-      "\nuse im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
+      "\nuse im::HashMap;\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
@@ -16050,23 +16144,48 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "    targets\n",
     "}\n",
     "\n",
-    "fn write_output_files(output_dir: &str, result: &", crate_name, "::", pipeline_mod, "::PipelineResult) {\n",
-    "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n",
-    "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n",
-    "    for file in result.files.iter() {\n",
-    "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
-    "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
-    "            std::fs::create_dir_all(parent).ok();\n",
+    "#[derive(Debug, Clone, PartialEq, Eq)]\n",
+    "enum OutputWriteRefusal {\n",
+    "    OutputDirectoryNotCreated { path: String, cause: String },\n",
+    "    ParentDirectoryNotCreated { path: String, file: String, cause: String },\n",
+    "    FileNotWritten { path: String, cause: String },\n",
+    "}\n",
+    "\n",
+    "impl std::fmt::Display for OutputWriteRefusal {\n",
+    "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    "        write!(f, \"gunbc compile: output write refused: \" )?;\n",
+    "        match self {\n",
+    "            Self::OutputDirectoryNotCreated { path, cause } => write!(f, \"could not create output directory {}: {}\", path, cause),\n",
+    "            Self::ParentDirectoryNotCreated { path, file, cause } => write!(f, \"could not create parent directory {} for {}: {}\", path, file, cause),\n",
+    "            Self::FileNotWritten { path, cause } => write!(f, \"could not write {}: {}\", path, cause),\n",
     "        }\n",
-    "        std::fs::write(&out_path, &*file.content)\n",
-    "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n",
     "    }\n",
     "}\n",
     "\n",
-    "fn hard_errors(result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> bool {\n",
-    "    result.diagnostics.iter().any(|d| {\n",
-    "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
-    "    })\n",
+    "impl OutputWriteRefusal {\n",
+    "    fn exit(self) -> ! {\n",
+    "        eprintln!(\"{}\", self);\n",
+    "        std::process::exit(3);\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "fn write_output_files(output_dir: &str, result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> Result<(), OutputWriteRefusal> {\n",
+    "    let src_dir = format!(\"{}/src\", output_dir);\n",
+    "    if let Err(e) = std::fs::create_dir_all(&src_dir) {\n",
+    "        return Err(OutputWriteRefusal::OutputDirectoryNotCreated { path: src_dir, cause: e.to_string() });\n",
+    "    }\n",
+    "    for file in result.files.iter() {\n",
+    "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
+    "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
+    "            if let Err(e) = std::fs::create_dir_all(parent) {\n",
+    "                return Err(OutputWriteRefusal::ParentDirectoryNotCreated { path: parent.display().to_string(), file: out_path, cause: e.to_string() });\n",
+    "            }\n",
+    "        }\n",
+    "        if let Err(e) = std::fs::write(&out_path, &*file.content) {\n",
+    "            return Err(OutputWriteRefusal::FileNotWritten { path: out_path, cause: e.to_string() });\n",
+    "        }\n",
+    "    }\n",
+    "    Ok(())\n",
     "}\n",
     "\n")
 }

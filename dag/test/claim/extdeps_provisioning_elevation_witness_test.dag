@@ -1,0 +1,91 @@
+module test.claim.extdeps_provisioning_elevation_witness
+
+import std.types { Bool, String }
+import extdeps.cache.sccache { sccache_install_script, sccache_release_0_15_0, sccache_installed_binary_path }
+import extdeps.container.docker_ce {
+  docker_ce_repo_install_script,
+  docker_ce_apt_repo_noble_arm64,
+  docker_ce_packages,
+}
+
+// These witnesses read the production scripts. Each privileged command must carry both the
+// absolute sudo path and -n: a missing NOPASSWD grant must refuse instead of prompting.
+// Reverting any one call site to its old bare-sudo form makes its own witness false,
+// even while the other elevated commands in the same script remain correct.
+fn rendered_sccache_install() -> String {
+  sccache_install_script(
+    rel: sccache_release_0_15_0,
+    arch: "aarch64",
+    digest: sccache_release_0_15_0.digest_aarch64,
+  )
+}
+
+fn rendered_docker_install() -> String {
+  docker_ce_repo_install_script(
+    repo: docker_ce_apt_repo_noble_arm64,
+    packages: docker_ce_packages,
+  )
+}
+
+test fn witness_sccache_mv_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_sccache_install(),
+    pattern: join([
+      "\n'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-",
+      sccache_release_0_15_0.version as String,
+      "-aarch64-unknown-linux-musl/sccache' '",
+      sccache_installed_binary_path,
+      "'\n",
+    ], ""),
+  )
+}
+
+test fn witness_sccache_chmod_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_sccache_install(),
+    pattern: "\n'/usr/bin/sudo' '-n' 'chmod' '+x' ",
+  )
+}
+
+test fn witness_docker_install_keyrings_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: "\n'/usr/bin/sudo' '-n' 'install' '-m' '0755' '-d' '/etc/apt/keyrings'\n",
+  )
+}
+
+test fn witness_docker_gpg_pipeline_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: " | '/usr/bin/sudo' '-n' 'gpg' '--dearmor' '--yes' '-o' '/etc/apt/keyrings/docker.gpg'\n",
+  )
+}
+
+test fn witness_docker_chmod_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: "\n'/usr/bin/sudo' '-n' 'chmod' 'a+r' ",
+  )
+}
+
+test fn witness_docker_tee_pipeline_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: " | '/usr/bin/sudo' '-n' 'tee' '/etc/apt/sources.list.d/docker.list' >/dev/null\n",
+  )
+}
+
+test fn witness_docker_apt_update_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: "\n'/usr/bin/sudo' '-n' 'apt-get' 'update' '-q'\n",
+  )
+}
+
+test fn witness_docker_apt_install_is_non_interactive() -> Bool {
+  string_contains(
+    s: rendered_docker_install(),
+    pattern: "\n'/usr/bin/sudo' '-n' 'apt-get' 'install' '-y' '-q' 'docker-ce' 'docker-ce-cli' 'containerd.io' 'docker-buildx-plugin' 'docker-compose-plugin' 'docker-ce-rootless-extras'\n",
+  )
+}
+
