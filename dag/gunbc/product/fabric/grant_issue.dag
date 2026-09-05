@@ -209,7 +209,7 @@ fn grant_identity_material<P>(
       content_hash_of_value(value: offer.key),
       content_hash_of_value(value: lease.lease_key),
       lease.resource_fingerprint,
-      content_hash_of_value(value: lease.generation),
+      content_hash_of_value(value: to_string(lease.generation) as NonEmptyStr),
     ],
     init: "gunbc.fabric.grant:",
     f: (acc, part) => concat(acc, serialize_content_hash(hash: part)),
