@@ -1414,28 +1414,132 @@ pub struct TransitionAdmission {
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
-const HOST_CONVERGE_LOOKUP_MOVE_LABEL: &str =
-    "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type, \
-     from gunbc.fleet_converge_cli to gunbc.host_converge";
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10324). Both `host_converge_for_identity`
+/// rows are deleted, and `HOST_CONVERGE_LOOKUP_MOVE_LABEL` with them. The entry above named its own
+/// trigger -- gunbc#10324 MERGING -- and that has happened: 3a1ee654d4 is in this branch's history,
+/// so main carries the wrapper in `gunbc.host_converge`, base and head bind the spelling
+/// identically, and no run can produce these deltas.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE. The required namespace-wave phase reported
+/// both rows as `CONSUMED ADMISSION` by identity, 2 of 2, and refused this change until they were
+/// removed -- which is the standard the entry above sets for itself and the reason the sentence
+/// alone was never sufficient.
+///
+/// THIRD COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six (paid by
+/// gunbc#10445 before this branch reached them) and gunbc#10300's two (paid concurrently by
+/// gunbc#10324). The toll is proportional to how long a branch stays open, which is an argument for
+/// shorter branches rather than against the rule: the roster is small precisely because the
+/// deletion comes due on touch.
+
+/// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
+/// entries above number themselves against a sequence that other lanes are appending to
+/// concurrently, so a number chosen on this branch would be wrong by the time it merged.
+///
+/// #10459 is the declared next-rung trigger for the resource-exclusion validator family: the emit
+/// side stopped INFERRING what an item is from its shape and started READING a positive kind the
+/// parse constructors stamp. The kind therefore has to sit on `Node`, and `Node` is declared in
+/// `v1.std.core`, which cannot import `v1.compiler.parse` -- acyclicity, the import graph's one
+/// structural law. So `ParsedModuleItemKind` and its variants MOVE from `v1.compiler.parse` into
+/// `v1.std.core`: a move, not a copy, so no second authority for "what kind of item is this"
+/// survives the change, which is the whole point of the trigger.
+///
+/// SEVEN BINDING SITES IN `v1.compiler.parse` therefore bind the same spellings to a different
+/// declaring module -- six in `parsed_module_item_role`, one in `stamp_parsed_module_items` -- a
+/// `TargetChanged` delta by construction and exactly the motion this wall exists to make visible.
+/// `NotAModuleItem` is not among them: it is authored by this change and has no base binding to
+/// change.
+///
+/// THE OTHER DELTAS ARE NOT ADMITTED HERE BECAUSE THE WALL ALREADY ADJUDICATES THEM: the new
+/// `gunbc.recurring_failure_mode` roster rows report `ExplicitlyEvaluatedZeroDelta`, and the removed
+/// `v1.compiler.emit_core_support -> v1.compiler.parse` membership reports
+/// `SameDeclarationIdentityRebind` -- the emit side dropping the import it no longer needs once the
+/// shape predicates are deleted. Admitting a row the wall already decides would be a second
+/// authority for one decision.
+///
+/// THIS ENTRY ONCE CLAIMED THE gunbc#10439 DELETION AND NO LONGER DOES, WHICH IS THE POINT OF
+/// SAYING SO. An earlier revision, authored when this branch was the first to touch the roster after
+/// #10439 merged, said the six serving-engine rows "are deleted by this change". gunbc#10445 landed
+/// that deletion first. Leaving the sentence standing would have made this block assert an act it
+/// did not perform -- true on the branch that wrote it, false the moment another lane discharged the
+/// same obligation.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10459 merges. The base then binds
+/// each spelling to `v1.std.core`, no run can produce these deltas, and all seven report CONSUMED
+/// rather than stale -- coming due on this roster's own next touch. Adjudicate that deletion by the
+/// declaring-module join, joining each row against main's tree by its own (module, in_declaration,
+/// spelling, target) tuple rather than trusting this sentence, because a trigger sentence is not
+/// evidence that the trigger fired.
+const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
+    "parsed module item kind vocabulary move gunbc#10459 2026-09-05";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemDataValue",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_run_host_knobs",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemFunction",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemResource",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemService",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemTypeDeclaration",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "parsed_module_item_role",
+            spelling: "ModuleItemUnrecognized",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.parse",
+            in_declaration: "stamp_parsed_module_items",
+            spelling: "ModuleItemUnrecognized",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

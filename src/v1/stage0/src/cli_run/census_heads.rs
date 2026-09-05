@@ -150,6 +150,7 @@ pub(crate) fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
         is_self_recursive: item.is_self_recursive,
         has_non_tail_self_call: item.has_non_tail_self_call,
         match_pattern: None,
+        module_item_kind: item.module_item_kind,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: item.ident.clone(),
     })
@@ -180,6 +181,7 @@ pub(crate) fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
         is_self_recursive: module.is_self_recursive,
         has_non_tail_self_call: module.has_non_tail_self_call,
         match_pattern: None,
+        module_item_kind: module.module_item_kind,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: module.ident.clone(),
     })

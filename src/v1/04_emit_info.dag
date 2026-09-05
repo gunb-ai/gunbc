@@ -13,6 +13,8 @@ import v1.std.core {
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
   param_node_name_at,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
 }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
@@ -256,23 +258,22 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
   match build_type_summary(item: item, source_indices: source_indices) {
     Present { value: _ } => true
     Absent =>
-      item.connective == NoConnective
+      item.module_item_kind == ModuleItemTypeDeclaration
+        && item.connective == NoConnective
         && (item.children |> count) == 0
         && (item.params |> count) == 0
-        && item.transport == none
   }
 }
 
-// Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level
-// item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info)
-// is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of
-// 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes
-// the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather
-// than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates
-// answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export').
-
+// THE DUPLICATE PREDICATE IS GONE. What stood here duplicated v1.compiler.emit_core_support's
+// is_function_item -- `body != none && type_annotation == none` -- and argued the duplication was
+// layering: this module is upstream of emit_core_support in the DAG, and both predicates answered
+// "what item shape reaches this stage's fold". The argument was sound and the fact it forked was
+// the wrong fact. An item's kind is not a per-stage question at all: v1.std.core Node now carries
+// module_item_kind, stamped by the parse constructor, so both stages read ONE authority that is
+// upstream of both and neither re-derives a shape.
 fn emit_graph_records_fn_decl(item: Node) -> Bool {
-  item.body != none && item.type_annotation == none
+  item.module_item_kind == ModuleItemFunction
 }
 
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
