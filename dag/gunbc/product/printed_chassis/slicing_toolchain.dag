@@ -9,7 +9,7 @@ import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
 import extdeps.printing.orca_slicer {
   orca_slicer_version, orca_slicer_linux_aarch64_appimage,
   orca_slicer_linux_aarch64_appimage_sha256, orca_slicer_required_glibc,
-  orca_slice_to_project_command,
+  orca_slice_to_project_command, OrcaExecutable, orca_version_probe_command,
 }
 
 // WHERE THE MESH-TO-MACHINE ROUTE STOPS TODAY, DECLARED RATHER THAN DISCOVERED AT RUN TIME.
@@ -106,8 +106,12 @@ fn judge_host_abi(observation: HostRuntimeObservation) -> HostAbiStanding {
 // sanctioned mint -- a seal proves WHO MAY MINT, never that the value handed in was earned. The
 // evidence of an actual attempt is therefore sealed in this type, and the plan mint takes THIS and
 // not a standing.
+// THE SEAL CARRIES THE EXECUTABLE, NOT ITS NAME. Holding a NonEmptyStr here would re-open the kind
+// question at the plan mint: admit_slice would have a program string and no way to know it named an
+// Orca binary, so the narrowing done at the attempt would be lost one function later. The typed
+// executable travels the whole way to the invocation it authorizes.
 type AttemptedExecution sole_constructor {
-  program: NonEmptyStr
+  executable: OrcaExecutable
   receipt: NonEmptyStr
 }
 
@@ -143,9 +147,22 @@ type OrcaExecutionStanding
 // FOURTH time -- a conclusion handed in next to the evidence -- and here it was load-bearing rather
 // than cosmetic: admit_slice builds the slice invocation from the sealed program, so the plan would
 // have invoked a binary that was never the one proven to run.
+// AND THE EXECUTED PROGRAM MUST BE ORCA BY CONSTRUCTION, WHICH IS ONE LAYER WIDER THAN THE FORK
+// ABOVE. Deriving the sealed program from the executed command closed subject SUBSTITUTION; it did
+// not close subject KIND. A caller could still run `true` on a host clearing the Orca ABI floor,
+// observe a genuine zero exit, seal program "true", and have admit_slice hand that program to the
+// slice invocation -- generic executability read as Orca executability, with nothing faked anywhere
+// along the way.
+//
+// The repair is NOT command.program == "orca-slicer". A string compare here would be a second
+// authority for what counts as this upstream product, and an unreliable one: the AppImage's own
+// filename is the standing example of a name that misstates the artifact. extdeps.printing.orca_slicer
+// owns that fact, so it now seals OrcaExecutable and mints the invocations. This function takes the
+// executable and builds the probe itself; there is no parameter through which a command of another
+// kind can arrive.
 func attempt_orca_execution(
   observation: HostRuntimeObservation,
-  command: ArgvCommand,
+  executable: OrcaExecutable,
   transport: CommandTransport,
 ) -> OrcaExecutionStanding
   uses net: Network
@@ -155,11 +172,14 @@ func attempt_orca_execution(
     BelowObservedArtifactFloor { provided: p, required: r } =>
       ExecutionUnattempted { abi: BelowObservedArtifactFloor { provided: p, required: r } }
     MeetsObservedArtifactFloor { provided: _, required: _ } =>
-      match run_shell_command_capture(command: command, transport: transport) {
+      match run_shell_command_capture(
+        command: orca_version_probe_command(executable: executable),
+        transport: transport,
+      ) {
         ProcessOutputPresent { text: t } =>
-          ExecutionReady { attempt: AttemptedExecution { program: command.program, receipt: t as NonEmptyStr } }
+          ExecutionReady { attempt: AttemptedExecution { executable: executable, receipt: t as NonEmptyStr } }
         ProcessOutputAbsent =>
-          ExecutionReady { attempt: AttemptedExecution { program: command.program, receipt: "exited zero with no output" } }
+          ExecutionReady { attempt: AttemptedExecution { executable: executable, receipt: "exited zero with no output" } }
         ProcessRefused { exit_code: _, stderr: e } =>
           ExecutionRefused { receipt: e as NonEmptyStr }
       }
@@ -233,7 +253,7 @@ fn admit_slice(
       SliceAdmitted {
         plan: SlicePlan {
           command: orca_slice_to_project_command(
-            program: at.program,
+            executable: at.executable,
             input_model: input_model,
             output_project: output_project,
             printer_profile: printer_profile,
