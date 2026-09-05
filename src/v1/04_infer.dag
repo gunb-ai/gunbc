@@ -341,11 +341,11 @@ type StringPartInferResult {
   diagnostics: List<ErrorNode>
 }
 
+// product_application is grounded before generic binding. The application plan
+// consumes that carried fact instead of resolving the actual again later.
 type ArgInferResult {
   typed_arg: Node
   diagnostics: List<ErrorNode>
-  // Grounded once before generic binding; the application plan consumes this
-  // same fact instead of resolving the actual again in a later phase.
   product_application: TypeApplication<Node>?
 }
 
@@ -1795,7 +1795,7 @@ fn where_refinement_predicates_equivalent(
 // vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the
 // bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its
 // guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on:
-// feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the
+// feature:where-refinement-predicate-declaration-authority — when WhereRefinementPredicateKind replaces the
 // string classifiers, the guaranteed and required bounds become fields on the predicate's own
 // declaration rather than two tables a reader must keep in lockstep with
 // where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds.
@@ -1919,7 +1919,7 @@ fn decidable_where_int_predicate_holds(pred_name: String, pred: Node, value: Int
 // closed string sets — must stay in lockstep with decidable_*_predicate_holds and
 // where_refinement_predicates_equivalent. bound: vocabulary changes require updating all classifier
 // fns + eval + equivalence arms in one commit. dissolve-on:
-// feature:where-refinement-predicate-coproduct (WhereRefinementPredicateKind coproduct replacing
+// feature:where-refinement-predicate-declaration-authority (WhereRefinementPredicateKind coproduct replacing
 // string classifiers).
 
 fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {
@@ -5619,6 +5619,15 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
   }
 }
 
+// Use the same first-actual selection as build_call_application_plan.
+// A second generic pass may replace a provisional inferred value; method,
+// unresolved, unavailable-formal and duplicate-actual paths do not capture.
+// The enclosing scope is identical across both passes. Share the first
+// captured fact when its complete input is unchanged; changed inference
+// (for example a contextually typed lambda) supersedes that first input.
+// Full structural Node equality includes inferred data and spans. This is
+// a conservative correctness guard: any disagreement recaptures. A span
+// or name alone cannot establish that the capture input stayed equal.
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, prior_results: List<ArgInferResult>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
@@ -5650,9 +5659,6 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
-    // Use the same first-actual selection as build_call_application_plan.
-    // A second generic pass may replace a provisional inferred value; method,
-    // unresolved, unavailable-formal and duplicate-actual paths do not capture.
     let capture_application = match formal_selection {
       CallArgumentFormalSelected { formal_index: index, formal: _ } => match formals |> skip(index) |> first {
         Present { value: carried } => carried.product_application != none
@@ -5665,12 +5671,6 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       CallArgumentFormalUnavailable => false
     }
     let produced_application = if capture_application {
-      // The enclosing scope is identical across both passes. Share the first
-      // captured fact when its complete input is unchanged; changed inference
-      // (for example a contextually typed lambda) supersedes that first input.
-      // Full structural Node equality includes inferred data and spans. This is
-      // a conservative correctness guard: any disagreement recaptures. A span
-      // or name alone cannot establish that the capture input stayed equal.
       match prior_results |> skip(pair.first) |> first {
         Present { value: prior } => if arg_value(n: prior.typed_arg) == ar.typed {
           prior.product_application

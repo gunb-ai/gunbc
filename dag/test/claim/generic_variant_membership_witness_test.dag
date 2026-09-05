@@ -52,10 +52,12 @@ fn membership_source_is_clean(source: String) -> Bool {
   }
 }
 
-// A generic payload is still unconstrained by its owner. Fixing owner membership
-// must not require that every type variable inside a valid constructor be ground.
+// A generic payload remains valid at the repaired record-field seam.
+// Counterfactual Zed here must refuse even while T remains unbound. The prior
+// direct-return fixture accepted Zed too (3d3fd051): declared-return obligations
+// remain unwired, so that shape cannot evidence this field-membership repair.
 test fn generic_payload_remains_admissible_inside_its_owner() -> Bool {
-  membership_source_is_clean(source: "module membership\ntype Out<T> = | Acc { value: T } | Rej\nfn wrap<T>(value: T) -> Out<T> { Acc { value: value } }\n")
+  membership_source_is_clean(source: "module membership\ntype Out<T> = | Acc { value: T } | Rej\ntype Holder<T> { r: Out<T> }\nfn wrap<T>(value: T) -> Holder<T> { Holder { r: Acc { value: value } } }\n")
 }
 
 // Baseline 03a3b91fb4c1 emits this advisory: direct-call inhabitance
@@ -95,4 +97,15 @@ test fn monomorphic_position_still_refuses_foreign_constructor() -> Bool {
     source: "module membership\ntype A1 = | Aye { q: Int }\ntype B1 = | Bee { q: Int }\ntype Holder { r: A1 }\nfn probe() -> Holder { Holder { r: Bee { q: 1 } } }\n",
     owner_shape: "Coproduct(B1)"
   )
+}
+
+// Known accepting return-position boundary, not a membership guarantee. The
+// original generic-payload control's foreign-owner counterfactual stayed green
+// in 3d3fd051. declared_type_inhabitance's DeclaredTypePosition note explicitly
+// lists PositionDeclaredReturn among the positions awaiting an obligation
+// producer. Keep the valid return and the admitted foreign return together;
+// acceptance of the latter is the defect, and must flip when that producer lands.
+test fn generic_return_owner_gap_remains_observable() -> Bool {
+  membership_source_is_clean(source: "module membership\ntype Out<T> = | Acc { value: T } | Rej\nfn wrap<T>(value: T) -> Out<T> { Acc { value: value } }\n")
+    && membership_source_is_clean(source: "module membership\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder<T> { r: Out<T> }\nfn foreign<T>() -> Out<T> { Zed { q: 1 } }\n")
 }

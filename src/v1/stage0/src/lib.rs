@@ -323,6 +323,17 @@ pub mod std_serialization;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod std_type_application;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod std_workspace_artifact;
 #[allow(
     unused_imports,

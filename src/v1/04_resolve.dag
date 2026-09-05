@@ -62,12 +62,12 @@ import v1.compiler.infer_env {
 // environment. Alias traversal visits declaration RHSs only; it does not rebuild
 // the product's fields. Revisited declaration identities decline cyclic heads;
 // unexposed heads retain their current conformance path.
+// The exact callable declaration is selected by its declaring module.
+// Resolution preserves the parameter occurrence span, including for
+// repeated anonymous parameters; a caller-scoped name match is not a join.
 fn declaration_bound_formal_product_application(declaration: Node?, parameter: Node, env: TypeEnv, module_name: String) -> TypeApplication<Node>? {
   match declaration {
     Present { value: source } => {
-      // The exact callable declaration is selected by its declaring module.
-      // Resolution preserves the parameter occurrence span, including for
-      // repeated anonymous parameters; a caller-scoped name match is not a join.
       let candidates = source.params |> filter(candidate =>
         param_node_span(n: candidate) == param_node_span(n: parameter)
           && param_node_name_at(n: candidate, source_indices: env.source_indices)
@@ -121,6 +121,11 @@ fn declaration_bound_product_application(n: Node, env: TypeEnv, module_name: Str
   declaration_bound_product_application_at(n: n, env: env, module_name: module_name, visited: [])
 }
 
+// A resolved Conj input contributes no application arguments: its children are
+// fields. A nongeneric owner is therefore captured at arity zero.
+// Routing asks about the written argument, whereas identity
+// comparison consumes its declaration-context resolution.
+// Expanding a leaf alias must not make it a nested argument.
 fn declaration_bound_product_application_at(n: Node, env: TypeEnv, module_name: String, visited: List<DeclarationRef>) -> TypeApplication<Node>? {
   if n.return_cardinality == CardOptional || (n.connective != NoConnective && n.connective != Conj)
     || is_declared_container_alias_spelling(name: authored_name_at(source_indices: env.source_indices, node: n)) {
@@ -133,8 +138,6 @@ fn declaration_bound_product_application_at(n: Node, env: TypeEnv, module_name: 
             if visited |> any(prior => declaration_ref_eq(a: prior, b: owner)) { none } else {
             match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(owner.module_path, ".", owner.decl_name)) {
               Present { value: declaration } =>
-                // A product declaration is the arity-zero application of its
-                // owner. Its children are fields, not application arguments.
                 let arguments = if n.connective == Conj { [] } else { n.children }
                 if declaration.connective == Conj
                   && (declaration.params |> count) == (arguments |> count) {
@@ -142,9 +145,6 @@ fn declaration_bound_product_application_at(n: Node, env: TypeEnv, module_name: 
                     owner: owner,
                     arguments: arguments |> map(arg => {
                       let resolved = resolve_nominal_alias_rhs(n: arg, env: env, module_name: module_name)
-                      // Routing asks about the written argument, whereas identity
-                      // comparison consumes its declaration-context resolution.
-                      // Expanding a leaf alias must not make it a nested argument.
                       node_with_inferred(n: arg, inferred: Present { value: Resolved { node: resolved.resolved } })
                     })
                   } }

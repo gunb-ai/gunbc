@@ -46,7 +46,7 @@ pub use crate::v1_compiler_infer_env::{
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{
-    declaration_bound_product_application, fn_type_param_names, peel_nominal_alias_identity,
+    declaration_bound_formal_product_application, fn_type_param_names, peel_nominal_alias_identity,
 };
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
@@ -696,6 +696,16 @@ pub fn census_declaration_bound_formals(
     node: Rc<Node>,
 ) -> Rc<Vec<Rc<ResolvedFormal>>> {
     {
+        let source_declaration = crate::v1_compiler_infer_env::symbol_index_lookup(
+            type_env.symbol_index.clone(),
+            v1_rt::concat(
+                v1_rt::concat(owner_module_path.clone(), ".".to_string()),
+                crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                    type_env.source_indices.clone(),
+                    node.clone(),
+                )),
+            ),
+        );
         let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
             node.clone(),
             type_env.source_indices.clone(),
@@ -765,36 +775,15 @@ pub fn census_declaration_bound_formals(
             .cloned()
             {
                 __result.push({
-                    let declared_type = crate::v1_std_core::param_node_type_expr(p.clone());
-                    Rc::new(ResolvedFormal {
-                        parameter_identity: crate::v1_std_core::param_node_name_at(
-                            p.clone(),
-                            type_env.source_indices.clone(),
-                        ),
-                        declared_type: declared_type.clone(),
-                        declaration_bound_conformance:
-                            crate::v1_std_core::preserve_outer_optional_cardinality(
-                                declared_type.clone(),
-                                crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-                                    declared_type.clone(),
-                                    declaration_env.clone(),
-                                    owner_module_path.clone(),
-                                ),
-                            ),
-                        substitution_basis:
-                            crate::v1_compiler_infer_env::declaration_substitution_basis(
-                                declared_type.clone(),
-                                declaration_env.clone(),
-                                declaration_generic_names.clone(),
-                            ),
-                        product_application:
-                            crate::v1_compiler_infer_resolve::declaration_bound_product_application(
-                                declared_type.clone(),
-                                declaration_env.clone(),
-                                owner_module_path.clone(),
-                            ),
-                    })
-                });
+            let declared_type = crate::v1_std_core::param_node_type_expr(p.clone());
+Rc::new(ResolvedFormal {
+    parameter_identity: crate::v1_std_core::param_node_name_at(p.clone(), type_env.source_indices.clone()),
+    declared_type: declared_type.clone(),
+    declaration_bound_conformance: crate::v1_std_core::preserve_outer_optional_cardinality(declared_type.clone(), crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(declared_type.clone(), declaration_env.clone(), owner_module_path.clone())),
+    substitution_basis: crate::v1_compiler_infer_env::declaration_substitution_basis(declared_type.clone(), declaration_env.clone(), declaration_generic_names.clone()),
+    product_application: crate::v1_compiler_infer_resolve::declaration_bound_formal_product_application(source_declaration.clone(), p.clone(), declaration_env.clone(), owner_module_path.clone()),
+})
+});
             }
             __result
         })

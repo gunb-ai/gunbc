@@ -13,22 +13,34 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeHeadView {
-    KernelScalarHead {
-        type_identity: String,
-    },
-    ApplicationHead {
-        constructor_identity: String,
-        argument_identities: Rc<Vec<String>>,
-    },
-    ProductHead {
-        type_identity: String,
-    },
-    CoproductHead {
-        type_identity: String,
-    },
-    CallableHead {
-        type_identity: String,
-    },
+    KernelScalarHead { type_identity: String },
+    ApplicationHead,
+    ProductHead { type_identity: String },
+    CoproductHead { type_identity: String },
+    CallableHead { type_identity: String },
+}
+impl TypeHeadView {
+    pub fn type_identity(&self) -> String {
+        match self {
+            TypeHeadView::KernelScalarHead {
+                type_identity: __val,
+                ..
+            } => __val.clone(),
+            TypeHeadView::ApplicationHead => panic!("no type_identity on unit variant"),
+            TypeHeadView::ProductHead {
+                type_identity: __val,
+                ..
+            } => __val.clone(),
+            TypeHeadView::CoproductHead {
+                type_identity: __val,
+                ..
+            } => __val.clone(),
+            TypeHeadView::CallableHead {
+                type_identity: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
