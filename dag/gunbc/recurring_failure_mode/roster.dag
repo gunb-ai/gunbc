@@ -19,6 +19,7 @@ import gunbc.recurring_failure_mode.hollow_alias { hollow_alias }
 import gunbc.recurring_failure_mode.state_space_conflation { state_space_conflation }
 import gunbc.recurring_failure_mode.absorbing_fallback { absorbing_fallback }
 import gunbc.recurring_failure_mode.empty_observation_narrow { empty_observation_narrow }
+import gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success { edit_pass_that_matched_nothing_reports_success }
 import gunbc.recurring_failure_mode.claim_forced_and_unbracketed { claim_forced_and_unbracketed }
 import gunbc.recurring_failure_mode.cache_impurity { cache_impurity }
 import gunbc.recurring_failure_mode.reflection_evidence_structural_proof { reflection_evidence_structural_proof }
@@ -138,6 +139,8 @@ import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_differ
 import gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing { reported_required_refusal_does_not_precondition_landing }
 import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis { corroboration_without_an_independent_derivation_axis }
 import gunbc.recurring_failure_mode.detector_promoted_to_an_actuator_predicate { detector_promoted_to_an_actuator_predicate }
+import gunbc.recurring_failure_mode.a_deconfliction_plan_does_not_enumerate_its_writers { a_deconfliction_plan_does_not_enumerate_its_writers }
+import gunbc.recurring_failure_mode.a_branch_property_falsified_by_a_derived_push { a_branch_property_falsified_by_a_derived_push }
 import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_its_own_denominator }
 import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
 
@@ -150,6 +153,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   state_space_conflation,
   absorbing_fallback,
   empty_observation_narrow,
+  edit_pass_that_matched_nothing_reports_success,
   claim_forced_and_unbracketed,
   cache_impurity,
   reflection_evidence_structural_proof,
@@ -269,6 +273,8 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   reported_required_refusal_does_not_precondition_landing,
   corroboration_without_an_independent_derivation_axis,
   detector_promoted_to_an_actuator_predicate,
+  a_deconfliction_plan_does_not_enumerate_its_writers,
+  a_branch_property_falsified_by_a_derived_push,
   roster_is_its_own_denominator,
   instrument_answers_outside_its_domain,
 ]
