@@ -88,6 +88,13 @@ performs the live read without a code-path switch.
 
 ## Interim human handoff
 
+**Superseded 2026-09-05, never taken.** The `org_actions_observe` step now mints a one-hour installation
+token in-run from the existing `gunbai-ci` App key (Secret Manager `ci-github-app-private-key`, read
+through the same WIF path as the fleet key), so no personal token is created and no Actions secret
+holds a credential. The steps below are kept as the record of the design that was replaced. What
+remains of the terminal migration is narrowing to a dedicated least-privilege App; the read path and
+custody contract are already the terminal ones.
+
 1. In GitHub's fine-grained token UI, the operator selects `gunb-ai` as resource owner, grants
    organization `Self-hosted runners: write` and `Administration: write`, and chooses a bounded
    expiry. No repository content permission is needed for the org-settings probe itself.

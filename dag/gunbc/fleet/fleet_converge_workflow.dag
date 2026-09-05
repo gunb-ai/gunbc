@@ -350,8 +350,7 @@ fn fleet_converge_org_actions_step() -> Step {
     run: gunbc_ci_org_actions_converge_invoke(),
     shell: none,
     env: Present { value: [
-      kv(key: "GUNBC_ORG_ADMIN_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
-      kv(key: "GH_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_org_actions_step_if },

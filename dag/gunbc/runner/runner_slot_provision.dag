@@ -69,20 +69,53 @@ type RunnerSlotMemberAt = NonEmptyStr
 // out-of-roster tree refused OwnershipUnknown forever and 45 dead runner trees sat on srv2 at two
 // gigabytes each. A tree is a retired incarnation of a gunbc-managed slot when four observed facts
 // agree: its name is in this host's slot grammar (the allocation authority's own rendering round-
-// trips through it), no `.runner` registration is present, and its unit is neither active nor
-// enabled. That tree was created by this reconcile's own ADD arm and abandoned by a width change,
-// so it is Owned and teardown-eligible. Anything else -- a registered tree, an active unit, a name
-// outside the grammar such as the operator scripts in the base dir -- stays OwnershipUnknown and
-// refuses exactly as before. Desired members are constructed from names and carry Unobserved,
-// which ownership never admits; only an observation can make a member removable.
+// trips through it), its `.runner` registration is absent OR ephemeral, and its unit is neither
+// active nor enabled. That tree was created by this reconcile's own ADD arm and abandoned by a
+// width change, so it is Owned and teardown-eligible. Anything else -- a persistently registered
+// tree, an unreadable registration, an active unit, a name outside the grammar such as the
+// operator scripts in the base dir -- stays OwnershipUnknown and refuses exactly as before.
+// Desired members are constructed from names and carry Unobserved, which ownership never admits;
+// only an observation can make a member removable.
+//
+// REGISTRATION IS A KIND, NOT A BOOL. `registered: Bool` read only the file's presence, and on
+// srv2 two trees (srv2-11, srv2-12) carried a `.runner` beside a unit dead since June: the file
+// says `Ephemeral: True`, and an ephemeral registration is unregistered by GitHub after one job
+// (extdeps.github.actions_runner actions_runner_registration_decode), so those trees were retired
+// incarnations that a Bool could not distinguish from a live persistent registration. The
+// persistent arm still refuses: deciding it needs an org-scoped observation this executor does
+// not hold.
+type RunnerSlotRegistration
+  = SlotUnregistered
+  | SlotRegisteredPersistent
+  | SlotRegisteredEphemeral
+  | SlotRegistrationUnreadable { reason: String }
+
 type RunnerSlotProvenance
   = SlotProvenanceUnobserved
   | SlotProvenanceObserved {
       in_host_grammar: Bool
-      registered: Bool
+      registration: RunnerSlotRegistration
       unit_active: Bool
       unit_enabled: Bool
     }
+
+fn runner_slot_registration_is_retired(r: RunnerSlotRegistration) -> Bool {
+  match r {
+    SlotUnregistered => true
+    SlotRegisteredEphemeral => true
+    SlotRegisteredPersistent => false
+    SlotRegistrationUnreadable { reason: _ } => false
+  }
+}
+
+fn runner_slot_registration_wire(r: RunnerSlotRegistration) -> String {
+  match r {
+    SlotUnregistered => "unregistered"
+    SlotRegisteredPersistent => "registered"
+    SlotRegisteredEphemeral => "ephemeral"
+    SlotRegistrationUnreadable { reason: _ } => "registration-unreadable"
+  }
+}
 
 type RunnerSlotMember {
   instance_name: NonEmptyStr
@@ -93,18 +126,18 @@ type RunnerSlotMember {
 fn runner_slot_provenance_is_retired_incarnation(p: RunnerSlotProvenance) -> Bool {
   match p {
     SlotProvenanceUnobserved => false
-    SlotProvenanceObserved { in_host_grammar: g, registered: r, unit_active: a, unit_enabled: e } =>
-      g && !r && !a && !e
+    SlotProvenanceObserved { in_host_grammar: g, registration: r, unit_active: a, unit_enabled: e } =>
+      g && runner_slot_registration_is_retired(r: r) && !a && !e
   }
 }
 
 fn runner_slot_provenance_wire(p: RunnerSlotProvenance) -> String {
   match p {
     SlotProvenanceUnobserved => "unobserved"
-    SlotProvenanceObserved { in_host_grammar: g, registered: r, unit_active: a, unit_enabled: e } =>
+    SlotProvenanceObserved { in_host_grammar: g, registration: r, unit_active: a, unit_enabled: e } =>
       join([
         if g { "grammar" } else { "foreign" }, ",",
-        if r { "registered" } else { "unregistered" }, ",",
+        runner_slot_registration_wire(r: r), ",",
         if a { "active" } else { "inactive" }, ",",
         if e { "enabled" } else { "disabled" },
       ], "")

@@ -29,6 +29,7 @@ import gunbc.runner_slot_provision {
   runner_slot_name_in_host_grammar,
   RunnerSlotProvenance,
   SlotProvenanceObserved,
+  RunnerSlotRegistration, SlotUnregistered, SlotRegisteredPersistent, SlotRegisteredEphemeral, SlotRegistrationUnreadable,
   RunnerSlotObservation,
   RunnerSlotMember,
   RunnerSlotsObserved,
@@ -36,7 +37,12 @@ import gunbc.runner_slot_provision {
   observe_runner_slot_members_wet,
 }
 import product.placement_supply { HostIdentity }
-import extdeps.github.actions_runner { actions_runner_registration_file_name }
+import extdeps.github.actions_runner {
+  actions_runner_registration_file_name,
+  actions_runner_registration_decode,
+  ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
+  ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
+}
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
@@ -583,7 +589,18 @@ func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact)
               transport: LocalExec,
             )
           } else {
-            exit_failure(reason: "fleet_converge_plan: artifact write refused")
+            exit_failure(reason: fleet_converge_plan_artifact_write_refusal(rows: [
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_body_path, success: w_plan.success, error: w_plan.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_baseline_hex_path, success: w_base.success, error: w_base.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_content_hash_path, success: w_hash.success, error: w_hash.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_apply_shell_path, success: w_apply.success, error: w_apply.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_host_path, success: w_host.success, error: w_host.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_generation_path, success: w_gen.success, error: w_gen.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_prior_generation_path, success: w_prior.success, error: w_prior.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_member_set_fp_path, success: w_member_fp.success, error: w_member_fp.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_scope_path, success: w_scope.success, error: w_scope.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_spark_typed_actions_wire_path, success: w_spark_wire.success, error: w_spark_wire.error),
+            ]))
           }
         }
       }
@@ -994,7 +1011,18 @@ func fleet_converge_plan_scoped_bound_wet(
                     )
                 }
               } else {
-                exit_failure(reason: "fleet_converge_plan: artifact write refused")
+                exit_failure(reason: fleet_converge_plan_artifact_write_refusal(rows: [
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_body_path, success: w_plan.success, error: w_plan.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_baseline_hex_path, success: w_base.success, error: w_base.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_content_hash_path, success: w_hash.success, error: w_hash.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_apply_shell_path, success: w_apply.success, error: w_apply.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_host_path, success: w_host.success, error: w_host.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_generation_path, success: w_gen.success, error: w_gen.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_prior_generation_path, success: w_prior.success, error: w_prior.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_member_set_fp_path, success: w_member_fp.success, error: w_member_fp.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_subject_scope_path, success: w_scope.success, error: w_scope.error),
+              fleet_converge_write_refusal_row(path: fleet_converge_plan_spark_typed_actions_wire_path, success: w_spark_wire.success, error: w_spark_wire.error),
+            ]))
               }
             }
           }
@@ -1581,6 +1609,38 @@ func fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> P
 // unit's ActiveState and its UnitFileState -- and a name outside the grammar gets none, because no
 // unit or registration is defined for it. Any unreadable unit property refuses the WHOLE
 // observation: a roster in which one tree's liveness was guessed could remove a live runner.
+// The registration KIND comes from the file's own bytes, read only when the file is present; an
+// unreadable or undecodable file is carried as its own arm so ownership refuses on it rather than
+// defaulting either way.
+fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSlotRegistration {
+  if !present {
+    SlotUnregistered
+  } else {
+    let read = Filesystem.Read(path: path)
+    if !read.success {
+      SlotRegistrationUnreadable { reason: join([".runner present but unreadable: ", read.error], "") }
+    } else {
+      match actions_runner_registration_decode(raw: read.content) {
+        ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+      }
+    }
+  }
+}
+
+// A refused artifact write names WHICH path refused and why. The srv2 plan run of 2026-09-04 22:42
+// refused with the bare sentence and the cause -- /tmp/fleet-converge-plan owned by another
+// principal from a local plan run -- had to be found by hand on the host. The shared literal dir
+// is the underlying defect and is declared, not solved, here.
+fn fleet_converge_write_refusal_row(path: String, success: Bool, error: String) -> List<String> {
+  if success { [] } else { [join([path, ": ", error], "")] }
+}
+
+fn fleet_converge_plan_artifact_write_refusal(rows: List<List<String>>) -> String {
+  join(["fleet_converge_plan: artifact write refused: ", join(flat_map(rows, r => r), "; ")], "")
+}
+
 type RunnerSlotProvenanceRead
   = SlotProvenanceRead { member: RunnerSlotMember }
   | SlotProvenanceRefused { reason: String }
@@ -1593,14 +1653,16 @@ func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMem
     SlotProvenanceRead {
       member: runner_slot_member_observed(
         instance_name: name as String,
-        provenance: SlotProvenanceObserved { in_host_grammar: false, registered: false, unit_active: false, unit_enabled: false },
+        provenance: SlotProvenanceObserved { in_host_grammar: false, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
       ),
     }
   } else {
+    let registration_path = join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")
     let registered = process_outcome_admitted(outcome: run_shell_command_capture(
-      command: test_regular_file_command(path: join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")),
+      command: test_regular_file_command(path: registration_path),
       transport: LocalExec,
     ))
+    let registration = observe_runner_slot_registration_wet(present: registered, path: registration_path)
     let unit = runner_unit_name_of_registration(registration_name: name)
     match read_unit_property(unit: unit, property: ActiveState) {
       UnitPropertyUnreadable { unit: u, property: p } =>
@@ -1615,7 +1677,7 @@ func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMem
                 instance_name: name as String,
                 provenance: SlotProvenanceObserved {
                   in_host_grammar: true,
-                  registered: registered,
+                  registration: registration,
                   unit_active: active_state == "active",
                   unit_enabled: file_state == "enabled",
                 },
