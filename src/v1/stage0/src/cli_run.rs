@@ -4887,16 +4887,18 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 }
 
 fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    // The registry is keyed on `owner.decl`, so a qualified spelling is a direct hit and needs no
+    // fallback at all. A bare spelling names no owner, so it can only be answered by scanning for
+    // the leaf -- and this returns the first match, which is the same guess the leaf-keyed map
+    // used to make silently. It is a guess either way; it is now visible as one.
     if let Some(info) = graph.item_registry.get(name) {
         return Some(info.module_name.clone());
     }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
-        }
-    }
-    None
+    graph
+        .item_registry
+        .values()
+        .find(|info| info.name == name)
+        .map(|info| info.module_name.clone())
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -40057,7 +40059,14 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            for (name, info) in module.item_registry.iter() {
+            // The registry's KEY is now the declaration's identity (owner module path plus
+            // declared name). This scope index is deliberately keyed by BARE leaf name and
+            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
+            // than from the key -- the leaf is still exactly one field away, and taking it from
+            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
+            // the registry underneath it stops being ambiguous.
+            for (_identity, info) in module.item_registry.iter() {
+                let name = &info.name;
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
