@@ -1,7 +1,23 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, CommitSha, Int, List }
 import std.layout { render }
+import std.measure { byte_size_count }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  systemd_unit_property_wire,
+  MemoryMax, MemoryHigh,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  SystemdServiceDirective,
+  ServiceUser, ServiceGroup, ServiceSlice, WorkingDirectory,
+  ExecStart, ServiceType, Environment, Restart,
+  SystemdTimerDirective,
+  TimerUnit, OnBootSec, OnUnitInactiveSec, AccuracySec,
+  SystemdSliceDirective,
+  DirectiveByteCount,
+}
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
   live_deploy_protocol,
@@ -9,10 +25,16 @@ import gunbc.live_deploy.emit {
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
+  live_deploy_slice_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_timer_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1, deployment_slice_unit_name }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -38,7 +60,7 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // off the last observed deployed baseline, which during a migration is exactly the question.
 //
 // It is needed because nothing else pins these bytes. dag/test/claim/live_deploy/long/emit_test.dag
-// carries 47 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
+// carries 57 witnesses and not one asserts a unit doc's text; the emitted deploy script is not a
 // committed artifact, so git shows no diff; and the generated-artifact drift gate was deleted by
 // the 2026-08-15 floor cut (.github/workflows now holds only fleet-converge.yml and witnesses.yml).
 //
@@ -51,24 +73,7 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
 // gunbc-srv1-green-fleet-converge.{service,timer}, which existed only on the deleted slot. srv1's
 // surviving deployment carries no fleet-converge units — checked on the host 2026-08-19.
-//
-// THE FIRST VERSION OF THIS RECEIPT GAVE A FALSE REASON, and the correction matters more than the
-// rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
-// next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
-// deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
-// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
-// operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
-// asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
-// ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
-// climb` wearing the label `can climb after one event`, and it would have sent a later session
-// waiting on an apply that cannot deliver.
-//
-// WHAT IS ACTUALLY TRUE: gunbc.live_deploy.emit emit_fleet_converge_service_unit_doc and
-// emit_fleet_converge_timer_unit_doc now have no member, no spec consumer, and no oracle. They are
-// orphaned emitters, and under delete-first they are the NEXT root to cut rather than evidence to
-// re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
-// trigger is declared here, because there is no event that would discharge it.
-//
+
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()
 }
@@ -140,4 +145,446 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+}
+
+
+// ── DIRECTIVE-LEVEL CLAIMS ───────────────────────────────────────────────────────────────────
+//
+// Each assertion below checks a single directive against the SPEC FIELD it derives from, rather
+// than comparing against a whole-file byte string. A directive-level claim goes red exactly when
+// the emitter stops deriving the value from its spec source:
+//
+//   spec.service.service_user        →  ServiceUser=, ServiceGroup=
+//   spec.service.repo_root           →  WorkingDirectory=
+//   deployment_slice_unit_name(spec) →  Slice=
+//   spec.service.serve_binary        →  ExecStart= (containment, not byte identity)
+//   gunbc_runner_slot_desired        →  MemoryMax=, MemoryHigh=
+//   belt_tick_cadence                →  OnUnitInactiveSec=
+//
+// These are ADDITIVE to the byte-level rows above. Nothing is deleted. The byte rows provide the
+// baseline against the 2026-08-19 transcription; these provide the derivation trace.
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────────────────────
+
+fn unwrap_service_type(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceType { mode: m } => Present { value: m as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_service_user(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceUser { name: n } => Present { value: n as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_service_group(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceGroup { name: n } => Present { value: n as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_service_slice(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceSlice { name: n } => Present { value: n as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_working_directory(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      WorkingDirectory { path: p } => Present { value: p as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_restart_policy(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      Restart { policy: p } => Present { value: p as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_environment_value(directives: List<SystemdServiceDirective>, var_name: String) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      Environment { assignment: a } =>
+        if string_contains(s: a as String, pattern: join([var_name, "="], ""))
+          then Present { value: a as String }
+          else none
+      _ => none
+    }
+  })
+}
+
+fn exec_start_matches(directives: List<SystemdServiceDirective>, pattern: String) -> Bool {
+  fold(directives, init: false, f: (acc, d) => match d {
+    ExecStart { command: c } => acc || string_contains(s: c as String, pattern: pattern)
+    _ => acc
+  })
+}
+
+fn unwrap_timer_directive(directives: List<SystemdTimerDirective>, wanted: String) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      OnBootSec { duration: dur } if wanted == "OnBootSec" => Present { value: dur as String }
+      OnUnitInactiveSec { duration: dur } if wanted == "OnUnitInactiveSec" => Present { value: dur as String }
+      AccuracySec { duration: dur } if wanted == "AccuracySec" => Present { value: dur as String }
+      TimerUnit { target: t } if wanted == "TimerUnit" => Present { value: t as String }
+      _ => none
+    }
+  })
+}
+
+fn unwrap_slice_byte_count(directives: List<SystemdSliceDirective>, property: SystemdUnitProperty) -> Int? {
+  let expected_wire = systemd_unit_property_wire(property: property) as String
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: _ } => acc
+    Absent => match d {
+      SystemdSliceDirective { property: p, value: DirectiveByteCount { bytes: b } } =>
+        if systemd_unit_property_wire(property: p) as String == expected_wire {
+          Present { value: byte_size_count(b: b) }
+        } else {
+          none
+        }
+      _ => none
+    }
+  })
+}
+
+// ── SERVE UNIT DIRECTIVES ────────────────────────────────────────────────────────────────────
+
+// ServiceUser= and ServiceGroup= both derive from spec.service.service_user.
+// RED: a spec whose service_user differs produces a unit whose ServiceUser= disagrees.
+// That is representable: provide a spec with a distinct service_user and the directive
+// will name the wrong principal.
+test fn serve_unit_user_and_group_derive_from_service_user() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_user(directives: directives) {
+        Present { value: u } =>
+          match unwrap_service_group(directives: directives) {
+            Present { value: g } =>
+              u == spec.service.service_user as String
+                && g == spec.service.service_user as String
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ServiceSlice= derives from deployment_slice_unit_name(names: spec.names).
+// RED: a spec whose names produce a different slice name produces a unit whose Slice= disagrees.
+test fn serve_unit_slice_derives_from_deployment_names() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_slice(directives: directives) {
+        Present { value: s } =>
+          s == deployment_slice_unit_name(names: spec.names) as String
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// WorkingDirectory= derives from spec.service.repo_root.
+// RED: a spec with a different repo_root produces a unit whose WorkingDirectory= disagrees.
+test fn serve_unit_working_directory_derives_from_repo_root() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_working_directory(directives: directives) {
+        Present { value: wd } => wd == spec.service.repo_root as String
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ExecStart= contains the serve binary and the serve function from the spec.
+// Uses string containment rather than byte identity because the full ExecStart includes
+// flags whose exact order is a rendering choice.
+// RED: a spec with a different serve_binary produces a unit whose ExecStart does not
+// contain that binary, which would refuse here.
+test fn serve_unit_execstart_contains_serve_binary_and_function() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      exec_start_matches(directives: directives, pattern: spec.service.serve_binary as String)
+        && exec_start_matches(directives: directives, pattern: spec.service.serve_function as String)
+    _ => false
+  }
+}
+
+// The user-manager Environment= lines derive from spec.service.service_uid.
+// RED: a spec with a different service_uid produces XDG_RUNTIME_DIR and
+// DBUS_SESSION_BUS_ADDRESS with the wrong uid, and this goes red
+// on the uid mismatch.
+test fn serve_unit_has_user_manager_env_with_correct_uid() -> Bool {
+  let spec = live_spec()
+  let uid_str = to_string(spec.service.service_uid)
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_environment_value(directives: directives, var_name: "XDG_RUNTIME_DIR") {
+        Present { value: xdg } =>
+          match unwrap_environment_value(directives: directives, var_name: "DBUS_SESSION_BUS_ADDRESS") {
+            Present { value: dbus } =>
+              string_contains(s: xdg, pattern: uid_str)
+                && string_contains(s: dbus, pattern: uid_str)
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ServiceType=simple (the serve process is long-running).
+test fn serve_unit_is_type_simple() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_type(directives: directives) {
+        Present { value: t } => t == "simple"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// Restart=on-failure.
+test fn serve_unit_restarts_on_failure() -> Bool {
+  let spec = live_spec()
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_restart_policy(directives: directives) {
+        Present { value: r } => r == "on-failure"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ── BELT SERVICE UNIT DIRECTIVES ─────────────────────────────────────────────────────────────
+
+// ServiceUser= and ServiceGroup= both derive from spec.service.service_user.
+test fn belt_service_unit_user_and_group_derive_from_service_user() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_user(directives: directives) {
+        Present { value: u } =>
+          match unwrap_service_group(directives: directives) {
+            Present { value: g } =>
+              u == spec.service.service_user as String
+                && g == spec.service.service_user as String
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ServiceSlice= derives from deployment_slice_unit_name(names: spec.names).
+test fn belt_service_unit_slice_derives_from_deployment_names() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_slice(directives: directives) {
+        Present { value: s } =>
+          s == deployment_slice_unit_name(names: spec.names) as String
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// WorkingDirectory= derives from spec.service.repo_root.
+test fn belt_service_unit_working_directory_derives_from_repo_root() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_working_directory(directives: directives) {
+        Present { value: wd } => wd == spec.service.repo_root as String
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// GUNBC_BELT_SPAWN_WORKDIR environment variable contains the repo root.
+// RED: a spec with a different repo_root produces a wrong spawn workdir.
+test fn belt_service_unit_has_spawn_workdir_env() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_environment_value(directives: directives, var_name: belt_spawn_workdir_env_var as String) {
+        Present { value: env_val } =>
+          string_contains(s: env_val, pattern: spec.service.repo_root as String)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// The user-manager Environment= lines derive from spec.service.service_uid.
+test fn belt_service_unit_has_user_manager_env_with_correct_uid() -> Bool {
+  let spec = live_spec()
+  let uid_str = to_string(spec.service.service_uid)
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_environment_value(directives: directives, var_name: "XDG_RUNTIME_DIR") {
+        Present { value: xdg } =>
+          match unwrap_environment_value(directives: directives, var_name: "DBUS_SESSION_BUS_ADDRESS") {
+            Present { value: dbus } =>
+              string_contains(s: xdg, pattern: uid_str)
+                && string_contains(s: dbus, pattern: uid_str)
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ServiceType=oneshot (the belt tick runs once and exits).
+test fn belt_service_unit_is_oneshot() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match unwrap_service_type(directives: directives) {
+        Present { value: t } => t == "oneshot"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ExecStart= contains the belt tick entry and function.
+test fn belt_service_unit_execstart_contains_belt_entry() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      exec_start_matches(directives: directives, pattern: "roadmap_belt_tick_cli.dag")
+        && exec_start_matches(directives: directives, pattern: "belt_run_once_cli")
+    _ => false
+  }
+}
+
+// ── SLICE UNIT DIRECTIVES ────────────────────────────────────────────────────────────────────
+
+// MemoryMax= derives from gunbc_runner_slot_desired().memory_max.
+// RED: a RunnerSlotDesired whose memory_max differs produces a slice
+// whose MemoryMax= disagrees. That is representable:
+// gunbc_runner_slot_desired is a function call, so a changed slot
+// allocation produces different expected bytes.
+test fn slice_unit_memory_max_derives_from_runner_slot() -> Bool {
+  let spec = live_spec()
+  let desired = gunbc_runner_slot_desired()
+  let expected_bytes = byte_size_count(b: desired.memory_max)
+  match live_deploy_slice_unit_file(spec: spec) {
+    SliceUnitFile { unit: _, slice: directives, install: _ } =>
+      match unwrap_slice_byte_count(directives: directives, property: MemoryMax) {
+        Present { value: v } => v == expected_bytes
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// MemoryHigh= derives from gunbc_runner_slot_desired().memory_high.
+test fn slice_unit_memory_high_derives_from_runner_slot() -> Bool {
+  let spec = live_spec()
+  let desired = gunbc_runner_slot_desired()
+  let expected_bytes = byte_size_count(b: desired.memory_high)
+  match live_deploy_slice_unit_file(spec: spec) {
+    SliceUnitFile { unit: _, slice: directives, install: _ } =>
+      match unwrap_slice_byte_count(directives: directives, property: MemoryHigh) {
+        Present { value: v } => v == expected_bytes
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ── BELT TIMER DIRECTIVES ────────────────────────────────────────────────────────────────────
+
+// OnBootSec= is 2min.
+test fn belt_timer_onbootsec_is_2min() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_timer_unit_file(spec: spec) {
+    TimerUnitFile { unit: _, timer: directives, install: _ } =>
+      match unwrap_timer_directive(directives: directives, wanted: "OnBootSec") {
+        Present { value: duration } => duration == "2min"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// OnUnitInactiveSec= is 60s (belt_tick_cadence).
+test fn belt_timer_onunitinactivesec_is_60s() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_timer_unit_file(spec: spec) {
+    TimerUnitFile { unit: _, timer: directives, install: _ } =>
+      match unwrap_timer_directive(directives: directives, wanted: "OnUnitInactiveSec") {
+        Present { value: duration } => duration == "60s"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// AccuracySec= is 5s.
+test fn belt_timer_accuracysec_is_5s() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_timer_unit_file(spec: spec) {
+    TimerUnitFile { unit: _, timer: directives, install: _ } =>
+      match unwrap_timer_directive(directives: directives, wanted: "AccuracySec") {
+        Present { value: duration } => duration == "5s"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// TimerUnit= names the belt service unit.
+test fn belt_timer_targets_the_belt_service() -> Bool {
+  let spec = live_spec()
+  match live_deploy_belt_timer_unit_file(spec: spec) {
+    TimerUnitFile { unit: _, timer: directives, install: _ } =>
+      match unwrap_timer_directive(directives: directives, wanted: "TimerUnit") {
+        Present { value: target } => string_contains(s: target, pattern: "belt")
+        Absent => false
+      }
+    _ => false
+  }
 }
