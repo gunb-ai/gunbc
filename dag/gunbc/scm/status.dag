@@ -168,7 +168,7 @@ fn render_staged_role(staged: StagedRole) -> String {
 // a second naming scheme -- it repeats the one the model already publishes.
 //
 // THE SIBLING ARM IS DELIBERATELY UNCHANGED, and the asymmetry is the model's rather than this
-// function's. `CheckedOutCommit` carries a root node reference and NO commit reference, so the only identity in
+// function's. `CheckedOutCommit` carries a snapshot reference and NO commit reference, so the only identity in
 // reach is the content hash -- which `status_does_not_report_store_representation` states this
 // surface must not report, on the ground that below-boundary representation is opaque. Naming that
 // commit by its ordinal would require `StatusCheckout` to carry the reference, which is a change to
