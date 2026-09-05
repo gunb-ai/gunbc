@@ -32,6 +32,8 @@ import gunbc.tools.reference_binding_provenance_calibration {
   standing_is_demonstrated,
   cell_is_sound,
   traversal_is_complete,
+  traversal_is_complete_over,
+  declared_cell_population_over,
   declared_cell_population,
   ProvenanceCell,
   CalibrationStanding,
@@ -358,4 +360,66 @@ test fn a_production_refused_twin_yields_refused_or_incomplete() -> Bool {
     CalibrationRefusedOrIncomplete { cause: _ } => true
     _ => false
   }
+}
+
+// THE AXIS-DEGENERACY REDS, AUTHORABLE ONLY BECAUSE THE AXES ARE PARAMETERS. Every one of these
+// three states was UNREPRESENTABLE while `traversal_is_complete` read the module-level axis lists
+// directly: a fixture had no way to hand it a short, empty, or colliding axis, so the conjuncts
+// guarding them could never be shown to bite. DESIGN section 4b says to ask whether a check's RED
+// is authorable before writing the check, and to ask it at the FIXTURE boundary rather than the
+// accepted corpus -- these are that question answered by execution.
+
+// A SHORT AXIS IS THE DEFECT THAT REOPENED C1, REPRODUCED. Drop one observation kind from the axis
+// while supplying the cells that axis generates: the declared population falls with the axis, the
+// cells match it exactly, every key is distinct, and the traversal reports COMPLETE over a matrix
+// that never measured the dropped kind. This control asserts that the SHORTENED axis is internally
+// consistent -- which is precisely why the production defect is silent -- and that the FULL 28-cell
+// matrix is refused against it, which is the discrimination the count conjuncts alone cannot make.
+test fn a_short_axis_is_internally_consistent_and_still_misses_a_kind() -> Bool {
+  let short_kinds = [SameFileNeighbourKind, SiblingBranchKind, LaterDeclarationKind]
+  let short_matrix = fold(short_kinds, init: [], f: fn(acc, kind) {
+    fold(calibration_resolution_arms, init: acc, f: fn(inner, arm) {
+      concat(inner, [sound_cell(kind: kind, arm: arm)])
+    })
+  })
+  declared_cell_population_over(kinds: short_kinds, arms: calibration_resolution_arms)
+    == declared_cell_population() - list_length(items: calibration_resolution_arms)
+    && traversal_is_complete_over(
+      cells: short_matrix,
+      kinds: short_kinds,
+      arms: calibration_resolution_arms,
+    )
+    && !traversal_is_complete_over(
+      cells: fully_sound_matrix(),
+      kinds: short_kinds,
+      arms: calibration_resolution_arms,
+    )
+}
+
+// AN EMPTY AXIS REFUSES INSTEAD OF PASSING VACUOUSLY. With no kinds the declared population is 0,
+// an empty cell list has length 0 and 0 distinct keys, and every count conjunct holds -- nothing
+// measured and nothing wrong arriving at one exit. The positive-denominator conjunct is the only
+// thing standing between that state and a reported success, and this is its red.
+test fn an_empty_axis_refuses_rather_than_holding_vacuously() -> Bool {
+  let no_kinds: List<CalibrationObservationKind> = []
+  declared_cell_population_over(kinds: no_kinds, arms: calibration_resolution_arms) == 0
+    && !traversal_is_complete_over(cells: [], kinds: no_kinds, arms: calibration_resolution_arms)
+    && !traversal_is_complete_over(
+      cells: [],
+      kinds: calibration_observation_kinds,
+      arms: [],
+    )
+}
+
+// A COLLIDING AXIS IS WHAT THE DISTINCT-LABEL CONJUNCTS ACTUALLY CATCH, and this control exists to
+// state their real scope by execution rather than by comment. A repeated variant makes two cells
+// share one key, so the axis is refused -- and the SAME control is the evidence that these
+// conjuncts detect COLLISION and not OMISSION, because the short-axis case above passes them.
+test fn a_colliding_axis_refuses_while_a_short_one_does_not() -> Bool {
+  let dup_kinds = concat(calibration_observation_kinds, [SameFileNeighbourKind])
+  !traversal_is_complete_over(
+    cells: fully_sound_matrix(),
+    kinds: dup_kinds,
+    arms: calibration_resolution_arms,
+  )
 }

@@ -756,16 +756,24 @@ fn distinct_cell_key_count(cells: List<ProvenanceCell>) -> Int {
   })))
 }
 
-fn distinct_arm_label_count() -> Int {
-  list_length(items: distinct_labels(labels: fold(calibration_resolution_arms, init: [], f: fn(acc, a) {
+fn distinct_arm_label_count_of(arms: List<CalibrationResolutionArm>) -> Int {
+  list_length(items: distinct_labels(labels: fold(arms, init: [], f: fn(acc, a) {
     concat(acc, [resolution_arm_label(a: a)])
   })))
 }
 
-fn distinct_kind_label_count() -> Int {
-  list_length(items: distinct_labels(labels: fold(calibration_observation_kinds, init: [], f: fn(acc, k) {
+fn distinct_kind_label_count_of(kinds: List<CalibrationObservationKind>) -> Int {
+  list_length(items: distinct_labels(labels: fold(kinds, init: [], f: fn(acc, k) {
     concat(acc, [observation_kind_label(k: k)])
   })))
+}
+
+fn distinct_arm_label_count() -> Int {
+  distinct_arm_label_count_of(arms: calibration_resolution_arms)
+}
+
+fn distinct_kind_label_count() -> Int {
+  distinct_kind_label_count_of(kinds: calibration_observation_kinds)
 }
 
 // THE VERDICT IS SEPARATED FROM THE EFFECT, and that separation is what makes the refusal testable
@@ -781,8 +789,15 @@ fn distinct_kind_label_count() -> Int {
 // product of the two declared axes, and the cells must carry that many DISTINCT (kind, arm) keys;
 // counting entries cannot tell a complete traversal from one that visited an arm twice and another
 // never.
+fn declared_cell_population_over(
+  kinds: List<CalibrationObservationKind>,
+  arms: List<CalibrationResolutionArm>,
+) -> Int {
+  list_length(items: kinds) * list_length(items: arms)
+}
+
 fn declared_cell_population() -> Int {
-  list_length(items: calibration_observation_kinds) * list_length(items: calibration_resolution_arms)
+  declared_cell_population_over(kinds: calibration_observation_kinds, arms: calibration_resolution_arms)
 }
 
 // LENGTH AND DISTINCT-KEY COUNT ARE BOTH REQUIRED, AND CHECKING ONLY ONE IS THE DEFECT EITHER WAY.
@@ -795,11 +810,61 @@ fn declared_cell_population() -> Int {
 // repair for a different gap: it made the population an INPUT a caller shapes rather than something
 // this module derives, so a duplicate can now arrive through the parameter rather than only through
 // the traversal lists the first two conjuncts guard.
+// THE AXES ARE PARAMETERS HERE AND GLOBALS ONLY AT THE CALL BELOW, and that is the whole content
+// of this shape rather than a style preference. Every conjunct in this function used to read the
+// two module-level axis lists directly, so NO FIXTURE COULD SUPPLY A DEGENERATE AXIS: an empty
+// axis, a short axis, or an axis carrying a duplicate label were all unrepresentable in any test,
+// and the refusal arms for them were therefore unauthorable -- decorations that would be cited as
+// coverage. DESIGN section 4b's own instruction is to ask whether the check's RED is authorable
+// BEFORE writing the check, and to ask it at the fixture boundary rather than at the accepted
+// corpus. Taking the axes as parameters is what moves those reds inside the boundary a fixture
+// can reach.
+//
+// THE POSITIVE DENOMINATOR IS THE FIRST TWO CONJUNCTS AND IT IS NOT REDUNDANT WITH THE REST. With
+// both axes empty the declared population is 0, an empty cell list has length 0 and 0 distinct
+// keys, and every remaining conjunct holds VACUOUSLY -- nothing measured and nothing wrong reach
+// the same exit, which is this file's own subject relocated one level up into the axes. That state
+// is now refused by name.
+//
+// WHAT THESE CONJUNCTS DO NOT ESTABLISH, stated because an earlier revision let a reader believe
+// otherwise: `distinct_*_label_count_of == list_length` compares a list to its own deduplication.
+// It goes red when two variants render the SAME LABEL -- which would collapse two cell keys into
+// one and is worth refusing -- and it CANNOT go red when a variant is MISSING from the list. It is
+// a COLLISION check, never a COMPLETENESS one.
+//
+// AXIS COMPLETENESS AGAINST THE VARIANT TYPES IS NOT ESTABLISHED ANYWHERE, AND CANNOT BE IN THIS
+// LANGUAGE TODAY. `calibration_observation_kinds` and `calibration_resolution_arms` are authored
+// lists, and nothing binds either to `CalibrationObservationKind` or `CalibrationResolutionArm`.
+// Add a variant to one of those coproducts WITHOUT appending to its list and the declared
+// population silently shrinks; the cells shrink with it; every conjunct above still holds; and an
+// entire observation kind goes unmeasured under a success exit. Deriving the population from the
+// TYPE would need enumeration of a coproduct's constructors from inside a fold, which the
+// substrate does not offer -- there is no unfold, no range, and no constructor-listing primitive,
+// so the list cannot be produced from the type by any construction available here. A third
+// hand-maintained list would be a second authority for the same fact and would not close it.
+// The missing capability, not a workaround, is what retires this: CONSTRUCTOR ENUMERATION FOR A
+// DECLARED COPRODUCT, sufficient that an axis list is DERIVED rather than authored and adding a
+// variant cannot leave an axis short. Until then the exposure is real and is declared rather than
+// papered over.
+fn traversal_is_complete_over(
+  cells: List<ProvenanceCell>,
+  kinds: List<CalibrationObservationKind>,
+  arms: List<CalibrationResolutionArm>,
+) -> Bool {
+  list_length(items: kinds) > 0
+    && list_length(items: arms) > 0
+    && distinct_arm_label_count_of(arms: arms) == list_length(items: arms)
+    && distinct_kind_label_count_of(kinds: kinds) == list_length(items: kinds)
+    && list_length(items: cells) == declared_cell_population_over(kinds: kinds, arms: arms)
+    && distinct_cell_key_count(cells: cells) == declared_cell_population_over(kinds: kinds, arms: arms)
+}
+
 fn traversal_is_complete(cells: List<ProvenanceCell>) -> Bool {
-  distinct_arm_label_count() == list_length(items: calibration_resolution_arms)
-    && distinct_kind_label_count() == list_length(items: calibration_observation_kinds)
-    && list_length(items: cells) == declared_cell_population()
-    && distinct_cell_key_count(cells: cells) == declared_cell_population()
+  traversal_is_complete_over(
+    cells: cells,
+    kinds: calibration_observation_kinds,
+    arms: calibration_resolution_arms,
+  )
 }
 
 fn calibration_verdict(cells: List<ProvenanceCell>) -> ProcessExit {
