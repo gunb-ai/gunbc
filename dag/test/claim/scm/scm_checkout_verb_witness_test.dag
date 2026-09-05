@@ -628,10 +628,10 @@ test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives(
         _ => false
       }
         && match checkout_repository_at(repo: repaired, reference: scm_ck_ref(ordinal: 0)) {
-             RepositoryCheckedOut { repository: _, corpus: corpus } =>
+             RepositoryCheckedOut { repository: returned, corpus: corpus } =>
                map(corpus, f => f.path as String) == ["gone.dag", "held.dag"]
                  && map(corpus, f => scm_ck_recovered_text(f: f)) == ["module never_stored", "module held"]
-                 && scm_ck_same_root(a: repaired, b: decoded)
+                 && scm_ck_same_root(a: returned, b: decoded)
              _ => false
            }
   }
@@ -652,5 +652,65 @@ fn scm_ck_same_root(a: RepositoryEnvelope, b: RepositoryEnvelope) -> Bool {
         Absent => false
         Present { value: right } => object_id_eq(left: left, right: right)
       }
+  }
+}
+
+// RECOVERY MUST NOT RETURN ITS ACCUMULATED PREFIX AS A CORPUS, and the specimen has to put the
+// MISSING entry LAST to reach that. The partial snapshot above sorts "gone.dag" before "held.dag", so
+// the fold refuses on its first entry and never accumulates anything -- a recover_corpus that leaked
+// its prefix would still answer an empty corpus there and look identical to a correct refusal.
+//
+// Here two entries resolve before the third does not. A recovery that exposed what it had gathered
+// would hand back a two-file corpus and call it a successful checkout, which is the silently narrowed
+// reconstruction the manifest exists to prevent: the caller receives a corpus that is well formed,
+// smaller than the snapshot it names, and carries nothing saying so.
+fn scm_ck_trailing_gap_snapshot() -> ScmCkSnapshot {
+  match store_authored_source(store: empty_store(), text: "module a") {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmCkSnapshot { store: empty_store(), identity: CorpusManifestTarget { locator: i } }
+    SourceStored { store: s1, source: a } =>
+      match store_authored_source(store: s1, text: "module b") {
+        SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+          ScmCkSnapshot { store: s1, identity: CorpusManifestTarget { locator: i } }
+        SourceStored { store: s2, source: b } =>
+          match store_corpus_manifest(store: s2, entries: [
+            CorpusManifestEntry { path: "a.dag" as NonEmptyStr, source: authored_source_target_of(reference: a) },
+            CorpusManifestEntry { path: "b.dag" as NonEmptyStr, source: authored_source_target_of(reference: b) },
+            CorpusManifestEntry {
+              path: "z_gone.dag" as NonEmptyStr,
+              source: AuthoredSourceTarget { locator: scm_ck_absent_source_locator() },
+            },
+          ]) {
+            CorpusManifestStored { store: next, manifest: manifest } =>
+              ScmCkSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+            CorpusManifestDuplicatePath { path: _ } =>
+              ScmCkSnapshot { store: s2, identity: CorpusManifestTarget { locator: a.locator } }
+            CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+              ScmCkSnapshot { store: s2, identity: CorpusManifestTarget { locator: i } }
+          }
+      }
+  }
+}
+
+test fn scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix() -> Bool {
+  let snapshot = scm_ck_trailing_gap_snapshot()
+  match checkout_repository_at(
+    repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity),
+    reference: scm_ck_ref(ordinal: 0),
+  ) {
+    CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>
+      r == scm_ck_ref(ordinal: 0)
+        && match cause {
+             CorpusEntrySourceMissing { path: p, source: missing } =>
+               (p as String) == "z_gone.dag"
+                 && object_id_eq(left: missing, right: scm_ck_absent_source_locator())
+             CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+             CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+           }
+    RepositoryCheckedOut { repository: _, corpus: _ } => false
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
+    CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
   }
 }

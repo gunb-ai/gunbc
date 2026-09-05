@@ -49,12 +49,16 @@ import gunbc.scm.proposal {
 // SemanticNodeObjectRef when the commit root changed subject, and its producer went on constructing
 // from `c.root` -- so the declaration and the value it advertised named different kinds.
 //
-// NOTHING REFUSED. Both are `sole_constructor` single-field records over ObjectId, and no diagnostic
-// was produced on the route that resolves this module; the mismatch was found by review reading the
-// source, not by the build. That is a rung-honesty fact about the brand rather than about this field:
-// `sole_constructor` demonstrably walls off CONSTRUCTION from other modules -- it broke three fixture
-// call sites in gunbc#9891 -- while two such brands remained mutually assignable here. Recorded where the
-// defect was, not claimed as a full account of the checker's rule, which I have not established.
+// NOTHING REFUSED, AND THE OBSERVATION IS NARROWER THAN THE FIRST WORDING OF THIS NOTE CLAIMED. What
+// was observed is ONE direction: a CorpusManifestObjectRef value flowed into a field declared
+// SemanticNodeObjectRef, on the route that resolves this module, with no diagnostic -- found by review
+// reading the source rather than by the build. The note first said the two brands were "mutually
+// assignable", which asserts the reverse direction as well; that was never observed and is withdrawn.
+//
+// Both are `sole_constructor` single-field records over ObjectId, and `sole_constructor` demonstrably
+// walls off CONSTRUCTION from other modules -- it broke three fixture call sites in gunbc#9891. Whether it
+// also separates these two as assignment SUBJECTS is exactly what this instance leaves open. The
+// checker's rule is not established here and no account of it is claimed.
 type StatusCheckout
   = NothingCheckedOut
   | CheckedOutCommit { root: CorpusManifestObjectRef, message: String }
