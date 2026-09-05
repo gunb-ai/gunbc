@@ -8,6 +8,7 @@ import gunbc.live_deploy.revision {
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable,
 }
 import gunbc.fleet_main_revision { FleetRevisionRelationObservation }
@@ -122,6 +123,10 @@ fn is_unrelated(r: DeployRevisionRelation?) -> Bool {
   match r { Present { value: UnrelatedHistories } => true  _ => false }
 }
 
+fn is_diverged(r: DeployRevisionRelation?) -> Bool {
+  match r { Present { value: DivergedHistories } => true  _ => false }
+}
+
 fn is_unverifiable(r: DeployRevisionRelation?) -> Bool {
   match r {
     Present { value: RelationUnverifiable { cause: _ } } => true
@@ -158,7 +163,7 @@ test fn an_ancestor_accepted_is_superseded() -> Bool {
 // CASE 4 -- DIVERGED, WITH A SHARED ANCESTOR. Exit 0 and a real merge base (A), which is NEITHER
 // endpoint. This is the case whose receipt used to claim a disjoint history.
 test fn siblings_sharing_an_ancestor_are_neither_ancestor_of_the_other() -> Bool {
-  is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
+  is_diverged(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
 }
 
 // CASE 5 -- NO COMMON ANCESTOR AT ALL. Exit 1, which is an ANSWER: git looked and there is none.

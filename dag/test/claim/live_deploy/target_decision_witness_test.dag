@@ -23,6 +23,7 @@ import gunbc.live_deploy.revision {
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable,
 }
 import gunbc.live_deploy.target_decision {
@@ -83,6 +84,7 @@ test fn witness_every_decision_lands_in_exactly_one_disposition() -> Bool {
     related(relation: SameRevision),
     related(relation: CandidateIsAncestor),
     related(relation: UnrelatedHistories),
+    related(relation: DivergedHistories),
     related(relation: RelationUnverifiable { cause: "probe died" as NonEmptyStr }),
     decide_deploy_target(input: TargetIdle { unit_state: "inactive" as NonEmptyStr }, candidate: candidate()),
     decide_deploy_target(input: TargetUnreadable { cause: "no answer" }, candidate: candidate()),
@@ -108,8 +110,12 @@ test fn witness_a_superseded_candidate_is_a_terminal_no_op_and_never_proceeds() 
 // UNRELATED HISTORIES AND AN UNANSWERABLE PROBE ARE THE ONLY REDS, and neither may proceed.
 test fn witness_unrelated_and_unverifiable_refuse_without_mutating() -> Bool {
   let unrelated = related(relation: UnrelatedHistories)
+  let diverged = related(relation: DivergedHistories)
   let unverifiable = related(relation: RelationUnverifiable { cause: "bad object" as NonEmptyStr })
-  deploy_target_refuses(decision: unrelated)
+  deploy_target_refuses(decision: diverged)
+    && !deploy_target_proceeds(decision: diverged)
+    && string_contains(s: deploy_target_decision_line(decision: diverged), pattern: "diverged")
+    && deploy_target_refuses(decision: unrelated)
     && !deploy_target_proceeds(decision: unrelated)
     && deploy_target_refuses(decision: unverifiable)
     && !deploy_target_proceeds(decision: unverifiable)

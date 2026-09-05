@@ -18,6 +18,11 @@ import extdeps.toolchain.types {
   Wasm32,
 }
 import std.types { NonEmptyStr, String, List }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonString }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -133,6 +138,48 @@ data actions_runner_base_dir: String = "/opt/actions-runner"
 data actions_runner_registration_file_name: String = ".runner"
 
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
+
+// THE REGISTRATION FILE SAYS WHETHER THE REGISTRATION CAN OUTLIVE ONE JOB. `.runner` is the JSON
+// `config.sh` writes; its `Ephemeral` member is the string "True" when the runner was configured
+// with `--ephemeral`. Upstream semantics (docs.github.com, "Autoscaling with self-hosted runners",
+// Using ephemeral runners): an ephemeral runner is automatically unregistered from GitHub after it
+// completes one job, and is not re-registered by restarting the process. So an ephemeral
+// registration file beside a unit that is neither active nor enabled records a registration GitHub
+// has already dropped; nothing remains to `config.sh remove`, and no credential is needed to know
+// it. A persistent registration (`Ephemeral` absent or "False") stays registered org-side until
+// removed, which needs an org-scoped removal token this repository does not hold, so a persistent
+// registration is NOT decidable from the file alone.
+type ActionsRunnerRegistration
+  = ActionsRunnerRegistrationPersistent
+  | ActionsRunnerRegistrationEphemeral
+
+type ActionsRunnerRegistrationRead
+  = ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistration }
+  | ActionsRunnerRegistrationUnreadable { reason: String }
+
+data actions_runner_registration_ephemeral_member: String = "Ephemeral"
+
+fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationRead {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap } =>
+      ActionsRunnerRegistrationUnreadable { reason: concat(".runner is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: actions_runner_registration_ephemeral_member) {
+        JsonMemberFound { value: JsonString { value: flag } } =>
+          if flag == "True" {
+            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral }
+          } else if flag == "False" {
+            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
+          } else {
+            ActionsRunnerRegistrationUnreadable { reason: concat(".runner Ephemeral is outside True/False: ", flag) }
+          }
+        JsonMemberFound { value: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is not a string" }
+        JsonMemberAbsent => ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
+        JsonMemberDuplicated { count: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is duplicated" }
+        JsonMemberNotAnObject => ActionsRunnerRegistrationUnreadable { reason: ".runner is not a JSON object" }
+      }
+  }
+}
 
 data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
