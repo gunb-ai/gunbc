@@ -7,7 +7,13 @@ import std.types { String }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
-data rest_accept_any_seed_growth_note: String = "Seed-growth obligation for the interpreter's accept-any TLS verifier (RestAcceptAnyVerifier + rest_accept_any_agent), added by PR #10215 (curl/Lane A migration). Homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.\n\nWHAT THE CHANGE IS. dispatch_rest in v1_interpreter.rs realizes transport rest's tls: InsecureAcceptAnyCert posture via an accept-any rustls verifier and a ureq Agent configured with it, selected ONLY for operations declaring that posture (absent = VerifyPeer, the fail-closed default). Before this change, the interpreter refused InsecureAcceptAnyCert as emit-only (2026-07-16 ruling). The emitted reqwest path is unchanged.\n\nWHY IT PASSES THE PURPOSE TEST, stated so the row can be reasoned about without re-reading the PR. The redfish operations (extdeps/bmc/http.dag GetServiceRoot, GetSystem, GetChassisSensors, GetPower, GetThermal) are the only declared consumers of this posture; all five carry tls: InsecureAcceptAnyCert. These same operations already realize the TLS bypass in the interpreter today, through curl's -k flag — the interpreter dispatches a subprocess with hand-typed curl argv. Realizing InsecureAcceptAnyCert in-process for the SAME operations removes the subprocess and argv indirection without widening the population that bypasses verification. It serves the v2 self-host program by unblocking the curl argv → transport rest migration (gunbc.plans.transport_argv_anemia_dissolution Lane A), which clears corpus debt and reduces the shell-transport census.\n\nHOW THE DECLARATIONS WERE MEASURED. By reading the diff at the commit that added them. Both are free functions, so the citable count and the real count are both two; nothing here lands in seed_growth_uncitable_item_keys. The Cargo.toml rustls dependency addition is a manifest entry, not a Rust declaration, and is covered by the current_boundary field rather than enumerated here.\n\nENUMERATED RATHER THAN COUNTED, per the carrier's own rule: one row per declaration the join counts against, so a later author removing or renaming an item deletes its row in the same motion."
+// Seed-growth obligation for the interpreter's accept-any TLS verifier (RestAcceptAnyVerifier +
+// rest_accept_any_agent), added by PR #10215 (curl/Lane A migration). Homed here, beside the
+// obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER
+// and the join.
+//
+// WHAT THE CHANGE IS: see the SeedGrowthJustification reason field below. The declaration
+// method is described there rather than re-stated in prose.
 
 data rest_accept_any_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

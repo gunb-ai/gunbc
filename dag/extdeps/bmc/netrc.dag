@@ -145,11 +145,7 @@ fn netrc_read_entry(tokens: List<String>, login: String?, password: Secret?, dl:
             Absent => NetrcRefused { cause: NetrcMalformedFile { detail: "password without value" } }
           }
         } else if kw == "machine" || kw == "default" {
-          let r = netrc_finish_entry(login: login, password: password, dl: dl, dp: dp, is_machine: is_machine, host: host)
-          match r {
-            NetrcResolved { login: _, password: _ } => r
-            NetrcRefused { cause: _ } => netrc_search(tokens: tokens, host: host, dl: dl, dp: dp)
-          }
+          netrc_finish_entry(login: login, password: password, dl: dl, dp: dp, is_machine: is_machine, host: host)
         } else {
           netrc_read_entry(tokens: rest, login: login, password: password, dl: dl, dp: dp, is_machine: is_machine, host: host)
         }

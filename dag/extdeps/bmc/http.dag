@@ -22,7 +22,14 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
   }
 }
 
-data redfish_http_hardwired_transport_note: String = "§3(b) declared debt, SHRINKING: GetServiceRoot, GetSystem, GetChassisSensors, GetPower and GetThermal (2026-09-03) are declarative transport rest rows — auth_basic + InsecureAcceptAnyCert + modeled success — realized by the shared HTTP-client machinery; the remaining operations below (SetAccountPassword, SetBootSourceOverride, ResetSystem) still re-spell the shell/curl transport handler per row. The note dissolves when every operation is a declarative transport row — the remaining rows need a body-from-file or inline body record axis. Until then the argv rows stay — live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
+// §3(b) declared debt, SHRINKING: GetServiceRoot, GetSystem, GetChassisSensors, GetPower and
+// GetThermal (2026-09-03) are declarative transport rest rows — auth_basic + InsecureAcceptAnyCert
+// + modeled success — realized by the shared HTTP-client machinery; the remaining operations below
+// (SetAccountPassword, SetBootSourceOverride, ResetSystem) still re-spell the shell/curl transport
+// handler per row. The note dissolves when every operation is a declarative transport row — the
+// remaining rows need a body-from-file or inline body record axis. Until then the argv rows stay —
+// live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd)
+// execute them as-is.
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
 // Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
