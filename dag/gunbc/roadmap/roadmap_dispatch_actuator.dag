@@ -33,6 +33,7 @@ import gunbc.roadmap_model {
   Unsized,
 }
 import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
+import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -766,6 +767,26 @@ fn dispatch_attempt_key_path_for_instance(
     "/attempt-key",
   ], "")
 }
+
+// THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
+// at state initialization beside the attempt key. A first turn writes 1, so an attempt with no such
+// file predates the continuation and is read as turn 1 by the decision, never guessed at otherwise.
+fn dispatch_attempt_continuation_turn_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/continuation-turn",
+  ], "")
+}
+
+data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
 
 fn dispatch_attempt_admission_path_for_instance(
   instance: HostDashboardInstance,
@@ -2233,6 +2254,7 @@ fn dispatch_spawn_commands_for_inventory(
             attempt_key: attempt_key,
             provider: provider,
             effort: effort,
+            origin: FreshFromBase,
           )
       }
     }
@@ -2256,6 +2278,11 @@ fn dispatch_spawn_commands_for_instance(
   )
 }
 
+// THE ORIGIN DECIDES TWO THINGS AND ONLY TWO: which ref the worktree branches from, and what leads
+// the brief. A fresh start branches from the instance's base ref with the node brief alone; a
+// continuation branches from the prior attempt's branch, so the committed work is already in the
+// tree, and puts the verdict ahead of the brief. Nothing else about the spawn changes -- same
+// harness, same confinement, same state layout -- which is what makes the second turn ordinary.
 fn dispatch_spawn_commands_for_resolved_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2263,12 +2290,16 @@ fn dispatch_spawn_commands_for_resolved_instance(
   attempt_key: String,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
+  let brief = join([
+    continuation_brief_prefix(origin: origin),
+    fill_dispatch_brief(template: dispatch_brief_template, fields: fields),
+  ], "")
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -2306,7 +2337,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     worktree_path: worktree_path,
     branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
+    remote_ref: attempt_origin_base_ref(origin: origin, instance_base_ref: instance.dispatch_base_ref as String),
   )
   let state_prepare = attempt_state_prepare_argv_for_instance(
     instance: instance,

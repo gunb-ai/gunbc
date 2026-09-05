@@ -354,7 +354,13 @@ import gunbc.fleet_desired_observe {
 import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
+  ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
+  ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused,
+  continuation_decision, attempt_origin_turn,
+}
 import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
@@ -569,6 +575,7 @@ fn belt_attempt_state_initialize_for_instance(
   attempt_key: String,
   admission_receipt: String,
   launch: LaunchIdentity,
+  turn: Int,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -578,10 +585,23 @@ fn belt_attempt_state_initialize_for_instance(
     ),
     content: attempt_key,
   )
+  let turn_write = Filesystem.Write(
+    path: dispatch_attempt_continuation_turn_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: to_string(value: turn),
+  )
   if !key_write.success {
     AttemptStateInitializationFailed {
       step: "attempt-key-write",
       detail: key_write.error,
+    }
+  } else if !turn_write.success {
+    AttemptStateInitializationFailed {
+      step: "attempt-continuation-turn-write",
+      detail: turn_write.error,
     }
   } else {
     let admission_write = Filesystem.Write(
@@ -1640,11 +1660,98 @@ fn belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
   )
   let session_name = dispatch_tmux_session_name(node_id: node.node)
+  match belt_continuation_decision_for_instance(instance: instance, node: node) {
+    ContinuationRefused { reason } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "continuation",
+        detail: reason,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ContinuationFresh { reason: _ } =>
+      belt_actuate_spawn_with_origin(
+        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
+      )
+    ContinuationContinue { origin } =>
+      belt_actuate_spawn_with_origin(
+        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        attempt_key: attempt_key, session_name: session_name, origin: origin,
+      )
+  }
+}
+
+// WHETHER THIS SPAWN CONTINUES THE NODE'S PRIOR ATTEMPT. The facts come from the same attempts
+// ledger the commit and verify passes read, so the decision sees exactly the provider state and
+// verification segment the dashboard shows; an unobservable ledger refuses here as it does there,
+// because a spawn that cannot tell whether committed work exists must not start over on top of it.
+fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      ContinuationRefused { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let mine = attempts |> filter(p => p.node_id == node.node as String)
+      match mine.first() {
+        Absent => continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent)
+        Present { value: p } =>
+          continuation_decision(
+            prior: Present { value: PriorAttemptFacts {
+              attempt_key: p.attempt_key,
+              branch: p.branch,
+              worker_terminal: belt_provider_is_terminal(provider: p.provider),
+              verification: belt_verification_segment(progress: p),
+            } },
+            prior_turn: belt_continuation_turn_read_for_instance(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
+          )
+      }
+    }
+  }
+}
+
+fn belt_continuation_turn_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ContinuationTurnRead {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = dispatch_attempt_continuation_turn_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: dispatch_attempt_continuation_turn_basename,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => ContinuationTurnAbsent
+    FilesystemFileRead { path: _, content } =>
+      match parse_int(s: trim(content)) {
+        Present { value: n } => ContinuationTurnKnown { turn: n }
+        Absent => ContinuationTurnUnreadable { reason: join(["continuation-turn holds \"", trim(content), "\", not an integer"], "") }
+      }
+    FilesystemFileIndeterminate { cause } => ContinuationTurnUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ContinuationTurnUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ContinuationTurnUnreadable { reason: cause }
+  }
+}
+
+fn belt_actuate_spawn_with_origin(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  workdir: String,
+  admission_receipt: String,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  probed_at: String,
+  attempt_key: String,
+  session_name: String,
+  origin: AttemptOrigin,
+) -> BeltSpawnOutcome {
   match belt_resolved_spawn_plan(
     instance: instance,
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
+    origin: origin,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1680,6 +1787,7 @@ fn belt_actuate_spawn_exec_modeled(
         attempt_key: attempt_key,
         admission_receipt: admission_receipt,
         launch: launch,
+        turn: attempt_origin_turn(origin: origin),
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -1943,6 +2051,7 @@ fn belt_resolved_spawn_plan(
   node: RoadmapNode,
   session_uuid: String,
   attempt_key: String,
+  origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
   match dispatch_actuator_selection(node_sizing: node.sizing) {
     DispatchActuatorSelectionRefused { reason } =>
@@ -1958,6 +2067,7 @@ fn belt_resolved_spawn_plan(
         attempt_key: attempt_key,
         provider: provider,
         effort: effort,
+        origin: origin,
       )
   }
 }

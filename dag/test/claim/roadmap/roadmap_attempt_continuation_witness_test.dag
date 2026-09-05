@@ -1,0 +1,77 @@
+module test.claim.roadmap.roadmap_attempt_continuation_witness_test
+
+import std.types { Bool, String, Int }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
+  ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
+  ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused,
+  continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, VerificationWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete,
+}
+
+fn failed_prior() -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worker_terminal: true,
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag" } },
+  }
+}
+
+test fn no_prior_attempt_starts_fresh() -> Bool {
+  match continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent) {
+    ContinuationFresh { reason: _ } => true
+    _ => false
+  }
+}
+
+// DISCRIMINATING: a failed verdict on a terminal prior continues on the prior's branch at turn 2 and
+// the brief prefix carries the verdict; a green verdict on the same prior starts fresh.
+test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief() -> Bool {
+  match continuation_decision(prior: Present { value: failed_prior() }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationContinue { origin } =>
+      attempt_origin_turn(origin: origin) == 2
+        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "sandbox render red")
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "turn 2 of 3")
+    _ => false
+  }
+}
+
+test fn a_green_verdict_starts_fresh() -> Bool {
+  let p = failed_prior()
+  let green = PriorAttemptFacts {
+    attempt_key: p.attempt_key,
+    branch: p.branch,
+    worker_terminal: true,
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } },
+  }
+  match continuation_decision(prior: Present { value: green }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationFresh { reason: _ } => attempt_origin_base_ref(origin: FreshFromBase, instance_base_ref: "origin/main") == "origin/main"
+    _ => false
+  }
+}
+
+// DISCRIMINATING: at the cap the decision refuses rather than starting fresh, and an unreadable turn
+// file refuses rather than being read as 1.
+test fn the_turn_cap_and_an_unreadable_turn_both_refuse_rather_than_restart() -> Bool {
+  let at_cap = continuation_decision(
+    prior: Present { value: failed_prior() },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  )
+  let unreadable = continuation_decision(
+    prior: Present { value: failed_prior() },
+    prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
+  )
+  match at_cap {
+    ContinuationRefused { reason } =>
+      string_contains(s: reason, pattern: "turns")
+        && match unreadable {
+          ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
+          _ => false
+        }
+    _ => false
+  }
+}

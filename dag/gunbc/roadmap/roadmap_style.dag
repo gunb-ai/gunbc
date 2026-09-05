@@ -1016,6 +1016,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--band-loud)"),
       decl(prop: FontWeight, value: "600"),
     ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"stopped\"]",
+    ], "") }, decls: [
+      role_decl(prop: Color, r: TextRole),
+    ] },
     StaticRule { selector: ClassSelector { name: activity_evidence_row_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
