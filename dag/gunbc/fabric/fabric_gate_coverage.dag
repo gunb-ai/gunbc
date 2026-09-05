@@ -13,6 +13,7 @@ import v2.workflow.floor_terminal_ledger {
   LedgerBinding,
 }
 import std.materialization_provider { Fnv1a64Structural }
+import v2.workflow.required_floor { RequiredFloorDisposition, required_floor_site_disposition }
 import std.content_hash { fnv1a64_structural_hex_digest }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger_wire {
@@ -596,6 +597,97 @@ fn gate_standing_admitted(
   }
 }
 
+// ── CAN THE PRODUCER EVER SUPPLY WHAT THIS CONSUMER DEMANDS? ──────────────────────────────────
+//
+// THE DEFECT THIS ANSWERS, MEASURED. The required step below demands a terminal-ledger row for every
+// nominated witness. On main's own ordinary run every test.claim.fabric identity was
+// declined_outside_gate_closure and not_executed, so the ledger carried no row for either FCI-2
+// nomination and the step reddened on every pull request that did not happen to edit those files.
+// That is a wall whose verdict does not depend on the repository -- the same defect as a wall that
+// can only pass, and it reached six approvals.
+//
+// THE JUDGMENT LIVES HERE AND NOT IN gate_coverage, AND THE BOUNDARY IS THE POINT. "Is this
+// nomination well formed" and "can this producer supply this consumer's evidence" are different
+// questions with different inputs: a perfectly well-formed nomination can be unusable against a
+// particular producer without becoming malformed. So the census keeps answering the first and the
+// roster stays CoverageTotal, while this binding refuses -- which preserves the nomination-versus-
+// standing distinction rather than collapsing it. The floor stays ignorant of fabric gates; the
+// dependency runs one way, from whoever asserts coverage to the planning authority.
+//
+// IT IS THE ORDINARY DECISION, DELIBERATELY, AND THIS IS THE SUBTLE HALF. required_floor_site_
+// disposition computes the policy answer BEFORE the changed-witness overlay, and that is the fact
+// this consumer needs. Joining against the effective plan of the invocation at hand would accept a
+// nomination whose witness the author edited in the same pull request -- changed-witness selection
+// schedules it, it passes, the join accepts, and the NEXT ordinary run fails. That is precisely the
+// one-run escape this check exists to remove, reintroduced by the check. Nor may the overlay's tag
+// simply be refused: an ordinarily planned witness can also carry PlannedAsChangedWitness, so
+// refusing it would manufacture a false incompatibility.
+//
+// WHAT THIS DOES NOT ESTABLISH, because a prefix is not a plan and this function is not the whole
+// predicate: it does not prove the DECLARATION EXISTS, and it does not prove the module was
+// prepared -- DeclinedOutsideGateClosure names a module never prepared at all and is decided
+// elsewhere. Those are settled by the invocation's own evidence: a nomination that is ordinarily
+// Planned and still has no observation in the published ledger is refused below, which is exactly
+// where a fabricated function name under a matching module prefix lands.
+type PlanningIncompatibility {
+  gate: NonEmptyStr
+  mutation: NonEmptyStr
+  witness: WitnessIdentity
+  disposition: RequiredFloorDisposition
+}
+
+fn ordinary_disposition_of(witness: WitnessIdentity) -> RequiredFloorDisposition {
+  required_floor_site_disposition(
+    module_path: witness.module_path as String,
+    identity: witness_identity_qualified_name(identity: witness),
+  )
+}
+
+fn disposition_is_ordinarily_planned(d: RequiredFloorDisposition) -> Bool {
+  match d {
+    Planned => true,
+    PlannedAsChangedWitness => false,
+    DeclinedLongModule { matched_prefix } => false,
+    DeclinedFixtureMember { matched_prefix } => false,
+    DeclinedOutsideRequiredGate => false,
+    DeclinedOutsideGateClosure => false,
+    DeclinedDiscoveryExcluded { matched_substring } => false,
+    DeclinedCostDebt => false,
+  }
+}
+
+fn render_disposition(d: RequiredFloorDisposition) -> String {
+  match d {
+    Planned => "planned",
+    PlannedAsChangedWitness => "planned-as-changed-witness",
+    DeclinedLongModule { matched_prefix } => concat("declined-long-module:", matched_prefix),
+    DeclinedFixtureMember { matched_prefix } => concat("declined-fixture-member:", matched_prefix),
+    DeclinedOutsideRequiredGate => "declined-outside-required-gate",
+    DeclinedOutsideGateClosure => "declined-outside-gate-closure",
+    DeclinedDiscoveryExcluded { matched_substring } => concat("declined-discovery-excluded:", matched_substring),
+    DeclinedCostDebt => "declined-cost-debt",
+  }
+}
+
+fn planning_incompatibilities(enrolments: List<MutationEnrolment>) -> List<PlanningIncompatibility> {
+  flat_map(enrolments, e => match e.discharge {
+    Undischarged { reason, restoration_trigger } => [],
+    DischargedByWitness { witness } => {
+      let d = ordinary_disposition_of(witness)
+      if disposition_is_ordinarily_planned(d) { [] } else {
+        [PlanningIncompatibility { gate: e.gate, mutation: e.mutation, witness: witness, disposition: d }]
+      }
+    },
+  })
+}
+
+fn render_incompatibility(i: PlanningIncompatibility) -> String {
+  concat(concat("  UNPLANNABLE ", i.gate as String),
+    concat(concat("|", i.mutation as String),
+      concat(concat("|", witness_identity_qualified_name(identity: i.witness)),
+             concat("|", render_disposition(i.disposition)))))
+}
+
 // ── THE RETAINED CONSUMER ──────────────────────────────────────────────────────────────────────
 //
 // EVERYTHING ABOVE IS A DECISION PROCEDURE WITH NO PRODUCTION CALLER, AND A DECISION PROCEDURE
@@ -762,6 +854,11 @@ fn render_standing_verdict(v: GateStandingVerdict) -> FabricStandingReport {
 // the file carries -- that is the wire authority's own check, so consuming it is not a second
 // opinion about integrity, it is the first consumer of the one that already existed.
 //
+// THE DEMAND IS CHECKED BEFORE THE ARTIFACT, and the order carries a meaning. A roster that
+// nominates witnesses the producer will never ordinarily plan is wrong whatever any particular
+// ledger happens to contain, so reporting it as a coverage gap would send the reader to look for
+// missing evidence when the demand itself is unsatisfiable. Refusing first names the actual fault.
+//
 // NOT CHECKED HERE, AND SAID SO: the footer ROW COUNT. Its authority's own note is explicit that
 // the referent must be the PLANNED count the caller already holds, never the rows the reader
 // parsed, because comparing the footer to the parsed rows is an identity that a truncation
@@ -771,6 +868,31 @@ fn adjudicate_published_ledger(
   ledger_text: String,
   adjudicated_commit_hex: String,
 ) -> FabricStandingReport {
+  adjudicate_ledger_for(fabric_mutation_enrolments(), ledger_text, adjudicated_commit_hex)
+}
+
+// THE ROSTER IS A PARAMETER SO THE ARTIFACT PATH STAYS REACHABLE UNDER TEST, and that is a real
+// seam rather than a testing convenience. The demand check refuses FIRST and, on today's tree,
+// refuses always -- so with the production roster wired in, no witness could reach the parse, the
+// seal, the revision guard or the standing derivation at all. Every one of them would have gone on
+// passing while asserting nothing about the code it names, which is the failure this module keeps
+// finding in its own evidence.
+//
+// The production entry above binds the real roster and is the only caller that does. A witness
+// binds a fixture roster whose nominations ARE ordinarily planned, so it exercises the artifact
+// path; another binds one that is not, and exercises the refusal. Neither can drift from the
+// production behaviour, because both run this same function.
+fn adjudicate_ledger_for(
+  enrolments: List<MutationEnrolment>,
+  ledger_text: String,
+  adjudicated_commit_hex: String,
+) -> FabricStandingReport {
+  let unplannable = planning_incompatibilities(enrolments)
+  if unplannable.length() > 0 {
+    standing_refused(concat(
+      concat("FCI-STANDING refused=nomination-not-planned-by-producer count=", unplannable.length() as String),
+      lines_of(map(unplannable, i => render_incompatibility(i)))))
+  } else {
   let readback = parse_ledger(text: ledger_text)
   match readback {
     LedgerUnreadable { reason, at } =>
@@ -793,7 +915,7 @@ fn adjudicate_published_ledger(
                 Present { value: observed_subject } =>
                   render_standing_verdict(gate_standing_admitted(
                     fabric_ci_gates(),
-                    fabric_mutation_enrolments(),
+                    enrolments,
                     LedgerBinding {
                       repository_snapshot: observed_snapshot,
                       prepared_subject: observed_subject,
@@ -806,5 +928,6 @@ fn adjudicate_published_ledger(
           },
       }
       },
+  }
   }
 }

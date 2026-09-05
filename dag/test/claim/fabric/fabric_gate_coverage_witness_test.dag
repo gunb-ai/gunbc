@@ -28,6 +28,7 @@ import gunbc.fabric_gate_coverage {
   gate_standing,
   FabricStandingReport,
   adjudicate_published_ledger,
+  adjudicate_ledger_for,
 }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger_wire { render_ledger, LedgerRender }
@@ -623,8 +624,40 @@ fn witness_identity_eq_local(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
   a.module_path == b.module_path && a.function == b.function
 }
 
+// A ROSTER WHOSE NOMINATIONS THE ORDINARY FLOOR ACTUALLY PLANS, built by rewiring the REAL roster
+// rather than by inventing one. Every gate and mutation stays exactly as the authority declares it,
+// so the census remains total and these witnesses keep testing the real obligation structure; the
+// only thing substituted is the witness each nomination names.
+//
+// WHY IT IS NEEDED: the consumer refuses an unplannable demand BEFORE it reads the artifact, and on
+// today's tree the real roster is unplannable. Wired to the production roster, not one of these
+// witnesses could reach the parse, the seal, the revision guard or the standing derivation -- they
+// would all still pass, asserting nothing about the code they name.
+//
+// THE SUBSTITUTE IS A MEASURED FACT, NOT A GUESS. This identity carries disposition `planned` in
+// required-floor-disposition on main's own run; it is named here because the ordinary policy must
+// return Planned for it, and if that ever stops being true these witnesses fail loudly rather than
+// silently testing the refusal path instead of the path they describe.
+fn planned_fixture_identity() -> WitnessIdentity {
+  WitnessIdentity {
+    module_path: "test.claim.arity_zero_import_refusal_witness",
+    function: "an_arity_zero_import_member_list_refuses_at_parse",
+  }
+}
+
+fn plannable_roster() -> List<MutationEnrolment> {
+  map(fabric_mutation_enrolments(), e => match e.discharge {
+    Undischarged { reason, restoration_trigger } => e,
+    DischargedByWitness { witness } => MutationEnrolment {
+      gate: e.gate,
+      mutation: e.mutation,
+      discharge: DischargedByWitness { witness: planned_fixture_identity() },
+    },
+  })
+}
+
 fn nominated_identities() -> List<WitnessIdentity> {
-  fold(fabric_mutation_enrolments(), init: [], f: (acc, e) => match e.discharge {
+  fold(plannable_roster(), init: [], f: (acc, e) => match e.discharge {
     Undischarged { reason, restoration_trigger } => acc,
     DischargedByWitness { witness } =>
       if identity_already_in(acc, witness) { acc } else { concat(acc, [witness]) },
@@ -637,13 +670,30 @@ fn every_nomination_passing() -> List<ClaimTerminalRow> {
 
 fn report_holds(r: FabricStandingReport) -> Bool { r.holds }
 
+// A RED IS NOT A RED IS NOT A RED, AND THIS HELPER EXISTS BECAUSE MINE NEARLY WERE.
+//
+// The four controls below feed a ledger whose NOMINATIONS are broken -- one missing, one returning
+// false, one held as a known red, one observed twice -- and each used to assert only that the step
+// did not hold. That assertion is satisfied by ANY refusal, including refusals that mean the
+// opposite: an unreadable file, a wrong revision, or a fixture that failed to render and arrived as
+// empty text. A control satisfied by an unrelated failure is a control that will keep passing after
+// the behaviour it names has gone.
+//
+// So each asserts the verdict it is actually about: the roster's claims were adjudicated and one of
+// them did not stand. Feed it an empty or damaged artifact instead and the text says
+// `refused=ledger-unreadable`, which fails here rather than reading as success.
+fn broken_nomination(r: FabricStandingReport) -> Bool {
+  !r.holds && starts_with(s: r.text, prefix: "FCI-STANDING verdict=nomination-broken")
+}
+
 fn report_text(r: FabricStandingReport) -> String { r.text }
 
 // THE POSITIVE CONTROL. A ledger bound to the adjudicated commit, naming every nominated witness
 // once as returned-true, must let the step pass -- and the declared-undischarged rows must NOT red
 // it, which is the arm that would otherwise make this wall unconditionally closed.
 test fn a_ledger_where_every_nomination_returned_true_lets_the_step_pass() -> Bool {
-  report_holds(adjudicate_published_ledger(
+  report_holds(adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, every_nomination_passing()),
     ledger_fixture_commit))
 }
@@ -652,7 +702,8 @@ test fn a_ledger_where_every_nomination_returned_true_lets_the_step_pass() -> Bo
 // witness removes its row from the published ledger, which is exactly this input.
 test fn a_ledger_missing_one_nomination_reds_the_step() -> Bool {
   let all = every_nomination_passing()
-  !report_holds(adjudicate_published_ledger(
+  broken_nomination(adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, all.skip(n: 1)),
     ledger_fixture_commit))
 }
@@ -665,7 +716,8 @@ test fn a_nomination_observed_returning_false_reds_the_step() -> Bool {
   let rows = concat(
     map(ids.skip(n: 1), id => terminal_row(id, ExpectedToHold, true)),
     map(take(ids, 1), id => terminal_row(id, ExpectedToHold, false)))
-  !report_holds(adjudicate_published_ledger(
+  broken_nomination(adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, rows),
     ledger_fixture_commit))
 }
@@ -677,7 +729,8 @@ test fn a_nomination_held_as_a_known_red_reds_the_step() -> Bool {
   let rows = concat(
     map(ids.skip(n: 1), id => terminal_row(id, ExpectedToHold, true)),
     map(take(ids, 1), id => terminal_row(id, ExpectedRed, true)))
-  !report_holds(adjudicate_published_ledger(
+  broken_nomination(adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, rows),
     ledger_fixture_commit))
 }
@@ -685,7 +738,8 @@ test fn a_nomination_held_as_a_known_red_reds_the_step() -> Bool {
 // THE SAME WITNESS OBSERVED TWICE IS AMBIGUOUS EVIDENCE, NOT DOUBLE EVIDENCE.
 test fn a_nomination_observed_twice_reds_the_step() -> Bool {
   let all = every_nomination_passing()
-  !report_holds(adjudicate_published_ledger(
+  broken_nomination(adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, concat(all, take(all, 1))),
     ledger_fixture_commit))
 }
@@ -694,7 +748,8 @@ test fn a_nomination_observed_twice_reds_the_step() -> Bool {
 // establishes nothing about this tree, and the refusal names that rather than reporting a coverage
 // gap -- the two have different remedies.
 test fn a_complete_ledger_of_another_revision_refuses_by_name() -> Bool {
-  let r = adjudicate_published_ledger(
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_b(), ledger_fixture_subject, every_nomination_passing()),
     ledger_fixture_commit)
   !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-of-another-revision"
@@ -703,7 +758,8 @@ test fn a_complete_ledger_of_another_revision_refuses_by_name() -> Bool {
 // A LOCAL RUN'S LEDGER NAMES NO COMMIT, so it cannot be bound to one; it must refuse rather than
 // adjudicate as though the tree it was produced from were this one.
 test fn an_unpublished_ledger_refuses_as_not_candidate_bound() -> Bool {
-  let r = adjudicate_published_ledger(
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(UnpublishedWorkingTree, ledger_fixture_subject, every_nomination_passing()),
     ledger_fixture_commit)
   !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-is-not-candidate-bound"
@@ -713,7 +769,7 @@ test fn an_unpublished_ledger_refuses_as_not_candidate_bound() -> Bool {
 // never report zero covered obligations, which is what a parse failure folded into an empty list
 // would look like to every consumer.
 test fn an_unreadable_ledger_refuses_rather_than_reading_as_empty() -> Bool {
-  let r = adjudicate_published_ledger("nope", ledger_fixture_commit)
+  let r = adjudicate_ledger_for(plannable_roster(), "nope", ledger_fixture_commit)
   !report_holds(r)
     && report_text(r) == "FCI-STANDING refused=ledger-unreadable reason=ledger-shorter-than-header-and-footer"
 }
@@ -721,7 +777,8 @@ test fn an_unreadable_ledger_refuses_rather_than_reading_as_empty() -> Bool {
 // A HEADER WHOSE SNAPSHOT IS NEITHER A COMMIT NOR THE UNPUBLISHED TOKEN IS A LEDGER THIS ENTRY
 // DOES NOT UNDERSTAND, and it says so with the offending text rather than guessing.
 test fn a_ledger_whose_snapshot_is_not_a_commit_refuses_by_name() -> Bool {
-  let r = adjudicate_published_ledger(
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
     ledger_with_header("not-a-commit", ledger_fixture_subject as String, every_nomination_passing()),
     ledger_fixture_commit)
   !report_holds(r)
@@ -729,7 +786,8 @@ test fn a_ledger_whose_snapshot_is_not_a_commit_refuses_by_name() -> Bool {
 }
 
 test fn a_ledger_whose_subject_is_not_a_digest_refuses_by_name() -> Bool {
-  let r = adjudicate_published_ledger(
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
     ledger_with_header(ledger_fixture_commit, "zz", every_nomination_passing()),
     ledger_fixture_commit)
   !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-subject-unrecognized offending=zz"
@@ -737,7 +795,8 @@ test fn a_ledger_whose_subject_is_not_a_digest_refuses_by_name() -> Bool {
 
 // AN ADJUDICATED COMMIT THE HOST COULD NOT READ MUST NOT DEGRADE INTO "ADJUDICATE ANYWAY".
 test fn an_unreadable_adjudicated_commit_refuses_by_name() -> Bool {
-  let r = adjudicate_published_ledger(
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
     rendered_ledger(commit_a(), ledger_fixture_subject, every_nomination_passing()),
     "not-a-commit")
   !report_holds(r)
@@ -770,7 +829,7 @@ test fn a_row_rewritten_under_an_unchanged_seal_refuses_as_tampered() -> Bool {
     concat(map(take(ids, 1), id => terminal_row(id, ExpectedToHold, false)),
            map(ids.skip(n: 1), id => terminal_row(id, ExpectedToHold, true))))
   let tampered = replace_line(honest, 1, ledger_row_line_of(flipped, 1))
-  let r = adjudicate_published_ledger(tampered, ledger_fixture_commit)
+  let r = adjudicate_ledger_for(plannable_roster(), tampered, ledger_fixture_commit)
   !report_holds(r) && report_text(r) == "FCI-STANDING refused=ledger-seal-disagrees-with-its-rows"
 }
 
@@ -796,4 +855,57 @@ fn ledger_line_at(lines: List<String>, index: Int) -> String? {
       seen: acc.seen + 1,
       found: if acc.seen == index { Present { value: l } } else { acc.found },
     }).found
+}
+
+// THE PRODUCTION ROSTER, ADJUDICATED AS PRODUCTION ADJUDICATES IT. Every witness above binds a
+// rewired roster so it can reach the artifact path; this one binds the real entry, and it is the
+// only place the shipped demand meets the shipped planning authority.
+//
+// IT ASSERTS THE STATE THAT REOPENED THIS WORK. The gate nominates witnesses the ordinary floor
+// does not plan, so the required step refuses rather than reporting a coverage gap, and it refuses
+// BY THE DEMAND rather than by the evidence -- naming the roster as the fault instead of sending a
+// reader to look for rows that were never going to exist.
+//
+// THIS WITNESS IS EXPECTED TO CHANGE, AND SAYING SO IS THE POINT. If the nominated witnesses are
+// admitted to the required gate closure, the refusal it asserts stops being correct and this row
+// must be rewritten to assert the artifact path instead. That is a real edit at a real decision,
+// not a change detector: what makes it legitimate is that the thing it pins is a POLICY FACT with
+// an owner, and the day that policy changes is the day someone should have to come here and say so.
+test fn the_production_roster_demands_evidence_the_ordinary_floor_does_not_plan() -> Bool {
+  let r = adjudicate_published_ledger(
+    rendered_ledger(commit_a(), ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r)
+    && starts_with(s: report_text(r), prefix: "FCI-STANDING refused=nomination-not-planned-by-producer")
+}
+
+// THE FIXTURE BUILDER MUST NOT FAIL SILENTLY, AND UNTIL THIS ROW EXISTED IT COULD.
+//
+// rendered_ledger answers "" on LedgerUnrenderable, because a fixture helper has no refusal channel
+// of its own. Empty text parses as an unreadable ledger, which is a REFUSAL -- so every negative
+// control that asked only "did it fail" would have passed on a fixture that never rendered, and the
+// suite would have been green while testing nothing. That is the same shape as the all-zero digests
+// this file already carried once.
+//
+// Two things close it. Each negative control now asserts the cause it is about, so a fixture that
+// collapsed to empty text fails rather than reading as success. And this row asserts renderability
+// directly, so the collapse is caught at its source instead of being inferred from a downstream
+// symptom.
+test fn every_fixture_ledger_actually_renders() -> Bool {
+  let rows = every_nomination_passing()
+  rendered_ledger(commit_a(), ledger_fixture_subject, rows) != ""
+    && rendered_ledger(commit_b(), ledger_fixture_subject, rows) != ""
+    && rendered_ledger(UnpublishedWorkingTree, ledger_fixture_subject, rows) != ""
+}
+
+// THE POSITIVE CONTROL FOR THE DEMAND RELATION ITSELF. "The production roster refuses" cannot tell a
+// correct compatibility check apart from one that refuses everything, so the discriminator is a
+// roster whose nominations the ordinary floor DOES plan reaching past the demand check into the
+// artifact path. If planning_incompatibilities ever became unconditional, this row goes red while
+// the production-roster row above stays green -- which is exactly the pair that separates "refuses
+// the right things" from "refuses".
+test fn a_plannable_roster_passes_the_demand_check_and_reaches_the_artifact() -> Bool {
+  let r = adjudicate_ledger_for(plannable_roster(), "nope", ledger_fixture_commit)
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=ledger-unreadable reason=ledger-shorter-than-header-and-footer"
 }
