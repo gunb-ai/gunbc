@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
@@ -9,10 +9,22 @@ import gunbc.live_deploy.emit {
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
+  live_deploy_belt_service_unit_file,
+  live_deploy_tree_sync_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentServiceConfig,
+  deployment_spec_srv1,
+}
+import extdeps.systemd.unit_file {
+  ServiceUnitFile,
+  SystemdServiceDirective,
+  WorkingDirectory, ExecStart,
+  ServiceUser, ServiceGroup, ServiceSlice,
+}
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -171,4 +183,78 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+}
+
+// ── EXECUTED RED (DESIGN §4b) — mutate the spec, emit, show the positive claim fail ────────────
+
+fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
+  any(dirs, fn(d) { d == target })
+}
+
+fn any(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
+  match xs {
+    [] => false
+    [first, ..rest] => if pred(first) { true } else { any(xs: rest, pred: pred) }
+  }
+}
+
+fn belt_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_belt_service_unit_file(spec: spec) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn tree_sync_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: wrong_root,
+              service_user: su, service_uid: uid,
+              listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+// RED: a spec with a different repo_root makes belt_service_works_in_repo_tree go red.
+// The positive claim asserts WorkingDirectory == spec.service.repo_root.
+// When repo_root changes, the emitted WorkingDirectory changes with it.
+test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
+  let wrong_root = join([live_spec().service.repo_root as String, "-staging"], "") as NonEmptyStr
+  let wrong_spec = spec_with_repo_root(wrong_root: wrong_root)
+  !has_directive(
+    dirs: belt_service_directives_of(spec: wrong_spec),
+    target: WorkingDirectory { path: live_spec().service.repo_root })
+}
+
+// RED: a spec with a different repo_root makes tree_sync_execstart go red.
+// The positive claim asserts ExecStart contains repo_root.
+// When repo_root changes, the emitted ExecStart path changes with it.
+test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
+  let wrong_root = join([live_spec().service.repo_root as String, "-staging"], "") as NonEmptyStr
+  let wrong_spec = spec_with_repo_root(wrong_root: wrong_root)
+  let original_exec = join([
+    "/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude",
+    " --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home",
+    " --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts",
+    " \"$\{GUNBC_TREE_SRC\}/\" ", live_spec().service.repo_root as String, "/",
+  ], "")
+  !has_directive(
+    dirs: tree_sync_service_directives_of(spec: wrong_spec),
+    target: ExecStart { command: original_exec as NonEmptyStr })
 }
