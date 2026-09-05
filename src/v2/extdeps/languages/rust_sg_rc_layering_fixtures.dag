@@ -28,10 +28,10 @@ import v2.std.node { Conj, Edge, Node, TypeNode }
 // sg_rc_outcome_inner_sg2_args_preserved, which runs translate_type_expression_project and is a
 // different demand shape (it is also a floor_cost_debt row, so its identity is roster-named).
 //
-// The mechanism claimed is that a smaller TargetModel is cheaper to BUILD than the production one.
-// It is NOT a claim that an unread bundle edge costs anything: gunbc#10527 deleted unreachable
-// edges and measured the cost unchanged to the step. Per DESIGN section 4c no annotation can carry
-// a cost measurement at all — the measurement lives in required_floor_claim_cost.tsv.
+// The mechanism is that a smaller TargetModel is cheaper to BUILD. Which part of it was expensive
+// is a question for the instrument, not for this comment: per DESIGN section 4c no annotation can
+// carry a cost measurement, so the figures live only in required_floor_claim_cost.tsv and the
+// rewiring above is authored from what each claim READS, which is decidable from source.
 
 fn sg_rc_layering_fixture_bundle(children: List<Edge>) -> Node {
   Node {
