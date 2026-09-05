@@ -1,0 +1,83 @@
+module v1.tests.claim.item_kind_dissolves_shape_predicates_control_test
+
+import std.types { Bool }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v1.std.core {
+  Node, NoExprData, NoConnective, Conj, Required, no_span,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemResource, NotAModuleItem,
+}
+import v1.compiler.emit_core_support { is_leaf_type_item, is_type_def_item }
+import v1.compiler.emit_python { emit_py_resource_def }
+import v1.compiler.infer_env { empty_type_env }
+
+// WHY THIS FILE EXISTS: the state it tests is AUTHORABLE. `v1.std.core` `Node` is one carrier for
+// items and expressions, so every conjunct of the shape test that used to stand here -- no
+// connective, no body, no params, no children, no transport -- is satisfiable by a node whose item
+// kind is `ModuleItemResource`. That is not hypothetical: `resource Network` and `resource
+// AuthContext` in `std.resources` declare no capabilities, satisfy exactly that shape, and were
+// claimed by the old `is_bare_leaf_item`, which read connective, body, params, children and
+// transport and never read properties.
+//
+// WHY THE TWO ROWS ARE SHAPED AS A PAIR: `resource_shaped_like_a_leaf_type_is_not_one` discriminates
+// -- restore the shape-only predicate body and it goes red -- and
+// `leaf_type_declaration_is_still_a_leaf_type` is what stops that row from being satisfied by a
+// predicate answering false for everything. Same node, same five shape conjuncts, one field
+// different. Neither is retired by the climb they measure: DESIGN section 4b(4) keeps the evidence
+// when the production machinery it falsified is deleted.
+//
+// WHERE THIS RUNS IS NOT ASSERTED HERE, AND DELIBERATELY SO. No annotation can establish that a
+// witness executes, so the fact that this directory is outside the required run is carried by the
+// typed authority that decides it -- `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`
+// and its restoration condition -- and not by prose in this file.
+
+// One node shape, parameterised only by the carried kind, so the rows differ in exactly the fact
+// under test. Every conjunct of the shape predicate that stood here is satisfied by both.
+fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: "ZqxLeafShaped", ident: none,
+    span: no_span(), ident_span: none, children: [], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
+    module_item_kind: kind, expr_data: NoExprData
+  }
+}
+
+fn structured_item(kind: ParsedModuleItemKind) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: "ZqxStructured", ident: none,
+    span: no_span(), ident_span: none, children: [], connective: Conj,
+    params: [], inferred: none, return_cardinality: Required, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
+    module_item_kind: kind, expr_data: NoExprData
+  }
+}
+
+test fn resource_shaped_like_a_leaf_type_is_not_one() -> Bool {
+  !is_leaf_type_item(item: leaf_shaped_item(kind: ModuleItemResource))
+    && !is_type_def_item(item: structured_item(kind: ModuleItemResource))
+}
+
+test fn leaf_type_declaration_is_still_a_leaf_type() -> Bool {
+  is_leaf_type_item(item: leaf_shaped_item(kind: ModuleItemTypeDeclaration))
+    && is_type_def_item(item: structured_item(kind: ModuleItemTypeDeclaration))
+}
+
+// A node that was never constructed by an item constructor is not a type declaration either, which
+// is the arm that makes NotAModuleItem a refusal rather than a synonym for the type bucket.
+test fn a_node_that_is_not_an_item_is_not_a_type_declaration() -> Bool {
+  !is_leaf_type_item(item: leaf_shaped_item(kind: NotAModuleItem))
+    && !is_type_def_item(item: structured_item(kind: NotAModuleItem))
+}
+
+// THE PATH THIS ROW GUARDS IS ONE THIS CHANGE OPENED. A capability-less resource used to lose the
+// emitter if-chain to the type arm, so the Python resource emitter never saw one; carrying the kind
+// routes it correctly for the first time, and the correct route emitted `class X(ABC):` followed by
+// indentation and nothing, which is an IndentationError rather than an empty class. Found by codex
+// review 60760. The row is a regression control rather than a receipt: it goes red again the moment
+// the empty arm is removed, and no other row in the corpus would notice.
+test fn an_empty_resource_emits_a_python_body_rather_than_bare_indentation() -> Bool {
+  let emitted = emit_py_resource_def(item: structured_item(kind: ModuleItemResource), env: empty_type_env())
+  string_contains(s: emitted, pattern: "pass")
+}

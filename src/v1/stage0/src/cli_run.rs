@@ -3441,7 +3441,8 @@ pub(crate) fn string_list_data_from_module_source(
         .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
     for item in module.children.iter() {
         if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+            || item.module_item_kind
+                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
         }
@@ -12063,6 +12064,7 @@ thread_local! {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
             message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
@@ -20489,6 +20491,7 @@ mod closure_bare_disposition_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
@@ -36293,7 +36296,6 @@ pub fn extdeps_shape_transport_policy_module_facts(
     module_path: &str,
 ) -> ExtdepsShapeTransportPolicyModuleFacts {
     use crate::v1_compiler_emit::effective_operation_transport;
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     use crate::v1_std_core::{
         field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData,
     };
@@ -36377,7 +36379,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
 
     let mut embedded_facts: Vec<ExtdepsEmbeddedFactRaw> = Vec::new();
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name.is_empty() {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name.is_empty()
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36494,7 +36498,6 @@ fn project_external_authority_named_data(
     data_name: &str,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     let path = source_path_for_module_path(module_path.to_string());
     if try_resolve_extdeps_module_source_path(&path).is_none() {
         return ExternalAuthorityAnchorProjection::Refused {
@@ -36503,7 +36506,9 @@ fn project_external_authority_named_data(
     }
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != data_name {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != data_name
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36527,9 +36532,10 @@ fn read_external_authority_anchor_from_items(
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != "extdeps_external_authority_anchor"
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
