@@ -399,6 +399,7 @@ type WorkRowView {
   supporting_facts: List<SupportingFact>
   disclosure: DisclosureView
   rounds: HarnessRoundLedger
+  worker_alive: Bool
 }
 
 fn intricacy_code(i: Intricacy) -> String {
@@ -836,6 +837,16 @@ fn rounds_of(facts: WorkAttemptFacts) -> HarnessRoundLedger {
   }
 }
 
+
+fn worker_alive_from_process(process: WorkerProcessEvidence) -> Bool {
+  match process {
+    WorkerProcessRunning { command: _ } => true
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessAbsent => false
+    WorkerProcessUnobserved { reason: _ } => false
+  }
+}
+
 fn work_row_view(
   rn: RoadmapNode,
   nodes: List<RoadmapNode>,
@@ -844,6 +855,7 @@ fn work_row_view(
   activity: ActivityView,
   rounds: HarnessRoundLedger,
   launch: LaunchRowContext,
+  worker_alive: Bool,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges)
@@ -859,6 +871,7 @@ fn work_row_view(
     supporting_facts: row_supporting_facts(rn: rn),
     disclosure: row_disclosure(line: rn.line),
     rounds: rounds,
+    worker_alive: worker_alive,
   }
 }
 
@@ -1221,6 +1234,7 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     supporting_facts: row.supporting_facts,
     disclosure: row.disclosure,
     rounds: row.rounds,
+    worker_alive: row.worker_alive,
   }
 }
 

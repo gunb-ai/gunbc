@@ -73,6 +73,7 @@ import gunbc.roadmap_presentation {
   lifecycle_chip_renders,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
   WorkBandEntry, BandRow, BandFamily,
+  worker_alive_from_process,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
@@ -681,14 +682,14 @@ fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   }
 }
 
-fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger) -> List<Fragment> {
+fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   match a {
     NoActiveWork => []
     ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
       let key = activity_attention_key(a: attention)
       [ activity_container(a: a, attention: key, children: concat(
-          round_strip_nodes(ledger: rounds, live: true),
+          round_strip_nodes(ledger: rounds, live: live),
           [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous") ],
         )) ]
     }
@@ -740,7 +741,7 @@ fn render_work_row_head(view: WorkRowView) -> Fragment {
 fn render_work_row(view: WorkRowView) -> List<Fragment> {
   concat(
     [ render_work_row_head(view: view) ],
-    concat(activity_region_nodes(a: view.activity, rounds: view.rounds), view_detail_block(view: view)))
+    concat(activity_region_nodes(a: view.activity, rounds: view.rounds, live: view.worker_alive), view_detail_block(view: view)))
 }
 
 fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
@@ -752,7 +753,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, launch: launch)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, launch: launch)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -993,6 +994,17 @@ fn daily_row_rounds(node_id: String, attempts: List<WorkflowAttemptProgress>, at
   }
 }
 
+fn daily_row_worker_alive(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Bool {
+  match attempts_refused {
+    Present { value: _ } => false
+    Absent =>
+      match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
+        Present { value: p } => worker_alive_from_process(process: p.process)
+        Absent => false
+      }
+  }
+}
+
 fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> ActivityView {
   match attempts_refused {
     Present { value: reason } => ActivityUnobservable { reason: reason }
@@ -1039,6 +1051,7 @@ fn daily_workspace_view_of_for_accepted(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     launch: ctx))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
