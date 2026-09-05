@@ -7,6 +7,8 @@ import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemResource, NotAModuleItem,
 }
 import v1.compiler.emit_core_support { is_leaf_type_item, is_type_def_item }
+import v1.compiler.emit_python { emit_py_resource_def }
+import v1.compiler.infer_env { empty_type_env }
 
 // WHY THIS FILE EXISTS: the state it tests is AUTHORABLE. `v1.std.core` `Node` is one carrier for
 // items and expressions, so every conjunct of the shape test that used to stand here -- no
@@ -67,4 +69,15 @@ test fn leaf_type_declaration_is_still_a_leaf_type() -> Bool {
 test fn a_node_that_is_not_an_item_is_not_a_type_declaration() -> Bool {
   !is_leaf_type_item(item: leaf_shaped_item(kind: NotAModuleItem))
     && !is_type_def_item(item: structured_item(kind: NotAModuleItem))
+}
+
+// THE PATH THIS ROW GUARDS IS ONE THIS CHANGE OPENED. A capability-less resource used to lose the
+// emitter if-chain to the type arm, so the Python resource emitter never saw one; carrying the kind
+// routes it correctly for the first time, and the correct route emitted `class X(ABC):` followed by
+// indentation and nothing, which is an IndentationError rather than an empty class. Found by codex
+// review 60760. The row is a regression control rather than a receipt: it goes red again the moment
+// the empty arm is removed, and no other row in the corpus would notice.
+test fn an_empty_resource_emits_a_python_body_rather_than_bare_indentation() -> Bool {
+  let emitted = emit_py_resource_def(item: structured_item(kind: ModuleItemResource), env: empty_type_env())
+  string_contains(s: emitted, pattern: "pass")
 }

@@ -536,15 +536,29 @@ fn emit_py_local_call(op_name: String) -> String {
     "return ", emit_ident(name: op_name, target: Python), "()")
 }
 
+// A CAPABILITY-LESS RESOURCE IS REACHABLE HERE ONLY BECAUSE THE KIND IS NOW CARRIED, and Python is
+// the one target whose empty form was never written. `resource Network` and `resource AuthContext`
+// declare no capabilities, so before the kind carrier they lost the emitter if-chain to the type
+// arm and this function never saw them; now they arrive, and a class whose body is indentation
+// followed by nothing is an IndentationError rather than an empty class. Rust already answered this
+// case -- emit_resource_def branches to `pub struct X;` on zero children -- so the empty form is a
+// gap in this emitter, not a state to refuse: the declaration is legitimate, occupied by two live
+// rows, and `pass` is what Python spells an empty body with. Refusing here would fail a corpus that
+// is correct.
 fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let depth = 0
   let cap_children = item.children
-  let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c, env: env))
-  let methods_str = methods |> join(separator: "\n\n")
-  concat("from abc import ABC, abstractmethod\n\n",
+  let header = concat("from abc import ABC, abstractmethod\n\n",
     language_spec(target: Python).items.struct_keyword, " ", item_text, "(ABC):\n",
-    make_indent(level: depth + 1), methods_str)
+    make_indent(level: depth + 1))
+  if cap_children |> count == 0 {
+    concat(header, "pass")
+  } else {
+    let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c, env: env))
+    let methods_str = methods |> join(separator: "\n\n")
+    concat(header, methods_str)
+  }
 }
 
 fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
