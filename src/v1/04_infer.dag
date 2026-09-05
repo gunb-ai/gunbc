@@ -1166,6 +1166,24 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 //
 // Closing the coproduct also makes the arms countable. A String cause can be spelled three ways at
 // three sites and read as three causes, or spelled one way and read as one when it is not.
+// GenericArityDisagreement HAS NO OBSERVED POPULATION, AND IS KEPT DELIBERATELY RATHER THAN BY
+// OMISSION. Every corpus occurrence of it was the misfire that node_children_are_not_type_arguments
+// now answers, and an authored arity error never reaches this cause at all: it is refused upstream
+// by TypeArgumentArityMismatch, which is the authority for that class and says so with the two
+// counts. Measured: a 2-argument application against a 1-parameter declaration produces that
+// refusal and ZERO record-literal declines.
+//
+// What could still reach it, which is the question that decides keeping over deleting: an APPLIED
+// (NoConnective) expected node whose supplied argument count differs from the declaration's
+// parameter count, arriving by a path where the parser's arity check did not run first -- a
+// synthesized or substituted expected type rather than an authored one. That input is
+// constructible in principle, so the guard is not dead by construction; it is unobserved.
+//
+// It is therefore NOT the same disposition as the many-owners arm. That arm is FORCED: it is the
+// residue of a total fold over a closed vocabulary and cannot be absent. This is a removable
+// variant, and removing it would delete a fail-closed comparison on the strength of a DIFFERENT
+// wall continuing to run first -- a coupling that fails silently the day that wall narrows. The
+// cause carries no rung of its own and is not evidence of anything; TypeArgumentArityMismatch is.
 type RecordLitUnavailableCause
   = DeclarationLookupUnavailable
   | GenericArityDisagreement
@@ -1446,6 +1464,13 @@ fn expected_node_resolved_or_self(n: Node, scope: InferScope) -> Node {
   }
 }
 
+// Two nodes are the SAME DECLARATION when they occupy the same source span. Distinct declarations
+// cannot share one, and one declaration reached by two different routes yields the same span, which
+// is precisely the join expected_domain_push needs.
+fn same_declaration(a: Node, b: Node) -> Bool {
+  a.span.file == b.span.file && a.span.start == b.span.start && a.span.end == b.span.end
+}
+
 // DEDUPLICATION IS BY OWNER IDENTITY, AND IT IS LOAD-BEARING RATHER THAN TIDINESS. Two routes can
 // reach the SAME declaration -- a `List<T>` reaches FreeMonoid as both its alias target and, once
 // resolved, as the whole expected type. Counting that owner twice would manufacture an ambiguity
@@ -1453,12 +1478,22 @@ fn expected_node_resolved_or_self(n: Node, scope: InferScope) -> Node {
 // accusing failure this authority exists to remove. The FIRST route to reach an owner is the one
 // recorded, so the enumeration order below decides only which route is REPORTED for a shared
 // owner, never which owner wins -- there is no winning, because a second owner is a refusal.
+//
+// IDENTITY IS THE DECLARATION'S SOURCE SPAN, NOT ITS AUTHORED NAME, and the distinction is the
+// whole subject of this authority rather than a detail of the predicate. This comment previously
+// claimed owner identity while the test compared owner_name, so two DISTINCT owners that happen to
+// share an authored name collapsed into one candidate BEFORE the many-owner fold could see them --
+// silently deciding the exact question the fold exists to refuse, on the exact axis this PR is
+// about. A name is a spelling; a declaration is a thing, and the carrier already held the node.
+//
+// owner_name is retained, but only as the REPORTING label in the refusal text. A reader of the
+// refusal needs a name; the decision must not use one.
 fn expected_domain_push(acc: List<ExpectedConstructorDomain>, n: Node?, route: ExpectedTypeRoute, scope: InferScope) -> List<ExpectedConstructorDomain> {
   match n {
     Present { value: cand } =>
       if (cand.connective == Disj) {
         let nm = authored_name_at(source_indices: scope.type_env.source_indices, node: cand)
-        if (acc |> filter(d => d.owner_name == nm) |> count) > 0 {
+        if (acc |> filter(d => same_declaration(a: d.owner, b: cand)) |> count) > 0 {
           acc
         } else {
           concat(acc, [ExpectedConstructorDomain { owner: cand, owner_name: nm, route: route }])
@@ -1727,12 +1762,41 @@ type RecordLitInstantiation =
 // direction that hides. So the variant is identified AFFIRMATIVELY through
 // record_lit_variant_from_expected -- the authority that already answers this question -- and only
 // a miss that is NOT a variant is reported as DeclarationLookupUnavailable.
+// A DECLARATION BODY'S CHILDREN ARE ITS MEMBERS, NOT SUPPLIED TYPE ARGUMENTS, and reading them as
+// type arguments is what made this seam accuse ordinary code. Type arguments are carried by an
+// APPLIED type node, which is NoConnective -- the same shape node_is_collection reads to find a
+// container's element. A Disj or Conj node is the coproduct's or product's own body, reached when a
+// position was typed by a type VARIABLE and resolved to the declaration rather than to an
+// application, and its children are the variants or fields.
+//
+// Measured before this test existed: `Cons { head: prefix, tail: Empty {} }` at a List<String>
+// position declined, because FreeMonoid declares 1 parameter and has 2 variants, and 1 != 2 was
+// read as an arity disagreement about the source. 122 corpus sites refused that way with nothing
+// wrong with any of them. The comparison was inherited from the pre-split cascade, where it
+// returned a bare `none` and the legacy path silently absorbed it; typing the result is what turned
+// a quiet wrong answer into a loud one, which is the only reason it became visible.
+//
+// The answer is NotApplicable rather than Unavailable, and the distinction is the whole point of
+// the three-way split: no application happened at this position, so generic instantiation does not
+// ARISE here. Unavailable would claim the question arose and could not be answered, and would
+// withhold the legacy fallback from a population that main handles correctly through it.
+//
+// This also closes a silent wrong answer that no count would have surfaced: where a generic type's
+// parameter count HAPPENED to equal its variant count -- one parameter, one variant -- the old code
+// did not decline at all. It proceeded, and substituted a VARIANT node in for the type parameter.
+// That case was green, and green for the wrong reason.
+fn node_children_are_not_type_arguments(n: Node) -> Bool {
+  n.connective != NoConnective
+}
+
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
           if exp.children |> count == 0 {
+            InstantiationNotApplicable
+          } else if node_children_are_not_type_arguments(n: exp) {
             InstantiationNotApplicable
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {

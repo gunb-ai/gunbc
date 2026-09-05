@@ -1934,6 +1934,12 @@ pub fn expected_node_resolved_or_self(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<
     }
 }
 
+pub fn same_declaration(a: Rc<Node>, b: Rc<Node>) -> bool {
+    (((a.span.clone().file.clone() == b.span.clone().file.clone())
+        && (a.span.clone().start.clone() == b.span.clone().start.clone()))
+        && (a.span.clone().end.clone() == b.span.clone().end.clone()))
+}
+
 pub fn expected_domain_push(
     acc: Rc<Vec<Rc<ExpectedConstructorDomain>>>,
     n: Option<Rc<Node>>,
@@ -1951,7 +1957,7 @@ pub fn expected_domain_push(
                     if ((Rc::new({
                         let mut __result = Vec::new();
                         for d in acc.iter().cloned() {
-                            if (d.owner_name.clone() == nm.clone()) {
+                            if same_declaration(d.owner.clone(), cand.clone()) {
                                 __result.push(d);
                             }
                         }
@@ -2342,43 +2348,43 @@ pub enum RecordLitInstantiation {
     },
 }
 
+pub fn node_children_are_not_type_arguments(n: Rc<Node>) -> bool {
+    (n.connective.clone() != Connective::NoConnective)
+}
+
 pub fn record_lit_instantiated_fields(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Rc<RecordLitInstantiation> {
     match type_name.clone() {
-        Some(tn) => match expected.clone() {
-            Some(exp) => {
-                if ((exp.children.clone().len() as i64) == 0) {
-                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+        Some(tn) => {
+            match expected.clone() {
+                Some(exp) => {
+                    if ((exp.children.clone().len() as i64) == 0) {
+                        Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                    } else {
+                        if node_children_are_not_type_arguments(exp.clone()) {
+                            Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                        } else {
+                            match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), exp.clone()) {
+    Some(decl) => if ((decl.params.clone().len() as i64) == 0) {
+                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+            } else {
+                if ((decl.params.clone().len() as i64) != (exp.children.clone().len() as i64)) {
+                    Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: Rc::new(RecordLitUnavailableCause::GenericArityDisagreement),
+})
                 } else {
-                    match crate::v1_compiler_infer_env::lookup_type_for(
-                        scope.type_env.clone(),
-                        exp.clone(),
-                    ) {
-                        Some(decl) => {
-                            if ((decl.params.clone().len() as i64) == 0) {
-                                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-                            } else {
-                                if ((decl.params.clone().len() as i64)
-                                    != (exp.children.clone().len() as i64))
-                                {
-                                    Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-                                        cause: Rc::new(
-                                            RecordLitUnavailableCause::GenericArityDisagreement,
-                                        ),
-                                    })
-                                } else {
-                                    {
-                                        let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                        let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
+                    {
+                        let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                            let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
-                                        match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
+match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
     std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
     cause: Rc::new(RecordLitUnavailableCause::FieldTemplateSelectionFailed),
 }),
@@ -2408,44 +2414,29 @@ match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() 
 })); } __result }),
 }),
 }
-                                    }
-                                }
-                            }
+}
+                }
+            },
+    std::option::Option::None => match (*record_lit_variant_selection(type_name.clone(), expected.clone(), scope.clone())).clone() {
+    RecordLitVariantSelection::VariantSelected { .. } => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
+    RecordLitVariantSelection::VariantAmbiguous { owners: os, .. } => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: Rc::new(RecordLitUnavailableCause::AmbiguousVariantOwners {
+    owners: os.clone(),
+}),
+}),
+    RecordLitVariantSelection::VariantNotFound => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+    cause: Rc::new(RecordLitUnavailableCause::DeclarationLookupUnavailable),
+}),
+},
+}
                         }
-                        std::option::Option::None => match (*record_lit_variant_selection(
-                            type_name.clone(),
-                            expected.clone(),
-                            scope.clone(),
-                        ))
-                        .clone()
-                        {
-                            RecordLitVariantSelection::VariantSelected { .. } => {
-                                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-                            }
-                            RecordLitVariantSelection::VariantAmbiguous { owners: os, .. } => {
-                                Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-                                    cause: Rc::new(
-                                        RecordLitUnavailableCause::AmbiguousVariantOwners {
-                                            owners: os.clone(),
-                                        },
-                                    ),
-                                })
-                            }
-                            RecordLitVariantSelection::VariantNotFound => {
-                                Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-                                    cause: Rc::new(
-                                        RecordLitUnavailableCause::DeclarationLookupUnavailable,
-                                    ),
-                                })
-                            }
-                        },
                     }
                 }
+                std::option::Option::None => {
+                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                }
             }
-            std::option::Option::None => {
-                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-            }
-        },
+        }
         std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
     }
 }
