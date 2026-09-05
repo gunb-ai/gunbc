@@ -45,15 +45,14 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // Check all emitted .rs files for v1_rt:: call sites, EXCLUDING the file named
 // v1_rt.rs (which defines the runtime functions -- its v1_rt:: tokens are definitions
 // rather than call sites). Returns true when NO non-v1_rt.rs file contains a v1_rt::
-// reference. Refuses on a failed find, an empty file list (no subject to check), or
-// a missing subject module.
+// reference. Refuses on a failed find, an empty file list, or a missing subject module.
 fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   // Refuse on a failed find -- vacuity guard
   let ok = found.success
   let files = filter(split(s: found.stdout, delimiter: "\n"), p: fn(s) { s != "" })
-  // Refuse on an empty file list -- no subject to check
-  let subject_present = list_length(items: files) > 0
+  // Assert the expected subject module (std/logic.dag → std_logic.rs) is in the enumeration
+  let subject_present = list_length(items: filter(files, p: fn(f) { ends_with(s: f, suffix: "/std_logic.rs") })) > 0
   fold_list(
     xs: files,
     empty: true,
