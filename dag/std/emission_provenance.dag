@@ -281,12 +281,10 @@ fn emission_contribution_source(contribution: EmissionContribution) -> String {
 }
 
 fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
-  match contribution {
-    EmissionAuthoredFragment { origin: _, source: _ } => []
-    EmissionSourceComposition { origin: _, parts } =>
-      parts |> flat_map(part => emission_contribution_unobserved(contribution: part))
-    EmissionDerivedFragment { producer: _, source: _ } => []
-    EmissionUnobservedFragment { producer, cause: _, source: _ } => [producer]
+  match emission_contribution_origins(contribution: contribution) {
+    EmissionOriginsObserved { origins: _ } => []
+    EmissionOriginsIncomplete { observed: _, missing } =>
+      concat([missing.head], missing.tail) |> map(gap => gap.producer)
   }
 }
 
