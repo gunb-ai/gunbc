@@ -196,6 +196,35 @@ fn authored_source_target_of(reference: AuthoredSourceObjectRef) -> AuthoredSour
   AuthoredSourceTarget { locator: reference.locator }
 }
 
+// THE MANIFEST TARGET IS THE THIRD REQUIREMENT: "a corpus manifest is required at locator L".
+//
+// IT EXISTS FOR A CONSUMER, NOT FOR SYMMETRY, and the distinction matters because a family of
+// helpers minted to complete a visual pattern is the redundant work DESIGN section 2 prices. The
+// consumer is `mint_repository_commit`: once a repository commit freezes a corpus manifest, the
+// mint must RECEIVE a manifest requirement before it can establish whether the supplied store
+// satisfies it. That is the same shape the mint already uses for semantic nodes -- accept a target,
+// resolve it against `repository.store`, retain the reference from the record actually found.
+//
+// SO IT IS A REQUIREMENT, NOT A REFERENCE, and the two are not interchangeable. Constructing this
+// asserts what is REQUIRED and forges nothing, which is why it is publicly constructible while
+// `CorpusManifestObjectRef` above is `sole_constructor`: a reference is obtained from a record the
+// store actually produced. There is deliberately no target-to-reference conversion here -- an
+// unchecked one would let a caller brand a locator it merely holds, which is the thing the brand
+// exists to refuse.
+//
+// AND IT CARRIES NO Resolved | Unresolved STATE, for the reason the SemanticNodeTarget note above
+// gives at length: whether a particular store satisfies a requirement is an OBSERVATION, and an
+// observation does not belong inside the proposition. `find_corpus_manifest_record` is the sole
+// authority for that decision, and its three non-success arms -- absent, occupied by a semantic
+// node, occupied by an authored source -- are the populations a consumer must keep apart.
+type CorpusManifestTarget {
+  locator: ObjectId
+}
+
+fn corpus_manifest_target_locator(target: CorpusManifestTarget) -> ObjectId {
+  target.locator
+}
+
 type StoredEdge {
   label: EdgeLabel
   target: SemanticNodeTarget

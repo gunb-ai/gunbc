@@ -20,13 +20,13 @@ module gunbc.scm.log
 
 import std.types { Bool, List, String }
 import gunbc.scm.object_store {
-  NodeRecordAbsent,
-  NodeRecordFound,
-  NodeRecordIsAuthoredSource,
-  NodeRecordIsCorpusManifest,
+  CorpusManifestAbsent,
+  CorpusManifestFound,
+  CorpusManifestIsAuthoredSource,
+  CorpusManifestIsSemanticNode,
+  CorpusManifestObjectRef,
   ObjectStore,
-  SemanticNodeObjectRef,
-  find_node_record,
+  find_corpus_manifest_record,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 
@@ -51,18 +51,28 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // same false report this type was split to prevent. It is named rather than folded into the authored
 // -source arm because a log is read by a person deciding what to repair, and "there is a file here"
 // sends them somewhere different from "there is a corpus manifest here".
+// THE STANDING IS ABOUT THE SNAPSHOT DESIGNATION ALONE, AND ITS SUCCESS ARM IS DELIBERATELY NARROW.
+// `LoggedCommitManifestHeld` says exactly one thing: this store holds a corpus manifest at the root
+// this commit names. It does NOT say the corpus is recoverable, and it must never be rendered as
+// though it did -- a manifest's entries name authored sources this store may not hold, and that is a
+// SEPARATE observation over the entries which this function does not perform. Advertising held-ness
+// as "checkoutable" would be a well-formed answer about a larger question than the one asked, which
+// is the defect this module's neighbours keep paying for.
+//
+// The wrong-kind arms swapped with the root's kind rather than thinning: a semantic node occupying
+// the root locator is now the wrong kind, and an authored source still is.
 type LoggedCommitStanding
-  = LoggedCommitRootHeld
+  = LoggedCommitManifestHeld
   | LoggedCommitRootMissingFromStore
   | LoggedCommitRootIsAuthoredSource
-  | LoggedCommitRootIsCorpusManifest
+  | LoggedCommitRootIsSemanticNode
 
 // The row exposes the commit's own opaque identity, not a value derived from its list position or
 // root. Consumers may hand it back as a reference; they must not inspect its ordinal for ordering or
 // recency, because the allocator watermark is uniqueness state rather than chronology.
 type CommitLogRow {
   reference: RepositoryCommitRef
-  root: SemanticNodeObjectRef
+  root: CorpusManifestObjectRef
   message: String
   standing: LoggedCommitStanding
 }
@@ -87,12 +97,12 @@ type CommitLogAcc {
   rows: List<CommitLogRow>
 }
 
-fn logged_commit_standing(store: ObjectStore, root: SemanticNodeObjectRef) -> LoggedCommitStanding {
-  match find_node_record(store: store, identity: root.locator) {
-    NodeRecordFound(_) => LoggedCommitRootHeld
-    NodeRecordAbsent { identity: _ } => LoggedCommitRootMissingFromStore
-    NodeRecordIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource
-    NodeRecordIsCorpusManifest { identity: _ } => LoggedCommitRootIsCorpusManifest
+fn logged_commit_standing(store: ObjectStore, root: CorpusManifestObjectRef) -> LoggedCommitStanding {
+  match find_corpus_manifest_record(store: store, identity: root.locator) {
+    CorpusManifestFound(_) => LoggedCommitManifestHeld
+    CorpusManifestAbsent { identity: _ } => LoggedCommitRootMissingFromStore
+    CorpusManifestIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource
+    CorpusManifestIsSemanticNode { identity: _ } => LoggedCommitRootIsSemanticNode
   }
 }
 
@@ -150,10 +160,10 @@ fn commit_log_is_fully_held(log: CommitLog) -> Bool {
       fold(rows, init: true, f: fn(held, r) {
         if held {
           match r.standing {
-            LoggedCommitRootHeld => true
+            LoggedCommitManifestHeld => true
             LoggedCommitRootMissingFromStore => false
             LoggedCommitRootIsAuthoredSource => false
-            LoggedCommitRootIsCorpusManifest => false
+            LoggedCommitRootIsSemanticNode => false
           }
         } else {
           false

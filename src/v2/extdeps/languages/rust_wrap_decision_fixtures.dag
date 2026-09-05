@@ -1,0 +1,131 @@
+module v2.extdeps.languages.rust_wrap_decision_test
+
+import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.rust {
+  rust_named_edge,
+  rust_reference_layer_tokens,
+  rust_sg_rc_use_site_ownership_catalog,
+  rust_type_expression_projection_bundle_node
+}
+import v2.std.collection { List, empty_map }
+import v2.std.compilers.lexing { VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  target_model_emit_transforms_empty,
+  target_reference_layer_tokens_node,
+  target_use_site_ownership_catalog_node
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node { Conj, Edge, Node, TypeNode }
+
+// Cost fixtures for v2.test.claim.wrap_decision_predicate. The claims there previously demanded
+// rust_sg2_type_expr_target_model(), whose bundle carries nine named edges; wrap_decision_gate
+// reads exactly three of them by name — use_site_ownership_realizations, reference_layer_tokens
+// and value_semantics_carriers — and the emit-boundary claim adds type_expression_projection via
+// translate_apply_wrap_gate_to_type_shell. The six that remain (serialize_source,
+// translation_rules, selection_policy, declared_inhabitants, collection_realization,
+// signature_realizations) are unreachable from every claim in that module.
+//
+// The mechanism is that the claims no longer demand rust_sg2_type_expr_target_model() at all, and
+// what replaces it is cheaper to BUILD. Which part of the production model was the expensive part
+// is a question for the instrument rather than for this comment — DESIGN section 4c means no
+// annotation can carry a cost measurement, so the figures live only in
+// required_floor_claim_cost.tsv. What IS decidable from source, and is what the fixtures below are
+// authored from, is which fields and edges each claim reads.
+//
+// WHAT IS DELIBERATELY NOT SUBSTITUTED: the ownership catalog rows stay the LIVE rust catalog,
+// not a copy of the rows the claims happen to read. The R1 flow controls in that module are
+// stated as drawn from the live catalog by design — their discriminating content is that rust's
+// own rows disagree by position — so a synthetic row set would answer a different question while
+// still passing. Shrinking the catalog is therefore out of scope for this fixture; the saving
+// here comes only from the edges no claim can reach.
+
+fn wrap_decision_fixture_bundle(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wrap_decision_fixture_reference_layer_tokens_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_reference_layer_tokens,
+    target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+  )
+}
+
+fn wrap_decision_fixture_ownership_catalog_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_use_site_ownership_realizations,
+    target: target_use_site_ownership_catalog_node(
+      rows: rust_sg_rc_use_site_ownership_catalog()
+    )
+  )
+}
+
+fn wrap_decision_fixture_type_expression_projection_edge() -> Edge {
+  rust_named_edge(
+    name: ^target_model_edge_type_expression_projection,
+    target: rust_type_expression_projection_bundle_node()
+  )
+}
+
+fn wrap_decision_fixture_model(bundle: Node) -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: bundle,
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: Empty,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// Both edges wrap_decision_gate's disposition step reads by name. Neither
+// value_semantics_carriers nor any core edge is present: an absent
+// value_semantics_carriers edge is decoded as the empty carrier list, which is what the
+// production bundle also yields, since it carries no such edge either.
+fn wrap_decision_fixture_gate_target() -> TargetModel {
+  wrap_decision_fixture_model(
+    bundle: wrap_decision_fixture_bundle(
+      children: [
+        wrap_decision_fixture_reference_layer_tokens_edge(),
+        wrap_decision_fixture_ownership_catalog_edge()
+      ]
+    )
+  )
+}
+
+// The gate target plus the projection edge, which translate_apply_wrap_gate_to_type_shell reads
+// through type_expression_projection_from_target on the WrapByReference arm alone. Kept separate
+// so the fourteen claims that never take that arm do not construct it.
+fn wrap_decision_fixture_boundary_target() -> TargetModel {
+  wrap_decision_fixture_model(
+    bundle: wrap_decision_fixture_bundle(
+      children: [
+        wrap_decision_fixture_reference_layer_tokens_edge(),
+        wrap_decision_fixture_ownership_catalog_edge(),
+        wrap_decision_fixture_type_expression_projection_edge()
+      ]
+    )
+  )
+}
+
+// Neither ownership-realizations nor reference-layer-tokens edge: the disposition step answers
+// "not applicable" and the gate never reaches the catalog.
+fn wrap_decision_fixture_bundle_absent_target() -> TargetModel {
+  wrap_decision_fixture_model(bundle: wrap_decision_fixture_bundle(children: Empty))
+}
+
+// Exactly one of the two edges the disposition step pairs, so it refuses as partial.
+fn wrap_decision_fixture_partial_bundle_target() -> TargetModel {
+  wrap_decision_fixture_model(
+    bundle: wrap_decision_fixture_bundle(
+      children: [wrap_decision_fixture_ownership_catalog_edge()]
+    )
+  )
+}

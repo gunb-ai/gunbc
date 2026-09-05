@@ -221,7 +221,7 @@ fn scan_ignored_deployed_paths(paths_nul: String) -> List<String> {
 }
 
 fn observe_candidate_checkout() -> CandidateCheckoutObservation {
-  let status = git.Inspect.WorkingTreeStatus(expect: ExpectSuccess)
+  let status = git.Inspect.WorkingTreeStatus(repository_path: git.Inspect.Toplevel().path as String, expect: ExpectSuccess)
   let ignored = git.Inspect.IgnoredFiles(expect: ExpectSuccess)
   if !status.success {
     CandidateCheckoutUnobservable {

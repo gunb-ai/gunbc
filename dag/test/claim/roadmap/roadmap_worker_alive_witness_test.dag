@@ -1,0 +1,14 @@
+module test.claim.roadmap.roadmap_worker_alive_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent }
+import gunbc.roadmap_presentation { worker_alive_from_process }
+
+// THE ORACLE IS AUTHORED BEFORE THE WORKER IS DISPATCHED AND IS RED UNTIL THE WORKER LANDS THE
+// FUNCTION IT NAMES. The validation oracle pin observes an oracle by declaration at dispatch and
+// refuses one it cannot see, so the judge is written by the planner, never by the worker it judges.
+test fn the_pulse_follows_the_worker_process() -> Bool {
+  worker_alive_from_process(process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr })
+    && !worker_alive_from_process(process: WorkerProcessExited { exit_code: 0, last_command: "gunbc" })
+    && !worker_alive_from_process(process: WorkerProcessAbsent)
+}

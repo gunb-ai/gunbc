@@ -71,8 +71,90 @@ import v2.std.algebra { fold_list }
 // `extdeps/shell/exec.dag` are DELETED. Hermetic execution of shell.Exec.Run / RunArgv / Check
 // now returns `HermeticEffectGround.NoMockResponse` -- typed, located, counted per identity on
 // the route-gap roster -- instead of a success the operation never performed. The rows below
-// therefore read `NoMockArm`: they are no longer a live defect roster, they are the record of a
-// closed class and the shape a re-added arm would have to take to reopen it.
+// therefore read `NoMockArm`: for `shell.Exec` they are the record of a repair, and the shape a
+// re-added arm would have to take to reopen it.
+//
+// THE SAME WITNESS ANSWERS DIFFERENTLY IN THE TWO MODES, AND DISAGREES ON BOTH PERTURBATIONS.
+// This is the sharpest statement of the class and it is executed evidence, not a reading of the
+// declaration. One witness,
+// `test.claim.shell_dag_census_5a_typed_ops_witness.witness_os_id_uid_realizes_hermetically`,
+// which asserts `r.success` and `r.value == "1000"` against an arm answering `"1000"`. One
+// binary, one tree, two perturbations, four runs:
+//
+//                                    hermetic (--dry-run)      wet (no --dry-run)
+//     perturb the mock arm literal          RED                      green
+//     perturb the realization argv          green                    RED
+//
+// The realization perturbation is not a subtle one. `argv: ["id", "-u"]` became
+// `argv: ["id", "-G"]`: the operation now asks for the group list and calls the answer a uid.
+// It is wrong in the plainest possible way, and hermetically THE WITNESS CANNOT SEE IT. What it
+// can see is the arm -- change `"1000"` to `"9999"` and it reds at once, which is the positive
+// control proving the harness was live for the green above.
+//
+// So the witness is FIXTURE-DETERMINED IN THE MODE CI RUNS and REALIZATION-DETERMINED IN THE
+// MODE NOBODY RUNS. Its name, "realizes hermetically", is true only of the column that carries
+// no information about the operation.
+//
+// The neighbouring shape is separately real and has a different remedy. On
+// `test.claim.typed_argv_exec_realization_witness.witness_sudo_nopasswd_grant_list_probe_typed_argv_holds`
+// the fixture conjunct reds when the arm's stdout changes AND the discriminating conjunct
+// survives that and reds independently when the production argv changes. That row is not
+// vacuous, it is over-specified: the remedy is to drop the conjunct asserting the fixture, not
+// to add a wall. Distinguishing the two is what keeps the census from inflating -- one is a
+// missing wall, the other an over-specified assertion.
+//
+// HOW TO TAKE A PERTURBATION RECEIPT HERE, three hazards, and two of the three fail toward FALSE
+// CONFIDENCE rather than toward an obvious error. Named because the next lane that attempts one
+// will otherwise repeat them; each cost a run in this lane.
+//   THE EXIT CODE IS NOT THE VERDICT. `gunbc run` refuses a Bool witness at the CLI boundary
+//     ("returned true, not ProcessExit") with the SAME status whether it returned true or false.
+//     The PRINTED VALUE is the readout. A wrapper doing `echo $?`, especially after a pipe,
+//     reports success for every arm -- publishing the opposite of the truth with no error shown.
+//   STATE THE MODE BESIDE EVERY VERDICT. Without `--dry-run` the run is WET and really executes,
+//     so a realization perturbation reds and a mock perturbation does not: the exact inverse of
+//     the measurement intended. The `[hermetic:mock] <operation>` trace line is what proves the
+//     mock path was taken, and it is worth grepping for rather than assuming.
+//   VENUE IS LOCAL-ONLY TODAY. On a runner with no cgroup `memory.high` or `memory.max` binding
+//     the process, `gunbc` refuses with `HostBudgetUnreadable` before reaching any witness, so
+//     every arm returns one identical refusal and zero verdicts. Session containers bind one;
+//     remote build runners do not.
+//
+// THE CLASS IS NOT CLOSED, AND THESE THREE ROWS ARE NOT THE POPULATION. Read as a roster this
+// file says the opposite, and that reading is what this paragraph exists to refuse. Three rows,
+// all `NoMockArm`, mean `mock_arm_is_fabricating` never selects its `true` arm on the live
+// roster and `hermetic_mock_fabricating_count` is zero by construction -- a number that cannot
+// move, which DESIGN section 4b names as worse than absent because it gets cited as coverage.
+// What the three rows actually record is ONE SERVICE, repaired. The unconditionality itself is
+// corpus-wide and survives.
+//
+// AND IT IS STRUCTURAL, WHICH IS WHY ENUMERATING IT HERE WOULD BE THE WRONG MOVE. Every
+// unconditional arm in the tree is one observation of a single cause: `eval_mock_response`
+// evaluates the arm in an EMPTY environment, so no arm can refer to its operation's declared
+// inputs. Unconditionality is not a property the arms happen to share, it is the only property
+// they are permitted to have. Writing one row per arm would mint one dissolution obligation per
+// arm for a defect that has one cause and one trigger -- net concepts growing by re-invention
+// (DESIGN section 2), and every one of those obligations unretirable until the seed changes.
+// The population is DERIVABLE from the operation declarations, so it is named by its derivation
+// and not transcribed: the subject is every `mock_response` property under `extdeps/`, and the
+// discrimination question is whether its arm names an input the operation declares. Counts in
+// prose go stale the moment an arm is added; this file deliberately carries none.
+//
+// THE ROSTER AND THE ARMS ARE LARGELY DISJOINT, which is the fact that makes the grain problem
+// legible and which nothing in the tree stated before. `PublishedMockCase` is an ENROLMENT
+// roster -- it says which operations a corpus-governed service admits hermetically -- while the
+// ANSWER is the `mock_response` property on the operation. They are separate populations that
+// overlap only in part. Most published operations carry NO arm, and those refuse with
+// `HermeticEffectGround.NoMockResponse`: fail-closed, counted, and a DIFFERENT class from this
+// one. Most arms belong to operations that are not published at all. So "the published mock
+// corpus" and "the operations that fabricate" are two different questions, and an author who
+// reads the first as an answer to the second will size this class wrongly in either direction.
+//
+// A THIRD WITNESS CATEGORY, NEITHER VACUOUS NOR BEHAVIOURAL. A witness whose whole assertion is
+// the arm's own literal is not a decoration -- it HAS an authorable red, since deleting the arm
+// makes the run refuse -- but what it establishes is ENROLMENT, that the hermetic route reaches
+// an arm, and never anything about the operation's behaviour. The names invite exactly the wrong
+// reading, and that is the actionable part: a row called "realizes hermetically" or "holds",
+// cited as behavioural coverage, is how an inflated rung gets built out of honest rows.
 //
 // WHAT THE DELETION COST, stated rather than left for the run to reveal: every witness that
 // reached one of these three operations hermetically was passing (or being held red) against the
@@ -87,10 +169,32 @@ import v2.std.algebra { fold_list }
 // DERIVABLE from the operation's own declaration -- count the mock arms, ask whether any names
 // an input field -- so a hand-authored copy of it is a second representation (DESIGN section 2)
 // and will go stale the moment someone edits `extdeps/shell/exec.dag`. It is authored here
-// because nothing reads operation declarations for this question today. NEXT TRIGGER, and it is
-// the same trigger that closes the class: a check over the ingested operation declarations that
-// refuses an unconditional mock arm at ingest, at which point this roster derives from that
-// check and these rows delete.
+// because nothing reads operation declarations for this question today.
+//
+// THIS FILE'S OWN NEXT-RUNG TRIGGER IS A MISSING LANGUAGE CAPABILITY, so it is named as one
+// rather than left as unbuilt work. `hermetic_mock_fabricating_count` is zero by construction
+// while it folds a hand-authored list; making it count the CORPUS is blocked, not merely
+// undone. A CHANNEL THAT EXPOSES AN OPERATION'S `mock_response` PROPERTY TO A `.dag` LENS is
+// the capability, and it must be SUFFICIENT FOR that count and the discrimination question
+// behind it -- does this arm name an input the operation declares -- to be derived from the
+// operation declarations, with zero substrate edits when an arm is added or deleted. Nothing
+// short of that retires this row: a hand roster enumerating today's arms would be a permanent
+// stand-in for a thing with a known trigger, and would go stale on the next arm with nothing
+// going red.
+//
+// THE PRECEDENT EXISTS AND IS ONE MODULE AWAY, stated so whoever holds the seed budget can size
+// this without re-deriving it. `v2.lens.extdeps_shape_transport_policy` is the right neighbour:
+// it already reasons per-operation over extdeps declarations using `ExtdepsOperationInputFact`
+// and `ExtdepsTransportArgvFact`. Those facts are MINTED IN THE SEED -- an interpreter arm,
+// `extdeps_shape_transport_policy_facts_for_qualified_name`, fed by
+// `extdeps_shape_transport_policy_module_facts` in `cli_run` -- and no equivalent producer
+// carries mock arms. So the capability is a seed change of that same shape (one fact type, one
+// extractor, one arm), and it is deliberately NOT taken here: this subtree is model-side, and
+// growing the seed is a ruling its owner takes, not one an author declares.
+//
+// The ingest-time check that would make an unconditional arm UNWRITABLE remains the ceiling
+// above that, and it is a different and later thing: the capability above lets the class be
+// COUNTED, and only a refusal at ingest makes it structurally impossible.
 
 type MockArmDiscrimination
   = UnconditionalArm
@@ -122,17 +226,30 @@ type HermeticMockRow {
 // forever. The only authorable red left is a fabricating row naming NO fact, which is a
 // different defect and keeps its own check below.
 //
-// TWO OF THE THREE SHARE A TRIGGER AND THE THIRD CANNOT, which is the whole reason this is a
-// match rather than one string. An exit status and a captured stream are things a faithful mock
-// COULD serve: they are functions of the input the operation already declares. Reachability is
+// THE TRIGGER MUST NAME THE CAPABILITY, NOT THE STATE OF THE WORLD IT WOULD PRODUCE. An earlier
+// revision of the two arms below read "a mock_response whose value varies with the operation's
+// declared input". That is a description of the fixed corpus, not of a capability, and DESIGN
+// section 4b(3) is explicit that a row is retired BY ITS TRIGGER AND BY NOTHING ELSE -- so a
+// trigger naming less than the capability it restores is satisfied while the capability stays
+// dead. Here it was worse than under-named: it named something NO AUTHOR COULD BUILD.
+// `eval_mock_response` evaluates the arm in an EMPTY environment, so an arm cannot refer to the
+// operation's declared inputs at all. An input-varying arm is not merely unwritten in this
+// corpus, it is UNWRITABLE in this seed. The trigger is therefore the seed change, stated with
+// what it must be sufficient for, and it is stated in full on both arms rather than once and
+// cross-referenced, because a trigger pointing at another trigger is retired by neither.
+//
+// TWO OF THE THREE SHARE THAT CAPABILITY AND THE THIRD CANNOT, which is the whole reason this is
+// a match rather than one string. An exit status and a captured stream are things a faithful mock
+// COULD serve once the environment binds inputs: they are functions of the input the operation
+// already declares. Reachability is
 // not. No mock can honestly answer "was 203.0.113.1 reachable" — the only truthful moves are to
 // consult the transport, which the hermetic floor forbids by construction, or to refuse. So a
 // remedy that made the arm vary with its input would close the first two and leave the third
 // exactly where it is, while looking like a fix.
 fn fabricated_fact_next_trigger(f: FabricatedFact) -> String {
   match f {
-    ExitStatus => "a mock_response whose value varies with the operation's declared input, so the arm reports the status the script would produce rather than a constant"
-    CapturedOutput => "the same input-varying mock_response, extended to the declared output streams; an empty stdout is a fabricated observation exactly as a zero exit code is"
+    ExitStatus => "SEED CAPABILITY: eval_mock_response must evaluate the arm in an environment that BINDS the operation's declared inputs, instead of the empty environment it uses today. That capability must be SUFFICIENT FOR an arm to name an input parameter and have it resolve -- not merely for one operation to be hand-special-cased -- because until the environment binds inputs, an input-varying arm is unwritable everywhere and no author can retire this row by writing one"
+    CapturedOutput => "THE SAME SEED CAPABILITY, and it is named again rather than cross-referenced because a trigger that points at another trigger is retired by neither: eval_mock_response evaluating the arm in an environment binding the operation's declared inputs, sufficient for the declared output streams to be projected from those inputs. An empty stdout is a fabricated observation exactly as a zero exit code is"
     TransportReachability => "REFUSAL, not a better mock: hermetic execution of an operation whose subject is whether a remote endpoint answered must return HermeticEffectGround.NoMockResponse and reach the route-gap roster, because consulting the transport is forbidden here and any answer without consulting it is invented"
   }
 }

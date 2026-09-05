@@ -5133,15 +5133,11 @@ fn call_function_inner(
                 // The corpus marks an unused parameter with a leading underscore (`_ctx`,
                 // `_spelling`) or `_`, and call sites label it WITHOUT the underscore
                 // (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
-                // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
+                // (`(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
                 // Not a mismatch: the body cannot read it, so nothing is dropped. Accept `x`
-                // against a declared `x`, `_x`, or `_`.
-                let matches_param = |p: &String| {
-                    p == name
-                        || p == "_"
-                        || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
-                };
-                if !all_param_names.iter().any(matches_param) {
+                // against a declared `x`, `_x`, or `_` (centralised in param_name_matches_declared
+                // — one authority for the rule, not a second copy per call site).
+                if !param_name_matches_declared(name, all_param_names) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!(
@@ -5853,8 +5849,15 @@ fn eval_var(
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
+                    let profile_on = eval_profile_enabled();
+                    if profile_on {
+                        DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
+                    }
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
+                    }
+                    if profile_on {
+                        DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
                     ctx.data_cache.borrow_mut().insert(key, v.clone());
@@ -5880,8 +5883,15 @@ fn eval_var(
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
                         let key = Rc::as_ptr(fn_node) as usize;
+                        let profile_on = eval_profile_enabled();
+                        if profile_on {
+                            DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
+                        }
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
+                        }
+                        if profile_on {
+                            DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                         }
                         let v = eval_expr(body, &Env::empty(), ctx)?;
                         ctx.data_cache.borrow_mut().insert(key, v.clone());
@@ -10908,9 +10918,39 @@ fn build_service_param_env(
     ctx: &InterpContext,
 ) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
+    // Build the declared parameter name list (mirrors the fn-call path's cached_params).
+    // `all_param_names` includes underscored variants.
+    let all_param_names: Vec<String> = op_node
+        .params
+        .iter()
+        .map(|p| param_node_name_at(p.clone(), ctx.si()))
+        .collect();
 
     for (opt_name, val) in args {
         if let Some(name) = opt_name {
+            // Single authority for the name-matching rule (param_name_matches_declared —
+            // shared with the fn-call path). Accept `x` against a declared `x`, `_x`, or `_`.
+            if !param_name_matches_declared(name, &all_param_names) {
+                let detail = format!(
+                    "no parameter named '{}' (declared: [{}])",
+                    name,
+                    all_param_names.join(", ")
+                );
+                return Err(InterpError::CallContractMismatch {
+                    callee: op_node.name.clone(),
+                    detail,
+                });
+            }
+            // Duplicate label guard: same rule as fn-call path. An anonymous key ("_") is
+            // excluded from the collision check: two anonymous parameters are distinct
+            // unreadable slots, and the insert must still happen so the required-argument
+            // contains_key check below sees it filled.
+            if name != "_" && bindings.contains_key(&ctx.sym(name)) {
+                return Err(InterpError::CallContractMismatch {
+                    callee: op_node.name.clone(),
+                    detail: format!("argument '{}' supplied more than once", name),
+                });
+            }
             bindings.insert(ctx.sym(name), val.clone());
         }
     }
@@ -14256,6 +14296,16 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
 /// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
 fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
     config_auth_resolved && has_auth_basic
+}
+
+/// Whether a caller's named argument `name` matches a declared parameter `p`, following the
+/// fn-call path's convention: accept `x` against a declared `x`, `_x`, or `_`. Single authority
+/// for the rule — one site, shared by the fn-call path and the service-rest binding path
+/// (DESIGN §3 nicknaming: a second copy of one rule at a second call site drifts).
+fn param_name_matches_declared(name: &str, declared: &[String]) -> bool {
+    declared.iter().any(|p| {
+        p == name || p == "_" || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+    })
 }
 
 /// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
@@ -19019,6 +19069,27 @@ thread_local! {
     static CAST_KERNEL_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_ITEMS: Cell<u64> = const { Cell::new(0) };
+
+    /// DIAGNOSTIC (2026-09-05 floor-cost-w3 investigation, behind GUNBC_INTERP_PROFILE=1
+    /// only). SUSPECTED: `data` declarations are re-evaluated per claim because each fresh
+    /// `InterpContext` initialises an empty `data_cache` (`InterpContext::over_scope_indexes`,
+    /// field `data_cache: HashMap::new()`), and required-floor builds one `InterpContext` per
+    /// claim (noted "FRESH PER CLAIM" at the `InterpContext` allocation in
+    /// `required_floor_runner.rs`). The suspected shape: a claim whose call graph
+    /// reaches a `data` declaration pays the cost of evaluating its initialiser (List<String>
+    /// with 233 strings, a `phase_board_from_census_identities` fold over them, etc.) on the
+    /// first access, then caches it in the per-claim cache — only for the next claim to repeat
+    /// it. DATA_EVAL_LOOKUPS and DATA_EVAL_EVALS make the multiplier observable.
+    ///
+    /// NEGATIVE RESULT: #10544's after-artifact (run 33958329744 vs parent 33956318599) showed
+    /// the ~65ms floor in self_host_compile_phase_frontier_witness was the **type_index**, not
+    /// data_cache — module total went 2,140 -> 269 ms with these counters uninvolved. The
+    /// data_cache mechanism is real but was not the dominant cost in this module. A residual gap
+    /// in that same module (three claims at ~73ms on ~95k steps) and a 4.96ms probe scan vs
+    /// ~55ms observed floor on #10544 remain unassigned. These counters exist to settle that
+    /// class of question directly, not to establish a saving.
+    static DATA_EVAL_LOOKUPS: Cell<u64> = const { Cell::new(0) };
+    static DATA_EVAL_EVALS: Cell<u64> = const { Cell::new(0) };
 }
 
 /// Diagnostic counters for the cast cost center. Zero-cost when profiling is off.
@@ -19027,6 +19098,19 @@ pub fn cast_lookup_counters() -> (u64, u64, u64) {
         CAST_KERNEL_CALLS.with(|c| c.get()),
         TYPE_LOOKUP_CALLS.with(|c| c.get()),
         TYPE_LOOKUP_ITEMS.with(|c| c.get()),
+    )
+}
+
+/// Diagnostic counters for the data-eval cost center. One thread-local read and an Option match
+/// per data-declaration access when profiling is off — not compiled out, same cost pattern as
+/// the cast counters above (whose own "Zero-cost" doc comment is incorrect in the same way and
+/// is pre-existing; not corrected here).
+/// `(data_eval_lookups, data_eval_evals)` — the gap between lookups and evals is the
+/// per-cache-hit saving that would be lost per-claim if the cache were shared across frames.
+pub fn data_eval_counters() -> (u64, u64) {
+    (
+        DATA_EVAL_LOOKUPS.with(|c| c.get()),
+        DATA_EVAL_EVALS.with(|c| c.get()),
     )
 }
 

@@ -49,6 +49,13 @@ import std.render {
 }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
 import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.repository_envelope {
+  RepositoryDocumentProtocol,
+  RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat,
+  RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolNotAProtocolRefusal,
+}
 import gunbc.scm.init {
   ScmInitOutcome,
   ScmInitialized,
@@ -57,6 +64,7 @@ import gunbc.scm.init {
   ScmInitRefusal,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
+  ScmInitUnsupportedDocumentPresent,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry
 }
@@ -73,9 +81,9 @@ import gunbc.scm.log {
   CommitLogRows,
   CommitLogRow,
   LoggedCommitStanding,
-  LoggedCommitRootHeld,
+  LoggedCommitManifestHeld,
   LoggedCommitRootIsAuthoredSource,
-  LoggedCommitRootIsCorpusManifest,
+  LoggedCommitRootIsSemanticNode,
   LoggedCommitRootMissingFromStore,
 }
 import gunbc.scm.status {
@@ -109,12 +117,18 @@ fn text_lines_document(lines: List<String>) -> Document {
 // `gunbc.scm.log` reports this per row because the envelope can decide it, and a row whose program
 // is missing CANNOT BE CHECKED OUT. Rendering it identically to an ordinary row would present an
 // unusable commit as usable -- the reader's next action differs, so the rendering must.
+// THE HELD ROW RENDERS EMPTY, AND THAT IS NOT A CLAIM THAT IT CHECKS OUT. `LoggedCommitManifestHeld`
+// says this store holds the manifest, not that it holds every source the manifest names, so the
+// suffix says nothing rather than saying "checkoutable" -- advertising held-ness as recoverability
+// would be a larger claim than the observation supports. Whether the sources are present is a
+// separate walk (gunbc.scm.checkout recover_corpus), and when a surface wants to report it, it
+// reports THAT observation rather than borrowing this one.
 fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
   match standing {
-    LoggedCommitRootHeld => ""
-    LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
-    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a program -- cannot be checked out)"
-    LoggedCommitRootIsCorpusManifest => "  (root is a corpus manifest, not a program -- cannot be checked out)"
+    LoggedCommitManifestHeld => ""
+    LoggedCommitRootMissingFromStore => "  (snapshot not held -- cannot be checked out)"
+    LoggedCommitRootIsAuthoredSource => "  (root is a source file, not a corpus snapshot -- cannot be checked out)"
+    LoggedCommitRootIsSemanticNode => "  (root is a program node, not a corpus snapshot -- cannot be checked out)"
   }
 }
 
@@ -281,12 +295,33 @@ fn scm_init_lines(outcome: ScmInitOutcome) -> List<String> {
   }
 }
 
+// ONE SENTENCE FOR THE PROTOCOL FACT, so init and the read path cannot drift into describing the same
+// observation two ways. It says what was DECLARED and that this build has no reader; it does not say a
+// repository is present, because the decoder returned before validating any body.
+fn unsupported_document_line(protocol: RepositoryDocumentProtocol) -> String {
+  match protocol {
+    RepositoryProtocolRetiredFormat { found: f } =>
+      concat("the document declares retired repository format ", f)
+    RepositoryProtocolUnrecognizedFormat { found: f } =>
+      concat("the document declares unrecognized repository format ", f)
+    RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
+      concat("the document declares unrecognized object identity rule ", f)
+    RepositoryProtocolNotAProtocolRefusal => "the document could not be read as a repository"
+  }
+}
+
 fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
   match cause {
     ScmInitRepositoryPresent { path: p } =>
       [
         concat("refusing to initialize ", p),
         "  a repository is already there, and init would replace its whole history"
+      ]
+    ScmInitUnsupportedDocumentPresent { path: p, protocol: protocol } =>
+      [
+        concat("refusing to initialize ", p),
+        concat("  ", unsupported_document_line(protocol: protocol)),
+        "  its contents were not validated, and init would destroy the bytes that are there"
       ]
     ScmInitForeignFilePresent { path: p } =>
       [
@@ -318,6 +353,8 @@ fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
   match cause {
     ScmInitRepositoryPresent { path: _ } =>
       exit_failure(reason: "repository already present")
+    ScmInitUnsupportedDocumentPresent { path: _, protocol: _ } =>
+      exit_failure(reason: "path occupied by a document declaring a protocol this build does not read")
     ScmInitForeignFilePresent { path: _ } =>
       exit_failure(reason: "path occupied by a non-repository file")
     ScmInitPathUnobserved { path: _, cause: _ } =>

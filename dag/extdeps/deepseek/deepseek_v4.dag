@@ -1,0 +1,300 @@
+module extdeps.deepseek.deepseek_v4
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE DEEPSEEK V4 FAMILY, as its own extdeps authority because it is an independently versioned
+// upstream model rather than a property of whatever happens to serve it. gunbc.harness pins a model
+// STRING today; this module is the row that string should become, so a caller can ask what the
+// model allows instead of carrying a literal beside it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+  }
+}
+
+// THE CONTEXT LENGTH IS DOCUMENTED AND AGREES WITH WHAT IS SERVED, which is why it is a row rather
+// than an observation. The model card states both V4-Pro and V4-Flash support "a context length of
+// one million tokens", and the GGUF actually loaded on srv5/srv6 carries
+// deepseek4.context_length = 1048576 -- read from Ollama /api/show on 2026-09-03, identical on both
+// hosts. Documented and served agree, so the row is citable rather than merely measured.
+data deepseek_v4_context_length: TokenCount = token_count(count: 1048576)
+
+// THE NATIVE WINDOW BEFORE ROPE SCALING, AND WHY IT IS CARRIED SEPARATELY. The same GGUF metadata
+// carries deepseek4.rope.scaling.original_context_length = 65536. The 1M figure above is therefore a
+// SCALED ceiling over a 64K native window, not a natively-trained length, and the distinction is
+// load-bearing for anyone sizing a working window: scaled context is admissible, not equivalent.
+// A consumer that treats 1M as "designed for" has read the ceiling as a capability.
+data deepseek_v4_native_context_length: TokenCount = token_count(count: 65536)
+
+// THE THREE REASONING MODES, cited to the model card, which names exactly these three for both
+// V4-Pro and V4-Flash. OpenRouter's API surface spells the top two as reasoning efforts `high` and
+// `xhigh`, with xhigh mapping to max -- a wire spelling of the same three, not a fourth mode.
+type DeepseekV4ReasoningMode
+  = DeepseekV4NonThink
+  | DeepseekV4ThinkHigh
+  | DeepseekV4ThinkMax
+
+// THE WIRE LABEL FOR THINK MAX IS "max", AND AN EARLIER REVISION OF THIS ROW SAID "xhigh". That was
+// a transcription from a compatibility table read backwards: the Thinking Mode guide lists the
+// user-set efforts low/high/max and then states that the compatibility values medium and xhigh
+// BOTH MAP TO high -- so "xhigh" is not a stronger setting than "high", it is an alias for it, and a
+// harness sending it to ask for Think Max would have received Think High and never known. The vLLM
+// recipe for this model names Think Max explicitly as reasoning_effort "max".
+// Sources: api-docs.deepseek.com/guides/thinking_mode ; recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash
+fn deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ReasoningMode) -> NonEmptyStr {
+  match mode {
+    DeepseekV4NonThink => "non-think" as NonEmptyStr
+    DeepseekV4ThinkHigh => "high" as NonEmptyStr
+    DeepseekV4ThinkMax => "max" as NonEmptyStr
+  }
+}
+
+// THE ONLY DOCUMENTED BUDGET FACT, AND IT IS A CONTEXT FLOOR RATHER THAN AN OUTPUT CEILING. The
+// model card says, of Think Max: "we recommend setting the context window to at least 384K tokens".
+// That is a MINIMUM WINDOW under which max reasoning should not be requested, not a cap on what the
+// model may emit.
+//
+// THIS CORRECTS A FIGURE THAT READS AS AN OUTPUT LIMIT IN SECONDARY SOURCES. A search aggregation
+// reports "both V4-Pro and V4-Flash expose 384K max output tokens"; three primary pages -- the
+// model card, the DeepSeek V4 blog post, and OpenRouter's model page -- state no maximum output at
+// all, and the model card's only 384K is the recommendation above. Copying the aggregation would
+// have written a context floor into the corpus under the name of an output ceiling.
+data deepseek_v4_think_max_recommended_context_floor: TokenCount = token_count(count: 393216)
+
+fn deepseek_v4_think_max_is_recommended_at(window: TokenCount) -> Bool {
+  token_count_value(t: window) >= token_count_value(t: deepseek_v4_think_max_recommended_context_floor)
+}
+
+// WHAT THIS MODEL DOES NOT DECLARE, stated as a row because its ABSENCE is the fact a consumer
+// needs. No primary source documents a maximum output token count, and the GGUF metadata carries no
+// output or thinking-budget key -- only context_length and the rope scaling above. So there is no
+// model-side output ceiling to couple a harness budget to.
+//
+// WHAT BOUNDS OUTPUT IS THE ENGINE, AND IT IS THE SHARED WINDOW. Measured against the serving
+// router on 2026-09-03: max_tokens 1048576 is refused with "This model's maximum context length is
+// 1048576 tokens. However, you requested 1048576 output tokens and your prompt contains 52
+// characters", while 262144 and 131072 both answer 200. So the constraint is
+// INPUT PLUS OUTPUT <= CONTEXT, with no separate output ceiling beneath it.
+//
+// A caller wanting an output budget therefore derives it from the window MINUS the input it has, and
+// attributing that bound to the MODEL would be authority substitution: it is a property of the
+// serving engine's admission, which is why it is recorded here as an absence plus a measurement
+// rather than as a deepseek_v4_max_output_tokens row.
+data deepseek_v4_declares_no_output_ceiling: Bool = true
+
+fn deepseek_v4_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let i = token_count_value(t: input_tokens)
+  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}
+
+// WHETHER THINKING IS ON WHEN A REQUEST SAYS NOTHING IS A PROPERTY OF THE SERVING REALIZATION, NOT
+// OF THE MODEL, and the two realizations this fleet can reach disagree. The official API enables
+// thinking by default at effort high. A vLLM deployment enables it only when the request carries
+// chat_template_kwargs thinking=true; the recipe's non-think example sends no kwargs at all and is
+// described as the fast mode. A harness that assumes one default while talking to the other
+// therefore runs the model in a mode nobody chose -- which is what happened on 2026-09-04, when
+// every measured run reached vLLM with no switch and produced zero thinking blocks in twenty-three
+// rounds. The two facts are carried separately so neither can be cited for the other.
+data deepseek_v4_thinking_default_official_api: Bool = true
+data deepseek_v4_thinking_default_vllm: Bool = false
+
+// THE REQUEST KEYS THE CHAT TEMPLATE RECOGNISES ON vLLM. These are what turn into the model's
+// trained thinking marker; text in the prompt asking the model to think harder does not.
+data deepseek_v4_vllm_thinking_kwarg: NonEmptyStr = "thinking" as NonEmptyStr
+data deepseek_v4_vllm_reasoning_effort_kwarg: NonEmptyStr = "reasoning_effort" as NonEmptyStr
+
+// MULTI-TURN TOOL USE MUST PASS PRIOR REASONING BACK. The guide: "the reasoning_content of all
+// previous turns should be passed back to the API and will be concatenated into the context". A
+// client that drops or re-labels the reasoning channel on replay is not merely losing information;
+// it is handing the model a transcript that was never produced.
+data deepseek_v4_tool_use_requires_reasoning_replay: Bool = true
+
+// THE COMPLETION FORMAT IS DECODABLE BY A CLIENT, AND THE VENDOR SHIPS THE DECODER. In thinking
+// mode a completion is reasoning up to the end token, then speech up to EOS or the DSML tool-calls
+// marker; parse_message_from_completion_text in the same encoder file performs exactly that split,
+// and ASSERTS "Invalid thinking format" when thinking was requested and the end token is absent.
+// A serving runtime's reasoning parser, where one exists for the model, is one realization of
+// (the fleet's vLLM build reportedly ships deepseek_r1 and deepseek_v3 parsers and none for v4);
+// this parse; a client performing it is another. Neither is a workaround for the other, because
+// the format is the encoder's, not the runtime's. What IS invalid is a thinking-mode completion
+// with no closer, or with more than one.
+data deepseek_v4_completion_closer_is_the_thinking_end_token: Bool = true
+data deepseek_v4_missing_closer_under_thinking_is_invalid_format: Bool = true
+
+// WITH TOOLS DEFINED, REASONING IS RETAINED ON EVERY ASSISTANT TURN. encode_messages drops earlier
+// turns' reasoning by default (drop_thinking=True keeps it only after the last user message), but
+// sets effective_drop_thinking = False the moment any message defines tools. A tool-using harness
+// therefore replays every prior thinking block, and the replay template is
+// {reasoning}{content}{tool_calls} per assistant turn. This refines the API guide's rule above with
+// the encoder's exact condition.
+data deepseek_v4_tools_force_reasoning_retention: Bool = true
+
+// THE CANONICAL PROMPT ENCODER, CITED BY FILE AND REVISION. The release ships no Jinja chat
+// template: tokenizer_config.json carries no chat_template key and the model card says so
+// directly, providing encoding/encoding_dsv4.py instead. Every fact below is read from that file at
+// the pinned revision rather than from a runtime's template, because a runtime's template is one
+// realization of the encoder and can differ from it -- the fp8 snapshot on one serving pair carries
+// no template at all, while the IQ3_S artifact on another renders the encoder's text exactly.
+data deepseek_v4_encoder_repo: NonEmptyStr = "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr
+data deepseek_v4_encoder_path: NonEmptyStr = "encoding/encoding_dsv4.py" as NonEmptyStr
+data deepseek_v4_encoder_revision: NonEmptyStr = "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr
+data deepseek_v4_encoder_revision_modified: NonEmptyStr = "2026-06-22T12:12:13Z" as NonEmptyStr
+
+// The readable reference, DERIVED from the three pinned rows above rather than declared beside them:
+// the Hugging Face blob URL for exactly that file at exactly that commit. The Think Max preamble
+// (deepseek_v4_think_max_preamble) and the effort values are transcribed from this file.
+fn deepseek_v4_encoder_source_url() -> String {
+  join(["https://huggingface.co/", deepseek_v4_encoder_repo, "/blob/", deepseek_v4_encoder_revision, "/", deepseek_v4_encoder_path], "")
+}
+
+// THINKING IS STRUCTURAL, NOT WORDED. encode_messages takes thinking_mode "chat" or "thinking";
+// a thinking turn ends the prompt with the start token so the model reasons and closes it, a chat
+// turn ends the prompt with the END token already present, so there is nothing to reason into.
+// Turning thinking off is therefore a prefill, and no sentence in a system prompt can do it.
+type DeepseekV4EncoderThinkingMode = EncoderChat | EncoderThinking
+
+fn deepseek_v4_encoder_thinking_mode_wire(m: DeepseekV4EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    EncoderChat => "chat" as NonEmptyStr
+    EncoderThinking => "thinking" as NonEmptyStr
+  }
+}
+
+data deepseek_v4_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data deepseek_v4_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+
+fn deepseek_v4_encoder_prefill(m: DeepseekV4EncoderThinkingMode) -> NonEmptyStr {
+  match m {
+    EncoderChat => deepseek_v4_thinking_end_token
+    EncoderThinking => deepseek_v4_thinking_start_token
+  }
+}
+
+// EFFORT IS A PREAMBLE, AND ONLY MAX HAS ONE. The encoder's reasoning_effort accepts "max", "high"
+// or None, and the file contains preamble text for "max" alone: Think High IS the thinking mode
+// with nothing added, and there is no "low" in the encoder -- low exists only on the hosted API.
+// The preamble is carried verbatim because it is the trained conditioning string: a paraphrase
+// under the same tier name is a different string the weights were never conditioned on, and the
+// fleet's dashboard was found on 2026-09-04 to be injecting exactly such a paraphrase under
+// DeepSeek's tier names -- a section 3 nickname at the prompt layer.
+data deepseek_v4_encoder_effort_values: List<NonEmptyStr> = ["max" as NonEmptyStr, "high" as NonEmptyStr]
+
+data deepseek_v4_think_max_preamble: NonEmptyStr = "Reasoning Effort: Absolute maximum with no shortcuts permitted.\nYou MUST be very thorough in your thinking and comprehensively decompose the problem to resolve the root cause, rigorously stress-testing your logic against all potential paths, edge cases, and adversarial scenarios.\nExplicitly write out your entire deliberation process, documenting every intermediate step, considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n\n" as NonEmptyStr
+
+fn deepseek_v4_effort_has_preamble(mode: DeepseekV4ReasoningMode) -> Bool {
+  match mode {
+    DeepseekV4NonThink => false
+    DeepseekV4ThinkHigh => false
+    DeepseekV4ThinkMax => true
+  }
+}
+
+// TOOL CALLS ARE DSML, NOT JSON, on the wire the model actually emits; a serving runtime's tool
+// parser (vLLM's deepseek_v4) translates them. Carried so a harness reading raw completions knows
+// what it is looking at.
+data deepseek_v4_dsml_token: NonEmptyStr = "｜DSML｜" as NonEmptyStr
+data deepseek_v4_dsml_tool_calls_open: NonEmptyStr = "<｜DSML｜tool_calls>" as NonEmptyStr
+data deepseek_v4_dsml_tool_calls_close: NonEmptyStr = "</｜DSML｜tool_calls>" as NonEmptyStr
+
+// WHETHER A SERVING REALIZATION RENDERS THE EFFORT KWARG IS A MEASURED FACT ABOUT THAT
+// REALIZATION, and it is typed by provenance so a number measured here cannot be mistaken for one
+// relayed from another session. The instrument is prompt_tokens on a one-token completion: the
+// preamble adds tokens or it does not. Measured on the IQ3_S artifact served through the fleet
+// router (vLLM, owned_by sparks): an effort key with thinking OFF renders nothing at any value;
+// with thinking ON, "high", "low" and an unknown value render nothing and "max" adds 79 -- the
+// canonical preamble's length -- so this artifact renders the encoder faithfully. The relayed row
+// is the routing session's report against the fp8 safetensors pair, which carries no template; it
+// was measured WITHOUT the thinking switch, which on this evidence renders nothing everywhere, so
+// it establishes only that reasoning_effort alone is a no-op there, not that thinking+max is.
+type DeepseekV4RenderingProvenance
+  = MeasuredByThisRepository { observed_at: NonEmptyStr }
+  | RelayedFromRoutingSession { observed_at: NonEmptyStr }
+
+type DeepseekV4EffortRenderingObservation {
+  artifact: NonEmptyStr
+  engine: NonEmptyStr
+  prompt_tokens_thinking_off: Int
+  prompt_tokens_thinking_high: Int
+  prompt_tokens_thinking_max: Int
+  prompt_tokens_thinking_unknown_effort: Int
+  provenance: DeepseekV4RenderingProvenance
+}
+
+data deepseek_v4_effort_rendering_iq3s_split_vllm: DeepseekV4EffortRenderingObservation = DeepseekV4EffortRenderingObservation {
+    artifact: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    engine: "vllm (owned_by sparks, via fleet router)" as NonEmptyStr,
+    prompt_tokens_thinking_off: 5,
+    prompt_tokens_thinking_high: 5,
+    prompt_tokens_thinking_max: 84,
+    prompt_tokens_thinking_unknown_effort: 5,
+    provenance: MeasuredByThisRepository { observed_at: "2026-09-04T05:30Z" as NonEmptyStr },
+  }
+
+fn deepseek_v4_rendering_distinguishes_max(o: DeepseekV4EffortRenderingObservation) -> Bool {
+  o.prompt_tokens_thinking_max > o.prompt_tokens_thinking_high
+    && o.prompt_tokens_thinking_high == o.prompt_tokens_thinking_off
+    && o.prompt_tokens_thinking_unknown_effort == o.prompt_tokens_thinking_off
+}
+
+// WHETHER A SERVING ENDPOINT RENDERS REPLAYED REASONING IS A MEASURED FACT PER ENDPOINT, and on
+// this fleet the two shapes disagree. Measured 2026-09-04 with tools defined (so the encoder's
+// retention rule applies) by prompt_tokens on a one-token completion: vLLM's Anthropic-shaped
+// /v1/messages ACCEPTS a prior assistant thinking block with a 200 and renders nothing of it --
+// 104 tokens with the block, 104 without -- so the acceptance is a silent drop. vLLM's
+// OpenAI-shaped /v1/chat/completions renders a prior reasoning_content: 365 tokens without, 404
+// with. A tool-using client that wants the encoder's retention must therefore speak the chat
+// completions shape to this fleet; on the messages shape its replay is discarded without error,
+// which is the fabricated-plausible-output failure at the transport: a 200 that did not do what
+// it was asked.
+type DeepseekV4ReplayRenderingObservation {
+  endpoint_path: NonEmptyStr
+  prompt_tokens_without_prior_reasoning: Int
+  prompt_tokens_with_prior_reasoning: Int
+  provenance: DeepseekV4RenderingProvenance
+}
+
+data deepseek_v4_replay_rendering_messages_endpoint: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/messages" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 104,
+  prompt_tokens_with_prior_reasoning: 104,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T06:20Z" as NonEmptyStr },
+}
+
+data deepseek_v4_replay_rendering_chat_completions_endpoint: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/chat/completions" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 365,
+  prompt_tokens_with_prior_reasoning: 404,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T06:25Z" as NonEmptyStr },
+}
+
+// THE TOOL-LOOP SHAPE, MEASURED SEPARATELY, because a peer session found retention absent in a
+// loop where tool results were merged into a USER message -- which places the assistant turn before
+// the last user index, the position the encoder's drop_thinking excludes. gunbc's loop sends tool
+// results as role=tool and follows them with its budget notice as a user message; measured on the
+// harness's own round-two request against the fleet router, with tools defined: 684 prompt tokens
+// without the replayed reasoning_content and 718 with it, and 683/717 with the trailing notice
+// folded into the tool message. Retention on this shape is real and the notice does not disturb it.
+// The two sessions' numbers describe two loop shapes, not one contested fact.
+data deepseek_v4_replay_rendering_chat_tool_loop: DeepseekV4ReplayRenderingObservation = DeepseekV4ReplayRenderingObservation {
+  endpoint_path: "/v1/chat/completions (assistant+tool_calls -> role=tool -> user notice)" as NonEmptyStr,
+  prompt_tokens_without_prior_reasoning: 684,
+  prompt_tokens_with_prior_reasoning: 718,
+  provenance: MeasuredByThisRepository { observed_at: "2026-09-04T07:05Z" as NonEmptyStr },
+}
+
+fn deepseek_v4_endpoint_renders_replayed_reasoning(o: DeepseekV4ReplayRenderingObservation) -> Bool {
+  o.prompt_tokens_with_prior_reasoning > o.prompt_tokens_without_prior_reasoning
+}
+
+// ON THE CHAT COMPLETIONS SHAPE, PRIOR REASONING RIDES ON THE ASSISTANT MESSAGE AS reasoning_content.
+// That is the field the official Thinking Mode guide names for both directions, and it is not an
+// OpenAI field -- the OpenAI authority in extdeps.llm.openai carries no such member -- so it is
+// declared here as DeepSeek's extension of that shape. vLLM's response additionally exposes the
+// same text under "reasoning"; both are read, the guide's name is what is written back.
+data deepseek_v4_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+data deepseek_v4_chat_reasoning_field_vllm_alias: NonEmptyStr = "reasoning" as NonEmptyStr
