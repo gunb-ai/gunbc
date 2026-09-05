@@ -28,13 +28,12 @@ import v2.std.node { Conj, Edge, Node, TypeNode }
 // translation_rules, selection_policy, declared_inhabitants, collection_realization,
 // signature_realizations) are unreachable from every claim in that module.
 //
-// WHAT THE SAVING IS ATTRIBUTED TO, and what it is NOT. The claims no longer demand
-// rust_sg2_type_expr_target_model() at all; the mechanism is that what replaces it is cheaper to
-// BUILD. Dropping the six unreachable edges is hygiene, not the lever: gunbc#10527 deleted
-// unreachable edges from a fixture and measured the cost unchanged to the step, so an unread edge
-// is not asserted here to cost anything. Nothing in this file should be read as evidence about
-// when an edge target is evaluated — no annotation can carry a machine claim (DESIGN section 4c),
-// and that particular question was measured elsewhere and answered the other way.
+// The mechanism is that the claims no longer demand rust_sg2_type_expr_target_model() at all, and
+// what replaces it is cheaper to BUILD. Which part of the production model was the expensive part
+// is a question for the instrument rather than for this comment — DESIGN section 4c means no
+// annotation can carry a cost measurement, so the figures live only in
+// required_floor_claim_cost.tsv. What IS decidable from source, and is what the fixtures below are
+// authored from, is which fields and edges each claim reads.
 //
 // WHAT IS DELIBERATELY NOT SUBSTITUTED: the ownership catalog rows stay the LIVE rust catalog,
 // not a copy of the rows the claims happen to read. The R1 flow controls in that module are
