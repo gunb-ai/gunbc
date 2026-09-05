@@ -34,6 +34,16 @@ data empty_observation_narrow: RecurringFailureMode = RecurringFailureMode {
     "NEXT-RUNG TRIGGER for this instance, named as the capability and not as an artifact: A CORPUS-WIDE NAMESPACE CENSUS OVER EVERY TYPE DECLARATION AND EVERY COPRODUCT ARM, sufficient to answer 'is this spelling already declared anywhere in the corpus' before a name is authored, rather than after emission. ",
 
     "ONE census over the one Node tree, not a second check beside the type-name one -- two checks over one namespace is the range split that produced this instance.",
+
+    "**RECEIPT, A THIRD AXIS: THE ACQUISITION RETURNED NOTHING AND THE COUNT OVER IT RENDERED AS CLEAN** (bright-ram-778, 2026-09-05). ",
+
+    "A merge-readiness sweep reported `non-green=0, still-running=0` for a pull request and was read as ready. It was counting conclusions in an EMPTY array: the head had no check-runs at all because its one workflow run was still queued, so every per-conclusion count was faithfully zero. ",
+
+    "The two earlier receipts on this row are an observation that could not EXPRESS what changed and an analysis that could not REACH where the answer lived; this one is an acquisition that returned NOTHING, and it lands in the same place because the mechanism is the same -- an empty population's answer is indistinguishable from a clean one, and the recognition rule above catches all three by asking what population was ranged over. ",
+
+    "THE CONSERVATION ASSERT IS THE REPAIR AND IT IS CHEAP: refuse to believe any per-conclusion count until the TOTAL is nonzero. It is the same shape as the roster-name-to-declaration join that caught a nine-row stale census the same night -- a count reads as a plausible near-miss where named unmatched rows are unmistakable. ",
+
+    "THE NEIGHBOUR PAIR MUST NOT BE COLLAPSED, because they need opposite responses and conflating them is how a lane waits forever: zero check-runs WITH a run of any status is QUEUED and nothing is wrong; zero check-runs with NO run at all means no verdict exists and none is coming. The discriminator is `actions/runs?head_sha=<full sha>`, never a truncated one.",
   ],
 
   evidence: [],
