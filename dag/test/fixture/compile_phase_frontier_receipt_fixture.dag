@@ -29,9 +29,13 @@ import gunbc.self_host_compile_phase_frontier {
 // 3 well-formed E0308 identities; the board is derived from these
 // identities and must match for receipt_population_coherent to pass.
 
+// Synthetic: 2 files observed, matching the 2 files in _fixture_raw_identities.
+// The actual value is not read by live_comparability or other gate functions —
+// only rustfmt_parse_coherent checks it — but 0 with non-empty identities is
+// internally incoherent and would be misleading.
 data _fixture_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
   producer: "rustfmt synthetic",
-  files_observed: 0,
+  files_observed: 2,
   refused_files: []
 }
 

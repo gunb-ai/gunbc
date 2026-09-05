@@ -82,17 +82,21 @@ fn observation_of(receipt: CompilePhaseFrontierReceipt, identities: List<String>
   }
 }
 
-// A REGRESSION IDENTITY PLANTED ACROSS ALL THREE PERTURBATION PROBES, SO THAT THE ONE STRING LITERAL
-// THAT APPEARS IN THIS FILE IS SHARED AND THE COUNTS ARE NOT.
-data planted_live_regression_identity: String = "src/v2_compile.rs:1:1	E0308	mismatched types"
+// THE DISCRIMINATING RED. One identity the latest receipt does not carry, planted in a file the
+// receipt already holds diagnostics for so no newly-exposed cause could admit it, must refuse and
+// must NAME the planted identity — a red that did not name it would leave a reader unable to tell
+// this regression from any other. The file src/v2_std_compilers_target_model.rs is observed by the
+// synthetic fixture (two E0308 identities there at lines 669 and 736).
+data planted_live_regression_identity: String = "src/v2_std_compilers_target_model.rs:740:1	E0308	mismatched types"
 
 // ---------------------------------------------------------------------------
 // CLAIM 1: Real-series control (case b) — asserts on population content
 // ---------------------------------------------------------------------------
 
-// THE POSITIVE CONTROL THAT MAKES EVERY RED BELOW MEAN SOMETHING. An unperturbed live observation
-// must hold, because the live tree derives from the same census the receipt records. If this goes
-// red when the series is unchanged, the gate's fold is not the ratchet it claims to be.
+// THE ACCEPTED POSITIVE CONTROL, and it carries more than "the gate can say yes". The live census
+// here is the latest receipt's own raw identity rows, folded by the frontier's fold rather than
+// copied from the receipt's board — so a green also establishes that the live path and the
+// persisted path derive the SAME board from one census. A fold that disagreed would red here.
 test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool {
   match latest_receipt() {
     Absent => false
@@ -129,8 +133,9 @@ test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
   }
 }
 
-// A SWAPPED IDENTITY AT THE SAME CARDINALITY IS NOT PROGRESS. Removing one and adding a different
-// one keeps the count the same but the set is not a subset; this must refuse, not hold.
+// A COUNT-ONLY GATE WOULD ACCEPT THIS. One identity removed and one added, cardinality unchanged:
+// the join must refuse at identity grain. This is the probe that would go green if anyone replaced
+// the join with a population-size comparison.
 test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> Bool {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
