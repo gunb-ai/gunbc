@@ -1,0 +1,198 @@
+module v2.extdeps.languages.rust_execution_test
+
+import v2.extdeps.languages.rust {
+  rust_runtime_row,
+  rust_type_expression_projection_bundle_node,
+  rust_value_expression_projection
+}
+import v2.extdeps.languages.rust_test {
+  rust_bool_binop_signature_with_open,
+  rust_bool_fn_block_close,
+  rust_bool_fn_lex,
+  rust_logic_complement_binding_spellings,
+  rust_logic_complement_bodied_arrow_statement_scaffold,
+  rust_logic_complement_lex,
+  rust_logic_family_runtime_row,
+  rust_logic_family_meet_zero_runtime_row,
+  rust_match_binding_spellings,
+  rust_match_bodied_arrow_statement_scaffold,
+  rust_match_lex,
+  rust_match_runtime_row
+}
+import v2.std.algebra { list_append }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.compilers.lexing { LexRules, VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetBodiedArrowStatementScaffold,
+  TargetModel,
+  ValueProducing,
+  derive_bodied_arrow_scaffold,
+  grammar_relation_row_attach_bodied_scaffold,
+  target_model_emit_transforms_empty,
+  target_model_named_edge,
+  target_model_type_conj_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node
+}
+import v2.std.host_transport {
+  TargetEmitHostRuntimeRow,
+  target_emit_host_runtime_row_unconfigured
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Edge, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// run_host_process carries its target only into the receipt; run_emit_host and
+// runtime_value_parse additionally read runtime_row. Constructing a whole target
+// is still paid: the seed's eval_call and eval_record_lit evaluate arguments and
+// field initializers eagerly. Preserve the runtime row when execution needs it.
+fn rust_execution_runtime_target(runtime_row: TargetEmitHostRuntimeRow) -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: target_model_type_conj_node(children: []),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: runtime_row
+  }
+}
+
+fn rust_execution_unused_target() -> TargetModel {
+  rust_execution_runtime_target(runtime_row: target_emit_host_runtime_row_unconfigured)
+}
+
+fn rust_execution_wire_target() -> TargetModel {
+  rust_execution_runtime_target(runtime_row: rust_runtime_row())
+}
+
+fn rust_execution_match_runtime_target() -> TargetModel {
+  rust_execution_runtime_target(runtime_row: rust_match_runtime_row())
+}
+
+// emit_family uses this bundle only to observe absent fidelity_quotient. Cached
+// execution and codec parsing use the unchanged family runtime row, including
+// its dispatcher text, workspace, build commands and primitive type.
+fn rust_execution_family_target() -> TargetModel {
+  rust_execution_runtime_target(runtime_row: rust_logic_family_runtime_row())
+}
+
+fn rust_execution_family_meet_zero_target() -> TargetModel {
+  rust_execution_runtime_target(runtime_row: rust_logic_family_meet_zero_runtime_row())
+}
+
+// Both original and swapped subjects are Arrows with Match bodies. Translation
+// decodes the type projection and preserves the producer IR after its grounding
+// gate. Serialization counts the rules subtree, then selects its sole scaffold;
+// it does not use a formal grammar, fixture emitted node or fixed body tokens.
+// The smaller rules value is therefore cheaper both to construct and to count.
+// Value projection, lex and bindings still render the actual subject body.
+fn rust_execution_bodied_target(
+  scaffold: TargetBodiedArrowStatementScaffold,
+  lex: LexRules,
+  bindings: Map<Symbol, String>,
+  scope_edges: List<Edge>,
+  runtime_row: TargetEmitHostRuntimeRow
+) -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: target_model_type_conj_node(children: list_append(
+      left: [
+        target_model_named_edge(
+          name: ^target_model_edge_type_expression_projection,
+          target: rust_type_expression_projection_bundle_node()
+        ),
+        target_model_named_edge(
+          name: ^target_model_edge_translation_rules,
+          target: target_model_type_conj_node(children: [
+            target_model_named_edge(
+              name: ^rust_execution_relation,
+              target: grammar_relation_row_attach_bodied_scaffold(
+                row: target_model_type_conj_node(children: []),
+                scaffold: scaffold
+              )
+            )
+          ])
+        ),
+        target_model_named_edge(
+          name: ^target_model_edge_value_expression_projection,
+          target: value_expr_projection_bundle_node(projection: rust_value_expression_projection())
+        ),
+        target_model_named_edge(
+          name: ^target_model_edge_operator_realizations,
+          target: target_operator_realizations_catalog_node(rows: [])
+        )
+      ],
+      right: scope_edges
+    )),
+    lex: lex,
+    binding_spellings: bindings,
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: runtime_row
+  }
+}
+
+// The numeric match has no declared parameters, so atom scope lookup fails
+// before the add-signature inhabitants lookup. Its runtime remains configured
+// for native agreement and the swapped-body mismatch control.
+fn rust_execution_match_target() -> TargetModel {
+  rust_execution_bodied_target(
+    scaffold: rust_match_bodied_arrow_statement_scaffold(),
+    lex: rust_match_lex(),
+    bindings: rust_match_binding_spellings(),
+    scope_edges: [],
+    runtime_row: rust_match_runtime_row()
+  )
+}
+
+// Family parameter references reach target_value_expr_arrow_body_scope_binding.
+// The add-signature probe reads declared inhabitants first; this empty catalog
+// keeps that probe false, then the Match-body guard admits the same parameter.
+fn rust_execution_match_scope_edges() -> List<Edge> {
+  [target_model_named_edge(
+    name: ^target_model_edge_declared_inhabitants,
+    target: target_model_type_conj_node(children: [])
+  )]
+}
+
+// Member targets are used for emission only. The family transport above owns
+// execution; no per-member native crate is introduced.
+fn rust_execution_bool_binop_target(fn_binding: Symbol, fn_spelling: String) -> TargetModel {
+  rust_execution_bodied_target(
+    scaffold: derive_bodied_arrow_scaffold(
+      signature_with_open: rust_bool_binop_signature_with_open(fn_binding: fn_binding),
+      block_close: rust_bool_fn_block_close(),
+      mode: ValueProducing
+    ),
+    lex: rust_bool_fn_lex(),
+    bindings: map_insert(
+      map_insert(map_insert(empty_map(), fn_binding, fn_spelling), ^dag_binding_param_a, "a"),
+      ^dag_binding_param_b,
+      "b"
+    ),
+    scope_edges: rust_execution_match_scope_edges(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
+
+fn rust_execution_meet_target() -> TargetModel {
+  rust_execution_bool_binop_target(fn_binding: ^dag_binding_fn_meet, fn_spelling: "meet")
+}
+
+fn rust_execution_join_target() -> TargetModel {
+  rust_execution_bool_binop_target(fn_binding: ^dag_binding_fn_join, fn_spelling: "join")
+}
+
+fn rust_execution_complement_target() -> TargetModel {
+  rust_execution_bodied_target(
+    scaffold: rust_logic_complement_bodied_arrow_statement_scaffold(),
+    lex: rust_logic_complement_lex(),
+    bindings: rust_logic_complement_binding_spellings(),
+    scope_edges: rust_execution_match_scope_edges(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
