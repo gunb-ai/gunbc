@@ -1,6 +1,6 @@
 module extdeps.tools.sed
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -28,6 +28,26 @@ service sed.Sed {
       0 => Unit
       nonzero => String "sed -i failed"
     }
+  }
+
+  // sed -n with a script argument: auto-print suppressed, so the only output is what the script's
+  // own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
+  // '--silent') 'suppress automatic printing of pattern space'. The script is an ARGUMENT here
+  // rather than text spliced into a shell word, which is the whole reason this operation exists as
+  // a modeled row: a caller executing a program it received from somewhere else must not have that
+  // program re-read by a shell on the way in. stdout_lines rather than stdout, because the consumer
+  // question is HOW MANY rows the script extracted and WHICH -- and a zero-length stdout and a
+  // refusal are indistinguishable as one string, which is the failure this operation's first
+  // consumer exists to catch.
+  operation ScriptSuppressAutoPrint {
+    input { expression: NonEmptyStr, path: NonEmptyStr }
+    output {
+      lines: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["sed", "-n", "{expression}", "{path}"] }
   }
 }
 

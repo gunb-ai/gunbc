@@ -141,6 +141,18 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "dark_row_extraction_program_names_a_row_that_went_dark_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "dark_row_extraction_program_names_a_row_that_went_dark_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
+      function: "driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
       function: "divergent_generated_artifact_merge_refuses_by_real_execution",

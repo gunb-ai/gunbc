@@ -2,14 +2,17 @@ module test.claim.generated_artifact_merge_driver_real_execution
 
 import std.logic { Bool }
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, FilePath, GitRef }
+import std.types { String, FilePath, GitRef, NonEmptyStr }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import extdeps.tools.sed
 import gunbc.generated_artifact_merge_driver {
   expected_generated_artifact_merge_driver_sh,
   generated_artifact_merge_driver_config_value_at,
+  generated_artifact_merge_driver_dark_row_extraction_sed_program,
 }
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
@@ -23,6 +26,7 @@ type MergeDivergenceObservation {
   merge_exit_code: Int
   unmerged_stage_count: Int
   worktree_content: String
+  printed_diagnostics: String
   setup_ok: Bool
 }
 
@@ -49,7 +53,7 @@ fn write_witness_generated_projection(repo: FilePath, content: String) -> Bool {
   Filesystem.Write(path: witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
 }
 
-fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
+fn seed_witness_repository(repo: FilePath, driver_value: String, heal_paths: List<String>) -> Bool {
   let initialized = git.Core.InitInRepo(repo: repo).success
   let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid").success
   let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc merge driver witness").success
@@ -62,7 +66,7 @@ fn seed_witness_repository(repo: FilePath, driver_value: String) -> Bool {
     path: witness_repo_file(repo: repo, name: witness_driver_script_name),
     content: expected_generated_artifact_merge_driver_sh(
       regen_command: ci_heal_author_commit_regen_command,
-      heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+      heal_regenerated_paths: heal_paths
     ),
   ).success
   let attributes = Filesystem.Write(
@@ -102,20 +106,22 @@ fn observe_witness_merge(repo: FilePath, ours_touches_artifact: Bool) -> MergeDi
     merge_exit_code: merged.exit_code,
     unmerged_stage_count: count(unmerged.entries),
     worktree_content: after.content,
+    printed_diagnostics: merged.stderr,
     setup_ok: theirs && ours_branch == 0 && ours_written && ours_staged == 0 && ours_committed == 0 && after.success,
   }
 }
 
-fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
+fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool, heal_paths: List<String>) -> MergeDivergenceObservation {
   let dir = shell.Mktemp.Dir()
   let repo = dir.path
-  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value)
+  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value, heal_paths: heal_paths)
   let observed = observe_witness_merge(repo: repo, ours_touches_artifact: ours_touches_artifact)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   MergeDivergenceObservation {
     merge_exit_code: observed.merge_exit_code,
     unmerged_stage_count: observed.unmerged_stage_count,
     worktree_content: observed.worktree_content,
+    printed_diagnostics: observed.printed_diagnostics,
     setup_ok: dir.success && seeded && observed.setup_ok && cleaned.success,
   }
 }
@@ -143,6 +149,7 @@ test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: true,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code != 0
@@ -155,6 +162,7 @@ test fn divergent_generated_artifact_merge_under_true_driver_silently_drops_thei
   let observed = observe_generated_artifact_merge(
     driver_value: witness_retired_take_ours_driver_value,
     ours_touches_artifact: true,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code == 0
@@ -166,9 +174,134 @@ test fn one_sided_generated_artifact_change_merges_clean_by_real_execution() -> 
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: false,
+    heal_paths: heal_regenerated_after_provisional_merge_paths(),
   )
   observed.setup_ok
     && observed.merge_exit_code == 0
     && observed.unmerged_stage_count == 0
     && observed.worktree_content == witness_theirs_content
+}
+
+// THE ENROLLED RED FOR THE DARK-ROW CHECK, IN TWO HALVES THAT ONLY MEAN ANYTHING TOGETHER (DESIGN
+// section 4b(4)). The driver's step 2 tells a lane to prove no ledger row went dark by comparing two
+// extractions; the defect this pair exists to keep dead was that the printed program could not
+// extract anything at all, so the comparison was satisfied for every input and the check had never
+// been able to go red. Neither half alone catches it. Asserting on the EMITTED SCRIPT TEXT would
+// have passed throughout the defect, because the script always carried the right characters -- they
+// were eaten by bash at print time, one layer later. Re-spelling the sed inside this witness and
+// running that would also have passed throughout, because the witness's copy was never the thing
+// that broke. So:
+//
+//   printed_step_two_carries_the_extraction_program -- executes a real merge, reads what the driver
+//   ACTUALLY PRINTED after bash expansion, and requires the extraction program to have survived it
+//   verbatim. This is the half that goes red on the defect, and it is red for the precise reason:
+//   under the retired spelling the printed text read `s/^- .*/\1/p`, the capture group gone.
+//
+//   extraction_program_names_a_row_that_went_dark -- executes THAT SAME program, through sed, over a
+//   fixture ledger and over the same ledger with one row removed. It JOINS the extraction to the
+//   roster the real projection is generated from, on both sides, which is the conservation check the
+//   original defect defeated: an empty operand is the entire mechanism, and comm cannot report that
+//   its own input was empty. Then it asserts the removed row IS NAMED by the first side and is NOT
+//   named by the second -- the set difference's discrimination, without needing comm to state it.
+//
+// Together they close the chain from what the driver prints to what that program does.
+
+// THE FIXTURE LEDGER IS BUILT FROM THE ROSTER, NOT FROM A HAND-WRITTEN ROW LIST, AND THE ASSERTION
+// IS AN IDENTITY JOIN RATHER THAN A NON-EMPTINESS CHECK. Non-emptiness proves ACQUISITION and
+// nothing else: it catches the total-failure mode this witness exists for -- zero rows extracted --
+// and passes identically at one row, at forty, and at all-but-one. An extraction that silently
+// narrowed to a SUBSET would sail through it while the dark-row check ranged over a fraction of its
+// subject, which is `check_subject_narrower_than_its_declared_claim` sitting directly beside the
+// hollow-check class this repairs. So the oracle is the authority the real projection is generated
+// FROM -- gunbc.recurring_failure_mode roster -- and the extraction must name every entry in it,
+// which is a comparison against an independent referent rather than against a measurement of the
+// same text (DESIGN section 5).
+//
+// THE FIXTURE ALSO REPRODUCES THE PROJECTION'S TWO-BULLET SHAPE, because the count is only an oracle
+// if the extraction is discriminating: the real ledger carries one INDEX bullet per row and one
+// PROSE bullet per row, so a program that matched every top-level bullet would extract twice the
+// roster count and a program that matched none would extract zero. Both are red here, and only the
+// correct extraction is green.
+
+fn witness_ledger_rows() -> List<String> {
+  map(recurring_failure_mode_roster, r => r.identity as String)
+}
+
+data witness_dark_row: String = "empty_capture_read_as_clean_result"
+data witness_ledger_path: String = "fixture_ledger.md"
+
+fn witness_ledger_index_line(row: String) -> String {
+  join(["- `", row, "`\n"], "")
+}
+
+// The prose bullet the extraction must SKIP: a top-level bullet whose first token is bold text
+// rather than a backquoted identifier, which is exactly how the real projection carries a row body.
+fn witness_ledger_prose_line(row: String) -> String {
+  join(["- **", row, " stated as prose** (a receipt sentence.)\n"], "")
+}
+
+fn witness_ledger_text(rows: List<String>) -> String {
+  fold(rows, init: "", f: (acc, row) =>
+    concat(acc, concat(witness_ledger_index_line(row: row), witness_ledger_prose_line(row: row)))
+  )
+}
+
+fn witness_rows_without_dark_row() -> List<String> {
+  witness_ledger_rows() |> filter(row => row != witness_dark_row)
+}
+
+type LedgerExtraction {
+  names: List<String>
+  ok: Bool
+}
+
+fn extract_ledger_rows(dir: FilePath, rows: List<String>) -> LedgerExtraction {
+  let path = witness_repo_file(repo: dir, name: witness_ledger_path)
+  let written = Filesystem.Write(path: path, content: witness_ledger_text(rows: rows)).success
+  let extracted = sed.Sed.ScriptSuppressAutoPrint(
+    expression: generated_artifact_merge_driver_dark_row_extraction_sed_program as NonEmptyStr,
+    path: path as NonEmptyStr,
+  )
+  LedgerExtraction { names: extracted.lines, ok: written && extracted.exit_code == 0 }
+}
+
+fn witness_extraction_names(rows: List<String>) -> LedgerExtraction {
+  let dir = shell.Mktemp.Dir()
+  let extracted = extract_ledger_rows(dir: dir.path, rows: rows)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  LedgerExtraction { names: extracted.names, ok: dir.success && extracted.ok && cleaned.success }
+}
+
+fn extraction_names_row(extraction: LedgerExtraction, row: String) -> Bool {
+  fold(extraction.names, init: false, f: (acc, name) => acc || name == row)
+}
+
+// The heal population is a PARAMETER of the emitter, so this observation binds the witness's own
+// artifact path into it rather than reaching for a real ledger path. Step 2 is printed by the heal
+// case arm only, and the alternative -- reproducing docs/design-failure-modes.md inside a temp repo
+// -- would need a directory Filesystem.Write cannot create and would make the witness depend on the
+// live ledger's shape. The step text itself is unparameterized, so what this arm prints for the
+// witness path is byte-identical to what it prints for every real one.
+test fn driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_execution() -> Bool {
+  let observed = observe_generated_artifact_merge(
+    driver_value: witness_refusing_driver_value(),
+    ours_touches_artifact: true,
+    heal_paths: [witness_generated_path],
+  )
+  observed.setup_ok
+    && observed.merge_exit_code != 0
+    && string_contains(s: observed.printed_diagnostics, pattern: generated_artifact_merge_driver_dark_row_extraction_sed_program)
+}
+
+test fn dark_row_extraction_program_names_a_row_that_went_dark_by_real_execution() -> Bool {
+  let rostered = witness_ledger_rows()
+  let full = witness_extraction_names(rows: rostered)
+  let reduced = witness_extraction_names(rows: witness_rows_without_dark_row())
+  full.ok
+    && reduced.ok
+    && count(full.names) == count(recurring_failure_mode_roster)
+    && count(rostered) == count(recurring_failure_mode_roster)
+    && count(reduced.names) == count(recurring_failure_mode_roster) - 1
+    && extraction_names_row(extraction: full, row: witness_dark_row)
+    && !extraction_names_row(extraction: reduced, row: witness_dark_row)
 }

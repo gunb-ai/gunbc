@@ -167,12 +167,18 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.emit_host_typed_smoke_test.emit_host_content_equality_discriminates_count_identical_bytes_holds",
       tail:      Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.dark_row_extraction_program_names_a_row_that_went_dark_by_real_execution",
+      tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution",
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
       tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_execution",
+      tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
       tail: Empty {}
+    }
+    }
     }
     }
     }
