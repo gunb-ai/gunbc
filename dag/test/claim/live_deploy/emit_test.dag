@@ -54,9 +54,6 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import extdeps.apt { apt_install_argv }
-import extdeps.dpkg { dpkg_status_argv }
-import extdeps.systemd.systemctl { systemctl_restart_argv }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
   install_directory_command,
@@ -68,9 +65,13 @@ import gunbc.live_deploy.operations {
   deploy_stage_write_expansion_command,
   install_directory_owned_command,
   install_file_owned_command,
-  dpkg_status_command,
-  apt_install_command,
-  systemctl_restart_command,
+}
+import gunbc.live_deploy.effect_leaf {
+  deploy_effect_command,
+  systemctl_restart_effect,
+  apt_install_effect,
+  apt_install_unelevated_effect,
+  dpkg_status_effect,
 }
 import gunbc.live_deploy.emit {
   deploy_receipt_command,
@@ -248,10 +249,10 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tmux = deployment_ensure_dependency_script(
     dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
-  string_contains(s: tailscale, pattern: dpkg_status_command(package: package_tailscale))
-    && string_contains(s: tailscale, pattern: apt_install_command(package: package_tailscale, privileged: false))
-    && string_contains(s: tmux, pattern: dpkg_status_command(package: package_tmux))
-    && string_contains(s: tmux, pattern: apt_install_command(package: package_tmux, privileged: false))
+  string_contains(s: tailscale, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
+    && string_contains(s: tailscale, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale)))
+    && string_contains(s: tmux, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
+    && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
@@ -281,14 +282,14 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
-    && string_contains(s: sh, pattern: systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
     && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
-    && string_contains(s: sh, pattern: systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true))
+    && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
     && string_contains(s: sh, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tailscale), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tailscale, privileged: true), "; fi")))))
-    && string_contains(s: sh, pattern: concat("if ! ", concat(dpkg_status_command(package: package_tmux), concat(" >/dev/null 2>&1; then ", concat(apt_install_command(package: package_tmux, privileged: true), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tailscale)), "; fi")))))
+    && string_contains(s: sh, pattern: concat("if ! ", concat(deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)), concat(" >/dev/null 2>&1; then ", concat(deploy_effect_command(inv: apt_install_effect(package: package_tmux)), "; fi")))))
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "apply"))
 }
 
@@ -403,7 +404,7 @@ test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   string_contains(
     s: sh,
     pattern: concat(
-      systemctl_restart_command(unit: deployment_spec_srv1().names.tree_sync_unit_name, privileged: true),
+      deploy_effect_command(inv: systemctl_restart_effect(unit: deployment_spec_srv1().names.tree_sync_unit_name)),
       " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }",
     ),
   )
@@ -462,7 +463,7 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
     && !string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
     && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
-    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then 'sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
+    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then '/usr/bin/sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
     && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
     && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
     && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
