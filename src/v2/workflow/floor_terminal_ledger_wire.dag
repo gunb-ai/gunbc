@@ -363,17 +363,26 @@ fn ledger_rows_digest(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
   )
 }
 
-fn typed_roster_identity(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+// ONE FOLD, THREE ROW TYPES. The roster identity was computed by two byte-identical folds that
+// differed only in how each reached a row's qualified name, and a third was about to be added for
+// readback rows. Three copies of one hash is three authorities for one fact: they can silently
+// disagree, and the readback comparison below would then be asserting that two algorithms happen
+// to match rather than establishing anything. Folding over the NAMES makes all three agree by
+// construction, which is what lets the readback check be a check instead of a coincidence.
+fn roster_identity_of_qualified_names(names: List<String>) -> Fnv1a64Structural {
   fold(
-    rows,
+    names,
     content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
+    (acc, name) => content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(
-        value: concat("identity:", witness_identity_qualified_name(identity: row.identity))
-      )
+      right: content_hash_atom(value: concat("identity:", name))
     )
   )
+}
+
+fn typed_roster_identity(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+  roster_identity_of_qualified_names(
+    names: map(rows, r => witness_identity_qualified_name(identity: r.identity)))
 }
 
 fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String {
@@ -724,6 +733,48 @@ fn parse_ledger_body(lines: List<String>, header_fields: List<String>) -> Ledger
 // The referent is the PLANNED count the caller already holds, never the rows this reader parsed:
 // comparing the footer to the rows read is an identity, and a truncation that also rewrote the
 // footer would agree with itself.
+// TWO FIELDS SIT OUTSIDE THE ROW SEAL, AND THAT IS WHY THE SEAL ALONE ADMITS A TAMPERED LEDGER.
+// readback_rows_digest covers the SERIALIZED ROWS ONLY. The footer's row count and the header's
+// roster identity are neither rows nor inputs to that digest, so a ledger whose count reads
+// "not-a-count", or whose roster identity is replaced wholesale, still passes the digest
+// comparison untouched. Both were reachable counterexamples against a consumer that checked only
+// the seal.
+//
+// BOTH ARE RECOMPUTABLE FROM THE PARSED ROWS, so neither needs a producer-supplied expectation:
+// the count is the row count and the roster identity is the fold above over the rows' qualified
+// names. These are SELF-CONSISTENCY admissions and are deliberately named as such -- they
+// establish that the artifact agrees with itself, NOT that it is the ledger some plan expected.
+// That second, independent question needs a planned count from the producer's own lifecycle and
+// is what readback_footer_count_agrees below takes an Int for. Do not let this one stand in for
+// it: a ledger truthfully sealed over the wrong population passes every check here.
+fn readback_footer_count_matches_its_own_rows(readback: LedgerReadback) -> Bool {
+  match readback {
+    LedgerUnreadable { reason: _, at: _ } => false
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: _,
+      rows: rows,
+      footer_row_count_wire: wire,
+      footer_digest: _
+    } => wire == rows.length() as String
+  }
+}
+
+fn readback_roster_identity_agrees(readback: LedgerReadback) -> Bool {
+  match readback {
+    LedgerUnreadable { reason: _, at: _ } => false
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: declared,
+      rows: rows,
+      footer_row_count_wire: _,
+      footer_digest: _
+    } => roster_identity_of_qualified_names(names: map(rows, r => r.qualified)).digest == declared
+  }
+}
+
 fn readback_footer_count_agrees(readback: LedgerReadback, planned_rows: Int) -> Bool {
   match readback {
     LedgerUnreadable { reason: _, at: _ } => false
@@ -902,14 +953,7 @@ fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
 // all. The seed has no such value to hand over anyway: nothing in `run_required_floor` computes
 // one, and inventing a parameter for a fact that does not exist is how hollow carriers start.
 fn seed_roster_identity(rows: List<SeedLedgerRow>) -> Fnv1a64Structural {
-  fold(
-    rows,
-    content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
-      left: acc,
-      right: content_hash_atom(value: concat("identity:", row.qualified))
-    )
-  )
+  roster_identity_of_qualified_names(names: map(rows, r => r.qualified))
 }
 
 fn render_ledger_from_seed(

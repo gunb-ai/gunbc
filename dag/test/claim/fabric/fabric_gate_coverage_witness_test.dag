@@ -631,6 +631,35 @@ fn ledger_with_header(snapshot_wire: String, subject_wire: String, rows: List<Cl
     join([field_at_or_empty(original, 0), snapshot_wire, subject_wire, field_at_or_empty(original, 3)], "\t"))
 }
 
+// MUTATE THE FOOTER'S COUNT FIELD AND NOTHING ELSE. The footer is the LAST line and carries
+// #end, the count, and the seal; the seal and the tag are read back off the rendered footer and
+// reinstalled, so the only thing that differs from a genuine ledger is the field under test.
+fn ledger_with_footer_count(count_wire: String, rows: List<ClaimTerminalRow>) -> String {
+  let text = rendered_ledger(commit_a(), ledger_fixture_subject, rows)
+  let lines = text.split(delimiter: "\n")
+  let last = lines.length() - 1
+  let original = field_at_or_empty(lines, last).split(delimiter: "\t")
+  replace_line(
+    text,
+    last,
+    join([field_at_or_empty(original, 0), count_wire, field_at_or_empty(original, 2)], "\t"))
+}
+
+// MUTATE THE HEADER'S ROSTER IDENTITY AND NOTHING ELSE, same discipline one line up.
+fn ledger_with_roster_identity(identity_wire: String, rows: List<ClaimTerminalRow>) -> String {
+  let text = rendered_ledger(commit_a(), ledger_fixture_subject, rows)
+  let original = field_at_or_empty(text.split(delimiter: "\n"), 0).split(delimiter: "\t")
+  replace_line(
+    text,
+    0,
+    join([
+      field_at_or_empty(original, 0),
+      field_at_or_empty(original, 1),
+      field_at_or_empty(original, 2),
+      identity_wire
+    ], "\t"))
+}
+
 fn identity_already_in(seen: List<WitnessIdentity>, id: WitnessIdentity) -> Bool {
   fold(seen, init: false, f: (acc, s) => if witness_identity_eq_local(s, id) { true } else { acc })
 }
@@ -787,6 +816,46 @@ test fn an_unreadable_ledger_refuses_rather_than_reading_as_empty() -> Bool {
   let r = adjudicate_ledger_for(plannable_roster(), "nope", ledger_fixture_commit)
   !report_holds(r)
     && report_text(r) == "FCI-STANDING refused=ledger-unreadable reason=ledger-shorter-than-header-and-footer"
+}
+
+// THE TWO FIELDS THE ROW SEAL DOES NOT COVER, each mutated ALONE. The digest is computed over the
+// serialized rows only, so before these admissions landed a ledger could have its footer count or
+// its roster identity rewritten wholesale and still satisfy every integrity check the consumer
+// ran. These are the counterexamples that were reachable against it.
+//
+// Each fixture leaves the rows, the seal, and every other header or footer field exactly as the
+// renderer produced them, so the specimen reaches the admission it names instead of stopping at
+// the seal. And each asserts its OWN refusal cause -- not merely that something refused -- because
+// three refusals now live between the parse and the standing derivation, and a negative satisfied
+// by the wrong one would go green while the guard it was written for was dead.
+test fn a_footer_count_changed_alone_refuses_by_its_own_cause() -> Bool {
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
+    ledger_with_footer_count("not-a-count", every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=ledger-footer-count-disagrees-with-its-rows"
+}
+
+test fn a_roster_identity_changed_alone_refuses_by_its_own_cause() -> Bool {
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
+    ledger_with_roster_identity("0000000000000000", every_nomination_passing()),
+    ledger_fixture_commit)
+  !report_holds(r)
+    && report_text(r) == "FCI-STANDING refused=ledger-roster-identity-disagrees-with-its-rows"
+}
+
+// THE POSITIVE CONTROL FOR BOTH, and the reason the two above are not vacuous: the SAME renderer
+// output, with nothing replaced, must reach standing. If the renderer and these admissions
+// disagreed about how either field is computed, this row would red -- which is exactly what a
+// check recomputing a value the producer also computes has to prove before it is worth anything.
+test fn an_untouched_rendered_ledger_passes_both_field_admissions() -> Bool {
+  let r = adjudicate_ledger_for(
+    plannable_roster(),
+    rendered_ledger(commit_a(), ledger_fixture_subject, every_nomination_passing()),
+    ledger_fixture_commit)
+  report_holds(r)
 }
 
 // A HEADER WHOSE SNAPSHOT IS NEITHER A COMMIT NOR THE UNPUBLISHED TOKEN IS A LEDGER THIS ENTRY

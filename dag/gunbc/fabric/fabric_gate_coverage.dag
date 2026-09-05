@@ -24,6 +24,8 @@ import v2.workflow.floor_terminal_ledger_wire {
   ledger_returned_true_tag,
   parse_ledger,
   readback_digest_agrees,
+  readback_footer_count_matches_its_own_rows,
+  readback_roster_identity_agrees,
 }
 
 // WHY THIS EXISTS, STATED AS THE FAILURE IT ANSWERS. gunbc.fabric_ci_program declares, per gate, the
@@ -859,11 +861,26 @@ fn render_standing_verdict(v: GateStandingVerdict) -> FabricStandingReport {
 // ledger happens to contain, so reporting it as a coverage gap would send the reader to look for
 // missing evidence when the demand itself is unsatisfiable. Refusing first names the actual fault.
 //
-// NOT CHECKED HERE, AND SAID SO: the footer ROW COUNT. Its authority's own note is explicit that
-// the referent must be the PLANNED count the caller already holds, never the rows the reader
-// parsed, because comparing the footer to the parsed rows is an identity that a truncation
-// rewriting both would satisfy. This consumer holds no planned count, so the honest move is to
-// leave that check to a caller that does rather than run it against itself.
+// THE SEAL DOES NOT COVER EVERY FIELD, so two more admissions run beside it. readback_rows_digest
+// is computed over the SERIALIZED ROWS only: the footer's row count and the header's roster
+// identity are neither rows nor inputs to it, so a ledger whose count is replaced with
+// "not-a-count", or whose roster identity is overwritten wholesale, passed the seal comparison
+// untouched. Both were reachable counterexamples against a consumer that checked the seal alone.
+//
+// Both are now recomputed from the rows this reader parsed, and each refuses under its OWN cause
+// so no negative can pass on the wrong field.
+//
+// WHAT THESE TWO ARE NOT. They are self-consistency: they establish that the artifact agrees with
+// itself, never that it is the ledger some plan expected. An earlier note here argued the count
+// should therefore not be checked at all, on the grounds that a truncation rewriting the rows AND
+// the count AND the digest together would satisfy it. That is right, and it is an argument that
+// the check is INSUFFICIENT, not that it is empty -- it does not reach the mutation it was
+// written against, which alters one field and leaves the rest of a genuine ledger intact.
+//
+// The independent question -- is this the ledger the plan expected -- still needs a planned count
+// from the producer's own lifecycle, which this consumer does not hold. readback_footer_count_agrees
+// takes that Int and is deliberately NOT called here. Nothing below may cite these two as having
+// answered it.
 fn adjudicate_published_ledger(
   ledger_text: String,
   adjudicated_commit_hex: String,
@@ -900,6 +917,10 @@ fn adjudicate_ledger_for(
     LedgerRead { repository_snapshot, prepared_subject, roster_identity, rows, footer_row_count_wire, footer_digest } =>
       if !readback_digest_agrees(readback: readback) {
         standing_refused("FCI-STANDING refused=ledger-seal-disagrees-with-its-rows")
+      } else if !readback_footer_count_matches_its_own_rows(readback: readback) {
+        standing_refused("FCI-STANDING refused=ledger-footer-count-disagrees-with-its-rows")
+      } else if !readback_roster_identity_agrees(readback: readback) {
+        standing_refused("FCI-STANDING refused=ledger-roster-identity-disagrees-with-its-rows")
       } else {
       match admit_repository_snapshot_wire(wire: repository_snapshot) {
         SnapshotWireUnrecognized { offending } =>
