@@ -13,15 +13,32 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THE WRITE HALF OF THE IPMI CHASSIS INTERFACE was added 2026-09-05 beside the three readonly
 // operations this service already carried (IPMI v2.0 rev1.1 §28, Chassis Device Commands: Set
-// System Boot Options and Chassis Control). ChassisBootDev, ChassisPowerControl and UserSetPassword
-// are not `readonly`; the rest are. They exist because a converge arm that drives a host with NO
+// System Boot Options and Chassis Control). ChassisBootDev and ChassisPowerControl are not
+// `readonly`; the rest are. They exist because a converge arm that drives a host with NO
 // OPERATING SYSTEM has no other way in — every other transport in this repository reaches a machine
 // THROUGH the thing being installed.
 //
 // CREDENTIALS NEVER REACH ARGV. ipmitool's -f takes a file holding the password, which keeps the
 // secret out of the process table on a shared host; the caller materializes that file and passes its
 // path. A -P arm is deliberately NOT modeled: it is the shorter spelling and it publishes the
-// credential to every `ps` on the box. NOTE THE ASYMMETRY, because it is a real gap rather than a
+// credential to every `ps` on the box.
+//
+// CREDENTIAL ROTATION IS DELIBERATELY NOT MODELED HERE, and its absence is the finding. A
+// UserSetPassword operation was authored on 2026-09-05 and is REMOVED rather than repaired: it
+// rendered `ipmitool -f CURRENT user set password ID -f NEW`, and the second -f is not an
+// instruction to read the replacement password from a file. Upstream documents -f as the
+// SESSION-AUTHENTICATION password option; the replacement password is a positional argument to
+// `user set password`. So the operation did not do what its name said, and the only spellings that
+// work put the new secret into argv — where every `ps` on the box can read it — which is the one
+// thing the -f convention above exists to prevent.
+//
+// WHAT WOULD ADMIT IT BACK: a verified non-argv secret-input mechanism for this transport, and an
+// acceptance test that opens a FRESH AUTHENTICATED SESSION with the replacement credential before
+// reporting rotation complete. A command that returns zero establishes that ipmitool exited, not
+// that the account was re-keyed. Until then the operator ruling that rotation is a converge phase
+// stands with no operation to perform it, which is an honest gap rather than a broken one.
+//
+// NOTE THE ASYMMETRY, because it is a real gap rather than a
 // style difference — the three original readonly operations carry no credential at all and so
 // cannot authenticate to a controller that requires one, which is why the Mt. Collins intake pass
 // could not use them.
@@ -138,13 +155,4 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  operation UserSetPassword {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, new_password_file: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "user", "set", "password", "{user_id}", "-f", "{new_password_file}"] }
-    exit {
-      0 => Unit
-      nonzero => String "ipmitool user set password failed"
-    }
-  }
 }

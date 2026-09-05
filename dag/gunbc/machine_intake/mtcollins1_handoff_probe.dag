@@ -10,6 +10,7 @@ import gunbc.machine_intake_mtcollins1_access_observation {
 import gunbc.machine_intake_oob_boot_handoff {
   OobHandoffAdmitted,
   OobHandoffBootSourceOverrideUnavailable,
+  OobHandoffFirmwareMismatch,
   OobHandoffPowerControlUnavailable,
   OobHandoffRouteUnobserved,
   oob_boot_handoff_admission,
@@ -38,6 +39,7 @@ func mtcollins1_admission_probe() -> ProcessExit {
     OobHandoffRouteUnobserved => false
     OobHandoffBootSourceOverrideUnavailable => false
     OobHandoffPowerControlUnavailable => false
+    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
   }
 
   let refused_without_capability = match oob_boot_handoff_admission(
@@ -48,6 +50,7 @@ func mtcollins1_admission_probe() -> ProcessExit {
     OobHandoffRouteUnobserved => false
     OobHandoffBootSourceOverrideUnavailable => true
     OobHandoffPowerControlUnavailable => false
+    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
   }
 
   if admitted == false {

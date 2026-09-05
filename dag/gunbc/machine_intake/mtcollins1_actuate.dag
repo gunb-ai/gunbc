@@ -2,12 +2,25 @@ module gunbc.machine_intake_mtcollins1_actuate
 
 import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseCapabilityRow,
+  BmcFirmwareReleaseIdentity,
+  CapabilityBootSourceOverride,
+  CapabilityPowerControl,
+}
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_access_observation,
+  mtcollins1_capability_row,
+}
 import gunbc.machine_intake_oob_boot_handoff {
   BootHandoffCompleted,
   BootHandoffNotAdmitted,
+  BootSelectionFlagInvalid,
   BootSelectionNotApplied,
   BootSelectionRefused,
+  BootSelectionUnverifiable,
+  OobBootHandoffOutcome,
   PowerCycleRefused,
   oob_boot_handoff,
 }
@@ -47,24 +60,30 @@ data mtcollins1_bmc_username: NonEmptyStr = "admin"
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with
 // `Unimplemented { what: "unknown service operation: shell.Env.Get" }`. THAT DIAGNOSTIC IS
-// MISLEADING AND THE OBVIOUS READING OF IT IS WRONG: the operation is implemented and widely used —
-// gunbc.actions_run_binding calls it on the live converge path — and it refused here only because
-// this module did not carry `import extdeps.shell`. Service operations register from the IMPORT
-// CLOSURE, so an unimported service compiles clean and refuses at run time with a message that
-// names the operation as unknown rather than the import as missing.
+// MISLEADING: the operation is implemented and widely used — gunbc.actions_run_binding calls it on
+// the live converge path — and it refused only because this module did not carry
+// `import extdeps.shell`. Service operations register from the IMPORT CLOSURE, so an unimported
+// service compiles clean and refuses at run time naming the operation rather than the import.
 //
 // The argument is kept anyway, because it is the better shape independent of that defect: the
 // credential's location becomes a declared input the caller must state rather than ambient state
 // the func silently depends on, which matters most for the value that rotates mid-program.
 //
-// AN EMPTY PATH IS REFUSED RATHER THAN DIALLED. Passing "" would otherwise reach ipmitool as a -f
-// with no file and fail as an authentication error, which reads as a controller rejecting a
-// credential rather than as a caller who supplied none.
-fn mtcollins1_password_file(raw: String) -> NonEmptyStr {
+// AN EMPTY PATH REFUSES BEFORE ANY EFFECT, and the previous form did not. It substituted the string
+// "bmc-password-file-argument-empty" and handed that to ipmitool as a filename — so a caller that
+// supplied nothing produced either an authentication failure that reads as the CONTROLLER rejecting
+// a credential, or, if a file of that name happened to exist, an unintended credential source. The
+// comment called it a refusal; it was a rename. A missing input is now a typed outcome returned
+// before the first write, so the zero-effects case is reachable and testable.
+type CredentialPathStanding
+  = CredentialPathGiven { path: NonEmptyStr }
+  | CredentialPathMissing
+
+fn mtcollins1_password_file(raw: String) -> CredentialPathStanding {
   if raw == "" {
-    "bmc-password-file-argument-empty" as NonEmptyStr
+    CredentialPathMissing
   } else {
-    raw as NonEmptyStr
+    CredentialPathGiven { path: raw as NonEmptyStr }
   }
 }
 
@@ -74,28 +93,51 @@ fn mtcollins1_password_file(raw: String) -> NonEmptyStr {
 // PowerCycleRefused means it DID take and the controller is holding a next-boot override nothing
 // has consumed. Collapsing them into one "handoff failed" would be the state-space conflation
 // DESIGN's failure-mode list names.
+// ONE RENDERER FOR BOTH ROUTES. Each outcome arm gets its own reason because the refusals leave the
+// host in materially different states: BootSelectionNotApplied means the override never took and
+// must be re-applied; BootSelectionFlagInvalid means the controller reported the selector WHILE
+// declaring its boot flags invalid, so the override is present and will not be honoured;
+// BootSelectionUnverifiable means the read itself failed and establishes nothing about the
+// controller either way; PowerCycleRefused means the override APPLIED and the controller now holds
+// an unconsumed next-boot override. Collapsing these into one failure would be the state-space
+// conflation DESIGN's failure-mode list names.
+fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome) -> ProcessExit {
+  match outcome {
+    BootHandoffCompleted { selected: _ } => ExitSuccess
+    BootSelectionRefused =>
+      exit_failure(reason: concat(label as String, ": controller refused the boot source override"))
+    BootSelectionNotApplied { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' did not take; boot parameter 5 read back: ", r))
+    BootSelectionFlagInvalid { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' reported alongside an INVALID boot flag, so it will not be honoured; boot parameter 5 read back: ", r))
+    BootSelectionUnverifiable { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": boot parameter 5 read did not succeed, so the override for '", d as String, "' is unverified; output: ", r))
+    PowerCycleRefused { selected: d } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
+    BootHandoffNotAdmitted { admission: _ } =>
+      exit_failure(reason: concat(label as String, ": controller not admitted for out-of-band drive; no write was attempted"))
+  }
+}
+
 func mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  let outcome = oob_boot_handoff(
-    bmc_host: mtcollins1_endpoint.host,
-    username: mtcollins1_bmc_username,
-    password_file: mtcollins1_password_file(raw: password_file_raw),
-    device: mtcollins1_boot_device,
-    expected_rendering: mtcollins1_boot_readback_rendering,
-    power_action: mtcollins1_power_action,
-  )
-
-  return match outcome {
-    BootHandoffCompleted { selected: _ } => ExitSuccess
-    BootSelectionRefused =>
-      exit_failure(reason: "mtcollins1 handoff: controller refused the boot source override")
-    BootSelectionNotApplied { requested: d, readback: r } =>
-      exit_failure(reason: concat("mtcollins1 handoff: override for '", d, "' did not take; boot parameter 5 read back: ", r))
-    PowerCycleRefused { selected: d } =>
-      exit_failure(reason: concat("mtcollins1 handoff: override for '", d, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
-    BootHandoffNotAdmitted { admission: _ } =>
-      exit_failure(reason: "mtcollins1 handoff: controller not admitted for out-of-band drive")
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 handoff: no credential path supplied; refusing before any controller write")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 handoff",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_boot_device,
+          expected_rendering: mtcollins1_boot_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
   }
 }
 
@@ -123,24 +165,72 @@ data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
 func mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
   uses net: std.resources.Network
 {
-  let outcome = oob_boot_handoff(
-    bmc_host: mtcollins1_endpoint.host,
-    username: mtcollins1_bmc_username,
-    password_file: mtcollins1_password_file(raw: password_file_raw),
-    device: mtcollins1_cdrom_device,
-    expected_rendering: mtcollins1_cdrom_readback_rendering,
-    power_action: mtcollins1_power_action,
-  )
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 cdrom handoff: no credential path supplied; refusing before any controller write")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 cdrom handoff",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_cdrom_device,
+          expected_rendering: mtcollins1_cdrom_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
+  }
+}
 
-  return match outcome {
-    BootHandoffCompleted { selected: _ } => ExitSuccess
-    BootSelectionRefused =>
-      exit_failure(reason: "mtcollins1 cdrom handoff: controller refused the boot source override")
-    BootSelectionNotApplied { requested: d, readback: r } =>
-      exit_failure(reason: concat("mtcollins1 cdrom handoff: override for '", d, "' did not take; boot parameter 5 read back: ", r))
-    PowerCycleRefused { selected: d } =>
-      exit_failure(reason: concat("mtcollins1 cdrom handoff: override for '", d, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
-    BootHandoffNotAdmitted { admission: _ } =>
-      exit_failure(reason: "mtcollins1 cdrom handoff: controller not admitted for out-of-band drive")
+// THE ENFORCEMENT CONTROL, and it is deliberately not a test of the admission fold. That fold is
+// pure and already exercised by gunbc.machine_intake_mtcollins1_handoff_probe; what it cannot show
+// is that a REFUSAL HAPPENS BEFORE ANY WRITE. Classification and enforcement are different claims,
+// and only the second is what a caller driving real hardware depends on.
+//
+// The capability row below carries the same capabilities the measured one does and a DIFFERENT
+// firmware release, so admission refuses on OobHandoffFirmwareMismatch — the arm that exists
+// because a capability row for release A could otherwise be handed beside an observation for
+// release B. Everything else about the call is the real thing: the real endpoint, the real
+// credential, the real operation.
+//
+// HOW TO READ THE RESULT. A non-zero exit naming "not admitted" is necessary but not sufficient:
+// the load-bearing observation is EXTERNAL, that boot parameter 5 is unchanged after this runs.
+// Reset it to a known value first, run this, and read it back. If the selector moved, the refusal
+// came after a write and the ordering is decorative.
+data mtcollins1_mismatched_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentity {
+  family: AmiMegaRac,
+  raw_version: "0.31-not-this-unit",
+  semantic_version: none,
+}
+
+data mtcollins1_mismatched_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
+  firmware: mtcollins1_mismatched_firmware,
+  capabilities: [
+    CapabilityBootSourceOverride,
+    CapabilityPowerControl,
+  ],
+}
+
+func mtcollins1_denied_admission_control(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      exit_failure(reason: "mtcollins1 denied-admission control: no credential path supplied")
+    CredentialPathGiven { path: pw } =>
+      mtcollins1_render_outcome(
+        label: "mtcollins1 denied-admission control",
+        outcome: oob_boot_handoff(
+          observation: mtcollins1_access_observation,
+          capability_row: mtcollins1_mismatched_capability_row,
+          username: mtcollins1_bmc_username,
+          password_file: pw,
+          device: mtcollins1_boot_device,
+          expected_rendering: mtcollins1_boot_readback_rendering,
+          power_action: mtcollins1_power_action,
+        )
+      )
   }
 }

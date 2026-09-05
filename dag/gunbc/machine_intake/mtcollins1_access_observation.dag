@@ -80,6 +80,11 @@ data mtcollins1_write_exercise_byte_count: Int = 1844
 
 data mtcollins1_observed_at: EpochMs = 1788592988469
 
+// THE WRITE EXERCISE HAS ITS OWN TIME because it is a separate attempt against the same unit. Using
+// the read pass's timestamp for a write that happened afterwards would place an effect before its
+// own evidence.
+data mtcollins1_write_exercise_observed_at: EpochMs = 1788593400000
+
 // FIRMWARE, READ FROM THE CONTROLLER ITSELF. `ipmitool mc info` reports Firmware Revision 0.32 and
 // IPMI Version 2.0. The raw string is carried verbatim and the semantic version is Absent: 0.32 is
 // two components, the wire parser wants three, and inventing a patch component to make it parse
@@ -107,6 +112,27 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
   firmware: mtcollins1_firmware,
 }
 
+// THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
+// than a refinement. It previously named the intake capture alone, while the observation's own
+// fields made claims that capture does not contain: the SEL read behind SurfaceEventLog, the clock
+// skew behind SurfaceBmcClock, and every write behind successful_write_surfaces were all taken
+// LATER and live in the write-exercise capture. Declaring a second digest elsewhere in the module
+// does not connect those fields to it; a reader resolving raw_response would have fetched bytes
+// that do not mention them.
+//
+// THE TWO ATTEMPTS STAY DISTINGUISHABLE, which is the reason this is a manifest and not one merged
+// file. The intake capture was taken FIRST, before any write, and is the evidence for identity,
+// firmware and the Redfish absence; it establishes what an unauthenticated-to-media, read-only pass
+// found. The write exercise came after and is the evidence for boot-source override and power
+// control. Merging them would let the later successful media work retroactively re-describe what the
+// earlier probe established, which is exactly the direction evidence must not flow.
+//
+// THE DIGEST IS OVER THE PAIR, ordered read-then-write, so a consumer can resolve both halves from
+// one field while the halves remain separately named above.
+data mtcollins1_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "df87eb85817628e6901402d4f8d7c7898d9717b867b89c2a4f3553fc0dcfff3b",
+})
+
 // BOOT CONTROL, OBSERVED OVER IPMI LANPLUS, READ AND WRITE. `chassis bootparam get 5` first
 // answered valid/unlocked with Boot Device Selector "No override". `chassis bootdev pxe` was then
 // accepted and the SAME parameter read back "Force PXE" with "Options apply to only next boot" —
@@ -115,8 +141,8 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
 // is the second artifact, artifacts/bmc/mtcollins1-intake-write-exercise.json.
 data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
   route: IpmiLanplusRoute,
-  raw_response: mtcollins1_intake_capture_digest,
-  observed_at: mtcollins1_observed_at,
+  raw_response: mtcollins1_write_exercise_digest,
+  observed_at: mtcollins1_write_exercise_observed_at,
 }
 
 // THE OBSERVATION. redfish_virtual_media_probe is Absent, and that is the modeled meaning of the
@@ -156,7 +182,7 @@ data mtcollins1_access_observation: BmcAccessObservation = BmcAccessObservation 
   successful_write_surfaces: [
     SurfaceBootControl,
   ],
-  raw_response: mtcollins1_intake_capture_digest,
+  raw_response: mtcollins1_evidence_manifest_digest,
   observed_at: mtcollins1_observed_at,
 }
 
