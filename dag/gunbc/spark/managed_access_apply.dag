@@ -423,7 +423,7 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
 {
   let now = clock_now_probed_at()
   let token_source = GcloudPrintToken
-  match resolve_spark_administrator_credential(token_source: token_source) {
+  match resolve_spark_administrator_credential(host: host as HostIdentity, token_source: token_source) {
     SparkAdministratorCredentialRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SparkAdministratorCredentialResolved { credential: administrator } =>

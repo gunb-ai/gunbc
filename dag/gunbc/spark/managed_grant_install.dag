@@ -41,7 +41,11 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
-import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref_for,
+  SparkAdministratorCredentialRefFound,
+  SparkAdministratorCredentialHostNotEnrolled,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
@@ -765,7 +769,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
             context: context,
             host: only,
             principal: spark_grant_install_principal(),
-            administrator: spark_grant_install_administrator_standing(),
+            administrator: spark_grant_install_administrator_standing(host: only),
           )
           let body = join([
             "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
@@ -815,6 +819,9 @@ fn spark_grant_install_principal() -> NonEmptyStr {
 // on success. A run that bypasses that step reports "this run did not receive the enrolled
 // credential" through CredentialNotMaterialized -- which is the truth -- rather than rewriting
 // enrollment as pending.
-fn spark_grant_install_administrator_standing() -> SparkCredentialStanding {
-  CredentialMaterialized { ref: spark_administrator_password_secret_ref }
+fn spark_grant_install_administrator_standing(host: HostIdentity) -> SparkCredentialStanding {
+  match spark_administrator_password_secret_ref_for(host: host) {
+    SparkAdministratorCredentialRefFound { ref: r } => CredentialMaterialized { ref: r }
+    SparkAdministratorCredentialHostNotEnrolled { host: _ } => CredentialMaterializationPending
+  }
 }
