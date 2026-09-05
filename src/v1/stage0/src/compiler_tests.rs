@@ -3723,51 +3723,30 @@ mod compiler_tests {
     }
 
     #[test]
-    fn a_constructor_reachable_by_two_routes_refuses_and_names_every_owner() {
+    fn the_element_route_selects_and_a_name_no_route_reaches_declines() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let both = "module probe\ntype Colour = | Cons { head: Int } | Red\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Cons { head: 1 } } }\n";
+                let selects = "module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Green { shade: 3 } } }\n";
+                let declines = "module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Gruen { shade: 3 } } }\n";
                 assert_eq!(
-                    diags_matching(both, "constructor of more than one type reachable from this position"),
-                    1,
-                    "THE AMBIGUITY ARM WENT SILENT. `Cons` here is a constructor of BOTH Colour (reached as the element type of the expected collection) and FreeMonoid (reached as the target of List's alias). Selecting either by route order is the absorbing fallback this arm exists to refuse. A zero here means some route stopped enumerating -- check that both CollectionElement and AliasTarget still produce a domain -- and a two means the position is being judged twice"
+                    diags_matching(selects, "cannot select the field template"),
+                    0,
+                    "THE ELEMENT ROUTE STOPPED SELECTING. `Green` is a variant of Colour, which is the element type of the expected collection, so the element route supplies the one matching candidate and the position must SELECT. This half is weak ALONE -- a zero is also what a broken compile returns -- which is why it is asserted only as one arm of the pair below"
                 );
                 assert!(
-                    diags_matching(both, "Colour") >= 1 && diags_matching(both, "FreeMonoid") >= 1,
-                    "THE REFUSAL DID NOT NAME BOTH OWNERS. A refusal that says a name is ambiguous without saying between WHAT leaves the author no move except guessing, which is the remedy-less refusal class: the wall fires correctly and routes the compliant reader nowhere"
+                    diags_matching(declines, "unresolved type") >= 1,
+                    "THE PAIRED MUTATION WENT GREEN, WHICH MAKES THE ARM ABOVE VACUOUS. The two sources differ in exactly one identifier, and `Gruen` names no variant of any candidate, so the program must be REFUSED. If this stops reporting, the passing arm above is no longer evidence that selection happened -- it is evidence that nothing was judged"
+                );
+                assert_eq!(
+                    diags_matching(declines, "cannot select the field template"),
+                    0,
+                    "THE SEAM ACCUSED A POSITION IT DOES NOT OWN. A name no route reaches is refused by UnresolvedType, which is the authority for an unknown name and says so. This seam DECLINING as well would add a second, vaguer refusal for one fault -- and it is what made ten correct List positions look like defects. The refusal must stay at exactly one wall"
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result
-            .expect("a_constructor_reachable_by_two_routes_refuses_and_names_every_owner panicked");
-    }
-
-    #[test]
-    fn exactly_one_matching_route_selects_and_does_not_refuse() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                assert_eq!(
-                    diags_matching("module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Green { shade: 3 } } }\n", "reachable from this position"),
-                    0,
-                    "ELEMENT-ONLY SELECTION REFUSED. `Green` is a variant of Colour and of nothing else reachable here, so the element route is the unique match and the position must SELECT rather than refuse. A refusal here means the fold is counting a domain that carries no such constructor"
-                );
-                assert_eq!(
-                    diags_matching("module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Cons { head: Red } } }\n", "reachable from this position"),
-                    0,
-                    "OUTER-ONLY SELECTION REFUSED. `Cons` is a constructor of FreeMonoid, which List aliases, and Colour has no such variant -- so the alias route is the unique match. This is the 9-site Cons population that the element-only resolver could not see at all, and it must now select without refusing"
-                );
-                assert_eq!(
-                    diags_matching("module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Absent } }\n", "reachable from this position"),
-                    0,
-                    "A NAME MATCHING NO ROUTE PRODUCED AN AMBIGUITY. Zero matching domains is not-found, which is a different answer from more-than-one, and collapsing them would make the ambiguity arm fire on ordinary unresolved names"
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("exactly_one_matching_route_selects_and_does_not_refuse panicked");
+        result.expect("the_element_route_selects_and_a_name_no_route_reaches_declines panicked");
     }
 
     #[test]

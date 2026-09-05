@@ -1185,15 +1185,12 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // wall continuing to run first -- a coupling that fails silently the day that wall narrows. The
 // cause carries no rung of its own and is not evidence of anything; TypeArgumentArityMismatch is.
 type RecordLitUnavailableCause
-  = DeclarationLookupUnavailable
-  | GenericArityDisagreement
+  = | GenericArityDisagreement
   | FieldTemplateSelectionFailed
   | AmbiguousVariantOwners { owners: List<String> }
 
 fn record_lit_unavailable_cause_text(c: RecordLitUnavailableCause) -> String {
   match c {
-    DeclarationLookupUnavailable =>
-      "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here"
     GenericArityDisagreement =>
       "the declared generic arity does not match the number of supplied type arguments"
     FieldTemplateSelectionFailed =>
@@ -1472,10 +1469,17 @@ fn same_declaration(a: Node, b: Node) -> Bool {
 }
 
 // DEDUPLICATION IS BY OWNER IDENTITY, AND IT IS LOAD-BEARING RATHER THAN TIDINESS. Two routes can
-// reach the SAME declaration -- a `List<T>` reaches FreeMonoid as both its alias target and, once
-// resolved, as the whole expected type. Counting that owner twice would manufacture an ambiguity
-// out of one coproduct and refuse a position that has exactly one honest answer, which is the
-// accusing failure this authority exists to remove. The FIRST route to reach an owner is the one
+// in principle reach the SAME declaration, and counting that owner twice would manufacture an
+// ambiguity out of one coproduct and refuse a position that has exactly one honest answer, which
+// is the accusing failure this authority exists to remove.
+//
+// THE EXAMPLE THAT USED TO STAND HERE WAS FALSE AND IS RECORDED AS FALSE RATHER THAN QUIETLY
+// REPLACED. It claimed a `List<T>` position reaches FreeMonoid as BOTH its alias target and its
+// whole expected type. Instrumented, that position yields exactly ONE candidate -- the element
+// type, reached as the element type of the expected collection. No FreeMonoid candidate is
+// produced by any route. So the dedup this comment describes has no observed instance, and
+// whether more than one route ever contributes at one position is an open question about this
+// carrier, not a settled fact it may cite. The FIRST route to reach an owner is the one
 // recorded, so the enumeration order below decides only which route is REPORTED for a shared
 // owner, never which owner wins -- there is no winning, because a second owner is a refusal.
 //
@@ -1760,8 +1764,13 @@ type RecordLitInstantiation =
 // Repairing the 15 by authorizing the fallback for every miss would have traded a MEASURED false
 // negative for an UNMEASURED silent fallback on a genuine miss: a known 15 for an unknown N, in the
 // direction that hides. So the variant is identified AFFIRMATIVELY through
-// record_lit_variant_from_expected -- the authority that already answers this question -- and only
-// a miss that is NOT a variant is reported as DeclarationLookupUnavailable.
+// record_lit_variant_from_expected -- the authority that already answers this question.
+//
+// THAT REASONING WAS RIGHT ABOUT THE TRADE AND WRONG ABOUT WHICH SIDE THIS POPULATION IS ON, and
+// the correction is measured rather than argued. The miss was reported as an unlookupable
+// declaration; every corpus instance was instead a constructor these routes cannot reach at all,
+// on programs that are correct. An unknown N was the fear, and the N turned out to be ten known
+// sites, each a false accusation. A miss is now NotApplicable and the established path answers it.
 // A DECLARATION BODY'S CHILDREN ARE ITS MEMBERS, NOT SUPPLIED TYPE ARGUMENTS, and reading them as
 // type arguments is what made this seam accuse ordinary code. Type arguments are carried by an
 // APPLIED type node, which is NoConnective -- the same shape node_is_collection reads to find a
@@ -1789,6 +1798,19 @@ fn node_children_are_not_type_arguments(n: Node) -> Bool {
   n.connective != NoConnective
 }
 
+// THE ROUTES DID NOT REACH AN OWNER CARRYING THIS CONSTRUCTOR, WHICH IS A FACT
+// ABOUT THIS AUTHORITY AND NOT ABOUT THE PROGRAM. Measured: every corpus
+// occurrence of the old refusal here was `Cons`/`Empty` at a List<X> position --
+// ten sites, all correct code, all rendered 'Coproduct(FreeMonoid)'. The
+// constructor-domain routes produce no FreeMonoid candidate at such a position
+// (instrumented: the only candidate is the element type, reached as the element
+// type of the expected collection), so the selection cannot find `Cons` and
+// reported that miss as though the declaration were unlookupable.
+//
+// Unavailable would withhold the legacy fallback from a population this authority
+// does not own, turning its own blind spot into a blocking accusation against
+// programs main compiles cleanly. NotApplicable is the honest arm: the question
+// does not ARISE for these routes, so the established path answers it.
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitInstantiation {
   match type_name {
     Present { value: tn } =>
@@ -1836,7 +1858,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                   VariantSelected { variant: _, owner: _, owner_name: _, route: _ } => InstantiationNotApplicable
                   VariantAmbiguous { owners: os } =>
                     InstantiationUnavailable { cause: AmbiguousVariantOwners { owners: os } }
-                  VariantNotFound => InstantiationUnavailable { cause: DeclarationLookupUnavailable }
+                  VariantNotFound => InstantiationNotApplicable
                 }
             }
           }

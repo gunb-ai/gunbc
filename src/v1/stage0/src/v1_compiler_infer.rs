@@ -1519,7 +1519,6 @@ pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RecordLitUnavailableCause {
-    DeclarationLookupUnavailable,
     GenericArityDisagreement,
     FieldTemplateSelectionFailed,
     AmbiguousVariantOwners { owners: Rc<Vec<String>> },
@@ -1527,9 +1526,6 @@ pub enum RecordLitUnavailableCause {
 impl RecordLitUnavailableCause {
     pub fn owners(&self) -> Rc<Vec<String>> {
         match self {
-            RecordLitUnavailableCause::DeclarationLookupUnavailable => {
-                panic!("no owners on unit variant")
-            }
             RecordLitUnavailableCause::GenericArityDisagreement => {
                 panic!("no owners on unit variant")
             }
@@ -1545,7 +1541,6 @@ impl RecordLitUnavailableCause {
 
 pub fn record_lit_unavailable_cause_text(c: Rc<RecordLitUnavailableCause>) -> String {
     match (*c.clone()).clone() {
-    RecordLitUnavailableCause::DeclarationLookupUnavailable => "the declaration for this type name could not be looked up, so whether it is generic -- and with what arity -- is unknown here".to_string(),
     RecordLitUnavailableCause::GenericArityDisagreement => "the declared generic arity does not match the number of supplied type arguments".to_string(),
     RecordLitUnavailableCause::FieldTemplateSelectionFailed => "the record-literal field template could not be selected for this type name".to_string(),
     RecordLitUnavailableCause::AmbiguousVariantOwners { owners: os, .. } => v1_rt::concat(v1_rt::concat("this literal name is a constructor of more than one type reachable from this position -- ".to_string(), os.clone().join(&"; and ".to_string())), " -- so which coproduct it constructs is not determined by the position. Name the intended one explicitly rather than letting route order decide".to_string()),
@@ -2359,33 +2354,40 @@ pub fn record_lit_instantiated_fields(
     scope: Rc<InferScope>,
 ) -> Rc<RecordLitInstantiation> {
     match type_name.clone() {
-        Some(tn) => {
-            match expected.clone() {
-                Some(exp) => {
-                    if ((exp.children.clone().len() as i64) == 0) {
+        Some(tn) => match expected.clone() {
+            Some(exp) => {
+                if ((exp.children.clone().len() as i64) == 0) {
+                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                } else {
+                    if node_children_are_not_type_arguments(exp.clone()) {
                         Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
                     } else {
-                        if node_children_are_not_type_arguments(exp.clone()) {
-                            Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-                        } else {
-                            match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), exp.clone()) {
-    Some(decl) => if ((decl.params.clone().len() as i64) == 0) {
-                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-            } else {
-                if ((decl.params.clone().len() as i64) != (exp.children.clone().len() as i64)) {
-                    Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-    cause: Rc::new(RecordLitUnavailableCause::GenericArityDisagreement),
-})
-                } else {
-                    {
-                        let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                        match crate::v1_compiler_infer_env::lookup_type_for(
+                            scope.type_env.clone(),
+                            exp.clone(),
+                        ) {
+                            Some(decl) => {
+                                if ((decl.params.clone().len() as i64) == 0) {
+                                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                                } else {
+                                    if ((decl.params.clone().len() as i64)
+                                        != (exp.children.clone().len() as i64))
+                                    {
+                                        Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                            cause: Rc::new(
+                                                RecordLitUnavailableCause::GenericArityDisagreement,
+                                            ),
+                                        })
+                                    } else {
+                                        {
+                                            let subst = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                             let slot = crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), pair.1.clone());
 match exp.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), crate::v1_compiler_infer_types::child_type_node(arg.clone())),
     std::option::Option::None => acc.clone(),
 }
 });
-match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
+                                            match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clone(), scope.clone()) {
     std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
     cause: Rc::new(RecordLitUnavailableCause::FieldTemplateSelectionFailed),
 }),
@@ -2415,29 +2417,41 @@ match record_lit_instantiation_template_fields(tn.clone(), exp.clone(), decl.clo
 })); } __result }),
 }),
 }
-}
-                }
-            },
-    std::option::Option::None => match (*record_lit_variant_selection(type_name.clone(), expected.clone(), scope.clone())).clone() {
-    RecordLitVariantSelection::VariantSelected { .. } => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
-    RecordLitVariantSelection::VariantAmbiguous { owners: os, .. } => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-    cause: Rc::new(RecordLitUnavailableCause::AmbiguousVariantOwners {
-    owners: os.clone(),
-}),
-}),
-    RecordLitVariantSelection::VariantNotFound => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
-    cause: Rc::new(RecordLitUnavailableCause::DeclarationLookupUnavailable),
-}),
-},
-}
+                                        }
+                                    }
+                                }
+                            }
+                            std::option::Option::None => match (*record_lit_variant_selection(
+                                type_name.clone(),
+                                expected.clone(),
+                                scope.clone(),
+                            ))
+                            .clone()
+                            {
+                                RecordLitVariantSelection::VariantSelected { .. } => {
+                                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                                }
+                                RecordLitVariantSelection::VariantAmbiguous {
+                                    owners: os, ..
+                                } => Rc::new(RecordLitInstantiation::InstantiationUnavailable {
+                                    cause: Rc::new(
+                                        RecordLitUnavailableCause::AmbiguousVariantOwners {
+                                            owners: os.clone(),
+                                        },
+                                    ),
+                                }),
+                                RecordLitVariantSelection::VariantNotFound => {
+                                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+                                }
+                            },
                         }
                     }
                 }
-                std::option::Option::None => {
-                    Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
-                }
             }
-        }
+            std::option::Option::None => {
+                Rc::new(RecordLitInstantiation::InstantiationNotApplicable)
+            }
+        },
         std::option::Option::None => Rc::new(RecordLitInstantiation::InstantiationNotApplicable),
     }
 }
