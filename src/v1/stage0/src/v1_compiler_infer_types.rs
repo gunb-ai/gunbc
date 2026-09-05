@@ -44,6 +44,8 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
@@ -87,6 +89,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -252,6 +255,7 @@ pub fn reground_alias_carrier_identity(
             is_self_recursive: n.is_self_recursive.clone(),
             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
             match_pattern: n.match_pattern.clone(),
+            module_item_kind: n.module_item_kind.clone(),
             expr_data: n.expr_data.clone(),
             ident: None,
         })
@@ -284,6 +288,7 @@ pub fn structural_carrier_template_name(
                 is_self_recursive: n.is_self_recursive.clone(),
                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                 match_pattern: n.match_pattern.clone(),
+                module_item_kind: n.module_item_kind.clone(),
                 expr_data: n.expr_data.clone(),
                 ident: None,
             }),
@@ -472,6 +477,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -495,6 +501,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -511,6 +518,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })),
@@ -547,6 +555,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })]),
@@ -562,6 +571,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })),
@@ -612,6 +622,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::ExprError {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
@@ -648,6 +659,7 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -672,6 +684,7 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -705,6 +718,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 })]),
@@ -720,6 +734,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -764,6 +779,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -789,6 +805,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
+                            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -805,6 +822,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -845,6 +863,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -877,6 +896,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -900,6 +920,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -916,6 +937,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -942,6 +964,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -988,6 +1011,7 @@ pub fn algebra_method_field(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1017,6 +1041,7 @@ pub fn enrich_base_with_fields(
         is_self_recursive: base.is_self_recursive.clone(),
         has_non_tail_self_call: base.has_non_tail_self_call.clone(),
         match_pattern: base.match_pattern.clone(),
+        module_item_kind: base.module_item_kind.clone(),
         expr_data: base.expr_data.clone(),
         ident: None,
     })

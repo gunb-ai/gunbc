@@ -4,10 +4,11 @@ import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
   make_error_node, ModuleFilenameCollision,
-  Connective, NoConnective
+  Connective, NoConnective,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
 }
 
-import v1.compiler.parse { parsed_item_carries_resource_entries }
 import v1.compiler.artifact { RenderTarget }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
@@ -306,7 +307,7 @@ fn has_mock_prefix(name: String) -> Bool {
 fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
   typed.modules |> flat_map(tm =>
     tm.items
-      |> filter(item => is_service_item(item: item))
+      |> filter(item => item.module_item_kind == ModuleItemService)
       |> flat_map(item =>
         item.children
           |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
@@ -328,65 +329,70 @@ fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>)
   authored_name_at(source_indices: source_indices, node: n) != "Unit"
 }
 
-fn is_service_item(item: Node) -> Bool {
-  item.transport != none && item.children |> count > 0
-}
-
+// THE ITEM-KIND PREDICATES THAT STOOD HERE ARE GONE, NOT REWRITTEN. Five of them --
+// is_service_item, is_service_def_item (byte-identical to it, a section 3 nickname with two
+// exports and two consumer sets), is_function_item, is_data_def_item and is_resource_def_item --
+// decided WHICH KIND OF ITEM a node was by which of its optional fields happened to be absent.
+// That question now has a single authority: v1.std.core Node carries module_item_kind, stamped by
+// the parse constructor that already knew the answer, so a consumer asking the question compares
+// against the coproduct and no longer re-derives it. is_resource_def_item's second disjunct --
+// children == 0 && properties > 0 && body == none -- was the resource-exclusion validator family
+// that made this a section 5 finding: exclusion by name repairs each KNOWN collision and can never
+// become a positive authority. Its live defect is the evidence for the climb and stays enrolled:
+// `resource Network` and `resource AuthContext` in std.resources declare no capabilities and no
+// properties, satisfied NEITHER disjunct, and reached is_type_alias_item first in every emitter's
+// if-chain -- so all three targets emitted them AS TYPES.
+//
+// WHAT SURVIVES IS THE TYPE-STRUCTURE AXIS, WHICH IS NOT THE KIND AXIS. The four predicates below
+// all range over ONE kind -- ModuleItemTypeDeclaration -- and split it by the type's own structure:
+// Conj/Disj children versus a leaf, then a leaf by whether its resolved right-hand side is Unit.
+// Folding that into the kind coproduct would put two orthogonal axes in one enum. What the kind
+// removes from them is their FALSE POSITIVES ON NON-TYPE ITEMS, not their content, so each gains a
+// kind conjunct and loses the `transport == none` conjunct the kind now makes dead.
+//
+// is_bare_leaf_item was RENAMED to is_leaf_type_item in the same motion, because "bare leaf item"
+// is precisely the shape-not-kind name that let two capability-less resources through it.
 fn is_type_def_item(item: Node) -> Bool {
-  item.connective != NoConnective && item.transport == none
+  item.module_item_kind == ModuleItemTypeDeclaration && item.connective != NoConnective
 }
 
-fn is_bare_leaf_item(item: Node) -> Bool {
-  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+fn is_leaf_type_item(item: Node) -> Bool {
+  item.module_item_kind == ModuleItemTypeDeclaration
+    && item.connective == NoConnective && item.body == none
+    && item.params |> count == 0 && item.children |> count == 0
 }
 
-// A RESOURCE ITEM IS NOT A TYPE ITEM, AND THIS SIDE IS THE HALF THAT WAS LEFT UNREPAIRED.
-// v1.compiler.parse parsed_module_item_kind gained a resource arm and dropped the corpus-wide
-// divergence from 202 items across 100 modules to two; its note ends by saying the emit-side shape
-// predicates are a different authority and deliberately not repaired there. This is that repair.
-// Until it landed, `resource Network` and `resource AuthContext` -- the two resources declaring no
-// capabilities, so no children, no body, no params and no connective -- satisfied is_bare_leaf_item
-// and were read here as TYPE DECLARATIONS while the parser correctly read them as resources. The
-// disagreement is what made gunbc.type_reference_decl_file_occurrence_census refuse with
-// CensusUnavailable { cause: DeclarationDomainDisagrees }, and the two readers previously AGREED
-// they were types, which is why the population looked clean before the parse arm existed.
+// THE EXCLUSION THAT STOOD BETWEEN THESE TWO PREDICATES IS GONE, AND THIS NOTE RECORDS WHY IT WAS
+// RIGHT AND STILL NOT THE FIX. gunbc#10350 repaired the same defect the other way: it derived a
+// resource exclusion here from v1.compiler.parse parsed_item_carries_resource_entries, so that
+// "what a resource item is" had ONE definition and these predicates were two consumers of it
+// rather than a second place to keep in sync. That was the correct move available at the time, and
+// codex review 60254 named its limit in the same breath: an exclusion is a VALIDATOR, it grows one
+// conjunct per collision discovered, and it can never become a positive authority -- DESIGN
+// section 5, validation standing where construction was available. The row it filed
+// (gunbc.recurring_failure_mode dispatch_correctness_resting_on_arm_order) named the trigger as a
+// positive item kind carried on the emit side. That is what module_item_kind is, so both the
+// exclusion and the authority it derived from are deleted rather than kept beside it.
 //
-// THE EXCLUSION DERIVES RATHER THAN RE-SPELLING. It asks the same single authority the parser asks
-// -- parsed_item_carries_resource_entries -- so "what a resource item is" has ONE definition and
-// these predicates are two consumers of it, not a second place to keep in sync. Spelling the shape
-// again here (properties present, children absent) is what produced the divergence being repaired.
+// WHAT THE EXCLUSION WAS COMPENSATING FOR, kept because it is the specimen: `resource Network` and
+// `resource AuthContext` in std.resources declare no capabilities, so they carry no children, no
+// body, no params and no connective, and the SHAPE test claimed them while the parser correctly
+// read them as resources. That disagreement is what made
+// gunbc.type_reference_decl_file_occurrence_census refuse with
+// CensusUnavailable { cause: DeclarationDomainDisagrees }. Both readers previously AGREED they were
+// types, which is why the population looked clean before the parse arm existed.
 //
-// IT IS NOT PLACED IN is_bare_leaf_item, WHICH WOULD HAVE BEEN THE SHORTER EDIT. That predicate is
-// a statement about SHAPE and a capability-less resource genuinely is a bare leaf; it also has a
-// consumer outside these two arms (v1.compiler.emit_rust, and trait_derive_emit's alias-hop
-// reasoning depends on its params-count meaning), so narrowing it would have silently changed
-// alias hopping rather than resource classification.
+// The 2026-09-04 note above also explains why the exclusion was NOT placed inside the leaf-shape
+// predicate: that predicate is a statement about SHAPE, a capability-less resource genuinely IS a
+// bare leaf, and it has consumers outside these two arms whose meaning depends on its params-count
+// reading. The kind conjunct is not subject to that objection, because it does not narrow the
+// shape question -- it asks a different one.
 fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item)
-  && !parsed_item_carries_resource_entries(node: item)
-  && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+  is_leaf_type_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
 }
 
 fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (is_bare_leaf_item(item: item)
-    && !parsed_item_carries_resource_entries(node: item)
-    && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
-  || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
-}
-
-fn is_function_item(item: Node) -> Bool {
-  item.body != none && item.type_annotation == none
-}
-
-fn is_data_def_item(item: Node) -> Bool {
-  item.body != none && item.type_annotation != none
-}
-
-fn is_service_def_item(item: Node) -> Bool {
-  item.transport != none && item.children |> count > 0
-}
-
-fn is_resource_def_item(item: Node) -> Bool {
-  (item.transport == none && item.children |> count > 0)
-  || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none)
+  (is_leaf_type_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  || (item.module_item_kind == ModuleItemTypeDeclaration
+      && item.params |> count > 0 && item.body == none && item.children |> count == 0)
 }
