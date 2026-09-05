@@ -35,25 +35,69 @@ data first_pair_observation_provenance: PairServingObservationProvenance = PairS
   ],
 }
 
-// THE RUNTIME IS A LOCALLY BUILT CONTAINER IMAGE, NOT A HOST INSTALL. `which vllm` finds nothing on
-// the host; the engine is /opt/env/bin/vllm inside container dsv4 from image dsv4-ray:local. A
-// local tag is not a reproducible artifact identity: the image digest must be read back on the host
-// before the render slice can carry a runtime identity, which is why this row holds the tag and the
-// self-reported version and NOT a closure digest.
+// THE RUNTIME IS A CONTAINER, NOT A HOST INSTALL, AND ITS CLOSURE IS REPRODUCIBLE. `which vllm`
+// finds nothing on the host; the engine is /opt/env/bin/vllm inside container dsv4. The local tag
+// dsv4-ray:local is a docker commit on top of a PUBLIC base image,
+// aidendle94/sparkrun-vllm-ds4-gb10:production-ready (image id b2eb4e6ee5cc, 2026-05-31), whose
+// history carries the whole build (overlay/vllm into site-packages, b12x pip install, CUDA env);
+// the local layer is only `CMD sleep infinity` plus the JIT caches (207M under /cache) and the
+// launch script, and it differs per host (377dd4d0b0f9 on srv6, 0256d9df625d on srv5, both
+// committed 2026-09-03T04:53Z). So the runtime identity convergence should carry is the base
+// image's registry digest plus a rendered container spec; the local commits are drift, not a
+// build. The JIT caches live in the container's writable layer, so a recreated container rebuilds
+// them on first start.
 type ContainerRuntimeObserved {
   container_name: NonEmptyStr
   image_tag: NonEmptyStr
+  base_image: NonEmptyStr
+  base_image_id: NonEmptyStr
+  local_image_id_srv6: NonEmptyStr
+  local_image_id_srv5: NonEmptyStr
   vllm_self_reported_version: NonEmptyStr
   python_executable: NonEmptyStr
   weights_mount: NonEmptyStr
+  jit_cache_root_in_container: NonEmptyStr
 }
 
 data first_pair_container_runtime: ContainerRuntimeObserved = ContainerRuntimeObserved {
   container_name: "dsv4" as NonEmptyStr,
   image_tag: "dsv4-ray:local" as NonEmptyStr,
+  base_image: "aidendle94/sparkrun-vllm-ds4-gb10:production-ready" as NonEmptyStr,
+  base_image_id: "b2eb4e6ee5cc" as NonEmptyStr,
+  local_image_id_srv6: "sha256:377dd4d0b0f91c2436292d4c2d254358e4aebab28b282e1de6d34774a056b496" as NonEmptyStr,
+  local_image_id_srv5: "sha256:0256d9df625d0ca3f1b6804a83adcc77be9aace35e66957a40973b5cf64a8b89" as NonEmptyStr,
   vllm_self_reported_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
   python_executable: "/opt/env/bin/python3" as NonEmptyStr,
   weights_mount: "/weights" as NonEmptyStr,
+  jit_cache_root_in_container: "/cache/huggingface" as NonEmptyStr,
+}
+
+// The container's docker run configuration, read from docker inspect on both hosts (identical).
+// This is what the container bring-up in convergence must reproduce.
+type ContainerRunConfigObserved {
+  network_mode: NonEmptyStr
+  ipc_mode: NonEmptyStr
+  shm_size_bytes: Nat
+  memlock_unlimited: Bool
+  gpu_device_request_all: Bool
+  devices: List<NonEmptyStr>
+  cap_add: List<NonEmptyStr>
+  restart_policy: NonEmptyStr
+  bind_mounts: List<NonEmptyStr>
+  command: NonEmptyStr
+}
+
+data first_pair_container_run_config: ContainerRunConfigObserved = ContainerRunConfigObserved {
+  network_mode: "host" as NonEmptyStr,
+  ipc_mode: "host" as NonEmptyStr,
+  shm_size_bytes: 10737418240,
+  memlock_unlimited: true,
+  gpu_device_request_all: true,
+  devices: ["/dev/infiniband:/dev/infiniband:rwm" as NonEmptyStr],
+  cap_add: ["CAP_IPC_LOCK" as NonEmptyStr],
+  restart_policy: "unless-stopped" as NonEmptyStr,
+  bind_mounts: ["/home/briansrls/.cache/huggingface/hub -> /weights (read-only)" as NonEmptyStr],
+  command: "sleep infinity" as NonEmptyStr,
 }
 
 // The model on disk, mounted into the container at the weights mount.
@@ -125,7 +169,12 @@ data first_pair_ray_head: RayHeadObserved = RayHeadObserved {
   memory_monitor_refresh: millisecond(count: 0),
 }
 
-// The engine's live environment, from /proc/<pid>/environ: which interfaces each collective uses.
+// The engine's live environment, from /proc/<pid>/environ, which is the CONTAINER'S baked
+// environment (docker inspect .Config.Env): the launch script's exports reach only the shell that
+// starts Ray, and the ranks inherit those through the raylet, while the API server is started by a
+// second docker exec that inherits the container env. That env carries three values foreign to
+// these hosts, baked at docker run on whatever machine first ran the image: NODE_IP=192.168.50.58,
+// MN_IF_NAME=enP7s7 and TP_SOCKET_IFNAME=enP7s7 (enP7s7 is the no-carrier RJ45 port on both units).
 type CollectiveTransportEnvObserved {
   vllm_host_ip: Ipv4Address
   nccl_net: NonEmptyStr
@@ -150,8 +199,9 @@ data first_pair_collective_env_live: CollectiveTransportEnvObserved = Collective
   vllm_cache_root: "/cache/huggingface/vllm-cache" as NonEmptyStr,
 }
 
-// What the launch script exports for the same variable. The live engine disagrees (see drift).
+// What the launch script exports for the same variable. The live engine disagreed (see drift).
 data first_pair_script_tp_socket_ifname: NonEmptyStr = "enp1s0f0np0" as NonEmptyStr
+data first_pair_container_baked_node_ip: NonEmptyStr = "192.168.50.58 (foreign to every fleet segment)" as NonEmptyStr
 
 // Units on each host and their observed activity. The head's unit is a boot-time bring-up that is
 // inactive while the container it started 36 hours earlier keeps running; the engine itself was
@@ -167,8 +217,8 @@ type UnitObserved {
 data first_pair_units: List<UnitObserved> = [
   UnitObserved { host: operator_host_srv6, unit: "spark-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "boot-time bring-up of the head container; the container outlived it" as NonEmptyStr },
   UnitObserved { host: operator_host_srv5, unit: "spark-ray-worker.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "active (running)" as NonEmptyStr, role: "runs /usr/local/bin/spark-ray-worker.sh: ray worker only, no vllm serve" as NonEmptyStr },
-  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment, still in default.target.wants" as NonEmptyStr },
-  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm-verify.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "failed" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment, still in default.target.wants" as NonEmptyStr },
+  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
+  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm-verify.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "failed" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
 ]
 
 data first_pair_stdout_capture: NonEmptyStr = "/root/prod_a.log inside container dsv4 on 192.168.1.225 (nohup $LAUNCH > $LOG 2>&1)" as NonEmptyStr
@@ -212,7 +262,13 @@ data first_pair_observed_drift: List<PairServingObservedDrift> = [
     subject: "TP_SOCKET_IFNAME" as NonEmptyStr,
     first_source: "spark-vllm-head.sh exports enp1s0f0np0" as NonEmptyStr,
     second_source: "the live engine environ carries enP7s7" as NonEmptyStr,
-    consequence: "the script's own comment says a wrong interface name kills Gloo at init_device; the next restart from the script may not come up" as NonEmptyStr,
+    consequence: "the API server ran with the container's baked value while the ranks ran with the script's; the head script was patched on 2026-09-05 (backup spark-vllm-head.sh.bak-20260905) so the engine launch carries the same exports as the Ray start, and the running engine keeps the old value until its next restart" as NonEmptyStr,
+  },
+  PairServingObservedDrift {
+    subject: "runtime image identity" as NonEmptyStr,
+    first_source: "srv6 dsv4-ray:local is 377dd4d0b0f9" as NonEmptyStr,
+    second_source: "srv5 dsv4-ray:local is 0256d9df625d" as NonEmptyStr,
+    consequence: "one tag names two images; both are commits of the same public base b2eb4e6ee5cc, so convergence carries the base image and a rendered container spec, never the local tag" as NonEmptyStr,
   },
   PairServingObservedDrift {
     subject: "who owns the head engine" as NonEmptyStr,
