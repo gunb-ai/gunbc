@@ -17,7 +17,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::{ExprCall, ExprMethodCall, ExprVar};
 pub use crate::v1_std_core::{
-    authored_name_at, expr_call_func_at, make_error_node, no_span, qualified_last_segment,
+    authored_name_at, expr_call_func_at, make_error_node, module_path_segments, no_span,
+    qualified_last_segment,
 };
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
@@ -250,6 +251,109 @@ pub fn lookup_resolved_sig_unique_across_parents(
     ))
 }
 
+pub fn containment_ancestor_paths(module_path: String) -> Rc<Vec<String>> {
+    {
+        let segments = crate::v1_std_core::module_path_segments(module_path.clone());
+        segments
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(PathPrefixAccum {
+                    current: "".to_string(),
+                    out: Rc::new(vec![]),
+                }),
+                |acc: Rc<PathPrefixAccum>, segment: String| {
+                    let next = if (acc.current.clone() == "".to_string()) {
+                        segment.clone()
+                    } else {
+                        v1_rt::concat(
+                            v1_rt::concat(acc.current.clone(), ".".to_string()),
+                            segment.clone(),
+                        )
+                    };
+                    Rc::new(PathPrefixAccum {
+                        current: next.clone(),
+                        out: v1_rt::rc_list_push(acc.out.clone(), next.clone()),
+                    })
+                },
+            )
+            .out
+            .clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathPrefixAccum {
+    pub current: String,
+    pub out: Rc<Vec<String>>,
+}
+
+pub fn reference_provider_module_paths(
+    items: Rc<Vec<Rc<Node>>>,
+    module_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let prefixes = containment_ancestor_paths(module_path.clone());
+        let qualified = Rc::new({
+            let mut __result = Vec::new();
+            for qualifier in Rc::new({
+                let mut __result = Vec::new();
+                for name in callable_reference_names(items.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                {
+                    __result.push(reference_containment_qualifier(name.clone()));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (v1_rt::string_length(&qualifier) > 0) {
+                    __result.push(qualifier);
+                }
+            }
+            __result
+        });
+        let relative = Rc::new({
+            let mut __result = Vec::new();
+            for qualifier in qualified.iter().cloned() {
+                __result.extend(
+                    (*v1_rt::concat(
+                        Rc::new(vec![qualifier.clone()]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for prefix in prefixes.iter().cloned() {
+                                __result.push(v1_rt::concat(
+                                    v1_rt::concat(prefix.clone(), ".".to_string()),
+                                    qualifier.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        Rc::new({
+            let mut __result = Vec::new();
+            for path in v1_rt::concat(prefixes.clone(), relative.clone())
+                .iter()
+                .cloned()
+            {
+                if (path.clone() != module_path.clone()) {
+                    __result.push(path);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn parent_closure_callable_candidates(
     env: Rc<ResolvedFuncEnv>,
     name: String,
@@ -267,7 +371,7 @@ pub fn parent_closure_callable_candidates(
                         identity: Rc::new(CallableIdentity::DeclaredCallable {
                             identity: Rc::new(DeclaredCallableIdentity {
                                 owner_module_path: p.name.clone(),
-                                decl_name: name.clone(),
+                                decl_name: sig.name.clone(),
                             }),
                         }),
                         sig: sig.clone(),
@@ -608,7 +712,11 @@ pub fn containment_chain_admits_owner(
     }
 }
 
-pub fn containment_admits_owner(owner_module_path: String, qualifier: String) -> bool {
+pub fn containment_admits_owner(
+    owner_module_path: String,
+    qualifier: String,
+    referencing_module_path: String,
+) -> bool {
     {
         let owner_len = v1_rt::string_length(&owner_module_path);
         let qualifier_len = v1_rt::string_length(&qualifier);
@@ -619,11 +727,23 @@ pub fn containment_admits_owner(owner_module_path: String, qualifier: String) ->
                 (owner_module_path.clone() == qualifier.clone())
             } else {
                 if (owner_len.clone() > qualifier_len.clone()) {
-                    (v1_rt::substring(
+                    if (v1_rt::substring(
                         &owner_module_path,
                         ((owner_len.clone() - qualifier_len.clone()) - 1),
                         owner_len.clone(),
                     ) == v1_rt::concat(".".to_string(), qualifier.clone()))
+                    {
+                        containment_chain_admits_owner(
+                            v1_rt::substring(
+                                &owner_module_path,
+                                0,
+                                ((owner_len.clone() - qualifier_len.clone()) - 1),
+                            ),
+                            referencing_module_path.clone(),
+                        )
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -784,6 +904,7 @@ pub fn reference_derived_parent_envs(
                             containment_admits_owner(
                                 row.owner_module_path.clone(),
                                 qualifier.clone(),
+                                module_name.clone(),
                             )
                         } {
                             supply_admit_row(

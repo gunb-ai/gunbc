@@ -170,6 +170,7 @@ import v1.compiler.infer_sigs {
   resolve_func_sigs, flatten_parent_envs,
   CallableOwnerIndex, empty_callable_owner_index, callable_owner_index_from_envs,
   callable_owner_index_from_own_env, reference_derived_parent_envs,
+  reference_provider_module_paths,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   callable_identity_label, callable_candidate_labels,
@@ -13462,7 +13463,8 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       source_indices: source_indices,
       intern_table: intern_table,
       symbol_index: symbol_index,
-      global_variant_base: global_variant_base
+      global_variant_base: global_variant_base,
+      visiting: empty_map()
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -13481,6 +13483,14 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
 }
 
+// `visiting` IS A CYCLE GUARD AND IT IS NOT AN ABSORBING ARM.
+//
+// Realization used to recurse over `resolved_imports`, whose graph DESIGN section 3 declares
+// acyclic. Reference-derived providers carry no such law -- two modules may legitimately call each
+// other -- so the recursion needs its own bound. Re-entering a module already on the current
+// realization path returns the state unchanged: the module is not skipped, it is realized by the
+// top-level fold that owns it, and its env reaches the index there. That is a BOUND on one
+// traversal, not a widened answer to a question this function could not decide.
 fn realize_module(
   name: String,
   resolved_by_name: Map<String, ResolvedModule>,
@@ -13488,23 +13498,31 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   symbol_index: SymbolIndex,
-  global_variant_base: Map<String, TypeBinding>
+  global_variant_base: Map<String, TypeBinding>,
+  visiting: Map<String, Bool>
 ) -> RealizeState {
+  if map_has(visiting, name) { state }
+  else {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
     Absent =>
       match map_get(resolved_by_name, name) {
         Absent => state
         Present { value: resolved } =>
-          let dep_state = resolved.resolved_imports |> fold(init: state, f: (st, imp) =>
+          let dep_state = reference_provider_module_paths(
+              items: module_items(n: resolved.module),
+              module_path: name,
+              source_indices: source_indices
+            ) |> fold(init: state, f: (st, provider_path) =>
             realize_module(
-              name: imp.module_path,
+              name: provider_path,
               resolved_by_name: resolved_by_name,
               state: st,
               source_indices: source_indices,
               intern_table: intern_table,
               symbol_index: symbol_index,
-              global_variant_base: global_variant_base
+              global_variant_base: global_variant_base,
+              visiting: map_insert(visiting, name, true)
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
@@ -13524,6 +13542,7 @@ fn realize_module(
           }
       }
   }
+}
 }
 
 type StrBindingsRewireAccum {

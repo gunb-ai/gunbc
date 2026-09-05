@@ -178,7 +178,8 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
 pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, callable_owner_index_from_envs,
     callable_owner_index_from_own_env, empty_callable_owner_index, flatten_parent_envs,
-    func_sig_for_derivation, reference_derived_parent_envs, resolve_func_sigs,
+    func_sig_for_derivation, reference_derived_parent_envs, reference_provider_module_paths,
+    resolve_func_sigs,
 };
 pub use crate::v1_compiler_infer_sigs::{
     CallableCandidate, CallableIdentity, CallableOwnerIndex, DerivedCalleeSig, FuncSigLookup,
@@ -25242,6 +25243,7 @@ pub fn typecheck_with_census_extra(
                     intern_table.clone(),
                     symbol_index.clone(),
                     global_variant_base.clone(),
+                    v1_rt::rc_empty_map::<String, bool>(),
                 )
             },
         );
@@ -25310,82 +25312,102 @@ pub fn realize_module(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    visiting: Rc<HashMap<String, bool>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
-            Some(_) => state,
-            std::option::Option::None => match v1_rt::map_get(&resolved_by_name, name.clone()) {
-                std::option::Option::None => state,
-                Some(resolved) => {
-                    let dep_state = resolved.resolved_imports.clone().iter().cloned().fold(
-                        state,
-                        |st: _, imp: _| {
-                            realize_module(
-                                imp.module_path.clone(),
-                                resolved_by_name.clone(),
-                                st,
+        if v1_rt::map_has(&visiting, name.clone()) {
+            state
+        } else {
+            match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
+                Some(_) => state,
+                std::option::Option::None => {
+                    match v1_rt::map_get(&resolved_by_name, name.clone()) {
+                        std::option::Option::None => state,
+                        Some(resolved) => {
+                            let dep_state =
+                                crate::v1_compiler_infer_sigs::reference_provider_module_paths(
+                                    crate::v1_std_core::module_items(resolved.module.clone()),
+                                    name.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                .fold(
+                                    state,
+                                    |st: _, provider_path: String| {
+                                        realize_module(
+                                            provider_path.clone(),
+                                            resolved_by_name.clone(),
+                                            st,
+                                            source_indices.clone(),
+                                            intern_table.clone(),
+                                            symbol_index.clone(),
+                                            global_variant_base.clone(),
+                                            v1_rt::rc_map_insert(
+                                                visiting.clone(),
+                                                name.clone(),
+                                                true,
+                                            ),
+                                        )
+                                    },
+                                );
+                            let parent_result = collect_parent_envs(
+                                resolved.clone(),
+                                dep_state.module_index.clone(),
+                                source_indices.clone(),
+                            );
+                            let tc_result = typecheck_module(
+                                resolved.clone(),
+                                dep_state.module_index.clone(),
+                                dep_state.callable_owner_index.clone(),
+                                dep_state.variant_surfaces.clone(),
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 symbol_index.clone(),
                                 global_variant_base.clone(),
-                            )
-                        },
-                    );
-                    let parent_result = collect_parent_envs(
-                        resolved.clone(),
-                        dep_state.module_index.clone(),
-                        source_indices.clone(),
-                    );
-                    let tc_result = typecheck_module(
-                        resolved.clone(),
-                        dep_state.module_index.clone(),
-                        dep_state.callable_owner_index.clone(),
-                        dep_state.variant_surfaces.clone(),
-                        source_indices.clone(),
-                        intern_table.clone(),
-                        symbol_index.clone(),
-                        global_variant_base.clone(),
-                    );
-                    let typed = tc_result.typed.clone();
-                    let typed_path = crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        typed.module.clone(),
-                    );
-                    Rc::new(RealizeState {
-                        module_index: v1_rt::rc_map_insert(
-                            dep_state.module_index.clone(),
-                            typed_path.clone(),
-                            typed.clone(),
-                        ),
-                        variant_surfaces: v1_rt::rc_map_insert(
-                            dep_state.variant_surfaces.clone(),
-                            typed_path.clone(),
-                            build_variant_export_surface(
-                                typed.clone(),
-                                dep_state.variant_surfaces.clone(),
+                            );
+                            let typed = tc_result.typed.clone();
+                            let typed_path = crate::v1_std_core::authored_name_at(
                                 source_indices.clone(),
-                            ),
-                        ),
-                        item_registry: v1_rt::rc_map_merge(
-                            dep_state.item_registry.clone(),
-                            typed.item_registry.clone(),
-                        ),
-                        diags_by_name: v1_rt::rc_map_insert(
-                            dep_state.diags_by_name.clone(),
-                            typed_path.clone(),
-                            v1_rt::concat(
-                                parent_result.diagnostics.clone(),
-                                tc_result.diagnostics.clone(),
-                            ),
-                        ),
-                        callable_owner_index:
-                            crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
-                                dep_state.callable_owner_index.clone(),
-                                typed.func_env.clone(),
-                            ),
-                    })
+                                typed.module.clone(),
+                            );
+                            Rc::new(RealizeState {
+                                module_index: v1_rt::rc_map_insert(
+                                    dep_state.module_index.clone(),
+                                    typed_path.clone(),
+                                    typed.clone(),
+                                ),
+                                variant_surfaces: v1_rt::rc_map_insert(
+                                    dep_state.variant_surfaces.clone(),
+                                    typed_path.clone(),
+                                    build_variant_export_surface(
+                                        typed.clone(),
+                                        dep_state.variant_surfaces.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                item_registry: v1_rt::rc_map_merge(
+                                    dep_state.item_registry.clone(),
+                                    typed.item_registry.clone(),
+                                ),
+                                diags_by_name: v1_rt::rc_map_insert(
+                                    dep_state.diags_by_name.clone(),
+                                    typed_path.clone(),
+                                    v1_rt::concat(
+                                        parent_result.diagnostics.clone(),
+                                        tc_result.diagnostics.clone(),
+                                    ),
+                                ),
+                                callable_owner_index:
+                                    crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
+                                        dep_state.callable_owner_index.clone(),
+                                        typed.func_env.clone(),
+                                    ),
+                            })
+                        }
+                    }
                 }
-            },
+            }
         }
     })
 }

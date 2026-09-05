@@ -3,7 +3,7 @@ module v1.compiler.infer_sigs
 import v1.std.core {
   Node,
   ExprData, ExprCall, ExprVar, ExprMethodCall, expr_call_func_at,
-  qualified_last_segment,
+  qualified_last_segment, module_path_segments,
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
   DeclaredFuncSig,
@@ -223,12 +223,61 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
 // shape stopped at the FIRST hit and kept a separate owner list only to count with; the sig it
 // answered with therefore came from a position in a list rather than from a decision, and a
 // second authority that was not a `fn` at all could never appear beside it.
+// THE REALIZATION ORDER MUST RANGE OVER THE SAME UNIVERSE THE SUPPLY DOES.
+//
+// The primary path fills its containment index as modules are realized, and realization used to
+// recurse over `resolved_imports`. So a provider that is REFERENCED but not imported, and not yet
+// realized, was absent from the primary path's candidate universe while the post-fold
+// reconstruction -- which indexes every module -- could see it. Same supply function, two
+// different universes, and the whole-pool census sits underneath ready to conceal the difference
+// by answering anyway. The two paths agreeing about anything proves nothing while that holds.
+//
+// The dependencies are derived from the SAME rule the supply uses, so there is one authority and
+// not two: a bare reference can only be served by a containment ANCESTOR of the referencing
+// module, and those are computable from the module's own path without consulting any index; a
+// qualified reference names its provider directly, either corpus-root absolute or relative to one
+// of those same ancestors. Nothing here scans the module population per reference.
+fn containment_ancestor_paths(module_path: String) -> List<String> {
+  let segments = module_path_segments(path: module_path)
+  fold(segments, init: PathPrefixAccum { current: "", out: [] }, f: (acc, segment) =>
+    let next = if acc.current == "" { segment } else { concat(acc.current, ".", segment) }
+    PathPrefixAccum { current: next, out: list_push(acc.out, next) }
+  ).out
+}
+
+type PathPrefixAccum {
+  current: String
+  out: List<String>
+}
+
+fn reference_provider_module_paths(items: List<Node>, module_path: String, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let prefixes = containment_ancestor_paths(module_path: module_path)
+  let qualified = callable_reference_names(items: items, source_indices: source_indices)
+    |> map(name => reference_containment_qualifier(name: name))
+    |> filter(qualifier => string_length(s: qualifier) > 0)
+  let relative = flat_map(qualified, qualifier =>
+    concat([qualifier], prefixes |> map(prefix => concat(prefix, ".", qualifier)))
+  )
+  concat(prefixes, relative) |> filter(path => path != module_path)
+}
+
+// THE DECLARATION NAME COMES FROM THE DECLARATION, NEVER FROM THE SPELLING THAT FOUND IT.
+//
+// `decl_name` was built from `name` -- the authored LOOKUP KEY. That was indistinguishable from
+// the declaration's own name only for as long as every key was a bare leaf, which the import-derived
+// selective view guaranteed. Under the reference supply a parent view for owner `pkg.api` is keyed
+// by the full authored reference `pkg.api.f`, so the identity returned was
+// (pkg.api, "pkg.api.f") rather than (pkg.api, "f") -- and that identity is handed to
+// `resolved_plain_call_target` / `resolved_declaration_call_target`, i.e. it reaches emission's
+// target selection. `ResolvedFuncSig` already carries the declaration's own `name`, so the fix is to
+// read the fact from its authority rather than reconstruct it from a spelling; re-deriving it in the
+// emitter would be the authority-substitution class this file's own header warns about.
 fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> List<CallableCandidate> {
   fold(env.parents, init: [], f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
         concat(acc, [CallableCandidate {
-          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: name } },
+          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: sig.name } },
           sig: sig
         }])
       Absent => acc
@@ -470,13 +519,33 @@ fn containment_chain_admits_owner(owner_module_path: String, referencing_module_
   else { false }
 }
 
-fn containment_admits_owner(owner_module_path: String, qualifier: String) -> Bool {
+// THE QUALIFIED ARM IS FIRST-SEGMENT BINDING FOLLOWED BY DOWNWARD PROJECTION, AND A WHOLE-PATH
+// SUFFIX SEARCH IS A DIFFERENT OPERATION WEARING THE SAME NAME.
+//
+// This predicate was a bare suffix test that never received the referencing position, so for
+// `app.api.f` referenced from `app.client` it admitted BOTH `app.api` and `unrelated.app.api` --
+// the second matches as a suffix and was never reached by binding `app` at the occurrence's
+// containment position and descending through `api.f`. Fully qualifying the entire corpus cannot
+// repair a resolver that treats a full declaring path as a suffix of an unrelated one, which is
+// why this is a defect in the arm rather than a strictness preference.
+//
+// The canonical rule, stated as the two halves it actually has: strip the qualifier from the end
+// of the owner's path -- that is the downward projection, and it must match exactly at a segment
+// boundary -- and then require the REMAINING PREFIX to be the referencing module or one of its
+// containment ancestors, which is the first-segment binding. An empty prefix is the corpus-root
+// absolute spelling and is admitted on its own terms; every other prefix must be on the chain.
+fn containment_admits_owner(owner_module_path: String, qualifier: String, referencing_module_path: String) -> Bool {
   let owner_len = string_length(s: owner_module_path)
   let qualifier_len = string_length(s: qualifier)
   if qualifier_len == 0 { true }
   else if owner_len == qualifier_len { owner_module_path == qualifier }
   else if owner_len > qualifier_len {
-    substring(s: owner_module_path, start: owner_len - qualifier_len - 1, end: owner_len) == concat(".", qualifier)
+    if substring(s: owner_module_path, start: owner_len - qualifier_len - 1, end: owner_len) == concat(".", qualifier) {
+      containment_chain_admits_owner(
+        owner_module_path: substring(s: owner_module_path, start: 0, end: owner_len - qualifier_len - 1),
+        referencing_module_path: referencing_module_path
+      )
+    } else { false }
   }
   else { false }
 }
@@ -547,7 +616,7 @@ fn reference_derived_parent_envs(
           if (if string_length(s: qualifier) == 0 {
                 containment_chain_admits_owner(owner_module_path: row.owner_module_path, referencing_module_path: module_name)
               } else {
-                containment_admits_owner(owner_module_path: row.owner_module_path, qualifier: qualifier)
+                containment_admits_owner(owner_module_path: row.owner_module_path, qualifier: qualifier, referencing_module_path: module_name)
               }) {
             supply_admit_row(acc: inner, owner: row.owner_module_path, key: name, sig: row.sig)
           } else { inner }
