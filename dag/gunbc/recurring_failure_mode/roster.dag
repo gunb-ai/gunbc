@@ -155,6 +155,7 @@ import gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional { 
 import gunbc.recurring_failure_mode.population_selector_that_cannot_admit_a_counterexample { population_selector_that_cannot_admit_a_counterexample }
 import gunbc.recurring_failure_mode.dissolution_trigger_cites_a_mechanism_that_is_later_deleted { dissolution_trigger_cites_a_mechanism_that_is_later_deleted }
 import gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit { stale_claim_survives_its_own_correct_edit }
+import gunbc.recurring_failure_mode.claim_edit_changes_execution_policy_outside_reported_cost_delta { claim_edit_changes_execution_policy_outside_reported_cost_delta }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -301,4 +302,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   population_selector_that_cannot_admit_a_counterexample,
   dissolution_trigger_cites_a_mechanism_that_is_later_deleted,
   stale_claim_survives_its_own_correct_edit,
+  claim_edit_changes_execution_policy_outside_reported_cost_delta,
 ]
