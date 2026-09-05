@@ -65,6 +65,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_serving_reboot_invoke,
   gunbc_ci_spark_serving_durability_invoke,
   gunbc_ci_spark_grant_install_invoke,
+  gunbc_ci_spark_bootstrap_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
   gunbc_ci_live_deploy_transaction_invoke,
@@ -98,7 +99,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
+data fleet_converge_mode_options: List<String> = ["plan", "launch_environment_plan", "spark_serving_plan", "allocation_store_plan", "apply", "org_actions_observe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_bootstrap", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -169,6 +170,8 @@ data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 
 data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode == 'spark_durability'"
 
 data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
+
+data fleet_converge_spark_bootstrap_step_if: String = "github.event.inputs.mode == 'spark_bootstrap'"
 
 data fleet_converge_dashboard_deploy_step_if: String = "github.event.inputs.mode == 'dashboard_deploy'"
 
@@ -597,6 +600,25 @@ fn fleet_converge_spark_grants_step() -> Step {
   }
 }
 
+fn fleet_converge_spark_bootstrap_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark managed-access bootstrap (creates gunbc-automation, installs the fleet key, proves key-only auth, lays the narrow grants; one target per run)" },
+    id: Present { value: "spark_bootstrap" },
+    run: gunbc_ci_spark_bootstrap_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_bootstrap_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_spark_observe_step() -> Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
@@ -673,6 +695,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_org_actions_receipt_upload_step(),
         fleet_converge_spark_linger_step(),
         fleet_converge_spark_grants_step(),
+        fleet_converge_spark_bootstrap_step(),
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
