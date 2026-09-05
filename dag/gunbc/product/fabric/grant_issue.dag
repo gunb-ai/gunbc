@@ -302,9 +302,15 @@ type GrantIssue<P, Q, S>
 // Fungibility is selection's FIRST screen, not its result: product.fabric.selection folds
 // affordability, commitment, availability, operating, opportunity and delay cost into a ranked
 // decision, and a raw fungible offer is not that decision. So the caller still picks which
-// fungible offer becomes the grant. TRIGGER: a selection result whose constructor is the fold
-// itself -- CandidateOffer is already sole_constructor and is the shape this should consume --
-// SUFFICIENT FOR issuance to have no parameter by which a caller can name a different offer.
+// fungible offer becomes the grant. CandidateOffer IS NOT THAT CAPABILITY, and naming it here would
+// be a trigger satisfied while the defect stood: bind_candidate seals only that an offer and its
+// dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
+// identity-consistent candidate. It is the PRE-SELECTION BOUND INPUT to the fold, not its winner.
+// Pricing alone is insufficient for the same reason -- a PricedCandidate proves one candidate was
+// costed, never that it won comparison against the population. TRIGGER: a sealed selected-offer
+// capability constructible ONLY from the successful winner arm of the completed select_supply
+// population fold, SUFFICIENT FOR issuance to have no parameter by which a caller can name an offer
+// the ranking did not choose.
 //
 // TWO -- A LIFETIME-HELD RESERVATION. The lease and the resource reference are parameters, and
 // GrantIssueRefusal has no stale, expired or superseded arm, so THE GATE'S expired-reservation
