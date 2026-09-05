@@ -5,6 +5,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import v2.std.compilers.lexing { ModeledLexRules }
 import v2.std.compilers.target_model {
+  target_reference_layer_tokens_node,
+  target_use_site_ownership_catalog_node,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty
@@ -14,6 +16,8 @@ import v2.std.node { Conj, Node, TypeNode }
 
 import v2.extdeps.languages.rust {
   rust_named_edge,
+  rust_reference_layer_tokens,
+  rust_sg_rc_use_site_ownership_catalog,
   rust_sg2_binding_spellings,
   rust_sg2_lex_rules,
   rust_type_expression_projection_bundle_node
@@ -23,10 +27,17 @@ import v2.extdeps.languages.rust {
 ///
 /// Reads:         binding_spellings (atom spellings), lex (fixed-token spellings),
 ///                bundle type_expression_projection edge (translate/serialize),
-///                bundle translation_rules edge (measure budget).
+///                bundle translation_rules edge (measure budget),
+///                bundle reference_layer_tokens and use_site_ownership_realizations
+///                edges, which wrap_decision_gate reads. sg2_mode2_gap1_outcome_return_rc_serializes
+///                projects through translate_apply_use_site_ownership_to_projected_type at
+///                OwnershipAtFunctionReturn and asserts the text is Rc<Outcome<Node>>; with either
+///                edge absent the gate answers WrapGateInapplicable, the type comes back unwrapped
+///                and the claim fails. The ownership rows are the LIVE rust catalog deliberately:
+///                its rows disagree by position, and that disagreement is what the wrap witnesses
+///                discriminate on, so a synthetic catalog would answer a different question.
 /// Unread and omitted: selection_policy, declared_inhabitants,
-///                collection_realization, serialize_source, reference_layer_tokens,
-///                use_site_ownership_realizations, signature_realizations.
+///                collection_realization, serialize_source, signature_realizations.
 fn rust_sg2_mode2_shared_target_model() -> TargetModel {
   TargetModel {
     produced_decl_support: ProducedDeclUnwired,
@@ -44,6 +55,16 @@ fn rust_sg2_mode2_shared_target_model() -> TargetModel {
             children: Empty,
             occurrence_id: OccurrenceSynthetic
           }
+        ),
+        rust_named_edge(
+          name: ^target_model_edge_reference_layer_tokens,
+          target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+        ),
+        rust_named_edge(
+          name: ^target_model_edge_use_site_ownership_realizations,
+          target: target_use_site_ownership_catalog_node(
+            rows: rust_sg_rc_use_site_ownership_catalog()
+          )
         )
       ],
       occurrence_id: OccurrenceSynthetic
