@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
 import std.measure { ByteSize }
 import std.layout { render }
 import gunbc.live_deploy.emit {
@@ -641,6 +641,10 @@ fn divergent_principal() -> NonEmptyStr {
   join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
 }
 
+fn divergent_port() -> Port {
+  live_spec().service.listen.port + 1
+}
+
 fn divergent_repo_root() -> NonEmptyStr {
   join([live_spec().service.repo_root as String, "-divergent"], "") as NonEmptyStr
 }
@@ -705,6 +709,48 @@ test fn tree_sync_user_goes_red_under_different_user() -> Bool {
   let dirs = tree_sync_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
   !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
     && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
+}
+
+fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
+  match live_spec() {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: su, service_uid: uid,
+              listen: HttpServerListenConfig { host: l.host, port: wrong_port },
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+// RED: the serve unit's ExecStart tracks the listen port.
+//
+// BOTH SIDES ARE READ BACK FROM EMISSIONS, NEITHER IS TYPED. The serve ExecStart carries the
+// binary, the entry, the function, the host, the port, the release revision and two budgets in
+// one string; spelling either side out here would bake all seven into the evidence and pin a
+// revision that changes on every deploy. Emitting twice and requiring the two commands to DIFFER
+// asserts exactly the property -- the port reaches ExecStart -- without asserting anything about
+// the other six.
+test fn serve_unit_execstart_goes_red_under_different_port() -> Bool {
+  let baseline = serve_service_directives_of(spec: live_spec())
+  let mutated = serve_service_directives_of(spec: spec_with_port(wrong_port: divergent_port()))
+  any(xs: baseline, pred: d => match d {
+    ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
+    _ => false
+  })
+    && any(xs: mutated, pred: d => match d {
+      ExecStart { command: _ } => true
+      _ => false
+    })
 }
 
 // RED: a spec with a different repo_root makes belt_service_works_in_repo_tree go red. The
