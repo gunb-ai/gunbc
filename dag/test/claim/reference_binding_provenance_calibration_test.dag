@@ -161,28 +161,18 @@ test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
 // -- calibration_verdict is now a pure cells-to-ProcessExit function, the report calls it after the
 // write, and this asserts on the verdict with no filesystem in the way. The fusion that made the
 // decision untestable is gone rather than worked around.
-// WHAT THIS CONTROL DOES NOT COVER, STATED BECAUSE ITS EARLIER NAME CLAIMED IT DID.
+// THIS ASSERTS THE VERDICT, AND THE REPORT'S CONSUMPTION OF IT IS COVERED ELSEWHERE BY EXECUTION.
 //
-// It asserts the VERDICT, not the report. REPLACING provenance_calibration_report'S POST-WRITE
-// REFUSAL WITH ExitSuccess LEAVES EVERY CONTROL IN THIS FILE GREEN -- that one sentence is the whole
-// residual gap, and it is why the function is named for the verdict rather than for the instrument.
-// Factoring calibration_verdict out was necessary and is not sufficient: a factored decision only
-// helps if the real report consumes it, and nothing here proves it does.
+// The gap this control used to leave was exact: replacing provenance_calibration_report's post-write
+// refusal with ExitSuccess left every control in this file green. Factoring calibration_verdict out
+// was necessary and was NOT sufficient -- a factored decision only helps if the real report consumes
+// it, and nothing hermetic can prove that, because the report performs a host effect the hermetic
+// envelope refuses.
 //
-// WHY NO CONTROL COVERS IT, which is a boundary and not an omission: provenance_calibration_report
-// performs a host effect (Filesystem.Write), and the required floor's hermetic envelope refuses host
-// effects during preparation -- so a witness whose subject is that function would be COUNTED
-// EXECUTED while its assertion never ran, which is worse than absent because it would be cited as
-// coverage. Mocking the write would assert against a fabricated success.
-//
-// The report's consumption of the verdict is therefore established only by direct execution, cited
-// by naming the producer rather than by transcribing its output:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/gunbc/instruments/reference_binding_provenance_calibration.dag \
-//     --function provenance_calibration_report --arg out=<path>
-// NEXT-RUNG TRIGGER, a capability and not an artifact: a witness-executable route that can run an
-// effectful entry point under the floor and observe its ProcessExit, SUFFICIENT FOR the report's
-// refusal arm to carry an enrolled discriminating red rather than an operator-run one.
+// It is closed by test.claim.provenance_calibration_report_real_execution, a wet witness on the
+// floor's local-repo lane that calls the real report against a real temp path and asserts the
+// returned ProcessExit. That substitution now REDS it, measured by making it: the wet arm went false
+// while this control stayed true -- which is what proves this control could not have seen it.
 test fn the_verdict_refuses_on_the_measured_matrix() -> Bool {
   match calibration_verdict(cells: calibration_cells()) {
     ExitSuccess => false

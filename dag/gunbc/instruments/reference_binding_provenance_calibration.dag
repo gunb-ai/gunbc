@@ -1,7 +1,7 @@
 module gunbc.tools.reference_binding_provenance_calibration
 
 import std.types { Bool, Int, List, SourceSpan, String, list_length }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.occurrence_identity {
@@ -37,9 +37,15 @@ import std.reference_binding_observation {
   StructuralBindingProductionRefused,
   ReferenceBindingNamedReferenceAbsent,
   SameFileNeighbourObservation,
+  SameFileNeighbourProductionRefused,
   SiblingBranchObservation,
+  SiblingBranchProductionRefused,
   LaterDeclarationObservation,
+  LaterDeclarationProductionRefused,
   DistinctHomonymObservation,
+  DistinctHomonymProductionRefused,
+  RepeatedMentionDependencyObservation,
+  UnrelatedLoadedFileObservation,
 }
 import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
@@ -666,8 +672,8 @@ fn cell_line(c: ProvenanceCell) -> String {
           concat("\n    production path: ", standing_line(s: c.production_standing)))))))))
 }
 
-fn calibration_body() -> String {
-  fold(calibration_cells(), init: concat(
+fn calibration_body_of(cells: List<ProvenanceCell>) -> String {
+  fold(cells, init: concat(
     "reference-occurrence binding provenance -- Step 0 calibration matrix\n",
     concat("observation kind x resolution arm, on controlled fixtures, judged by the real consumer\n",
       concat("gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation\n\n",
@@ -779,12 +785,16 @@ fn calibration_verdict(cells: List<ProvenanceCell>) -> ProcessExit {
   }
 }
 
-fn provenance_calibration_report(out: String) -> ProcessExit {
+// THE REPORT IS PARAMETERISED ON ITS CELL POPULATION so its SUCCESS arm is reachable through the
+// real effectful path. Computing the population inside meant the only outcome a wet witness could
+// ever observe was refusal, which is a one-sided arm: a report that refuses unconditionally would
+// satisfy it. The entry point below supplies the measured population; a witness supplies a
+// constructed sound one and must see ExitSuccess after a real write.
+fn provenance_calibration_report_over(cells: List<ProvenanceCell>, out: String) -> ProcessExit {
   if out == "" {
     exit_failure(reason: "provenance_calibration_report: --arg out=<path> is required -- the matrix is written, not printed")
   } else {
-    let cells = calibration_cells()
-    if Filesystem.Write(path: out, content: calibration_body()).success {
+    if Filesystem.Write(path: out, content: calibration_body_of(cells: cells)).success {
       match calibration_verdict(cells: cells) {
         ExitSuccess => ExitSuccess
         ExitFailure { code: _, reason: reason } =>
@@ -794,4 +804,8 @@ fn provenance_calibration_report(out: String) -> ProcessExit {
       exit_failure(reason: concat("provenance_calibration_report: derived and could not be written to ", out))
     }
   }
+}
+
+fn provenance_calibration_report(out: String) -> ProcessExit {
+  provenance_calibration_report_over(cells: calibration_cells(), out: out)
 }

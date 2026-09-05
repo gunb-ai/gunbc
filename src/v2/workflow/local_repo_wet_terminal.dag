@@ -159,6 +159,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_real_report_succeeds_on_a_sound_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_real_report_succeeds_on_a_sound_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_refusing_report_still_wrote_the_matrix_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "the_refusing_report_still_wrote_the_matrix_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "an_empty_out_path_refuses_without_writing_by_real_execution" },
+      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
+      function: "an_empty_out_path_refuses_without_writing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "clean_staged_index_admits_by_real_execution" },
       entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
       function: "clean_staged_index_admits_by_real_execution",
