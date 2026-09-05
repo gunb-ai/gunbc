@@ -853,9 +853,9 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+fn live_deploy_tree_sync_unit_file(spec: DeploymentSpec, tree_path: String) -> ServiceUnitFile {
   let user = spec.service.service_user
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [Description {
       text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
     }],
@@ -871,7 +871,11 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
-  }))
+  }
+}
+
+fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_tree_sync_unit_file(spec: spec, tree_path: tree_path)))
 }
 
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree

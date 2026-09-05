@@ -1,6 +1,7 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import std.measure { ByteSize }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
@@ -9,10 +10,56 @@ import gunbc.live_deploy.emit {
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_timer_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_slice_unit_file,
+  live_deploy_tree_sync_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
+  user_manager_environment_directives,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_spec_srv1,
+  deployment_slice_unit_name,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import extdeps.systemd { MemoryMax, MemoryHigh }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile,
+  ServiceUnitFile,
+  TimerUnitFile,
+  SliceUnitFile,
+  SystemdInstallSection,
+  NotInstallable,
+  Installable,
+  SystemdUnitDirective,
+  Description,
+  After,
+  Wants,
+  SystemdServiceDirective,
+  ServiceType,
+  ExecStart,
+  Restart,
+  Environment,
+  EnvironmentFile,
+  WorkingDirectory,
+  ServiceUser,
+  ServiceGroup,
+  ServiceSlice,
+  SystemdTimerDirective,
+  TimerUnit,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
+  SystemdInstallDirective,
+  WantedBy,
+  SystemdSliceDirective,
+  DirectiveByteCount,
+}
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -171,4 +218,431 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// DIRECTIVE-LEVEL CLAIMS — each relates one directive to the SPEC FIELD it should derive from
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════���══════════════════════════════════════════════
+// BELT SERVICE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the belt runs as the deployment's service principal (User=, Group=)
+//   - the belt runs inside the deployment's cgroup slice
+//   - the belt works in the deployment's service repository tree
+//   - the belt carries a user-manager bus environment for the principal's uid
+//   - the belt tick entrypoint is belt_run_once_cli
+//   - the belt spawn workdir environment variable names the repo root
+
+fn belt_service_unit() -> ServiceUnitFile {
+  match live_deploy_belt_service_unit_file(spec: live_spec()) {
+    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
+  }
+}
+
+fn belt_service_directives() -> List<SystemdServiceDirective> {
+  match belt_service_unit() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn belt_unit_directives() -> List<SystemdUnitDirective> {
+  match belt_service_unit() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the belt runs as the deployment's service principal.
+test fn belt_service_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: belt_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the belt runs inside the deployment's cgroup slice.
+test fn belt_service_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: belt_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the belt works in the deployment's repo tree.
+test fn belt_service_works_in_repo_tree() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: belt_service_directives(), target: WorkingDirectory { path: spec.service.repo_root })
+}
+
+// DECISION: the belt carries a user-manager bus environment for the principal's uid.
+test fn belt_service_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  all(envs, e => has_directive(dirs: belt_service_directives(), target: e))
+}
+
+// DECISION: the belt spawn workdir env var names the repo root.
+test fn belt_service_carries_spawn_workdir() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: Environment {
+    assignment: join([belt_spawn_workdir_env_var as String, "=", svc.repo_root as String], "") as NonEmptyStr,
+  })
+}
+
+// DECISION: the belt ticks via the declared belt-run-once CLI entrypoint.
+test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: belt_service_directives(), target: ExecStart { command: join([
+    svc.serve_binary as String,
+    " run --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the belt unit is Type=oneshot (it runs once per tick and exits).
+test fn belt_service_type_is_oneshot() -> Bool {
+  has_directive(dirs: belt_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
+test fn belt_service_has_unit_directives() -> Bool {
+  let dirs = belt_unit_directives()
+  has_directive_unit(dirs: dirs, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: After { target: "network-online.target" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the belt unit is NOT installable (no [Install] section).
+test fn belt_service_is_not_installable() -> Bool {
+  match belt_service_unit() {
+    ServiceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// BELT TIMER UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the timer targets the belt service unit
+//   - the timer cadence is the declared policy values (OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s)
+//   - the timer is installable as WantedBy=timers.target
+
+fn belt_timer_unit() -> TimerUnitFile {
+  match live_deploy_belt_timer_unit_file(spec: live_spec()) {
+    TimerUnitFile { unit: u, timer: t, install: i } => TimerUnitFile { unit: u, timer: t, install: i }
+  }
+}
+
+fn belt_timer_directives() -> List<SystemdTimerDirective> {
+  match belt_timer_unit() {
+    TimerUnitFile { timer: t, .. } => t
+  }
+}
+
+fn belt_timer_unit_directives() -> List<SystemdUnitDirective> {
+  match belt_timer_unit() {
+    TimerUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the timer targets the belt service unit.
+test fn belt_timer_targets_belt_service() -> Bool {
+  let spec = live_spec()
+  let belt_service_name = join([deployment_slice_unit_name(names: spec.names) as String, "-belt.service"], "")
+  has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: belt_service_name as NonEmptyStr })
+}
+
+// DECISION: the timer cadence is the declared policy values.
+test fn belt_timer_has_declared_cadence() -> Bool {
+  has_directive_timer(dirs: belt_timer_directives(), target: OnBootSec { duration: "2min" as NonEmptyStr })
+    && has_directive_timer(dirs: belt_timer_directives(), target: OnUnitInactiveSec { duration: "60s" as NonEmptyStr })
+    && has_directive_timer(dirs: belt_timer_directives(), target: AccuracySec { duration: "5s" as NonEmptyStr })
+}
+
+// DECISION: the timer has a Description.
+test fn belt_timer_has_description() -> Bool {
+  has_directive_unit(dirs: belt_timer_unit_directives(), target: Description {
+    text: "gunbc roadmap belt tick cadence" as NonEmptyStr,
+  })
+}
+
+// DECISION: the timer is installable as WantedBy=timers.target.
+test fn belt_timer_is_installable_as_timers_target() -> Bool {
+  match belt_timer_unit() {
+    TimerUnitFile { install: Installable { directives: ds }, .. } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SERVE UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the serve unit runs as the deployment's service principal
+//   - the serve unit joins the deployment's cgroup slice
+//   - the serve unit works in the deployment's repo tree
+//   - the serve unit carries a user-manager bus environment for the principal's uid
+//   - the serve entrypoint is serve_handle, on the declared host/port, with the admitted revision
+//   - the serve unit restarts on failure
+//   - the serve unit is installable as WantedBy=multi-user.target
+
+fn serve_unit() -> ServiceUnitFile {
+  match live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision()) {
+    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
+  }
+}
+
+fn serve_service_directives() -> List<SystemdServiceDirective> {
+  match serve_unit() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn serve_unit_directives() -> List<SystemdUnitDirective> {
+  match serve_unit() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the serve unit runs as the deployment's service principal.
+test fn serve_unit_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: serve_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: serve_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the serve unit joins the deployment's cgroup slice.
+test fn serve_unit_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: serve_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the serve unit works in the deployment's repo tree.
+test fn serve_unit_works_in_repo_tree() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: serve_service_directives(), target: WorkingDirectory { path: spec.service.repo_root })
+}
+
+// DECISION: the serve unit carries a user-manager bus environment for the principal's uid.
+test fn serve_unit_carries_user_manager_environment() -> Bool {
+  let svc = live_spec().service
+  let envs = user_manager_environment_directives(uid: svc.service_uid)
+  all(envs, e => has_directive(dirs: serve_service_directives(), target: e))
+}
+
+// DECISION: the serve unit is Type=simple (long-running process).
+test fn serve_unit_type_is_simple() -> Bool {
+  has_directive(dirs: serve_service_directives(), target: ServiceType { mode: "simple" as NonEmptyStr })
+}
+
+// DECISION: the serve unit restarts on failure.
+test fn serve_unit_restarts_on_failure() -> Bool {
+  has_directive(dirs: serve_service_directives(), target: Restart { policy: "on-failure" as NonEmptyStr })
+}
+
+// DECISION: the serve ExecStart carries the admitted entrypoint, host/port, and revision.
+test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
+  let svc = live_spec().service
+  let port = to_string(svc.listen.port)
+  let host = svc.listen.host
+  let rev = match live_revision() {
+    RevisionBoundAtEmission { revision: r } => r as String
+    RevisionNotInstalled => ""
+  }
+  has_directive(dirs: serve_service_directives(), target: ExecStart { command: join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", host, " --port ", port,
+    " --release-revision ", rev,
+    " --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the serve unit has a Description, After=network-online.target tailscaled.service, Wants=network-online.target.
+test fn serve_unit_has_unit_directives() -> Bool {
+  let dirs = serve_unit_directives()
+  has_directive_unit(dirs: dirs, target: Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: After { target: "network-online.target tailscaled.service" as NonEmptyStr })
+    && has_directive_unit(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+}
+
+// DECISION: the serve unit is installable as WantedBy=multi-user.target.
+test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
+  match serve_unit() {
+    ServiceUnitFile { install: Installable { directives: ds }, .. } =>
+      has_directive_install(dirs: ds, target: WantedBy { target: "multi-user.target" as NonEmptyStr })
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// TREE SYNC UNIT — directive-level assertions through the typed model
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DECISIONS ASSERTED:
+//   - the tree sync runs as the service principal
+//   - the tree sync joins the deployment's cgroup slice
+//   - the tree sync reads its environment from the deployment's tree-sync env file
+//   - the tree sync ExecStart carries rsync with the deployed-tree exclude flags
+//   - the tree sync unit is Type=oneshot
+//   - the tree sync unit is NotInstallable (no [Install] section)
+
+fn tree_sync_unit() -> ServiceUnitFile {
+  live_deploy_tree_sync_unit_file(spec: live_spec(), tree_path: live_spec().service.repo_root as String)
+}
+
+fn tree_sync_service_directives() -> List<SystemdServiceDirective> {
+  match tree_sync_unit() {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+fn tree_sync_unit_directives() -> List<SystemdUnitDirective> {
+  match tree_sync_unit() {
+    ServiceUnitFile { unit: u, .. } => u
+  }
+}
+
+// DECISION: the tree sync runs as the service principal.
+test fn tree_sync_runs_as_service_principal() -> Bool {
+  let svc = live_spec().service
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceUser { name: svc.service_user })
+    && has_directive(dirs: tree_sync_service_directives(), target: ServiceGroup { name: svc.service_user })
+}
+
+// DECISION: the tree sync joins the deployment's cgroup slice.
+test fn tree_sync_joins_deployment_slice() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+}
+
+// DECISION: the tree sync reads its environment from the deployment's tree-sync env path.
+test fn tree_sync_has_environment_file() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
+}
+
+// DECISION: the tree sync ExecStart carries rsync with all deployed-tree excluded prefixes.
+test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
+  let spec = live_spec()
+  has_directive(dirs: tree_sync_service_directives(), target: ExecStart { command: join([
+    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
+  ], "") as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is Type=oneshot.
+test fn tree_sync_type_is_oneshot() -> Bool {
+  has_directive(dirs: tree_sync_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+}
+
+// DECISION: the tree sync unit is NotInstallable.
+test fn tree_sync_is_not_installable() -> Bool {
+  match tree_sync_unit() {
+    ServiceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// DECISION: the tree sync has a Description.
+test fn tree_sync_has_description() -> Bool {
+  has_directive_unit(dirs: tree_sync_unit_directives(), target: Description {
+    text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+  })
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// SLICE UNIT — directive-level assertions through the typed model
+// ═══════════════════════════════════════════════════════════════════════════════════════��══════════
+//
+// DECISIONS ASSERTED:
+//   - the slice is derived from the deployment's unit name
+//   - the memory bounds come from gunbc_runner_slot_desired()
+
+fn slice_unit() -> SliceUnitFile {
+  match live_deploy_slice_unit_file(spec: live_spec()) {
+    SliceUnitFile { unit: u, slice: s, install: i } => SliceUnitFile { unit: u, slice: s, install: i }
+  }
+}
+
+fn slice_directives() -> List<SystemdSliceDirective> {
+  match slice_unit() {
+    SliceUnitFile { slice: s, .. } => s
+  }
+}
+
+// DECISION: the slice's Description names the deployment's unit.
+test fn slice_description_names_the_unit() -> Bool {
+  let spec = live_spec()
+  match slice_unit() {
+    SliceUnitFile { unit: [Description { text: d }], .. } =>
+      d == join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "")
+    _ => false
+  }
+}
+
+// DECISION: the slice's MemoryMax and MemoryHigh derive from gunbc_runner_slot_desired().
+test fn slice_memory_bounds_match_runner_slot() -> Bool {
+  let slot = gunbc_runner_slot_desired()
+  has_slice_directive_val(dirs: slice_directives(), target: slot.memory_max, as_max: true)
+    && has_slice_directive_val(dirs: slice_directives(), target: slot.memory_high, as_max: false)
+}
+
+// DECISION: the slice unit has NotInstallable (no [Install] section).
+test fn slice_unit_is_not_installable() -> Bool {
+  match slice_unit() {
+    SliceUnitFile { install: NotInstallable, .. } => true
+    _ => false
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+fn all(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
+  match xs {
+    [] => true
+    [first, ..rest] => pred(first) && all(xs: rest, pred: pred)
+  }
+}
+
+fn any(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
+  match xs {
+    [] => false
+    [first, ..rest] => if pred(first) { true } else { any(xs: rest, pred: pred) }
+  }
+}
+
+fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdServiceDirective) -> Bool { d == target })
+}
+
+fn has_directive_unit(dirs: List<SystemdUnitDirective>, target: SystemdUnitDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdUnitDirective) -> Bool { d == target })
+}
+
+fn has_directive_timer(dirs: List<SystemdTimerDirective>, target: SystemdTimerDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdTimerDirective) -> Bool { d == target })
+}
+
+fn has_directive_install(dirs: List<SystemdInstallDirective>, target: SystemdInstallDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdInstallDirective) -> Bool { d == target })
+}
+
+fn has_slice_directive_val(dirs: List<SystemdSliceDirective>, target: ByteSize, as_max: Bool) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdSliceDirective) -> Bool {
+    match d {
+      SystemdSliceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: b } } =>
+        as_max && b == target
+      SystemdSliceDirective { property: MemoryHigh, value: DirectiveByteCount { bytes: b } } =>
+        !as_max && b == target
+      _ => false
+    }
+  })
 }
