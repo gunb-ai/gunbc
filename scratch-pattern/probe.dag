@@ -1,0 +1,48 @@
+module measurement.pattern_identity
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, parse_production_captured_child_optional }
+import v2.compiler.body_lowering_fold { body_lower_pattern_atom_optional }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.optional { Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol }
+fn count_pattern(root: Node, wanted: Symbol) -> Int {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: emitted } => if emitted == ^dag_surface_pattern {
+      match parse_production_captured_child_optional(node: root) {
+        Present { value: captured } => match body_lower_pattern_atom_optional(pattern_capture: captured) {
+          Present { value: atom } => match node_atom_identity_optional(node: atom) {
+            Present { value: identity } => if identity == wanted { 1 } else { 0 }
+            Absent => 0
+          }
+          Absent => 0
+        }
+        Absent => 0
+      }
+    } else { fold(root.children, init: 0, f: fn(acc, e) { acc + count_pattern(root: e.target, wanted: wanted) }) }
+    Absent => fold(root.children, init: 0, f: fn(acc, e) { acc + count_pattern(root: e.target, wanted: wanted) })
+  }
+}
+fn measure(source: String, wanted: Symbol) -> Int {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^specimen, rules: lm.lex) {
+    Rejected { diagnostics: _ } => -2
+    Accepted { value: tokens, diagnostics: _ } => match parse_module(tokens: tokens, grammar: lm.grammar) {
+      Rejected { diagnostics: _ } => -1
+      Accepted { value: artifact, diagnostics: _ } => count_pattern(root: artifact.tree, wanted: wanted)
+    }
+  }
+}
+data real_source: String = "module v1.compiler.type_head_exposure\n\n// This vocabulary belongs to the compiler judgment, not std: it describes how far this\n// compiler exposed an expected type before selecting an introduction or compatibility rule.\n// Exposure never means \"choose an application argument\". The outer constructor and every\n// argument identity remain present in ApplicationHead.\ntype TypeHeadView\n  = KernelScalarHead { type_identity: String }\n  | ApplicationHead {\n      constructor_identity: String,\n      argument_identities: List<String>\n    }\n  | ProductHead { type_identity: String }\n  | CoproductHead { type_identity: String }\n  | CallableHead { type_identity: String }\n\ntype TypeHeadExposure\n  = ExposedTypeHead { view: TypeHeadView }\n  | OpaqueTypeHead { type_identity: String }\n  | StuckTypeHead { cause: String }\n  | MalformedApplicationHead { cause: String }\n\nfn type_declaration_identity_key(decl_file: String, declared_name: String) -> String {\n  concat(decl_file, \"::\", declared_name)\n}\n\nfn type_head_exposure_is_kernel_scalar(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => true\n    _ => false\n  }\n}\n\nfn type_head_exposure_is_product(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: ProductHead { type_identity: _ } } => true\n    _ => false\n  }\n}\n\nfn type_head_exposure_is_coproduct(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: CoproductHead { type_identity: _ } } => true\n    _ => false\n  }\n}\n"
+fn real_wildcards() -> Int { measure(source: real_source, wanted: ^_) }
+fn real_named() -> Int { measure(source: real_source, wanted: ^otherwise) }
+data named_source: String = "module v1.compiler.type_head_exposure\n\n// This vocabulary belongs to the compiler judgment, not std: it describes how far this\n// compiler exposed an expected type before selecting an introduction or compatibility rule.\n// Exposure never means \"choose an application argument\". The outer constructor and every\n// argument identity remain present in ApplicationHead.\ntype TypeHeadView\n  = KernelScalarHead { type_identity: String }\n  | ApplicationHead {\n      constructor_identity: String,\n      argument_identities: List<String>\n    }\n  | ProductHead { type_identity: String }\n  | CoproductHead { type_identity: String }\n  | CallableHead { type_identity: String }\n\ntype TypeHeadExposure\n  = ExposedTypeHead { view: TypeHeadView }\n  | OpaqueTypeHead { type_identity: String }\n  | StuckTypeHead { cause: String }\n  | MalformedApplicationHead { cause: String }\n\nfn type_declaration_identity_key(decl_file: String, declared_name: String) -> String {\n  concat(decl_file, \"::\", declared_name)\n}\n\nfn type_head_exposure_is_kernel_scalar(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => true\n    otherwise => false\n  }\n}\n\nfn type_head_exposure_is_product(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: ProductHead { type_identity: _ } } => true\n    otherwise => false\n  }\n}\n\nfn type_head_exposure_is_coproduct(exposure: TypeHeadExposure) -> Bool {\n  match exposure {\n    ExposedTypeHead { view: CoproductHead { type_identity: _ } } => true\n    otherwise => false\n  }\n}\n"
+fn named_wildcards() -> Int { measure(source: named_source, wanted: ^_) }
+fn named_named() -> Int { measure(source: named_source, wanted: ^otherwise) }
+data tinywild_source: String = "module specimen\nfn f(a: Int) -> Int { match a { _ => 0 } }\n"
+fn tinywild_wildcards() -> Int { measure(source: tinywild_source, wanted: ^_) }
+fn tinywild_named() -> Int { measure(source: tinywild_source, wanted: ^otherwise) }
+data tinynamed_source: String = "module specimen\nfn f(a: Int) -> Int { match a { otherwise => 0 } }\n"
+fn tinynamed_wildcards() -> Int { measure(source: tinynamed_source, wanted: ^_) }
+fn tinynamed_named() -> Int { measure(source: tinynamed_source, wanted: ^otherwise) }
