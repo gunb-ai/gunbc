@@ -14,12 +14,13 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Minimal TargetModel fixture: the translate refusal gate rejects on
-// grounding-not-derived BEFORE reading any TargetModel field, so every
-// field can be a minimal/void value. See 06_translate.dag lines 4160-4170:
-// translate() evaluates translate_grounding_derived_gate_subtree first;
-// for underived nodes it returns Rejected via
-// canonical_grounding_from_inferred_facts, which never accesses target.*.
+// Minimal TargetModel fixture: translate_grounding_derived_gate_subtree
+// takes (tree: InferredTree, root: Node) — it has NO TargetModel parameter,
+// so it cannot read any target field structurally, not merely by path.
+// translate() opens by binding that gate; for underived nodes the gate
+// returns Rejected via canonical_grounding_from_inferred_facts (which also
+// takes no TargetModel). Therefore every TargetModel field is dead weight
+// on the refusal path and can be minimal/void.
 data rust_minimal_underived_refusal_target: TargetModel = TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: Node {
