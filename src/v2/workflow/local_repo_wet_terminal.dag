@@ -259,6 +259,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/self_host_logic_seed_unavailable_witness_test.dag",
       function: "self_host_logic_seed_unavailable_receipt_holds",
       expectation: ExpectedToHold {}
+    },
+    // CONTROL (a) -- planted-mutation behavioral receipt for dag/std/logic.dag.
+    // Rehomed from FalsifierSelfHostWet (dead cadence, DeclaredCadenceUnrealized).
+    // Emit dag/std/logic.dag with gunbc, compile WITH the seed crate (v1-compiler
+    // path dependency), run the comparison driver + --inject-fault. Proves the
+    // comparison discriminates (DESIGN section 5). Shares the same emission target
+    // as control (b); a future optimization could share the emit step.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.self_host_logic_behavioral_witness", function: "self_host_logic_behavioral_receipt_holds" },
+      entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+      function: "self_host_logic_behavioral_receipt_holds",
+      expectation: ExpectedToHold {}
     }
   ]
 }
