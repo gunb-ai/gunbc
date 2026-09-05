@@ -29,10 +29,11 @@ import extdeps.virtualization.firecracker {
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
+  SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants,
   ServiceType, ExecStartPre, ExecStart, ExecStopPost, WorkingDirectory,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
-  WantedBy, serialize_systemd_unit_file,
+  WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
 }
 import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
 import gunbc.command_runner {
@@ -181,6 +182,12 @@ fn runner_guest_image_dir(root: String) -> String {
 // observed by anybody. The serial console is the only surface that survives the VM.
 data runner_guest_agent_unit_name: String = "gunbc-runner-agent.service"
 
+// THE TARGET IS ONE ROW BECAUSE TWO ARTIFACTS NAME IT. The unit's [Install] section says which
+// target this agent belongs to, and the drop-in below is what actually pulls it in inside an image
+// where nobody ever runs `systemctl enable`. Those are two spellings of one fact, so they are
+// derived from this datum rather than authored twice -- change the target here and both move.
+data runner_guest_agent_target: NonEmptyStr = "multi-user.target" as NonEmptyStr
+
 data runner_guest_agent_poweroff_command: NonEmptyStr = "/usr/sbin/poweroff -f" as NonEmptyStr
 
 fn runner_guest_agent_unit() -> SystemdUnitFile {
@@ -200,7 +207,7 @@ fn runner_guest_agent_unit() -> SystemdUnitFile {
       ExecStopPost { command: runner_guest_agent_poweroff_command },
     ],
     install: Installable {
-      directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }],
+      directives: [WantedBy { target: runner_guest_agent_target }],
     },
   }
 }
@@ -224,14 +231,56 @@ fn runner_guest_agent_unit_path(root: String, image: RunnerGuestImage) -> String
   join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/", runner_guest_agent_unit_name], "")
 }
 
-// THE ENABLE IS A SECOND COPY OF THE SAME BYTES, NOT A SYMLINK, and the reason is that a symlink is
-// not expressible as a row here while a file is. systemd resolves a `.wants` directory entry by
-// NAME and searches its unit path, and `/etc/systemd/system/<target>.wants/` is on that path, so a
-// regular unit file placed there is started at that target exactly as an enable symlink would be.
-// Both paths are derived from one `runner_guest_agent_unit` value, so there is one authoring of the
-// unit and two placements of it -- never two authorings that could disagree.
-fn runner_guest_agent_wants_path(root: String, image: RunnerGuestImage) -> String {
-  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/multi-user.target.wants/", runner_guest_agent_unit_name], "")
+// A REGULAR FILE IN A .wants/ DIRECTORY IS IGNORED BY systemd, AND THIS BLOCK IS THE REPAIR.
+//
+// The previous revision wrote the unit's bytes a SECOND time into multi-user.target.wants/ and
+// carried an annotation asserting that systemd resolves such an entry by name exactly as it would an
+// enable symlink. THAT CLAIM IS FALSE. systemd's dependency loader (src/core/load-dropin.c,
+// process_deps) checks each entry in a .wants/ or .requires/ directory and SKIPS anything that is not
+// a symlink, logging "dependency dropin ... is not a symlink, ignoring." So the agent was never
+// pulled into the boot at all, and the image would have booted to multi-user with nothing running.
+//
+// IT IS WORTH RECORDING HOW THAT SURVIVED REVIEW, because the mechanism is the point: the false claim
+// lived in an ANNOTATION, and DESIGN section 4c says no Accepted program can read one. Nothing could
+// go red on it. It was checked by a witness that asserted `WantedBy=multi-user.target` appeared in
+// the unit TEXT -- which was true, and which says nothing about whether the placement systemd
+// actually reads was correct. A correct assertion over the wrong subject.
+//
+// THE REPAIR IS A DROP-IN ON THE TARGET, NOT A SYMLINK, and that choice is deliberate rather than
+// convenient. A symlink would be the closer analogue of `systemctl enable`, and it is also a file
+// KIND this build cannot currently create -- Filesystem.Write writes regular files. Reaching for a
+// symlink here would mean minting an `ln -s` argv builder to make the image build depend on a second
+// mechanism, when systemd already documents a fragment that expresses the dependency directly and IS
+// a regular file honestly used as one. `<target>.d/*.conf` carrying `[Unit] Wants=` is merged into
+// the target's own configuration by the ordinary drop-in path, which has no symlink requirement.
+//
+// The unit keeps its [Install] section, and that is not a second authority for the same fact: the
+// section states which target this agent BELONGS to, so `systemctl enable` inside a running guest
+// still does the right thing, while the drop-in is what activates it in an image nobody enables.
+// Both read runner_guest_agent_target, so they cannot disagree.
+fn runner_guest_agent_target_drop_in() -> SystemdDropIn {
+  SystemdDropIn {
+    sections: [
+      DropInUnitSection {
+        directives: [Wants { target: runner_guest_agent_unit_name as NonEmptyStr }],
+      },
+    ],
+  }
+}
+
+fn runner_guest_agent_drop_in_path(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d/10-",
+    runner_guest_agent_unit_name,
+  ], "")
+}
+
+fn runner_guest_agent_drop_in_dir(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d",
+  ], "")
 }
 
 // THE RUNNER TARBALL IS THE SAME ROW THE HOST PATH INSTALLS. extdeps.github.actions_runner owns the
@@ -296,7 +345,7 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
       strip_components: 0,
     ),
     mkdir_parents_command(path: runner_guest_tree_unit_dir(root: root, image: image)),
-    mkdir_parents_command(path: runner_guest_tree_wants_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_agent_drop_in_dir(root: root, image: image)),
   ]
 }
 
@@ -306,10 +355,6 @@ fn runner_guest_tree_runner_dir(root: String, image: RunnerGuestImage) -> String
 
 fn runner_guest_tree_unit_dir(root: String, image: RunnerGuestImage) -> String {
   join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system"], "")
-}
-
-fn runner_guest_tree_wants_dir(root: String, image: RunnerGuestImage) -> String {
-  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/multi-user.target.wants"], "")
 }
 
 fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<ArgvCommand> {
@@ -427,9 +472,12 @@ func write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> Proces
   if !a.success {
     exit_failure(reason: join(["runner_guest_image: guest agent unit write refused: ", a.error], ""))
   } else {
-    let b = Filesystem.Write(path: runner_guest_agent_wants_path(root: root, image: image), content: text)
+    let b = Filesystem.Write(
+      path: runner_guest_agent_drop_in_path(root: root, image: image),
+      content: serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in()),
+    )
     if !b.success {
-      exit_failure(reason: join(["runner_guest_image: guest agent enable-placement write refused: ", b.error], ""))
+      exit_failure(reason: join(["runner_guest_image: guest agent target drop-in write refused: ", b.error], ""))
     } else {
       ExitSuccess
     }

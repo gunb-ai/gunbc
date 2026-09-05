@@ -8,7 +8,7 @@ import std.disposition { Disposition, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
   firecracker_vm_config_document, firecracker_run_config_command,
@@ -112,6 +112,33 @@ fn runner_microvm_boot_probe_config(root: String, image: RunnerGuestImage) -> Ru
   )
 }
 
+// THE DEADLINE IS THE HOST'S, AND IT MUST NOT DEPEND ON THE GUEST AGREEING TO IT.
+//
+// The guest agent powers the machine off on ExecStopPost=, which runs on both arms of the job -- and
+// that only ever covers the case where the agent STARTED. It does not cover an agent systemd never
+// pulled in (the exact defect this module's sibling just carried), a kernel that panics before
+// userspace, an init that hangs, or a guest that never reaches its target at all. In every one of
+// those the VMM sits there holding a guest forever, and the earlier reassurance that this probe
+// "boots one VM that powers itself off" was true only of the arm that works.
+//
+// So the bound is imposed from OUTSIDE the guest by the host, on the VMM process, where no guest
+// behaviour can extend it. A step timeout is not a substitute: it kills the step and can leave the
+// VMM it spawned running, which is precisely the uncontrolled VM this probe must not create.
+//
+// THE KILL ESCALATION IS NOT OPTIONAL. A TERM that a wedged VMM declines leaves the same orphan the
+// deadline existed to prevent, so the deadline escalates to KILL unconditionally.
+data runner_microvm_boot_probe_deadline: NonEmptyStr = "180s" as NonEmptyStr
+
+data runner_microvm_boot_probe_kill_grace: NonEmptyStr = "10s" as NonEmptyStr
+
+fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
+  timeout_command(
+    duration: runner_microvm_boot_probe_deadline,
+    kill_after: runner_microvm_boot_probe_kill_grace,
+    command: firecracker_run_config_command(binary: binary, config_path: config_path),
+  )
+}
+
 // THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, NOT A GREETING. The console must carry the
 // version of the runner that extdeps.github.actions_runner pins, so the assertion consumes that row
 // rather than a literal: a runner bump moves what this probe demands in the same edit that moves
@@ -121,15 +148,23 @@ type BootProbeVerdict
   | BootProducedNoConsole { cause: String }
   | BootConsoleLacksRunnerVersion { expected: String, console: String }
   | BootNotAttempted { cause: String }
+  | BootExceededHostDeadline { deadline: String, console: String }
 
 fn boot_probe_verdict(runner: ActionsRunnerRelease, console: ProcessOutcome) -> BootProbeVerdict {
   match console {
     ProcessRefused { exit_code: code, stderr: err } =>
-      BootProducedNoConsole {
-        cause: join([
-          "the VMM exited non-zero, so the guest did not run to a clean power-off (exit ",
-          to_string(code), "): ", err,
-        ], ""),
+      if code == coreutils_timeout_expired_exit_code {
+        BootExceededHostDeadline {
+          deadline: runner_microvm_boot_probe_deadline as String,
+          console: err,
+        }
+      } else {
+        BootProducedNoConsole {
+          cause: join([
+            "the VMM exited non-zero, so the guest did not run to a clean power-off (exit ",
+            to_string(code), "): ", err,
+          ], ""),
+        }
       }
     ProcessOutputAbsent =>
       BootProducedNoConsole {
@@ -152,6 +187,10 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
     BootConsoleLacksRunnerVersion { expected: e, console: c } =>
       join(["boot=console-without-runner-version expected=", e, "\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
+    BootExceededHostDeadline { deadline: d, console: c } =>
+      join(["boot=host-deadline-expired after ", d,
+            " -- the guest did not power itself off and the host killed the VMM\n--- console ---\n", c,
+            "\n--- end console ---"], "")
   }
 }
 
@@ -161,6 +200,7 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootProducedNoConsole { cause: _ } => false
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
     BootNotAttempted { cause: _ } => false
+    BootExceededHostDeadline { deadline: _, console: _ } => false
   }
 }
 
@@ -221,7 +261,7 @@ func runner_microvm_boot_probe_wet() -> ProcessExit
                     verdict: boot_probe_verdict(
                       runner: image.runner,
                       console: run_shell_command_capture(
-                        command: firecracker_run_config_command(
+                        command: runner_microvm_boot_probe_bounded_command(
                           binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
                           config_path: runner_microvm_boot_probe_config_path(root: root),
                         ),

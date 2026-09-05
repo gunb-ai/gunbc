@@ -1,0 +1,140 @@
+module test.claim.runner_microvm_boot_probe_witness
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import extdeps.virtualization.firecracker {
+  firecracker_vm_config_document, firecracker_run_config_command,
+}
+import gunbc.runner_microvm {
+  gunbc_runner_guest_image, gunbc_runner_microvm_declared_size, gunbc_runner_jit_transport,
+  GuestNetworkAbsent, runner_microvm_vm_config,
+}
+import gunbc.runner_microvm_boot_probe {
+  BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
+  BootConsoleLacksRunnerVersion, BootNotAttempted, BootExceededHostDeadline,
+  boot_probe_verdict, boot_probe_admitted,
+  runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
+  runner_microvm_boot_probe_bounded_command,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn console_carrying_version() -> ProcessOutcome {
+  ProcessOutputPresent {
+    text: concat("[    0.412] systemd[1]: Reached target multi-user.target\n2.", "336.0\n"),
+  }
+}
+
+// THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, AND THIS IS THE PAIR THAT SAYS SO. A console
+// that reached multi-user but never printed the runner's version is the exact failure an image
+// missing its runner produces -- the guest boots beautifully and is useless -- so the negative arm
+// is a console that boots and lacks the version, not an empty one.
+test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
+  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: console_carrying_version())
+  let booted_but_empty = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: ProcessOutputPresent { text: "[    0.412] systemd[1]: Reached target multi-user.target\n" },
+  )
+  boot_probe_admitted(v: good)
+    && !boot_probe_admitted(v: booted_but_empty)
+    && (match booted_but_empty {
+      BootConsoleLacksRunnerVersion { expected: e, console: _ } => e == actions_runner_release_2_336_0.version as String
+      _ => false
+    })
+}
+
+// A VMM THAT REFUSED AND A GUEST THAT PRODUCED NOTHING ARE DIFFERENT EVENTS WITH DIFFERENT OWNERS.
+// The first is a host or configuration fact and its remedy is on the host; the second is an image
+// fact. Collapsing them into one cause would send a reader to the wrong module, and the exit code
+// and stderr are carried because they are the only thing that distinguishes them in practice.
+test fn a_refused_vmm_and_a_silent_guest_are_distinguishable_refusals() -> Bool {
+  let refused = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: ProcessRefused { exit_code: 1, stderr: "Error: cannot open /dev/kvm" },
+  )
+  let silent = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: ProcessOutputAbsent)
+  !boot_probe_admitted(v: refused)
+    && !boot_probe_admitted(v: silent)
+    && (match refused {
+      BootProducedNoConsole { cause: c } =>
+        string_contains(s: c, pattern: "/dev/kvm") && string_contains(s: c, pattern: "exit 1")
+      _ => false
+    })
+    && (match silent {
+      BootProducedNoConsole { cause: c } => !string_contains(s: c, pattern: "exit ")
+      _ => false
+    })
+}
+
+// THE PROBE NEVER BOOTS THE BUILT ARTIFACT. A root drive is attached read-write, so booting the
+// image itself would mutate the bytes whose digest the build receipt recorded. The red is a probe
+// rootfs path equal to the image path.
+test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool {
+  runner_microvm_boot_probe_rootfs(root: "/r")
+    != "/r/images/ubuntu-24.04-aarch64-runner-2.336.0.ext4"
+}
+
+// THE CONFIG DOCUMENT IS UPSTREAM'S SPELLING, hyphenated at the top level and underscored inside.
+// A model that tidied that asymmetry would produce a document Firecracker does not parse, and the
+// failure would arrive as a boot error rather than as a modeling one.
+test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
+  let doc = firecracker_vm_config_document(
+    config: runner_microvm_vm_config(
+      rootfs_path: "/r/probe/probe-rootfs.ext4",
+      jit_config_path: "/r/probe/probe-rootfs.ext4",
+      kernel_path: "/r/base/vmlinux-6.1.128",
+      net: runner_microvm_boot_probe_networking(),
+      size: gunbc_runner_microvm_declared_size,
+      transport: gunbc_runner_jit_transport,
+    ),
+  )
+  string_contains(s: doc, pattern: "\"boot-source\"")
+    && string_contains(s: doc, pattern: "\"machine-config\"")
+    && string_contains(s: doc, pattern: "\"network-interfaces\":[]")
+    && string_contains(s: doc, pattern: "\"kernel_image_path\"")
+    && string_contains(s: doc, pattern: "\"mem_size_mib\"")
+}
+
+// `--no-api` IS PART OF THE OPERATION. Without it Firecracker binds its API socket and WAITS for an
+// InstanceStart nobody sends, so the step would report a hang rather than a boot.
+test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
+  let c = firecracker_run_config_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
+  c.program as String == "/fc/firecracker"
+    && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
+}
+
+// THE HOST'S DEADLINE IS NOT THE GUEST'S TO DECLINE, and this pair is what says so.
+//
+// The agent's ExecStopPost= poweroff covers only the case where the agent STARTED. It does not cover
+// an agent systemd never pulled in, a kernel panic before userspace, or an init that hangs -- in all
+// of which the VMM holds a guest forever. So the VMM runs under a host deadline that escalates to
+// KILL, and exit 124 is `timeout`'s own answer that the deadline FIRED, which is a different event
+// from a VMM that ran and failed. Collapsing them would report a hung guest as a broken one.
+test fn a_hung_guest_is_killed_by_the_host_and_reported_as_a_deadline_rather_than_a_failure() -> Bool {
+  let expired = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: ProcessRefused { exit_code: coreutils_timeout_expired_exit_code, stderr: "[    0.9] Kernel panic" },
+  )
+  let ordinary = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: ProcessRefused { exit_code: 1, stderr: "Error: cannot open /dev/kvm" },
+  )
+  !boot_probe_admitted(v: expired)
+    && (match expired { BootExceededHostDeadline { deadline: _, console: _ } => true  _ => false })
+    && (match ordinary { BootProducedNoConsole { cause: _ } => true  _ => false })
+}
+
+// THE DEADLINE ESCALATES TO KILL. A bare `timeout` sends TERM and then waits, so a wedged VMM
+// outlives the bound it was supposed to be under -- a deadline the subject can decline is the escape
+// hatch DESIGN section 5 refuses. The red is a builder that drops --kill-after.
+test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
+  let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
+  c.program as String == "timeout"
+    && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
+}

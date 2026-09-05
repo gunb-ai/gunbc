@@ -1,6 +1,6 @@
 module extdeps.tools.gnu_coreutils
 
-import std.types { NonEmptyStr, FilePath, String, List }
+import std.types { NonEmptyStr, FilePath, String, List, Int }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -186,3 +186,34 @@ fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
     path,
   ]
 }
+
+// `timeout` RUNS A COMMAND UNDER A DEADLINE THE COMMAND ITSELF CANNOT EXTEND, which is the only
+// reason it is here. Coreutils documents it as running COMMAND with a time limit, sending a signal
+// when the limit is reached and exiting 124 if it fired.
+data coreutils_timeout_binary_name: NonEmptyStr = "timeout"
+
+// `--kill-after` IS PART OF THE OPERATION, NOT A REFINEMENT OF IT. Plain `timeout` sends TERM and
+// then WAITS: a process that ignores TERM, or one wedged in the kernel, outlives the deadline it was
+// supposed to be bounded by -- so a deadline without a follow-up KILL is not a deadline, it is a
+// request. The grace period is a parameter because how long a subject deserves to shut down cleanly
+// is the caller's fact, and the escalation is unconditional because a bounded lifetime that the
+// subject can decline is exactly the escape hatch DESIGN section 5 refuses.
+//
+// THE WRAPPED COMMAND IS AN ArgvCommand AND ITS PROGRAM IS NOT RE-SPELLED. This takes the built
+// command rather than a program and a word list, so the deadline composes over any command that
+// already came through an admitted builder and cannot be used to smuggle an unbuilt argv into a
+// process -- the seal extdeps.exec.command holds is not weakened by wrapping.
+fn timeout_command(duration: NonEmptyStr, kill_after: NonEmptyStr, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: coreutils_timeout_binary_name,
+    arguments: concat(
+      ["--kill-after", kill_after as String, duration as String, command.program as String],
+      command.arguments,
+    ),
+  )
+}
+
+// EXIT 124 IS `timeout`'s OWN ANSWER, and reading it as an ordinary failure would conflate two very
+// different events: a subject that ran and failed, and a subject that was still running when its
+// deadline arrived. Only the second says the bound did work.
+data coreutils_timeout_expired_exit_code: Int = 124
