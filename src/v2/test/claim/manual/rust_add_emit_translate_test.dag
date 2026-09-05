@@ -35,6 +35,7 @@ import v2.extdeps.languages.rust {
   rust_binding_spellings,
   rust_source_text,
   rust_target_model,
+  rust_target_model_staging,
   rust_target_model_node,
   rust_fn_add_lex,
   rust_facts_i32,
@@ -103,7 +104,7 @@ data rust_add_forbidden_authority_source_text: String = "authority_source_text_f
 
 data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
 
-data rust_add_target_model: TargetModel = rust_target_model()
+data rust_add_target_model: TargetModel = rust_target_model_staging()
 
 data rust_add_poisoned_authority_target_model: TargetModel = TargetModel {
   produced_decl_support: ProducedDeclUnwired,
