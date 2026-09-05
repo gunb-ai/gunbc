@@ -3710,6 +3710,60 @@ mod compiler_tests {
         );
     }
 
+    // THE SEAM THAT USED TO COLLAPSE. record_lit_instantiation_template_fields once returned
+    // List<Node>? and mapped BOTH VariantNotFound AND VariantAmbiguous { owners } onto the same
+    // `none`, so the owner census this authority exists to produce died one seam after it was
+    // built and every ambiguity surfaced as FieldTemplateSelectionFailed. The return type is now
+    // TemplateFieldSelection, which has NO shared empty arm -- the collapse is unwritable rather
+    // than checked, so this cell is a REGRESSION CONTROL over that shape, not a wall.
+    //
+    // What it does NOT establish: that production reaches the ambiguous state through this seam.
+    // It constructs the carrier directly. Production reach stays unestablished, and the reviewer
+    // accepted unit evidence on exactly that understanding.
+    #[test]
+    fn template_selection_keeps_the_two_causes_distinguishable() {
+        use crate::v1_compiler_infer::{
+            record_lit_unavailable_cause_text, RecordLitUnavailableCause as C,
+            TemplateFieldSelection as TFS,
+        };
+        let owners: im::Vector<String> = im::vector![
+            "'Alpha' reached as A".to_string(),
+            "'Beta' reached as B".to_string()
+        ];
+        let ambiguous = TFS::TemplateFieldsUnavailable {
+            cause: std::rc::Rc::new(C::AmbiguousVariantOwners {
+                owners: std::rc::Rc::new(owners),
+            }),
+        };
+        let not_found = TFS::TemplateFieldsUnavailable {
+            cause: std::rc::Rc::new(C::FieldTemplateSelectionFailed),
+        };
+        let (a, n) = match (&ambiguous, &not_found) {
+            (
+                TFS::TemplateFieldsUnavailable { cause: a },
+                TFS::TemplateFieldsUnavailable { cause: n },
+            ) => (
+                record_lit_unavailable_cause_text(a.clone()),
+                record_lit_unavailable_cause_text(n.clone()),
+            ),
+            _ => panic!("both constructions must be Unavailable"),
+        };
+        assert_ne!(
+            a, n,
+            "THE TWO CAUSES REPORT THE SAME TEXT. That is the collapse itself: an ambiguity that reports as a selection failure sends the author looking for a missing template, when the real fact is that TWO types claim the name and the position does not choose"
+        );
+        assert!(
+            a.contains("Alpha") && a.contains("Beta"),
+            "THE OWNER CENSUS WAS DROPPED CROSSING THE SEAM. Naming one owner of two decides the ambiguity while appearing to report it, and would satisfy any count-only assertion: {}",
+            a
+        );
+        assert!(
+            !n.contains("Alpha"),
+            "not-found must not acquire an owner census it never had: {}",
+            n
+        );
+    }
+
     fn diags_matching(src: &str, needle: &str) -> usize {
         let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
             path: "probe.dag".to_string(),

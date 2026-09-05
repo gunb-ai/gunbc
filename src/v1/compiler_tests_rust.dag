@@ -1127,6 +1127,7 @@ fn ct_coercion_tests() -> String {
     ct_renderer_hop_identity_keying_test(),
     ct_generic_param_declines_fail_closed_unwrap_test(),
     ct_instantiation_unavailable_refuses_fallback_test(),
+    ct_template_selection_keeps_the_ambiguity_cause_test(),
     ct_record_lit_domain_selection_tests(),
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
@@ -1160,8 +1161,13 @@ fn ct_coercion_tests() -> String {
 // the point rather than a caveat. The refusal arm exists so that resolution order never decides a
 // genuine ambiguity; a corpus that happens not to contain one today is not evidence the arm works,
 // and an arm with no discriminating RED is a decoration that will be cited as coverage (DESIGN 4b).
-// The fixture AUTHORS the both-owner case, which is authorable here precisely because a compiler's
-// regression probes are invalid programs.
+// WHERE THAT ARM IS ACTUALLY COVERED, stated exactly because this comment previously overclaimed:
+// the SYNTHETIC cell the_selector_refuses_many_owners_instead_of_choosing_one covers 0/1/many by
+// calling matching_owner_decision directly. The SOURCE-LEVEL fixture below does NOT reach the
+// many-owner arm -- that was measured, not assumed -- so nothing here establishes that authored
+// source can drive a genuine both-owner ambiguity through the real selection fold. That reach is
+// unestablished, and this comment says so rather than letting "the fixture authors it" be read as
+// coverage it does not provide.
 //
 // The four cells are one matrix over the selection fold: element-only selects, outer-only selects,
 // neither is not-found, both refuses. Each of the first three is also the GREEN CONTROL for the
@@ -1268,6 +1274,47 @@ fn ct_record_lit_domain_selection_tests() -> String {
   )
 }
 
+
+fn ct_template_selection_keeps_the_ambiguity_cause_test() -> String {
+  concat(
+    "    // THE SEAM THAT USED TO COLLAPSE. record_lit_instantiation_template_fields once returned\n",
+    "    // List<Node>? and mapped BOTH VariantNotFound AND VariantAmbiguous \{ owners } onto the same\n",
+    "    // `none`, so the owner census this authority exists to produce died one seam after it was\n",
+    "    // built and every ambiguity surfaced as FieldTemplateSelectionFailed. The return type is now\n",
+    "    // TemplateFieldSelection, which has NO shared empty arm -- the collapse is unwritable rather\n",
+    "    // than checked, so this cell is a REGRESSION CONTROL over that shape, not a wall.\n",
+    "    //\n",
+    "    // What it does NOT establish: that production reaches the ambiguous state through this seam.\n",
+    "    // It constructs the carrier directly. Production reach stays unestablished, and the reviewer\n",
+    "    // accepted unit evidence on exactly that understanding.\n",
+    "    #[test]\n",
+    "    fn template_selection_keeps_the_two_causes_distinguishable() {\n",
+    "        use crate::v1_compiler_infer::\{TemplateFieldSelection as TFS, RecordLitUnavailableCause as C, record_lit_unavailable_cause_text};\n",
+    "        let owners: im::Vector<String> = im::vector![\"'Alpha' reached as A\".to_string(), \"'Beta' reached as B\".to_string()];\n",
+    "        let ambiguous = TFS::TemplateFieldsUnavailable \{ cause: std::rc::Rc::new(C::AmbiguousVariantOwners \{ owners: std::rc::Rc::new(owners) }) };\n",
+    "        let not_found = TFS::TemplateFieldsUnavailable \{ cause: std::rc::Rc::new(C::FieldTemplateSelectionFailed) };\n",
+    "        let (a, n) = match (&ambiguous, &not_found) {\n",
+    "            (TFS::TemplateFieldsUnavailable \{ cause: a }, TFS::TemplateFieldsUnavailable \{ cause: n }) =>\n",
+    "                (record_lit_unavailable_cause_text(a.clone()), record_lit_unavailable_cause_text(n.clone())),\n",
+    "            _ => panic!(\"both constructions must be Unavailable\"),\n",
+    "        };\n",
+    "        assert_ne!(\n",
+    "            a, n,\n",
+    "            \"THE TWO CAUSES REPORT THE SAME TEXT. That is the collapse itself: an ambiguity that reports as a selection failure sends the author looking for a missing template, when the real fact is that TWO types claim the name and the position does not choose\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            a.contains(\"Alpha\") && a.contains(\"Beta\"),\n",
+    "            \"THE OWNER CENSUS WAS DROPPED CROSSING THE SEAM. Naming one owner of two decides the ambiguity while appearing to report it, and would satisfy any count-only assertion: {}\",\n",
+    "            a\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !n.contains(\"Alpha\"),\n",
+    "            \"not-found must not acquire an owner census it never had: {}\",\n",
+    "            n\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
 
 fn ct_instantiation_unavailable_refuses_fallback_test() -> String {
   concat(

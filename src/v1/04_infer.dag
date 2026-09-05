@@ -1858,8 +1858,8 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                     }
                   )
                   match record_lit_instantiation_template_fields(tn: tn, exp: exp, decl: decl, scope: scope) {
-                    Absent => InstantiationUnavailable { cause: FieldTemplateSelectionFailed }
-                    Present { value: template_fields } =>
+                    TemplateFieldsUnavailable { cause: c } => InstantiationUnavailable { cause: c }
+                    TemplateFieldsSelected { fields: template_fields } =>
                       Instantiated { fields: template_fields |> map(sf =>
                         Node {
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
@@ -1936,14 +1936,18 @@ fn record_lit_instantiation_may_fall_back(v: RecordLitInstantiation) -> Bool {
     Instantiated { fields: _ } => false
   }
 }
-fn record_lit_instantiation_template_fields(tn: String, exp: Node, decl: Node, scope: InferScope) -> List<Node>? {
+type TemplateFieldSelection
+  = TemplateFieldsSelected { fields: List<Node> }
+  | TemplateFieldsUnavailable { cause: RecordLitUnavailableCause }
+
+fn record_lit_instantiation_template_fields(tn: String, exp: Node, decl: Node, scope: InferScope) -> TemplateFieldSelection {
   if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) {
-    Present { value: decl.children }
+    TemplateFieldsSelected { fields: decl.children }
   } else {
     match record_lit_variant_selection(type_name: Present { value: tn }, expected: Present { value: exp }, scope: scope) {
-      VariantSelected { variant: variant, owner: _, owner_name: _, route: _ } => Present { value: variant.children }
-      VariantNotFound => none
-      VariantAmbiguous { owners: _ } => none
+      VariantSelected { variant: variant, owner: _, owner_name: _, route: _ } => TemplateFieldsSelected { fields: variant.children }
+      VariantNotFound => TemplateFieldsUnavailable { cause: FieldTemplateSelectionFailed }
+      VariantAmbiguous { owners: os } => TemplateFieldsUnavailable { cause: AmbiguousVariantOwners { owners: os } }
     }
   }
 }
