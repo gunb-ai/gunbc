@@ -21,6 +21,7 @@ import gunbc.live_deploy.revision {
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable,
 }
 import gunbc.fleet_revision_acceptance { AcceptedFleetRevision }
@@ -285,6 +286,7 @@ fn relation_from_merge_base_oid(
 type FleetDesiredAdvanceRefusal
   = AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }
   | AdvanceHistoriesUnrelated { current: GitObjectId, accepted: GitObjectId }
+  | AdvanceHistoriesDiverged { current: GitObjectId, accepted: GitObjectId }
   | AdvanceRelationUnobservable { current: GitObjectId, accepted: GitObjectId, cause: NonEmptyStr }
   | InitialFleetDesiredCreationNotAuthorized { accepted: GitObjectId }
   | AdvanceRelationIsAboutAnotherPair {
@@ -394,6 +396,13 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
     AdvanceHistoriesUnrelated { current: cur, accepted: acc } =>
       join([
         "neither revision is an ancestor of the other (current ",
+        git_object_id_wire_hex(oid: cur) as String,
+        ", accepted ", git_object_id_wire_hex(oid: acc) as String,
+        ") -- advancing would move the ref sideways",
+      ], "")
+    AdvanceHistoriesDiverged { current: cur, accepted: acc } =>
+      join([
+        "the revisions have diverged: they share an ancestor but neither is an ancestor of the other (current ",
         git_object_id_wire_hex(oid: cur) as String,
         ", accepted ", git_object_id_wire_hex(oid: acc) as String,
         ") -- advancing would move the ref sideways",
@@ -535,6 +544,10 @@ fn classify_admitted_relation<E, M>(
     UnrelatedHistories =>
       FleetDesiredAdvanceRefused {
         cause: AdvanceHistoriesUnrelated { current: current, accepted: accepted.revision },
+      }
+    DivergedHistories =>
+      FleetDesiredAdvanceRefused {
+        cause: AdvanceHistoriesDiverged { current: current, accepted: accepted.revision },
       }
     RelationUnverifiable { cause: c } =>
       FleetDesiredAdvanceRefused {

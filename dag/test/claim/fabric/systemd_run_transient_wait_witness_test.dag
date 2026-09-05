@@ -1,0 +1,56 @@
+module test.claim.fabric.systemd_run_transient_wait_witness_test
+
+import std.types { Bool, List }
+import extdeps.systemd { WorkingDirectoryProperty, MemoryMax }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
+import gunbc.systemd_run_transient {
+  systemd_run_transient_wait_operation_argv_matches_authority,
+  systemd_run_transient_wait_outcome_from_result,
+  SystemdRunTransientWaitCompleted,
+  SystemdRunTransientWaitTransportRefused,
+  argv_exact_token_equal,
+}
+
+data wait_properties: List<SystemdRunProperty> = [
+  SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/path with space" },
+  SystemdRunProperty { property: MemoryMax, value: "17179869184" },
+]
+
+test fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
+  let argv = systemd_run_transient_wait_unit_argv(
+    unit: "fci1-bounded-driver.service",
+    properties: wait_properties,
+    command_argv: ["/bin/sh", "-c", "exit 86"],
+  )
+  systemd_run_transient_wait_operation_argv_matches_authority(
+    unit: "fci1-bounded-driver.service",
+    properties: wait_properties,
+    command_argv: ["/bin/sh", "-c", "exit 86"],
+  )
+    && argv_exact_token_equal(
+      left: argv,
+      right: [
+        "systemd-run", "--unit=fci1-bounded-driver.service", "--wait", "--quiet", "--collect",
+        "--property=WorkingDirectory=/tmp/path with space", "--property=MemoryMax=17179869184",
+        "--", "/bin/sh", "-c", "exit 86",
+      ],
+    )
+}
+
+test fn systemd_wait_route_rejects_split_working_directory_token() -> Bool {
+  !argv_exact_token_equal(
+    left: ["--property=WorkingDirectory=/tmp/path with space"],
+    right: ["--property=WorkingDirectory=/tmp/path", "with", "space"],
+  )
+}
+
+test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
+  match systemd_run_transient_wait_outcome_from_result(
+    exit_code: 86,
+    stdout: "",
+    stderr: "instrument checkpoint",
+  ) {
+    SystemdRunTransientWaitCompleted { exit_code: code, stdout: _, stderr: _ } => code == 86
+    SystemdRunTransientWaitTransportRefused { reason: _ } => false
+  }
+}

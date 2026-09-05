@@ -1,6 +1,12 @@
 module gunbc.ci_spec
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import extdeps.github.org_admin_auth {
+  github_app_installation_access_token_url,
+  github_app_jwt_backdate_seconds,
+  github_app_jwt_lifetime_seconds,
+}
 import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
@@ -1362,8 +1368,116 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   )
 }
 
+// THE ORG-ADMIN CREDENTIAL IS MINTED IN-RUN FROM THE App KEY THE FLEET ALREADY HOLDS; NO HUMAN
+// TOKEN EXISTS. The interim in docs/plans/org-admin-credential-acquisition.md asked the operator to
+// mint a fine-grained PAT and paste it into an Actions secret. That step was never taken, and it
+// was never necessary: the gunbai-ci GitHub App (gunbc.auth.github_apps gunbai_ci_declared) is
+// installed on the organization, its private key sits in Secret Manager behind the same WIF read
+// the fleet key uses, and the runner installer already mints registration tokens with it. So this
+// prelude follows the fleet-key lifecycle exactly -- WIF token by env, the SecretRef's own access
+// URL, a 0600 file under RUNNER_TEMP, a trap armed before the key touches disk -- then signs a
+// ten-minute RS256 JWT with openssl, exchanges it for a one-hour installation token
+// (extdeps.github.org_admin_auth installation_token_citation), wipes the key, and exports the token
+// into THIS step's environment only. Nothing reaches GITHUB_ENV; the trap unsets it on exit.
+//
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED (the lesson gunbc_ci_fleet_key_agent_prelude's
+// administrator sibling records): the mint POST writes its headers and body to files, and anything
+// but 201 refuses with the status line, so a revoked key, a removed installation and a missing
+// permission each surface as what they are rather than as a JSON decode traceback.
+fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/org-admin-app-key\"") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/org-admin-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "JWT_FILE=\"$RUNNER_TEMP/org-admin-app-jwt\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_HEADERS=\"$RUNNER_TEMP/org-admin-token-headers\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_BODY=\"$RUNNER_TEMP/org-admin-token-body\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" \"$RUNNER_TEMP/org-admin-app-key-sm-body\"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: "SM_BODY=\"$RUNNER_TEMP/org-admin-app-key-sm-body\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
+          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          "\")\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for ",
+          secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+          " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$SM_BODY\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "NOW=$(date +%s)") },
+    Do { run: ci_retry_body_run(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
+    Do { run: ci_retry_body_run(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
+          to_string(github_app_jwt_backdate_seconds),
+          "))\" \"$((NOW+",
+          to_string(github_app_jwt_lifetime_seconds),
+          "))\" \"",
+          to_string(gunbai_ci_declared.app_id.value),
+          "\" | b64url)"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' -D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
+          github_app_installation_access_token_url(installation_id: gunbai_ci_declared_installation_id.value),
+          "\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization\" >&2; exit 1; fi"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_ORG_ADMIN_TOKEN") },
+    Do { run: ci_retry_body_run(command: "export GH_TOKEN=\"$GUNBC_ORG_ADMIN_TOKEN\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"org-admin: installation token minted in-run for app ",
+          gunbai_ci_declared.slug as String,
+          " installation ",
+          to_string(gunbai_ci_declared_installation_id.value),
+          " (one-hour lifetime; key wiped; token held in this step's environment only)\""
+        ], "")
+      )
+    }
+  ]
+}
+
 fn gunbc_ci_org_actions_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_org_actions_converge_target.entry,
     function: gunbc_ci_org_actions_converge_target.function,
