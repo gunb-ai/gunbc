@@ -32,7 +32,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.command { argv_words }
 import extdeps.github.actions { ActionRef, checkout_action, setup_rust_action }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
-import gunbc.claim_executor_cli { claim_executor_command }
+import gunbc.claim_executor_cli { claim_executor_command, claim_executor_release_path }
 import gunbc.repo_self_build { repo_self_build_all_bins_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
@@ -244,7 +244,7 @@ fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWo
           source: source,
           checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
           toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
-          executable_provenance: [repo_self_build_all_bins_command(), "target/release/claim_executor"],
+          executable_provenance: [repo_self_build_all_bins_command(), claim_executor_release_path],
           command: build_lane_run_command(),
           environment: [
             RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
