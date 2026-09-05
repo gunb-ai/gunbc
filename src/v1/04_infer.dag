@@ -160,7 +160,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
 import v1.compiler.infer_resolve {
-  declaration_bound_product_application, declaration_bound_formal_product_application,
+  declaration_bound_product_application, declaration_bound_formal_product_application, declaration_bound_produced_product_application,
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
@@ -4176,8 +4176,8 @@ fn build_call_application_plan(
           Absent => none
         },
         produced_product_application: if carried.product_application == none { none } else { match matched {
-          Present { value: bound } => declaration_bound_product_application(
-            n: resolved_type(n: arg_value(n: bound.second)), env: type_env, module_name: module_name)
+          Present { value: bound } => declaration_bound_produced_product_application(
+            value: arg_value(n: bound.second), env: type_env, module_name: module_name)
           Absent => none
         } }
       }]
@@ -4723,7 +4723,8 @@ fn direct_call_product_application_is_routed(app: ResolvedCallFormal) -> Bool {
   match app.formal.product_application {
     Present { value: declared } => match app.produced_product_application {
       Present { value: produced } =>
-        !(declared.arguments |> any(arg => arg.connective == NoConnective && (arg.children |> count) > 0))
+        (declared.arguments |> count) > 0 && (produced.arguments |> count) > 0
+          && !(declared.arguments |> any(arg => arg.connective == NoConnective && (arg.children |> count) > 0))
           && !(produced.arguments |> any(arg => arg.connective == NoConnective && (arg.children |> count) > 0))
       Absent => false
     }

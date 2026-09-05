@@ -9,6 +9,8 @@ import std.types { List }
 // fields identify an application: phantom arguments remain part of this fact.
 // The producer establishes owner in the declaration's context. A consumer must
 // not replace it with a lookup of the same spelling in the consumer's context.
+// An owner with no parameters has the same representation with arguments: [].
+// Consumers that require a generic application decide that from its arity.
 type TypeApplication<Argument> {
   owner: DeclarationRef
   arguments: List<Argument>
