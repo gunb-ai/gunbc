@@ -325,6 +325,11 @@ fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> Cor
 // name a snapshot" and "this snapshot's sources are not all here" have different owners: the first is
 // a fact about the commit, the second about this store's current contents. Reporting a wrong-kind
 // root as an unrecoverable corpus would name the wrong subject to whoever has to fix it.
+// `committed` IS OPTIONAL BECAUSE THE COMPARISON MAY HAVE NO RIGHT-HAND SIDE. A candidate staged in a
+// repository with nothing checked out is entirely uncommitted -- there is no base manifest, so an arm
+// requiring one would have to name a manifest that does not exist. The first writing of this arm
+// passed the candidate itself into that field, which reports "your candidate differs from itself" and
+// is a fabricated payload rather than a missing one.
 type RepositoryCheckout
   = RepositoryCheckedOut { repository: RepositoryEnvelope, corpus: List<RecoveredSourceFile> }
   | CheckoutReferenceUnresolved { reference: RepositoryCommitRef }
@@ -332,11 +337,6 @@ type RepositoryCheckout
   | CheckoutSnapshotIsAuthoredSource { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutSnapshotIsSemanticNode { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusRecoveryRefusal }
-// `committed` IS OPTIONAL BECAUSE THE COMPARISON MAY HAVE NO RIGHT-HAND SIDE. A candidate staged in a
-// repository with nothing checked out is entirely uncommitted -- there is no base manifest, so an arm
-// requiring one would have to name a manifest that does not exist. The first writing of this arm
-// passed the candidate itself into that field, which reports "your candidate differs from itself" and
-// is a fabricated payload rather than a missing one.
   | CheckoutWouldDiscardStagedWork {
       reference: RepositoryCommitRef,
       candidate: CorpusManifestObjectRef,

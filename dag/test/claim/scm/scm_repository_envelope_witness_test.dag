@@ -68,7 +68,10 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeCommitRootIsSemanticNode,
   RepositoryEncodeManifestSourceIsSemanticNode,
   RepositoryEncodeManifestSourceIsCorpusManifest,
-  RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
+  RepositoryCommitRootNotInStore,
+  RepositoryEncodeStagedNotInStore,
+  RepositoryEncodeStagedIsAuthoredSource,
+  RepositoryEncodeStagedIsSemanticNode, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
@@ -80,6 +83,10 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryCommitRootNotInObjectTable, RepositoryCommitRootIsAuthoredSource,
   RepositoryCommitRootIsSemanticNode,
+  RepositoryStagedReferenceUnresolved,
+  RepositoryStagedNotInObjectTable,
+  RepositoryStagedIsAuthoredSource,
+  RepositoryStagedIsSemanticNode,
   RepositoryDecodedManifestSourceIsSemanticNode,
   RepositoryDecodedManifestSourceIsCorpusManifest,
   RepositoryDecodedTargetIsAuthoredSource,
@@ -599,6 +606,9 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryEncodeCommitRootIsSemanticNode { root: _ } => "commit_root_is_semantic_node"
         RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => "manifest_source_is_node"
         RepositoryEncodeManifestSourceIsCorpusManifest { source: _ } => "manifest_source_is_manifest"
+        RepositoryEncodeStagedNotInStore { staged: _ } => "staged_not_in_store"
+        RepositoryEncodeStagedIsAuthoredSource { staged: _ } => "staged_is_authored_source"
+        RepositoryEncodeStagedIsSemanticNode { staged: _ } => "staged_is_semantic_node"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
@@ -893,6 +903,9 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
           })
         RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
         RepositoryEncodeTargetIsCorpusManifest { target: _ } => false
+        RepositoryEncodeStagedNotInStore { staged: _ } => false
+        RepositoryEncodeStagedIsAuthoredSource { staged: _ } => false
+        RepositoryEncodeStagedIsSemanticNode { staged: _ } => false
         RepositoryEncodeCommitRootIsAuthoredSource { root: _ } => false
         RepositoryEncodeCommitRootIsSemanticNode { root: _ } => false
         RepositoryEncodeManifestSourceIsSemanticNode { source: _ } => false
@@ -1019,6 +1032,10 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
         RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
         RepositoryCommitRootIsSemanticNode { root: _ } => "commit_root_semantic_node"
+        RepositoryStagedReferenceUnresolved { reference: _ } => "staged_reference"
+        RepositoryStagedNotInObjectTable { staged: _ } => "staged_absent"
+        RepositoryStagedIsAuthoredSource { staged: _ } => "staged_source"
+        RepositoryStagedIsSemanticNode { staged: _ } => "staged_semantic_node"
         RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => "decoded_manifest_source_node"
         RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => "decoded_manifest_source_manifest"
         RepositoryDecodedTargetIsAuthoredSource { target: _ } => "decoded_target_source"
