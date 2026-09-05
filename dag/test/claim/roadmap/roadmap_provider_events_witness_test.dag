@@ -8,6 +8,7 @@ import gunbc.roadmap_provider_events {
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
+  ProviderBudgetSpent,
   ProviderEventsRefused,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
@@ -22,6 +23,20 @@ import gunbc.roadmap_provider_events {
 }
 
 data successful_codex_jsonl: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"completed\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}\n"
+
+test fn a_harness_round_usage_event_is_accounted_not_refused() -> Bool {
+  let parsed = parse_codex_jsonl(
+    text: "{\"type\":\"turn.started\"}\n{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":900,\"output_tokens\":120,\"epoch_ms\":1000000,\"files_changed\":0}\n{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+  )
+  match parsed {
+    CodexEventsRefused { events_before_refusal: _, line_number: _, raw: _, reason: _ } => false
+    _ =>
+      match provider_execution_state(parsed: parsed) {
+        ProviderRunning { activity } => activity == "Agent working · running command"
+        _ => false
+      }
+  }
+}
 
 test fn codex_stream_classifies_running_activity() -> Bool {
   let parsed = parse_codex_jsonl(
@@ -60,6 +75,20 @@ test fn codex_turn_failed_preserves_raw_provider_evidence() -> Bool {
     ProviderFailed { activity, detail } =>
       activity == "agent turn failed"
         && string_contains(s: detail, pattern: "usage exhausted")
+    _ => false
+  }
+}
+
+// DISCRIMINATING: the spent budget is its own terminal. The same stream through turn.failed lands in
+// ProviderFailed (the witness above), so a fold that collapsed the two would answer "failed" here.
+test fn a_spent_step_budget_is_budget_spent_not_failed() -> Bool {
+  let text = "{\"type\":\"turn.started\"}\n{\"type\":\"turn.budget_exhausted\",\"steps_taken\":40}\n"
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: text))
+  match state {
+    ProviderBudgetSpent { activity, detail } =>
+      activity == "Agent stopped at its round budget"
+        && string_contains(s: detail, pattern: "\"steps_taken\":40")
+        && provider_execution_state_label(state: state) == "budget_spent"
     _ => false
   }
 }
@@ -178,6 +207,14 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
 // pass every single-entry witness and still fail in CI's affected-set re-eval leg, which evaluates
 // changed data items — that is exactly how `2 as Seconds` shipped green from this branch. Reading
 // the values here makes an unevaluable budget row red locally.
+
+test fn the_projection_keeps_the_round_usage_clock_and_tokens() -> Bool {
+  let f = codex_provider_event_projection_filter as String
+  string_contains(s: f, pattern: "$type == \"round.usage\"")
+    && string_contains(s: f, pattern: "\"epoch_ms\":(.epoch_ms | num)")
+    && string_contains(s: f, pattern: "\"output_tokens\":(.output_tokens | num)")
+    && string_contains(s: f, pattern: "{\"files_changed\":.files_changed}")
+}
 
 test fn codex_character_budgets_are_measured_counts() -> Bool {
   character_count_value(c: codex_provider_event_line_observation_budget) == 65536

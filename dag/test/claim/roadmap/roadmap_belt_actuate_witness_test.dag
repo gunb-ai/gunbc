@@ -1,5 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -52,12 +53,13 @@ import gunbc.roadmap_dispatch_actuator {
   host_exec_argv,
   DispatchLiveSession,
   CodexDispatchProvider,
-  dispatch_provider_instance_for,
+  dispatch_provider_instance_for_kind,
   filter_dispatch_tmux_sessions,
 }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema }
 import gunbc.roadmap_belt_actuate {
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
@@ -202,7 +204,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     windows: 1,
     lease_verdict: verdict,
     worker: worker_observation_without_provider_probe(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
     ),
   }
 }
@@ -217,7 +219,7 @@ fn live_session_with_process(
     windows: 1,
     lease_verdict: Converged,
     worker: worker_observation_without_provider_probe_for_process(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
       process: process,
     ),
   }
@@ -1092,6 +1094,8 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
       },
     },
     publication_source: ReceiptSourceAbsent,
+    review: [],
+    goal_audit: [],
   })
 }
 
@@ -1175,6 +1179,8 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
         },
       },
       publication_source: ReceiptSourceAbsent,
+      review: [],
+      goal_audit: [],
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -1256,6 +1262,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyRecorded {
         node_id: "v2-emitter-producer-provenance",
@@ -1264,6 +1271,8 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
+    audit_outcomes: [],
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1287,6 +1296,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyDeferred {
         node_id: "node-a",
@@ -1294,6 +1304,8 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
+    audit_outcomes: [],
   }
   match belt_tick_receipt_from_result(
     result: result,
@@ -1337,6 +1349,8 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [
         VerifyRecorded {
           node_id: "v2-emitter-producer-provenance",
@@ -1345,6 +1359,8 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
         },
       ],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1364,6 +1380,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1381,6 +1398,7 @@ test fn verification_presentation_verify_failed_is_failed() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassFailed { reason: "validation verdict failed" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1401,10 +1419,11 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   let raw = join([
-    "{\"schema\":\"roadmap-belt-tick-receipt/v3\",",
+    "{\"schema\":\"", belt_tick_receipt_schema, "\",",
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"commit_pass\":{\"outcome\":\"recorded\"},",
     "\"verify_pass\":{\"outcome\":\"refused\"},",
     "\"publish_pass\":{\"outcome\":\"recorded\"}}",
   ], "")
@@ -1837,6 +1856,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
     head: worktree_head_observation_of(
       outcome: ExecFailed {
         program: "git",
@@ -1849,6 +1869,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
     head: worktree_head_observation_of(
       outcome: ExecOk { stdout: (belt_pub_head as String) },
     ),
@@ -2219,8 +2240,12 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2236,8 +2261,12 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },

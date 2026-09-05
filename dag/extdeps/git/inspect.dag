@@ -88,10 +88,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // repository-addressed operation with one shell realization is not that.
 //
 // THE SIBLING POPULATION IS DECLARED RATHER THAN SILENTLY LEFT. Five operations in this service
-// are still repository-ambient by the same mechanism: HeadCommit, WorkingTreeStatus,
+// are still repository-ambient by the same mechanism: HeadCommit,
 // IgnoredFiles, ListTreePathsAtRevision and ShowTree. They are NOT ported here because each
 // carries its own consumer census and this cut is scoped to the operation whose ambient
-// repository blocked a wet observation. Toplevel is deliberately NOT in that list: its purpose IS
+// repository blocked a wet observation. WorkingTreeStatus was ported 2026-09-04 with a census of
+// three consumers, all genuinely ambient (none held a repository root), each now passing
+// Toplevel().path -- the read the ambient form had been performing implicitly. Toplevel is deliberately NOT in that list: its purpose IS
 // to discover the ambient repository, so naming one would be circular. RUNG for the five:
 // mitigatable, and the mitigation is only that production happens to run from the repository
 // root. NEXT TRIGGER: the first consumer that must inspect a repository other than its own
@@ -182,14 +184,14 @@ service git.Inspect {
   }
 
   operation WorkingTreeStatus {
-    input {}
+    input { repository_path: String }
     output {
       entries_nul: String from "stdout"
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    transport shell { argv: ["git", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"

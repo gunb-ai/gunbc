@@ -1,0 +1,330 @@
+module gunbc.harness.harness_tool
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.measure { CharacterCount, character_count, character_count_value }
+import extdeps.languages.json.emit {
+  JsonValue, JsonString, JsonObject, JsonArray,
+  json_kv, json_string, json_array, json_object,
+}
+import extdeps.languages.json.parse {
+  JsonMemberFound, json_object_unique_member,
+}
+import extdeps.gunbc
+import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
+
+// THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
+// A TOOL'S CONTRACT IS CARRIED IN ITS DECLARED SHAPE, AND ANY LIMIT IT ENFORCES IS REPORTED IN ITS
+// RESULT RATHER THAN INFERRED FROM A TRUNCATED OR MISSING ONE.
+//
+// That rule is not a preference. Every quirk in the relayed harness transcript DCH reviewed was a
+// real semantic of this surface that nothing announced -- a caller that complied with an
+// undocumented working-directory convention by luck, a build killed by a chat-shaped timeout that
+// arrived looking like the build's own failure, a prompt-shaped hang that presented as a timeout.
+// In each case the harness knew the limit and the caller could not see it.
+
+// WHICH TOOL, as a closed set rather than a name compared at the call site. An unknown tool name off
+// the wire is a REFUSAL below, never a dispatch to a default.
+type HarnessTool
+  = RunCommandTool
+  | ReadFileTool
+  | WriteFileTool
+  | EditFileTool
+
+fn harness_tool_wire_name(tool: HarnessTool) -> String {
+  match tool {
+    RunCommandTool => "run_command"
+    ReadFileTool => "read_file"
+    WriteFileTool => "write_file"
+    EditFileTool => "edit_file"
+  }
+}
+
+type HarnessToolRead
+  = HarnessToolRecognized { tool: HarnessTool }
+  | HarnessToolUnrecognized { name: String }
+
+fn harness_tool_of_wire_name(name: String) -> HarnessToolRead {
+  if name == "run_command" {
+    HarnessToolRecognized { tool: RunCommandTool }
+  } else if name == "read_file" {
+    HarnessToolRecognized { tool: ReadFileTool }
+  } else if name == "write_file" {
+    HarnessToolRecognized { tool: WriteFileTool }
+  } else if name == "edit_file" {
+    HarnessToolRecognized { tool: EditFileTool }
+  } else {
+    HarnessToolUnrecognized { name: name }
+  }
+}
+
+// THE SIX DISPOSITIONS DCH-2 OWES, as one closed coproduct so that a tool result is either an
+// outcome or a NAMED refusal -- never an empty string that the model must guess the meaning of.
+//
+// WorkingDirectoryAbsent: the working directory is part of the call's declared input, so a caller
+// never complies with a convention by accident. An absent one refuses rather than defaulting to
+// wherever the harness process happens to be standing.
+//
+// DurationExceeded: a limit that kills a build is a real refusal and arrives as one, distinguished
+// from the command's own failure by the timeout program's documented 124 exit. A default chosen for
+// a chat turn is the wrong default for a compile, so the limit is per-call and reported.
+//
+// StandardInputRequested: no stdin means anything that prompts hangs until the limit kills it, and
+// the operator sees a timeout rather than a prompt. The tool declares that it supplies no input, so
+// a command that would read stdin gets an immediate typed refusal instead of a slow false timeout.
+//
+// OutputTruncated: a cap that ANNOUNCES itself, so a large result is distinguishable from a
+// complete one. Adopted deliberately from the reviewed prior art, which had this right.
+//
+// EditMatchCount: zero or several matches refuse rather than patching the first. Construction over
+// validation, and also adopted rather than reinvented.
+//
+// ContextWindowExhausted: a full window is a typed refusal, not a turn that begins to fail.
+// Compaction is a later capability; without this disposition, exhaustion presents to the operator
+// as the model quietly getting worse, which is the failure that cannot be debugged from outside.
+type HarnessToolDisposition
+  = WorkingDirectoryAbsent { path: String }
+  | DurationExceeded { limit_seconds: Int }
+  | StandardInputRequested { detail: String }
+  | EditMatchCount { pattern: String, found: Int }
+  | ContextWindowExhausted { detail: String }
+  | ToolInputMemberMissing { tool: String, member: String }
+  | ToolUnrecognized { name: String }
+  | ToolEffectRefused { detail: String }
+
+fn harness_disposition_text(d: HarnessToolDisposition) -> String {
+  match d {
+    WorkingDirectoryAbsent { path } =>
+      join(["working directory does not exist: ", path], "")
+    DurationExceeded { limit_seconds } =>
+      join([
+        "command exceeded its declared duration limit of ", to_string(value: limit_seconds),
+        "s and was killed; this is the harness's limit, not the command's own failure",
+      ], "")
+    StandardInputRequested { detail } =>
+      join(["command attempted to read standard input, which this tool does not supply: ", detail], "")
+    EditMatchCount { pattern, found } =>
+      join([
+        "edit refused: pattern occurs ", to_string(value: found),
+        " times and an edit is applied only at exactly one match; pattern was: ", pattern,
+      ], "")
+    ContextWindowExhausted { detail } =>
+      join(["context window exhausted: ", detail], "")
+    ToolInputMemberMissing { tool, member } =>
+      join(["tool ", tool, " was called without its required input member '", member, "'"], "")
+    ToolUnrecognized { name } =>
+      join(["no tool named '", name, "' is declared by this harness"], "")
+    ToolEffectRefused { detail } =>
+      join(["tool effect refused: ", detail], "")
+  }
+}
+
+// AN OUTCOME CARRIES ITS OWN TRUNCATION STANDING, so "complete" is a claim the result makes rather
+// than an assumption the reader brings.
+type HarnessOutputStanding
+  = OutputComplete
+  | OutputTruncated { retained_bytes: Int, total_bytes: Int }
+
+type HarnessToolOutcome
+  = ToolCompleted {
+      text: String
+      exit_code: Int
+      standing: HarnessOutputStanding
+    }
+  | ToolRefused { disposition: HarnessToolDisposition }
+
+fn harness_outcome_is_error(outcome: HarnessToolOutcome) -> Bool {
+  match outcome {
+    ToolCompleted { text: _, exit_code: code, standing: _ } => !(code == 0)
+    ToolRefused { disposition: _ } => true
+  }
+}
+
+fn harness_outcome_text(outcome: HarnessToolOutcome) -> String {
+  match outcome {
+    ToolCompleted { text, exit_code: code, standing } =>
+      join([
+        text,
+        "\n[exit ", to_string(value: code), "]",
+        match standing {
+          OutputComplete => ""
+          OutputTruncated { retained_bytes: kept, total_bytes: total } =>
+            join([
+              "\n[output truncated: ", to_string(value: kept), " of ",
+              to_string(value: total), " bytes retained]",
+            ], "")
+        },
+      ], "")
+    ToolRefused { disposition: d } => harness_disposition_text(d: d)
+  }
+}
+
+// THE EXECUTION ENVIRONMENT THE TOOLS RUN IN, declared per call rather than inherited.
+type HarnessToolEnvironment {
+  working_directory: FilePath
+  timeout_program: FilePath
+  duration_limit_seconds: Int
+}
+
+// GNU timeout exits 124 when it kills its child, which is what makes "the harness stopped this" a
+// DECIDABLE fact rather than a guess from a nonzero exit. Cited to coreutils' documented behaviour
+// and executed against /opt/homebrew/bin/gtimeout 9.11 on 2026-09-02, which returned exactly 124.
+data harness_timeout_kill_exit_code: Int = 124
+
+// THE TOOL RESULT CARRIES A DECLARED CAP, AND STDOUT IS THE CHANNEL THAT NEEDED ONE. extdeps.gunbc
+// WitnessBin.Run declares stderr_capture: BoundedTail{16384} and reports stderr_truncated with its
+// byte counts -- and declares NOTHING for stdout, which is the channel that actually returns bulk
+// output. So harness_run_command announced truncation for the small channel while pasting the large
+// one into the turn verbatim, and HarnessOutputStanding's own annotation ("a cap that ANNOUNCES
+// itself, so a large result is distinguishable from a complete one") was true of stderr only.
+//
+// MEASURED, NOT ANTICIPATED. A worker ran `cat` on the plan document its brief names. That single
+// tool_result was 162KB of a 170KB request -- five messages, roughly 42k tokens -- and the backend
+// closed the connection without a reply after four minutes (curl 52). Nothing refused: the turn
+// simply stopped, and the operator saw a hang.
+//
+// THE BUDGET IS THE HARNESS'S OWN, NOT THE TRANSPORT'S. Bounding here rather than waiting for a
+// stdout capture policy keeps the cap where the contract that announces it lives, and it is the
+// tool result -- what enters the context -- that must be bounded, which is a different question
+// from how much the transport chose to read. When a stdout policy does land, this stays the
+// narrower of the two rather than being replaced by it.
+data harness_tool_output_budget: CharacterCount = character_count(count: 16384)
+
+type HarnessBoundedToolText {
+  text: String
+  standing: HarnessOutputStanding
+}
+
+fn harness_bounded_tool_text(text: String) -> HarnessBoundedToolText {
+  let total = text.length()
+  let budget = character_count_value(c: harness_tool_output_budget)
+  if total <= budget {
+    HarnessBoundedToolText { text: text, standing: OutputComplete }
+  } else {
+    HarnessBoundedToolText {
+      text: text.substring(start: 0, end: budget),
+      standing: OutputTruncated { retained_bytes: budget, total_bytes: total },
+    }
+  }
+}
+
+fn harness_run_command(
+  environment: HarnessToolEnvironment,
+  command: String,
+) -> HarnessToolOutcome {
+  let result = gunbc.WitnessBin.Run(
+    workdir: environment.working_directory,
+    bin_path: environment.timeout_program,
+    args: [
+      to_string(value: environment.duration_limit_seconds),
+      "/bin/sh", "-c", command, "--",
+    ],
+  )
+  if result.exit_code == harness_timeout_kill_exit_code {
+    ToolRefused {
+      disposition: DurationExceeded { limit_seconds: environment.duration_limit_seconds },
+    }
+  } else {
+    let bounded = harness_bounded_tool_text(
+      text: join([result.stdout, result.stderr], ""),
+    )
+    ToolCompleted {
+      text: bounded.text,
+      exit_code: result.exit_code,
+      standing: bounded.standing,
+    }
+  }
+}
+
+// THE TOOL DECLARATIONS SENT TO THE MODEL. The schema is authored as JSON because that is what the
+// wire member IS -- a JSON Schema document -- and inventing a modelled mirror of JSON Schema to
+// project back into JSON would be a second representation of a specification we do not own.
+fn harness_run_command_schema() -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([
+      json_kv(key: "command", value: json_object([
+        json_kv(key: "type", value: json_string(s: "string")),
+        json_kv(key: "description", value: json_string(
+          s: "Shell command to run. It runs in the declared working directory with no standard input and under a declared duration limit; both limits are reported in the result when they bind.",
+        )),
+      ])),
+    ])),
+    json_kv(key: "required", value: json_array(elements: [json_string(s: "command")])),
+  ])
+}
+
+fn harness_tool_use_input_string(block: HarnessWireBlock, member: String) -> String? {
+  match block {
+    WireToolUseBlock { id: _, name: _, input: input } =>
+      match json_object_unique_member(v: input, key: member) {
+        JsonMemberFound { value: v } =>
+          match v {
+            JsonString { value: s } => Present { value: s }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// DISPATCH IS TOTAL. An unrecognized name and a missing required member are each their own refusal
+// carrying the offending name, so a malformed call is reported back to the model as a fact it can
+// act on rather than as an empty result it must interpret.
+fn harness_execute_tool_use(
+  environment: HarnessToolEnvironment,
+  block: HarnessWireBlock,
+) -> HarnessToolOutcome {
+  match block {
+    WireToolUseBlock { id: _, name: name, input: _ } =>
+      match harness_tool_of_wire_name(name: name) {
+        HarnessToolUnrecognized { name: n } =>
+          ToolRefused { disposition: ToolUnrecognized { name: n } }
+        HarnessToolRecognized { tool: t } =>
+          match t {
+            RunCommandTool =>
+              match harness_tool_use_input_string(block: block, member: "command") {
+                Present { value: c } =>
+                  harness_run_command(environment: environment, command: c)
+                Absent =>
+                  ToolRefused {
+                    disposition: ToolInputMemberMissing { tool: "run_command", member: "command" },
+                  }
+              }
+            ReadFileTool =>
+              ToolRefused {
+                disposition: ToolEffectRefused {
+                  detail: harness_unimplemented_tool_detail(tool: ReadFileTool),
+                },
+              }
+            WriteFileTool =>
+              ToolRefused {
+                disposition: ToolEffectRefused {
+                  detail: harness_unimplemented_tool_detail(tool: WriteFileTool),
+                },
+              }
+            EditFileTool =>
+              ToolRefused {
+                disposition: ToolEffectRefused {
+                  detail: harness_unimplemented_tool_detail(tool: EditFileTool),
+                },
+              }
+          }
+      }
+    _ => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+  }
+}
+
+// THE THREE TOOLS THAT ARE DECLARED AND NOT YET REALIZED REFUSE BY NAME, and they are NOT offered
+// to the model until they are. This is the honest shape of a vertical slice: the type carries the
+// four-tool surface DCH-2 specifies so that adding one is a realization rather than a re-modelling,
+// while harness_offered_tools below advertises only what actually runs. A tool advertised but
+// unimplemented would be the worst of both -- the model would plan around a capability that refuses
+// at the moment of use, having already spent the turn.
+fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
+  join([
+    "tool ", harness_tool_wire_name(tool: tool),
+    " is declared in the harness tool surface but has no realization yet; it is deliberately not ",
+    "advertised to the model, so reaching this arm means a caller invoked a tool it was never offered",
+  ], "")
+}

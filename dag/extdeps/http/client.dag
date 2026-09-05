@@ -38,6 +38,16 @@ fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
   ]
 }
 
+// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
+// section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
+// for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
+// written here would be this module answering a question it cannot know, and every caller with a
+// different backend would then need a second operation.
+//
+// WITHOUT IT THE WAIT WAS UNBOUNDED, which is not a slow path but a missing refusal: DESIGN section
+// 5 rules that a bounded "forever" is not an "unknown" error. Measured on this deployment, a wedged
+// backend held one harness POST open for over thirty minutes while the router answered an unrelated
+// probe in 0.15ms -- so the turn was neither progressing nor failing, and no arm existed to say so.
 service http.Client {
   operation Get {
     input { url: NonEmptyStr }
@@ -101,7 +111,7 @@ service http.Client {
   }
 
   operation PostJsonFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -109,6 +119,7 @@ service http.Client {
         "curl",
         "--fail-with-body",
         "-sk",
+        "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
         "-H", "Content-Type: application/json",
