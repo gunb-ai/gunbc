@@ -10754,39 +10754,47 @@ fn build_service_param_env(
     ctx: &InterpContext,
 ) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
-    // Build the declared parameter set once: used both for validation and for binding.
-    let declared_names: std::collections::HashSet<Symbol> = op_node
+    // Build the declared parameter name list (mirrors the fn-call path's cached_params
+    // at call_function_inner). `all_param_names` includes underscored variants.
+    let all_param_names: Vec<String> = op_node
         .params
         .iter()
-        .map(|p| ctx.sym(&param_node_name_at(p.clone(), ctx.si())))
+        .map(|p| param_node_name_at(p.clone(), ctx.si()))
         .collect();
 
     for (opt_name, val) in args {
         if let Some(name) = opt_name {
-            let sym = ctx.sym(name);
-            // A named argument not matching any declared parameter is a contract
-            // mismatch — refusing here is the same class as CallContractMismatch
-            // at the fn-call path (v1_interpreter.rs:5131). Without this check the
-            // undeclared name is silently inserted into the bindings, and the
-            // intended value is displaced to a positional or default slot —
-            // producing a fabricated plausible output (DESIGN §5).
-            if !declared_names.contains(&sym) {
-                let param_names: Vec<String> = op_node
-                    .params
-                    .iter()
-                    .map(|p| param_node_name_at(p.clone(), ctx.si()))
-                    .collect();
+            // Same matches_param rule as the fn-call path (v1_interpreter.rs:5125):
+            // accept `x` against a declared `x`, `_x`, or `_`. This prevents a false
+            // refusal for callers that label an underscore-prefixed param without the
+            // prefix (the established corpus pattern).
+            let matches_param = |p: &String| {
+                p == name
+                    || p == "_"
+                    || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+            };
+            if !all_param_names.iter().any(matches_param) {
                 let detail = format!(
                     "no parameter named '{}' (declared: [{}])",
                     name,
-                    param_names.join(", ")
+                    all_param_names.join(", ")
                 );
                 return Err(InterpError::CallContractMismatch {
                     callee: op_node.name.clone(),
                     detail,
                 });
             }
-            bindings.insert(sym, val.clone());
+            // Duplicate label guard: same rule as fn-call path (line 5152). An
+            // anonymous key ("_") is excluded from the collision check: two anonymous
+            // parameters are distinct unreadable slots, and the insert must still
+            // happen so the required-argument contains_key check below sees it filled.
+            if name != "_" && bindings.contains_key(&ctx.sym(name)) {
+                return Err(InterpError::CallContractMismatch {
+                    callee: op_node.name.clone(),
+                    detail: format!("argument '{}' supplied more than once", name),
+                });
+            }
+            bindings.insert(ctx.sym(name), val.clone());
         }
     }
 
