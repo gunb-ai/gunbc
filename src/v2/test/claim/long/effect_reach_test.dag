@@ -115,7 +115,7 @@ fn call_channel_helper() -> FnArrowDecl {
   FnArrowDecl {
     qualified_name: "fix.call_channel.helper.helper_fn",
     name: "helper_fn",
-    output: call_channel_call(callee: "filesystem_read"),
+    output: call_channel_call(callee: "Read"),
     params: []
   }
 }

@@ -16,7 +16,7 @@ import v2.std.algebra {
   list_snoc_item,
   list_tail
 }
-import v2.std.collection { Absent, List, Present }
+import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -189,6 +189,19 @@ fn decls_matching_callee(
   )
 }
 
+// Shared only by literal/reference readers. Call reachability does not consult lexeme shape.
+fn is_path_like_lexeme(text: String) -> Bool {
+  string_contains(s: text, pattern: ".dag")
+    || starts_with(s: text, prefix: "src/")
+    || starts_with(s: text, prefix: "dag/")
+}
+
+fn param_names_of(decl: FnArrowDecl) -> List<String> {
+  fold_list(xs: decl.params, empty: empty_fn_arrow_string_list, cons: fn(acc, p) {
+    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  })
+}
+
 // Immediate atom identities remain the literal/reference reader used by the effect and live-read
 // lenses. Call reachability does not consume this channel: callees_from_node selects call nodes
 // structurally below.
@@ -220,13 +233,13 @@ fn callee_text_from_call(node: Node) -> String? {
     match call_callee_target(node: node) {
       Accepted { value: callee, diagnostics: _ } =>
         match node_atom_identity_optional(node: callee) {
-          Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
-          Absent => Absent
+          Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
+          Absent => optional_absent()
         }
-      Rejected { diagnostics: _ } => Absent
+      Rejected { diagnostics: _ } => optional_absent()
     }
   } else {
-    Absent
+    optional_absent()
   }
 }
 
