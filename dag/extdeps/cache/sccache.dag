@@ -1,5 +1,8 @@
 module extdeps.cache.sccache
 
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.posix.shell_command_language { posix_single_quote }
+
 import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
 import std.decl_ref { decl_ref }
 
@@ -195,6 +198,7 @@ data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 data sccache_cache_dir_env_var: NonEmptyStr = "SCCACHE_DIR" as NonEmptyStr
 data sccache_cache_size_env_var: NonEmptyStr = "SCCACHE_CACHE_SIZE" as NonEmptyStr
 
+// Elevate argv before shell quoting so a missing NOPASSWD grant refuses without prompting.
 fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
   let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
   let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
@@ -203,8 +207,20 @@ fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: 
     join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
     digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
     "tar -xzf /tmp/sccache.tar.gz -C /tmp",
-    join(["sudo mv '/tmp/", dir, "/sccache' ", sccache_installed_binary_path], ""),
-    join(["sudo chmod +x ", sccache_installed_binary_path], ""),
+    join(
+      map(
+        sudo_elevate_argv(command: ["mv", join(["/tmp/", dir, "/sccache"], ""), sccache_installed_binary_path]),
+        w => posix_single_quote(spelling: w),
+      ),
+      " ",
+    ),
+    join(
+      map(
+        sudo_elevate_argv(command: ["chmod", "+x", sccache_installed_binary_path]),
+        w => posix_single_quote(spelling: w),
+      ),
+      " ",
+    ),
     join(["rm -rf /tmp/sccache.tar.gz '/tmp/", dir, "'"], ""),
     "",
   ], "\n")

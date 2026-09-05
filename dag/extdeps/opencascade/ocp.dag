@@ -1,0 +1,79 @@
+module extdeps.opencascade.ocp
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pypi.org/project/cadquery-ocp/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.opencascade.ocp",
+      decl_name: "ocp_distribution_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// OCP IS ITS OWN SUBJECT AND NOT A PART OF CADQUERY, which is why it is a separate module under
+// DESIGN section 3's external upstream decomposition. CadQuery and OCP version independently -- OCP
+// tracks OpenCASCADE releases, CadQuery tracks its own API -- and folding the kernel's version rows
+// into the CadQuery module would make one module carry two independently governed subjects.
+data ocp_distribution_version: NonEmptyStr = "7.9.3.1.1"
+
+// TWO DISTRIBUTIONS OF ONE KERNEL, and the choice between them is a REALIZATION fact rather than a
+// property of OCP: the same bindings ship with and without the VTK visualisation stack. It is
+// modelled because picking the wrong one is a silent size cost, and because the novtk build was
+// measured -- see ocp_shared_library_requirements -- to need the SAME system libraries, so the
+// choice does not move the provisioning obligation and must not be presented as if it did.
+type OcpDistribution
+  = OcpWithVtk
+  | OcpWithoutVtk
+
+fn ocp_distribution_name(d: OcpDistribution) -> NonEmptyStr {
+  match d {
+    OcpWithVtk => "cadquery-ocp"
+    OcpWithoutVtk => "cadquery-ocp-novtk"
+  }
+}
+
+// THE SHARED LIBRARIES THE WHEEL DOES NOT CARRY, stated as SONAMEs because that is what the dynamic
+// loader resolves and what a missing-dependency failure names. These are OBSERVED, by running ldd
+// against the extension module in both distributions on linux/aarch64, and they are the reason a
+// pip install alone does not yield a working kernel.
+//
+// THIS IS A BOUNDARY OBLIGATION, NOT A RUNG. DESIGN section 4b keeps external reality off the ladder:
+// the repository cannot make a system library exist, so the honest move is to declare the
+// requirement, observe whether it holds, and refuse when it does not -- never to fabricate a
+// satisfied toolchain, and never to sideload the object into a scratch directory and point the
+// loader at it, which is the workaround section 5 names and which produces a kernel no declaration
+// accounts for and no other session can reproduce.
+type SharedLibrarySoname sole_constructor { soname: NonEmptyStr }
+
+fn shared_library_soname_text(s: SharedLibrarySoname) -> NonEmptyStr { s.soname }
+
+data ocp_requires_libgl: SharedLibrarySoname = SharedLibrarySoname { soname: "libGL.so.1" }
+data ocp_requires_libx11: SharedLibrarySoname = SharedLibrarySoname { soname: "libX11.so.6" }
+
+// Both distributions were measured and both are missing the same two. Recorded as one list rather
+// than per-distribution rows precisely because the measurement found no difference: a per-variant
+// table would suggest the variant choice is a lever on provisioning, and it is not.
+data ocp_shared_library_requirements: List<SharedLibrarySoname> = [
+  ocp_requires_libgl,
+  ocp_requires_libx11,
+]
+
+// The Python ABI and platform the published wheels are built for. A mismatch here is not a missing
+// system library but a missing WHEEL, which fails at resolve time rather than import time, so it is
+// a separate fact with a separate failure mode.
+data ocp_wheel_python_abi: NonEmptyStr = "cp311"
+data ocp_wheel_platform_linux_aarch64: NonEmptyStr = "manylinux_2_31_aarch64"
