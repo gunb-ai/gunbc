@@ -1,0 +1,313 @@
+module gunbc.fleet.app_control_plane_converge
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.uri { Uri, uri_https }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonBool }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.app {
+  GitHubAppHookConfig,
+  GitHubAppHookContentType,
+  HookContentTypeJson,
+  HookContentTypeForm,
+  GitHubAppHookSecretReadback,
+  HookSecretConfigured,
+  HookSecretAbsent,
+  GitHubAppHookTlsVerification,
+  HookTlsVerified,
+  HookTlsVerificationDisabled,
+  hook_content_type_from_wire,
+  hook_tls_from_wire,
+  hook_content_type_eq,
+  hook_tls_eq
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.auth.github_apps {
+  DeclaredGitHubApp,
+  gunbai_ci_declared,
+  AppObservationProducers,
+  ObservationProducerBound,
+  BoundObservationProducer,
+  no_bound_observations
+}
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+
+// THE GITHUB APP AS A CONVERGED SUBJECT (operator direction 2026-09-05: "get our github
+// app into convergence, as well as to get it on webhooks"). gunbc.auth.github_apps has
+// carried a full GitHubAppControlPlaneState machine since it landed, but every one of its
+// observation producers was ObservationProducerAbsent, so control_plane_next_action could
+// only ever answer BindObservationProducer. This module is that binding for gunbai-ci:
+// the App's own registration and webhook configuration, read with an App JWT.
+//
+// WHAT THIS MODULE MAY NOT DECIDE YET. The webhook URL our App SHOULD point at is not
+// declarable until a receiver exists to point it at. Declaring one now would be a desired
+// state no observation could ever agree with, so the URL is OBSERVED AND REPORTED and its
+// convergence is the typed dissolution row at the bottom of this file - never a fabricated
+// literal standing in for a service that has not been built.
+
+data app_control_plane_receipt_path: String = "target/app-control-plane-observation-receipt.txt"
+data app_jwt_header_file_env_name: NonEmptyStr = "GUNBC_APP_JWT_HEADER_FILE"
+
+// ---------------------------------------------------------------------------------------------
+// Desired state - the parts decidable WITHOUT a receiver.
+// ---------------------------------------------------------------------------------------------
+
+// TLS verification off would let anything that can answer our DNS name deliver signed-looking
+// traffic; it is never correct for a control plane and is not a per-environment preference.
+data desired_hook_tls: GitHubAppHookTlsVerification = HookTlsVerified
+
+// Our decoder reads JSON. `form` would arrive urlencoded and silently fail to decode.
+data desired_hook_content_type: GitHubAppHookContentType = HookContentTypeJson
+
+// An unset secret means unsigned deliveries: intake could not authenticate anything. Note
+// this is a PRESENCE requirement and structurally cannot be a value comparison - GitHub
+// masks the secret on readback (extdeps.github.app GitHubAppHookSecretReadback).
+data desired_hook_secret: GitHubAppHookSecretReadback = HookSecretConfigured
+
+// ---------------------------------------------------------------------------------------------
+// Observation - typed by how it was seen.
+// ---------------------------------------------------------------------------------------------
+
+type HookConfigObservation
+  = HookConfigRead { config: GitHubAppHookConfig, observed_on: NonEmptyStr }
+  | HookConfigReadRefused { reason: NonEmptyStr, observed_on: NonEmptyStr }
+
+type HookConfigDecode
+  = HookConfigDecoded { config: GitHubAppHookConfig }
+  | HookConfigDecodeRefused { reason: NonEmptyStr }
+
+fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value } } =>
+      if value == "" { none } else { Present { value: value as NonEmptyStr } }
+    _ => none
+  }
+}
+
+// GitHub returns the masked secret as a fixed asterisk run when one is configured and omits
+// the member entirely when none is. Presence of the member is therefore the whole signal -
+// the asterisks are deliberately NOT compared against anything.
+fn decode_hook_secret(doc: JsonValue) -> GitHubAppHookSecretReadback {
+  match json_object_unique_member(v: doc, key: "secret") {
+    JsonMemberFound { value: _ } => HookSecretConfigured
+    _ => HookSecretAbsent
+  }
+}
+
+fn decode_hook_config_json(body: String) -> HookConfigDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => HookConfigDecodeRefused {
+      reason: concat("app hook config response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match json_member_string(v: doc, key: "url") {
+      Absent => HookConfigDecodeRefused { reason: "app hook config carries no non-empty url" }
+      Present { value: url } => match json_member_string(v: doc, key: "content_type") {
+        Absent => HookConfigDecodeRefused { reason: "app hook config carries no non-empty content_type" }
+        Present { value: ct_wire } => match hook_content_type_from_wire(name: ct_wire) {
+          Absent => HookConfigDecodeRefused {
+            reason: concat("app hook config content_type is not a modeled value: ", ct_wire as String) as NonEmptyStr
+          }
+          Present { value: content_type } => match json_member_string(v: doc, key: "insecure_ssl") {
+            Absent => HookConfigDecodeRefused { reason: "app hook config carries no non-empty insecure_ssl" }
+            Present { value: tls_wire } => match hook_tls_from_wire(value: tls_wire) {
+              Absent => HookConfigDecodeRefused {
+                reason: concat("app hook config insecure_ssl is not a modeled value: ", tls_wire as String) as NonEmptyStr
+              }
+              Present { value: tls } => HookConfigDecoded {
+                config: GitHubAppHookConfig {
+                  url: uri_https(locator: url),
+                  content_type: content_type,
+                  secret: decode_hook_secret(doc: doc),
+                  tls: tls
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Diff - each decidable axis, typed and located. Refusal never widens to "reconfigure it all".
+// ---------------------------------------------------------------------------------------------
+
+type HookConfigDivergence
+  = HookTlsDiverges { observed: GitHubAppHookTlsVerification, desired: GitHubAppHookTlsVerification }
+  | HookContentTypeDiverges { observed: GitHubAppHookContentType, desired: GitHubAppHookContentType }
+  | HookSecretDiverges { observed: GitHubAppHookSecretReadback, desired: GitHubAppHookSecretReadback }
+
+fn hook_secret_eq(a: GitHubAppHookSecretReadback, b: GitHubAppHookSecretReadback) -> Bool {
+  match a {
+    HookSecretConfigured => match b { HookSecretConfigured => true, HookSecretAbsent => false }
+    HookSecretAbsent => match b { HookSecretConfigured => false, HookSecretAbsent => true }
+  }
+}
+
+fn hook_config_divergences(config: GitHubAppHookConfig) -> List<HookConfigDivergence> {
+  concat(
+    concat(
+      if hook_tls_eq(a: config.tls, b: desired_hook_tls) { [] } else {
+        [HookTlsDiverges { observed: config.tls, desired: desired_hook_tls }]
+      },
+      if hook_content_type_eq(a: config.content_type, b: desired_hook_content_type) { [] } else {
+        [HookContentTypeDiverges { observed: config.content_type, desired: desired_hook_content_type }]
+      }
+    ),
+    if hook_secret_eq(a: config.secret, b: desired_hook_secret) { [] } else {
+      [HookSecretDiverges { observed: config.secret, desired: desired_hook_secret }]
+    }
+  )
+}
+
+type AppHookConfigStanding
+  = HookConfigConverged { observed_on: NonEmptyStr }
+  | HookConfigDiverged { divergences: List<HookConfigDivergence>, observed_on: NonEmptyStr }
+  | HookConfigUnobserved { reason: NonEmptyStr, observed_on: NonEmptyStr }
+
+fn app_hook_config_standing(obs: HookConfigObservation) -> AppHookConfigStanding {
+  match obs {
+    HookConfigReadRefused { reason, observed_on } =>
+      HookConfigUnobserved { reason: reason, observed_on: observed_on }
+    HookConfigRead { config, observed_on } => {
+      let divergences = hook_config_divergences(config: config)
+      if count(divergences) == 0 {
+        HookConfigConverged { observed_on: observed_on }
+      } else {
+        HookConfigDiverged { divergences: divergences, observed_on: observed_on }
+      }
+    }
+  }
+}
+
+fn divergence_text(d: HookConfigDivergence) -> String {
+  match d {
+    HookTlsDiverges { observed: _, desired: _ } => "hook_tls_verification"
+    HookContentTypeDiverges { observed: _, desired: _ } => "hook_content_type"
+    HookSecretDiverges { observed: _, desired: _ } => "hook_secret_presence"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The executable boundary.
+// ---------------------------------------------------------------------------------------------
+
+fn observe_hook_config(jwt_header_file: String, observed_on: NonEmptyStr) -> HookConfigObservation {
+  let response = github.CliAppRegistration.GetAppHookConfigJson(jwt_header_file: jwt_header_file)
+  if !response.success {
+    HookConfigReadRefused {
+      reason: concat("app hook config read refused: ", response.stderr) as NonEmptyStr,
+      observed_on: observed_on
+    }
+  } else {
+    match decode_hook_config_json(body: response.stdout) {
+      HookConfigDecodeRefused { reason } =>
+        HookConfigReadRefused { reason: reason, observed_on: observed_on }
+      HookConfigDecoded { config } =>
+        HookConfigRead { config: config, observed_on: observed_on }
+    }
+  }
+}
+
+// Presence of the App JWT header file is refused FIRST: without it neither App-level
+// endpoint is reachable at all, and a missing credential must not read as a converged App.
+//
+// The read is shell.Env.Get, not env_credential: env_credential answers `token: Secret?`
+// because its subject IS the credential. What this variable holds is a PATH - the secret is
+// the file's contents, which never enter this process. Typing the path as Secret is the same
+// category error mirrored, and the compiler refused it.
+func app_control_plane_converge_wet() -> ProcessExit {
+  let header_file = shell.Env.Get(name: app_jwt_header_file_env_name)
+  match header_file.value {
+    Absent => exit_failure(reason: "AppJwtHeaderFileMissing: GUNBC_APP_JWT_HEADER_FILE is absent -- GET /app and GET /app/hook/config authenticate as the APP and an installation access token reaches neither. The fleet-converge step mints a short-lived App JWT in-run from the gunbai-ci key (gunbc.ci_spec gunbc_ci_app_jwt_prelude); outside that step there is no credential to read")
+    Present { value: jwt_header_file } => {
+      let observed_on = clock_now_probed_at_or_unknown()
+      let registration = github.CliAppRegistration.GetAppRegistrationJson(jwt_header_file: jwt_header_file)
+      if !registration.success {
+        exit_failure(reason: concat("AppRegistrationReadRefused: ", registration.stderr))
+      } else {
+        let observation = observe_hook_config(jwt_header_file: jwt_header_file, observed_on: observed_on)
+        match observation {
+          HookConfigReadRefused { reason, observed_on: _ } =>
+            exit_failure(reason: concat("AppHookConfigUnobserved: ", reason as String))
+          HookConfigRead { config, observed_on: _ } => {
+            let receipt = join([
+              "app=", gunbai_ci_declared.slug as String,
+              " app_id=", to_string(gunbai_ci_declared.app_id.value),
+              " endpoint=GET-/app/hook/config",
+              " hook_url=", config.url.locator as String,
+              " observed_at=", observed_on as String, "\n"
+            ], "")
+            let wrote = Filesystem.Write(path: app_control_plane_receipt_path, content: receipt)
+            if !wrote.success {
+              exit_failure(reason: concat("AppControlPlaneReceiptWriteRefused: ", wrote.error))
+            } else {
+              match app_hook_config_standing(obs: observation) {
+                HookConfigConverged { observed_on: _ } => ExitSuccess
+                HookConfigUnobserved { reason, observed_on: _ } =>
+                  exit_failure(reason: concat("AppHookConfigUnobserved: ", reason as String))
+                HookConfigDiverged { divergences, observed_on: _ } =>
+                  exit_failure(reason: join([
+                    "AppHookConfigDiverged axes=",
+                    join(map(divergences, d => divergence_text(d: d)), ",")
+                  ], ""))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The per-App producer binding this module earns, and the one it deliberately does not.
+// ---------------------------------------------------------------------------------------------
+
+// gunbai-ci's REGISTRATION readback is now produced by app_control_plane_converge_wet above.
+// Its installation readback and signer fingerprint are still produced by nothing, so they
+// stay absent: binding them here would report an observation this module does not make
+// (DESIGN §4b(1) rung honesty). Per-App granularity is what makes that distinction
+// expressible at all - before AppObservationProducers these three were one module-wide row.
+data gunbai_ci_observations: AppObservationProducers = AppObservationProducers {
+  app_registration: ObservationProducerBound {
+    bound: BoundObservationProducer {
+      producer: DeclarationRef {
+        module_path: "gunbc.fleet.app_control_plane_converge",
+        decl_name: "app_control_plane_converge_wet",
+        field: WholeDeclaration
+      }
+    }
+  },
+  installation: no_bound_observations.installation,
+  signer_fingerprint: no_bound_observations.signer_fingerprint,
+}
+
+// The webhook URL is observed and reported, never converged, because no receiver exists to
+// point it at. This retires when a receiver is deployed as a converged fleet service and
+// its address becomes a declarable desired state that this diff can enforce and read back.
+// THE LOCK THIS PHASE DOES NOT YET NEED, recorded against the trigger that will need it.
+// The fleet-converge job serializes on fleet_host_mutation_concurrency_group_expression -
+// "gunbc-host-mutation-${{ github.event.inputs.host }}" - which keys the EXECUTOR HOST, not
+// the resource. Two runs dispatched with different hosts hold different locks while naming
+// the same App. That is harmless for this phase and only this phase, because every operation
+// here is a GET: concurrent readers of an App cannot corrupt it. It stops being harmless the
+// instant a PATCH exists, so the App-identity lock is a precondition of write authority
+// below, not an omission of the read-only half.
+data app_hook_url_converge_trigger: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: a webhook receiver exists as a converged fleet service with a declared address, at which point desired_hook_url becomes declarable and hook_config_divergences gains a URL axis enforced and read back through this same phase. Until then the URL is carried in the receipt for a human to read and this module refuses only on the axes it can decide without a receiver: TLS verification, content type, and secret presence. Write authority additionally requires a concurrency group keyed by App identity rather than by executor host, because a PATCH from two concurrently dispatched runs would interleave where the current GETs cannot."
+)
