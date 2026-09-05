@@ -34,19 +34,19 @@ fn directive_is_refused(d: ConvergeDirective) -> Bool {
   }
 }
 
-test fn witness_shell_on_host_success_converges() -> Bool {
+test fn witness_typed_read_on_host_success_converges() -> Bool {
   reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "true" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
-test fn witness_shell_on_host_failure_fails_closed() -> Bool {
+test fn witness_converge_frontier_failure_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
@@ -70,10 +70,10 @@ test fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   ))
 }
 
-test fn witness_shell_on_bmc_typed_mismatch() -> Bool {
+test fn witness_typed_read_on_bmc_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
-    effect: ShellCommand { script: "true" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
@@ -96,18 +96,24 @@ test fn witness_runner_local_probe_remote_transport_refuses_before_execution() -
 test fn witness_converge_policy_redrives_not_converged() -> Bool {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_converge_loop_evidence,
-    transport: LocalShell
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "" },
+      invocation: ThinInvocation { argv: [] },
+    }
   )))
 }
 
 test fn witness_oneshot_policy_terminal_not_converged() -> Bool {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "exit 1" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_identity_evidence,
-    transport: LocalShell
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "" },
+      invocation: ThinInvocation { argv: [] },
+    }
   )))
 }
 
@@ -123,7 +129,7 @@ test fn witness_incompatible_is_refused_terminal() -> Bool {
 test fn witness_converged_is_settled() -> Bool {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "true" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
@@ -132,27 +138,39 @@ test fn witness_converged_is_settled() -> Bool {
 test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "true" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_identity_evidence,
     transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
 
-test fn witness_ssh_empty_script_fails_closed() -> Bool {
+test fn witness_typed_read_artifact_transport_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: ShellCommand { script: "" },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
     evidence: host_effect_identity_evidence,
-    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "" },
+      invocation: ThinInvocation { argv: [] },
+    }
   ))
 }
 
-test fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
-  match host_effect_apply(
-    target: host_os_target(),
-    effect: ShellCommand { script: "echo host-effect-preflight-marker && exit 1" },
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell
+// Controlled process observation tests the shared reconciliation boundary;
+// script execution is no longer a constructible HostEffect.
+test fn witness_process_failure_preserves_observed_stdout() -> Bool {
+  match reconcile_shell_exec_observed(
+    observed: ShellExecObserved {
+      exit_code: 1, success: false,
+      stdout: "host-effect-preflight-marker", stderr: "",
+    },
+    intent: HostEffectIntent {
+      target: host_os_target(),
+      effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+      privilege_denial: none,
+    },
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "host-effect-preflight-marker")

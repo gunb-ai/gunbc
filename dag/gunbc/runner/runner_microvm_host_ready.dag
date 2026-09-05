@@ -1,0 +1,229 @@
+module gunbc.runner_microvm_host_ready
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand }
+import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { cp_command }
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.virtualization.firecracker {
+  FirecrackerRelease, firecracker_release_aarch64, firecracker_requires_kvm_device,
+  firecracker_release_tarball_filename, firecracker_release_download_url,
+  firecracker_release_binary_path_in_tarball, firecracker_release_aarch64_tarball_sha256,
+  firecracker_version_command, firecracker_version_line,
+}
+import gunbc.command_runner {
+  ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
+  run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec,
+}
+
+// THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner_microvm
+// models what a runner guest is and admits a VM config; nothing had ever asked a host whether it
+// could run one. Two facts decide that: the KVM device exists and the executor may write to it, and
+// the cited Firecracker release is installed and answers `--version` with the modeled version. This
+// module observes both as a typed standing, plans the one install it owns (the release tarball,
+// digest-verified, into an executor-owned root, so no host grant is spent on it), and refuses the
+// rest: the KVM group membership is a host grant that belongs to the runner host's sudoers roster,
+// not to this reconciler. Measured on srv2 on 2026-09-05: /dev/kvm present, executor not in kvm,
+// no Firecracker anywhere -- which is exactly the standing this module was written to say.
+
+type KvmDeviceStanding
+  = KvmDeviceWritable
+  | KvmDevicePresentNotWritable
+  | KvmDeviceAbsent
+
+type FirecrackerBinaryStanding
+  = FirecrackerInstalled { binary: String, version_line: String }
+  | FirecrackerVersionMismatch { binary: String, observed: String }
+  | FirecrackerBinaryAbsent { binary: String }
+
+type FirecrackerHostStanding {
+  kvm: KvmDeviceStanding
+  binary: FirecrackerBinaryStanding
+}
+
+data runner_microvm_host_standing_receipt_dir: String = "target"
+
+data runner_microvm_host_standing_receipt_path: String = "target/runner-microvm-host-standing.txt"
+
+// The root sits BESIDE the legacy ctrl-pinned tree, not under it: ~/.local/share/gunbc is root-owned
+// on the runner hosts (measured on srv2 2026-09-05, owner root, from the retired ctrl converge),
+// so an executor-owned install cannot live beneath it.
+fn firecracker_install_root(executor_home: String) -> String {
+  join([executor_home, "/.local/share/gunbc-firecracker"], "")
+}
+
+fn firecracker_install_dir(root: String, rel: FirecrackerRelease) -> String {
+  join([root, "/", rel.version as String, "-", rel.arch as String], "")
+}
+
+fn firecracker_installed_binary(root: String, rel: FirecrackerRelease) -> String {
+  join([firecracker_install_dir(root: root, rel: rel), "/firecracker"], "")
+}
+
+fn kvm_standing_of(exists: Bool, writable: Bool) -> KvmDeviceStanding {
+  if !exists { KvmDeviceAbsent } else if writable { KvmDeviceWritable } else { KvmDevicePresentNotWritable }
+}
+
+fn binary_standing_of(binary: String, executable: Bool, version_output: String, rel: FirecrackerRelease) -> FirecrackerBinaryStanding {
+  if !executable {
+    FirecrackerBinaryAbsent { binary: binary }
+  } else {
+    let first = match first(split(trim(s: version_output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
+    if starts_with(s: first, prefix: firecracker_version_line(rel: rel)) {
+      FirecrackerInstalled { binary: binary, version_line: first }
+    } else {
+      FirecrackerVersionMismatch { binary: binary, observed: first }
+    }
+  }
+}
+
+fn firecracker_host_ready(standing: FirecrackerHostStanding) -> Bool {
+  (match standing.kvm { KvmDeviceWritable => true  _ => false })
+    && (match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  _ => false })
+}
+
+fn kvm_standing_text(k: KvmDeviceStanding) -> String {
+  match k {
+    KvmDeviceWritable => "kvm=writable"
+    KvmDevicePresentNotWritable => join(["kvm=present-not-writable (", firecracker_requires_kvm_device as String, " exists but the executor may not open it; the kvm group membership is a runner-host grant, not this reconciler's)"], "")
+    KvmDeviceAbsent => join(["kvm=absent (", firecracker_requires_kvm_device as String, " does not exist; the KVM module is not loaded or the host does not virtualize)"], "")
+  }
+}
+
+fn binary_standing_text(b: FirecrackerBinaryStanding) -> String {
+  match b {
+    FirecrackerInstalled { binary: p, version_line: v } => join(["firecracker=installed ", p, " (", v, ")"], "")
+    FirecrackerVersionMismatch { binary: p, observed: o } => join(["firecracker=version-mismatch ", p, " answered '", o, "'"], "")
+    FirecrackerBinaryAbsent { binary: p } => join(["firecracker=absent ", p], "")
+  }
+}
+
+fn firecracker_host_standing_text(s: FirecrackerHostStanding) -> String {
+  join([kvm_standing_text(k: s.kvm), "\n", binary_standing_text(b: s.binary), "\n",
+        if firecracker_host_ready(standing: s) { "standing=ready" } else { "standing=not-ready" }], "")
+}
+
+// The install is the one effect this module owns: fetch the cited tarball, verify the published
+// digest through extdeps.tools.sha256sum's verdict (mismatch and tooling failure are distinct arms),
+// then extract and copy the binary to the executor-owned install dir. Every step is a typed argv
+// mint; the digest never rides argv.
+fn firecracker_tarball_path(scratch: String, rel: FirecrackerRelease) -> String {
+  join([scratch, "/", firecracker_release_tarball_filename(rel: rel)], "")
+}
+
+fn firecracker_fetch_commands(root: String, rel: FirecrackerRelease, scratch: String) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: scratch),
+    mkdir_parents_command(path: firecracker_install_dir(root: root, rel: rel)),
+    curl_download_command(url: firecracker_release_download_url(rel: rel), destination: firecracker_tarball_path(scratch: scratch, rel: rel)),
+  ]
+}
+
+fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: String) -> List<ArgvCommand> {
+  [
+    tar_extract_command(archive: firecracker_tarball_path(scratch: scratch, rel: rel), into_directory: scratch, strip_components: 0),
+    cp_command(source: join([scratch, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""), destination: firecracker_installed_binary(root: root, rel: rel)),
+  ]
+}
+
+func executor_home_wet() -> String? {
+  match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => none
+    Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
+  }
+}
+
+func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
+  uses net: Network
+{
+  let rel = firecracker_release_aarch64
+  let kvm_path = firecracker_requires_kvm_device as String
+  let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
+  let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
+  let binary = firecracker_installed_binary(root: root, rel: rel)
+  let executable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
+  let version_output = if executable {
+    match run_shell_command_capture(command: firecracker_version_command(binary: binary), transport: LocalExec) {
+      ProcessOutputPresent { text: t } => t
+      ProcessOutputAbsent => ""
+      _ => ""
+    }
+  } else { "" }
+  FirecrackerHostStanding {
+    kvm: kvm_standing_of(exists: exists, writable: writable),
+    binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
+  }
+}
+
+func runner_microvm_host_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "runner_microvm_host_observe: HOME is unset, so the executor-owned install root cannot be named")
+    Present { value: home } => {
+      let standing = observe_firecracker_host_standing_wet(root: firecracker_install_root(executor_home: home))
+      let text = firecracker_host_standing_text(s: standing)
+      let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_host_standing_receipt_dir)], transport: LocalExec)
+      let w = Filesystem.Write(path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n"))
+      if !w.success {
+        exit_failure(reason: join(["runner_microvm_host_observe: receipt write refused: ", w.error], ""))
+      } else if firecracker_host_ready(standing: standing) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["runner_microvm_host_observe: host is not ready --\n", text], ""))
+      }
+    }
+  }
+}
+
+// Converge = observe, install only the binary if absent, observe again. The KVM half is never
+// actuated here: a device this executor cannot open is reported, and the report names the grant.
+func runner_microvm_host_converge_wet() -> ProcessExit
+  uses net: Network
+{
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "runner_microvm_host_converge: HOME is unset, so the executor-owned install root cannot be named")
+    Present { value: home } => {
+      let root = firecracker_install_root(executor_home: home)
+      let before = observe_firecracker_host_standing_wet(root: root)
+      let install = match before.binary {
+        FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
+        _ => {
+          let scratch = join([root, "/scratch"], "")
+          match run_shell_commands(commands: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec) {
+            ExitSuccess =>
+              match sha256sum_verify_via_shell(path: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr, expected_digest: firecracker_release_aarch64_tarball_sha256) {
+                Sha256Matches => run_shell_commands(commands: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec)
+                Sha256Mismatch => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
+                Sha256VerifyInfraFailure { reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r as String, "); installing NOTHING"], ""))
+              }
+            other => other
+          }
+        }
+      }
+      match install {
+        ExitSuccess => {
+          let after = observe_firecracker_host_standing_wet(root: root)
+          let text = firecracker_host_standing_text(s: after)
+          let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_host_standing_receipt_dir)], transport: LocalExec)
+          let w = Filesystem.Write(path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n"))
+          if !w.success {
+            exit_failure(reason: join(["runner_microvm_host_converge: receipt write refused: ", w.error], ""))
+          } else if firecracker_host_ready(standing: after) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: join(["runner_microvm_host_converge: converged what it owns; host is still not ready --\n", text], ""))
+          }
+        }
+        other => other
+      }
+    }
+  }
+}

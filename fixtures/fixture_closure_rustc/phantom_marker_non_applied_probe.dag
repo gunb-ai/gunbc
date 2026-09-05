@@ -1,0 +1,66 @@
+module fixture.closure.rustc_phantom_marker_non_applied_probe
+
+// THE RED ARM OF THE POSITION PAIR. It is the construction
+// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` files as its FIRST
+// instance -- a coproduct's UNIT VARIANT standing in a NON-APPLIED type position -- committed here
+// as a runnable file, which is the thing that row records it never had (its own specimen was
+// produced by a lane whose fixture was never committed to this repository).
+//
+// WHAT ACTUALLY HAPPENS, STATED ONCE AND MEASURED. gunbc ACCEPTS this source with zero blocking
+// diagnostics. Its emitted module contains an `Alpha` TYPE and a `Marker::Alpha` VARIANT. The
+// field annotation binds the `Alpha` TYPE -- it is not a dangling spelling -- and returning that
+// field from a function declared to return `Marker` is what rustc refuses, as E0308 at the parent
+// boundary: `expected Marker, found Alpha`. So the rejection is at the RETURN, not at the
+// annotation.
+//
+// THAT IS STILL THE FILED CLASS, and the two facts are not in tension: the source compiler accepts
+// a construction whose emission the target compiler cannot build. DESIGN section 7 makes that the
+// seed's floor rather than the target's problem, and DESIGN section 5 makes it silent wrongness on
+// the source-to-target path -- below the ladder, not a rung on it. The only wall that fires belongs
+// to rustc.
+//
+// AN EARLIER REVISION OF THIS COMMENT SAID THE ANNOTATION NAMED A VARIANT WITH NO TYPE TO BIND, AND
+// THAT NO MARKER WAS MINTED HERE. Both are contradicted by the measurement recorded above, which
+// was taken from this very file: an `Alpha` type does exist in the emitted module. The wrong
+// account put the rejection at the annotation instead of the return and credited the emitter with a
+// decline it did not make. It is named rather than silently overwritten because a plausible wrong
+// mechanism is the kind of thing a later reader adopts (gunbc DESIGN section 3's concern about a
+// carrier citing the wrong mechanism, not merely a stale name).
+//
+// WHY IT IS NOT IN THE RULED POSITION. `Alpha` here stands in a record field, never as an argument
+// of an applied type node, so it is outside the position `rust_type_arg_identity_spelling` decides.
+// The control arm beside it uses the SAME variant of the SAME coproduct as an APPLIED argument and
+// its emitted crate compiles.
+//
+// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, AND AN EARLIER REVISION CLAIMED IT DID.
+// These two arms differ in their RETURN CONTRACT as well as in the position: the control returns an
+// `Int` read through a wrapper, while this file returns its `Alpha`-typed field from a function
+// declared to return `Marker` -- and the E0308 measured here lands AT that return, so the return
+// contract is load-bearing for the refusal rather than incidental to it. What the pair
+// characterizes is these two CONCRETE CONSTRUCTIONS: one that compiles and one that rustc refuses.
+// Reading it as a single-variable experiment over position would credit it with an isolation it
+// does not perform.
+//
+// E0573 -- expected type, found variant -- was PREDICTED for this fixture from the witness's
+// ceiling row and NOT observed, and the reason is a property of THIS FILE rather than of the
+// emitter: the markers are declared LOCALLY, so nothing here exercises the imported-marker
+// construction where that row's two classifiers diverge. This pair is coverage of the POSITION
+// question and does not discharge that row. The adjudicated expectation lives in
+// `v1_compiler.emitted_closure_compile_host` `run_phantom_marker_identity_discrimination`, which
+// also carries the full diagnostic.
+//
+// WHEN THE WALL CLIMBS -- type-position resolution consulting the TYPE namespace alone and
+// refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE
+// KEPT (DESIGN 4b(4)). What changes then is this pair's expectation, not the fixture's existence.
+// The names carry no domain semantics, for the reason stated in full at the control arm beside
+// this file: shape only, with no leaf spelling shared with a real `std.measure` declaration, so
+// nothing in the pair turns on a name colliding with the live corpus.
+type Marker = Alpha | Beta
+
+type NonApplied {
+  value: Alpha
+}
+
+fn non_applied_field_as_marker(subject: NonApplied) -> Marker {
+  subject.value
+}

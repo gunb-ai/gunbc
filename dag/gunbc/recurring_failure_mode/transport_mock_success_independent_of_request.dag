@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.transport_mock_success_independent_of_request
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data transport_mock_success_independent_of_request: RecurringFailureMode = RecurringFailureMode {
+  identity: "transport_mock_success_independent_of_request" as NonEmptyStr,
+  receipts: [
+    "**a transport mock reports success independently of its request, so a hermetic success is mistaken for evidence that a real effect could succeed** (INVALID STATE: a single success-valued mock_response answers every endpoint and command, including the explicitly unreachable control. ",
+    "SPECIMEN: extdeps.ssh.session ssh.Session.ExecPortableWords returns exit_code 0, success true and mock-ssh-portable-words for every client_args. The HostEffect.ShellCommand dissolution exposed this when its wet failure controls moved to typed ReadEffectivePosixPrincipal over SSH. ",
+    "The two error directions must stay distinct: success assertions can pass vacuously; failure assertions turn false because the mock reports success. The existing test.claim.host_effect_apply_witness witness_ssh_shell_unreachable_fails_closed is already enrolled as an expected semantic RED in v2.workflow.floor_expected_red, not evidence that an unreachable host was consulted. ",
+    "By contrast, extdeps.access.posix_effective_principal_read_op access.PosixEffectivePrincipal.Read returns an explicit failed hermetic observation. It cannot fabricate a principal, but its failed mock also cannot establish the wet success claim. Moving a test from an unmodeled shell operation to either typed operation therefore changes its hermetic outcome, and retaining the old shell route-gap enrollment would be stale evidence. ",
+    "RUNG: no construction or admission rule prevents the unconditional-success mock; the general class remains unremedied and silent false success is outside the ladder. Named failure assertions expose individual instances, which is not a guarantee over transport mocks. This filing adds no prevention. ",
+    "NEXT-RUNG CAPABILITY: transport-mock admission requires request-sensitive success and failure controls, and refuses a mock whose success claim has no discriminating RED; where external reachability cannot be established hermetically, an explicit unobserved refusal and an executing wet control must remain distinct. The existing gunbc.hermetic_mock_fidelity records the same defect previously repaired for shell.Exec; this is the surviving SSH instance, not a claim that this PR repairs that class.)",
+  ],
+  evidence: [],
+}
