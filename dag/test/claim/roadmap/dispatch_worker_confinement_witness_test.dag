@@ -1,7 +1,7 @@
 module test.claim.roadmap.dispatch_worker_confinement_witness_test
 
 import std.types { Bool, String, List }
-import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance, attempt_unit_substate_has_exited }
+import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 
@@ -54,4 +54,16 @@ test fn the_worker_unit_outlives_its_process_and_substate_decides_exit() -> Bool
     && attempt_unit_substate_has_exited(substate: "failed")
     && !attempt_unit_substate_has_exited(substate: "running")
     && !attempt_unit_substate_has_exited(substate: "start-pre")
+}
+
+// DISCRIMINATING: the reviewer may write only its review directory, and it runs from the repo root
+// (the worktree as cwd made `gunbc run` refuse its own source roots, exit 101).
+test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review")
+  has_property(props: props, needle: "ReadWritePaths=/state/a/review")
+    && !has_property(props: props, needle: "/.git/worktrees")
+    && has_property(props: props, needle: join(["WorkingDirectory=", inst.repo_root as String], ""))
+    && has_property(props: props, needle: "ProtectHome=read-only")
+    && has_property(props: props, needle: "RemainAfterExit=yes")
 }

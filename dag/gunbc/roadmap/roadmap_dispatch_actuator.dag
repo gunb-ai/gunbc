@@ -1078,7 +1078,11 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String) -> NonEmptySt
 
 // THE REVIEWER'S UNIT: the worker's confinement with ONE writable path, the review directory. The
 // worktree it reads is under the instance root and stays read-only to it, so a reviewer that tried
-// to fix what it was judging gets a refused write, not a contribution.
+// to fix what it was judging gets a refused write, not a contribution. Its WorkingDirectory is the
+// controller's repo root, as the worker's is: `gunbc run` refuses a source root outside its process
+// root (the first reviewer, 2026-09-05, exited 101 on exactly that with the worktree as its cwd), and
+// the worktree reaches the harness as the argument that sets its tools' directory, tool and subject
+// named separately (gunbc_harness_spawn_argv).
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
@@ -1141,7 +1145,7 @@ fn dispatch_review_unit_argv(
       unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key),
       properties: dispatch_review_unit_properties(
         instance: instance,
-        working_directory: worktree_path,
+        working_directory: instance.repo_root as String,
         log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
         review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
       ),
