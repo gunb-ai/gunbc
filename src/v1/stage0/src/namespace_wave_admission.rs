@@ -1386,56 +1386,128 @@ pub struct TransitionAdmission {
 /// renumbered. The rate is the observation: this roster is a serialization point every merging
 /// branch must pass through, and the debt attaches to arrival order, not to authorship.
 
-/// TWENTY-SIXTH TRANSITION (2026-09-05, gunbc#10324). `host_converge_for_identity` moves out of
-/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
-/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
-/// `TargetChanged` and is not auto-admitted.
+/// THIRTY-FIFTH DISSOLUTION (2026-09-05, gunbc#10514), PAID BECAUSE THIS CHANGE TOUCHES THE
+/// ROSTER. Both `gunbc#10324` `host_converge_for_identity` rows are deleted with the TWENTY-SIXTH
+/// TRANSITION entry that authored them. That entry's own TRIGGER named this exact condition --
+/// gunbc#10324 merging, after which base and head agree and no run can produce the deltas -- and
+/// the 2026-09-05 required floor on this branch reported both as CONSUMED, not stale, which is the
+/// state the trigger predicted. Deletion is owed by whoever next touches the roster; that is this
+/// change, so it is paid here rather than deferred to a sixth obligation.
 ///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
-/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
-/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
-/// that type's declaration, in another file. Two callers had each privately worked around this with
-/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
-/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
+/// SIXTH OBLIGATION, 64 ROWS, NONE AUTHORED HERE: 30 gunbc#10355, 2 gunbc#10350, 6 gunbc#10439, 22
+/// gunbc#10445, 2 gunbc#10300 and now 2 gunbc#10324. The rate is still the observation the fifth
+/// obligation recorded: this roster is a serialization point every merging branch passes through,
+/// and the debt attaches to arrival order rather than to authorship.
+
+/// TWENTY-SEVENTH TRANSITION (2026-09-05, gunbc#10514). The Secret Manager access ensure moves out
+/// of `gunbc.spark.secret_access_ensure` and into `gunbc.auth.gcp_secret_access`, so eight bindings
+/// across two modules resolve to a new target. That is `TargetChanged` and is not auto-admitted.
 ///
-/// THE ORDINAL IS TWENTY-SIXTH AND IT STILL STANDS. It has already moved five times -- TWENTY-FIRST,
-/// TWENTY-THIRD, TWENTY-FOURTH, TWENTY-FIFTH, TWENTY-SIXTH -- each time because a base that changed
-/// underneath had minted the number first. This merge is the first that did NOT force a renumber:
-/// gunbc#10300 took TWENTY-FIRST, which was vacated by this entry long ago and is NOT reclaimed by
-/// it here either. THE VACATED NUMBERS ARE NOT RECLAIMED BY ANYONE is the stronger reading of that
-/// rule, and main just demonstrated the weaker one; the ordinals are a naming scheme, so what the
-/// discipline protects is that a citation resolves to ONE row across time, which reuse defeats.
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the module
+/// path named the reconciler's FIRST CONSUMER rather than the fact it owns. That was true while
+/// spark-administrator-password was the only secret it bound; it stopped being true when the
+/// gunbai-ci App key became a second caller in a different domain and had to reach into the spark
+/// namespace for a fact that was never about spark. DESIGN §3 homes a fact by its LAYER, so the
+/// reconciler lands in the auth layer and the spark module keeps a wrapper naming its own target.
 ///
-/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, for the fifth time and for
-/// the same cause each time: the conflict is a misaligned array head, aligning this branch's rows
-/// against the other cohort's, so hand-editing the markers would splice one cohort's label onto the
-/// other's body. Main's file is taken WHOLE and this delta re-derived at ROW IDENTITY grain.
+/// THE LEAF IS UNCHANGED AND THE DECLARER MOVED, which is exactly the shape this roster exists to
+/// adjudicate rather than auto-admit. `secret_access_ensure_for`, `read_supplied_access_token`,
+/// `SuppliedTokenReady` and `SuppliedTokenUnavailable` are spelled identically on both sides; only
+/// the module that declares them differs. The wall keys on the leaf segment, so it sees the target
+/// move and refuses -- correctly, since a symbol changing modules is real membership motion and not
+/// the requalification the leaf key is invariant under.
 ///
-/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
-/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
-/// stale, and their deletion is owed by whoever next touches this roster.
-const HOST_CONVERGE_LOOKUP_MOVE_LABEL: &str =
-    "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type, \
-     from gunbc.fleet_converge_cli to gunbc.host_converge";
+/// ONE CHANGE CLASS, NOT TWO. The wall's standing rule is that a wave which both requalifies and
+/// moves a symbol is two change classes in one diff. This is the second alone: no reference is
+/// requalified here, every one of these spellings is imported under the same leaf it always had,
+/// and what moved is the declaration behind it.
+///
+/// TRIGGER: gunbc#10514 MERGING. After that, main carries the reconciler in
+/// `gunbc.auth.gcp_secret_access`, base and head agree, and no run can produce these deltas. They
+/// will then report CONSUMED, not stale, and their deletion is owed by whoever next touches this
+/// roster.
+const SECRET_ACCESS_ENSURE_MOVE_LABEL: &str =
+    "gunbc#10514 access-grant widening: the Secret Manager access ensure moves to the auth layer, \
+     from gunbc.spark.secret_access_ensure to gunbc.auth.gcp_secret_access";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenReady",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_run_host_knobs",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenUnavailable",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "read_supplied_access_token",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.fleet.org_actions_converge",
+            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
+            spelling: "secret_access_ensure_for",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenReady",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "SuppliedTokenUnavailable",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_converge_with_supplied_token",
+            spelling: "read_supplied_access_token",
+            target: "gunbc.auth.gcp_secret_access",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.secret_access_ensure",
+            in_declaration: "spark_secret_access_ensure",
+            spelling: "secret_access_ensure_for",
+            target: "gunbc.auth.gcp_secret_access",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
