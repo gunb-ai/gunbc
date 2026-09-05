@@ -33,6 +33,7 @@ import gunbc.roadmap_provider_events {
   parse_codex_jsonl,
 }
 import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_reconcile }
+import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind,
   EnvironmentWorkflowSegment,
@@ -157,6 +158,7 @@ type WorkflowAttemptEvidence {
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
   review: List<CriterionReviewEvidence>
+  goal_audit: List<CriterionReviewEvidence>
 }
 
 type WorkflowAttemptProgress {
@@ -799,11 +801,16 @@ fn workflow_segment_from_evidence(
         review: evidence.review,
       )
     GoalAuditWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting an independent audit of the exact candidate against the current approved goal",
-      }
+      goal_audit_segment(
+        verification: verification_segment(
+          provider: provider,
+          validation_summary: evidence.validation_summary,
+          verification_subject: evidence.verification_subject,
+          verification_selection: evidence.verification_selection,
+          verification_source: evidence.verification_source,
+        ),
+        goal_audit: evidence.goal_audit,
+      )
   }
 }
 
@@ -821,6 +828,22 @@ fn review_segment(
     }
     _ =>
       WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+  }
+}
+
+// THE GOAL AUDIT SEGMENT IS THE AUDITOR'S ONE VERDICT, read through the same reconciliation as the
+// review (a roster of one), and pending on verification before that, as the review is.
+fn goal_audit_segment(
+  verification: WorkflowSegment,
+  goal_audit: List<CriterionReviewEvidence>,
+) -> WorkflowSegment {
+  match verification.state {
+    WorkflowSegmentComplete => {
+      let r = goal_audit_reconcile(evidence: goal_audit)
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: r.state, detail: r.detail }
+    }
+    _ =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
   }
 }
 

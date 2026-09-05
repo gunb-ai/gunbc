@@ -844,6 +844,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     },
     publication_source: ReceiptSourceAbsent,
     review: [],
+    goal_audit: [],
   }
 }
 

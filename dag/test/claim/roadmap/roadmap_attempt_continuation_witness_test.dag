@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
 }
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+  WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
 }
 
 fn failed_prior() -> PriorAttemptFacts {
@@ -18,6 +18,7 @@ fn failed_prior() -> PriorAttemptFacts {
     worker_terminal: true,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag" } },
     review: none,
+    goal_audit: none,
   }
 }
 
@@ -49,6 +50,7 @@ test fn a_green_verdict_starts_fresh() -> Bool {
     worker_terminal: true,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } },
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
+    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
   }
   match continuation_decision(prior: Present { value: green }, prior_turn: ContinuationTurnAbsent) {
     ContinuationFresh { reason: _ } => attempt_origin_base_ref(origin: FreshFromBase, instance_base_ref: "origin/main") == "origin/main"
@@ -62,9 +64,9 @@ test fn a_green_verification_with_changes_requested_continues_and_a_pending_revi
   let p = failed_prior()
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
   let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } } }
+    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none }
   let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } } }
+    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none }
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
     _ => false
@@ -96,4 +98,25 @@ test fn the_turn_cap_and_an_unreadable_turn_both_refuse_rather_than_restart() ->
         }
     _ => false
   }
+}
+
+// DISCRIMINATING: an approved review hands the decision to the goal audit; changes requested there
+// continue with the auditor's reasons, and a pending audit holds.
+test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_holds() -> Bool {
+  let p = failed_prior()
+  let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
+  let approved = Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "all approved" } }
+  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified, review: approved,
+    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the check could pass with the goal unmet" } } }
+  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, verification: verified, review: approved,
+    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } } }
+  let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
+    _ => false
+  }
+  let b = match continuation_decision(prior: Present { value: pending }, prior_turn: ContinuationTurnAbsent) {
+    ContinuationHold { reason } => string_contains(s: reason, pattern: "goal audit")
+    _ => false
+  }
+  a && b
 }

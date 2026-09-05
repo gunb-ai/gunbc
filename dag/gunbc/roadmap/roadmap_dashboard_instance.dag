@@ -1029,6 +1029,16 @@ data srv2_deploy_instance_root: FilePath = "/home/briansrls/.local/share/gunbc-s
 
 data srv2_deploy_serve_binary: FilePath = "/home/briansrls/gunbc-srv2-deploy/target/release/gunbc" as FilePath
 
+// THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEY WERE DISPATCHED FROM. dispatch_base_ref
+// is a remote-tracking ref ("origin/<branch>"); publication needs the branch name the pull request
+// targets. Deriving it here, from the same row, is what keeps a srv2 attempt (dispatched from
+// origin/srv2-deploy) from being offered against main with sixty unrelated commits in its diff --
+// which is what reading the repository's default_branch did (2026-09-05).
+fn dispatch_base_branch(instance: HostDashboardInstance) -> NonEmptyStr {
+  let r = instance.dispatch_base_ref as String
+  if starts_with(s: r, prefix: "origin/") { substring(s: r, start: 7, end: string_length(s: r)) as NonEmptyStr } else { r as NonEmptyStr }
+}
+
 data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: ".",
   ref_name: "refs/gunbc/srv2-admitted" as GitRef,
@@ -1037,7 +1047,9 @@ data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = Das
 // THE SRV2 DEPLOY INSTANCE BRANCHES ATTEMPTS FROM ITS OWN DEPLOY BRANCH, not from main, while the
 // deploy branch is ahead of main: an attempt based on main would lack every oracle its node names
 // and refuse verification by construction. This row returns to origin/main when the branch lands
-// (PR gunb-ai/gunbc#10443); its origin is the local clone, so publication stops at the push here.
+// (PR gunb-ai/gunbc#10443). Its clone's origin was repointed at GitHub on 2026-09-05 so publication
+// can run here: attempts are published against srv2-deploy (dispatch_base_branch), and the admitted
+// revision stays the local ref above.
 fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv2_deploy_dashboard_id,

@@ -1,0 +1,156 @@
+module gunbc.harness.harness_goal_audit_guidance
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+
+// THE AUDITOR IS THE THIRD ROLE AND ITS OWN SYLLOGISM. The worker changes the tree to satisfy a brief;
+// the reviewers judge the diff against the design's criteria; the auditor judges the OUTCOME against
+// the node's PURPOSE -- the approved goal and the cost it was meant to displace -- and asks the one
+// question neither of the others asks: does the acceptance check actually prove the goal, or does it
+// prove something narrower that happens to be green. It is independent of the brief on purpose: it is
+// never shown the worker's instructions, only the node's stated goal and what the belt observed, so a
+// brief that narrowed the goal cannot narrow the audit with it.
+
+type AuditEvidenceSource
+  = TheApprovedGoal
+  | TheDisplacedCost
+  | TheHandbackConditions
+  | TheAcceptanceEvidence
+  | TheReviewReconciliation
+  | TheDiffRange
+
+type AuditCapability = ReadTheTree | RunTheAcceptanceCommand | ChangeTheTree | CommitOrPublish
+
+type AuditVerdictWord = ApproveWord | RequestChangesWord | CannotJudgeWord
+
+type AuditPremise
+  = AuditorOfOneCandidate
+  | ToolIs { tool: HarnessTool }
+  | ToolRunsInTheCandidateWorktree
+  | ToolReturnsCombinedOutput
+  | EvidenceOffered { source: AuditEvidenceSource }
+  | CapabilityHeld { capability: AuditCapability }
+  | CapabilityWithheld { capability: AuditCapability }
+  | VerdictFileAt { path: String }
+  | VerdictShapeIs { shape: String }
+  | VerdictWordMeans { word: AuditVerdictWord }
+
+type AuditGroundedPremise {
+  premise: AuditPremise
+  grounds: DeclarationRef
+}
+
+type AuditConclusion
+  = TheOutputIsTheVerdictNotAChange
+  | JudgeTheOutcomeAgainstThePurpose
+  | AskWhetherTheCheckProvesTheGoal
+  | WriteTheVerdictWithTheTool
+
+fn audit_evidence_text(s: AuditEvidenceSource) -> String {
+  match s {
+    TheApprovedGoal => "the brief states the node's approved goal and its boundary, as the roadmap authority records them"
+    TheDisplacedCost => "the brief states the cost the goal exists to displace: the pain someone stops paying if it is met"
+    TheHandbackConditions => "the brief states the conditions under which the node was to hand work back rather than finish"
+    TheAcceptanceEvidence => "the brief carries the acceptance command and what the belt's own run of it said about this head"
+    TheReviewReconciliation => "the brief carries the design reviewers' reconciled verdicts on this head, one line per criterion"
+    TheDiffRange => "the brief names the base and head commits; git diff base..head in the worktree shows exactly the change"
+  }
+}
+
+fn audit_capability_text(c: AuditCapability) -> String {
+  match c {
+    ReadTheTree => "read any file in the worktree"
+    RunTheAcceptanceCommand => "run the acceptance command yourself"
+    ChangeTheTree => "change any file"
+    CommitOrPublish => "commit or publish"
+  }
+}
+
+fn audit_verdict_word_text(w: AuditVerdictWord) -> String {
+  match w {
+    ApproveWord => "approve means the candidate discharges the approved goal, the displaced cost is actually displaced, and the acceptance check is adequate evidence of that"
+    RequestChangesWord => "request_changes means the goal is not discharged, or the check proves less than the goal claims; each reason names a path or the check and says what is missing"
+    CannotJudgeWord => "cannot_judge means a fact the audit needs could not be established, and the reason says which"
+  }
+}
+
+fn audit_premise_text(p: AuditPremise) -> String {
+  match p {
+    AuditorOfOneCandidate => "You are the goal auditor of one candidate change. You did not write it, you were not shown the worker's instructions, and you will not fix it."
+    ToolIs { tool: t } => join(["Your one tool is ", harness_tool_wire_name(tool: t) as String, "."], "")
+    ToolRunsInTheCandidateWorktree => "It runs in the candidate's worktree, which already holds the change."
+    ToolReturnsCombinedOutput => "It returns the command's combined stdout and stderr."
+    EvidenceOffered { source: s } => join(["Evidence: ", audit_evidence_text(s: s), "."], "")
+    CapabilityHeld { capability: c } => join(["You may ", audit_capability_text(c: c), "."], "")
+    CapabilityWithheld { capability: c } => join(["You may not ", audit_capability_text(c: c), "."], "")
+    VerdictFileAt { path } => join(["This audit is complete only once a verdict file exists at ", path, "."], "")
+    VerdictShapeIs { shape } => join(["The verdict file is JSON of exactly this shape: ", shape], "")
+    VerdictWordMeans { word: w } => join([audit_verdict_word_text(w: w), "."], "")
+  }
+}
+
+fn audit_conclusion_text(c: AuditConclusion) -> String {
+  match c {
+    TheOutputIsTheVerdictNotAChange => "So your output is the verdict file and nothing else; a changed file is a defect in the audit, not a contribution."
+    JudgeTheOutcomeAgainstThePurpose => "So judge what the change achieves against the goal and the cost it was meant to displace, not against how it was built."
+    AskWhetherTheCheckProvesTheGoal => "So ask whether a green acceptance check is evidence the goal is met; if the check could pass with the goal unmet, say so as a reason."
+    WriteTheVerdictWithTheTool => "So write the verdict file with the tool, as a heredoc, at the named path."
+  }
+}
+
+fn audit_premise_withholds_change(p: AuditPremise) -> Bool { match p { CapabilityWithheld { capability: ChangeTheTree } => true  _ => false } }
+fn audit_premise_offers_goal(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheApprovedGoal } => true  _ => false } }
+fn audit_premise_offers_cost(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheDisplacedCost } => true  _ => false } }
+fn audit_premise_offers_acceptance(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheAcceptanceEvidence } => true  _ => false } }
+fn audit_premise_requires_verdict(p: AuditPremise) -> Bool { match p { VerdictFileAt { path: _ } => true  _ => false } }
+
+fn any_audit_premise(rows: List<AuditGroundedPremise>, f: fn(AuditPremise) -> Bool) -> Bool {
+  any(rows, r => f(r.premise))
+}
+
+fn audit_conclusions(rows: List<AuditGroundedPremise>) -> List<AuditConclusion> {
+  let verdict = any_audit_premise(rows: rows, f: audit_premise_requires_verdict)
+  concat(
+    concat(
+      if verdict && any_audit_premise(rows: rows, f: audit_premise_withholds_change) { [TheOutputIsTheVerdictNotAChange] } else { [] },
+      if any_audit_premise(rows: rows, f: audit_premise_offers_goal) && any_audit_premise(rows: rows, f: audit_premise_offers_cost) { [JudgeTheOutcomeAgainstThePurpose] } else { [] },
+    ),
+    concat(
+      if any_audit_premise(rows: rows, f: audit_premise_offers_goal) && any_audit_premise(rows: rows, f: audit_premise_offers_acceptance) { [AskWhetherTheCheckProvesTheGoal] } else { [] },
+      if verdict { [WriteTheVerdictWithTheTool] } else { [] },
+    ),
+  )
+}
+
+fn audit_guidance_prose(rows: List<AuditGroundedPremise>) -> String {
+  join(concat(map(rows, r => audit_premise_text(p: r.premise)), map(audit_conclusions(rows: rows), c => audit_conclusion_text(c: c))), " ")
+}
+
+fn audit_grounded(premise: AuditPremise, module_path: String, decl_name: String) -> AuditGroundedPremise {
+  AuditGroundedPremise { premise: premise, grounds: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn harness_auditor_guidance_at(verdict_path: String, verdict_shape: String) -> List<AuditGroundedPremise> {
+  [
+    audit_grounded(premise: AuditorOfOneCandidate, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: ToolIs { tool: RunCommandTool }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
+    audit_grounded(premise: ToolRunsInTheCandidateWorktree, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
+    audit_grounded(premise: ToolReturnsCombinedOutput, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    audit_grounded(premise: EvidenceOffered { source: TheApprovedGoal }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: EvidenceOffered { source: TheDisplacedCost }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: EvidenceOffered { source: TheHandbackConditions }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: EvidenceOffered { source: TheAcceptanceEvidence }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: EvidenceOffered { source: TheReviewReconciliation }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_reconcile"),
+    audit_grounded(premise: EvidenceOffered { source: TheDiffRange }, module_path: "gunbc.roadmap.roadmap_goal_audit_role", decl_name: "goal_audit_brief"),
+    audit_grounded(premise: CapabilityHeld { capability: ReadTheTree }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    audit_grounded(premise: CapabilityHeld { capability: RunTheAcceptanceCommand }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    audit_grounded(premise: CapabilityWithheld { capability: ChangeTheTree }, module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "dispatch_review_unit_properties"),
+    audit_grounded(premise: CapabilityWithheld { capability: CommitOrPublish }, module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+    audit_grounded(premise: VerdictFileAt { path: verdict_path }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
+    audit_grounded(premise: VerdictShapeIs { shape: verdict_shape }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_shape_text"),
+    audit_grounded(premise: VerdictWordMeans { word: ApproveWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+    audit_grounded(premise: VerdictWordMeans { word: RequestChangesWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+    audit_grounded(premise: VerdictWordMeans { word: CannotJudgeWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+  ]
+}

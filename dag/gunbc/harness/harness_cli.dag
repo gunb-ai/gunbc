@@ -15,6 +15,7 @@ import gunbc.harness.harness_turn {
 }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
+import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire {
   harness_engine_backend_url, harness_engine_model, harness_engine_context_window,
@@ -362,6 +363,69 @@ fn harness_reviewer_cli(
 ) -> ProcessExit {
   let outcome = harness_run_turn(
     config: harness_reviewer_config(
+      worktree: worktree as FilePath,
+      timeout_program: timeout_program as FilePath,
+      request_scratch_path: request_scratch_path as FilePath,
+      events_path: events_path as FilePath,
+      verdict_path: verdict_path,
+    ),
+    prompt: brief,
+    step_budget: harness_reviewer_step_budget,
+  )
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      ExitSuccess
+    _ =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+        ], ""),
+      }
+  }
+}
+
+// THE AUDITOR ENTRY: the reviewer's harness under the auditor's own prompt (gunbc.harness.harness_goal_audit_guidance).
+fn harness_auditor_system_prompt_at(verdict_path: String) -> String {
+  audit_guidance_prose(rows: harness_auditor_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+}
+
+fn harness_auditor_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_path: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: verdict_path),
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_auditor_system_prompt_at(verdict_path: verdict_path),
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+fn harness_auditor_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> ProcessExit {
+  let outcome = harness_run_turn(
+    config: harness_auditor_config(
       worktree: worktree as FilePath,
       timeout_program: timeout_program as FilePath,
       request_scratch_path: request_scratch_path as FilePath,

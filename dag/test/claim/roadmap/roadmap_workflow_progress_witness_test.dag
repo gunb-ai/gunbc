@@ -145,6 +145,7 @@ fn fixture_evidence(
     },
     publication_source: ReceiptSourceAbsent,
     review: [],
+    goal_audit: [],
   }
 }
 
@@ -396,6 +397,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    goal_audit: base.goal_audit,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   segment_state(progress.segments, "environment") != "" 
@@ -427,6 +429,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    goal_audit: base.goal_audit,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -473,6 +476,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     },
     publication_source: ReceiptSourceAbsent,
     review: [],
+    goal_audit: [],
   })
   match progress.provider {
     ProviderEventsRefused { activity, detail: _ } =>
@@ -510,6 +514,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
     review: base.review,
+    goal_audit: base.goal_audit,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -667,6 +672,7 @@ fn publication_segment_of(
     publication_subject: subject,
     publication_source: source,
     review: [],
+    goal_audit: [],
   })
   fold(progress.segments, init: WorkflowSegment {
     kind: PublicationWorkflowSegment,

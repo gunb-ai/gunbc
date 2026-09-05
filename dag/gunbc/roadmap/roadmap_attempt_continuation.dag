@@ -36,6 +36,7 @@ type PriorAttemptFacts {
   worker_terminal: Bool
   verification: WorkflowSegment?
   review: WorkflowSegment?
+  goal_audit: WorkflowSegment?
 }
 
 // THE PRIOR TURN NUMBER, AS READ FROM ITS ATTEMPT STATE. Absent is an attempt that predates the
@@ -122,11 +123,29 @@ fn continuation_after_green_verification(prior: PriorAttemptFacts, prior_turn: C
     Present { value: r } =>
       match r.state {
         WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["review requested changes: ", r.detail], ""), prior_turn: prior_turn)
-        WorkflowSegmentComplete => ContinuationFresh { reason: "the prior attempt verified green and its review approved; nothing to continue" }
+        WorkflowSegmentComplete => continuation_after_approved_review(prior: prior, prior_turn: prior_turn)
         WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt verified green and awaits review: ", r.detail], "") }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt verified green and its reviewer is running" }
         WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt verified green and its review refused: ", r.detail], "") }
         WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's review segment is stopped, a state review does not inhabit" }
+      }
+  }
+}
+
+// AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way a green verification handed it
+// to the review: changes requested continue with the auditor's reasons, approval starts nothing, and
+// anything else holds.
+fn continuation_after_approved_review(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+  match prior.goal_audit {
+    Absent => ContinuationHold { reason: "the prior attempt verified green and its review approved, but it carries no goal audit segment yet" }
+    Present { value: a } =>
+      match a.state {
+        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["goal audit requested changes: ", a.detail], ""), prior_turn: prior_turn)
+        WorkflowSegmentComplete => ContinuationFresh { reason: "the prior attempt verified green, its review approved and its goal audit approved; nothing to continue" }
+        WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt awaits its goal audit: ", a.detail], "") }
+        WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's goal auditor is running" }
+        WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt's goal audit refused: ", a.detail], "") }
+        WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit" }
       }
   }
 }

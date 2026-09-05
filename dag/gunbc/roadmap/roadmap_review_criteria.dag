@@ -14,9 +14,11 @@ import gunbc.design_argument { design_propositions }
 // small as possible, each design axiom as a modeled input; the reviews may conflict and get sorted
 // out there).
 //
-// THE GOAL CRITERION IS NOT A DESIGN PROPOSITION. "Does the change do what the node asked" is grounded
-// on the node's own contract, so it is the one criterion whose premise is the roadmap node rather than
-// the argument; it is listed first because every other question presupposes the change is the change.
+// THE GOAL QUESTION IS NOT HERE. "Does the change do what the node asked" is the goal audit's whole
+// question (gunbc.roadmap.roadmap_goal_audit_role), asked by a role that is never shown the worker's
+// brief; asking it here as well would be two authorities for one judgment. The review roster is the
+// design's criteria only. GroundedOnTheNodeContract stays in the vocabulary for a criterion that
+// genuinely reads the contract rather than the goal, and is currently uninhabited.
 type ReviewCriterionGround
   = GroundedOnTheNodeContract
   | GroundedOnDesignProposition { proposition_id: String }
@@ -29,16 +31,6 @@ type ReviewCriterion {
 }
 
 data review_criteria: List<ReviewCriterion> = [
-  ReviewCriterion {
-    key: "goal",
-    ground: GroundedOnTheNodeContract,
-    question: "Does the change do what the node's goal states, within its boundary, and nothing the non-goals forbid?",
-    tells: [
-      "a file changed that the goal does not need",
-      "the acceptance check passes for a reason other than the goal being met",
-      "the boundary sentence names something the diff does not contain",
-    ],
-  },
   ReviewCriterion {
     key: "redundancy",
     ground: GroundedOnDesignProposition { proposition_id: "s2.minimize-redundancy" },

@@ -1172,6 +1172,67 @@ fn dispatch_review_unit_argv(
   )
 }
 
+// THE AUDIT DIRECTORY, the auditor's only writable path, beside review/. One auditor per head, so its
+// artifacts are addressed by head alone.
+data audit_directory_segment: String = "audit"
+
+fn dispatch_attempt_audit_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", audit_directory_segment], "")
+}
+
+fn dispatch_attempt_audit_verdict_basename(head_sha: String) -> String {
+  join([head_sha, ".json"], "")
+}
+
+fn dispatch_attempt_audit_verdict_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], "")
+}
+
+fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+data gunbc_harness_auditor_function: String = "harness_auditor_cli"
+
+fn dispatch_audit_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  worktree_path: String,
+  brief: String,
+  head_sha: String,
+) -> HostExecArgv {
+  let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+      properties: dispatch_review_unit_properties(
+        instance: instance,
+        working_directory: instance.repo_root as String,
+        log_path: join([dir, "/auditor-stdout.log"], ""),
+        review_dir: dir,
+      ),
+      setenv_bindings: [],
+      command_argv: [
+        instance.serve_binary as String,
+        "run",
+        "--source-root", join([instance.repo_root as String, "/dag"], ""),
+        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+        "--function", gunbc_harness_auditor_function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+        "--arg", join(["events_path=", dir, "/provider-events.jsonl"], ""),
+        "--arg", join(["verdict_path=", dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+      ],
+    ),
+  )
+}
+
 fn dispatch_attempt_verification_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1887,6 +1948,11 @@ fn attempt_state_prepare_argv_for_instance(
         attempt_key: attempt_key,
       ),
       dispatch_attempt_review_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_audit_dir_for_instance(
         instance: instance,
         node_id: node_id,
         attempt_key: attempt_key,

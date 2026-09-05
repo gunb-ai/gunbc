@@ -371,6 +371,7 @@ fn fixture_evidence(
     },
     publication_source: ReceiptSourceAbsent,
     review: [],
+    goal_audit: [],
   }
 }
 
