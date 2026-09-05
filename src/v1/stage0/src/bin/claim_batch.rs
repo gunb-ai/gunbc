@@ -1030,6 +1030,20 @@ fn run() -> Result<ExitCode, ExitCode> {
             "[cast-profile] kernel_calls={kernel_calls} type_lookup_calls={lookup_calls} \
              type_lookup_items={lookup_items}"
         );
+        let (data_eval_lookups, data_eval_evals) =
+            v1_compiler::v1_interpreter::data_eval_counters();
+        eprintln!(
+            "[data-profile] data_eval_lookups={data_eval_lookups} data_eval_evals={data_eval_evals} \
+             data_eval_cache_hit_ratio={}",
+            if data_eval_lookups > 0 {
+                format!(
+                    "{:.2}%",
+                    ((data_eval_lookups - data_eval_evals) as f64 / data_eval_lookups as f64) * 100.0
+                )
+            } else {
+                "N/A".to_string()
+            }
+        );
     }
 
     emit_rss_measurement("per-shard-peak-rss");

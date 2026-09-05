@@ -2,6 +2,7 @@ module gunbc.ci_spec
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
   github_app_jwt_backdate_seconds,
@@ -735,6 +736,21 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+// THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
+// this repository's ordering law is what keeps them apart: an observation reports a host's standing
+// and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
+// runs on. Fusing them behind one mode would mean there was no way to ask a host what it holds
+// without also changing what it holds.
+data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_observe_wet",
+}
+
+data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_converge_wet",
+}
+
 data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/serving_reboot_probe.dag",
   function: "spark_serving_reboot_ci_wet",
@@ -877,6 +893,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
+    gunbc_ci_runner_guest_image_observe_target,
+    gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
@@ -1414,9 +1432,12 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
     Do {
       run: ci_retry_body_run(
         command: join([
-          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for ",
-          secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-          " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token.\" >&2; exit 1; fi"
+          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
+          org_admin_app_key_unreadable_message(
+            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+            http_status: "$SM_CODE"
+          ),
+          "\" >&2; exit 1; fi"
         ], "")
       )
     },
@@ -1454,7 +1475,14 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
     Do {
       run: ci_retry_body_run(
-        command: "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization\" >&2; exit 1; fi"
+        command: join([
+          "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
+          org_admin_installation_token_refused_message(
+            installation: "gunbai-ci",
+            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+          ),
+          "\" >&2; exit 1; fi"
+        ], "")
       )
     },
     Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
@@ -1483,6 +1511,26 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
     function: gunbc_ci_org_actions_converge_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_observe_target.entry,
+    function: gunbc_ci_runner_guest_image_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_converge_target.entry,
+    function: gunbc_ci_runner_guest_image_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
 
