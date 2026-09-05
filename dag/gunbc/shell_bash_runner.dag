@@ -19,12 +19,27 @@ data shell_bash_runner_scaffold: Disposition = Scaffold {
 
 data shell_bash_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; heredoc delimiter GUNBC_BASH_EOF is a fixed literal — wrapped body must not contain it or the outer shell terminates the heredoc early (nonce delimiter or BashVarRef transport when bash_fold lands); shell_printf_line emits printf '%s\\n' with bash-double-quote escaping (not naive echo single-quote concat); DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing and dag/gunbc/shell_bash_runner.dag retires its concat-built transport")
 
-fn bash_escape_for_double_quotes(s: String) -> String {
+// SPLIT IN TWO BECAUSE $ IS THE ONLY CHARACTER TWO CALLERS DISAGREE ABOUT, AND THE DISAGREEMENT IS
+// REAL RATHER THAN A PREFERENCE. A literal line must have its $ escaped or the shell expands a
+// variable the author never wrote. A line that is a TEMPLATE -- one that names a variable the
+// emitted script itself defines, as gunbc.generated_artifact_merge_driver's recipe names
+// $merged_path -- must have $ left active or the instruction prints a dollar sign instead of the
+// path. Escaping the other three is identical for both, and that identical part is what lives here
+// once. The alternative measured itself: a second escaper authored beside this one, which is the
+// nicknaming DESIGN section 3 forbids -- one concept, two names, and the next fix lands in one of
+// them.
+//
+// BACKSLASH FIRST IS LOAD-BEARING. Every later arm INTRODUCES backslashes, so escaping backslashes
+// after any of them would double the escapes this function just wrote.
+fn bash_escape_double_quote_specials_except_expansion(s: String) -> String {
   let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
   let s2 = join(split(s: s1, delimiter: "\""), "\\\"")
-  let s3 = join(split(s: s2, delimiter: "$"), "\\$")
-  let s4 = join(split(s: s3, delimiter: "`"), "\\`")
-  join(split(s: s4, delimiter: "\n"), "\\n")
+  let s3 = join(split(s: s2, delimiter: "`"), "\\`")
+  join(split(s: s3, delimiter: "\n"), "\\n")
+}
+
+fn bash_escape_for_double_quotes(s: String) -> String {
+  join(split(s: bash_escape_double_quote_specials_except_expansion(s: s), delimiter: "$"), "\\$")
 }
 
 fn shell_printf_line(line: String) -> String {

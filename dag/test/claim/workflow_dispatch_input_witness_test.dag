@@ -154,12 +154,14 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // release binaries are produced once and consumed by everything that installs them, so a job that
 // mutates a host without that edge would be installing whatever happened to be lying around.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 3
+  fleet_converge_workflow.jobs.length() == 4
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
     && fleet_converge_workflow.jobs[2].id == "dashboard-deploy"
     && fleet_converge_workflow.jobs[2].needs == ["build"]
+    && fleet_converge_workflow.jobs[3].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[3].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
@@ -185,9 +187,17 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
 }
 
+// The org-actions mode mints its credential in-run from the App key: the step names the App's
+// installation token endpoint and the key's Secret Manager version, and the workflow carries no
+// repository secret for it (the interim PAT design was superseded before it was ever taken).
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
-  string_contains(
-    s: gunbc_ci_org_actions_converge_invoke(),
-    pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
-  )
+  let invoke = gunbc_ci_org_actions_converge_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet")
+    && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
+    && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
+    && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
+    && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
+    && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
+    && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
+    && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }

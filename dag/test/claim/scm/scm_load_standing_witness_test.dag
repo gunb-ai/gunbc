@@ -17,10 +17,12 @@ import gunbc.scm.object_store {
   SemanticNodeTarget, node_target_locator,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision,
   empty_store, copy_object, store_node,
+  store_authored_source, SourceStoreOutcome, SourceStored, SourceLocatorCollision,
+  insert_from_structure, StoredEdge, node_target_of,
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequirementAtWrongKind,
   standing_loaded,
 }
 import std.decl_ref { DeclarationRef }
@@ -34,10 +36,11 @@ import gunbc.scm.json_member {
 }
 import gunbc.scm.target_reference { TargetReferenceNotOneArm, TargetReferenceMemberReadRefused }
 import gunbc.scm.object_table_json {
-  ObjectTableUnknownKindTag,
-  ObjectTableEdgeTargetUnresolved,
-  ObjectTableObjectCollision,
-  object_table_load_standing,
+  NodeEntryUnknownKindTag,
+  NodeTableEntryRefused,
+  NodeTableEdgeTargetUnresolved,
+  NodeTableObjectCollision,
+  node_table_load_standing,
 }
 import gunbc.scm.repository_envelope {
   RepositoryFormatUnrecognized,
@@ -50,9 +53,9 @@ import gunbc.scm.repository_envelope {
   repository_envelope_load_standing,
 }
 import gunbc.scm.commit_closure_json_v2 {
-  ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectTableRefused,
+  ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocNodeTableRefused,
   ClosureDocMemberReadRefused,
-  ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers,
+  ClosureDocUnexpectedMember,
   ClosureDocTargetReferenceRefused,
   closure_document_load_standing, loaded_closure_standing,
 }
@@ -148,7 +151,7 @@ fn standing_tag(s: LoadStanding) -> Int {
     LoadUnsupportedProtocol => 2
     LoadDocumentMalformed => 3
     LoadIdentityCollision => 4
-    LoadRequiresNodeAtAuthoredSource => 5
+    LoadRequirementAtWrongKind => 5
   }
 }
 
@@ -179,7 +182,7 @@ test fn a_partial_load_is_never_supersedable() -> Bool {
 // vacuously.
 //
 // THE CLAIM NAMES THE WHOLE POPULATION, SO IT MUST CHECK IT. This said "the three refusals" and
-// checked two, omitting `LoadRequiresNodeAtAuthoredSource` -- which meant the standing added by this
+// checked two, omitting `LoadRequirementAtWrongKind` -- which meant the standing added by this
 // very branch could have permitted replacement with the claim still green. LoadComplete and
 // LoadPartial are checked by a_partial_load_is_never_supersedable above; the remaining three are
 // checked here, so the five are covered between the pair rather than by either alone.
@@ -187,7 +190,7 @@ test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
   ls_permits(standing: LoadDocumentMalformed)
     && !ls_permits(standing: LoadUnsupportedProtocol)
     && !ls_permits(standing: LoadIdentityCollision)
-    && !ls_permits(standing: LoadRequiresNodeAtAuthoredSource)
+    && !ls_permits(standing: LoadRequirementAtWrongKind)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 
@@ -197,9 +200,11 @@ test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
 test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
   let protocol = closure_document_load_standing(cause: ClosureDocFormatUnrecognized { found: "v9" })
   let member = closure_document_load_standing(
-    cause: ClosureDocUnexpectedMember { context: ClosureDocEnvelopeMembers, key: "provenance" }
+    cause: ClosureDocUnexpectedMember { key: "provenance" }
   )
-  let tag = object_table_load_standing(cause: ObjectTableUnknownKindTag { found: "quantum" })
+  let tag = node_table_load_standing(
+    cause: NodeTableEntryRefused { cause: NodeEntryUnknownKindTag { found: "quantum" } }
+  )
   standing_eq(a: protocol, b: LoadUnsupportedProtocol)
     && standing_eq(a: member, b: LoadDocumentMalformed)
     && standing_eq(a: tag, b: LoadDocumentMalformed)
@@ -210,7 +215,7 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
 // which is not a refusal and never reaches this classifier at all.
 test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
   standing_eq(
-    a: object_table_load_standing(cause: ObjectTableEdgeTargetUnresolved { reference: "7" }),
+    a: node_table_load_standing(cause: NodeTableEdgeTargetUnresolved { reference: "7" }),
     b: LoadDocumentMalformed
   )
     && standing_eq(
@@ -226,8 +231,8 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 // malformed would let a reader discard a writer's valid generation over an honest hash coincidence.
 test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   let collision = closure_document_load_standing(
-    cause: ClosureDocObjectTableRefused {
-      cause: ObjectTableObjectCollision { identity: node_target_locator(target: ls_full().root) }
+    cause: ClosureDocNodeTableRefused {
+      cause: NodeTableObjectCollision { identity: node_target_locator(target: ls_full().root) }
     }
   )
   let malformed = closure_document_load_standing(
@@ -322,4 +327,78 @@ test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -
       ),
       b: LoadDocumentMalformed
     )
+}
+
+// ---------------------------------------------------------------------------
+// A requirement over a carried file is not a delta
+// ---------------------------------------------------------------------------
+
+// THESE TWO MOVED HERE FROM THE COMMIT-CLOSURE DOCUMENT WITNESS, AND THE MOVE IS THE CORRECTION.
+//
+// They were written against a v3 document that carried an authored source at a locator one of its
+// nodes required. A v4 document cannot carry one at all -- its table admits nodes only -- so the
+// document was never the subject; it was a way of reaching a STORE in that shape, and the shape is
+// what the claims are about. Losing them with the format would have retired live evidence along with
+// a dead scaffold.
+//
+// The store-grain reading is also the honest one about where the arm lives. loaded_closure_standing
+// is exported and takes any store, and a REPOSITORY store is genuinely mixed -- nodes, authored
+// sources and manifests under one population. So asking the standing of a commit's closure over a
+// repository store is an ordinary call that can meet a file at a semantic requirement, and
+// LoadRequirementAtWrongKind is reachable exactly there rather than through any document.
+
+fn ls_file_text() -> String {
+  "a carried file\n"
+}
+
+// A store holding a file, and a node whose only child requires a program AT THAT FILE'S LOCATOR.
+// insert_from_structure is what makes this constructible: the store admits the edge because a
+// StoredEdge names a locator, and whether that locator holds a node is the question the census asks.
+type LsOccupied { store: ObjectStore, root: SemanticNodeTarget, ok: Bool }
+
+fn ls_requirement_over_a_file() -> LsOccupied {
+  match store_authored_source(store: empty_store(), text: ls_file_text()) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      LsOccupied { store: empty_store(), root: ls_full().root, ok: false }
+    SourceStored { store: with_file, source: file } =>
+      match insert_from_structure(
+        store: with_file,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge {
+            label: Named { name: ^ls_only_child },
+            target: SemanticNodeTarget { locator: file.locator },
+          },
+        ],
+      ) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          LsOccupied { store: empty_store(), root: ls_full().root, ok: false }
+        Stored { store: s, node: parent } =>
+          LsOccupied { store: s, root: node_target_of(reference: parent), ok: true }
+      }
+  }
+}
+
+// THE DISCRIMINATING CLAIM. A requirement whose locator this store FILLS WITH A FILE is not partial,
+// and must not be told to fetch. LoadPartial promises "get the named identities and this completes";
+// that promise is false here, because something is already there and no fetch repairs it. Answering
+// Partial would be the fabricated fetchable absence the object model closed at the record level,
+// re-entering at the standing level.
+test fn a_requirement_over_a_carried_file_is_not_partial() -> Bool {
+  let fx = ls_requirement_over_a_file()
+  fx.ok
+    && standing_eq(
+      a: loaded_closure_standing(store: fx.store, root: fx.root),
+      b: LoadRequirementAtWrongKind,
+    )
+    && !standing_loaded(standing: LoadRequirementAtWrongKind)
+}
+
+// AND IT DOES NOT PERMIT SUPERSESSION. The document read fine and what it ASSERTS is unsatisfiable,
+// so the writer's generation is not damaged -- it describes a graph that cannot exist. Superseding
+// would destroy a valid generation over a defect that is not in its bytes, which is why
+// LoadDocumentMalformed remains the only standing that permits it.
+test fn a_wrong_kind_requirement_cannot_supersede_a_head_slot() -> Bool {
+  let fx = ls_requirement_over_a_file()
+  fx.ok && !ls_permits(standing: loaded_closure_standing(store: fx.store, root: fx.root))
 }

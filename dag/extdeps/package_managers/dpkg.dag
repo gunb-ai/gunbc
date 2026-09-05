@@ -12,10 +12,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-fn dpkg_status_argv(package: NonEmptyStr) -> List<String> {
-  ["dpkg", "-s", package as String]
-}
-
+// dpkg_status_argv was DELETED here rather than kept beside this row. It respelled this
+// operation's own `transport shell { argv: [...] }` as a second List<String> authority, and its
+// last consumer (gunbc.live_deploy.emit's package-ensure predicate) now derives argv from this
+// declaration through v2.std.operation_argv. A witness comparing the two spellings for equality
+// was all that held the fork together; equality is not single authority.
 service dpkg.Package {
   operation Status {
     input { package: NonEmptyStr }

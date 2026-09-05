@@ -30,6 +30,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintParentMissing,
   RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsCorpusManifest,
   RepositoryCommitMintRootMissing,
   mint_repository_commit,
 }
@@ -59,6 +60,7 @@ import gunbc.scm.checkout {
   CheckoutRefusal,
   MissingObject,
   ObjectIsAuthoredSource,
+  ObjectIsCorpusManifest,
   RepositoryCheckout,
   RepositoryCheckedOut,
   CheckoutReferenceUnresolved,
@@ -107,6 +109,7 @@ fn scm_ck_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message:
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => repo
   }
 }
 
@@ -198,6 +201,7 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
         && match cause {
              MissingObject { identity: _ } => true
              ObjectIsAuthoredSource { identity: _ } => false
+             ObjectIsCorpusManifest { identity: _ } => false
            }
     CheckoutReferenceUnresolved { reference: _ } => false
     RepositoryCheckedOut { repository: _, program: _ } => false

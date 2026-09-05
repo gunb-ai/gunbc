@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_deconfliction_plan_does_not_enumerate_its_writers
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_deconfliction_plan_does_not_enumerate_its_writers: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_deconfliction_plan_does_not_enumerate_its_writers" as NonEmptyStr,
+
+  receipts: [
+    "**a deconfliction plan does not enumerate its writers** (two or more lanes reason about how to avoid colliding on one subject, agree on a scheme, and collide anyway -- because the scheme is a PREDICTION about who will write the subject next, and the predicted population omits a writer. The omitted writer is not an adversary: it is a peer who agreed to stand down and then WROTE ANYWAY -- an earlier revision of this sentence said \"and then did not act\", which is the opposite mechanism and could not produce the collision the row models, because a writer that does not write collides with nobody. The result merges CLEAN, so the collision is silent. ",
+
+    "INVALID STATE: a lane holding a deconfliction property that quantifies over a writer population it never discovered. ",
+
+    "WHY IT SURVIVES REVIEW: the plan is examined for whether it WOULD prevent a collision among the writers it names, and it always would. Nothing in a diff exhibits the writer it omits, and the omitted writer's own change is independently correct. ",
+
+    "SPECIMEN (main's parse break, 2026-09-04). Four lanes independently authored a repair for one orphaned annotation. Deconfliction ran and SUCCEEDED AS A DISCUSSION: #10414 was named the winner on an earliest-with-proof rule, and the other authors assented. Three of the four then merged anyway (#10425, #10408, #10428), each deleting the same nineteen lines and each adding its own relocated copy, leaving one paragraph standing three times in the module. One copy carried an inverted double negative asserting the opposite of the sentence it was restating. Repaired by removing two copies in #10435. ",
+
+    "THE ASSENT IS LOAD-BEARING, NOT INCIDENTAL, AND IT IS WHAT BOUNDS THIS CLASS: the population was not unknown and the peers were not uncooperative. Every author was identified, every author agreed, and the scheme still failed -- so the missing thing is not discovery of the writers but an INTERLOCK on them. A class where the colliding writer was never identified is a different and easier problem, because enumerating it is the whole remedy. ",
+
+    "WHY GIT CANNOT SEE IT, which is the load-bearing mechanism: identical DELETIONS on every side reconcile silently, and each side's ADDITION lands at a different offset, so no hunk overlaps. Three independently correct repairs of one defect merge without a single conflict. A collision that produces a conflict is the benign case; this class is defined by the absence of one. ",
+
+    "THE SECOND-ORDER TRAP: the ranking conversation consumes the attention that the standing-down would need. Agreement about WHICH repair wins reads as resolution, and it is not -- closing a pull request is the act, and here one of four was closed. Naming a winner is not the losers standing down. ",
+
+    "NOT TO BE MERGED WITH a_branch_property_falsified_by_a_derived_push, which shares only the SYMPTOM that no conflict is produced so nothing notifies. That symptom has at least three mechanisms -- this one, the derived-push one, and the generated-artifact merge driver refusing with no markers -- so it does not discriminate, and uniting on it is the bare alias section 3 forbids rather than the proven coincidence section 6 requires. The concrete cost of merging them is a grain mismatch section 4b(3) names as its own review tell: this row is genuinely blocked on cross-head knowledge, the other is decidable from a single ref TODAY, and one row carries one stated ceiling because RecurringFailureMode has no ceiling or trigger FIELD -- so the affordable class would be parked behind this one's capability and never rank for a climb it does not need. ",
+
+    "RUNG: found BELOW the ladder. The duplicated meaning is a silently wrong answer -- every copy parses, every gate is green, and the projection of a triple-landed repair is indistinguishable from a correct one by any executing check. ",
+
+    "CEILING 2, mechanically preventable, and the reason it is not higher is that the writer population is not decidable from the repository: it includes future human decisions about whether to close a head. What IS decidable is the SUBJECT overlap between open heads. ",
+
+    "NEXT-RUNG TRIGGER: the capability of resolving an open pull request head to the set of DECLARATIONS it modifies, which is the same Node-tree read the namespace authority already performs and which no instrument currently exposes. A path-grain fence does not discharge it, because this specimen was a single path and the collision was within one declaration's neighbourhood. ",
+
+    "REVIEW TELL: a lane stating why it CANNOT collide with another lane. The claim is a quantifier over writers, so ask which writers it ranges over and whether an unclosed peer head is inside it. And after a CONTESTED fix lands, re-measure the SUBJECT for duplication rather than re-measuring whether it is green -- green is exactly what triple-duplication looks like.",
+  ],
+
+  evidence: [],
+}

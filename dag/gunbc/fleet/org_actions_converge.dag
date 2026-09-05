@@ -15,6 +15,8 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.shell.credentials { env_credential }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import gunbc.spark.secret_access_ensure { secret_access_ensure_for, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable, OperatorSuppliedToken }
 import extdeps.github.org_admin_auth { RunnerGroupsRead, RunnerGroupRepositoriesRead }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -228,7 +230,7 @@ fn completed_groups(reads: List<ObservedGroupRead>) -> List<ObservedGroupAccess>
 func org_actions_converge_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
-    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent")
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
     Present { value: _ } => {
       let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: org_actions_organization)
       if !listed.success {
@@ -270,5 +272,21 @@ func org_actions_converge_wet() -> ProcessExit {
         }
       }
     }
+  }
+}
+
+// THE ACCESSOR BINDING FOR THE App KEY IS A CONVERGE, RUN BY THE CONTROL-PLANE PRINCIPAL. The
+// workload principal (fleet-cloud-convergence) may read secrets it is bound to and may not bind
+// itself, so this entry takes an operator-supplied access token (GUNBC_GCP_ACCESS_TOKEN_FILE, the
+// same channel gunbc.spark.secret_access_ensure uses) and reconciles roles/secretmanager.secretAccessor
+// on ci-github-app-private-key for that principal: get policy, delta, set policy, read back the
+// grant. Once it has run, the org-actions step's in-run mint stops answering 403.
+func org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
+  uses net: Network
+{
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+    SuppliedTokenReady { token: t } =>
+      secret_access_ensure_for(target: gunbai_ci_app_pem_secret, token_source: OperatorSuppliedToken { token: t })
   }
 }
