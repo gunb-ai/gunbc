@@ -30,24 +30,30 @@ service sed.Sed {
     }
   }
 
-  // sed -n with a script argument: auto-print suppressed, so the only output is what the script's
-  // own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
-  // '--silent') 'suppress automatic printing of pattern space'. The script is an ARGUMENT here
-  // rather than text spliced into a shell word, which is the whole reason this operation exists as
-  // a modeled row: a caller executing a program it received from somewhere else must not have that
-  // program re-read by a shell on the way in. stdout_lines rather than stdout, because the consumer
-  // question is HOW MANY rows the script extracted and WHICH -- and a zero-length stdout and a
-  // refusal are indistinguishable as one string, which is the failure this operation's first
-  // consumer exists to catch.
-  operation ScriptSuppressAutoPrint {
-    input { expression: NonEmptyStr, path: NonEmptyStr }
+  // sed -n with its scripts passed as ARGUMENTS: auto-print suppressed, so the only output is what
+  // a script's own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
+  // '--silent') 'suppress automatic printing of pattern space', and -e ('--expression') 'add the
+  // script to the commands to be executed', which is what makes a multi-clause program ONE program
+  // rather than a pipeline of them. The scripts are argv entries rather than text spliced into a
+  // shell word, which is the whole reason this operation exists as a modeled row: a caller
+  // executing a program it received from somewhere else must not have that program re-read by a
+  // shell on the way in.
+  //
+  // `arguments` takes the output of sed_script_arguments below and nothing else. The -e spelling
+  // lives there, next to the -i spelling, for the same reason: one place per flag.
+  //
+  // stdout_lines rather than stdout, because the consumer question is HOW MANY rows the program
+  // extracted and WHICH -- and a zero-length stdout and a refusal are indistinguishable as one
+  // string, which is the failure this operation's first consumer exists to catch.
+  operation ScriptsSuppressAutoPrint {
+    input { arguments: List<String>, path: NonEmptyStr }
     output {
       lines: List<String> from "stdout_lines"
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["sed", "-n", "{expression}", "{path}"] }
+    transport shell { argv: ["sed", "-n", arguments, "{path}"] }
   }
 }
 
@@ -63,3 +69,13 @@ data sed_program: NonEmptyStr = "sed"
 fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
   argv_command(program: sed_program, arguments: ["-i", expression, path])
 }
+
+// The -e flag pairing, spelled once. A caller names the scripts its program is made of; this
+// derives the argv sed reads them from, so a consumer that also RENDERS the program as text can
+// build both from one list of expressions rather than keeping a rendered copy beside an executed
+// one.
+fn sed_script_arguments(expressions: List<String>) -> List<String> {
+  fold(expressions, init: [], f: (acc, e) => append(acc, items: [sed_script_expression_flag, e]))
+}
+
+data sed_script_expression_flag: String = "-e"

@@ -6,13 +6,16 @@ import std.types { String, FilePath, GitRef, NonEmptyStr }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.tools.sed
 import gunbc.generated_artifact_merge_driver {
   expected_generated_artifact_merge_driver_sh,
   generated_artifact_merge_driver_config_value_at,
-  generated_artifact_merge_driver_dark_row_extraction_sed_program,
+  generated_artifact_merge_driver_row_identity_extraction_expressions,
+  generated_artifact_merge_driver_row_extractor_function,
 }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import extdeps.tools.sed
+import extdeps.tools.sed { sed_script_arguments }
 import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
@@ -183,71 +186,76 @@ test fn one_sided_generated_artifact_change_merges_clean_by_real_execution() -> 
 }
 
 // THE ENROLLED RED FOR THE DARK-ROW CHECK, IN TWO HALVES THAT ONLY MEAN ANYTHING TOGETHER (DESIGN
-// section 4b(4)). The driver's step 2 tells a lane to prove no ledger row went dark by comparing two
-// extractions; the defect this pair exists to keep dead was that the printed program could not
-// extract anything at all, so the comparison was satisfied for every input and the check had never
-// been able to go red. Neither half alone catches it. Asserting on the EMITTED SCRIPT TEXT would
-// have passed throughout the defect, because the script always carried the right characters -- they
-// were eaten by bash at print time, one layer later. Re-spelling the sed inside this witness and
-// running that would also have passed throughout, because the witness's copy was never the thing
-// that broke. So:
+// section 4b(4)). test.claim.generated_artifact_merge_driver_recipe asserts over the EMITTED SCRIPT
+// and says so in its own header: those reads "cannot claim the command RUNS", and they name this
+// module as the wet arm that would. This is that arm. The two subjects are different claims and only
+// the second is the one the recipe's readers depend on:
 //
-//   printed_step_two_carries_the_extraction_program -- executes a real merge, reads what the driver
-//   ACTUALLY PRINTED after bash expansion, and requires the extraction program to have survived it
-//   verbatim. This is the half that goes red on the defect, and it is red for the precise reason:
-//   under the retired spelling the printed text read `s/^- .*/\1/p`, the capture group gone.
+//   printed_step_two_carries_the_row_extractor -- executes a real merge and reads what the driver
+//   ACTUALLY PRINTED after bash expansion. A string read over the emitted bytes proves an escape was
+//   APPLIED; it cannot distinguish a correct escape from a wrong one. Doubling the wrong character,
+//   or escaping $ and killing the $merged_path the driver defines, both produce escaped bytes and a
+//   recipe that still does not work -- and both pass the emitted-bytes assert while failing this one.
 //
-//   extraction_program_names_a_row_that_went_dark -- executes THAT SAME program, through sed, over a
-//   fixture ledger and over the same ledger with one row removed. It JOINS the extraction to the
-//   roster the real projection is generated from, on both sides, which is the conservation check the
-//   original defect defeated: an empty operand is the entire mechanism, and comm cannot report that
-//   its own input was empty. Then it asserts the removed row IS NAMED by the first side and is NOT
-//   named by the second -- the set difference's discrimination, without needing comm to state it.
+//   row_extractor_names_a_row_that_went_dark -- executes THOSE SAME expressions, through real sed,
+//   over a fixture ledger and over the same ledger with one row of EACH shape removed.
 //
-// Together they close the chain from what the driver prints to what that program does.
+// THE SECOND ASSERTS A COVERAGE JOIN, NOT NON-EMPTINESS, and that distinction is this recipe's own
+// history rather than a general principle applied from outside. Non-emptiness proves ACQUISITION and
+// nothing else: it passes identically at one extracted row, at forty, and at all-but-one. The hole
+// that was live on this recipe was exactly the case it cannot see -- a correct program pointed at a
+// row shape it could not match, which rendered perfectly and read ZERO of the rung-drop rows while
+// reporting a pass it never measured. Nothing in the recipe compared what it extracted against what
+// was there to extract. So the fixture is built FROM the two rosters the projections are generated
+// from, carries BOTH row spellings, and requires the extraction to name every rostered row on both
+// sides. Dropping either sed clause reds this; a nonzero check would stay green on half its subject.
+//
+// The fixture also carries a prose bullet per failure-mode row, mirroring the projection's shape, so
+// a program that matched every top-level bullet would over-count and red too. Only the correct
+// extraction is green, in both directions.
+//
+// THE NEIGHBOUR, cited rather than duplicated: gunbc.rostered_row_join asks whether every DECLARED
+// row of a type is rostered. This asks whether the recipe's extractor names every ROSTERED row of a
+// projection. Same shape of oracle -- an identity join against an independent population rather than
+// a count compared with itself -- on two different subjects, and neither subsumes the other: a row
+// can be rostered and unnamed by the extractor, and named by the extractor while never declared.
 
-// THE FIXTURE LEDGER IS BUILT FROM THE ROSTER, NOT FROM A HAND-WRITTEN ROW LIST, AND THE ASSERTION
-// IS AN IDENTITY JOIN RATHER THAN A NON-EMPTINESS CHECK. Non-emptiness proves ACQUISITION and
-// nothing else: it catches the total-failure mode this witness exists for -- zero rows extracted --
-// and passes identically at one row, at forty, and at all-but-one. An extraction that silently
-// narrowed to a SUBSET would sail through it while the dark-row check ranged over a fraction of its
-// subject, which is `check_subject_narrower_than_its_declared_claim` sitting directly beside the
-// hollow-check class this repairs. So the oracle is the authority the real projection is generated
-// FROM -- gunbc.recurring_failure_mode roster -- and the extraction must name every entry in it,
-// which is a comparison against an independent referent rather than against a measurement of the
-// same text (DESIGN section 5).
-//
-// THE FIXTURE ALSO REPRODUCES THE PROJECTION'S TWO-BULLET SHAPE, because the count is only an oracle
-// if the extraction is discriminating: the real ledger carries one INDEX bullet per row and one
-// PROSE bullet per row, so a program that matched every top-level bullet would extract twice the
-// roster count and a program that matched none would extract zero. Both are red here, and only the
-// correct extraction is green.
-
-fn witness_ledger_rows() -> List<String> {
+fn witness_failure_mode_rows() -> List<String> {
   map(recurring_failure_mode_roster, r => r.identity as String)
 }
 
-data witness_dark_row: String = "empty_capture_read_as_clean_result"
+fn witness_rung_drop_rows() -> List<String> {
+  map(rung_drop_roster, r => r.subject)
+}
+
+data witness_dark_failure_mode_row: String = "empty_capture_read_as_clean_result"
 data witness_ledger_path: String = "fixture_ledger.md"
 
-fn witness_ledger_index_line(row: String) -> String {
+fn witness_dark_rung_drop_row() -> String {
+  fold(witness_rung_drop_rows(), init: "", f: (acc, row) => if acc == "" { row } else { acc })
+}
+
+fn witness_failure_mode_index_line(row: String) -> String {
   join(["- `", row, "`\n"], "")
 }
 
 // The prose bullet the extraction must SKIP: a top-level bullet whose first token is bold text
-// rather than a backquoted identifier, which is exactly how the real projection carries a row body.
-fn witness_ledger_prose_line(row: String) -> String {
+// rather than a backquoted identifier, which is how the real projection carries a row body.
+fn witness_failure_mode_prose_line(row: String) -> String {
   join(["- **", row, " stated as prose** (a receipt sentence.)\n"], "")
 }
 
-fn witness_ledger_text(rows: List<String>) -> String {
-  fold(rows, init: "", f: (acc, row) =>
-    concat(acc, concat(witness_ledger_index_line(row: row), witness_ledger_prose_line(row: row)))
-  )
+fn witness_rung_drop_heading_line(row: String) -> String {
+  join(["### ", row, " — declared 2026-09-05\n"], "")
 }
 
-fn witness_rows_without_dark_row() -> List<String> {
-  witness_ledger_rows() |> filter(row => row != witness_dark_row)
+fn witness_ledger_text(failure_modes: List<String>, rung_drops: List<String>) -> String {
+  concat(
+    fold(failure_modes, init: "", f: (acc, row) =>
+      concat(acc, concat(witness_failure_mode_index_line(row: row), witness_failure_mode_prose_line(row: row)))
+    ),
+    fold(rung_drops, init: "", f: (acc, row) => concat(acc, witness_rung_drop_heading_line(row: row)))
+  )
 }
 
 type LedgerExtraction {
@@ -255,21 +263,24 @@ type LedgerExtraction {
   ok: Bool
 }
 
-fn extract_ledger_rows(dir: FilePath, rows: List<String>) -> LedgerExtraction {
-  let path = witness_repo_file(repo: dir, name: witness_ledger_path)
-  let written = Filesystem.Write(path: path, content: witness_ledger_text(rows: rows)).success
-  let extracted = sed.Sed.ScriptSuppressAutoPrint(
-    expression: generated_artifact_merge_driver_dark_row_extraction_sed_program as NonEmptyStr,
+fn witness_extraction_names(failure_modes: List<String>, rung_drops: List<String>) -> LedgerExtraction {
+  let dir = shell.Mktemp.Dir()
+  let path = witness_repo_file(repo: dir.path, name: witness_ledger_path)
+  let written = Filesystem.Write(
+    path: path,
+    content: witness_ledger_text(failure_modes: failure_modes, rung_drops: rung_drops),
+  ).success
+  let extracted = sed.Sed.ScriptsSuppressAutoPrint(
+    arguments: sed_script_arguments(
+      expressions: generated_artifact_merge_driver_row_identity_extraction_expressions
+    ),
     path: path as NonEmptyStr,
   )
-  LedgerExtraction { names: extracted.lines, ok: written && extracted.exit_code == 0 }
-}
-
-fn witness_extraction_names(rows: List<String>) -> LedgerExtraction {
-  let dir = shell.Mktemp.Dir()
-  let extracted = extract_ledger_rows(dir: dir.path, rows: rows)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  LedgerExtraction { names: extracted.names, ok: dir.success && extracted.ok && cleaned.success }
+  LedgerExtraction {
+    names: extracted.lines,
+    ok: dir.success && written && extracted.exit_code == 0 && cleaned.success,
+  }
 }
 
 fn extraction_names_row(extraction: LedgerExtraction, row: String) -> Bool {
@@ -278,11 +289,11 @@ fn extraction_names_row(extraction: LedgerExtraction, row: String) -> Bool {
 
 // The heal population is a PARAMETER of the emitter, so this observation binds the witness's own
 // artifact path into it rather than reaching for a real ledger path. Step 2 is printed by the heal
-// case arm only, and the alternative -- reproducing docs/design-failure-modes.md inside a temp repo
-// -- would need a directory Filesystem.Write cannot create and would make the witness depend on the
-// live ledger's shape. The step text itself is unparameterized, so what this arm prints for the
-// witness path is byte-identical to what it prints for every real one.
-test fn driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_execution() -> Bool {
+// case arm only, and the alternative -- reproducing a real projection inside a temp repo -- would
+// need a directory Filesystem.Write cannot create and would make the witness depend on the live
+// ledger's shape. The step text is unparameterized, so what this arm prints for the witness path is
+// byte-identical to what it prints for every real one.
+test fn driver_printed_step_two_carries_the_row_extractor_by_real_execution() -> Bool {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: true,
@@ -290,18 +301,28 @@ test fn driver_printed_step_two_carries_the_dark_row_extraction_program_by_real_
   )
   observed.setup_ok
     && observed.merge_exit_code != 0
-    && string_contains(s: observed.printed_diagnostics, pattern: generated_artifact_merge_driver_dark_row_extraction_sed_program)
+    && string_contains(
+         s: observed.printed_diagnostics,
+         pattern: generated_artifact_merge_driver_row_extractor_function()
+       )
 }
 
-test fn dark_row_extraction_program_names_a_row_that_went_dark_by_real_execution() -> Bool {
-  let rostered = witness_ledger_rows()
-  let full = witness_extraction_names(rows: rostered)
-  let reduced = witness_extraction_names(rows: witness_rows_without_dark_row())
+test fn row_extractor_names_a_row_that_went_dark_by_real_execution() -> Bool {
+  let failure_modes = witness_failure_mode_rows()
+  let rung_drops = witness_rung_drop_rows()
+  let dark_rung_drop = witness_dark_rung_drop_row()
+  let full = witness_extraction_names(failure_modes: failure_modes, rung_drops: rung_drops)
+  let reduced = witness_extraction_names(
+    failure_modes: failure_modes |> filter(row => row != witness_dark_failure_mode_row),
+    rung_drops: rung_drops |> filter(row => row != dark_rung_drop),
+  )
+  let rostered = count(recurring_failure_mode_roster) + count(rung_drop_roster)
   full.ok
     && reduced.ok
-    && count(full.names) == count(recurring_failure_mode_roster)
-    && count(rostered) == count(recurring_failure_mode_roster)
-    && count(reduced.names) == count(recurring_failure_mode_roster) - 1
-    && extraction_names_row(extraction: full, row: witness_dark_row)
-    && !extraction_names_row(extraction: reduced, row: witness_dark_row)
+    && count(full.names) == rostered
+    && count(reduced.names) == rostered - 2
+    && extraction_names_row(extraction: full, row: witness_dark_failure_mode_row)
+    && extraction_names_row(extraction: full, row: dark_rung_drop)
+    && !extraction_names_row(extraction: reduced, row: witness_dark_failure_mode_row)
+    && !extraction_names_row(extraction: reduced, row: dark_rung_drop)
 }
