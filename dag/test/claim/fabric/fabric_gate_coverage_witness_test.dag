@@ -605,15 +605,30 @@ fn replace_line(text: String, index: Int, replacement: String) -> String {
     "\n")
 }
 
-fn header_line(snapshot_wire: String, subject_wire: String) -> String {
-  join(["gunbc-terminal-ledger/2", snapshot_wire, subject_wire, "0000000000000000"], "\t")
+fn field_at_or_empty(parts: List<String>, index: Int) -> String {
+  match ledger_line_at(parts, index) {
+    Present { value: v } => v,
+    Absent => "",
+  }
 }
 
+// A HEADER MUTATION MUST MOVE ONLY THE FIELD IT NAMES. This used to SYNTHESIZE the whole header
+// line, which meant it also installed an all-zero roster identity -- a second, unrelated mutation
+// riding along in every specimen. Nothing caught it, because the consumer does not yet adjudicate
+// the roster identity: the moment it does, these negatives could stay green on the WRONG field,
+// still refusing after the guard they exist to exercise had stopped working. That is the same
+// shape as the all-zero-digest defect the renderer switch above fixed, one field over.
+//
+// So the format and roster-identity fields are read back OFF THE RENDERED HEADER and reinstalled
+// unchanged; only the snapshot and subject wires -- the two the callers name, one per witness --
+// come from the arguments.
 fn ledger_with_header(snapshot_wire: String, subject_wire: String, rows: List<ClaimTerminalRow>) -> String {
+  let text = rendered_ledger(commit_a(), ledger_fixture_subject, rows)
+  let original = field_at_or_empty(text.split(delimiter: "\n"), 0).split(delimiter: "\t")
   replace_line(
-    rendered_ledger(commit_a(), ledger_fixture_subject, rows),
+    text,
     0,
-    header_line(snapshot_wire, subject_wire))
+    join([field_at_or_empty(original, 0), snapshot_wire, subject_wire, field_at_or_empty(original, 3)], "\t"))
 }
 
 fn identity_already_in(seen: List<WitnessIdentity>, id: WitnessIdentity) -> Bool {
