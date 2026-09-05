@@ -257,9 +257,13 @@ fn rostered_identities(
                 None => findings.push(JoinFinding {
                     kind: JoinFindingKind::RosterMemberUnresolved,
                     row_type: row_type.to_string(),
-                    subject: format!("{}.{roster_declaration} names `{spelling}`", record.module_path),
+                    subject: format!(
+                        "{}.{roster_declaration} names `{spelling}`",
+                        record.module_path
+                    ),
                     detail: format!(
-                        "imported from `{}`, which is absent from the index, so this member                          resolves to no declaration and is not admitted as one",
+                        "imported from `{}`, which is absent from the index, so this member \
+                         resolves to no declaration and is not admitted as one",
                         claim.target
                     ),
                 }),
