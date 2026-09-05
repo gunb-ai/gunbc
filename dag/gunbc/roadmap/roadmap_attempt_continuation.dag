@@ -61,6 +61,10 @@ type ContinuationDecision
 // evidence about the brief or the contract, not a reason for a fourth worker.
 data continuation_turn_cap: Int = 3
 
+fn continuation_turn_label(turn: Int) -> String {
+  join(["turn ", to_string(value: turn), " of ", to_string(value: continuation_turn_cap)], "")
+}
+
 fn verification_segment_of(segments: List<WorkflowSegment>) -> WorkflowSegment? {
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
@@ -155,7 +159,7 @@ fn continuation_brief_prefix(origin: AttemptOrigin) -> String {
     FreshFromBase => ""
     ContinueFromAttempt { parent_attempt_key, branch, turn, verdict_detail } =>
       join([
-        "CONTINUATION: this is turn ", to_string(value: turn), " of ", to_string(value: continuation_turn_cap),
+        "CONTINUATION: this is ", continuation_turn_label(turn: turn),
         " on this task. The previous turn (attempt ", parent_attempt_key, ") ended and its work was committed on branch ",
         branch, ", which is the branch your worktree is on: the files already reflect it. Verification then ran against that head and FAILED:\n",
         verdict_detail,
