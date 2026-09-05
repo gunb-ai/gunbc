@@ -505,6 +505,24 @@ fn gate_standing(
   )
 }
 
+// THE DROPPED GUARD IS A VALUE, NOT A SENTENCE, AND THAT IS THE WHOLE REPAIR.
+//
+// An earlier revision of the production entry passed the ledger's OWN prepared subject in as the
+// adjudicated one and explained in an annotation that the comparison was therefore vacuous. Both
+// halves of that were bad. The comparison still EXECUTED, permanently true, so a reader of the
+// executed path sees a subject guard and reads it as coverage -- and no Accepted program can read
+// the annotation saying otherwise (DESIGN 4c). A guard that cannot fail is not a weak guard; it is
+// a decoration that will be cited as one.
+//
+// So the caller now STATES which it has. SubjectNotIndependentlyBound is not a null and not a
+// default: it says this caller has no digest that came from anywhere but the ledger, so no
+// comparison is performed and none is claimed. The arm that compares is reachable only from a
+// caller holding a digest it did not read out of the artifact -- which the witnesses hold and
+// production does not.
+type SubjectAdmission
+  = SubjectAdjudicated { digest: Fnv1a64Structural }
+  | SubjectNotIndependentlyBound {}
+
 fn gate_standing_over_observations(
   gates: List<FabricCiGate>,
   enrolments: List<MutationEnrolment>,
@@ -513,6 +531,45 @@ fn gate_standing_over_observations(
   adjudicated_revision: RepositorySnapshot,
   adjudicated_subject: Fnv1a64Structural,
 ) -> GateStandingVerdict {
+  gate_standing_admitted(
+    gates,
+    enrolments,
+    binding,
+    observations,
+    adjudicated_revision,
+    SubjectAdjudicated { digest: adjudicated_subject },
+  )
+}
+
+// The tail every admitted path shares: the roster must be well formed, and standing is derived per
+// obligation. Extracted so the subject arms below differ ONLY in whether they compare, rather than
+// each carrying its own copy of the derivation -- two copies of this would be two places for the
+// adequacy rule to drift.
+fn derive_standing(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+  observations: List<NominationObservation>,
+) -> GateStandingVerdict {
+  match gate_coverage(gates, enrolments) {
+    CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
+    CoverageTotal { discharged, undischarged } => {
+      let all_standings = map(concat(discharged, undischarged), e => standing_for(e, observations))
+      StandingDerived {
+        covered: filter(all_standings, s => is_covered(s)),
+        uncovered: filter(all_standings, s => !is_covered(s)),
+      }
+    },
+  }
+}
+
+fn gate_standing_admitted(
+  gates: List<FabricCiGate>,
+  enrolments: List<MutationEnrolment>,
+  binding: LedgerBinding,
+  observations: List<NominationObservation>,
+  adjudicated_revision: RepositorySnapshot,
+  adjudicated_subject: SubjectAdmission,
+) -> GateStandingVerdict {
   match binding.repository_snapshot {
     UnpublishedWorkingTree => StandingRefusedLedgerIsNotCandidateBound {},
     PublishedCommit { commit } => match adjudicated_revision {
@@ -520,21 +577,18 @@ fn gate_standing_over_observations(
       PublishedCommit { commit: wanted } =>
         if !git_object_id_eq(commit, wanted) {
           StandingRefusedLedgerIsOfAnotherRevision {}
-        } else if binding.prepared_subject.digest != adjudicated_subject.digest {
-          StandingRefusedLedgerIsOfAnotherSubject {
-            observed: binding.prepared_subject,
-            adjudicated: adjudicated_subject,
-          }
         } else {
-          match gate_coverage(gates, enrolments) {
-            CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
-            CoverageTotal { discharged, undischarged } => {
-              let all_standings = map(concat(discharged, undischarged), e => standing_for(e, observations))
-              StandingDerived {
-                covered: filter(all_standings, s => is_covered(s)),
-                uncovered: filter(all_standings, s => !is_covered(s)),
-              }
-            },
+          match adjudicated_subject {
+            SubjectNotIndependentlyBound {} => derive_standing(gates, enrolments, observations),
+            SubjectAdjudicated { digest } =>
+              if binding.prepared_subject.digest != digest.digest {
+                StandingRefusedLedgerIsOfAnotherSubject {
+                  observed: binding.prepared_subject,
+                  adjudicated: digest,
+                }
+              } else {
+                derive_standing(gates, enrolments, observations)
+              },
           }
         },
     },
@@ -718,7 +772,7 @@ fn adjudicate_published_ledger(
                 Absent =>
                   standing_refused(concat("FCI-STANDING refused=ledger-subject-unrecognized offending=", prepared_subject)),
                 Present { value: observed_subject } =>
-                  render_standing_verdict(gate_standing_over_observations(
+                  render_standing_verdict(gate_standing_admitted(
                     fabric_ci_gates(),
                     fabric_mutation_enrolments(),
                     LedgerBinding {
@@ -727,7 +781,7 @@ fn adjudicate_published_ledger(
                     },
                     map(rows, r => observation_of_readback_row(r)),
                     adjudicated_snapshot,
-                    observed_subject,
+                    SubjectNotIndependentlyBound {},
                   )),
               },
           },
