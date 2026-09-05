@@ -21,7 +21,7 @@ import v1.std.core {
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
   LitBool, LitNull,
-  with_optional_cardinality, preserve_outer_optional_cardinality,
+  with_optional_cardinality,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
@@ -201,22 +201,20 @@ fn synthesize_witness_violates_variant(scrut: Node) -> Node {
   Node { occurrence_identity: OccurrenceSynthetic, name: "Violates", span: scrut.span, ident_span: Present { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
 }
 
-fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject) -> PatternSubject {
-  match inner {
-    PatternResolved { node: resolved } =>
-      PatternResolved { node: preserve_outer_optional_cardinality(outer: outer, inner: resolved) }
-    _ => inner
-  }
-}
-
+// Binding consumes the nominal application; structural pattern lookup expands it
+// separately in resolve_pattern_subject. Peeling here discards generic arguments.
+// Inspect inferred links only to retain the existing blocked-error propagation.
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
     PatternLookupBlocked
-  } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
+  } else if n.connective == NoConnective && n.children |> count > 0 {
     match n.inferred {
-      Present { value: Resolved { node: target } } => pattern_subject_preserving_outer_optional(outer: n, inner: pattern_subject_from_node(n: target))
+      Present { value: Resolved { node: target } } =>
+        match pattern_subject_from_node(n: target) {
+          PatternLookupBlocked => PatternLookupBlocked
+          _ => PatternResolved { node: n }
+        }
       _ => PatternResolved { node: n }
     }
   } else {

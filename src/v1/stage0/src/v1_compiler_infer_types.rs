@@ -36,7 +36,9 @@ pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::InternalError;
+use crate::v1_std_core::CompilerDiagnostic::{
+    AlgebraApplicationEvidenceUnavailable, InternalError,
+};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
@@ -1063,41 +1065,61 @@ pub fn algebra_child_or_placeholder(
     base: Rc<Node>,
     child_index: i64,
     placeholder: String,
-) -> Rc<Node> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for pair in Rc::new({
+) -> Rc<KernelTypeBuild> {
+    if (base.connective.clone() != Connective::NoConnective) {
+        Rc::new(KernelTypeBuild {
+            ty: error_type(),
+            diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
+                    receiver_type: base.name.clone(),
+                    argument_index: child_index.clone(),
+                    span: base.span.clone(),
+                }),
+                "v1.compiler.infer_types".to_string(),
+            )]),
+        })
+    } else {
+        match Rc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
-                base.children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
+            for pair in Rc::new({
+                let mut __result = Vec::new();
+                for pair in Rc::new(
+                    base.children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if (pair.0.clone() == child_index.clone()) {
+                        __result.push(pair);
+                    }
+                }
+                __result
+            })
             .iter()
             .cloned()
             {
-                if (pair.0.clone() == child_index.clone()) {
-                    __result.push(pair);
-                }
+                __result.push(pair.1.clone());
             }
             __result
         })
-        .iter()
+        .first()
         .cloned()
         {
-            __result.push(pair.1.clone());
+            Some(child) => Rc::new(KernelTypeBuild {
+                ty: child_type_node(child.clone()),
+                diagnostics: Rc::new(vec![]),
+            }),
+            std::option::Option::None => Rc::new(KernelTypeBuild {
+                ty: type_variable_node(placeholder.clone()),
+                diagnostics: Rc::new(vec![]),
+            }),
         }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(child) => child_type_node(child.clone()),
-        std::option::Option::None => type_variable_node(placeholder.clone()),
     }
 }
 
@@ -1107,26 +1129,20 @@ pub fn instantiate_algebra_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
-        let key_node = algebra_child_or_placeholder(base.clone(), 0, "K".to_string());
-        let val_node = algebra_child_or_placeholder(base.clone(), 1, "V".to_string());
         match (*template.clone()).clone() {
             AlgebraTypeTemplate::ReceiverSelf => Rc::new(KernelTypeBuild {
                 ty: base.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
-            AlgebraTypeTemplate::ReceiverElement => Rc::new(KernelTypeBuild {
-                ty: elem.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
-            AlgebraTypeTemplate::ReceiverKey => Rc::new(KernelTypeBuild {
-                ty: key_node.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
-            AlgebraTypeTemplate::ReceiverValue => Rc::new(KernelTypeBuild {
-                ty: val_node.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
+            AlgebraTypeTemplate::ReceiverElement => {
+                algebra_child_or_placeholder(base.clone(), 0, "T".to_string())
+            }
+            AlgebraTypeTemplate::ReceiverKey => {
+                algebra_child_or_placeholder(base.clone(), 0, "K".to_string())
+            }
+            AlgebraTypeTemplate::ReceiverValue => {
+                algebra_child_or_placeholder(base.clone(), 1, "V".to_string())
+            }
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
                 diagnostics: Rc::new(vec![]),

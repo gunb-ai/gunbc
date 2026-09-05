@@ -1524,7 +1524,8 @@ pub fn lookup_structural_method(
                     receiver_type.clone(),
                     source_indices.clone(),
                 );
-                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
+                if ((((enriched.diagnostics.clone().len() as i64) == 0)
+                    && (enriched.ty.clone().connective.clone() == Connective::Conj))
                     && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {

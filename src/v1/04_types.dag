@@ -38,7 +38,7 @@ import v1.std.core {
   error_type,
   default_ident_span, kernel_span,
   authored_name_at,
-  ErrorNode, make_error_node, InternalError,
+  ErrorNode, make_error_node, InternalError, AlgebraApplicationEvidenceUnavailable,
   qualified_last_segment, type_name_compatible,
   ContainerSpellingVerdict, ContainerSpellingDeclared, NotAContainerSpelling,
   ContainerSpellingUnknown, authored_container_spelling_verdict
@@ -447,22 +447,31 @@ fn nominal_type_ref(name: String) -> Node {
   leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name))
 }
 
-fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
-  match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
-    Present { value: child } => child_type_node(ch: child)
-    Absent => type_variable_node(id: placeholder)
+// Positions are argument evidence only on the nominal application retained by
+// the resolver and pattern binder. An expansion alone cannot recover them.
+fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
+  if base.connective != NoConnective {
+    KernelTypeBuild {
+      ty: error_type,
+      diagnostics: [make_error_node(
+        diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: base.name, argument_index: child_index, span: base.span },
+        module_name: "v1.compiler.infer_types"
+      )]
+    }
+  } else {
+    match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
+      Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
+      Absent => KernelTypeBuild { ty: type_variable_node(id: placeholder), diagnostics: [] }
+    }
   }
 }
 
 fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
-  let elem = algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
-  let key_node = algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
-  let val_node = algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
   match template {
     ReceiverSelf => KernelTypeBuild { ty: base, diagnostics: [] }
-    ReceiverElement => KernelTypeBuild { ty: elem, diagnostics: [] }
-    ReceiverKey => KernelTypeBuild { ty: key_node, diagnostics: [] }
-    ReceiverValue => KernelTypeBuild { ty: val_node, diagnostics: [] }
+    ReceiverElement => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
+    ReceiverKey => algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
+    ReceiverValue => algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
     AlgebraTypeVariable { id: var_id } => KernelTypeBuild { ty: type_variable_node(id: var_id), diagnostics: [] }
     ContainerOf { source: src, element: inner } =>
