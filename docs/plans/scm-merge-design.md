@@ -126,10 +126,18 @@ receipt that silently becomes dangling is a worse artifact than one that names s
 To merge, two lines must be designatable at once. Today `RepositoryEnvelope.checked_out` is a single
 optional `RepositoryCommitRef`, so checking out the target loses the pointer to the work.
 
-The workflow bounds how much is needed. Because the branch is **discarded at merge**, it does not
-need to persist, be pushed, track an upstream, or be renamed. It needs to exist long enough to be
-named once and then dropped. That rules out most of what a branch model usually carries: no remote
-tracking, no upstream, no reflog, no branch-of-branch, no rename.
+The workflow bounds how much is needed, but two of the bounds this section first drew were deductions
+the workflow does not license, and they are withdrawn rather than left to decide the model quietly:
+
+- **"Discarded at merge" does not mean "does not need to persist."** Retirement on success says nothing
+  about lifetime before success. A multi-command or resumable merge has a lifetime to preserve exactly
+  while it is unfinished, which is when the ref matters.
+- **"Exactly one checked out" erases the empty and unborn repository.** `checked_out` is
+  `RepositoryCommitRef?` today for a reason, and a ref model that cannot express a repository with no
+  commits has dropped a state the current model holds.
+
+What the workflow does bound: no remote tracking, no upstream, no reflog, no branch-of-branch, no
+rename.
 
 **Proposal:** the envelope holds a set of named commit refs, exactly one of which is checked out —
 the minimum that lets two lines coexist. Naming is required (not merely a second anonymous slot)
@@ -145,8 +153,34 @@ surface, so the merge model does not depend on the ref model. Flagged for ruling
 
 ## 4. Base derivation: four walk arms, two sides, and the outcomes they force
 
-Merge derives a base by walking both sides. `ancestry_walk` can answer four ways per side, and this
-module owes a decision for each rather than one collapsed refusal.
+**The absorption query runs FIRST, and it does not walk the source.** An earlier revision of this
+section put base derivation at the front, which left the §D1 counterexample alive at the consumer even
+though the query beside it was correct. After M is published with parent T and a receipt naming S, S is
+not on M's parent chain — so a re-request for S fell straight through to base derivation, and once S's
+objects were collected the mandatory source walk refused before the surviving receipt was ever read.
+**A correct query repairs nothing until the decision consumes it.**
+
+The ordering is therefore fixed:
+
+1. **Establish the target lineage and consult its committed exact-source absorption evidence, without
+   requiring the source objects.** This step needs the target's chain and the identity value carried in
+   each receipt; it dereferences nothing on the source side.
+2. **Only if fresh reconciliation is actually needed** does the operation require the live source and
+   derive a base — and only then do the walk arms below apply to the source side.
+
+Two refusals get their place from that ordering. `SourceNotInRepository` refuses a NEW operation that
+needs an unavailable source; it may never veto a historical receipt lookup merely because the source
+was collected. And `NoAbsorptionRecorded` is supported only by a COMPLETE target walk that found no
+matching receipt — an unwalkable target yields `TargetHistoryUnwalkable`, which is a different answer.
+
+**Identity continuity is a requirement, not a consequence of the bytes surviving.** Carrying the source
+identity as a value fixes dereferencing; it does not by itself establish that the value still denotes
+the same source. The receipt's subject is a source identity that is never reused for different content
+within the scope the query answers over. Physical collection scheduling may stay open; identity
+continuity may not be left to it.
+
+Step (2) is what the rest of this section specifies. `ancestry_walk` can answer four ways per side, and
+this module owes a decision for each rather than one collapsed refusal.
 
 | what the walk says | what it means to a merge |
 |---|---|
@@ -157,9 +191,15 @@ module owes a decision for each rather than one collapsed refusal.
 
 With both chains traced, the outcomes are:
 
-- **`AlreadyAbsorbed`** — the absorbing tip is already in the target's chain. Nothing to do. This is
-  distinct from a conflict-free merge that happens to change nothing, and collapsing them would
-  report "merged successfully" for work that was already in.
+- **`SourceOnTargetParentChain`** — S is literally an ancestor of T. This is **ancestry membership,
+  and it is not receipt-backed absorption**; it is reported as its own fact. (`AlreadyAbsorbed` was
+  the earlier name and it was doing the work of two facts. Receipt-backed historical integration is
+  answered in step (1) above and never reaches this partition, so the four-outcome count here must
+  not be preserved by folding the receipt answer back in.) Both are also distinct from a
+  reconciliation that happens to compute an unchanged result, which is a **content** fact about a
+  fresh derivation and is evidence of no earlier integration whatever.
+  Neither answer silently suppresses an explicitly requested reapplication: a caller who asks to
+  reapply S after a revert is asking for step (2), and the historical receipt is not a refusal of it.
 - **`TargetIsAncestorOfSource`** — the target's tip is in the source's chain. The target has not
   moved since the branch started, so no content reconciliation is required. **This is now RULED
   rather than open, because leaving it open left a loophole that defeats §2.** If publication is
@@ -323,7 +363,9 @@ oracle, not a lower count.
 ## 6. What merge produces, and what it must refuse
 
 A merge is a **candidate then a commit**, not one step: the candidate carries the derived base, the
-absorbed tip, and the resolved graph; committing it is a separate act that advances the head. This
+absorbed tip, and — per §5's corrected output authority — the resulting authored snapshot, of which a
+resolved graph is a derived view rather than the product. D5 below states the full binding. Committing
+it is a separate act that advances the head. This
 mirrors the shape `supersession` already establishes — observe, then compare-and-swap — and keeps a
 merge from being authorized by anything other than the observation it rests on.
 
@@ -340,27 +382,63 @@ compares. A candidate is derived against a specific target tip; if the target mo
 and publication, publishing the candidate silently discards whatever moved it — a lost update wearing
 the shape of a successful merge.
 
-So the candidate **carries the exact target generation it observed** (the `HeadSlot` generation
-`observe_generation` returned, in `supersession`'s existing vocabulary) and the source tip identity it
-absorbed. Publication passes both to `supersede_head_slot`; a generation mismatch refuses and the
-candidate is not publishable — it must be re-derived against the new target. A candidate is not a
-value that stays valid; it is a value indexed by the state it was computed from.
+**An earlier revision routed publication through `observe_generation` and `supersede_head_slot`. That
+was wrong at the level of the contract, not the field list, and it contradicted this document's own §1.**
+`gunbc.scm.supersession` is a **malformed-document replacement policy**: its `standing_permission_refusal`
+answers `none` for `LoadDocumentMalformed` **alone**, and returns `StandingDoesNotPermit` for every other
+standing including `LoadComplete`. So an ordinary merge into a healthy repository would have reached
+`StandingDoesNotPermit { standing: LoadComplete }` on that route — refused precisely in the normal case,
+regardless of whether the generation matched. `SupersessionApplied` also yields a modeled slot and a
+warrant; it does not install a commit or a receipt.
+
+**The policy must not be weakened to admit merge.** Its narrowness is the point. What `supersession`
+supplies here is the SHAPE — observe, bind the observation, conditionally write — which §1 already
+records as precedent, and merge publication owes its own admission contract over its own subject. Nearby
+primitives exist and none is promoted by name alone: `std.durable_compare_and_set` declares its own
+observation-to-slot binding boundary, and `save_repository` does checked encoding followed by an
+**unconditional** write. Citing either does not establish this contract; this document fixes the
+contract and does not implement the actuator.
+
+**The candidate binds the whole derivation, not a generation value.** A generation alone is not the
+relation. The candidate carries: the repository and target slot; the exact observed target commit and
+state; the source identity absorbed; the base evidence; the interpretation and rule inputs and any
+author-supplied resolution; and — per the corrected §5 — the resulting **authored snapshot**, which is
+the output authority, not a resolved graph alone.
+
+**Publication is conditional on that exact observed target**, and a mismatch refuses rather than
+publishing; the candidate is then not publishable and must be re-derived. A candidate is not a value
+that stays valid; it is a value indexed by the state it was computed from.
+
+**Successful publication binds the installed facts together.** The new commit M, its absorption receipt,
+and the target advance become coherently available or none of them does — an uninstalled candidate or
+receipt must never answer §D1's historical-integration query. Publication returns named success evidence,
+and that evidence is what retirement consumes.
 
 Four outcomes stay separately named, because each demands a different action:
 
-- **`PublicationFailed { cause }`** — the swap itself did not complete. State unchanged; retry is the
-  correct response.
+- **`PublicationFailed { cause }`** — publication is ESTABLISHED not to have applied. Only an outcome
+  that establishes that may carry this meaning; a realization that installs the state and then loses
+  its acknowledgement must return `PublicationUnestablished` instead, and be reconciled rather than
+  replayed. Either the realization guarantees the ambiguity cannot arise, or the unestablished outcome
+  is preserved. A further attempt stays conditional on the exact observed target — "retry" never means
+  blind replay.
 - **`TargetGenerationStale { observed, current }`** — the target moved. Re-derive; do NOT retry.
 - **`WrongTargetSlot { expected, actual }`** — publication was attempted against a slot other than
   the one observed. This is a caller error and must not be absorbed into staleness.
 - **`SourceMovedSinceDerivation { observed_tip, current_tip }`** — the source line advanced after the
   candidate was built. The candidate absorbs less than the caller now means by "the source".
 
-**Retirement is bound to the same subjects.** Dropping the source ref, and any later collection of its
-objects, names the SOURCE GENERATION that was absorbed — not the ref name, which may be reused. And it
-happens only after the integration is durable: retirement follows a completed publication, never a
-derived candidate. Retiring on the strength of a candidate that then fails to publish destroys the
-line and integrates nothing.
+**Retirement checks the source AT RETIREMENT TIME.** Naming the absorbed source generation is necessary
+and not sufficient, because this ordering is possible: derive a candidate for S, publish M successfully,
+the source ref advances S → S₂, then retirement runs. Deletion is therefore conditional on that same
+source slot still naming S. Otherwise the operation discards S₂ after honestly publishing only S.
+
+The outcome when it does not hold is **`IntegrationCompletedRetirementWithheld { published, source_moved_to }`**
+— integration succeeded and the source moved — which is neither a deletion of newer work nor a claim
+that integration failed. Retirement also consumes the successful-publication evidence above and never a
+derived candidate: retiring on a candidate that then fails to publish destroys the line and integrates
+nothing. And later collection respects other live references — absorbing one line does not authorize
+deleting content something else still holds.
 
 ## 7. The projection obligation
 
@@ -393,8 +471,10 @@ specification-without-execution):
   `AncestryBrokenAt`, `AncestryRevisitsACommit` — each reaching a distinct, named merge refusal;
   `AncestryTraced` is the success arm, and the controls it owes are the four traced/traced outcomes
   below rather than a refusal;
-- the traced/traced partition discriminated four ways: `AlreadyAbsorbed`, `TargetIsAncestorOfSource`,
-  `BaseDerived`, `NoCommonAncestor` — each from a real merge and from each other;
+- the traced/traced partition discriminated four ways: `SourceOnTargetParentChain`,
+  `TargetIsAncestorOfSource`, `BaseDerived`, `NoCommonAncestor` — each from a real merge and from each
+  other, and `SourceOnTargetParentChain` additionally discriminated from the step-(1) receipt answer,
+  since those are two facts and the earlier `AlreadyAbsorbed` name held both;
 - a merge whose result is asserted by CONTENT, not by "it succeeded" — the mutation that returns an
   empty or unchanged graph must go red;
 - a refusal that stays a refusal: a conflict specimen with no author-supplied resolution must not
@@ -413,14 +493,24 @@ specification-without-execution):
   edited on opposite sides) asserted NOT to report a root-grain conflict; and a shared-subtree
   specimen where editing one occurrence leaves the other unchanged. Each is a discriminating red for
   a correspondence claim, not a demonstration that a merge algorithm exists;
-- **D5** — a candidate published against a moved target asserted to refuse with
-  `TargetGenerationStale`, discriminated from `PublicationFailed`, from `WrongTargetSlot`, and from
-  `SourceMovedSinceDerivation`; and a failed publication asserted to leave the source ref unretired.
+- **D1 at the DECISION, not only the query** — a repeated exact-source request after M is published,
+  asserted to answer from the receipt rather than proceeding to another base-derived merge; the same
+  with the source objects COLLECTED, which must still answer (the control that would have gone red on
+  the earlier ordering); the same source requested against a DIFFERENT target lineage; a never-absorbed
+  source whose fresh reconciliation happens to compute an unchanged result, asserted NOT to report
+  historical integration; and a later target commit asserted not to disturb either answer;
+- **D5** — a candidate published against a moved target asserted to refuse, discriminated from
+  `PublicationFailed`, `WrongTargetSlot` and `SourceMovedSinceDerivation`; **ordinary publication into a
+  HEALTHY repository asserted to succeed**, which is the control the superseded `supersede_head_slot`
+  route would have failed with `StandingDoesNotPermit { standing: LoadComplete }`; commit, receipt and
+  target advance asserted coherently available together, with an uninstalled receipt asserted not to
+  answer the D1 query; source movement AFTER publication but BEFORE retirement asserted to yield
+  `IntegrationCompletedRetirementWithheld` and to leave S₂ intact; and a failed publication asserted to
+  leave the source ref unretired.
 
 ## 10. What this document does not claim
 
-It does not claim a structural merge algorithm is BUILT, and §5a's tractability finding is derived from the node model rather than demonstrated by a running merge. It does not settle the ref model (§3 open), the
-fast-forward presentation (§4 open), object retention for absorbed lines (§2 open), or author and
+It does not claim a structural merge algorithm is BUILT, and §5a's tractability finding is derived from the node model rather than demonstrated by a running merge. It does not settle the ref model (§3 open) or object retention for absorbed lines (§2 open), or author and
 timestamp (§8). It does not claim a bounded structural correspondence capability is feasible — §5a records that as an
 obligation to demonstrate, not a result. Its performance claim is withdrawn (§5a) rather than weakened.
 
