@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.generic_position_admits_a_foreign_constructor
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_position_admits_a_foreign_constructor: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_position_admits_a_foreign_constructor" as NonEmptyStr,
+
+  receipts: [
+    "a record literal whose constructor belongs to a DIFFERENT type than the position declares is REFUSED at a non-generic position and ACCEPTED at a generic one -- the value does not inhabit its declared type, which is the ordinary compiler floor DESIGN section 4b names, so this is a below-baseline safety regression and not a missing refinement. ",
+    "HARM: an ill-typed program is Accepted with no diagnostic of any kind. Nothing downstream re-asks the question, so the wrong constructor travels as though it had been judged. ",
+    "DISTINGUISHING FACTS: the type-mismatch judgment owns this fault and fires at a non-generic position -- a coproduct arm from another type, and a product spelling too, both refused naming expected and got. That judgment does not run when the declared position is a generic application. The asymmetry is the whole class: same fault, same spelling, opposite verdicts, decided by whether the position is generic. ",
+    "RUNG FOUND AT: OutsideTheLadder. Silent wrongness is not the ladder's bottom rung, it is outside it, and this is silent wrongness -- the program is Accepted and nothing is reported. ",
+    "MEASURED ON MAIN, so it is a BASELINE FLOOR HOLE and not a regression introduced by any branch: reproduced on origin/main at a29faba47f3 with gunbc compile over a single-source probe. The generic specimen emitted zero diagnostics; the non-generic control on the same tree emitted the type mismatch. The pair differs only in whether the declared position is generic. ",
+    "CEILING AND REASON: a wall. Membership of a constructor in a declared coproduct is decidable and fully grounded -- the declaration enumerates its arms -- so this is a wall-after-grounding class in DESIGN section 5's sense, waiting on its single authority rather than on any undecidable property. ",
+    "NEXT-RUNG TRIGGER: variant-membership judgment at generic positions exists, refusing a constructor whose owner is not the declared type, with discriminating controls in both directions -- an invalid same-shape generic literal that reds, and a VALID same-shape generic constructor that stays green, so that a mechanism which merely refuses everything generic cannot satisfy it. ",
+    "AUTHORITY IS THAT FUTURE JUDGMENT AND NOT THE MECHANISM CURRENTLY HOLDING THE GAP. RecordLitInstantiationUndetermined's FieldTemplateSelectionFailed arm is a COMPENSATING refusal: it happens to catch this specimen because it cannot establish a field template for it, which is a different question from membership. It was not designed for this class and earns no credit for it. ",
+    "REMOVAL PRECONDITION, and it is the reason this row exists rather than a note: that compensating decline MUST NOT BE DELETED BEFORE THE MEMBERSHIP WALL LANDS. Routing it to NotApplicable was executed on a branch and the ill-typed specimen compiled clean -- so a later cleanup measuring zero corpus firings and no reachable correct code would delete it and fail open on exactly this class, justified by reasoning that is otherwise sound. Once the membership wall independently refuses the wrong-owner fixture, rerun that deletion mutation; only if the specimen STAYS RED may the compensation be removed. ",
+  ],
+
+  evidence: [],
+}

@@ -12,6 +12,7 @@ use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::MatchingOwnerDecision::*;
 use self::RecordLitInstantiation::*;
 use self::RecordLitUnavailableCause::*;
 use self::RecordLitVariantSelection::*;
@@ -2183,6 +2184,37 @@ pub fn expected_domain_owner_label(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MatchingOwnerDecision {
+    NoMatchingOwner,
+    OneMatchingOwner,
+    ManyMatchingOwners { owners: Rc<Vec<String>> },
+}
+impl MatchingOwnerDecision {
+    pub fn owners(&self) -> Rc<Vec<String>> {
+        match self {
+            MatchingOwnerDecision::NoMatchingOwner => panic!("no owners on unit variant"),
+            MatchingOwnerDecision::OneMatchingOwner => panic!("no owners on unit variant"),
+            MatchingOwnerDecision::ManyMatchingOwners { owners: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn matching_owner_decision(labels: Rc<Vec<String>>) -> Rc<MatchingOwnerDecision> {
+    if ((labels.clone().len() as i64) == 0) {
+        Rc::new(MatchingOwnerDecision::NoMatchingOwner)
+    } else {
+        if ((labels.clone().len() as i64) > 1) {
+            Rc::new(MatchingOwnerDecision::ManyMatchingOwners {
+                owners: labels.clone(),
+            })
+        } else {
+            Rc::new(MatchingOwnerDecision::OneMatchingOwner)
+        }
+    }
+}
+
 pub fn record_lit_variant_selection(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
@@ -2211,38 +2243,45 @@ pub fn record_lit_variant_selection(
                         }
                         __result
                     });
-                    if ((matching.clone().len() as i64) > 1) {
-                        Rc::new(RecordLitVariantSelection::VariantAmbiguous {
-                            owners: Rc::new({
-                                let mut __result = Vec::new();
-                                for d in matching.iter().cloned() {
-                                    __result.push(expected_domain_owner_label(
-                                        d.clone(),
-                                        scope.clone(),
-                                    ));
-                                }
-                                __result
-                            }),
-                        })
-                    } else {
-                        match matching.clone().first().cloned() {
-                            Some(d) => match expected_domain_variant_named(
-                                d.clone(),
-                                tn.clone(),
-                                scope.clone(),
-                            ) {
-                                Some(v) => Rc::new(RecordLitVariantSelection::VariantSelected {
-                                    variant: v.clone(),
-                                    owner: d.owner.clone(),
-                                    owner_name: d.owner_name.clone(),
-                                    route: d.route.clone(),
-                                }),
+                    match (*matching_owner_decision(Rc::new({
+                        let mut __result = Vec::new();
+                        for d in matching.iter().cloned() {
+                            __result.push(expected_domain_owner_label(d.clone(), scope.clone()));
+                        }
+                        __result
+                    })))
+                    .clone()
+                    {
+                        MatchingOwnerDecision::ManyMatchingOwners { owners: os, .. } => {
+                            Rc::new(RecordLitVariantSelection::VariantAmbiguous {
+                                owners: os.clone(),
+                            })
+                        }
+                        MatchingOwnerDecision::NoMatchingOwner => {
+                            Rc::new(RecordLitVariantSelection::VariantNotFound)
+                        }
+                        MatchingOwnerDecision::OneMatchingOwner => {
+                            match matching.clone().first().cloned() {
+                                Some(d) => match expected_domain_variant_named(
+                                    d.clone(),
+                                    tn.clone(),
+                                    scope.clone(),
+                                ) {
+                                    Some(v) => {
+                                        Rc::new(RecordLitVariantSelection::VariantSelected {
+                                            variant: v.clone(),
+                                            owner: d.owner.clone(),
+                                            owner_name: d.owner_name.clone(),
+                                            route: d.route.clone(),
+                                        })
+                                    }
+                                    std::option::Option::None => {
+                                        Rc::new(RecordLitVariantSelection::VariantNotFound)
+                                    }
+                                },
                                 std::option::Option::None => {
                                     Rc::new(RecordLitVariantSelection::VariantNotFound)
                                 }
-                            },
-                            std::option::Option::None => {
-                                Rc::new(RecordLitVariantSelection::VariantNotFound)
                             }
                         }
                     }

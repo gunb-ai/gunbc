@@ -1584,6 +1584,29 @@ fn expected_domain_owner_label(d: ExpectedConstructorDomain, scope: InferScope) 
   concat(concat(concat("'", d.owner_name), "' reached as "), expected_type_route_text(r: d.route))
 }
 
+// THE 0/1/MANY DECISION, EXTRACTED SO IT CAN BE EXERCISED DIRECTLY. The subject here is fold
+// TOTALITY -- what happens when more than one owner matches -- and that question does not need a
+// parser, a type environment, or a source program to ask. Feeding the decision a list of owner
+// labels is the whole of it, so the control that mutates `many` into `first` or `last` reds against
+// this function rather than against manufactured source.
+//
+// It carries NO production-coverage credit. No source program is known that presents two matching
+// owners at one position; this proves the fold REFUSES rather than CHOOSES if one ever does.
+type MatchingOwnerDecision
+  = NoMatchingOwner
+  | OneMatchingOwner
+  | ManyMatchingOwners { owners: List<String> }
+
+fn matching_owner_decision(labels: List<String>) -> MatchingOwnerDecision {
+  if (labels |> count) == 0 {
+    NoMatchingOwner
+  } else if (labels |> count) > 1 {
+    ManyMatchingOwners { owners: labels }
+  } else {
+    OneMatchingOwner
+  }
+}
+
 fn record_lit_variant_selection(type_name: String?, expected: Node?, scope: InferScope) -> RecordLitVariantSelection {
   match type_name {
     Absent => VariantNotFound
@@ -1592,17 +1615,18 @@ fn record_lit_variant_selection(type_name: String?, expected: Node?, scope: Infe
         ExpectedConstructorDomainUnavailable { cause: _ } => VariantNotFound
         ExpectedConstructorDomains { candidates: cands } =>
           let matching = cands |> filter(d => expected_domain_variant_named(d: d, tn: tn, scope: scope) != none)
-          if (matching |> count) > 1 {
-            VariantAmbiguous { owners: matching |> map(d => expected_domain_owner_label(d: d, scope: scope)) }
-          } else {
-            match matching |> first {
-              Present { value: d } =>
-                match expected_domain_variant_named(d: d, tn: tn, scope: scope) {
-                  Present { value: v } => VariantSelected { variant: v, owner: d.owner, owner_name: d.owner_name, route: d.route }
-                  Absent => VariantNotFound
-                }
-              Absent => VariantNotFound
-            }
+          match matching_owner_decision(labels: matching |> map(d => expected_domain_owner_label(d: d, scope: scope))) {
+            ManyMatchingOwners { owners: os } => VariantAmbiguous { owners: os }
+            NoMatchingOwner => VariantNotFound
+            OneMatchingOwner =>
+              match matching |> first {
+                Present { value: d } =>
+                  match expected_domain_variant_named(d: d, tn: tn, scope: scope) {
+                    Present { value: v } => VariantSelected { variant: v, owner: d.owner, owner_name: d.owner_name, route: d.route }
+                    Absent => VariantNotFound
+                  }
+                Absent => VariantNotFound
+              }
           }
       }
   }

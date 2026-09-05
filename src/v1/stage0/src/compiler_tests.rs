@@ -3784,6 +3784,40 @@ mod compiler_tests {
         );
     }
 
+    // 7': THE SELECTOR'S MANY-ARM REFUSES INSTEAD OF CHOOSING. The subject is fold TOTALITY, so
+    // the decision is fed directly rather than through manufactured source and a type
+    // environment. It carries NO production-coverage credit: no source program is known that
+    // presents two matching owners at one position, and no wall is credited for that absence.
+    // Mutating the many-arm to take the FIRST owner, or the LAST, must red this independently --
+    // which is why both owners are asserted present rather than just the count.
+    #[test]
+    fn the_selector_refuses_many_owners_instead_of_choosing_one() {
+        use crate::v1_compiler_infer::{matching_owner_decision, MatchingOwnerDecision as D};
+        let two: im::Vector<String> = im::vector![
+            "'Alpha' reached as A".to_string(),
+            "'Beta' reached as B".to_string()
+        ];
+        match &*matching_owner_decision(std::rc::Rc::new(two)) {
+            D::ManyMatchingOwners { owners } => {
+                assert!(
+                    owners.iter().any(|o| o.contains("Alpha")) && owners.iter().any(|o| o.contains("Beta")),
+                    "THE MANY-ARM DROPPED AN OWNER. Taking the first or the last would leave one name here and satisfy a count-only assertion, which is exactly the silent pick this arm exists to refuse -- a refusal that names one of two owners has decided the ambiguity while appearing to report it"
+                );
+            }
+            other => panic!("two matching owners must REFUSE, not select: {:?}", other),
+        }
+        match &*matching_owner_decision(std::rc::Rc::new(im::vector![
+            "'Only' reached as A".to_string()
+        ])) {
+            D::OneMatchingOwner => {}
+            other => panic!("exactly one matching owner must SELECT: {:?}", other),
+        }
+        match &*matching_owner_decision(std::rc::Rc::new(im::Vector::new())) {
+            D::NoMatchingOwner => {}
+            other => panic!("no matching owner is not-found, not ambiguity: {:?}", other),
+        }
+    }
+
     #[test]
     fn witness_carrier_declines_a_non_witness_expected_type() {
         let source_indices = std::rc::Rc::new(HashMap::new());
