@@ -633,6 +633,38 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
   }
 }
 
+// THE MUTATED VALUES ARE DERIVED FROM THE REAL ONES, NOT TYPED OUT. A hand-written "wrong" value
+// is a literal that stops diverging the moment the real value changes to match it, which turns a
+// RED silently green -- the same decay #10613 documents for the byte rows one section up.
+
+fn divergent_principal() -> NonEmptyStr {
+  join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+}
+
+fn divergent_repo_root() -> NonEmptyStr {
+  join([live_spec().service.repo_root as String, "-divergent"], "") as NonEmptyStr
+}
+
+fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
+  match live_spec() {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: wrong_root,
+              service_user: su, service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
 fn belt_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
   match live_deploy_belt_service_unit_file(spec: spec) {
     ServiceUnitFile { service: s, .. } => s
@@ -653,27 +685,50 @@ fn tree_sync_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceD
 
 // RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
 test fn belt_service_user_goes_red_under_different_user() -> Bool {
-  let wrong_user = "not-" as NonEmptyStr  // wrong, does not match any real principal
-  let wrong_spec = spec_with_principal(wrong_user: join([wrong_user as String,
-    live_spec().service.service_user as String], "") as NonEmptyStr)
-  !has_directive(dirs: belt_service_directives_of(spec: wrong_spec),
-    target: ServiceUser { name: live_spec().service.service_user })
+  let wrong_user = divergent_principal()
+  let dirs = belt_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
 }
 
 // RED: a spec with a different service_user makes serve_unit_runs_as_service_principal go red.
 test fn serve_unit_user_goes_red_under_different_user() -> Bool {
-  let wrong_spec = spec_with_principal(wrong_user:
-    join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr)
-  !has_directive(dirs: serve_service_directives_of(spec: wrong_spec),
-    target: ServiceUser { name: live_spec().service.service_user })
+  let wrong_user = divergent_principal()
+  let dirs = serve_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
 }
 
 // RED: a spec with a different service_user makes tree_sync_runs_as_service_principal go red.
 test fn tree_sync_user_goes_red_under_different_user() -> Bool {
-  let wrong_spec = spec_with_principal(wrong_user:
-    join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr)
-  !has_directive(dirs: tree_sync_service_directives_of(spec: wrong_spec),
-    target: ServiceUser { name: live_spec().service.service_user })
+  let wrong_user = divergent_principal()
+  let dirs = tree_sync_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
+}
+
+// RED: a spec with a different repo_root makes belt_service_works_in_repo_tree go red. The
+// emitted WorkingDirectory must follow the spec field rather than a baked-in path.
+test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
+  let wrong_root = divergent_repo_root()
+  let dirs = belt_service_directives_of(spec: spec_with_repo_root(wrong_root: wrong_root))
+  !has_directive(dirs: dirs, target: WorkingDirectory { path: live_spec().service.repo_root })
+    && has_directive(dirs: dirs, target: WorkingDirectory { path: wrong_root })
+}
+
+// RED: a spec with a different repo_root makes the tree-sync ExecStart go red.
+//
+// THE EXPECTED COMMAND IS READ BACK FROM THE UNMUTATED SPEC, NOT RETYPED. Spelling the rsync line
+// out here would reintroduce a golden string inside the RED, and it would fail OPEN rather than
+// closed: once the exclusion list changed, the typed-out command would match nothing, the absence
+// assertion would hold vacuously, and the RED would pass while testing nothing.
+test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
+  let baseline = tree_sync_service_directives_of(spec: live_spec())
+  let mutated = tree_sync_service_directives_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root()))
+  any(xs: baseline, pred: d => match d {
+    ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
+    _ => false
+  })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
