@@ -2276,7 +2276,7 @@ fn where_refinement_predicates_equivalent(
 // vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the
 // bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its
 // guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on:
-// feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the
+// feature:where-refinement-predicate-declaration-authority — when WhereRefinementPredicateKind replaces the
 // string classifiers, the guaranteed and required bounds become fields on the predicate's own
 // declaration rather than two tables a reader must keep in lockstep with
 // where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds.
@@ -2400,7 +2400,7 @@ fn decidable_where_int_predicate_holds(pred_name: String, pred: Node, value: Int
 // closed string sets — must stay in lockstep with decidable_*_predicate_holds and
 // where_refinement_predicates_equivalent. bound: vocabulary changes require updating all classifier
 // fns + eval + equivalence arms in one commit. dissolve-on:
-// feature:where-refinement-predicate-coproduct (WhereRefinementPredicateKind coproduct replacing
+// feature:where-refinement-predicate-declaration-authority (WhereRefinementPredicateKind coproduct replacing
 // string classifiers).
 
 fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {

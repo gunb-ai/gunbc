@@ -848,7 +848,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             compile_clean_internal_error_histogram_name(message)
         }
         CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
-        CompilerDiagnostic::WhereRefinementUnenforced { predicate, .. } => predicate.clone(),
+        // The NAME joins the predicate AND the deferral reason, because the burn-down this
+        // histogram feeds is a list of deferral CLASSES to close and the reasons do not close
+        // together. "int predicate not implemented" fires both where a range's bounds are
+        // literals and evaluation still declined, and where no evaluator exists at all; keying
+        // on the predicate alone puts an evaluator that exists in the same row as one that does
+        // not, so closing either is invisible here. Keying on the reason alone would instead
+        // spread one deferral class across a row per predicate that happens to hit it.
+        CompilerDiagnostic::WhereRefinementUnenforced {
+            predicate, reason, ..
+        } => format!("{predicate}: {reason}"),
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),

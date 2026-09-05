@@ -14560,7 +14560,7 @@ data file_read_match_expr: String = "match std::fs::read_to_string(&file_path) {
 
 data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};"
 
-data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
+data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes)\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};"
 
 data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};"
 
@@ -15519,10 +15519,67 @@ fn emit_cli_dispatch_host_method(sub: CliSubcommandRow, method: String) -> Strin
 fn emit_candidate_cli_host_method(sub: CliSubcommandRow, method: String) -> String {
   let fields = modeled_subcommand_bound_fields(sub: sub)
   let params = fields |> map(field => concat(field, ": ", cli_dispatch_field_type(sub: sub, field: field))) |> join(separator: ", ")
+  match sub.realization {
+    CliRetainedHostKernel => emit_candidate_compile_host_method(params: params)
+    _ => concat(
+      "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
+      "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
+      "        std::process::exit(2);\n",
+      "    }\n")
+  }
+}
+
+// The compiler entry point is a host boundary, but its DECISION is not hand-authored here:
+// both the seed executable and the emitted candidate call cli_run::compile_emission.  This
+// renderer supplies only the argv/output transport around that shared transaction.  Keeping the
+// transaction shared is what makes a behavioral comparison meaningful: two independently copied
+// compile pipelines can agree on a fixture while disagreeing everywhere the fixture does not ask.
+fn emit_candidate_compile_host_method(params: String) -> String {
   concat(
-    "    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> ! {\n",
-    "        eprintln!(\"REFUSED: generated candidate has no retained CLI host body for ", sub.verb, "\");\n",
-    "        std::process::exit(2);\n",
+    "    fn retained_host_kernel(&self, ", params, ") -> ! {\n",
+    "        let render_targets = parse_render_targets(&target);\n",
+    "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n",
+    "        let subject = match (&entry, &source_roots.is_empty()) {\n",
+    "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n",
+    "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n",
+    "            (None, true) => None,\n",
+    "        };\n",
+    "        if subject.is_none() {\n",
+    "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n",
+    "            std::process::exit(2);\n",
+    "        }\n",
+    "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n",
+    "            subject: subject.unwrap(),\n",
+    "            source_roots: source_roots.iter().cloned().collect(),\n",
+    "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n",
+    "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n",
+    "        });\n",
+    "        match &run.disposition {\n",
+    "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n",
+    "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Refused { phase, cause } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n",
+    "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n",
+    "                std::process::exit(1);\n",
+    "            }\n",
+    "            cli_run::CompileDisposition::Completed { emitted_count } => {\n",
+    "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n",
+    "                let multi_target = run.emissions.len() > 1;\n",
+    "                let mut total_diagnostics = 0usize;\n",
+    "                for emission in &run.emissions {\n",
+    "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n",
+    "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n",
+    "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n",
+    "                    render_diagnostics(&emission.result);\n",
+    "                    total_diagnostics += emission.result.diagnostics.len();\n",
+    "                }\n",
+    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n",
+    "                std::process::exit(0);\n",
+    "            }\n",
+    "        }\n",
     "    }\n")
 }
 
@@ -15735,7 +15792,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
-      "\nuse im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
+      "\nuse im::HashMap;\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
@@ -16050,23 +16107,48 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "    targets\n",
     "}\n",
     "\n",
-    "fn write_output_files(output_dir: &str, result: &", crate_name, "::", pipeline_mod, "::PipelineResult) {\n",
-    "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n",
-    "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n",
-    "    for file in result.files.iter() {\n",
-    "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
-    "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
-    "            std::fs::create_dir_all(parent).ok();\n",
+    "#[derive(Debug, Clone, PartialEq, Eq)]\n",
+    "enum OutputWriteRefusal {\n",
+    "    OutputDirectoryNotCreated { path: String, cause: String },\n",
+    "    ParentDirectoryNotCreated { path: String, file: String, cause: String },\n",
+    "    FileNotWritten { path: String, cause: String },\n",
+    "}\n",
+    "\n",
+    "impl std::fmt::Display for OutputWriteRefusal {\n",
+    "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    "        write!(f, \"gunbc compile: output write refused: \" )?;\n",
+    "        match self {\n",
+    "            Self::OutputDirectoryNotCreated { path, cause } => write!(f, \"could not create output directory {}: {}\", path, cause),\n",
+    "            Self::ParentDirectoryNotCreated { path, file, cause } => write!(f, \"could not create parent directory {} for {}: {}\", path, file, cause),\n",
+    "            Self::FileNotWritten { path, cause } => write!(f, \"could not write {}: {}\", path, cause),\n",
     "        }\n",
-    "        std::fs::write(&out_path, &*file.content)\n",
-    "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n",
     "    }\n",
     "}\n",
     "\n",
-    "fn hard_errors(result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> bool {\n",
-    "    result.diagnostics.iter().any(|d| {\n",
-    "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
-    "    })\n",
+    "impl OutputWriteRefusal {\n",
+    "    fn exit(self) -> ! {\n",
+    "        eprintln!(\"{}\", self);\n",
+    "        std::process::exit(3);\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "fn write_output_files(output_dir: &str, result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> Result<(), OutputWriteRefusal> {\n",
+    "    let src_dir = format!(\"{}/src\", output_dir);\n",
+    "    if let Err(e) = std::fs::create_dir_all(&src_dir) {\n",
+    "        return Err(OutputWriteRefusal::OutputDirectoryNotCreated { path: src_dir, cause: e.to_string() });\n",
+    "    }\n",
+    "    for file in result.files.iter() {\n",
+    "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n",
+    "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n",
+    "            if let Err(e) = std::fs::create_dir_all(parent) {\n",
+    "                return Err(OutputWriteRefusal::ParentDirectoryNotCreated { path: parent.display().to_string(), file: out_path, cause: e.to_string() });\n",
+    "            }\n",
+    "        }\n",
+    "        if let Err(e) = std::fs::write(&out_path, &*file.content) {\n",
+    "            return Err(OutputWriteRefusal::FileNotWritten { path: out_path, cause: e.to_string() });\n",
+    "        }\n",
+    "    }\n",
+    "    Ok(())\n",
     "}\n",
     "\n")
 }

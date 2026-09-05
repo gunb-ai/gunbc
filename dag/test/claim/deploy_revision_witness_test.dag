@@ -7,6 +7,7 @@ import gunbc.live_deploy.revision {
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable,
   DeployRevisionVerdict,
   RevisionAlreadyConverged,
@@ -35,6 +36,7 @@ data all_relations: List<DeployRevisionRelation> = [
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable { cause: "probe failed" as NonEmptyStr },
 ]
 
@@ -71,6 +73,15 @@ test fn unrelated_histories_refuse() -> Bool {
   deploy_revision_refuses(verdict: v)
     && !deploy_revision_proceeds(verdict: v)
     && !deploy_revision_terminal_success(verdict: v)
+}
+
+test fn diverged_histories_refuse_with_their_own_cause() -> Bool {
+  match classify_deploy_revision(relation: DivergedHistories) {
+    RevisionRefused { cause } =>
+      string_contains(s: cause as String, pattern: "diverged")
+        && !string_contains(s: cause as String, pattern: "no ancestry")
+    _ => false
+  }
 }
 
 test fn unverifiable_relation_refuses_and_keeps_its_cause() -> Bool {
@@ -113,7 +124,7 @@ test fn probe_pair_folds_to_the_four_cases() -> Bool {
     && match deploy_revision_relation_from_probes(
       deployed: sha_older, candidate: sha_newer,
       deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false
-    ) { UnrelatedHistories => true  _ => false }
+    ) { RelationUnverifiable { cause: c } => string_contains(s: c as String, pattern: "merge-base")  _ => false }
 }
 
 test fn equal_shas_short_circuit_before_the_probes() -> Bool {

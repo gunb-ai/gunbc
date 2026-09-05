@@ -737,6 +737,84 @@ mod compiler_tests {
         );
     }
 
+    /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR. That one's arms are two
+    /// COMPILER behaviours over ONE source, and no pair of fixture FILES can be those arms --
+    /// files vary the source and hold the compiler fixed. This does not discharge that ceiling
+    /// row, which stays at MeaningDiscriminatorExecutedNotEnrolled (codex review 60742).
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`: a type argument's
+    /// Rust identity is decided from the declaration visible in the module, never from the
+    /// syntactic position that happened to render it. `test.claim`
+    /// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of
+    /// that decision across every outer renderer and STAYS ENROLLED (DESIGN 4b(4): a climb deletes
+    /// lower-rung production machinery, never the evidence). This arm is the half that witness
+    /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never
+    /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
+    ///
+    /// WHAT THE TWO ARMS ARE, AND WHAT THEY DO NOT ISOLATE. Both declare the same coproduct
+    /// `Marker = Alpha | Beta`. The control puts `Alpha` and `Beta` in the RULED POSITION --
+    /// arguments of an applied type node -- where they become distinct zero-sized markers, and
+    /// its emitted crate COMPILES. The red puts `Alpha` in a NON-APPLIED position, a record
+    /// field, and returns that `Alpha`-typed field from a function declared to return `Marker`;
+    /// its emitted crate is REFUSED at that return. So a green here is not "some crate compiled"
+    /// and the red is not "something in the tree is broken".
+    ///
+    /// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, and an earlier revision of this
+    /// description claimed it did (native comment review 5120541804). The arms also differ in
+    /// their RETURN CONTRACT -- the control returns an `Int` read through a wrapper -- and the
+    /// measured E0308 lands AT the return, so the return contract is load-bearing for the refusal
+    /// rather than incidental. What the pair characterizes is two CONCRETE CONSTRUCTIONS, not a
+    /// single-variable experiment over position.
+    ///
+    /// THE RED IS A KNOWN HOLE, NOT A WALL WORKING, and it is named as one so nobody reads its red
+    /// as coverage. It is `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`
+    /// at that row's own filed FIRST instance, which the row records was never committed to this
+    /// repository as a runnable file. It is committed here as one. When the wall climbs -- type
+    /// position resolution consulting the TYPE namespace alone -- the arm flips to SourceRefused
+    /// and is KEPT; what changes is this pair's expectation, not the fixture's existence.
+    ///
+    /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH
+    /// an `Alpha` type and a `Marker::Alpha` variant: the field annotation binds the former, the
+    /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,
+    /// `expected Marker, found Alpha`. E0573 was predicted from the ceiling row and did NOT
+    /// reproduce -- both arms declare their markers LOCALLY, so neither exercises the
+    /// imported-marker construction where those classifiers diverge, and the prediction was
+    /// mis-scoped from the start. The expectation is the route's adjudicated class. See
+    /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is
+    /// deliberately not claimed from one construction.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the three pairs beside it: this arm spawns cargo
+    /// and compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED
+    /// AND OPT-IN -- `cargo test --release -p v1-compiler --lib
+    /// phantom_marker_identity_fixture_closure_discrimination -- --ignored`. An #[ignore] is a
+    /// cost decision and NOT a rung: nothing here may be cited as coverage that executes on the
+    /// merge path, and the phantom-marker ceiling carrier may not be flipped to
+    /// MeaningDiscriminatorEnrolled on the strength of it.
+    #[test]
+    #[ignore]
+    fn phantom_marker_identity_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_phantom_marker_identity_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("phantom-marker-identity {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the applied-marker fixture must COMPILE, and the non-applied-field-plus-parent-return fixture must reach rustc and be refused in its own emitted module with the attributed E0308 this pair claims; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -3655,221 +3733,6 @@ mod compiler_tests {
             "a concrete non-optional parameter must still take the unwrap: {}",
             concrete
         );
-    }
-
-    // UNIT EVIDENCE ONLY, AND IT EARNS NO PRODUCTION-COVERAGE CREDIT. This cell CONSTRUCTS an
-    // InstantiationUnavailable and proves the consumer handles it: that Unavailable is refused
-    // the legacy fallback while NotApplicable and Instantiated are not. It says nothing about
-    // whether production can produce that value. The production reach of this arm is carried by
-    // a_field_template_that_cannot_be_selected_declines_from_authored_source, which reaches the
-    // real inference seam from source.
-    #[test]
-    fn an_unavailable_instantiation_refuses_the_legacy_fallback_and_is_judged() {
-        use crate::v1_compiler_infer::RecordLitInstantiation as RLI;
-        use crate::v1_compiler_infer::RecordLitUnavailableCause as RLUC;
-        let unavailable = std::rc::Rc::new(RLI::InstantiationUnavailable {
-            cause: std::rc::Rc::new(RLUC::FieldTemplateSelectionFailed),
-        });
-        assert!(
-            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(unavailable.clone()),
-            "SILENT WIDEN RETURNED: an Unavailable instantiation was admitted into the legacy fallback, whose terminal route is the RAW DECLARATION-FIELD path the three-way split exists to keep it away from. NotApplicable means the question does not arise; Unavailable means it arises and cannot be answered, and collapsing those two is the optional-as-verdict this type replaced"
-        );
-        let diags = crate::v1_compiler_infer::record_lit_instantiation_undetermined_diags(
-            unavailable.clone(),
-            false,
-            named_type_node("Thing"),
-            crate::v1_std_core::no_span(),
-            "probe.module".to_string(),
-            std::rc::Rc::new(HashMap::new()),
-        );
-        assert_eq!(
-            diags.len(),
-            1,
-            "SILENT ADMISSION RETURNED: Unavailable neither fell back nor emitted a decline, so a position the check could not judge produced NO artifact at all -- the absorbing fallback with the widen removed and nothing put in its place"
-        );
-        match &*diags[0].diagnostic {
-            crate::v1_std_core::CompilerDiagnostic::RecordLitInstantiationUndetermined {
-                ..
-            } => {}
-            other => panic!(
-                "the unavailable arm emitted an unexpected diagnostic: {:?}",
-                other
-            ),
-        }
-        assert!(
-            crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
-                RLI::InstantiationNotApplicable
-            )),
-            "POSITIVE CONTROL FAILED: NotApplicable must STILL reach the legacy fallback -- the variant route is its legitimate handler, and withdrawing it there is what ate 15 true positives"
-        );
-        assert!(
-            !crate::v1_compiler_infer::record_lit_instantiation_may_fall_back(std::rc::Rc::new(
-                RLI::Instantiated { fields: std::rc::Rc::new(im::Vector::new()) }
-            )),
-            "POSITIVE CONTROL FAILED: an Instantiated result must never fall back -- it already carries the answer"
-        );
-    }
-
-    // THE SEAM THAT USED TO COLLAPSE. record_lit_instantiation_template_fields once returned
-    // List<Node>? and mapped BOTH VariantNotFound AND VariantAmbiguous { owners } onto the same
-    // `none`, so the owner census this authority exists to produce died one seam after it was
-    // built and every ambiguity surfaced as FieldTemplateSelectionFailed. The return type is now
-    // TemplateFieldSelection, which has NO shared empty arm -- the collapse is unwritable rather
-    // than checked, so this cell is a REGRESSION CONTROL over that shape, not a wall.
-    //
-    // What it does NOT establish: that production reaches the ambiguous state through this seam.
-    // It constructs the carrier directly. Production reach stays unestablished, and the reviewer
-    // accepted unit evidence on exactly that understanding.
-    #[test]
-    fn template_selection_keeps_the_two_causes_distinguishable() {
-        use crate::v1_compiler_infer::{
-            record_lit_unavailable_cause_text, RecordLitUnavailableCause as C,
-            TemplateFieldSelection as TFS,
-        };
-        let owners: im::Vector<String> = im::vector![
-            "'Alpha' reached as A".to_string(),
-            "'Beta' reached as B".to_string()
-        ];
-        let ambiguous = TFS::TemplateFieldsUnavailable {
-            cause: std::rc::Rc::new(C::AmbiguousVariantOwners {
-                owners: std::rc::Rc::new(owners),
-            }),
-        };
-        let not_found = TFS::TemplateFieldsUnavailable {
-            cause: std::rc::Rc::new(C::FieldTemplateSelectionFailed),
-        };
-        let (a, n) = match (&ambiguous, &not_found) {
-            (
-                TFS::TemplateFieldsUnavailable { cause: a },
-                TFS::TemplateFieldsUnavailable { cause: n },
-            ) => (
-                record_lit_unavailable_cause_text(a.clone()),
-                record_lit_unavailable_cause_text(n.clone()),
-            ),
-            _ => panic!("both constructions must be Unavailable"),
-        };
-        assert_ne!(
-            a, n,
-            "THE TWO CAUSES REPORT THE SAME TEXT. That is the collapse itself: an ambiguity that reports as a selection failure sends the author looking for a missing template, when the real fact is that TWO types claim the name and the position does not choose"
-        );
-        assert!(
-            a.contains("Alpha") && a.contains("Beta"),
-            "THE OWNER CENSUS WAS DROPPED CROSSING THE SEAM. Naming one owner of two decides the ambiguity while appearing to report it, and would satisfy any count-only assertion: {}",
-            a
-        );
-        assert!(
-            !n.contains("Alpha"),
-            "not-found must not acquire an owner census it never had: {}",
-            n
-        );
-    }
-
-    fn diags_matching(src: &str, needle: &str) -> usize {
-        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: "probe.dag".to_string(),
-            content: src.to_string(),
-        });
-        let result = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(im::vector![source]),
-            crate::v1_compiler_artifact::RenderTarget::Rust,
-        );
-        result
-            .diagnostics
-            .iter()
-            .filter(|d| {
-                crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()).contains(needle)
-            })
-            .count()
-    }
-
-    #[test]
-    fn the_element_route_selects_and_a_name_no_route_reaches_declines() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                let selects = "module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Green { shade: 3 } } }\n";
-                let declines = "module probe\ntype Colour = | Red | Green { shade: Int }\ntype Holder { items: List<Colour> }\nfn probe() -> Holder { Holder { items: Gruen { shade: 3 } } }\n";
-                assert_eq!(
-                    diags_matching(selects, "cannot select the field template"),
-                    0,
-                    "THE ELEMENT ROUTE STOPPED SELECTING. `Green` is a variant of Colour, which is the element type of the expected collection, so the element route supplies the one matching candidate and the position must SELECT. This half is weak ALONE -- a zero is also what a broken compile returns -- which is why it is asserted only as one arm of the pair below"
-                );
-                assert!(
-                    diags_matching(declines, "unresolved type") >= 1,
-                    "THE PAIRED MUTATION WENT GREEN, WHICH MAKES THE ARM ABOVE VACUOUS. The two sources differ in exactly one identifier, and `Gruen` names no variant of any candidate, so the program must be REFUSED. If this stops reporting, the passing arm above is no longer evidence that selection happened -- it is evidence that nothing was judged"
-                );
-                assert_eq!(
-                    diags_matching(declines, "cannot select the field template"),
-                    0,
-                    "THE SEAM ACCUSED A POSITION IT DOES NOT OWN. A name no route reaches is refused by UnresolvedType, which is the authority for an unknown name and says so. This seam DECLINING as well would add a second, vaguer refusal for one fault -- and it is what made ten correct List positions look like defects. The refusal must stay at exactly one wall"
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("the_element_route_selects_and_a_name_no_route_reaches_declines panicked");
-    }
-
-    // THE PRODUCTION REACH OF InstantiationUnavailable, from authored source rather than a
-    // constructed value. `Zed` is a variant of another type entirely, so at an Out<Int> position
-    // the expected name does not match the literal and no candidate carries that constructor --
-    // which is FieldTemplateSelectionFailed, reached through the real seam. The control beside it
-    // differs by ONE identifier and must stay silent, so neither half can pass vacuously.
-    #[test]
-    fn a_field_template_that_cannot_be_selected_declines_from_authored_source() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                let unselectable = "module probe\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder { r: Out<Int> }\nfn probe() -> Holder { Holder { r: Zed { q: 1 } } }\n";
-                let selectable = "module probe\ntype Out<T> = | Acc { value: T } | Rej\ntype Other = | Zed { q: Int }\ntype Holder { r: Out<Int> }\nfn probe() -> Holder { Holder { r: Acc { value: 1 } } }\n";
-                assert!(
-                    diags_matching(unselectable, "record-literal field template could not be selected") >= 1,
-                    "THE ONLY PRODUCTION-REACHABLE UNAVAILABLE CAUSE WENT SILENT. If authored source can no longer reach FieldTemplateSelectionFailed, then no ordinary cause of InstantiationUnavailable is production-authorable, and the typed decline is a diagnostic surface no user can see -- which is the inert-lens defect, not a working refusal. Either restore the reach or delete the arm; do not relax this assertion"
-                );
-                assert_eq!(
-                    diags_matching(selectable, "cannot select the field template"),
-                    0,
-                    "THE PAIRED CONTROL ALSO DECLINED, SO THE ARM ABOVE IS NOT DISCRIMINATING. `Acc` IS a variant of the expected Out, so this position must select. Two sources differing in one identifier must land on opposite sides, or the assertion above is satisfied by declining everything"
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect(
-            "a_field_template_that_cannot_be_selected_declines_from_authored_source panicked",
-        );
-    }
-
-    // 7': THE SELECTOR'S MANY-ARM REFUSES INSTEAD OF CHOOSING. The subject is fold TOTALITY, so
-    // the decision is fed directly rather than through manufactured source and a type
-    // environment. It carries NO production-coverage credit: no source program is known that
-    // presents two matching owners at one position, and no wall is credited for that absence.
-    // Mutating the many-arm to take the FIRST owner, or the LAST, must red this independently --
-    // which is why both owners are asserted present rather than just the count.
-    #[test]
-    fn the_selector_refuses_many_owners_instead_of_choosing_one() {
-        use crate::v1_compiler_infer::{matching_owner_decision, MatchingOwnerDecision as D};
-        let two: im::Vector<String> = im::vector![
-            "'Alpha' reached as A".to_string(),
-            "'Beta' reached as B".to_string()
-        ];
-        match &*matching_owner_decision(std::rc::Rc::new(two)) {
-            D::ManyMatchingOwners { owners } => {
-                assert!(
-                    owners.iter().any(|o| o.contains("Alpha")) && owners.iter().any(|o| o.contains("Beta")),
-                    "THE MANY-ARM DROPPED AN OWNER. Taking the first or the last would leave one name here and satisfy a count-only assertion, which is exactly the silent pick this arm exists to refuse -- a refusal that names one of two owners has decided the ambiguity while appearing to report it"
-                );
-            }
-            other => panic!("two matching owners must REFUSE, not select: {:?}", other),
-        }
-        match &*matching_owner_decision(std::rc::Rc::new(im::vector![
-            "'Only' reached as A".to_string()
-        ])) {
-            D::OneMatchingOwner => {}
-            other => panic!("exactly one matching owner must SELECT: {:?}", other),
-        }
-        match &*matching_owner_decision(std::rc::Rc::new(im::Vector::new())) {
-            D::NoMatchingOwner => {}
-            other => panic!("no matching owner is not-found, not ambiguity: {:?}", other),
-        }
     }
 
     #[test]

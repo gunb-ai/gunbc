@@ -629,6 +629,38 @@ fn positive_shard_count_value(shards: PositiveShardCount) -> Int {
   }
 }
 
+// A BYTE QUANTITY THAT IS ACTUALLY A BOUND, on the Memory axis beside ByteSize and built the same
+// way over PositiveMeasureCount. It is not a second memory model: it is ByteSize's third parameter
+// exchanged for the positive count, so the two differ by exactly the distinction they carry.
+//
+// Zero is excluded by CONSTRUCTION rather than by a check, and the argument is the siblings': a
+// zero-byte limit is not a smaller limit, it is the absence of one. A consumer projecting this to a
+// live resource bound therefore needs no validator deciding whether a purported limit is a limit,
+// and ByteSize's Nat already rules out the `infinity` spelling at the other end.
+type FiniteByteSize = Measure<Memory, One, PositiveMeasureCount>
+
+fn finite_byte_size(count: PositiveMeasureCount) -> FiniteByteSize {
+  Measure { count: count }
+}
+
+fn finite_byte_size_count(size: FiniteByteSize) -> Int {
+  positive_measure_count_value(count: size.count)
+}
+
+type FiniteByteSizeBuild
+  = FiniteByteSizeBuilt { size: FiniteByteSize }
+  | FiniteByteSizeNonPositive { observed: Int }
+
+fn finite_byte_size_from_byte_size(size: ByteSize) -> FiniteByteSizeBuild {
+  let observed = byte_size_count(b: size)
+  match positive_measure_count_from_int(count: observed) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      FiniteByteSizeBuilt { size: finite_byte_size(count: positive) }
+    PositiveMeasureCountRefused { cause: _ } =>
+      FiniteByteSizeNonPositive { observed: observed }
+  }
+}
+
 fn watt(count: Nat) -> Watt {
   Measure { count: count }
 }

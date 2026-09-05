@@ -1,0 +1,207 @@
+module test.claim.ray_threshold_memory_monitor_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Percent, percent, Millisecond, millisecond, ByteSize, gibibyte, gibibyte_to_byte_size }
+import extdeps.ray.threshold_memory_monitor {
+  RaySourceRevision, ray_source_revision_read,
+  RayThresholdMonitorConfig, MemoryUsageThreshold, MemoryMonitorRefreshMs, MinMemoryFreeBytes,
+  MaxKillMemoryBufferBytes, WorkerKillingPolicyByGroup, TaskOomRetries,
+  ray_config_field_name, ray_config_env_spelling,
+  RayConfigAbsentAtRevision, ray_config_absences,
+  ray_threshold_monitor_defaults,
+  ray_threshold_monitor_disable_env,
+  RayMonitorLogLine, ThresholdExceeded, NodeMemoryAboveThreshold, UserSliceMemoryAboveThreshold,
+  NodeMemoryUncapturable, ray_monitor_log_format, ray_monitor_line_reports_measurement,
+  RayBuiltMonitor, ThresholdMonitorBuilt, NoopMonitorBuilt, EventMonitorBuilt,
+  ray_linux_built_monitors, ray_built_monitor_enforces,
+  ThresholdMonitorDisabled, UserSliceSnapshotFailed,
+  ray_line_explains_absent_threshold_alarm,
+  RayMinMemoryFree, MinMemoryFreeDisabled, MinMemoryFreeFloor
+}
+
+// THE ENV SPELLING IS DERIVED, SO THIS ROW GOES RED IF THE PREFIX RULE IS EDITED. Ray's pattern is
+// `RAY_` plus the config field name verbatim, which is why the variables are lowercase rather than
+// the SCREAMING_CASE an author would guess -- and guessing is exactly what this removes.
+test fn w_the_env_spelling_is_the_config_name_with_a_ray_prefix() -> Bool {
+  (ray_config_env_spelling(c: MemoryUsageThreshold) == ("RAY_memory_usage_threshold" as NonEmptyStr))
+    && (ray_config_env_spelling(c: MemoryMonitorRefreshMs) == ("RAY_memory_monitor_refresh_ms" as NonEmptyStr))
+    && (ray_config_env_spelling(c: WorkerKillingPolicyByGroup) == ("RAY_worker_killing_policy_by_group" as NonEmptyStr))
+}
+
+// THE SIX CONFIG NAMES ARE DISTINCT. A collision would make two knobs share one environment
+// variable, and the derivation above would propagate it silently into the disable argv.
+test fn w_the_config_field_names_are_distinct() -> Bool {
+  let names = [
+    ray_config_field_name(c: MemoryUsageThreshold),
+    ray_config_field_name(c: MemoryMonitorRefreshMs),
+    ray_config_field_name(c: MinMemoryFreeBytes),
+    ray_config_field_name(c: MaxKillMemoryBufferBytes),
+    ray_config_field_name(c: WorkerKillingPolicyByGroup),
+    ray_config_field_name(c: TaskOomRetries),
+  ]
+  !any(names, a => length(filter(names, b => b == a)) > 1)
+}
+
+// THE DISABLE ARGV IS COMPUTED FROM THE SAME ROW THE DEFAULT COMES FROM. Authored beside it, the two
+// could drift; derived, a rename of the config field moves both at once.
+test fn w_disabling_the_monitor_is_a_zero_refresh_on_the_derived_spelling() -> Bool {
+  ray_threshold_monitor_disable_env() == ("RAY_memory_monitor_refresh_ms=0" as NonEmptyStr)
+}
+
+// THE PINNED DEFAULTS ARE THE ONES READ AT ray-2.58.0, CARRIED IN std.measure UNITS. The threshold is
+// a Percent and the refresh a Millisecond, so neither can be compared against a bare number that
+// happens to share a magnitude.
+test fn w_the_defaults_are_the_ones_read_at_the_pinned_revision() -> Bool {
+  (ray_threshold_monitor_defaults.memory_usage_threshold == percent(count: 95))
+    && (ray_threshold_monitor_defaults.memory_monitor_refresh == millisecond(count: 250))
+    && (ray_threshold_monitor_defaults.max_kill_memory_buffer == gibibyte_to_byte_size(g: gibibyte(count: 3)))
+    && (ray_threshold_monitor_defaults.worker_killing_policy_by_group == false)
+    && (ray_threshold_monitor_defaults.read_at.tag == ("ray-2.58.0" as NonEmptyStr))
+}
+
+// THE VERIFIED ABSENCE IS POPULATED, NOT MERELY DECLARED. `count_swap_in_memory_monitor` was read as
+// ABSENT from `ray_config_def.h` at ray-2.58.0, and a list that simply omitted it would be
+// indistinguishable from one nobody checked -- so the negative is a row rather than a silence.
+//
+// THIS ANNOTATION IS TAG-ONLY ON PURPOSE. It once said the field "exists on master and not at this
+// revision". The module deleted that positive half for having no immutable subject, and leaving the
+// same proposition asserted here would have kept the deleted fact alive in a second place -- the
+// exact shape the deletion was meant to close. What prompted the check was an earlier unpinned read;
+// what the row claims is only what was verified at the pinned revision.
+test fn w_the_swap_counting_knob_is_recorded_as_absent_at_this_revision() -> Bool {
+  length(ray_config_absences) > 0
+    && any(ray_config_absences, a =>
+      (a.field_name == ("count_swap_in_memory_monitor" as NonEmptyStr))
+        && (a.absent_at.tag == ("ray-2.58.0" as NonEmptyStr)))
+}
+
+// THE ABSENT FIELD IS NOT ALSO A LIVE CONFIG ROW. Recording it as absent while enumerating it as a
+// knob would be the same fork from two directions, and this holds them apart.
+test fn w_the_absent_field_is_not_enumerated_as_a_config() -> Bool {
+  let live = [
+    ray_config_field_name(c: MemoryUsageThreshold),
+    ray_config_field_name(c: MemoryMonitorRefreshMs),
+    ray_config_field_name(c: MinMemoryFreeBytes),
+    ray_config_field_name(c: MaxKillMemoryBufferBytes),
+    ray_config_field_name(c: WorkerKillingPolicyByGroup),
+    ray_config_field_name(c: TaskOomRetries),
+  ]
+  !any(live, n => n == ("count_swap_in_memory_monitor" as NonEmptyStr))
+}
+
+// ── THE UNCAPTURABLE LINE IS NOT A MEASUREMENT ─────────────────────────────────────────────────
+//
+// RED. A reader scanning for the exceeded-threshold line and finding none has NOT established that
+// memory was below threshold -- the monitor may have been announcing it could not see. Absence of an
+// alarm and evidence of safety are different facts, and this is the arm that keeps them apart.
+test fn w_the_uncapturable_line_does_not_report_a_measurement() -> Bool {
+  !ray_monitor_line_reports_measurement(line: NodeMemoryUncapturable)
+    && ray_monitor_line_reports_measurement(line: ThresholdExceeded)
+    && ray_monitor_line_reports_measurement(line: NodeMemoryAboveThreshold)
+    && ray_monitor_line_reports_measurement(line: UserSliceMemoryAboveThreshold)
+}
+
+// THE NODE AND USER-SLICE LINES ARE DISTINCT TEXT. They differ by one word and report different
+// subjects, so a matcher keyed on the shared tail would attribute a slice breach to the node.
+test fn w_the_node_and_user_slice_lines_are_distinguishable() -> Bool {
+  ray_monitor_log_format(line: NodeMemoryAboveThreshold)
+    != ray_monitor_log_format(line: UserSliceMemoryAboveThreshold)
+}
+
+// ── A ZERO INTERVAL DISABLES THE THRESHOLD ARM AND NOT MEMORY ENFORCEMENT ──────────────────────
+//
+// RED, AND IT IS THE ROW THAT CATCHES THE OVERSTATEMENT. With resource isolation ON, the event
+// monitor is pushed BEFORE the interval is read, so a zero interval builds [Event, Noop] -- the
+// threshold arm is gone and a live cgroup-driven monitor is still killing workers. A model that
+// called the zero interval "the monitor disabled" would tell a caller the host is unenforced when it
+// is not, which is an overstatement in the one direction a refusal must never make.
+test fn w_a_zero_interval_with_isolation_on_still_enforces() -> Bool {
+  let built = ray_linux_built_monitors(resource_isolation_enabled: true, refresh: millisecond(count: 0))
+  (length(built) == 2)
+    && any(built, m => ray_built_monitor_enforces(m: m))
+    && any(built, m => !ray_built_monitor_enforces(m: m))
+}
+
+// RED. With isolation OFF, the same zero interval leaves NOTHING enforcing. This is the arm the row
+// above must not be allowed to swallow: the two configurations differ, and a single "disabled"
+// answer for both is what the old shape gave.
+test fn w_a_zero_interval_with_isolation_off_enforces_nothing() -> Bool {
+  let built = ray_linux_built_monitors(resource_isolation_enabled: false, refresh: millisecond(count: 0))
+  (length(built) == 1) && !any(built, m => ray_built_monitor_enforces(m: m))
+}
+
+// CONTROL. The pinned default interval builds the threshold monitor and it enforces, so the two rows
+// above are not satisfied by answering "nothing enforces" everywhere.
+test fn w_the_default_interval_builds_an_enforcing_threshold_monitor() -> Bool {
+  let built = ray_linux_built_monitors(
+    resource_isolation_enabled: false,
+    refresh: ray_threshold_monitor_defaults.memory_monitor_refresh)
+  (length(built) == 1) && any(built, m => ray_built_monitor_enforces(m: m))
+}
+
+// THE NO-OP IS THE ONLY BUILT MONITOR THAT DOES NOT ENFORCE. Without this the enforcement predicate
+// could answer true everywhere and both zero-interval rows would still pass their length checks.
+test fn w_only_the_noop_monitor_does_not_enforce() -> Bool {
+  ray_built_monitor_enforces(m: ThresholdMonitorBuilt)
+    && ray_built_monitor_enforces(m: EventMonitorBuilt)
+    && !ray_built_monitor_enforces(m: NoopMonitorBuilt)
+}
+
+// WHAT THIS ROW ACTUALLY DECIDES, WHICH IS NARROWER THAN WHAT IT FIRST CLAIMED. It said a silent
+// threshold log "separates into three decidable causes". It does not: the function under it consumes
+// a `RayMonitorLogLine` and therefore classifies only lines that are PRESENT. The no-line case --
+// nothing emitted at all -- is not one of its inputs and cannot be one of its verdicts.
+//
+// The executable claim is that among the modeled lines, exactly the three non-measurements explain
+// why a threshold alarm may be absent, and the three measurement lines do not. Deciding what a total
+// SILENCE means needs an observation that the monitor was consulted at all, which is a fleet receipt
+// and stays downstream in `gunbc.spark`.
+test fn w_the_lines_that_explain_an_absent_alarm_are_exactly_the_non_measurements() -> Bool {
+  ray_line_explains_absent_threshold_alarm(line: ThresholdMonitorDisabled)
+    && ray_line_explains_absent_threshold_alarm(line: NodeMemoryUncapturable)
+    && ray_line_explains_absent_threshold_alarm(line: UserSliceSnapshotFailed)
+    && !ray_line_explains_absent_threshold_alarm(line: ThresholdExceeded)
+    && !ray_line_explains_absent_threshold_alarm(line: NodeMemoryAboveThreshold)
+    && !ray_line_explains_absent_threshold_alarm(line: UserSliceMemoryAboveThreshold)
+}
+
+// THE ISOLATION-SIDE FAILURE IS ITS OWN LINE AND ITS OWN NON-MEASUREMENT. It reports that the
+// threshold monitor cannot provide resource-isolation protection, which is a third way to see
+// nothing -- and it was absent from the type while the module claimed to enumerate the ways.
+test fn w_the_user_slice_snapshot_failure_is_not_a_measurement() -> Bool {
+  !ray_monitor_line_reports_measurement(line: UserSliceSnapshotFailed)
+    && (ray_monitor_log_format(line: UserSliceSnapshotFailed)
+          != ray_monitor_log_format(line: NodeMemoryUncapturable))
+}
+
+// THE DISABLED SENTINEL IS AN ARM AND NOT A NUMBER. -1 is upstream's "no floor configured"; carried
+// as a signed byte count it would be indistinguishable from a floor of minus one byte.
+test fn w_the_min_memory_free_default_is_the_disabled_sentinel() -> Bool {
+  min_free_is(m: ray_threshold_monitor_defaults.min_memory_free, wanted: "disabled" as NonEmptyStr)
+}
+
+fn min_free_is(m: RayMinMemoryFree, wanted: NonEmptyStr) -> Bool {
+  match m {
+    MinMemoryFreeDisabled => wanted == ("disabled" as NonEmptyStr)
+    MinMemoryFreeFloor { bytes: _ } => wanted == ("floor" as NonEmptyStr)
+  }
+}
+
+test fn w_all_ray_threshold_monitor_claims_hold() -> Bool {
+  w_the_env_spelling_is_the_config_name_with_a_ray_prefix()
+    && w_the_config_field_names_are_distinct()
+    && w_disabling_the_monitor_is_a_zero_refresh_on_the_derived_spelling()
+    && w_the_defaults_are_the_ones_read_at_the_pinned_revision()
+    && w_the_swap_counting_knob_is_recorded_as_absent_at_this_revision()
+    && w_the_absent_field_is_not_enumerated_as_a_config()
+    && w_the_uncapturable_line_does_not_report_a_measurement()
+    && w_the_node_and_user_slice_lines_are_distinguishable()
+    && w_a_zero_interval_with_isolation_on_still_enforces()
+    && w_a_zero_interval_with_isolation_off_enforces_nothing()
+    && w_the_default_interval_builds_an_enforcing_threshold_monitor()
+    && w_only_the_noop_monitor_does_not_enforce()
+    && w_the_lines_that_explain_an_absent_alarm_are_exactly_the_non_measurements()
+    && w_the_user_slice_snapshot_failure_is_not_a_measurement()
+    && w_the_min_memory_free_default_is_the_disabled_sentinel()
+}

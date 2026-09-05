@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // duplicate-declaration diagnostic. A person caught it and wrote the incident into prose because
 // there was no mechanism to write it into. Arm one is that incident, made executable.
 
-// WHY FOUR ARMS AND NOT ONE.
+// WHY SIX ARMS AND NOT ONE.
 //
 // A bare "does the collision refuse" probe returns a count, and before the wall exists that count
 // is zero -- indistinguishable from a probe that never compiled, and from a compiler that refuses
@@ -70,8 +70,10 @@ type BrandArm {
   expect_class: String
 }
 
-// THE FOUR FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
-// AUTHORABLE AT ALL. DESIGN section 4b's top-rung question asks whether the forbidden state can be
+// THE REFUSING FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
+// AUTHORABLE AT ALL. (The accepting arms are VALID programs, and prove the wall does not swallow
+// them; only the refusing three are the invalid-program half of this argument.) DESIGN
+// section 4b's top-rung question asks whether the forbidden state can be
 // expressed anywhere the check could run. It cannot be expressed in the ACCEPTED corpus -- the
 // annotation-erased census finds 236 brand declarations carrying 236 distinct literals, zero
 // duplicates -- but a compiler's regression probes are precisely invalid programs, and here the

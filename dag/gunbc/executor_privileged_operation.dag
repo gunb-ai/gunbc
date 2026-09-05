@@ -30,6 +30,7 @@ import gunbc.fleet_posix_accounts {
   SudoInstall,
   SudoRm,
   SudoUseradd,
+  SudoUsermod,
   SudoSystemctl,
 }
 
@@ -49,6 +50,7 @@ type ExecutorPrivilegedOperation
   | SystemdStartUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
+  | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -76,6 +78,12 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       "--no-create-home" as NonEmptyStr,
       "--shell" as NonEmptyStr,
       sh,
+      l
+    ]
+    EnsureSupplementaryGroupMembership { login: l, group: g } => [
+      ci_runner_sudo_binary_path(b: SudoUsermod),
+      "-aG" as NonEmptyStr,
+      g,
       l
     ]
     SystemdDaemonReload => [
@@ -172,6 +180,18 @@ fn executor_privileged_operations_sudoers_body(
 // so `rm -rf /opt/actions-runner/..` would be authorized by it. Naming the slots exactly costs a
 // longer generated file and removes the traversal entirely.
 data executor_managed_directory_mode: NonEmptyStr = "755" as NonEmptyStr
+
+fn runner_slot_install_operations(
+  slot_dirs: List<NonEmptyStr>,
+  slot_owner: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  map(slot_dirs, d => EnsureOwnedDirectory {
+    path: d,
+    owner: slot_owner,
+    group: slot_owner,
+    mode: executor_managed_directory_mode,
+  })
+}
 
 fn runner_slot_privileged_operations(
   slot_dirs: List<NonEmptyStr>,
