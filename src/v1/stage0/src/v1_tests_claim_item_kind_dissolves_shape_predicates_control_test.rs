@@ -6,6 +6,8 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::Bool;
 use crate::std_types::Bool::*;
 pub use crate::v1_compiler_emit_core_support::{is_leaf_type_item, is_type_def_item};
+pub use crate::v1_compiler_emit_python::emit_py_resource_def;
+pub use crate::v1_compiler_infer_env::empty_type_env;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::no_span;
@@ -93,4 +95,14 @@ pub fn a_node_that_is_not_an_item_is_not_a_type_declaration() -> bool {
     )) && !crate::v1_compiler_emit_core_support::is_type_def_item(structured_item(
         ParsedModuleItemKind::NotAModuleItem,
     )))
+}
+
+pub fn an_empty_resource_emits_a_python_body_rather_than_bare_indentation() -> bool {
+    {
+        let emitted = crate::v1_compiler_emit_python::emit_py_resource_def(
+            structured_item(ParsedModuleItemKind::ModuleItemResource),
+            crate::v1_compiler_infer_env::empty_type_env(),
+        );
+        v1_rt::string_contains(&emitted, "pass".to_string())
+    }
 }

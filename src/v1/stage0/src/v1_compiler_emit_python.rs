@@ -1572,39 +1572,43 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let depth = 0;
         let cap_children = item.children.clone();
-        let methods = Rc::new({
-            let mut __result = Vec::new();
-            for c in cap_children.iter().cloned() {
-                __result.push(emit_py_capability_method(c.clone(), env.clone()));
-            }
-            __result
-        });
-        let methods_str = methods.clone().join(&"\n\n".to_string());
-        v1_rt::concat(
+        let header = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                "from abc import ABC, abstractmethod\n\n".to_string(),
-                                crate::v1_compiler_emit_core_support::language_spec(
-                                    RenderTarget::Python,
-                                )
-                                .items
-                                .clone()
-                                .struct_keyword
-                                .clone(),
-                            ),
-                            " ".to_string(),
+                            "from abc import ABC, abstractmethod\n\n".to_string(),
+                            crate::v1_compiler_emit_core_support::language_spec(
+                                RenderTarget::Python,
+                            )
+                            .items
+                            .clone()
+                            .struct_keyword
+                            .clone(),
                         ),
-                        item_text.clone(),
+                        " ".to_string(),
                     ),
-                    "(ABC):\n".to_string(),
+                    item_text.clone(),
                 ),
-                crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                "(ABC):\n".to_string(),
             ),
-            methods_str.clone(),
-        )
+            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+        );
+        if ((cap_children.clone().len() as i64) == 0) {
+            v1_rt::concat(header.clone(), "pass".to_string())
+        } else {
+            {
+                let methods = Rc::new({
+                    let mut __result = Vec::new();
+                    for c in cap_children.iter().cloned() {
+                        __result.push(emit_py_capability_method(c.clone(), env.clone()));
+                    }
+                    __result
+                });
+                let methods_str = methods.clone().join(&"\n\n".to_string());
+                v1_rt::concat(header.clone(), methods_str.clone())
+            }
+        }
     }
 }
 
