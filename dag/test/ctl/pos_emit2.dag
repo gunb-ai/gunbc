@@ -1,0 +1,14 @@
+module ctl.pos_emit2
+
+import std.types { String }
+import extdeps.cargo_build
+
+// TWO-SEGMENT CONTROL for the same question. cargo.Build resolved before this branch existed, so if
+// its emitted signature also lacks the service binding the defect is pre-existing; if it carries one
+// here, the three-segment case above is a regression this branch introduced.
+func emits_a_two_segment_call() -> String
+  uses net: std.resources.Network
+{
+  r = cargo.Build.Run(package: "v1-compiler", bin: "gunbc", args: ["--version"])
+  return r.stdout
+}
