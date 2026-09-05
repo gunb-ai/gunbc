@@ -334,7 +334,7 @@ fn floor_expected_red_chunk_00() -> List<String> {
 }
 
 fn floor_expected_red_chunk_01() -> List<String> {
-       Empty {}
+  Cons { head: "test.claim.duplicate_record_field_refusal_witness.a_record_literal_assigning_one_field_twice_refuses", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_02() -> List<String> {

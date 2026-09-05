@@ -14,6 +14,9 @@ import gunbc.generated_artifact_emit {
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_host_grants { runner_slot_teardown_grant_index_bound, runner_slot_grammar_dirs_to_bound, fabric_allocation_store_privileged_operations }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -128,12 +131,32 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
   let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
   let directives = fabric_cell_slice_desired_directives().length()
   let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
+  let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
   runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == (slots * 4) + 4 + fabric_expected
+    == runner_slot_teardown_grant_index_bound + (slots * 3) + 4 + fabric_expected + allocation_store
+    && allocation_store == 2
     && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
     && activation == slots * 2
     && slots > 0
     && fabric_slots > 0
+}
+
+// THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each
+// host's committed width so a width change cannot outgrow its own teardown; and it is exact paths
+// only -- the highest grammar dir is named and the one past the bound is not.
+test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool {
+  let bound = runner_slot_teardown_grant_index_bound
+  let dirs = runner_slot_grammar_dirs_to_bound(host: operator_host_srv2, bound: bound)
+  bound >= gunbc_runner_slots_per_host(host: operator_host_srv1)
+    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv2)
+    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv3)
+    && bound >= gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && bound >= 12
+    && dirs.length() == bound
+    && any(dirs, d => (d as String) == "/opt/actions-runner/srv2-12")
+    && any(dirs, d => (d as String) == "/opt/actions-runner/srv2-64")
+    && !any(dirs, d => (d as String) == "/opt/actions-runner/srv2-65")
+    && !any(dirs, d => string_contains(s: d as String, pattern: "*"))
 }
 
 // THE JOIN, ASSERTED THROUGH THE PRODUCTION PATH. This is the witness the module exists for: the
@@ -176,3 +199,4 @@ test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
     deploy: srv3_runner_host_deploy,
   )
 }
+
