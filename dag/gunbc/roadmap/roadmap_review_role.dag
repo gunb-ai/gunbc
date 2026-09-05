@@ -29,6 +29,14 @@ type ReviewVerdictDecode
   = ReviewVerdictDecoded { verdict: ReviewVerdict }
   | ReviewVerdictUndecodable { reason: String }
 
+// THE VERDICT FILE AS OBSERVED, before decoding. Absent and unreadable are different facts with
+// different remedies (spawn a reviewer; fix the read), so the belt carries both and the segment
+// names each.
+type ReviewReceiptSource
+  = ReviewReceiptAbsent
+  | ReviewReceiptPresent { text: String }
+  | ReviewReceiptUnreadable { detail: String }
+
 data review_verdict_schema: String = "roadmap-review-verdict/v1"
 
 // The grammar the reviewer is told and the decoder enforces, one authority for both.

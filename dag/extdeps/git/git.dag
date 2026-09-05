@@ -805,6 +805,10 @@ fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
 }
 
+fn shape_git_merge_base_args(left: String, right: String) -> List<String> {
+  ["merge-base", left, right]
+}
+
 fn shape_git_status_porcelain_nul_args() -> List<String> {
   ["status", "--porcelain", "-z"]
 }

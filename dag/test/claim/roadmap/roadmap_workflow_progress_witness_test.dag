@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
+import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent, ReviewReceiptPresent }
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_provider_events {
@@ -9,6 +10,7 @@ import gunbc.roadmap_provider_events {
   ProviderEventsRefused,
 }
 import gunbc.roadmap_workflow_progress {
+  review_segment,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
   workflow_attempt_progress_json_value,
@@ -37,6 +39,9 @@ import gunbc.worker_lifecycle {
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment,
+  WorkflowSegmentFailed,
+  WorkflowSegmentActive,
+  WorkflowSegmentComplete,
   EnvironmentWorkflowSegment,
   WorkspaceWorkflowSegment,
   AgentWorkflowSegment,
@@ -139,6 +144,8 @@ fn fixture_evidence(
       },
     },
     publication_source: ReceiptSourceAbsent,
+    review_source: ReviewReceiptAbsent,
+    review_process: WorkerProcessAbsent,
   }
 }
 
@@ -389,6 +396,8 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
+    review_source: base.review_source,
+    review_process: base.review_process,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   segment_state(progress.segments, "environment") != "" 
@@ -419,6 +428,8 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
+    review_source: base.review_source,
+    review_process: base.review_process,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -464,6 +475,8 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
       },
     },
     publication_source: ReceiptSourceAbsent,
+    review_source: ReviewReceiptAbsent,
+    review_process: WorkerProcessAbsent,
   })
   match progress.provider {
     ProviderEventsRefused { activity, detail: _ } =>
@@ -500,6 +513,8 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     verification_source: base.verification_source,
     publication_subject: base.publication_subject,
     publication_source: base.publication_source,
+    review_source: base.review_source,
+    review_process: base.review_process,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -656,6 +671,8 @@ fn publication_segment_of(
     verification_source: base.verification_source,
     publication_subject: subject,
     publication_source: source,
+    review_source: ReviewReceiptAbsent,
+    review_process: WorkerProcessAbsent,
   })
   fold(progress.segments, init: WorkflowSegment {
     kind: PublicationWorkflowSegment,
@@ -774,4 +791,21 @@ test fn the_publication_readings_are_distinct_states() -> Bool {
   )
   bound != moved && moved != absent && bound != absent
     && wrong_subject != bound && wrong_subject != moved && wrong_subject != absent
+}
+
+// DISCRIMINATING: the review segment reads the verdict file when there is one, and before that it
+// says which of three things is true -- unverified head, reviewer running, or awaiting the review pass.
+test fn the_review_segment_follows_the_verdict_file_and_names_its_absence() -> Bool {
+  let verified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "passed" }
+  let unverified = WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "not yet" }
+  let approved = review_segment(verification: verified,
+    review_source: ReviewReceiptPresent { text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"fits the goal\"}" },
+    review_process: WorkerProcessAbsent)
+  let running = review_segment(verification: verified, review_source: ReviewReceiptAbsent, review_process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr })
+  let waiting = review_segment(verification: verified, review_source: ReviewReceiptAbsent, review_process: WorkerProcessAbsent)
+  let early = review_segment(verification: unverified, review_source: ReviewReceiptAbsent, review_process: WorkerProcessAbsent)
+  (match approved.state { WorkflowSegmentComplete => true  _ => false }) && string_contains(s: approved.detail, pattern: "fits the goal")
+    && (match running.state { WorkflowSegmentActive => true  _ => false })
+    && (match waiting.state { WorkflowSegmentPending => true  _ => false }) && string_contains(s: waiting.detail, pattern: "review pass")
+    && (match early.state { WorkflowSegmentPending => true  _ => false }) && string_contains(s: early.detail, pattern: "passed verification")
 }

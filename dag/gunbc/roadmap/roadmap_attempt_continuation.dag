@@ -35,6 +35,7 @@ type PriorAttemptFacts {
   branch: String
   worker_terminal: Bool
   verification: WorkflowSegment?
+  review: WorkflowSegment?
 }
 
 // THE PRIOR TURN NUMBER, AS READ FROM ITS ATTEMPT STATE. Absent is an attempt that predates the
@@ -45,6 +46,10 @@ type ContinuationTurnRead
   | ContinuationTurnKnown { turn: Int }
   | ContinuationTurnUnreadable { reason: String }
 
+// HOLD IS THE FOURTH: a verified head whose review has not yet answered. Spawning a fresh worker
+// there would duplicate work the belt is about to judge, and continuing would act on a verdict that
+// does not exist; the honest move is to spawn nothing this tick and say why.
+//
 // THREE OUTCOMES BECAUSE THREE REMEDIES. Fresh starts from the base ref as before, with the reason
 // a fresh start was right (no prior, prior still running, prior verified green). Continue carries
 // the origin the spawn uses. Refused is the arm that must not widen: a lineage at its turn cap or a
@@ -55,6 +60,7 @@ type ContinuationDecision
   = ContinuationFresh { reason: String }
   | ContinuationContinue { origin: AttemptOrigin }
   | ContinuationRefused { reason: String }
+  | ContinuationHold { reason: String }
 
 // THREE TURNS PER LINEAGE. The first turn does the work, the second acts on the verdict, the third
 // is the last chance before a human looks; a lineage that has not converged in three turns is
@@ -95,14 +101,32 @@ fn continuation_decision(prior: PriorAttemptFacts?, prior_turn: ContinuationTurn
           Absent => ContinuationFresh { reason: "the prior attempt carries no verification segment" }
           Present { value: v } =>
             match v.state {
-              WorkflowSegmentFailed => continuation_from_failed(prior: p, verdict_detail: v.detail, prior_turn: prior_turn)
-              WorkflowSegmentComplete => ContinuationFresh { reason: "the prior attempt verified green; nothing to continue" }
+              WorkflowSegmentFailed => continuation_from_failed(prior: p, verdict_detail: join(["verification failed: ", v.detail], ""), prior_turn: prior_turn)
+              WorkflowSegmentComplete => continuation_after_green_verification(prior: p, prior_turn: prior_turn)
               WorkflowSegmentStopped => ContinuationFresh { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit" }
               WorkflowSegmentPending => ContinuationFresh { reason: "the prior attempt has not been verified yet" }
               WorkflowSegmentActive => ContinuationFresh { reason: "the prior attempt's verification is running" }
               WorkflowSegmentRefused => ContinuationFresh { reason: "the prior attempt's verification was refused, which is an environment fact and not a verdict on the work" }
             }
         }
+      }
+  }
+}
+
+// A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW. Changes requested continue the lineage with
+// the reviewer's located reasons as the brief's verdict; an approved review starts nothing (the head
+// is on its way to publication); anything in between holds.
+fn continuation_after_green_verification(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+  match prior.review {
+    Absent => ContinuationHold { reason: "the prior attempt verified green and carries no review segment yet" }
+    Present { value: r } =>
+      match r.state {
+        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["review requested changes: ", r.detail], ""), prior_turn: prior_turn)
+        WorkflowSegmentComplete => ContinuationFresh { reason: "the prior attempt verified green and its review approved; nothing to continue" }
+        WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt verified green and awaits review: ", r.detail], "") }
+        WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt verified green and its reviewer is running" }
+        WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt verified green and its review refused: ", r.detail], "") }
+        WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's review segment is stopped, a state review does not inhabit" }
       }
   }
 }
@@ -161,7 +185,7 @@ fn continuation_brief_prefix(origin: AttemptOrigin) -> String {
       join([
         "CONTINUATION: this is ", continuation_turn_label(turn: turn),
         " on this task. The previous turn (attempt ", parent_attempt_key, ") ended and its work was committed on branch ",
-        branch, ", which is the branch your worktree is on: the files already reflect it. Verification then ran against that head and FAILED:\n",
+        branch, ", which is the branch your worktree is on: the files already reflect it. The judgment of that head was:\n",
         verdict_detail,
         "\nStart from that result. Do not re-read the tree from scratch; read the verdict, inspect the files it names, make the change, and run the acceptance check.\n\n",
       ], "")

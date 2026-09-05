@@ -1034,6 +1034,132 @@ fn dispatch_attempt_verification_dir_for_instance(
   ], "")
 }
 
+// THE REVIEW DIRECTORY: the reviewer's verdict per head, its event stream, its request scratch and
+// its stdout, all beside the attempt's verification directory and prepared with it. It is the ONLY
+// path the reviewer's unit may write, which is how "you may not change the tree" is a wall rather
+// than a sentence (gunbc.harness.harness_review_guidance CapabilityWithheld ChangeTheTree).
+data review_directory_segment: String = "review"
+
+fn dispatch_attempt_review_dir_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/", review_directory_segment,
+  ], "")
+}
+
+fn dispatch_attempt_review_verdict_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  head_sha: String,
+) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".json"], "")
+}
+
+fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_review_request_scratch_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/harness-request.json"], "")
+}
+
+fn dispatch_attempt_review_log_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/reviewer-stdout.log"], "")
+}
+
+fn dispatch_review_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-review-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+// THE REVIEWER'S UNIT: the worker's confinement with ONE writable path, the review directory. The
+// worktree it reads is under the instance root and stays read-only to it, so a reviewer that tried
+// to fix what it was judging gets a refused write, not a contribution.
+fn dispatch_review_unit_properties(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  log_path: String,
+  review_dir: String,
+) -> List<String> {
+  [
+    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max))),
+    systemd_run_property(name: "WorkingDirectory", value: working_directory),
+    systemd_run_property(name: "StandardOutput", value: join(["append:", log_path], "")),
+    systemd_run_property(name: "StandardError", value: join(["append:", log_path], "")),
+    systemd_run_property(name: "ProtectSystem", value: "strict"),
+    systemd_run_property(name: "ProtectHome", value: "read-only"),
+    systemd_run_property(name: "PrivateTmp", value: "yes"),
+    systemd_run_property(name: "ReadWritePaths", value: review_dir),
+    systemd_run_property(name: "RemainAfterExit", value: "yes"),
+  ]
+}
+
+data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
+
+fn gunbc_harness_review_argv(
+  gunbc_program: String,
+  repo_root: String,
+  worktree_path: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> List<String> {
+  [
+    gunbc_program,
+    "run",
+    "--source-root", join([repo_root, "/dag"], ""),
+    "--source-root", join([repo_root, "/src/v2"], ""),
+    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+    "--function", gunbc_harness_reviewer_function,
+    "--arg", join(["worktree=", worktree_path], ""),
+    "--arg", join(["brief=", brief], ""),
+    "--arg", join(["timeout_program=", timeout_program], ""),
+    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+    "--arg", join(["events_path=", events_path], ""),
+    "--arg", join(["verdict_path=", verdict_path], ""),
+  ]
+}
+
+fn dispatch_review_unit_argv(
+  systemd_run_program: FilePath,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  worktree_path: String,
+  brief: String,
+  head_sha: String,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: systemd_run_program as String,
+    args: systemd_run_user_transient_arguments(
+      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+      properties: dispatch_review_unit_properties(
+        instance: instance,
+        working_directory: worktree_path,
+        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ),
+      setenv_bindings: [],
+      command_argv: gunbc_harness_review_argv(
+        gunbc_program: instance.serve_binary as String,
+        repo_root: instance.repo_root as String,
+        worktree_path: worktree_path,
+        brief: brief,
+        timeout_program: instance.toolchain.timeout as String,
+        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        verdict_path: dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha),
+      ),
+    ),
+  )
+}
+
 fn dispatch_attempt_verification_receipt_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1744,6 +1870,11 @@ fn attempt_state_prepare_argv_for_instance(
         attempt_key: attempt_key,
       ),
       dispatch_attempt_verification_dir_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      ),
+      dispatch_attempt_review_dir_for_instance(
         instance: instance,
         node_id: node_id,
         attempt_key: attempt_key,

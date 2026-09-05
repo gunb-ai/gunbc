@@ -32,6 +32,10 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
+import gunbc.roadmap.roadmap_review_role {
+  ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
+  review_verdict_decode, review_segment_state, review_decode_detail,
+}
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind,
   EnvironmentWorkflowSegment,
@@ -155,6 +159,8 @@ type WorkflowAttemptEvidence {
   verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
+  review_source: ReviewReceiptSource
+  review_process: WorkerProcessEvidence
 }
 
 type WorkflowAttemptProgress {
@@ -786,16 +792,57 @@ fn workflow_segment_from_evidence(
         publication_source: evidence.publication_source,
       )
     ReviewWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting an exact-head pull-request binding and review verdict",
-      }
+      review_segment(
+        verification: verification_segment(
+          provider: provider,
+          validation_summary: evidence.validation_summary,
+          verification_subject: evidence.verification_subject,
+          verification_selection: evidence.verification_selection,
+          verification_source: evidence.verification_source,
+        ),
+        review_source: evidence.review_source,
+        review_process: evidence.review_process,
+      )
     GoalAuditWorkflowSegment =>
       WorkflowSegment {
         kind: kind,
         state: WorkflowSegmentPending,
         detail: "awaiting an independent audit of the exact candidate against the current approved goal",
+      }
+  }
+}
+
+// THE REVIEW SEGMENT READS THE REVIEWER'S VERDICT FILE, and before there is one it says which of
+// three things is true: the head is not yet verified (the review pass will not spawn a reviewer for
+// an unverified head), a reviewer is running, or the belt has not spawned one yet. A reviewer that
+// exited without writing a verdict is a refusal named as such, never an absent-looks-like-pending.
+fn review_segment(
+  verification: WorkflowSegment,
+  review_source: ReviewReceiptSource,
+  review_process: WorkerProcessEvidence,
+) -> WorkflowSegment {
+  match review_source {
+    ReviewReceiptPresent { text } => {
+      let decoded = review_verdict_decode(text: text)
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: review_segment_state(d: decoded), detail: review_decode_detail(d: decoded) }
+    }
+    ReviewReceiptUnreadable { detail } =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: join(["the review verdict file could not be read: ", detail], "") }
+    ReviewReceiptAbsent =>
+      match verification.state {
+        WorkflowSegmentComplete =>
+          match review_process {
+            WorkerProcessRunning { command: _ } =>
+              WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentActive, detail: "reviewer running against the verified head" }
+            WorkerProcessExited { exit_code, last_command: _ } =>
+              WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict"], "") }
+            WorkerProcessAbsent =>
+              WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "verified head awaiting the belt's review pass" }
+            WorkerProcessUnobserved { reason } =>
+              WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: join(["the reviewer process could not be observed: ", reason as String], "") }
+          }
+        _ =>
+          WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
       }
   }
 }

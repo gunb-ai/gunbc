@@ -1,5 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.worker_lifecycle { WorkerProcessAbsent }
+import gunbc.roadmap.roadmap_review_role { ReviewReceiptAbsent }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -1093,6 +1095,8 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
       },
     },
     publication_source: ReceiptSourceAbsent,
+    review_source: ReviewReceiptAbsent,
+    review_process: WorkerProcessAbsent,
   })
 }
 
@@ -1176,6 +1180,8 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
         },
       },
       publication_source: ReceiptSourceAbsent,
+      review_source: ReviewReceiptAbsent,
+      review_process: WorkerProcessAbsent,
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -1266,6 +1272,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1297,6 +1304,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
   }
   match belt_tick_receipt_from_result(
     result: result,
@@ -1350,6 +1358,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
         },
       ],
       publish_outcomes: [],
+      review_outcomes: [],
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2231,6 +2240,7 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
     commit_outcomes: [],
       verify_outcomes: [],
       publish_outcomes: [],
+      review_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2250,6 +2260,7 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
     commit_outcomes: [],
       verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
       publish_outcomes: [],
+      review_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
