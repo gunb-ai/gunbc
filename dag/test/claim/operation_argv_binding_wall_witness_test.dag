@@ -189,3 +189,5 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
         operation_argv_bind_text(name: "property", text: "ActiveState")
       ]
     )
+  ) != "systemctl show gunbc.service --property=SubState --value"
+}
