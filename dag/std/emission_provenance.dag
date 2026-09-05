@@ -47,6 +47,11 @@ type EmissionResolutionCoverage
 // Authored target text remains authored when its declaration lives in a .dag file. Derived
 // means the producer observed a fold of modeled structure, never that the producer's path has
 // a particular extension. Neither leaf arm absorbs an unobserved nested contributor.
+// EXECUTION BOUNDARY: test.claim.emission_provenance_test exercises authored fragments,
+// composition and named unobserved contributors. DerivedFragment is representable but
+// UNEXERCISED; it must not be reported as positive derived coverage on that evidence.
+// Next-rung trigger: a modeled-structure producer constructs EmissionDerivedFragment under
+// an executing control. Constructing a labeled string alone does not witness that capability.
 type EmissionContribution
   = EmissionAuthoredFragment { origin: DeclarationRef, source: String }
   | EmissionSourceComposition {
