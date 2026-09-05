@@ -22,7 +22,7 @@ import v2.std.grounding {
   RuntimeVerdicts,
   host_verdict_surface_runtime_authoritative
 }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_test { rust_minimal_target_model_staging }
 
 import v2.std.verification {
   BoolWitness,
@@ -39,7 +39,7 @@ fn terminal_gate_empty_bytes() -> List<Byte> {
 fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTargetTestClaimReceipt {
   PerTargetTestClaimReceipt {
     host_run: EmitHostRunReceipt {
-      target: rust_target_model(),
+      target: rust_minimal_target_model_staging(),
       source_text: "",
       exit: HostExit {
         outcome: Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }

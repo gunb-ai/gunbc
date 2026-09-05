@@ -22,6 +22,15 @@ data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
   }
 }
 
+data generated_artifact_merge_driver_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.generated_artifact_merge_driver",
+    decl_name: "expected_generated_artifact_merge_driver_sh",
+    field: WholeDeclaration
+  }
+}
+
 fn layer_root_glob_prefixes() -> List<String> {
   map(witness_layer_roots, r => concat(r, "/*"))
 }

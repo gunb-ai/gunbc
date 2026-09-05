@@ -59,7 +59,7 @@ import v2.test.algebra_laws.nat_semiring { nat_add_left_identity_input }
 import v2.test.nat_semiring.rung_5 {
   claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 }
-import v2.test.rung_3_4_common { rung34_emit_host_rust_target_model }
+import v2.extdeps.languages.rust_test { rust_minimal_target_model_staging }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -164,7 +164,7 @@ data vacuity_case_row_rung_5_emit_vs_eval: VacuityCensusRow = vacuity_census_row
   label: "rung_5_emit_vs_eval",
   evidence: classify_test_claim_vacuity(
     claim: vacuity_test_emit_vs_eval_claim,
-    transport: EmitVsEval { target: rung34_emit_host_rust_target_model },
+    transport: EmitVsEval { target: rust_minimal_target_model_staging() },
     lhs_provenance: OperandProvenanceUnknown,
     rhs_provenance: OperandProvenanceUnknown,
     operand_provenance: OperandProvenanceUnknown
@@ -378,7 +378,7 @@ test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_emit_vs_eval_claim,
-      transport: EmitVsEval { target: rung34_emit_host_rust_target_model },
+      transport: EmitVsEval { target: rust_minimal_target_model_staging() },
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
@@ -444,7 +444,7 @@ test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
     a: classify_unified_test_claim_vacuity(
       claim: NodeCorpus {
         claim: vacuity_test_emit_vs_eval_claim,
-        transport: EmitVsEval { target: rung34_emit_host_rust_target_model }
+        transport: EmitVsEval { target: rust_minimal_target_model_staging() }
       },
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
