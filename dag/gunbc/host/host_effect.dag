@@ -36,8 +36,7 @@ import std.effects {
 }
 
 type HostEffect =
-    ShellCommand { script: String }
-  | RedfishAction { action: RedfishSystemAction }
+    RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
   | OsInstallActuatorToolchainEnsure {}
   | EnsureBuildCacheInstance { desired: BuildCacheInstance }
