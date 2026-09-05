@@ -44,8 +44,6 @@ data mtcollins1_netboot_observed_at: EpochMs = 1788620040000
 // bootloader served to this client must be an aarch64 EFI binary.
 data mtcollins1_pxe_vendor_class: NonEmptyStr = "PXEClient:Arch:00011:UNDI:003016"
 
-data mtcollins1_pxe_arch_code: Int = 11
-
 // NO ClientNetworkBootMode ROW IS AUTHORED HERE, AND THE ABSENCE IS THE FINDING. The obvious row
 // would be UefiPxe, since the client's own vendor class says PXE — but that variant carries a
 // `tftp_root: Uri`, and there is no TFTP root: nothing on this segment serves one. The only way to
@@ -54,7 +52,7 @@ data mtcollins1_pxe_arch_code: Int = 11
 // measured — the client's self-description above — and the mode stays unauthored until a server
 // exists to name.
 //
-// THAT IS ALSO WHY THE TYPE IS IMPORTED AND UNUSED BELOW: the import records which vocabulary this
+// THAT IS ALSO WHY ClientNetworkBootMode IS IMPORTED AND UNUSED: the import records which vocabulary this
 // observation would inhabit once its missing half exists, and removing it would erase the pointer.
 //
 // WHAT THE CLIENT ASKED FOR AND DID NOT GET is the whole remaining gap, and it is a property of the
@@ -63,3 +61,4 @@ data mtcollins1_pxe_arch_code: Int = 11
 // is nothing on the network to netboot from. Every other piece of this lane — the controller
 // observation, the capability row, the out-of-band arm, the executed handoff — is upstream of that
 // one absence, and none of them can close it.
+data mtcollins1_pxe_arch_code: Int = 11
