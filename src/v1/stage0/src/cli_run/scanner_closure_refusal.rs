@@ -1,0 +1,285 @@
+//! Host realization of `gunbc.namespace_host_closure_refusal`.
+//! The scanners remain observations for this prepared cut. Only the input source
+//! set can be returned: a scanner cannot construct a larger loaded closure here.
+
+use super::{v1_compiler_compile::SourceFile, workspace_relative_repo_path};
+use im::HashMap;
+use serde::Serialize;
+use std::collections::{BTreeSet, HashSet};
+use std::rc::Rc;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub(super) enum HostClosureScanner {
+    DottedModulePathScanner,
+    BareReferenceScanner,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub(super) struct HostScannerClosureAddition {
+    source_path: String,
+    proposed_dependency_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct HostScannerClosureRefusal {
+    scanner: HostClosureScanner,
+    first: HostScannerClosureAddition,
+    rest: Vec<HostScannerClosureAddition>,
+}
+
+impl HostScannerClosureRefusal {
+    pub(super) fn render(&self) -> String {
+        // The count is derived from the nonempty located population, never an
+        // independently writable observation. JSON preserves unusual path bytes.
+        serde_json::json!({
+            "cause": "HostScannerClosureRefused",
+            "count": 1 + self.rest.len(),
+            "refusal": self,
+        })
+        .to_string()
+    }
+}
+
+pub(super) fn refuse_scanner_extension(
+    sources: Vec<Rc<SourceFile>>,
+    proposals: &HashMap<String, Vec<String>>,
+    eligible: Option<&HashSet<String>>,
+    scanner: HostClosureScanner,
+) -> Result<Vec<Rc<SourceFile>>, HostScannerClosureRefusal> {
+    let known: HashSet<String> = sources
+        .iter()
+        .map(|source| workspace_relative_repo_path(&source.path))
+        .collect();
+    let mut additions = BTreeSet::new();
+    for source in &known {
+        if eligible.is_some_and(|paths| !paths.contains(source)) {
+            continue;
+        }
+        if let Some(targets) = proposals.get(source) {
+            for target in targets {
+                let target = workspace_relative_repo_path(target);
+                if !known.contains(&target) {
+                    additions.insert((source.clone(), target));
+                }
+            }
+        }
+    }
+    let mut additions = additions
+        .into_iter()
+        .map(
+            |(source_path, proposed_dependency_path)| HostScannerClosureAddition {
+                source_path,
+                proposed_dependency_path,
+            },
+        );
+    match additions.next() {
+        None => Ok(sources),
+        Some(first) => Err(HostScannerClosureRefusal {
+            scanner,
+            first,
+            rest: additions.collect(),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+    use super::*;
+
+    struct Corpus(std::path::PathBuf);
+
+    impl Corpus {
+        fn new(consumer: &str) -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let root = workspace_root().join("target").join(format!(
+                "gunbc-scanner-refusal-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed),
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("consumer.dag"), consumer).unwrap();
+            std::fs::write(
+                root.join("provider.dag"),
+                "module scanner.provider\nfn scanner_answer() -> Int { 7 }\n",
+            )
+            .unwrap();
+            Self(root)
+        }
+
+        fn index(&self) -> MultiEntryIndex {
+            build_multi_entry_index(&[self.0.to_string_lossy().into_owned()])
+        }
+
+        fn entry(&self) -> String {
+            self.0.join("consumer.dag").to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for Corpus {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn assert_refusal(error: &str, scanner: &str, corpus: &Corpus) {
+        let diagnostic: serde_json::Value = serde_json::from_str(error).unwrap();
+        assert_eq!(diagnostic["cause"], "HostScannerClosureRefused");
+        assert_eq!(diagnostic["count"], 1);
+        assert_eq!(diagnostic["refusal"]["scanner"], scanner);
+        assert_eq!(
+            diagnostic["refusal"]["first"]["source_path"],
+            workspace_relative_repo_path(&corpus.entry())
+        );
+        assert_eq!(
+            diagnostic["refusal"]["first"]["proposed_dependency_path"],
+            workspace_relative_repo_path(&corpus.0.join("provider.dag").to_string_lossy())
+        );
+    }
+
+    #[test]
+    fn dotted_scanner_cannot_load_reference_only_provider_on_either_path() {
+        let corpus = Corpus::new(
+            "module scanner.consumer\nfn probe() -> Int { scanner.provider.scanner_answer() }\n",
+        );
+        let index = corpus.index();
+        let direct = load_sources_for_entry_with_index(
+            &index.source_files,
+            &index.module_graph_facts,
+            &corpus.entry(),
+        )
+        .unwrap_err();
+        assert_refusal(&direct, "DottedModulePathScanner", &corpus);
+
+        // Reach the cached scanner path directly: the public pool loader first
+        // reaches the direct refusal above, which would mask this second door.
+        let source = entry_source_from_index_or_disk(&index.source_files, &corpus.entry()).unwrap();
+        let cached = extend_with_reference_closure_for_pool(vec![source], &index).unwrap_err();
+        assert_refusal(&cached, "DottedModulePathScanner", &corpus);
+    }
+
+    #[test]
+    fn bare_scanner_cannot_load_reference_only_provider() {
+        let corpus =
+            Corpus::new("module scanner.consumer\nfn probe() -> Int { scanner_answer() }\n");
+        let index = corpus.index();
+        // Direct dotted scan adds nothing. The pool loader must reach and refuse
+        // the independent bare scanner, without a loaded-file fallback behind it.
+        let direct = load_sources_for_entry_with_index(
+            &index.source_files,
+            &index.module_graph_facts,
+            &corpus.entry(),
+        )
+        .unwrap();
+        assert_eq!(direct.len(), 1);
+        let error = load_sources_for_entry_with_pool(&index, &corpus.entry()).unwrap_err();
+        assert_refusal(&error, "BareReferenceScanner", &corpus);
+    }
+
+    #[test]
+    fn import_supplied_provider_remains_loaded_without_scanner_additions() {
+        let corpus = Corpus::new("module scanner.consumer\nimport scanner.provider { scanner_answer }\nfn probe() -> Int { scanner.provider.scanner_answer() }\n");
+        let index = corpus.index();
+        let sources = load_sources_for_entry_with_pool(&index, &corpus.entry()).unwrap();
+        let names: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            BTreeSet::from(["scanner.consumer".to_owned(), "scanner.provider".to_owned()])
+        );
+    }
+
+    #[test]
+    fn refused_population_is_deduplicated_located_and_never_partially_loaded() {
+        let sources = vec![Rc::new(SourceFile {
+            path: "entry.dag".into(),
+            content: String::new(),
+        })];
+        let proposals = HashMap::from_iter([
+            (
+                "entry.dag".into(),
+                vec!["b.dag".into(), "a.dag".into(), "b.dag".into()],
+            ),
+            ("unloaded.dag".into(), vec!["unreached.dag".into()]),
+        ]);
+        let error = refuse_scanner_extension(
+            sources,
+            &proposals,
+            None,
+            HostClosureScanner::BareReferenceScanner,
+        )
+        .unwrap_err();
+        let diagnostic: serde_json::Value = serde_json::from_str(&error.render()).unwrap();
+        assert_eq!(diagnostic["count"], 2);
+        assert_eq!(error.first.proposed_dependency_path, "a.dag");
+        assert_eq!(error.rest[0].proposed_dependency_path, "b.dag");
+    }
+
+    #[test]
+    #[ignore = "explicit stopped-line audit over dag and src/v2; requires SCANNER_AUDIT_REPORT"]
+    fn real_corpus_scanner_additions_are_reported_without_loading_them() {
+        let report_path = std::env::var("SCANNER_AUDIT_REPORT").expect("audit output path");
+        let roots = ["dag", "src/v2"]
+            .map(|root| workspace_root().join(root).to_string_lossy().into_owned());
+        let index = build_multi_entry_index_primary_precedence(&roots);
+        let edges =
+            both_closure_edge_index(&index).expect("scanner observations must be available");
+        let mut entries: Vec<_> = index.source_files.values().cloned().collect();
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        assert!(
+            !entries.is_empty(),
+            "an empty audit cannot establish coverage"
+        );
+        let mut rows = Vec::new();
+        let mut refused_entries = 0;
+        for entry in &entries {
+            let sources = resolve_transitively(
+                vec![entry.clone()],
+                &index.source_files,
+                &index.module_graph_facts,
+            )
+            .expect("import closure must be accounted before scanner comparison");
+            let mut refusals = Vec::new();
+            // Both observations read the SAME import-only subject. The first
+            // refusal must not prevent the audit from observing the other arm.
+            for (scanner, proposals, eligible) in [
+                (
+                    HostClosureScanner::DottedModulePathScanner,
+                    &edges.ref_out,
+                    None,
+                ),
+                (
+                    HostClosureScanner::BareReferenceScanner,
+                    &edges.bare_out,
+                    Some(&edges.bare_scan_eligible),
+                ),
+            ] {
+                if let Err(refusal) =
+                    refuse_scanner_extension(sources.clone(), proposals, eligible, scanner)
+                {
+                    refusals.push(refusal);
+                }
+            }
+            if !refusals.is_empty() {
+                refused_entries += 1;
+            }
+            rows.push(serde_json::json!({
+                "entry": workspace_relative_repo_path(&entry.path),
+                "import_closure_modules": sources.len(),
+                "refusals": refusals,
+            }));
+        }
+        let report = serde_json::json!({
+            "state": "StoppedLineAudit",
+            "compared_modules": entries.len(),
+            "refused_entries": refused_entries,
+            "entries_without_scanner_additions": entries.len() - refused_entries,
+            "rows": rows,
+        });
+        std::fs::write(report_path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+        eprintln!("SCANNER_AUDIT compared_modules={} refused_entries={} entries_without_scanner_additions={}",
+            entries.len(), refused_entries, entries.len() - refused_entries);
+    }
+}

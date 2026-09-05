@@ -1,0 +1,21 @@
+module gunbc.namespace_host_closure_refusal
+
+import std.types { FilePath, List }
+
+// Scanner observations cannot establish a dependency. Until the containment
+// binding projection supplies the loader, an attempted addition stops it.
+// This is a prepared XL-6 cut; it does not establish replacement availability.
+type HostClosureScanner
+  = DottedModulePathScanner
+  | BareReferenceScanner
+
+type HostScannerClosureAddition {
+  source_path: FilePath
+  proposed_dependency_path: FilePath
+}
+
+type HostScannerClosureRefusal {
+  scanner: HostClosureScanner
+  first: HostScannerClosureAddition
+  rest: List<HostScannerClosureAddition>
+}
