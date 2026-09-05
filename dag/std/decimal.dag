@@ -68,7 +68,7 @@ type ExactDecimal {
 // literal `fraction_digits: -1` refuses at resolve; a COMPUTED negative reaches the field and is
 // held. So this is mechanically preventable at authored sites, not structurally impossible, and
 // every fn below producing an ExactDecimal owns its own non-negative argument. Next-rung trigger:
-// feature:where-refinement-predicate-coproduct, the one std.content_hash names for its non-literal
+// feature:refinement-evidence-at-non-literal-positions, the one std.content_hash names for its non-literal
 // digest positions.
 // ExactDecimal.fraction_digits carries where range(min: 0), refusing an authored negative literal
 // at resolve but not a computed one. Mechanically preventable, not structural; the same partial-wall

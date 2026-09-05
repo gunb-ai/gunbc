@@ -243,6 +243,7 @@ type CiRunnerSudoBinary
   | SudoTailscale
   | SudoRm
   | SudoUseradd
+  | SudoUsermod
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -253,6 +254,7 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoTailscale => fleet_tailscale_binary_path
     SudoRm => fleet_rm_binary_path
     SudoUseradd => fleet_useradd_binary_path
+    SudoUsermod => fleet_usermod_binary_path
   }
 }
 
@@ -265,6 +267,7 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoTailscale => NopasswdGrantListCheck
     SudoRm => NopasswdExecuteCheck { check_argv: "--version" }
     SudoUseradd => NopasswdExecuteCheck { check_argv: "-D" }
+    SudoUsermod => NopasswdExecuteCheck { check_argv: "--help" }
   }
 }
 
@@ -276,9 +279,16 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // (print defaults, exit 0). What it may create is decided by the one operation that renders it,
 // gunbc.executor_privileged_operation EnsureSystemAccount: a --system account with the nologin
 // shell and no home, never a login user.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd]
+// usermod JOINED THE ROSTER 2026-09-05 WITH THE RUNNER MICRO-VM HOST READINESS SLICE. Firecracker
+// opens /dev/kvm, which udev hands to the kvm group, and the executor that will launch a guest is
+// not in it (measured on srv2, gunbc.runner.runner_microvm_host_ready). The grant is the whole
+// binary like its siblings, probed with --help (exit 0); what it may change is decided by the one
+// operation that renders it, EnsureSupplementaryGroupMembership: append one named group to one
+// named login, never a primary-group, shell, home, or password change.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod]
 
 data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
+data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
 data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
 

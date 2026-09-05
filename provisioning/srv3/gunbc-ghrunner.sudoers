@@ -137,4 +137,5 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 0700 -o root -g root /var/l
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner-cache
+ghrunner ALL=(root) NOPASSWD: /usr/sbin/usermod -aG kvm ghrunner
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
