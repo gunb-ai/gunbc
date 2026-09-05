@@ -45,6 +45,34 @@ pub struct ServiceMethodResult {
     pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
+/// Mirror of `dotted_receiver_path` in src/v1/04_service.dag: the dotted path a receiver spells, at
+/// any depth. A three-segment name parses as a field access whose base is a field access, so the
+/// name is recovered by walking that spine rather than by one join. Bottoms out only on a variable.
+pub fn dotted_receiver_path(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => Some(crate::v1_std_core::expr_var_name_at(
+            texpr.clone(),
+            source_indices.clone(),
+        )),
+        ExprData::ExprFieldAccess { summary: _, .. } => {
+            let f = crate::v1_std_core::field_access_field_at(texpr.clone(), source_indices.clone());
+            match dotted_receiver_path(
+                crate::v1_std_core::field_access_base(texpr.clone()),
+                source_indices.clone(),
+            ) {
+                Some(base) => Some(v1_rt::concat(v1_rt::concat(base, ".".to_string()), f)),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        _ => std::option::Option::None,
+    }
+}
+
 pub fn is_typed_service_call_receiver(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -53,18 +81,18 @@ pub fn is_typed_service_call_receiver(
         ExprData::ExprFieldAccess { summary: _, .. } => {
             let f =
                 crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
-            match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            match dotted_receiver_path(
+                crate::v1_std_core::field_access_base(receiver.clone()),
+                source_indices.clone(),
+            ) {
+                Some(_) => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                     .first()
                     .cloned()
                 {
                     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
                     std::option::Option::None => false,
                 },
-                _ => false,
+                std::option::Option::None => false,
             }
         }
         _ => false,
@@ -77,22 +105,7 @@ pub fn extract_typed_service_name(
 ) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
-            let f =
-                crate::v1_std_core::field_access_field_at(receiver.clone(), source_indices.clone());
-            let b = crate::v1_std_core::field_access_base(receiver.clone());
-            match (*b.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let ns =
-                        crate::v1_std_core::expr_var_name_at(b.clone(), source_indices.clone());
-                    Some(v1_rt::concat(
-                        v1_rt::concat(ns.clone(), ".".to_string()),
-                        f.clone(),
-                    ))
-                }
-                _ => std::option::Option::None,
-            }
+            dotted_receiver_path(receiver.clone(), source_indices.clone())
         }
         _ => std::option::Option::None,
     }
@@ -365,6 +378,18 @@ pub fn expand_transitive_services(
     )
 }
 
+/// Mirror of `service_registry_has_namespace` in src/v1/04_service.dag: whether any registered
+/// service lives BENEATH this dotted path, which is what distinguishes an intermediate namespace
+/// (`diagnostic.ipmi`) from a path that names nothing. The trailing dot keeps a path from counting
+/// as a namespace of itself and stops `diagnostic.ipmix` matching `diagnostic.ipmi.Tool`.
+pub fn service_registry_has_namespace(
+    service_registry: &HashMap<String, Rc<Vec<Rc<OpEntry>>>>,
+    prefix: &str,
+) -> bool {
+    let dotted = format!("{}.", prefix);
+    service_registry.keys().any(|k| k.starts_with(&dotted))
+}
+
 pub fn check_service_field_access_node(
     base_type: Rc<Node>,
     field: String,
@@ -386,7 +411,15 @@ pub fn check_service_field_access_node(
                 Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
                     path.clone(),
                 )),
-                std::option::Option::None => std::option::Option::None,
+                std::option::Option::None => {
+                    if service_registry_has_namespace(&service_registry, &path) {
+                        Some(crate::v1_compiler_infer_types::nominal_type_ref(
+                            path.clone(),
+                        ))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
             }
         }
     } else {
