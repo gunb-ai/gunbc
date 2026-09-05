@@ -202,6 +202,14 @@ type EmissionResolutionCorrespondence
       after: EmissionResolutionCoverage
     }
 
+fn emission_compare_module_pair(before: EmissionModuleMember, after: EmissionModuleMember) -> EmissionModuleCorrespondence {
+  EmissionModulePaired {
+    before: before,
+    after: after,
+    declarations: emission_declaration_correspondence(before: before.declarations, after: after.declarations)
+  }
+}
+
 fn emission_module_correspondence(
   before: FreeMonoid<EmissionModuleMember>,
   after: FreeMonoid<EmissionModuleMember>
@@ -219,11 +227,7 @@ fn emission_module_correspondence(
       Cons { head: first, tail: Empty } =>
         match following {
           Empty => EmissionModuleRemoved { before: first }
-          Cons { head: next, tail: Empty } => EmissionModulePaired {
-            before: first,
-            after: next,
-            declarations: emission_declaration_correspondence(before: first.declarations, after: next.declarations)
-          }
+          Cons { head: next, tail: Empty } => emission_compare_module_pair(before: first, after: next)
           _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
         }
       _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
@@ -310,6 +314,10 @@ fn emission_origin_reads_combine(left: EmissionOriginRead, right: EmissionOrigin
   }
 }
 
+fn emission_origin_read_add(acc: EmissionOriginRead, contribution: EmissionContribution) -> EmissionOriginRead {
+  emission_origin_reads_combine(left: acc, right: emission_contribution_origins(contribution: contribution))
+}
+
 // This convenience reading is deliberately a coproduct: callers cannot obtain a complete-looking
 // origin list by silently dropping the unobserved nodes. The tree itself remains the authority for
 // parent-child structure and distinct contribution occurrences. Multiplicity is retained here too.
@@ -317,9 +325,7 @@ fn emission_contribution_origins(contribution: EmissionContribution) -> Emission
   match contribution {
     EmissionSourceFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
     EmissionSourceComposition { origin, parts } =>
-      parts |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: fn(acc, part) {
-        emission_origin_reads_combine(left: acc, right: emission_contribution_origins(contribution: part))
-      })
+      parts |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: emission_origin_read_add)
     EmissionGeneratedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
     EmissionUnobservedFragment { producer, cause, source: _ } => EmissionOriginsIncomplete {
       observed: [], missing: FreeSemigroup { head: EmissionOriginGap { producer: producer, cause: cause }, tail: [] }
