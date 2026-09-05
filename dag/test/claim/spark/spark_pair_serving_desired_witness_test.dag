@@ -1,0 +1,98 @@
+module test.claim.spark.spark_pair_serving_desired_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { token_count_value, percent_count }
+import product.placement_supply { host_identity_eq }
+import extdeps.network.ipv4 { ipv4_address_eq }
+import extdeps.vllm.engine_args { KvFp8DsMla, ExecutorRay, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import gunbc.spark.serving_engine { VllmServing, OllamaServing }
+import gunbc.spark.fabric_link_desired {
+  Srv5Srv6, Srv7Srv8, Rail0, fabric_link_identity, spark_fabric_endpoint, FabricEndpointFound,
+  FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
+}
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_engine_args,
+  spark_pair_serving_unit, spark_pair_serving_unit_with,
+  SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured,
+  spark_pair_serving_seq_capacity, spark_pair_serving_pairs, spark_pair_serving_desired_hosts,
+  spark_pair_serving_unit_wire,
+}
+
+// THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW. TP=2, 82% of the unified pool, 262144 context,
+// the DeepSeek MLA fp8 KV layout, Ray as the executor; nothing here is re-derived.
+test fn the_pair_engine_tuple_is_the_observed_safe_tuple() -> Bool {
+  let a = spark_pair_serving_engine_args(max_num_seqs: 32)
+  a.tensor_parallel_size == 2
+    && percent_count(p: a.gpu_memory_utilization.fraction) == 82
+    && token_count_value(t: a.max_model_len) == 262144
+    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
+    && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
+}
+
+fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
+  match unit {
+    SparkPairServingUnitReady { pair: _, engine: _, head: _, worker: _ } => false
+    SparkPairServingUnitRefused { pair: _, cause: c } => string_contains(s: c as String, pattern: fragment)
+  }
+}
+
+// AN UNMEASURED POOL REFUSES THE UNIT INSTEAD OF INVENTING A SEQUENCE COUNT. This row reads the
+// production capacity row: while it is unmeasured, the desired unit for the first pair refuses for
+// exactly that reason; once a measurement lands the row flips to asserting the unit no longer
+// refuses for it, so the measurement cannot land silently.
+test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
+  match spark_pair_serving_seq_capacity {
+    SeqCapacityUnmeasured => w_refused_naming(unit: spark_pair_serving_unit(pair: Srv5Srv6), fragment: "max-num-seqs")
+    SeqCapacityMeasured { max_num_seqs: _, basis: _ } => !w_refused_naming(unit: spark_pair_serving_unit(pair: Srv5Srv6), fragment: "max-num-seqs")
+  }
+}
+
+data w_measured: SparkPairServingSeqCapacity = SeqCapacityMeasured { max_num_seqs: 32, basis: "witness fixture, not a measurement" as NonEmptyStr }
+
+// WITH A MEASURED POOL THE FIRST PAIR RESOLVES BOTH RANKS THROUGH THE FABRIC LINK: two distinct
+// hosts, each address equal to its endpoint on rail 0 as the fabric authority answers it, and the
+// engine is vLLM.
+test fn a_measured_pool_resolves_both_ranks_through_the_fabric_link() -> Bool {
+  match spark_pair_serving_unit_with(pair: Srv5Srv6, capacity: w_measured) {
+    SparkPairServingUnitRefused { pair: _, cause: _ } => false
+    SparkPairServingUnitReady { pair: _, engine: e, head: h, worker: w } =>
+      !host_identity_eq(a: h.host, b: w.host)
+        && (match e { VllmServing { args: _ } => true  OllamaServing { profile: _ } => false })
+        && (match spark_fabric_endpoint(identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0), host: h.host) {
+              FabricEndpointFound { endpoint: ep } => ipv4_address_eq(a: ep.address, b: h.host_ip)
+              FabricEndpointHostNotOnLink { identity: _, host: _ } => false
+              FabricEndpointLinkUnresolved { lookup: _ } => false
+            })
+        && (match spark_fabric_endpoint(identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0), host: w.host) {
+              FabricEndpointFound { endpoint: ep } => ipv4_address_eq(a: ep.address, b: w.host_ip)
+              FabricEndpointHostNotOnLink { identity: _, host: _ } => false
+              FabricEndpointLinkUnresolved { lookup: _ } => false
+            })
+  }
+}
+
+// THE RPC RESERVATION WALL HOLDS HERE TOO. srv8 still holds the undischarged llama.cpp peer
+// reservation, so the srv7/srv8 pair refuses even with a measured pool, naming the reservation.
+test fn a_pair_holding_an_undischarged_rpc_reservation_refuses_even_when_measured() -> Bool {
+  w_refused_naming(unit: spark_pair_serving_unit_with(pair: Srv7Srv8, capacity: w_measured), fragment: "llama.cpp RPC peer reservation")
+}
+
+// THE PROMOTED ROSTER NEVER NAMES A RESERVED PAIR, and the desired host projection carries only
+// hosts of units that are ready, so a refused unit contributes nothing to the serving scope.
+test fn the_desired_host_projection_carries_only_ready_units() -> Bool {
+  length(spark_pair_serving_pairs) > 0
+    && !any(spark_pair_serving_pairs, p => w_refused_naming(unit: spark_pair_serving_unit_with(pair: p, capacity: w_measured), fragment: "llama.cpp RPC peer reservation"))
+    && (match spark_pair_serving_seq_capacity {
+          SeqCapacityUnmeasured => length(spark_pair_serving_desired_hosts()) == 0
+          SeqCapacityMeasured { max_num_seqs: _, basis: _ } => length(spark_pair_serving_desired_hosts()) == 2 * length(spark_pair_serving_pairs)
+        })
+}
+
+test fn the_wire_names_the_pair_and_both_ranks_or_the_cause() -> Bool {
+  let ready = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit_with(pair: Srv5Srv6, capacity: w_measured))
+  let refused = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(pair: Srv7Srv8))
+  string_contains(s: ready, pattern: " head=") && string_contains(s: ready, pattern: " worker=")
+    && string_contains(s: refused, pattern: " refused: ")
+}

@@ -1,0 +1,220 @@
+module gunbc.spark.pair_serving_desired
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count, percent }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.memory.types { UnifiedShared }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import extdeps.vllm.engine_args {
+  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+}
+import gunbc.spark.serving_engine {
+  ServingEngine, VllmServing,
+  MemoryEnforcerKind, KernelOomKiller, RayThresholdMonitor, HostMemGuard,
+  EnforcerVerdict, EnforcerAdmitted, EnforcerRefused,
+  EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer, DeviceReservationCountingEnforcerOnUnifiedPool,
+  spark_memory_enforcer_admits,
+}
+import gunbc.spark.fabric_link_desired {
+  SparkFabricPair, Srv5Srv6, Srv7Srv8, SparkFabricRail, Rail0, Rail1,
+  fabric_link_identity, spark_fabric_pair_hosts, render_spark_fabric_pair,
+  spark_fabric_endpoint, FabricEndpointFound, FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
+}
+import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
+
+// SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A PAIR, NOT A HOST. DeepSeek V4 Flash does
+// not fit one Spark's unified pool, so the desired serving state is one vLLM engine spanning two
+// fabric-paired units at tensor-parallel 2, each host running one rank. This module is the root of
+// that desired state. It replaces, not refines, the per-host Ollama row in
+// gunbc.spark.serving_desired: while both stand, the Ollama row keeps answering for the serving
+// axis and the withholding rows in serving_convergence_withholding keep every Spark out of it; the
+// cut that flips spark_serving_desired_engine to this module's engine and discharges those rows is
+// one transition, because a serving fleet is gap-intolerant (DESIGN §3, replacement migrations).
+//
+// What this module decides, and refuses to decide:
+//   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
+//     262144 context, Ray executor with its memory monitor disabled); nothing here re-derives it;
+//   - max-num-seqs is BY MEASURED POOL, and until that measurement is a row the unit refuses --
+//     a fabricated count would be exactly the plausible output §5 forbids;
+//   - which two hosts form a pair is the fabric's fact (gunbc.spark.fabric_link_desired), and each
+//     rank's host address is resolved through the link, never spelled here;
+//   - a pair whose host still holds an undischarged llama.cpp RPC peer reservation is refused, the
+//     same wall test.claim.spark_llama_cpp_rpc_witness holds over the cell-role roster;
+//   - the head rank is the first host of the pair as the fabric authority lists it; this is an
+//     arbitrary choice written down as attributable, like the router-slot allocation.
+
+type SparkPairServingRole = PairHead | PairWorker
+
+fn spark_pair_serving_role_wire(role: SparkPairServingRole) -> NonEmptyStr {
+  match role {
+    PairHead => "head" as NonEmptyStr
+    PairWorker => "worker" as NonEmptyStr
+  }
+}
+
+// max-num-seqs is sized from the measured KV pool of the pair, so it carries the measurement's basis.
+type SparkPairServingSeqCapacity
+  = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
+  | SeqCapacityUnmeasured
+
+// The pool has not been measured under the pair tuple by an executed observation yet; the unit
+// refuses until this row is replaced by a SeqCapacityMeasured carrying that observation's basis.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityUnmeasured
+
+// Ray's threshold monitor counts the device reservation and must not run on a unified pool; the
+// kernel's own killer is the one enforcer left standing, and it is present on every Linux host.
+data spark_pair_serving_ray_monitor_disabled: Bool = true
+data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
+
+data spark_pair_serving_rail: SparkFabricRail = Rail0
+
+// The pairs promoted to pair serving. srv7/srv8 wait on the RPC release receipt; srv9/srv11 wait
+// on their fabric pair being observed and enrolled in fabric_link_desired; srv10 is the RMA unit.
+data spark_pair_serving_pairs: List<SparkFabricPair> = [Srv5Srv6]
+
+fn spark_pair_serving_engine_args(max_num_seqs: Nat) -> VllmEngineArgs {
+  VllmEngineArgs {
+    tensor_parallel_size: 2,
+    gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+    max_model_len: token_count(count: 262144),
+    max_num_seqs: max_num_seqs,
+    kv_cache_dtype: KvFp8DsMla,
+    distributed_executor_backend: ExecutorRay,
+  }
+}
+
+type SparkPairServingParticipant {
+  pair: SparkFabricPair
+  rail: SparkFabricRail
+  role: SparkPairServingRole
+  host: HostIdentity
+  host_ip: Ipv4Address
+}
+
+type SparkPairServingUnit
+  = SparkPairServingUnitReady {
+      pair: SparkFabricPair
+      engine: ServingEngine
+      head: SparkPairServingParticipant
+      worker: SparkPairServingParticipant
+    }
+  | SparkPairServingUnitRefused { pair: SparkFabricPair, cause: NonEmptyStr }
+
+fn enforcer_kind_wire(kind: MemoryEnforcerKind) -> String {
+  match kind {
+    RayThresholdMonitor => "ray threshold monitor"
+    HostMemGuard => "host memory guard"
+    KernelOomKiller => "kernel oom killer"
+  }
+}
+
+fn enforcer_refusal_wire(cause: EnforcerRefusal) -> String {
+  match cause {
+    NoEnforcerDeclared => "no memory enforcer declared"
+    MoreThanOneEnforcer { count: n } => join(["more than one memory enforcer live: ", to_string(n)], "")
+    DeviceReservationCountingEnforcerOnUnifiedPool { kind: k } =>
+      join(["a device-reservation-counting enforcer on the unified pool: ", enforcer_kind_wire(kind: k)], "")
+  }
+}
+
+type PairParticipantResolution
+  = ParticipantResolved { participant: SparkPairServingParticipant }
+  | ParticipantUnresolved { cause: NonEmptyStr }
+
+fn spark_pair_serving_participant(
+  pair: SparkFabricPair,
+  rail: SparkFabricRail,
+  role: SparkPairServingRole,
+  host: HostIdentity,
+) -> PairParticipantResolution {
+  match spark_fabric_endpoint(identity: fabric_link_identity(pair: pair, rail: rail), host: host) {
+    FabricEndpointFound { endpoint: e } =>
+      ParticipantResolved {
+        participant: SparkPairServingParticipant { pair: pair, rail: rail, role: role, host: host, host_ip: e.address },
+      }
+    FabricEndpointHostNotOnLink { identity: _, host: h } =>
+      ParticipantUnresolved { cause: join([h as String, " is not an endpoint of its own pair's fabric link"], "") as NonEmptyStr }
+    FabricEndpointLinkUnresolved { lookup: _ } =>
+      ParticipantUnresolved { cause: join(["the fabric link for pair ", render_spark_fabric_pair(pair: pair), " is not resolvable to exactly one row"], "") as NonEmptyStr }
+  }
+}
+
+fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServingSeqCapacity) -> SparkPairServingUnit {
+  let hosts = spark_fabric_pair_hosts(pair: pair)
+  let reserved = filter(hosts, h => llama_cpp_rpc_host_holds_undischarged_reservation(host: h))
+  if length(reserved) > 0 {
+    SparkPairServingUnitRefused {
+      pair: pair,
+      cause: join([
+        "pair member(s) still hold an undischarged llama.cpp RPC peer reservation, and no release receipt exists: ",
+        join(map(reserved, h => h as String), ", "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match capacity {
+      SeqCapacityUnmeasured =>
+        SparkPairServingUnitRefused {
+          pair: pair,
+          cause: "max-num-seqs is sized by the measured KV pool of the pair and no measurement row exists" as NonEmptyStr,
+        }
+      SeqCapacityMeasured { max_num_seqs: n, basis: _ } => {
+        let args = spark_pair_serving_engine_args(max_num_seqs: n)
+        match spark_memory_enforcer_admits(
+          memory_kind: UnifiedShared,
+          enforcers: spark_pair_serving_declared_enforcers,
+          ray_monitor_disabled: spark_pair_serving_ray_monitor_disabled,
+          backend: args.distributed_executor_backend,
+        ) {
+          EnforcerRefused { cause: c } =>
+            SparkPairServingUnitRefused { pair: pair, cause: join(["memory enforcer law refuses the tuple: ", enforcer_refusal_wire(cause: c)], "") as NonEmptyStr }
+          EnforcerAdmitted { enforcer: _ } =>
+            match first(hosts) {
+              Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists no hosts" as NonEmptyStr }
+              Present { value: head_host } =>
+                match first(filter(hosts, h => !host_identity_eq(a: h, b: head_host))) {
+                  Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists one host twice" as NonEmptyStr }
+                  Present { value: worker_host } =>
+                    match spark_pair_serving_participant(pair: pair, rail: spark_pair_serving_rail, role: PairHead, host: head_host) {
+                      ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
+                      ParticipantResolved { participant: head } =>
+                        match spark_pair_serving_participant(pair: pair, rail: spark_pair_serving_rail, role: PairWorker, host: worker_host) {
+                          ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
+                          ParticipantResolved { participant: worker } =>
+                            SparkPairServingUnitReady { pair: pair, engine: VllmServing { args: args }, head: head, worker: worker }
+                        }
+                    }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn spark_pair_serving_unit(pair: SparkFabricPair) -> SparkPairServingUnit {
+  spark_pair_serving_unit_with(pair: pair, capacity: spark_pair_serving_seq_capacity)
+}
+
+data spark_pair_serving_desired: List<SparkPairServingUnit> = map(spark_pair_serving_pairs, p => spark_pair_serving_unit(pair: p))
+
+fn spark_pair_serving_desired_hosts() -> List<HostIdentity> {
+  flat_map(spark_pair_serving_desired, u =>
+    match u {
+      SparkPairServingUnitReady { pair: _, engine: _, head: h, worker: w } => [h.host, w.host]
+      SparkPairServingUnitRefused { pair: _, cause: _ } => []
+    })
+}
+
+fn spark_pair_serving_unit_wire(unit: SparkPairServingUnit) -> String {
+  match unit {
+    SparkPairServingUnitReady { pair: p, engine: _, head: h, worker: w } =>
+      join([
+        "pair ", render_spark_fabric_pair(pair: p),
+        " head=", h.host as String, "@", render_ipv4_address(addr: h.host_ip) as String,
+        " worker=", w.host as String, "@", render_ipv4_address(addr: w.host_ip) as String,
+      ], "")
+    SparkPairServingUnitRefused { pair: p, cause: c } =>
+      join(["pair ", render_spark_fabric_pair(pair: p), " refused: ", c as String], "")
+  }
+}
