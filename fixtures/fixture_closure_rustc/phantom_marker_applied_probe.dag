@@ -5,7 +5,7 @@ module fixture.closure.rustc_phantom_marker_applied_probe
 // POSITION -- unit variants standing as arguments of an APPLIED type node -- which is where
 // `v1.compiler.emit_rust` `rust_type_arg_identity_spelling` decides identity from the declaration
 // visible in this module. Both arguments become distinct zero-sized Rust markers, so
-// `Measure<Time>` and `Measure<Memory>` are two Rust types, and the accessor below returns from
+// `Wrapper<Alpha>` and `Wrapper<Beta>` are two Rust types, and the accessor below returns from
 // one of them.
 //
 // WHAT IT PROVES AND WHAT IT DOES NOT. It proves the emitted crate for this construction compiles:
@@ -15,17 +15,25 @@ module fixture.closure.rustc_phantom_marker_applied_probe
 // enrolled at `test.claim.phantom_marker_type_argument_identity_witness` (DESIGN 4b(4): a climb
 // deletes lower-rung production machinery, never the evidence). This arm is the half a substring
 // oracle cannot answer: whether what the emitter wrote is a crate rustc accepts.
-type Quantity = Time | Memory
+// THE NAMES CARRY NO DOMAIN SEMANTICS ON PURPOSE, AND THAT IS LOAD-BEARING TWICE. This fixture
+// probes ONE emitter decision, so every name in it is shape and nothing else. An earlier revision
+// spelled this coproduct with the measurement vocabulary the witness that adjudicates the
+// spelling half of this class uses -- which read as a compiler fixture minting a unit ontology,
+// and, worse, gave the arm leaf spellings SHARED with real `std.measure` declarations. Same-leaf
+// different-declaration is a confound this very witness family has a row about
+// (`declaration_identity_wins_over_same_leaf_spelling`), so borrowing those spellings put a second
+// variable inside a pair whose whole claim is that only ONE thing differs across its arms.
+type Marker = Alpha | Beta
 
-type Measure<Q> {
+type Wrapper<M> {
   count: Int
 }
 
-type DistinctMeasures {
-  time: Measure<Time>
-  memory: Measure<Memory>
+type DistinctWrappers {
+  first: Wrapper<Alpha>
+  second: Wrapper<Beta>
 }
 
-fn applied_marker_field_reads(subject: DistinctMeasures) -> Int {
-  subject.time.count
+fn applied_marker_field_reads(subject: DistinctWrappers) -> Int {
+  subject.first.count
 }

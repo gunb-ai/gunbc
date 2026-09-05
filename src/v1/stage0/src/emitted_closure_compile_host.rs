@@ -1447,13 +1447,13 @@ const FIXTURE_PHANTOM_MARKER_RED_PATH: &str =
 /// ```text
 /// error[E0308]: mismatched types
 ///   --> src/fixture_closure_rustc_phantom_marker_non_applied_probe.rs:25:5
-/// 24 | pub fn non_applied_field_as_quantity(subject: Rc<NonApplied>) -> Quantity {
-///    |                                                                  -------- expected `Quantity` because of return type
+/// 24 | pub fn non_applied_field_as_marker(subject: Rc<NonApplied>) -> Marker {
+///    |                                                                ------ expected `Marker` because of return type
 /// 25 |     subject.value.clone()
-///    |     ^^^^^^^^^^^^^^^^^^^^^ expected `Quantity`, found `Time`
+///    |     ^^^^^^^^^^^^^^^^^^^^^ expected `Marker`, found `Alpha`
 /// ```
 ///
-/// So the emitted module carries BOTH a `Time` TYPE and a `Quantity::Time` VARIANT: the field
+/// So the emitted module carries BOTH an `Alpha` TYPE and a `Marker::Alpha` VARIANT: the field
 /// annotation binds the former, the declared return wants the latter, and the refusal lands at the
 /// parent boundary as `E0308`. `E0573` — the code you get when the spelling names nothing that is
 /// a type at all — was NOT reproduced by this construction. That is why the expectation here is

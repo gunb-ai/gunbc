@@ -749,9 +749,9 @@ mod compiler_tests {
     /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
     ///
     /// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the
-    /// same coproduct `Quantity = Time | Memory`. The control puts `Time` and `Memory` in the
+    /// same coproduct `Marker = Alpha | Beta`. The control puts `Alpha` and `Beta` in the
     /// RULED POSITION -- arguments of an applied type node -- where they become distinct
-    /// zero-sized markers, and its emitted crate COMPILES. The red puts `Time` in a NON-APPLIED
+    /// zero-sized markers, and its emitted crate COMPILES. The red puts `Alpha` in a NON-APPLIED
     /// position, a record field, and its emitted crate is REFUSED. So a green here is not "some
     /// crate compiled" and the red is not "something in the tree is broken": the only variable
     /// across the pair is the position the identity stands in.
@@ -764,9 +764,9 @@ mod compiler_tests {
     /// and is KEPT; what changes is this pair's expectation, not the fixture's existence.
     ///
     /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH
-    /// a `Time` type and a `Quantity::Time` variant: the field annotation binds the former, the
+    /// an `Alpha` type and a `Marker::Alpha` variant: the field annotation binds the former, the
     /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,
-    /// `expected Quantity, found Time`. The witness's ceiling prose attributes E0573 to the
+    /// `expected Marker, found Alpha`. The witness's ceiling prose attributes E0573 to the
     /// positional classifier; this construction did NOT reproduce it, so the expectation here is
     /// the route's own adjudicated class rather than a prediction. See
     /// `FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE` for the full diagnostic and for what is
