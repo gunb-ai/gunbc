@@ -1,0 +1,103 @@
+module gunbc.rostered_row_join
+
+import std.types { String, List }
+
+// THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN: what it enrolls, what it can decide, and what it
+// deliberately does not claim.
+//
+// THE SUBJECT. A carrier whose rows live one per module and whose roster re-enumerates them by hand
+// has two authorings of one membership fact, so a row that lands DECLARED and UNROSTERED is absent
+// from every projection derived from that roster and nothing refuses it.
+// `gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall` is that class, and this module is
+// its declared next-rung trigger executed: the declared population read through
+// `v2.std.decl_index` `data_decl_type_facts`, joined against the roster AT DECLARATION IDENTITY,
+// refusing with the located identity of each declared row the roster omits.
+//
+// WHAT THIS IS NOT, said first because it is the reading a reader arrives with. It does NOT remove
+// the double authoring. After this join every author still declares membership twice -- once by
+// writing the row file, once by adding the import and the list entry. What changes is that the
+// OMISSION IS LOUD instead of silent. The stall's ceiling is `StructurallyImpossible` and is reached
+// by VALUE BINDING -- folding the roster over the declared population so there is no list to omit
+// from -- which needs a capability that does not exist (see that row's own annotation). This is the
+// mechanically-preventable rung: the invalid state stays perfectly writable and safety depends on
+// this check executing and staying enrolled.
+//
+// WHY THE ROW TYPES ARE ENUMERATED HERE AND THE CHECK IS NOT. A `.dag` consumer cannot perform this
+// join at all, and the reason is the same missing capability: `data_decl_type_facts` reports that a
+// declaration EXISTS with a declared type, and the roster's list literal is a list of VALUES that do
+// not carry the names they were bound from -- `DeclFact`'s initializer projection reports the same
+// kind for a literal and for a reference to another declaration. So no Accepted program can ask
+// "which declarations does this list name". The names are readable only from the parse, which is
+// where the join therefore executes: `v1_compiler.cli_run.rostered_row_join`, inside the required-CI
+// PARSE phase, riding the index that phase has already built. That is the same shape and the same
+// reason as `claim_executor` `phase_roster_findings`, which joins the host phase enum against
+// `gunbc.required_ci_phase_roster` on every required run.
+//
+// `type_name` IS A STRING AND THAT IS DISCOVERY EVIDENCE, NOT TYPED MEMBERSHIP. `DataDeclTypeFact`
+// carries the AUTHORED HEAD NAME of the declared type annotation, so this join compares spellings.
+// Two distinct types spelled alike in different modules are indistinguishable to it, and a row whose
+// annotation is written through an alias is invisible to it. Calling this a typed membership check
+// would be the section 4b(1) inflation this corpus names; it is a spelling join over a population
+// discovered by parse, and its refusals are exact only because the enrolled spellings are, today,
+// declared in exactly one module each.
+//
+// ELIGIBILITY IS DERIVED FROM THE ROSTER'S OWN HOME, NOT DECLARED PER ROW. A membership boolean on
+// the row -- `include_in_roster: true` -- would be one more place to omit the row, which is the
+// defect itself wearing a fix's clothes. So the subject of each enrolled row type is: every
+// declaration of that type whose module has THE SAME CARRIER CLASS as the module declaring the
+// roster, where carrier class is `v1_compiler.declaration_index` `module_is_fixture_carrier` -- the
+// corpus's single authority for "this module is a witness or fixture". A production roster therefore
+// ranges over production declarations and cannot be reddened by a witness's planted specimen, and a
+// FIXTURE roster ranges over fixture declarations, which is what makes the control below executable
+// at all.
+//
+// THE CONTROL IS ENROLLED IN THE SAME LIST AS THE PRODUCTION ROWS, and per section 4b(4) it does not
+// retire when the wall lands. `test.fixture.rostered_row_join.omitted_control` declares two rows and
+// rosters one; the join must find exactly the omitted one. A fixture-homed enrolled type whose join
+// finds NOTHING stops the line, because that is the state in which the check has gone green by
+// construction -- the only state a merge-blocking check cannot be allowed to reach quietly. The
+// accepting positive control is the production side of the same run: three rosters that must join
+// completely, with their declared and rostered populations printed beside the verdict.
+type RosteredRowType
+  = GuaranteeStallRows
+  | RecurringFailureModeRows
+  | RungDropRows
+  | OmittedRowControl
+
+// One enrolled row type: the declared-type spelling `data_decl_type_facts` reports, and the
+// declaration that rosters it. The roster is named by MODULE AND DECLARATION rather than by path,
+// per the section 3 standing rule; an absent module or an absent declaration REFUSES, so a
+// misspelling here stops the line rather than narrowing the subject to nothing.
+type RosteredRowJoin {
+  row_type: RosteredRowType
+  declared_type_name: String
+  roster_module: String
+  roster_declaration: String
+}
+
+data rostered_row_joins: List<RosteredRowJoin> = [
+  RosteredRowJoin {
+    row_type: GuaranteeStallRows,
+    declared_type_name: "GuaranteeStall",
+    roster_module: "gunbc.guarantee_stall.roster",
+    roster_declaration: "all_guarantee_stalls",
+  },
+  RosteredRowJoin {
+    row_type: RecurringFailureModeRows,
+    declared_type_name: "RecurringFailureMode",
+    roster_module: "gunbc.recurring_failure_mode.roster",
+    roster_declaration: "recurring_failure_mode_roster",
+  },
+  RosteredRowJoin {
+    row_type: RungDropRows,
+    declared_type_name: "RungDrop",
+    roster_module: "gunbc.rung_drop.roster",
+    roster_declaration: "rung_drop_roster",
+  },
+  RosteredRowJoin {
+    row_type: OmittedRowControl,
+    declared_type_name: "OmittedControlRow",
+    roster_module: "test.fixture.rostered_row_join.omitted_control",
+    roster_declaration: "omitted_control_roster",
+  },
+]

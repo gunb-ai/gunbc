@@ -134,3 +134,22 @@ data arctic_p8_fan_mount: FanMountAdmission = admit_fan_mount(
   plate_thickness: arctic_p8_mount_plate_thickness,
   bore_diameter: arctic_p8_mount_bore,
 )
+
+// ═══ ACCESSORS, BECAUSE THE SEAL IS THE POINT AND NOT AN OBSTACLE ═══
+//
+// FanMountGeometry is sole_constructor, so no other module can build one, AND it has exactly ONE
+// mint site in the current source: the FanMountAdmitted arm below. Holding one is proof that
+// admit_fan_mount ran and none of its refusals fired only because BOTH facts hold -- the seal alone
+// forbids a FOREIGN mint and says nothing about this module adding a second one on a refusing arm.
+// The second fact is a property of today's source, not of the type. The same seal stops a
+// consumer reading the fields, so the realization layer cannot turn an admitted mount into a program
+// without these.
+//
+// They are readers and nothing else: no derivation, no defaulting, no arithmetic. Anything computed
+// here would be a second authority for a geometric fact this module already decided, and the caller
+// would have no way to tell a stored value from a re-derived one.
+fn fan_mount_plate(g: FanMountGeometry) -> PlateDimensions { g.plate }
+
+fn fan_mount_bore(g: FanMountGeometry) -> CouponOperation { g.bore }
+
+fn fan_mount_mounting_holes(g: FanMountGeometry) -> List<CouponOperation> { g.mounting_holes }

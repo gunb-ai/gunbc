@@ -11,6 +11,7 @@ module gunbc.recurring_failure_mode.roster
 
 import std.types { List }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode.a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry { a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry }
 import gunbc.recurring_failure_mode.censored_estimator_drops_its_own_tail { censored_estimator_drops_its_own_tail }
 import gunbc.recurring_failure_mode.selection_view_read_as_population { selection_view_read_as_population }
 import gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end { unlanded_citation_indistinguishable_at_the_citing_end }
@@ -131,9 +132,11 @@ import gunbc.recurring_failure_mode.a_live_authority_name_carries_a_superseded_c
 import gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red { witness_that_fails_to_compile_is_absent_rather_than_red }
 import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions { instruction_and_subject_resolved_from_different_revisions }
 import gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing { reported_required_refusal_does_not_precondition_landing }
+import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis { corroboration_without_an_independent_derivation_axis }
 import gunbc.recurring_failure_mode.population_selector_that_cannot_admit_a_counterexample { population_selector_that_cannot_admit_a_counterexample }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
+  a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
   selection_view_read_as_population,
   unlanded_citation_indistinguishable_at_the_citing_end,
@@ -254,5 +257,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   witness_that_fails_to_compile_is_absent_rather_than_red,
   instruction_and_subject_resolved_from_different_revisions,
   reported_required_refusal_does_not_precondition_landing,
+  corroboration_without_an_independent_derivation_axis,
   population_selector_that_cannot_admit_a_counterexample,
 ]

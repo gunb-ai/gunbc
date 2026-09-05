@@ -4664,3 +4664,23 @@ fn rust_transport_wire_target_model_staging() -> TargetModel {
     runtime_row: rust_runtime_row()
   }
 }
+
+// Minimum-viable TargetModel for tests that never inspect the target contents.
+// Used by vacuity-classification and terminal-gate tests which only check
+// transport mode or execution status, never the TargetModel fields.
+fn rust_minimal_target_model_staging() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: HostRuntimeRowAbsent
+  }
+}
+
