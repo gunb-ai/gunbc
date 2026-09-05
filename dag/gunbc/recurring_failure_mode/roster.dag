@@ -19,6 +19,7 @@ import gunbc.recurring_failure_mode.hollow_alias { hollow_alias }
 import gunbc.recurring_failure_mode.state_space_conflation { state_space_conflation }
 import gunbc.recurring_failure_mode.absorbing_fallback { absorbing_fallback }
 import gunbc.recurring_failure_mode.empty_observation_narrow { empty_observation_narrow }
+import gunbc.recurring_failure_mode.edit_pass_that_matched_nothing_reports_success { edit_pass_that_matched_nothing_reports_success }
 import gunbc.recurring_failure_mode.claim_forced_and_unbracketed { claim_forced_and_unbracketed }
 import gunbc.recurring_failure_mode.cache_impurity { cache_impurity }
 import gunbc.recurring_failure_mode.reflection_evidence_structural_proof { reflection_evidence_structural_proof }
@@ -148,6 +149,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   state_space_conflation,
   absorbing_fallback,
   empty_observation_narrow,
+  edit_pass_that_matched_nothing_reports_success,
   claim_forced_and_unbracketed,
   cache_impurity,
   reflection_evidence_structural_proof,

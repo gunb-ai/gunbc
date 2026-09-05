@@ -36,7 +36,7 @@ import gunbc.host_converge {
   HostConverge,
   PerSlotMemoryCap,
   fleet_converge_policy,
-  find_by_identity,
+  host_converge_for_identity,
   runner_instance_glob,
 }
 import gunbc.runner_unit_live_read {
@@ -130,10 +130,6 @@ type HostConvergeSlice1ConvergeResult
   | HostConvergeSlice1TasksConverged { applied_knobs: Int, receipt: HostConvergeSlice1TasksMaxReceipt }
   | HostConvergeSlice1Refused { reason: String }
 
-fn host_converge_identity(h: HostConverge) -> HostIdentity {
-  h.identity
-}
-
 fn converge_knob_by_name(host: HostConverge, name: String) -> ConvergeKnob? {
   fold(host.knobs, init: none, f: fn(acc, knob) {
     match acc {
@@ -152,7 +148,7 @@ fn host_converge_from_policy(policy: ConvergePolicy, host: HostIdentity) -> Host
   match policy {
     ConvergePolicyUnsound { reason: _ } => none
     ConvergePolicyDerived { hosts: hs } =>
-      find_by_identity(items: hs, identity: host, key: host_converge_identity)
+      host_converge_for_identity(hosts: hs, identity: host)
   }
 }
 
