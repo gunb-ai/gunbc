@@ -16,6 +16,11 @@ module gunbc.scm.json_member
 // MemberReadRefusal in RepositoryDecodeClosureDocRefusal, whose declared field is ClosureDocRefusal.
 // They were repaired later, in the object-table authority cut.
 //
+// `RepositoryDecodeClosureDocRefusal` NO LONGER EXISTS, and both paragraphs above name it as
+// history rather than as a live arm. A v3 repository embeds no closure document, so the arm had no
+// producer and was deleted; the misattribution it caused is what this module was extracted to end,
+// which is why the account stays here after the arm went.
+//
 // The header stood for a day claiming a coverage it did not have, which is the more serious half: a
 // carrier asserting a class is closed is read as evidence, and a reader checking this module would
 // have found the claim and stopped. The two sites survived review because the CORRECT arm sits three
