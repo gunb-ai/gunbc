@@ -1,0 +1,101 @@
+module test.claim.printed_chassis_plate_part_realization_witness_test
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Micrometer }
+import product.printed_chassis.coupon { CouponOperation, OpThroughHole }
+import product.printed_chassis.fan_mount {
+  FanMountAdmission, FanMountAdmitted, FanMountBoreReachesMountingHoles,
+  FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern,
+  arctic_p8_fan_mount,
+}
+import product.printed_chassis.standoff_gauge {
+  StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
+  GaugeLocationsCoincide, GaugeExceedsBuildEnvelope,
+  altrad8ud_standoff_gauge,
+}
+import product.printed_chassis.cadquery_realization {
+  CadQueryEmission, CadQueryEmitted, CadQueryDimensionUnrenderable,
+  cadquery_program_source,
+  MillimetreRendering, MillimetreRendered, MillimetreScaleRefused, micrometre_millimetre_wire,
+  AdmittedPlatePartV0, admitted_plate_part_holes,
+  plate_part_from_fan_mount, plate_part_from_standoff_gauge, realize_plate_part,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The generalized emitter had no enrolled consumer; a hand-read of its own output is not one.
+fn source_of(p: AdmittedPlatePartV0) -> String {
+  match realize_plate_part(p: p) {
+    CadQueryDimensionUnrenderable { micrometres: _ } => ""
+    CadQueryEmitted { program: prog } => cadquery_program_source(p: prog) as String
+  }
+}
+
+// Rebuilt from the model, never copied from the emitter, so the assertion fails exactly when the
+fn wire_of(r: MillimetreRendering) -> String {
+  match r {
+    MillimetreScaleRefused { micrometres: _ } => ""
+    MillimetreRendered { wire: w } => w as String
+  }
+}
+// Each admitted hole must reach the program carrying its OWN centre, both coordinates.
+fn part_traces_every_hole(p: AdmittedPlatePartV0) -> Bool {
+  let src = source_of(p: p)
+  fold(admitted_plate_part_holes(p: p), init: src != "", f: fn(acc, op) {
+    match op {
+      OpThroughHole { diameter: _, center_x: cx, center_y: cy } => {
+        let x = wire_of(r: micrometre_millimetre_wire(m: cx))
+        let y = wire_of(r: micrometre_millimetre_wire(m: cy))
+        acc && x != "" && y != "" && src.contains(x) && src.contains(y)
+      }
+    }
+  })
+}
+
+// One cut per modeled feature plus the plate, counted from the part's own hole population.
+test fn w_the_fan_mount_traces_every_admitted_hole() -> Bool {
+  match arctic_p8_fan_mount {
+    FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
+    FanMountPlateSmallerThanPattern { plate_edge: _, required_edge: _ } => false
+    FanMountAdmitted { geometry: g } => {
+      let p = plate_part_from_fan_mount(g: g)
+      part_traces_every_hole(p: p)
+        && admitted_plate_part_holes(p: p).length() == 5
+    }
+  }
+}
+
+// The gauge is the second subject, and its two holes are the population its admission settled.
+test fn w_the_standoff_gauge_traces_every_admitted_hole() -> Bool {
+  match altrad8ud_standoff_gauge {
+    GaugeLocationNotEnumerated { requested: _ } => false
+    GaugeLocationDuplicated { requested: _, count: _ } => false
+    GaugeLocationsCoincide { requested: _ } => false
+    GaugeExceedsBuildEnvelope { fit: _ } => false
+    GaugeAdmitted { geometry: g } => {
+      let p = plate_part_from_standoff_gauge(g: g)
+      part_traces_every_hole(p: p)
+        && admitted_plate_part_holes(p: p).length() == 2
+    }
+  }
+}
+
+// The discriminating input for the generalization: one function, two subjects, two programs.
+test fn w_one_emitter_serves_two_subjects_with_different_programs() -> Bool {
+  match arctic_p8_fan_mount {
+    FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => false
+    FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => false
+    FanMountPlateSmallerThanPattern { plate_edge: _, required_edge: _ } => false
+    FanMountAdmitted { geometry: fg } => match altrad8ud_standoff_gauge {
+      GaugeLocationNotEnumerated { requested: _ } => false
+      GaugeLocationDuplicated { requested: _, count: _ } => false
+      GaugeLocationsCoincide { requested: _ } => false
+      GaugeExceedsBuildEnvelope { fit: _ } => false
+      GaugeAdmitted { geometry: gg } => {
+        let a = source_of(p: plate_part_from_fan_mount(g: fg))
+        let b = source_of(p: plate_part_from_standoff_gauge(g: gg))
+        a != "" && b != "" && a != b
+      }
+    }
+  }
+}

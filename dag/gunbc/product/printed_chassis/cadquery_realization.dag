@@ -496,12 +496,10 @@ fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
 type AdmittedPlatePartV0 sole_constructor {
   plate: PlateDimensions
   holes: List<CouponOperation>
-  part: NonEmptyStr
 }
 
 fn admitted_plate_part_holes(p: AdmittedPlatePartV0) -> List<CouponOperation> { p.holes }
 
-fn admitted_plate_part_name(p: AdmittedPlatePartV0) -> NonEmptyStr { p.part }
 
 // The bore is placed FIRST and the mounting holes follow, matching the order the fan mount authority
 // declares them in. Order is not cosmetic here: it is the correspondence between one modeled feature
@@ -511,7 +509,6 @@ fn plate_part_from_fan_mount(g: FanMountGeometry) -> AdmittedPlatePartV0 {
   AdmittedPlatePartV0 {
     plate: fan_mount_plate(g: g),
     holes: concat([fan_mount_bore(g: g)], fan_mount_mounting_holes(g: g)),
-    part: "fan_mount",
   }
 }
 
@@ -539,6 +536,5 @@ fn plate_part_from_standoff_gauge(g: StandoffGaugeGeometry) -> AdmittedPlatePart
   AdmittedPlatePartV0 {
     plate: standoff_gauge_plate(g: g),
     holes: standoff_gauge_holes(g: g),
-    part: "standoff_gauge",
   }
 }

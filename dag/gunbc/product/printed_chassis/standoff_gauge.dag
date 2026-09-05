@@ -166,8 +166,15 @@ data altrad8ud_standoff_gauge: StandoffGaugeAdmission = admit_standoff_gauge(
 
 // ═══ ACCESSORS FOR REALIZATION ═══
 //
-// StandoffGaugeGeometry is sole_constructor, so holding one is proof that admit_standoff_gauge ran
-// and that none of its refusals -- unenumerated, duplicated, coincident, envelope-exceeded -- fired.
+// StandoffGaugeGeometry is sole_constructor, and it has exactly ONE mint site in the current
+// source: the GaugeAdmitted arm of admit_standoff_gauge. Those are TWO facts and the conclusion
+// needs both. The seal alone proves only that no FOREIGN module can mint the carrier; it says
+// nothing about the declaring module adding a second mint later, on an arm that refused. Holding
+// one is therefore proof that admit_standoff_gauge ran and that none of its refusals --
+// unenumerated, duplicated, coincident, envelope-exceeded -- fired ONLY while the second fact
+// holds, and the second fact is a property of today's source rather than of the type.
+// This correction is the same distinction that let a zero-width mark through its own sealed
+// ratio earlier: a seal proves PROVENANCE, never that the sanctioned mint is SOUND.
 // That same seal stops the realization layer reading the fields, so these exist to let an admitted
 // gauge become a program without any other module being able to assemble one.
 //
