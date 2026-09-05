@@ -38926,31 +38926,10 @@ pub fn assemble_prepared_subject_closure(
                     |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
                 )?;
             }
-            // TWO MORE EDGE KINDS, TO A JOINT FIXPOINT, because the loader's both-closure is
-            // narrower than the claim scope the fold will build over this subject:
-            //
-            // 1. CONTAINMENT ANCESTORS. Under containment-tree resolution a module sees the
-            //    declarations of the modules that contain it by name (`a.b.c` sees `a.b`), and
-            //    a test that imports only `x.module_refs` still binds `x`'s types that way. The
-            //    entry loader's both-closure does not add those ancestors (measured
-            //    2026-08-29: 206 unresolved names, all in modules importing a child of the
-            //    declaring module).
-            //
-            // 2. BARE REFERENCES FROM EVERY MODULE. `build_both_closure_edge_index` runs the
-            //    bare-reference scan only for sources that declare NO import line; a module
-            //    with one import and one bare cross-module call has that edge dropped by the
-            //    loader and followed by `claim_scope_for`. Under the whole-tree subject the
-            //    flat bare-name channel hid the difference; under this subject the referenced
-            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity_test
-            //    refused no-such-function `rust_target_model_staging`, then `eval_context`, one
-            //    hop per run). So every module in the closure is bare-scanned here with the
-            //    loader's own scanner, and each pulled module joins with its own both-closure.
-            let path_to_module: HashMap<String, String> = full_index
-                .iter()
-                .map(|(m, sf)| (workspace_relative_repo_path(&sf.path), m.clone()))
-                .collect();
+            // Ancestor admission remains structural. The additional bare scan
+            // of import-bearing modules is observation only: it must use the same
+            // refusal boundary as both entry-loader scanner paths.
             let mut bare_scanned: HashSet<String> = HashSet::new();
-            let mut bare_pulled_modules = 0usize;
             loop {
                 let before = keep.len();
                 let mut ancestors: Vec<String> = Vec::new();
@@ -38981,6 +38960,7 @@ pub fn assemble_prepared_subject_closure(
                     .cloned()
                     .collect();
                 to_scan.sort();
+                let mut proposals = HashMap::new();
                 for module in to_scan {
                     bare_scanned.insert(module.clone());
                     let Some(sf) = full_index.get(&module) else {
@@ -38993,29 +38973,19 @@ pub fn assemble_prepared_subject_closure(
                                  module={module} — bare-reference scan: {e}"
                             )
                         })?;
-                    for rel in pulled {
-                        let Some(target) = path_to_module.get(&rel) else {
-                            return Err(format!(
-                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
-                                 module={module} — bare reference pulled '{rel}', which is not a \
-                                 module under the source roots (fail-closed)"
-                            ));
-                        };
-                        if keep.contains(target) {
-                            continue;
-                        }
-                        bare_pulled_modules += 1;
-                        let path = full_index[target].path.replace('\\', "/");
-                        collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
-                            .map_err(|e| {
-                                format!(
-                                    "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
-                                     entry={path} — {e}"
-                                )
-                            })?;
-                        keep.insert(target.clone());
-                    }
+                    proposals.insert(workspace_relative_repo_path(&sf.path), pulled);
                 }
+                let sources = keep
+                    .iter()
+                    .map(|module| full_index[module].clone())
+                    .collect();
+                scanner_closure_refusal::refuse_scanner_extension(
+                    sources,
+                    &proposals,
+                    None,
+                    scanner_closure_refusal::HostClosureScanner::BareReferenceScanner,
+                )
+                .map_err(|refusal| refusal.render())?;
                 if keep.len() == before {
                     break;
                 }
@@ -39030,12 +39000,11 @@ pub fn assemble_prepared_subject_closure(
             }
             eprintln!(
                 "[floor-phase] phase=gate-closure state=completed wall_ms={} prefixes={} seeds={} \
-                 closure={} bare_pulled={} outside_closure={} corpus={}",
+                 closure={} outside_closure={} corpus={}",
                 started.elapsed().as_millis(),
                 prefixes.len(),
                 seeds,
                 keep.len(),
-                bare_pulled_modules,
                 full_index.len() - keep.len(),
                 full_index.len()
             );

@@ -192,6 +192,31 @@ mod tests {
     }
 
     #[test]
+    fn floor_preparation_cannot_add_a_provider_skipped_by_import_bearing_entry_scan() {
+        let corpus = Corpus::new("module scanner.consumer\nimport scanner.unused { unrelated }\nfn probe() -> Int { scanner_answer() }\n");
+        std::fs::write(
+            corpus.0.join("unused.dag"),
+            "module scanner.unused\nfn unrelated() -> Int { 0 }\n",
+        )
+        .unwrap();
+        let index = corpus.index();
+        let loaded = load_sources_for_entry_with_pool(&index, &corpus.entry()).unwrap();
+        assert_eq!(
+            loaded.len(),
+            2,
+            "entry loader must pass to reach the independent floor door"
+        );
+        let error = assemble_prepared_subject_closure(
+            &[corpus.0.to_string_lossy().into_owned()],
+            &[],
+            Some((&index, &["scanner.consumer".to_owned()])),
+        )
+        .err()
+        .expect("floor scanner addition must refuse");
+        assert_refusal(&error, "BareReferenceScanner", &corpus);
+    }
+
+    #[test]
     fn refused_population_is_deduplicated_located_and_never_partially_loaded() {
         let sources = vec![Rc::new(SourceFile {
             path: "entry.dag".into(),
@@ -226,6 +251,17 @@ mod tests {
         let index = build_multi_entry_index_primary_precedence(&roots);
         let edges =
             both_closure_edge_index(&index).expect("scanner observations must be available");
+        let mut floor_bare = edges.bare_out.clone();
+        for source in index.source_files.values() {
+            let path = workspace_relative_repo_path(&source.path);
+            if !floor_bare.contains_key(&path) {
+                floor_bare.insert(
+                    path,
+                    bare_reference_pull_paths_for_source(source, &index)
+                        .expect("floor scanner observation must be available"),
+                );
+            }
+        }
         let mut entries: Vec<_> = index.source_files.values().cloned().collect();
         entries.sort_by(|a, b| a.path.cmp(&b.path));
         assert!(
@@ -244,22 +280,30 @@ mod tests {
             let mut refusals = Vec::new();
             // Both observations read the SAME import-only subject. The first
             // refusal must not prevent the audit from observing the other arm.
-            for (scanner, proposals, eligible) in [
+            for (door, scanner, proposals, eligible) in [
                 (
+                    "entry_dotted",
                     HostClosureScanner::DottedModulePathScanner,
                     &edges.ref_out,
                     None,
                 ),
                 (
+                    "entry_bare",
                     HostClosureScanner::BareReferenceScanner,
                     &edges.bare_out,
                     Some(&edges.bare_scan_eligible),
+                ),
+                (
+                    "floor_bare",
+                    HostClosureScanner::BareReferenceScanner,
+                    &floor_bare,
+                    None,
                 ),
             ] {
                 if let Err(refusal) =
                     refuse_scanner_extension(sources.clone(), proposals, eligible, scanner)
                 {
-                    refusals.push(refusal);
+                    refusals.push(serde_json::json!({"door": door, "refusal": refusal}));
                 }
             }
             if !refusals.is_empty() {
