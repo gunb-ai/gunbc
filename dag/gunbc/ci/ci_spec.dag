@@ -8,7 +8,11 @@ import extdeps.github.org_admin_auth {
   github_app_jwt_backdate_seconds,
   github_app_jwt_lifetime_seconds,
 }
-import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref,
+  spark_administrator_credential_roster,
+  spark_administrator_password_secret_ref_at_version,
+}
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
@@ -1236,6 +1240,26 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // credential to the grant-install invocation within its own process tree: one trap (armed for the
 // whole script, never disarmed, since nothing needs the file past this script's exit), one
 // CRED_FILE, a shell-local export instead of GITHUB_ENV so the path never crosses a step boundary.
+// THE ADMINISTRATOR PASSWORD VERSION FOLLOWS THE TARGET HOST. The prelude used to fetch one fixed
+// version, which was right while every Spark shared one password and wrong the day the second batch
+// arrived with another. The version is a fact of the host (gunbc.spark.credential_workflow
+// spark_administrator_credential_roster), and SPARK_CONVERGE_TARGET is a run-time input, so the
+// generated script carries one exact URL per enrolled host and refuses an unrosterd target before
+// any fetch -- no shell variable is ever spliced into a modeled URL.
+fn gunbc_ci_spark_administrator_credential_target_case() -> String {
+  join([
+    "case \"$\{SPARK_CONVERGE_TARGET:-}\" in ",
+    join(map(spark_administrator_credential_roster, r => join([
+      r.host as String, ") SM_URL=\"",
+      secret_ref_access_url(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
+      "\"; SM_RES=\"",
+      secret_ref_version_resource(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
+      "\" ;; ",
+    ], "")), ""),
+    "*) echo \"SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='$\{SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host\" >&2; exit 1 ;; esac",
+  ], "")
+}
+
 fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -1245,20 +1269,17 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/spark-administrator-auth-header\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\" \"$HDR_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: gunbc_ci_spark_administrator_credential_target_case()) },
     Do {
       run: ci_retry_body_run(
-        command: join([
-          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-          secret_ref_access_url(ref: spark_administrator_password_secret_ref),
-          "\" || echo 000)\""
-        ], "")
+        command: "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"$SM_URL\" || echo 000)\""
       )
     },
     Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " answered 403 to ", spark_bootstrap_cloud_principal_member(),
           ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
@@ -1268,7 +1289,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
@@ -1277,7 +1298,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           "; contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
@@ -1289,7 +1310,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
         ], "")
       )
@@ -1303,7 +1324,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "echo \"spark-admin-credential: materialized from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " to a 0600 run-local file, consumed and removed within this one step\""
         ], "")
       )
