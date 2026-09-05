@@ -198,12 +198,45 @@ precedes `commit` and `commit` re-derives an added object's `ObjectId` by rebuil
 - `mint_repository_commit` takes a `SemanticNodeTarget`, not a bare `ObjectId`. Handing it an
   authored-source identity is not a runtime refusal to be checked for — it does not typecheck.
 
-**The current boundary, stated so the next reader does not follow the dead recipe:** production
-`add` and `commit` remain blocked on a `CorpusManifestObject`
-(path → semantic_root → authored_source_identity) plus a staging authority. Immediate object-store
-insertion is NOT the add model; `add` has nowhere to persist what is staged until that authority
-exists. `ScmWriteOutcome` below is still the right SHAPE for the verb's result and is not what
-blocks the verbs.
+**SUPERSEDED — this paragraph became the dead recipe it warned about, and is corrected in place.**
+It said `add` and `commit` are blocked on building a `CorpusManifestObject` shaped
+`path → semantic_root → authored_source_identity`. Both halves are now false:
+
+- **The object exists.** `gunbc.scm.object_store` declares `CorpusManifestObject`,
+  `CorpusManifestRecord`, and `CorpusManifestEntry`, and `gunbc.scm.object_table_json` codes them.
+- **Its shape is `{ path, source }` — path to AUTHORED SOURCE, and deliberately not to a semantic
+  root.** `object_store` states why: a semantic root is a derived ingestion result, and fusing it
+  into the entry would make a manifest unauthorable for malformed or not-yet-ingested source, which
+  is precisely the corpus a source-control system must still freeze. #10522 §5 ruled the same
+  separation — the authored snapshot is authoritative, structural interpretation is a derived view.
+
+**The actual boundary** is a *pending authored-source snapshot* authority shared by three consumers:
+`add` updates it, `status` reads it, and `commit` consumes it. It is workspace-scoped and must
+survive between invocations; it need not live in the repository document.
+
+Two constraints that paragraph got right and one it got wrong. Right: immediate object-store
+insertion is not by itself the `add` model, and `ScmWriteOutcome` is still the right shape for the
+verb's result. Wrong: `add` is not blocked — what it lacked was a place to persist a *path-grain*
+selection, and `status.dag`'s `StagedRole` is role-grain, so it is not that place.
+
+**`status` moves with this cut rather than being an unchanged downstream reader.** Today
+`scm_status` passes `empty_proposal()` and renders "nothing staged". Once source staging exists,
+leaving that path in place would report "nothing staged" while authored-source changes are staged —
+an observation correct about its input and wrong about the subject the user asked about. Paths must
+not be translated into `StagedRole` to keep the existing renderer.
+
+**Staging carries the same conditional-write obligation as publication.** One `add` can race
+another, and a `commit` can race a newer stage. Updates are conditional on the observed stage; a
+commit consumes the exact staged snapshot rather than re-reading working files; and clearing after
+commit consumes only the stage generation actually committed, so newer work is never erased. Under
+the no-rebase workflow a moved target is a named stale-base condition, never permission to apply an
+old stage to a different base. `save_repository` does not supply this — it checks encoding and then
+performs an unconditional `Filesystem.Write`.
+
+Two further distinctions the verbs owe: an established unchanged candidate is not the same as an
+unavailable or unreadable stage; and staged-versus-unstaged reporting needs a separate working-tree
+observation, because comparing the stage to its base says nothing about whether the working files
+changed again.
 
 ### The design step, stated so it is not improvised
 
@@ -251,5 +284,7 @@ today and is the honest reading of `add` for this substrate.
 
 Mirroring this repository's history through `gunbc scm` onto srv2 stays blocked on model work:
 `ScmObject = SemanticNodeObject | AuthoredSourceObject | CorpusManifestObject` with one content
-identity, `CorpusManifest` carrying path + semantic_root + authored_source_identity, and git
-correspondence confined to a mirror-layer `GitMirrorCursor { source_commit, native_commit }`.
+identity — **which now exists**; the manifest carries `{ path, source }` to authored source, NOT
+path + semantic_root + authored_source_identity as this sentence originally said (see the corrected
+boundary above) — and git correspondence confined to a mirror-layer
+`GitMirrorCursor { source_commit, native_commit }`.
