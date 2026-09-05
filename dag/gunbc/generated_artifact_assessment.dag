@@ -1,6 +1,7 @@
 module gunbc.generated_artifact_assessment
 
 import gunbc.generated_artifact { GeneratedArtifact, artifact_eq, artifact_path }
+import gunbc.ledger_row_coherence { LedgerRowCoherence, ledger_row_coherence, ledger_row_coherence_rendered }
 
 // P0 (operator-directed, 2026-08-05; module-split per loyal-ram-550 review of #7823): purity BY
 // CONSTRUCTION, not by convention — but the construction is the ABSENCE of an import path to the
@@ -135,7 +136,7 @@ type UnadjudicatedArtifactFinding {
 }
 
 type GeneratedArtifactObservationFinding
-  = GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String }
+  = GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String, coherence: LedgerRowCoherence }
   | GeneratedArtifactCommittedArtifactAbsent { artifact: GeneratedArtifact, path: String, detail: String }
   | GeneratedArtifactExtraValidationFailed { artifact: GeneratedArtifact, path: String }
 
@@ -160,7 +161,15 @@ fn observation_findings(o: GeneratedArtifactObservation) -> List<GeneratedArtifa
     GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } =>
       concat(
         if generated_content == committed_content { [] } else {
-          [GeneratedArtifactContentDiffers { artifact: artifact, path: path }]
+          [GeneratedArtifactContentDiffers {
+            artifact: artifact,
+            path: path,
+            coherence: ledger_row_coherence(
+              a: artifact,
+              generated_content: generated_content,
+              committed_content: committed_content
+            )
+          }]
         },
         if extra_validation { [] } else {
           [GeneratedArtifactExtraValidationFailed { artifact: artifact, path: path }]
@@ -249,8 +258,11 @@ fn expected_cardinality_finding_rendered(f: ExpectedArtifactCardinalityFinding) 
 
 fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> String {
   match f {
-    GeneratedArtifactContentDiffers { artifact: _, path } =>
-      concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/gunbc/instruments/generated_artifact_gate.dag")
+    GeneratedArtifactContentDiffers { artifact: _, path, coherence } =>
+      concat(
+        concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/gunbc/instruments/generated_artifact_gate.dag"),
+        ledger_row_coherence_rendered(c: coherence)
+      )
     GeneratedArtifactCommittedArtifactAbsent { artifact: _, path, detail } =>
       concat(
         concat(concat(path, " — committed artifact is absent: "), detail),

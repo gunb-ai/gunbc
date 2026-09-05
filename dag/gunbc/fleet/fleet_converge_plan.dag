@@ -132,6 +132,7 @@ import gunbc.spark.serving_execution_schedule {
   SparkServingAxisUnobserved,
   SparkServingAxisRefused,
   SparkServingAxisPlanned,
+  BoundSparkServingAxisPlan,
 }
 
 import gunbc.fleet_converge_timer {
@@ -162,6 +163,7 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.runner_slot_provision {
+  runner_slot_provenance_wire,
   RunnerSlotMember,
   RunnerSlotMemberAt,
   runner_slot_member_key,
@@ -181,6 +183,8 @@ import gunbc.runner_host_deploy {
   admit_runner_host,
 }
 import gunbc.runner_service_activation {
+  RunnerUnitStandings,
+  runner_unit_standings_baseline_rows,
   RunnerActivationReadiness,
   RunnerTransitionPlan,
   runner_activation_plans_for_deploy,
@@ -360,7 +364,29 @@ type FleetConvergeScope
   | LaunchEnvironment
   | FabricExecutionCellsOnly
   | FabricAllocationStoreOnly
+  | SparkServing
 
+// THE SPARK SUBJECT IS A REMOTE HOST, AND THE ARM CARRIES THE PLANNED AXIS, NOT A LOOSE POPULATION.
+//
+// Every other arm is observed on the executor by the executor. A Spark is never the executor -- the
+// fleet-converge job runs on srv1..srv4 and reaches srv5/srv6 over FleetSsh -- so `host` here is the
+// TARGET the observation transaction was acquired against, and the executor's own hostname is
+// recorded on the receipt, never on the subject. The arm carries BoundSparkServingAxisPlan rather
+// than `observed_spark: List<SparkServingMember>` because that carrier is sole_constructor: the only
+// way to hold one is to have planned from an acquired observation, so a request of this arm cannot
+// be built from an empty or fabricated population the way FullHost's `observed_spark: []` could.
+// A refused or unobserved axis therefore has no request at all -- the observer returns Unobserved --
+// rather than a request whose baseline hashes an emptiness nobody measured.
+//
+// CONSEQUENCES ACROSS THE FOLDS BELOW, stated once here because the folds are bodies and may carry no
+// prose: the terminal is FullyApplied by construction (a Spark axis refuses whole upstream, so there is
+// no per-member refusal to count, and a `# spark-serving-refusals=0` row would be the decoration
+// section 4b warns about -- the counter row counts planned rows instead); apply.sh carries no Spark
+// line (the rows execute over FleetSsh from fleet_converge_apply_wet through the same frozen-row
+// executor the spark_linger slice uses, and a bash line would be a second actuator for one row); and
+// the plan outcome ignores its spark_axis parameter for this arm, because the request already IS the
+// eliminated Planned arm and a second eliminator would let a caller pair one host's plan with a
+// request naming another.
 type FleetConvergeRequest
   = FullHostConverge {
       host: NonEmptyStr
@@ -370,6 +396,7 @@ type FleetConvergeRequest
       observed_slots: List<RunnerSlotMember>
       observed_fabric_cells: FabricCellObservationDecision
       observed_activation_readiness: RunnerActivationReadiness
+      observed_unit_standings: RunnerUnitStandings
     }
   | LaunchEnvironmentConverge {
       host: NonEmptyStr
@@ -383,22 +410,28 @@ type FleetConvergeRequest
       host: NonEmptyStr
       observed_allocation_store: AllocationStoreSubstratePrestate
     }
+  | SparkServingConverge {
+      host: NonEmptyStr
+      spark_plan: BoundSparkServingAxisPlan<FleetConvergeSparkServingTypedAction>
+    }
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => FullHost
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => FullHost
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
+    SparkServingConverge { host: _, spark_plan: _ } => SparkServing
   }
 }
 
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
-    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => h
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => h
     LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
+    SparkServingConverge { host: h, spark_plan: _ } => h
   }
 }
 
@@ -412,6 +445,7 @@ fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
     LaunchEnvironment => "scope:launch-environment"
     FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
     FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
+    SparkServing => "scope:spark-serving"
   }
 }
 
@@ -548,9 +582,10 @@ fn fleet_converge_apply_artifact_admits(
                 store_path: fabric_allocation_store_substrate_spec().path,
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => ApplyMemberSetMismatch
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => ApplyMemberSetMismatch
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            SparkServingConverge { host: _, spark_plan: _ } => ApplyMemberSetMismatch
           }
         } else {
           ApplyAdmitted
@@ -584,6 +619,8 @@ fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
     ScopeDecoded { scope: FabricExecutionCellsOnly }
   } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
     ScopeDecoded { scope: FabricAllocationStoreOnly }
+  } else if w == fleet_converge_scope_wire(scope: SparkServing) {
+    ScopeDecoded { scope: SparkServing }
   } else {
     ScopeUndecodable {
       cause: concat("the planned scope artifact names no scope this build knows: ", w),
@@ -1138,6 +1175,7 @@ fn fleet_converge_slot_refusal_count(
 fn fleet_converge_activation_plans(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<RunnerTransitionPlan> {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
@@ -1146,6 +1184,7 @@ fn fleet_converge_activation_plans(
         host_admission: admit_runner_host(deploy: d),
         deploy: d,
         readiness: readiness,
+        standings: standings,
       )
   }
 }
@@ -1153,9 +1192,10 @@ fn fleet_converge_activation_plans(
 fn fleet_converge_activation_lines(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<String> {
   map(
-    fleet_converge_activation_plans(host: host, readiness: readiness),
+    fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
     p => runner_transition_plan_line(plan: p),
   )
 }
@@ -1163,9 +1203,10 @@ fn fleet_converge_activation_lines(
 fn fleet_converge_activation_refusal_count(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> Int {
   runner_activation_refusal_count(
-    plans: fleet_converge_activation_plans(host: host, readiness: readiness),
+    plans: fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
   )
 }
 
@@ -1230,12 +1271,13 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } => {
       let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
       let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
-      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness)
+      let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings)
       let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
       if total == 0 {
         FullyApplied
@@ -1278,6 +1320,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       }
     }
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
+    SparkServingConverge { host: _, spark_plan: _ } => FullyApplied
   }
 }
 
@@ -1295,6 +1338,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       concat(
         concat(
@@ -1306,7 +1350,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
         ),
         concat(
           concat(
-            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness)),
+            concat(["# runner-service-activation"], fleet_converge_activation_lines(host: host, readiness: readiness, standings: standings)),
             fleet_converge_activation_declaration_lines(),
           ),
           concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
@@ -1317,6 +1361,11 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    SparkServingConverge { host: _, spark_plan: bound } =>
+      concat(
+        ["# spark-serving"],
+        map(scheduled_rows_list(scheduled: bound.rows), r => fleet_converge_spark_serving_action_line(row: r)),
+      )
   }
 }
 
@@ -1334,11 +1383,12 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       [
         concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
-        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness))),
+        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
         concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
@@ -1357,6 +1407,11 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
       [
         concat("# scope=", fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)),
         "# allocation-store-refusals=0",
+      ]
+    SparkServingConverge { host: _, spark_plan: bound } =>
+      [
+        concat("# scope=", fleet_converge_scope_wire(scope: SparkServing)),
+        concat("# spark-serving-rows=", to_string(length(scheduled_rows_list(scheduled: bound.rows)))),
       ]
   }
 }
@@ -1410,9 +1465,10 @@ fn fleet_converge_activation_declaration_lines() -> List<String> {
 fn activation_apply_lines(
   host: NonEmptyStr,
   readiness: RunnerActivationReadiness,
+  standings: RunnerUnitStandings,
 ) -> List<String> {
   flat_map(
-    fleet_converge_activation_plans(host: host, readiness: readiness),
+    fleet_converge_activation_plans(host: host, readiness: readiness, standings: standings),
     p => runner_transition_apply_lines(plan: p),
   )
 }
@@ -1439,11 +1495,18 @@ fn slot_apply_lines(
         "exit 1",
       ]
     SlotFamilyPlanned { plan: p } =>
-      if membership_added_count(plan: p.membership) == 0 {
-        ["# runner-slot: no slots to add"]
-      } else {
-        concat([p.base_dir_script], p.upsert_extract_scripts)
-      }
+      concat(
+        if membership_added_count(plan: p.membership) == 0 {
+          ["# runner-slot: no slots to add"]
+        } else {
+          concat([p.base_dir_script], p.upsert_extract_scripts)
+        },
+        if length(p.teardown_scripts) == 0 {
+          ["# runner-slot: no retired trees to remove"]
+        } else {
+          concat(["# runner-slot: retired incarnations (unregistered, unit inactive and disabled, name in this host's grammar)"], p.teardown_scripts)
+        },
+      )
   }
 }
 
@@ -1710,6 +1773,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: _,
+      observed_unit_standings: standings,
     } =>
       join(
         concat(
@@ -1725,7 +1789,10 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
                     "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
                   )),
                 ),
-                map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+                concat(
+                  map(observed_slots, m => join(["slot:", runner_slot_member_key(m: m) as String, "=", runner_slot_provenance_wire(p: m.provenance)], "")),
+                  runner_unit_standings_baseline_rows(standings: standings),
+                ),
               ),
           ),
           fabric_cell_baseline_rows(population: observed_fabric_cells),
@@ -1758,6 +1825,16 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
           concat("host:", host as String),
           allocation_store_substrate_prestate_wire(prestate: observed),
         ],
+        "\n",
+      )
+    SparkServingConverge { host: host, spark_plan: bound } =>
+      join(
+        concat(
+          [fleet_converge_scope_wire(scope: SparkServing), concat("host:", host as String)],
+          map(bound.observed_members, m => concat(
+            "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+          )),
+        ),
         "\n",
       )
   }
@@ -2161,7 +2238,17 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirement
   )
 }
 
-data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
+// THE STORE IS KEYED BY SUBJECT, BECAUSE THE EXECUTOR IS NO LONGER THE ONLY SUBJECT. One bare
+// file was correct while every plan's subject was the host it ran on; a Spark plan runs on srv1 with
+// srv5 as its subject, and a shared counter would let srv5's apply consume srv1's generation -- two
+// leases with one epoch. The key is the subject host, the same value the lease key carries. The
+// pre-keyed file is left in place as residue: a plan minted against it refuses LeaseGenerationStale
+// on the keyed path, which is the fail-closed direction.
+data fleet_converge_generation_store_dir: String = "/var/lib/gunbc/fleet-converge"
+
+fn fleet_converge_generation_store_path(subject_host: NonEmptyStr) -> String {
+  join([fleet_converge_generation_store_dir, "/plan_generation.", subject_host as String], "")
+}
 
 fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
   let trimmed = trim(s: content)
@@ -2200,6 +2287,7 @@ type GenerationStoreObservation
   | GenerationUnobserved { reason: String }
 
 fn fleet_converge_generation_observation(
+  subject_host: NonEmptyStr,
   store_present: Bool,
   content: String,
 ) -> GenerationStoreObservation {
@@ -2212,7 +2300,7 @@ fn fleet_converge_generation_observation(
         GenerationUnobserved {
           reason: concat(
             "fleet_converge: generation store is present but does not decode to a non-negative integer at ",
-            fleet_converge_generation_store_path,
+            fleet_converge_generation_store_path(subject_host: subject_host),
           ),
         }
     }
@@ -2320,11 +2408,11 @@ fn fleet_converge_generation_store_default_stmt() -> Node {
 // Read the store ONLY where it exists. A present-but-unreadable store makes the command
 // substitution fail, and `set -euo pipefail` at the head of this body turns that into a nonzero
 // exit — a refusal, not a zero.
-fn fleet_converge_generation_store_read_stmt() -> Node {
+fn fleet_converge_generation_store_read_stmt(subject_host: NonEmptyStr) -> Node {
   bash_build_if_from_stmts(
     cond: bash_build_test_bracket(words: [
       bash_build_word_lit(text: "-e"),
-      bash_build_word_lit(text: fleet_converge_generation_store_path),
+      bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
     ]),
     then_stmts: [
       bash_build_assign(
@@ -2332,7 +2420,7 @@ fn fleet_converge_generation_store_read_stmt() -> Node {
         value: bash_build_word_cmdsubst(
           body: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "cat"),
-            bash_build_word_lit(text: fleet_converge_generation_store_path),
+            bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
           ]),
         ),
       ),
@@ -2363,6 +2451,7 @@ fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_gen
 }
 
 fn fleet_converge_locked_apply_inner_stmts(
+  subject_host: NonEmptyStr,
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
@@ -2374,7 +2463,7 @@ fn fleet_converge_locked_apply_inner_stmts(
       bash_build_word_lit(text: "pipefail"),
     ]),
     fleet_converge_generation_store_default_stmt(),
-    fleet_converge_generation_store_read_stmt(),
+    fleet_converge_generation_store_read_stmt(subject_host: subject_host),
     fleet_converge_generation_stale_guard_stmt(
       prior_generation: prior_generation,
       planned_generation: planned_generation,
@@ -2389,7 +2478,7 @@ fn fleet_converge_locked_apply_inner_stmts(
         bash_build_word_lit(text: "%s\n"),
         bash_build_word_lit(text: to_string(planned_generation)),
       ]),
-      path: bash_build_word_lit(text: fleet_converge_generation_store_path),
+      path: bash_build_word_lit(text: fleet_converge_generation_store_path(subject_host: subject_host)),
     ),
   ]
 }
@@ -2408,12 +2497,14 @@ fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
 }
 
 fn fleet_converge_locked_apply_inner_script(
+  subject_host: NonEmptyStr,
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
 ) -> String {
   fleet_converge_bash_or_poison(
     stmts: fleet_converge_locked_apply_inner_stmts(
+      subject_host: subject_host,
       prior_generation: prior_generation,
       planned_generation: planned_generation,
       apply_shell_path: apply_shell_path,
@@ -2421,10 +2512,48 @@ fn fleet_converge_locked_apply_inner_script(
   )
 }
 
+// THE LEASE IS HELD BY ONE PRINCIPAL, AND THE SCRIPT SAYS WHO THE CALLER IS RELATIVE TO IT.
+//
+// The lease directory and store are owned by the CI runner account (fleet_converge_lease_owner),
+// and the flock'd transaction used to run as whoever invoked the binary. In the workflow the two
+// coincide, so nothing noticed; from an operator shell they do not, and the first local apply
+// refused at `flock: cannot open lock file: Permission denied` AFTER the plan gates had admitted
+// it -- a refusal about the executor's identity arriving as a shell error from inside the guard.
+// The identity is now a typed input to the script: an invoker that IS the owner runs the guard
+// directly, exactly as CI does; any other invoker runs it AS the owner through sudo, so the store
+// is always written by the same account and a later CI apply can still read and advance it. The
+// decision is taken in the CLI from an observed effective principal and passed here as a value,
+// so the emitted script never has to guess from `$(id -un)` at run time.
+type FleetConvergeApplyInvoker
+  = InvokerIsLeaseOwner
+  | InvokerImpersonatesLeaseOwner
+
+fn fleet_converge_apply_invoker(effective_user: NonEmptyStr) -> FleetConvergeApplyInvoker {
+  if (effective_user as String) == (fleet_converge_lease_owner() as String) {
+    InvokerIsLeaseOwner
+  } else {
+    InvokerImpersonatesLeaseOwner
+  }
+}
+
+fn fleet_converge_locked_apply_flock_words(invoker: FleetConvergeApplyInvoker) -> List<Node> {
+  match invoker {
+    InvokerIsLeaseOwner => []
+    InvokerImpersonatesLeaseOwner => [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "-u"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+    ]
+  }
+}
+
 fn fleet_converge_locked_apply_script(
+  subject_host: NonEmptyStr,
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
+  invoker: FleetConvergeApplyInvoker,
 ) -> String {
   fleet_converge_bash_or_poison(stmts: [
     bash_build_command_with_words(words: [
@@ -2443,20 +2572,21 @@ fn fleet_converge_locked_apply_script(
       bash_build_word_lit(text: fleet_converge_lease_owner() as String),
       bash_build_word_lit(text: "-g"),
       bash_build_word_lit(text: fleet_converge_lease_owner() as String),
-      bash_build_word_lit(text: "/var/lib/gunbc/fleet-converge"),
+      bash_build_word_lit(text: fleet_converge_generation_store_dir),
     ]),
-    bash_build_command_with_words(words: [
+    bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
       bash_build_word_lit(text: "flock"),
       bash_build_word_lit(text: "-x"),
       bash_build_word_lit(text: fleet_converge_generation_lock_path),
       bash_build_word_lit(text: "bash"),
       bash_build_word_lit(text: "-c"),
       bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        subject_host: subject_host,
         prior_generation: prior_generation,
         planned_generation: planned_generation,
         apply_shell_path: apply_shell_path,
       )),
-    ]),
+    ])),
   ])
 }
 
@@ -2495,7 +2625,7 @@ fn fleet_converge_apply_shell(
 
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } =>
       "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
@@ -2503,6 +2633,8 @@ fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String
       "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
       "scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact"
+    SparkServingConverge { host: _, spark_plan: _ } =>
+      "this script runs nothing for scope:spark-serving; the frozen typed rows are executed over FleetSsh by fleet_converge_apply_wet"
   }
 }
 
@@ -2516,6 +2648,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
+      observed_unit_standings: standings,
     } =>
       concat(
         concat(
@@ -2529,7 +2662,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
             concat(
               ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
               concat(
-                activation_apply_lines(host: host, readiness: readiness),
+                activation_apply_lines(host: host, readiness: readiness, standings: standings),
                 fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
               ),
             ),
@@ -2544,6 +2677,8 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    SparkServingConverge { host: _, spark_plan: _ } =>
+      ["# spark-serving: typed rows execute over FleetSsh from fleet_converge_apply_wet, never from this script"]
   }
 }
 
@@ -2740,6 +2875,7 @@ fn fleet_converge_plan_artifact(
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
 ) -> FleetConvergePlanArtifactOutcome {
   match spark_axis {
     SparkServingAxisUnobserved { host: ah } =>
@@ -2775,6 +2911,7 @@ fn fleet_converge_plan_artifact(
           observed_slots: observed_slots,
           observed_fabric_cells: observed_fabric_cells,
           observed_activation_readiness: observed_activation_readiness,
+          observed_unit_standings: observed_unit_standings,
           ),
         }
       }
@@ -2798,6 +2935,7 @@ fn fleet_converge_plan_artifact(
           observed_slots: observed_slots,
           observed_fabric_cells: observed_fabric_cells,
           observed_activation_readiness: observed_activation_readiness,
+          observed_unit_standings: observed_unit_standings,
           ),
         }
       }
@@ -2827,6 +2965,7 @@ fn fleet_converge_plan_artifact_assembled(
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
+  observed_unit_standings: RunnerUnitStandings,
 ) -> FleetConvergePlanArtifact {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
@@ -2837,6 +2976,7 @@ fn fleet_converge_plan_artifact_assembled(
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: observed_activation_readiness,
+      observed_unit_standings: observed_unit_standings,
     },
     prior_generation: prior_generation,
     spark_rows: spark_rows,
@@ -2865,6 +3005,7 @@ fn fleet_converge_plan_outcome_of_request(
       observed_slots: sl,
       observed_fabric_cells: fc,
       observed_activation_readiness: ar,
+      observed_unit_standings: st,
     } =>
       fleet_converge_plan_artifact(
         host: h,
@@ -2875,6 +3016,7 @@ fn fleet_converge_plan_outcome_of_request(
         observed_slots: sl,
         observed_fabric_cells: fc,
         observed_activation_readiness: ar,
+        observed_unit_standings: st,
       )
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       FleetConvergePlanArtifactReady {
@@ -2900,6 +3042,14 @@ fn fleet_converge_plan_outcome_of_request(
           spark_rows: scheduled_rows_empty(),
         ),
       }
+    SparkServingConverge { host: _, spark_plan: bound } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: bound.rows,
+        ),
+      }
   }
 }
 
@@ -2915,7 +3065,7 @@ fn fleet_converge_plan_spark_wire_lines(
   match request {
     FullHostConverge {
       host: _, observed_timers: _, observed_caps: _, observed_spark: _,
-      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _,
+      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _,
     } => [
       concat(
         "# spark-serving-typed-actions:",
@@ -2925,6 +3075,12 @@ fn fleet_converge_plan_spark_wire_lines(
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => []
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => []
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+    SparkServingConverge { host: _, spark_plan: _ } => [
+      concat(
+        "# spark-serving-typed-actions:",
+        fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows)),
+      ),
+    ]
   }
 }
 
