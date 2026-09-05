@@ -1422,7 +1422,12 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
 /// coproduct `Marker = Alpha | Beta`. The green arm puts `Alpha` and `Beta` in the RULED
 /// POSITION — arguments of an applied type node — where they become distinct zero-sized markers
 /// and the emitted crate compiles. The red arm puts `Alpha` in a NON-APPLIED position, a record
-/// field, where it is a constructor standing where rustc requires a type. So a green here is not
+/// field, and its emitted crate is refused. (The refusal is at the RETURN, not at the annotation:
+/// the emitted module holds an `Alpha` type AND a `Marker::Alpha` variant, the field binds the
+/// type, and returning it where `Marker` is declared is what rustc rejects. The measured
+/// diagnostic below is the authority for that; an earlier revision of this comment described the
+/// annotation as naming a variant with nothing to bind, which the measurement contradicts.) So a
+/// green here is not
 /// "some crate compiled" and the red is not "something in the tree is broken": the only variable
 /// is the position.
 ///

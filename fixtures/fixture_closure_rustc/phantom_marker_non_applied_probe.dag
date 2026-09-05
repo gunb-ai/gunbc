@@ -1,34 +1,45 @@
 module fixture.closure.rustc_phantom_marker_non_applied_probe
 
-// THE MEANING-LEVEL RED ARM. It is the specimen `gunbc.recurring_failure_mode`
-// `accepted_source_emits_uncompilable_target` files as its FIRST instance -- a coproduct's UNIT
-// VARIANT standing in a NON-APPLIED type position -- committed here as a runnable file, which is
-// the thing that row records it never had (its own specimen was produced by a lane whose fixture
-// was never committed to this repository).
+// THE RED ARM OF THE POSITION PAIR. It is the construction
+// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` files as its FIRST
+// instance -- a coproduct's UNIT VARIANT standing in a NON-APPLIED type position -- committed here
+// as a runnable file, which is the thing that row records it never had (its own specimen was
+// produced by a lane whose fixture was never committed to this repository).
 //
-// gunbc ACCEPTS this source with zero blocking diagnostics. `Alpha` is an arm of `Marker`, not a
-// type, so the emitted field annotation names a variant where rustc requires a type and the only
-// wall that fires belongs to the target's compiler. DESIGN section 7 makes that the seed's floor
-// and not the target's problem, and DESIGN section 5 makes it silent wrongness on the
-// source-to-target path -- below the ladder, not a rung on it.
+// WHAT ACTUALLY HAPPENS, STATED ONCE AND MEASURED. gunbc ACCEPTS this source with zero blocking
+// diagnostics. Its emitted module contains an `Alpha` TYPE and a `Marker::Alpha` VARIANT. The
+// field annotation binds the `Alpha` TYPE -- it is not a dangling spelling -- and returning that
+// field from a function declared to return `Marker` is what rustc refuses, as E0308 at the parent
+// boundary: `expected Marker, found Alpha`. So the rejection is at the RETURN, not at the
+// annotation.
 //
-// WHY IT IS NOT IN THE RULED POSITION, WHICH IS THE DISCRIMINATION. `Alpha` here is a field type,
-// never an argument of an applied type node, so `rust_type_arg_identity_spelling` correctly
-// declines it and no zero-sized marker is minted for it. That is what makes the pair informative:
-// the green arm beside it uses the SAME variant of the SAME coproduct in the ruled position and
-// compiles. The single variable across the two arms is the POSITION the identity stands in.
+// THAT IS STILL THE FILED CLASS, and the two facts are not in tension: the source compiler accepts
+// a construction whose emission the target compiler cannot build. DESIGN section 7 makes that the
+// seed's floor rather than the target's problem, and DESIGN section 5 makes it silent wrongness on
+// the source-to-target path -- below the ladder, not a rung on it. The only wall that fires belongs
+// to rustc.
 //
-// THE ERROR CLASS IS PART OF THE CLAIM, AND IT IS MEASURED. Run through the fixture-closure route
-// against the emitter that ships today, rustc refuses the emitted module with E0308 at the parent
-// boundary -- `expected Marker, found Alpha` on the `-> Marker` return -- because the emitted
-// module carries BOTH an `Alpha` type and a `Marker::Alpha` variant, and the field annotation binds
-// the first while the declared return wants the second. E0573 -- expected type, found variant --
-// was PREDICTED for this fixture from the witness's ceiling row and NOT observed, and the reason is
-// a property of THIS FILE rather than of the emitter: the markers are declared LOCALLY, so nothing
-// here exercises the imported-marker construction where that row's two classifiers diverge. This
-// pair is coverage of the POSITION question and does not discharge that row. The adjudicated
-// expectation lives in `v1_compiler.emitted_closure_compile_host`
-// `run_phantom_marker_identity_discrimination`.
+// AN EARLIER REVISION OF THIS COMMENT SAID THE ANNOTATION NAMED A VARIANT WITH NO TYPE TO BIND, AND
+// THAT NO MARKER WAS MINTED HERE. Both are contradicted by the measurement recorded above, which
+// was taken from this very file: an `Alpha` type does exist in the emitted module. The wrong
+// account put the rejection at the annotation instead of the return and credited the emitter with a
+// decline it did not make. It is named rather than silently overwritten because a plausible wrong
+// mechanism is the kind of thing a later reader adopts (gunbc DESIGN section 3's concern about a
+// carrier citing the wrong mechanism, not merely a stale name).
+//
+// WHY IT IS NOT IN THE RULED POSITION, WHICH IS THE DISCRIMINATION. `Alpha` here stands in a record
+// field, never as an argument of an applied type node, so it is outside the position
+// `rust_type_arg_identity_spelling` decides. The green arm beside it uses the SAME variant of the
+// SAME coproduct as an APPLIED argument and its emitted crate compiles. The single variable across
+// the two arms is the POSITION the identity stands in.
+//
+// E0573 -- expected type, found variant -- was PREDICTED for this fixture from the witness's
+// ceiling row and NOT observed, and the reason is a property of THIS FILE rather than of the
+// emitter: the markers are declared LOCALLY, so nothing here exercises the imported-marker
+// construction where that row's two classifiers diverge. This pair is coverage of the POSITION
+// question and does not discharge that row. The adjudicated expectation lives in
+// `v1_compiler.emitted_closure_compile_host` `run_phantom_marker_identity_discrimination`, which
+// also carries the full diagnostic.
 //
 // WHEN THE WALL CLIMBS -- type-position resolution consulting the TYPE namespace alone and
 // refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE
