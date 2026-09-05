@@ -274,6 +274,7 @@ fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
 // obligation is a relation this module must establish and may not inherit.
 type StandingCause
   = NominationHasNoObservation { witness: WitnessIdentity }
+  | NominationIsHeldAsAKnownRed { witness: WitnessIdentity }
   | ObservedWrongTerminal { witness: WitnessIdentity }
   | SeveralObservationsForOneNomination { witness: WitnessIdentity }
   | NotNominated {}
@@ -297,17 +298,23 @@ fn rows_naming(rows: List<ClaimTerminalRow>, witness: WitnessIdentity) -> List<C
   filter(rows, r => witness_identity_eq(r.identity, witness))
 }
 
-// ADEQUACY IS THE CONJUNCTION OF WHAT THE ROSTER EXPECTED AND WHAT THE CLAIM OBSERVED, which is why
-// the ledger holds them as two fields. A witness that answered false is adequate evidence when it was
-// ExpectedRed and inadequate when it was ExpectedToHold, and no single field can express that pair.
-// An earlier draft of this module re-minted a flat ObservedRefusingAsExpected arm and collapsed them.
-fn terminal_is_adequate(expectation: ClaimExpectation, terminal: ClaimAttemptTerminal) -> Bool {
+// ADEQUACY IS "THE WITNESS ESTABLISHED ITS PROPERTY", NOT "THE CLAIM AGREED WITH THE ROSTER".
+//
+// An earlier revision made adequacy the agreement of ClaimExpectation with ClaimObservation, so an
+// ExpectedRed row observing holds=false earned Covered. That is a FAIL-OPEN, and it is the FCI-5
+// counterexample one level deeper: ExpectedRed is the FLOOR's bookkeeping -- this claim is a known
+// red we tolerate, counted as known_red_held -- and agreeing with that expectation is agreement
+// about the FLOOR's question, not evidence for the GATE's. A witness held as a known red asserted
+// nothing about its mutation; treating it as coverage lets a KNOWN-BROKEN witness discharge an
+// obligation, which is the exact state a coverage instrument exists to refuse.
+//
+// So a gate obligation is discharged only by a witness that RETURNED AND HELD, and an ExpectedRed
+// nomination is a NAMED cause rather than a silent non-coverage: it says the roster itself already
+// records this witness as not establishing anything.
+fn terminal_holds(terminal: ClaimAttemptTerminal) -> Bool {
   match terminal {
     Returned { observation } => match observation {
-      ObservedVerdict { holds } => match expectation {
-        ExpectedToHold => holds,
-        ExpectedRed => !holds,
-      },
+      ObservedVerdict { holds } => holds,
       ObservationUnrepresentable { reason } => false,
     },
     RuntimeErrored { message } => false,
@@ -316,6 +323,13 @@ fn terminal_is_adequate(expectation: ClaimExpectation, terminal: ClaimAttemptTer
     BudgetRefused { safety } => false,
     HostToolUnresolved { name, probed } => false,
     RouteGap { operation, ground } => false,
+  }
+}
+
+fn expectation_is_to_hold(expectation: ClaimExpectation) -> Bool {
+  match expectation {
+    ExpectedToHold => true,
+    ExpectedRed => false,
   }
 }
 
@@ -336,7 +350,9 @@ fn standing_for(
         NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationHasNoObservation { witness: witness } }
       } else if seen.length() > 1 {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: SeveralObservationsForOneNomination { witness: witness } }
-      } else if !all(seen, r => terminal_is_adequate(r.expectation, r.terminal)) {
+      } else if !all(seen, r => expectation_is_to_hold(r.expectation)) {
+        NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationIsHeldAsAKnownRed { witness: witness } }
+      } else if !all(seen, r => terminal_holds(r.terminal)) {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: ObservedWrongTerminal { witness: witness } }
       } else {
         Covered { gate: e.gate, mutation: e.mutation, witness: witness }

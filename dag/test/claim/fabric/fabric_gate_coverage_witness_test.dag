@@ -344,6 +344,7 @@ fn cause_labels(v: GateStandingVerdict) -> List<NonEmptyStr> {
       Covered { gate, mutation, witness } => "covered",
       NotCovered { gate, mutation, cause } => match cause {
         NominationHasNoObservation { witness } => located("no-observation", gate, mutation),
+        NominationIsHeldAsAKnownRed { witness } => located("held-known-red", gate, mutation),
         ObservedWrongTerminal { witness } => located("wrong-terminal", gate, mutation),
         SeveralObservationsForOneNomination { witness } => located("several-observations", gate, mutation),
         NotNominated {} => located("not-nominated", gate, mutation),
@@ -391,16 +392,34 @@ test fn evidence_that_was_never_attempted_earns_nothing() -> Bool {
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
-// THE EXPECTATION IS HALF THE ADEQUACY JUDGEMENT. The same observed verdict earns standing under one
-// expectation and nothing under the other, which is why the ledger holds them as two fields and why
-// an earlier draft of this module -- which re-minted a single flat "refused as expected" arm -- could
-// not express it.
-test fn a_false_verdict_earns_standing_when_expected_red_and_nothing_when_expected_to_hold() -> Bool {
-  let red = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+// A KNOWN RED IS NOT COVERAGE, AND THIS WITNESS EXISTS BECAUSE I HAD IT BACKWARDS. An earlier
+// revision asserted that a false verdict EARNS standing under ExpectedRed, on the reasoning that the
+// claim agreed with the roster. Agreement with ExpectedRed is the FLOOR's bookkeeping -- a known red
+// it tolerates, counted as known_red_held -- and a witness held as a known red asserted nothing
+// about its mutation. Counting that as coverage lets a known-broken witness discharge an obligation.
+// A gate obligation is discharged only by a witness that RETURNED AND HELD.
+test fn a_nomination_the_roster_holds_as_a_known_red_earns_nothing() -> Bool {
+  let red_false = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
     [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
-  let hold = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+  let red_true = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: true } })], subject("aaaaaaaaaaaaaaaa"))
+  covered_count(red_false) == 0
+    && covered_count(red_true) == 0
+    && any(cause_labels(red_false), l => l == "held-known-red|FCI-X|m")
+    && any(cause_labels(red_true), l => l == "held-known-red|FCI-X|m")
+}
+
+// The paired positive control: the SAME observed verdict under ExpectedToHold does earn standing, so
+// the witness above discriminates the EXPECTATION rather than reporting that nothing ever covers.
+test fn the_same_held_verdict_earns_standing_when_the_roster_expects_it_to_hold() -> Bool {
+  covered_count(gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: true } })], subject("aaaaaaaaaaaaaaaa"))) == 1
+}
+
+test fn a_false_verdict_under_expected_to_hold_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
     [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
-  covered_count(red) == 1 && covered_count(hold) == 0
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
 test fn an_unrepresentable_observation_earns_nothing() -> Bool {
