@@ -223,10 +223,35 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
 // SO THE OWNER IS A STANDING AUTHORITY THAT NAMES THE CAPABILITY, NOT A NODE.
 // `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
 // route this trigger is waiting on -- it enumerates that host's declarations and
-// owns their growth obligations -- so it is accountable for the route's extension
-// for as long as the route exists, which is the property a next-rung trigger needs
-// and a work item cannot have. A trigger is retired BY ITS TRIGGER AND BY NOTHING
+// owns their growth obligations. A trigger is retired BY ITS TRIGGER AND BY NOTHING
 // ELSE, and a trigger whose owner has ceased to exist is retired by nothing at all.
+//
+// AND THAT SYMBOL HAS ITS OWN RETIREMENT CONDITION, WHICH IS WHY NAMING IT WAS NOT
+// BY ITSELF ENOUGH. An earlier revision of this block said the owner is accountable
+// "for as long as the route exists". THAT WAS FALSE AS WRITTEN: the owner is a
+// SeedGrowthJustification whose trigger retires the host once the emission and cargo
+// effects are modeled, and which expressly admits a PARTIAL migration -- so
+// "host effects migrate -> the owner retires -> this discriminator is owned by
+// nobody" was reachable. THIS IS THE SECOND TIME THIS FIELD HAS NAMED AN OWNER THAT
+// COULD END BEFORE THE OBLIGATION: first a session lifetime (`node://adhoc-...`,
+// which reached DONE with the capability unbuilt), then an ARTIFACT lifetime here.
+// The defect moved rather than being fixed, which is why the repair is not a third
+// spelling of the owner.
+//
+// EXISTING SYMBOL, RELEVANT SUBJECT AND DURABLE RESPONSIBILITY ARE THREE DIFFERENT
+// FACTS. Naming a symbol in a `NonEmptyStr` establishes the first two and cannot
+// establish the third, because a citation does not transfer an obligation and a
+// module split does not carry one automatically. The third fact has to be taken on
+// IN THE OWNER'S OWN TEXT, so it now is: that justification's trigger carries an
+// explicit clause stating it may not retire -- in whole, or in the partial shape it
+// invites -- while this discriminator obligation is undischarged and untransferred,
+// and requiring either discharge or a named successor. The forbidden outcome it
+// names is silent retirement.
+//
+// WHAT THAT CLAUSE DELIBERATELY DOES NOT LICENSE: keeping an obsolete host alive so
+// that an owner string stays resolvable. If the host dissolves and nobody has taken
+// the obligation, the obligation moves. Preserving dead Rust to anchor a citation
+// would be the worst reading of this repair and is refused in both files.
 //
 // THE SYMBOL IS CITED RATHER THAN THE MODULE, per DESIGN section 3. A module
 // citation is durable against closure but not against the module being split or its
