@@ -30,10 +30,10 @@ fn refusal_labels(v: CoverageVerdict) -> List<NonEmptyStr> {
   match v {
     CoverageTotal { discharged, undischarged } => [],
     CoverageRefused { refusals } => map(refusals, r => match r {
-      MutationHasNoEnrolmentRow { gate, mutation } => concat("no-row:", mutation),
-      MutationHasSeveralEnrolmentRows { gate, mutation } => concat("several-rows:", mutation),
-      EnrolmentNamesUnknownGate { gate, mutation } => concat("unknown-gate:", gate),
-      EnrolmentNamesUndeclaredMutation { gate, mutation } => concat("undeclared-mutation:", mutation),
+      MutationHasNoEnrolmentRow { gate, mutation } => concat("no-row:", mutation) as NonEmptyStr,
+      MutationHasSeveralEnrolmentRows { gate, mutation } => concat("several-rows:", mutation) as NonEmptyStr,
+      EnrolmentNamesUnknownGate { gate, mutation } => concat("unknown-gate:", gate) as NonEmptyStr,
+      EnrolmentNamesUndeclaredMutation { gate, mutation } => concat("undeclared-mutation:", mutation) as NonEmptyStr,
     }),
   }
 }
