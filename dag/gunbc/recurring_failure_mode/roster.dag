@@ -132,6 +132,7 @@ import gunbc.recurring_failure_mode.a_live_authority_name_carries_a_superseded_c
 import gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red { witness_that_fails_to_compile_is_absent_rather_than_red }
 import gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions { instruction_and_subject_resolved_from_different_revisions }
 import gunbc.recurring_failure_mode.reported_required_refusal_does_not_precondition_landing { reported_required_refusal_does_not_precondition_landing }
+import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivation_axis { corroboration_without_an_independent_derivation_axis }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -255,4 +256,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   witness_that_fails_to_compile_is_absent_rather_than_red,
   instruction_and_subject_resolved_from_different_revisions,
   reported_required_refusal_does_not_precondition_landing,
+  corroboration_without_an_independent_derivation_axis,
 ]
