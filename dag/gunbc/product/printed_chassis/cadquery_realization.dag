@@ -484,8 +484,11 @@ fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
 // THIS DOES NOT WEAKEN THE SEAL, AND THE DISTINCTION IS THE WHOLE DESIGN. The module states that
 // there is no overload taking a plate and a feature list, and there still is not: this entry point
 // takes AdmittedPlatePartV0, which is sole_constructor and therefore miniable only here. Each mint
-// below requires a part geometry that is ITSELF sole_constructor in its own module -- so possessing
-// a FanMountGeometry is already proof that admit_fan_mount ran and its refusals did not fire. The
+// below requires a part geometry that is ITSELF sole_constructor in its own module. That seal
+// forbids a FOREIGN mint; it does NOT bound how many mint sites the DECLARING module has. Each of
+// those modules today has exactly one, on its admission's accepted arm, and it is that second fact
+// -- a property of the current source rather than of the type -- that makes possessing a
+// FanMountGeometry proof that admit_fan_mount ran and its refusals did not fire. The
 // capability is converted, never manufactured, and no bare plate or bare hole list enters emission.
 //
 // WHAT IS DELIBERATELY NOT SHARED is the conformance judgment. The coupon's judgment compares a

@@ -137,8 +137,11 @@ data arctic_p8_fan_mount: FanMountAdmission = admit_fan_mount(
 
 // ═══ ACCESSORS, BECAUSE THE SEAL IS THE POINT AND NOT AN OBSTACLE ═══
 //
-// FanMountGeometry is sole_constructor, so no other module can build one -- which is what makes
-// HOLDING one proof that admit_fan_mount ran and none of its refusals fired. The same seal stops a
+// FanMountGeometry is sole_constructor, so no other module can build one, AND it has exactly ONE
+// mint site in the current source: the FanMountAdmitted arm below. Holding one is proof that
+// admit_fan_mount ran and none of its refusals fired only because BOTH facts hold -- the seal alone
+// forbids a FOREIGN mint and says nothing about this module adding a second one on a refusing arm.
+// The second fact is a property of today's source, not of the type. The same seal stops a
 // consumer reading the fields, so the realization layer cannot turn an admitted mount into a program
 // without these.
 //
