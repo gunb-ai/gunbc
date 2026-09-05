@@ -72,7 +72,8 @@ type BrandArm {
 
 // THE REFUSING FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
 // AUTHORABLE AT ALL. (The accepting arms are VALID programs, and prove the wall does not swallow
-// them; only the refusing three are the invalid-program half of this argument.) DESIGN section 4b's top-rung question asks whether the forbidden state can be
+// them; only the refusing three are the invalid-program half of this argument.) DESIGN
+// section 4b's top-rung question asks whether the forbidden state can be
 // expressed anywhere the check could run. It cannot be expressed in the ACCEPTED corpus -- the
 // annotation-erased census finds 236 brand declarations carrying 236 distinct literals, zero
 // duplicates -- but a compiler's regression probes are precisely invalid programs, and here the
