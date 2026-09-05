@@ -1431,46 +1431,22 @@ pub struct TransitionAdmission {
 /// shorter branches rather than against the rule: the roster is small precisely because the
 /// deletion comes due on touch.
 
-/// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
-/// entries above number themselves against a sequence that other lanes are appending to
-/// concurrently, so a number chosen on this branch would be wrong by the time it merged.
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10459). All seven parsed-item-kind
+/// vocabulary rows are deleted, and `PARSED_ITEM_KIND_VOCABULARY_LABEL` with them. No ordinal is
+/// claimed, for the reason the entry below gives.
 ///
-/// #10459 is the declared next-rung trigger for the resource-exclusion validator family: the emit
-/// side stopped INFERRING what an item is from its shape and started READING a positive kind the
-/// parse constructors stamp. The kind therefore has to sit on `Node`, and `Node` is declared in
-/// `v1.std.core`, which cannot import `v1.compiler.parse` -- acyclicity, the import graph's one
-/// structural law. So `ParsedModuleItemKind` and its variants MOVE from `v1.compiler.parse` into
-/// `v1.std.core`: a move, not a copy, so no second authority for "what kind of item is this"
-/// survives the change, which is the whole point of the trigger.
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE, which is the standard that entry set for
+/// itself: it asked for the deletion to be decided by joining each row against main's tree on its
+/// own (module, in_declaration, spelling, target) tuple rather than by trusting its own prose. The
+/// required namespace-wave phase did exactly that and reported all seven as CONSUMED ADMISSION by
+/// identity, 7 of 7, refusing this change until they were removed. gunbc#10459 is in main, so base
+/// and head bind each spelling to `v1.std.core` identically and no run can produce those deltas.
 ///
-/// SEVEN BINDING SITES IN `v1.compiler.parse` therefore bind the same spellings to a different
-/// declaring module -- six in `parsed_module_item_role`, one in `stamp_parsed_module_items` -- a
-/// `TargetChanged` delta by construction and exactly the motion this wall exists to make visible.
-/// `NotAModuleItem` is not among them: it is authored by this change and has no base binding to
-/// change.
-///
-/// THE OTHER DELTAS ARE NOT ADMITTED HERE BECAUSE THE WALL ALREADY ADJUDICATES THEM: the new
-/// `gunbc.recurring_failure_mode` roster rows report `ExplicitlyEvaluatedZeroDelta`, and the removed
-/// `v1.compiler.emit_core_support -> v1.compiler.parse` membership reports
-/// `SameDeclarationIdentityRebind` -- the emit side dropping the import it no longer needs once the
-/// shape predicates are deleted. Admitting a row the wall already decides would be a second
-/// authority for one decision.
-///
-/// THIS ENTRY ONCE CLAIMED THE gunbc#10439 DELETION AND NO LONGER DOES, WHICH IS THE POINT OF
-/// SAYING SO. An earlier revision, authored when this branch was the first to touch the roster after
-/// #10439 merged, said the six serving-engine rows "are deleted by this change". gunbc#10445 landed
-/// that deletion first. Leaving the sentence standing would have made this block assert an act it
-/// did not perform -- true on the branch that wrote it, false the moment another lane discharged the
-/// same obligation.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10459 merges. The base then binds
-/// each spelling to `v1.std.core`, no run can produce these deltas, and all seven report CONSUMED
-/// rather than stale -- coming due on this roster's own next touch. Adjudicate that deletion by the
-/// declaring-module join, joining each row against main's tree by its own (module, in_declaration,
-/// spelling, target) tuple rather than trusting this sentence, because a trigger sentence is not
-/// evidence that the trigger fired.
-const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
-    "parsed module item kind vocabulary move gunbc#10459 2026-09-05";
+/// FOURTH COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six, gunbc#10300's
+/// two, and gunbc#10324's two. The roster's own note that the toll is proportional to how long a
+/// branch stays open is not an observation this branch can dispute: it has now paid on two separate
+/// touches, and the second cohort came due only because the first merge conflict held it open long
+/// enough for gunbc#10459 to land.
 
 /// SECRET MANAGER ACCESS ENSURE MOVES TO THE AUTH LAYER (2026-09-05, gunbc#10514). No ordinal is
 /// claimed, following the entry above and for the reason it gives: the numbered entries count
@@ -1596,76 +1572,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             in_declaration: "spark_secret_access_ensure",
             spelling: "secret_access_ensure_for",
             target: "gunbc.auth.gcp_secret_access",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemDataValue",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemFunction",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemResource",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemService",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemTypeDeclaration",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "parsed_module_item_role",
-            spelling: "ModuleItemUnrecognized",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.parse",
-            in_declaration: "stamp_parsed_module_items",
-            spelling: "ModuleItemUnrecognized",
-            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
