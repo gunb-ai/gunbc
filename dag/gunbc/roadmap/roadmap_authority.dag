@@ -1839,6 +1839,25 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     }),
 
     with_execution(active_small(
+      identity: "rn_2CTLBL7QKX4MWN8VRZ5HYD3JPE",
+      id: "roadmap-continuation-turn-label",
+      owner: "dashboard",
+      path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag",
+      t: fields(
+        headline: "One function names a continuation turn, and the brief prefix uses it",
+        boundary: "gunbc.roadmap.roadmap_attempt_continuation gains fn continuation_turn_label(turn: Int) -> String returning the text turn <turn> of <continuation_turn_cap>, for example turn 2 of 3; continuation_brief_prefix builds its opening from that function instead of joining the pieces itself, so the row and the brief will name the turn with one authority.",
+        displaced_cost: "The dashboard cannot yet say which turn of a lineage a row is on, and the brief prefix already spells the phrase inline; a second spelling on the row would be the nicknaming DESIGN section 3 forbids, so the label is made once before the row consumes it.",
+        first_slice: "In dag/gunbc/roadmap/roadmap_attempt_continuation.dag only: add fn continuation_turn_label(turn: Int) -> String { join([\"turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap)], \"\") } beside continuation_turn_cap; then in continuation_brief_prefix replace the four joined pieces \"CONTINUATION: this is turn \", to_string(value: turn), \" of \", to_string(value: continuation_turn_cap) with the two pieces \"CONTINUATION: this is \", continuation_turn_label(turn: turn). Nothing else changes. The oracle already exists and is red: dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag declares the_turn_label_names_the_turn_and_the_cap over continuation_turn_label; do not edit that file, make it green. The existing witness a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief in dag/test/claim/roadmap/roadmap_attempt_continuation_witness_test.dag must stay green (it looks for the text turn 2 of 3 in the prefix).",
+        red_control: "continuation_turn_label(turn: 2) is exactly turn 2 of 3; a prefix that stops containing turn 2 of 3 turns the existing continuation witness red.",
+        out_of_scope: "No change to the row rendering yet; no change to the cap; no other file.",
+        handback: "The function, the prefix using it, and both witnesses green."
+      )
+    ), e: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/roadmap/roadmap_continuation_turn_label_witness_test.dag" as FilePath,
+      function: "the_turn_label_names_the_turn_and_the_cap" as NonEmptyStr,
+    )),
+
+    with_execution(active_small(
       identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",
       id: "roadmap-round-strip-percolator",
       owner: "dashboard",
