@@ -1414,9 +1414,22 @@ pub struct TransitionAdmission {
 /// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
 /// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
 /// stale, and their deletion is owed by whoever next touches this roster.
-const HOST_CONVERGE_LOOKUP_MOVE_LABEL: &str =
-    "gunbc#10324 world-convergence: the monomorphic HostConverge lookup moves beside its type, \
-     from gunbc.fleet_converge_cli to gunbc.host_converge";
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10324). Both `host_converge_for_identity`
+/// rows are deleted, and `HOST_CONVERGE_LOOKUP_MOVE_LABEL` with them. The entry above named its own
+/// trigger -- gunbc#10324 MERGING -- and that has happened: 3a1ee654d4 is in this branch's history,
+/// so main carries the wrapper in `gunbc.host_converge`, base and head bind the spelling
+/// identically, and no run can produce these deltas.
+///
+/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE. The required namespace-wave phase reported
+/// both rows as `CONSUMED ADMISSION` by identity, 2 of 2, and refused this change until they were
+/// removed -- which is the standard the entry above sets for itself and the reason the sentence
+/// alone was never sufficient.
+///
+/// THIRD COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six (paid by
+/// gunbc#10445 before this branch reached them) and gunbc#10300's two (paid concurrently by
+/// gunbc#10324). The toll is proportional to how long a branch stays open, which is an argument for
+/// shorter branches rather than against the rule: the roster is small precisely because the
+/// deletion comes due on touch.
 
 /// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
 /// entries above number themselves against a sequence that other lanes are appending to
@@ -1460,26 +1473,6 @@ const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
     "parsed module item kind vocabulary move gunbc#10459 2026-09-05";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_codex_runtime_knob_registered_for_host",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: HOST_CONVERGE_LOOKUP_MOVE_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet_converge_cli",
-            in_declaration: "converge_cli_run_host_knobs",
-            spelling: "host_converge_for_identity",
-            target: "gunbc.host_converge",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
