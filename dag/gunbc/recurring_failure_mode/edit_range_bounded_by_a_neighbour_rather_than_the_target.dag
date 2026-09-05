@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.edit_range_bounded_by_a_neighbour_rather_than_the_target
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data edit_range_bounded_by_a_neighbour_rather_than_the_target: RecurringFailureMode = RecurringFailureMode {
+  identity: "edit_range_bounded_by_a_neighbour_rather_than_the_target" as NonEmptyStr,
+
+  receipts: [
+    "**a scripted edit locates its subject CORRECTLY and then delimits the extent with a landmark the subject does not own, so it consumes whatever sits between** (INVALID STATE: a rewrite whose START bound is the subject's own identity and whose END bound is the next occurrence of an unrelated construct -- the following declaration, the next blank line, the closing delimiter of an enclosing form. HARM: everything between the subject's true end and that landmark is rewritten or deleted, and it is material the edit was never about. ",
+
+    "THE KEY IS NOT THE DEFECT, WHICH IS WHAT SEPARATES THIS FROM ITS NEAREST NEIGHBOUR. comparison_keyed_on_part_of_the_identity_it_compares is about a DECISION keyed on a projection of a composite identity; here the locator is exactly right and matches exactly the intended subject. A correctly-keyed operation over the wrong range is still wrong, so the class survives when the key is the whole identity, and repairing keys does not touch it. Its sibling edit_pass_that_matched_nothing_reports_success is the case where the locator binds to nothing at all; here it binds correctly and then overreaches. ",
+
+    "WHAT IT EATS IS SYSTEMATICALLY THE MATERIAL NOTHING CAN CHECK. The space between two declarations is where prose lives -- DESIGN section 4c annotations, which no Accepted program can read. So the collateral is invisible to every compiler, lens and witness by construction, and no gate anywhere can fire on it. RECEIPT (calm-eagle-759, 2026-09-05, on the gunbc#10547 authoring path): a pass replacing four predicate bodies cut from each function's opening line to the NEXT function's opening line, and swallowed the annotation blocks between them, including a scaffold-note declaration and a long emit-disposition rationale. Intended scope was four function bodies. THE ONLY SIGNAL THAT EXISTED was the diffstat being roughly five times the expected deletion count; nothing else in the toolchain distinguished the two outcomes. ",
+
+    "THE AGGRAVATING FACTOR IS A SEPARATE FACT AND IT IS WHAT TURNS A CAUGHT MISTAKE INTO A PERSISTED ONE: an edit-then-restore chain has an UNPROTECTED WINDOW. Sequencing a restore after the command is not the same as guaranteeing it. RECEIPT, same lane and same day: a mutate-compile-restore chain hit a foreground timeout during the compile, which killed the chain BETWEEN the mutation and the restore. The restore was not skipped by a bug -- it was never reached, and the mutated file survived the failure. A restore that is a later step in the same sequence is not a restore; it is a step that usually runs. ",
+
+    "Recognition rule: for any scripted edit, ask what defines the END of the range and whether the SUBJECT owns it. A bound named by the next sibling, the enclosing form, or a file-wide landmark is owned by something else, and everything between belongs to neither. The review tell is a diffstat whose deletion count exceeds what the change describes, since the eaten material is by definition not what the author was talking about. ",
+
+    "Next-rung trigger, named as the capability and not as an artifact: EDITS ARE EXPRESSED AGAINST A PARSED DECLARATION'S OWN SPAN RATHER THAN AGAINST TEXT BETWEEN LANDMARKS, sufficient that an edit cannot name an extent its subject does not own -- at which point the invalid state has no constructor. The substrate already computes that span: it is what v1.compiler.core diagnostic_to_span answers for any node. Until an edit path consumes it, this is mitigatable only, and the mitigation is the diffstat check plus a restore that is guaranteed rather than sequenced.)",
+  ],
+
+  evidence: [],
+}

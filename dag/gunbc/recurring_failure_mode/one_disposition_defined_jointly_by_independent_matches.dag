@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.one_disposition_defined_jointly_by_independent_matches
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data one_disposition_defined_jointly_by_independent_matches: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_disposition_defined_jointly_by_independent_matches" as NonEmptyStr,
+
+  receipts: [
+    "**several independent total matches over ONE coproduct jointly define a single disposition, each defaulting through a wildcard, so no one of them is the authority and agreement rests on an author remembering to edit all of them** (INVALID STATE: a subject's classification is answered by N separate predicates, each an allowlist under its own catch-all, where the answer a consumer wants is a JOIN across them. HARM: a member added to one list and omitted from the others lands in every catch-all at once and is classified by default in each -- silently, since every match is total and every one compiles. ",
+
+    "IT IS NOT parallel_representation_debt, AND THE DIFFERENCE IS WHY THIS ONE IS WORSE. That class is a hand-authored fold DUPLICATING a canonical relation that already exists, and its remedy is deletion in favour of the authority that is sitting right there. Here the matches JOINTLY DEFINE the disposition: none of them is canonical, there is no relation to defer to, and there is nothing to delete toward. The repair is not removal but CONSTRUCTION of the authority that was never written. ",
+
+    "THE WILDCARD IS WHAT MAKES IT SILENT, AND ALSO WHAT MAKES IT LOOK FINE. Every catch-all is chosen to be the safe answer, so the default is usually correct and the class ships green for years. What is lost is not correctness but INTENT: a member classified by omission and a member classified by decision are indistinguishable, so the next member that genuinely needs a non-default answer re-enters the gap in exactly the same way. A reviewer reading any single match sees a short, plainly-correct allowlist. ",
+
+    "SPECIMEN, and the shape is stronger evidence than any count: v1.compiler.core CompilerDiagnostic was classified by is_error_diagnostic, is_interpreter_blocking_diagnostic and is_discovery_corpus_advisory_typecheck_diagnostic -- three independent wildcard matches over one coproduct -- with is_discovery_corpus_blocking_diagnostic short-circuiting on the second. The great majority of variants were named in NONE of them and defaulted through every wildcard simultaneously. The predicted fork had already occurred: ComplexityUnknown sat in the blocking-false list and in no advisory list, so it was rendered while counted by neither total, and the gate's two headline figures did not partition what the compiler emitted. Repaired in gunbc#10547; read that diff for the before state rather than a number here. ",
+
+    "SEVERITY AND ITS SIBLING AXIS ARE TWO FACTS, WHICH IS WHY THE REPAIR IS A PRODUCT AND NOT A SUM. Collapsing N matches into one N-armed disposition is the tempting shape and it is lossy whenever two members agree on one axis and differ on another -- in the specimen, two variants shared a gate answer while disagreeing on error-ness, so a single disposition sum could not have answered is_error without silently flipping them. Check for that before choosing the carrier's shape; a lossy consolidation is a behaviour change wearing a refactor's description. ",
+
+    "Recognition rule: when a consumer joins two or more predicates to get one answer, ask which of them is the AUTHORITY. If the honest answer is that the disposition exists only in the join, the authority has not been written. The mechanical tell is N total matches over the same coproduct in one module where the union of their named arms is a small fraction of the declared variants. ",
+
+    "Next-rung trigger, named as the capability and not as an artifact: THE DISPOSITION HAS ONE TOTAL, WILDCARD-FREE AUTHORITY FROM WHICH EVERY PREDICATE IS DERIVED, sufficient that a new member cannot compile until an author states its disposition -- at which point classification-by-omission has no constructor. That is structurally impossible for the omission half. Two regressions remain below it and are NOT covered by exhaustiveness, because both are legal source: re-adding a wildcard to the authority, and minting a fresh predicate beside the derived ones. Those stay mechanically preventable and need a reader that ranges over the subject; see the specimen's own residue statement in gunbc#10547.)",
+  ],
+
+  evidence: [],
+}

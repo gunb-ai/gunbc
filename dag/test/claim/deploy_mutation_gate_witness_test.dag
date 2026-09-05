@@ -1,5 +1,7 @@
 module test.claim.deploy_mutation_gate_witness
 
+// Denial subjects are real deployment mutations. The permit pole uses receipt
+// data so exercising authorization never tears down a live deployment.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
@@ -42,10 +44,10 @@ test fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() ->
   }
 }
 
-test fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
+test fn witness_wrong_host_unprivileged_both_deny_refused_before_effect() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -55,7 +57,7 @@ test fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool
       match intent.privilege_denial {
         Present { value: Deny { refusal: _ } } =>
           string_contains(s: why, pattern: deploy_target_host_refusal_prefix)
-            && !string_contains(s: why, pattern: mutation_gate_marker)
+            && intent.effect == LiveDeployRetract { spec: deployment_spec_srv1() }
         _ => false
       }
     Converged { evidence: _, applied: _ } => false
@@ -104,10 +106,10 @@ test fn witness_right_host_privileged_gate_permits() -> Bool {
   }
 }
 
-test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
+test fn witness_wrong_host_privileged_refused_before_effect() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
@@ -118,17 +120,17 @@ test fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { refusal: _ } } =>
-          !string_contains(s: why, pattern: mutation_gate_marker)
+          intent.effect == LiveDeployRetract { spec: deployment_spec_srv1() }
         _ => false
       }
     Converged { evidence: _, applied: _ } => false
   }
 }
 
-test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
+test fn witness_right_host_unprivileged_refused_before_effect() -> Bool {
   match live_deploy_fold(
     spec: deployment_spec_srv1(),
-    effect: ShellCommand { script: concat("echo ", mutation_gate_marker, " && exit 99") },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
@@ -137,7 +139,7 @@ test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { refusal: _ } } =>
-          !string_contains(s: why, pattern: mutation_gate_marker)
+          intent.effect == LiveDeployRetract { spec: deployment_spec_srv1() }
         _ => false
       }
     Converged { evidence: _, applied: _ } => false
@@ -147,7 +149,7 @@ test fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
 test fn witness_right_host_privileged_may_apply() -> Bool {
   reconciliation_converged(r: live_deploy_fold(
     spec: deployment_spec_srv1(),
-    effect: ShellCommand { script: "true" },
+    effect: Srv3ReceiptEmit { lines: [mutation_gate_marker] },
     transport: LocalShell,
     access: ci_deploy_srv1_access,
     fixture_actor: Present {
