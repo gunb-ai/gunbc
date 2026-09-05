@@ -330,15 +330,28 @@ fn ray_built_monitor_enforces(m: RayBuiltMonitor) -> Bool {
   }
 }
 
-// ── WHAT IS DELIBERATELY NOT MODELLED HERE ─────────────────────────────────────────────────────
+// ── SCOPE: THE LINUX PATH, SAID RATHER THAN LEFT IMPLICIT ──────────────────────────────────────
 //
-// NO PLATFORM ARM. An earlier revision carried `NonLinuxPlatform -> Noop`, taken from a comment on
-// master's header. The 2.58.0 factory body read for this module contains NO platform branch, and a
-// row asserting one would be a citation to a revision it was not read at -- the precise failure the
-// `count_swap_in_memory_monitor` absence above records this module already coming close to once.
-// If the behaviour exists it belongs here with a reading behind it, and until then its absence is
-// the honest state.
+// EVERYTHING ABOVE IS READ FROM THE LINUX FACTORY PATH. An earlier revision carried a
+// `NonLinuxPlatform -> Noop` arm taken from a comment on MASTER's header, and deleting it was right
+// -- the 2.58.0 body read for this module has no platform branch, so asserting one would have been a
+// citation to a revision it was not read at, the same failure the absence row above records.
 //
-// NO PROVENANCE FOR `resource_isolation_enabled`. It is an argument to `Create`, so where it comes
-// from is the caller's fact rather than this citation's.
-fn ray_pressure_monitor_is_factory_selectable() -> Bool { false }
+// BUT DELETING THE ARM LEFT THE SCOPE UNSTATED, WHICH IS ITS OWN DEFECT. A reader of
+// `ray_built_monitors` would take it for the whole story on every platform. It is the Linux story.
+// What the factory does elsewhere is UNREAD, not known-to-be-the-same, and that distinction is the
+// difference between a citation and a guess.
+//
+// NO PROVENANCE FOR `resource_isolation_enabled` EITHER. It is an argument to `Create`, so where it
+// comes from is the caller's fact rather than this citation's.
+//
+// THE PRESSURE MONITOR IS ABSENT BY CONSTRUCTION, WHICH IS WHY THERE IS NO PREDICATE FOR IT.
+// `RayBuiltMonitor` has no pressure constructor, so a pressure monitor cannot be written into a
+// built population at all -- the state is unrepresentable rather than merely refused. A
+// `ray_pressure_monitor_is_factory_selectable() -> false` function stood here with a witness
+// asserting its negation, and both are deleted: a zero-argument constant is not discriminated by any
+// input, so the witness could only go red if someone edited the constant it reads. That is a change
+// detector, and it was worse than absent because it would have been cited as coverage for a fact the
+// TYPE already guarantees. This is the third constant-shaped decoration removed from this module,
+// and the rule that catches all three is the same: ask whether the check's RED is authorable before
+// writing the check.

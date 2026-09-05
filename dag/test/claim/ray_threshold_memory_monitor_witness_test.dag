@@ -15,7 +15,6 @@ import extdeps.ray.threshold_memory_monitor {
   NodeMemoryUncapturable, ray_monitor_log_format, ray_monitor_line_reports_measurement,
   RayBuiltMonitor, ThresholdMonitorBuilt, NoopMonitorBuilt, EventMonitorBuilt,
   ray_built_monitors, ray_built_monitor_enforces,
-  ray_pressure_monitor_is_factory_selectable,
   ThresholdMonitorDisabled, UserSliceSnapshotFailed,
   ray_line_explains_absent_threshold_alarm,
   RayMinMemoryFree, MinMemoryFreeDisabled, MinMemoryFreeFloor
@@ -177,12 +176,6 @@ fn min_free_is(m: RayMinMemoryFree, wanted: NonEmptyStr) -> Bool {
   }
 }
 
-// THE PRESSURE MONITOR IS UNREACHABLE THROUGH THIS FACTORY, which is why this module is named for the
-// THRESHOLD monitor and not for the upstream directory.
-test fn w_the_pressure_monitor_is_not_factory_selectable() -> Bool {
-  !ray_pressure_monitor_is_factory_selectable()
-}
-
 test fn w_all_ray_threshold_monitor_claims_hold() -> Bool {
   w_the_env_spelling_is_the_config_name_with_a_ray_prefix()
     && w_the_config_field_names_are_distinct()
@@ -199,5 +192,4 @@ test fn w_all_ray_threshold_monitor_claims_hold() -> Bool {
     && w_the_lines_that_explain_an_absent_alarm_are_exactly_the_non_measurements()
     && w_the_user_slice_snapshot_failure_is_not_a_measurement()
     && w_the_min_memory_free_default_is_the_disabled_sentinel()
-    && w_the_pressure_monitor_is_not_factory_selectable()
 }
