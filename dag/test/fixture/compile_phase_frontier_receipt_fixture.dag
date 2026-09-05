@@ -1,0 +1,121 @@
+module test.fixture.compile_phase_frontier_receipt_fixture
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, Sha1Digest }
+import extdeps.git.inspect { CommitSha }
+import extdeps.git.object_store { GitSha1ObjectId }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
+import extdeps.languages.rust.compiler_phases {
+  rustc_phase_classification_policy_digest
+}
+import tools.emission_entry_instrument { RustfmtParseObservation }
+import gunbc.self_host_compile_phase_frontier {
+  CompilePhaseFrontierReceipt,
+  CompilePhaseReceiptSubject,
+  PhaseBoardBaseline,
+  PhaseBoardSuccessor,
+  PhaseBoardSeriesPosition,
+  ParseReached,
+  PhaseBoardProducer,
+  TargetDefaultedToHost,
+  CompilePhaseInvocation,
+  seal_compile_phase_receipt,
+  phase_board_from_census_identities,
+  PersistedPhaseBoardFold
+}
+
+// Shared internal data. Evaluated once when the module is loaded.
+// 3 well-formed E0308 identities; the board is derived from these
+// identities and must match for receipt_population_coherent to pass.
+
+data _fixture_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt synthetic",
+  files_observed: 0,
+  refused_files: []
+}
+
+data _fixture_raw_identities: List<String> = [
+  "src/v2_std_compilers_target_model.rs:669:13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:736:48	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:231:196	E0308	mismatched types"
+]
+
+data _fixture_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: _fixture_parse_observation,
+  raw_identities: _fixture_raw_identities
+)
+
+data _fixture_subject: CompilePhaseReceiptSubject = CompilePhaseReceiptSubject {
+  source_revision: "5006ddc6b758c0d1192675650cc29f6d1d9ebbaf" as CommitSha,
+  git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "1c7c79fbc01aa488abb541513fc8ea44367406ad" } }),
+  emitted_artifact_identity: sha256_digest(hex: "220a3514c3c8fa5aef36f1c37f58a2262d39a6359602e0391b27f1f9f359b381" as NonEmptyStr),
+  compiler_identity: sha256_digest(hex: "2b1717aa8b26e61c14117b4d6e9c66c6e41a4ea48ec7c852e0118a04c119169e" as NonEmptyStr),
+  assembler_identity: sha256_digest(hex: "2bb713ea0820ac60927f3af5892bba2d65d67543cb2749ac63b440d223bcc06d" as NonEmptyStr),
+  cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+  rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+  invocation: CompilePhaseInvocation {
+    target: "x86_64-unknown-linux-gnu",
+    target_selection: TargetDefaultedToHost,
+    profile: "check/dev",
+    features: []
+  },
+  classification_policy_digest: rustc_phase_classification_policy_digest,
+  comparison_epoch: "rustc-1.93.0-x86_64-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+}
+
+// Return a well-formed baseline receipt suitable for claims that need a
+// well-formed receipt to perturb but do NOT assert on the live population's
+// specific content. 3 identities; the board is self-consistent via
+// phase_board_from_census_identities.
+fn synthetic_compile_phase_receipt() -> CompilePhaseFrontierReceipt {
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-30T16:09:55Z" as NonEmptyStr,
+    subject: _fixture_subject,
+    invocation: "synthetic-baseline" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: _fixture_parse_observation },
+    board: _fixture_board_fold.board,
+    raw_error_diagnostic_identities: _fixture_raw_identities,
+    unplaced_identities: _fixture_board_fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.fixture.compile_phase_frontier_receipt_fixture",
+      function: "synthetic_compile_phase_receipt",
+      entry: "dag/test/fixture/compile_phase_frontier_receipt_fixture.dag"
+    }
+  )
+}
+
+// Return a successor-position receipt for testing series validation failure.
+// When used as the sole element of a series, the ratchet returns Refused
+// because a series must start with a baseline -- the position check fires
+// before any population coherence or identity checks.
+fn synthetic_successor_receipt() -> CompilePhaseFrontierReceipt {
+  seal_compile_phase_receipt(
+    sequence: 1,
+    observed_at: "2026-08-31T00:00:00Z" as NonEmptyStr,
+    subject: _fixture_subject,
+    invocation: "synthetic-successor" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "synthetic-baseline" as NonEmptyStr },
+    previous_prefix_digest: Present { value: content_hash_atom(value: "synthetic-dummy-prefix" as NonEmptyStr) },
+    parse_evidence: ParseReached { evidence: _fixture_parse_observation },
+    board: _fixture_board_fold.board,
+    raw_error_diagnostic_identities: _fixture_raw_identities,
+    unplaced_identities: _fixture_board_fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.fixture.compile_phase_frontier_receipt_fixture",
+      function: "synthetic_successor_receipt",
+      entry: "dag/test/fixture/compile_phase_frontier_receipt_fixture.dag"
+    }
+  )
+}
