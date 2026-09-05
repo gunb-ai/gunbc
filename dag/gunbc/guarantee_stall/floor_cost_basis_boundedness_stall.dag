@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.floor_cost_basis_boundedness_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
 
 // NO MEASUREMENT CAMPAIGN CAN DISCHARGE THIS ARM, AND THAT IS WHY IT IS A STALL RATHER THAN UNBUILT
 // WORK. `gunbc.rung_drop.floor_cost_claim_qualification_unavailable` states that its restoration
@@ -57,6 +57,70 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // drop's previous/temporary/reason fields have no answer here. The two rows are also different
 // facts: the drop states the standing unavailability, this states that one named restoration
 // conjunct is unreachable BY MEASUREMENT and what would reach it.
+// THE CONVERSION BELOW IS A CARRIER REPAIR, NOT A CORRECTION TO THIS ROW'S CONTENT. Read this
+// before drawing a conclusion about this row's author from the diff that added `climbs_when`.
+//
+// THE ORDER, MEASURED IN BOTH DIRECTIONS BECAUSE AN EARLIER DRAFT OF THIS COMMENT HAD IT
+// BACKWARDS. The carrier landed FIRST: 86be37f355 (gunbc#10582) at 17:21:02 already declared
+// `next_rung_trigger: NextRungTrigger` and supplied `climbs_when`. This row landed at 18:35:47,
+// SEVENTY-FOUR MINUTES LATER, in 45074b4e9c (gunbc#10281), spelling the field as a bare `String`.
+// `git merge-base --is-ancestor` answers YES in the carrier-before-row direction and NO in the
+// other. So this is NOT a migration that forgot a caller, and gunbc#10582 stranded nothing: AN
+// OLD-FORMAT DECLARATION LANDED ONTO A CARRIER THAT HAD ALREADY CHANGED.
+//
+// THE MEASURED CONSEQUENCE. 31 of the 33 rows in this directory use the constructor; this one did
+// not, and the closure enumerating them refuses with `type mismatch: expected
+// 'Product(NextRungTrigger)', got 'Primitive(String)'`. A branch merging main could not resolve
+// that closure until this conversion was made.
+//
+// THE MECHANISM, IN ONE LINE: DISCOVERING AN IDENTITY SO IT CAN RECEIVE A DISPOSITION IS NOT THE
+// SAME OPERATION AS PREPARING AND EXECUTING ITS DEPENDENCY CLOSURE. The witness DEPENDS ON the
+// roster -- live folds reaching the trigger, not a dead import. The required run ADMITS that
+// witness module into PREPARATION -- it does not. The first does not establish the second.
+//
+// THE INCIDENT, READ FROM THE ARTIFACT RATHER THAN INFERRED. The required-floor-disposition TSV
+// (artifact 9975676354, run 33986383584 at 2f8819b891, checked against its published SHA-256)
+// carries all ELEVEN identities of `test.claim.guarantee_stall_witness_test` as
+// `disposition = declined_outside_gate_closure`, `outcome = not_executed` -- including
+// `every_live_stall_names_a_next_rung_trigger` and `every_live_stall_trigger_is_admitted`.
+//
+// SO THE FLOOR DID NOT LIE, AND SAYING IT DID WOULD BE BOTH WRONG AND WEAKER. Every per-identity
+// disposition is exactly right: the run reported, honestly and per identity, that these witnesses
+// DID NOT RUN. What is wrong is that an AGGREGATE reported SUCCESS over a population that had
+// already excluded them. A defender can rebut "the floor lied about eleven witnesses"; nobody can
+// rebut "the floor said not_executed and the aggregate said success".
+//
+// THAT IS DENOMINATOR LOSS -- an aggregate verdict computed over an already-narrowed population,
+// so success never establishes that the ADMITTED set survived. The same shape is carried as an
+// open P0 finding at the install boundary; two boundaries exhibiting one shape is the fact worth
+// recording, not two incidents. The narrowing itself is
+// `gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector`, which
+// is the authority for it; this comment mints no second wording.
+//
+// WHAT THIS DOES NOT LICENSE, stated so nobody reaches for it: it is not an argument for compiling
+// everything whenever the selector is uncertain. That is the absorbing fallback -- denominated in
+// the corpus rather than the change, growing until the budget breaks instead of the build. A
+// widening must be explicit, bounded, and credited only for the population it actually restores.
+//
+// TWO EXPLANATIONS WERE OFFERED FOR THE GREEN AND BOTH ARE WITHDRAWN, recorded because an
+// unmeasured mechanism in a permanent comment is worse than no mechanism. The first was that the
+// migration missed a caller -- refuted by the ordering above. The second was that the roster is
+// enumerated somewhere the required floor does not compile -- refuted by the witnesses existing,
+// consuming it through live folds, and being reported per identity. What is measured is that they
+// were DISCOVERED and DECLINED, never prepared.
+//
+// THE QUESTION THIS OPENS is sharper than either withdrawn explanation, and no census at the
+// carrier's own PR could have answered it: DOES ADMISSION VALIDATE AN INCOMING DECLARATION AGAINST
+// THE CARRIER CURRENT AT PLACEMENT? A clean merge and an active author do not establish
+// compatibility with an intervening authority change. The discriminating evidence for that work is
+// an incoming old-format constructor under the new carrier, REFUSED BY AN EXECUTING REQUIRED
+// CONSUMER, with the valid `climbs_when` construction still accepted; a roster-membership check
+// establishes neither half.
+//
+// THE CONVERSION IS MECHANICAL AND VERIFIED AS SUCH: the capability text is byte-identical at 321
+// characters, and `awaiting: []` discards nothing -- the original trigger carried no referent
+// provenance to lose. It restores resolution; IT CLOSES NOTHING about admission.
+
 data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   subject: "the BOUNDEDNESS-BY-CONSTRUCTION arm of conjunct (ii) of gunbc.rung_drop.floor_cost_claim_qualification_unavailable's restoration trigger: repeated execution measurement cannot establish it, because every observed maximum is a LOWER bound on the smallest valid bound rather than an upper bound over the admitted envelope",
   current: OutsideTheLadder,
@@ -67,5 +131,5 @@ data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   population: UncountedNotEnumerable {
     reason: "the subject is ONE ARM of conjunct (ii) of a restoration trigger authored as prose inside gunbc.rung_drop.floor_cost_claim_qualification_unavailable. The population this carrier reports is the EXPOSURE, not a roster of the source artifacts that carry or discuss the subject, and the exposed set here is every required identity for which the CPU deadline is armed, derived per run. That set is produced by execution rather than declared in source, so no authored list in this standing row would be true when written. It is finite, not mathematically infinite, and a run may well emit its own occurrence roster; what does not exist is a stable source-level authority this row could name. TWO EARLIER REVISIONS OF THIS FIELD WERE WRONG IN DIFFERENT WAYS, recorded because the second failure is the instructive one. The first list named gunbc.floor_cost_distribution.RunCost.eval_steps, a field that does not exist -- RunCost declares run and rows -- so its BoundedPopulation was not an identity join and the bound was never real. The second revision substituted a symbol that does exist, v2.workflow.required_floor.claim_safety_outcome, and was still wrong, because the defect was the SHAPE rather than the bad member: the list enumerated CARRIERS -- an instrument column, a deciding consumer, and the parent drop -- which is one-carrier-answers-for-the-whole-population, the move `gunbc.guarantee_stall.two_nat_authorities_stall` rejects under this same StallPopulation carrier even though its own declaration half and four direct importers are perfectly enumerable. THE FUTURE BOUNDARY IS NOT A TYPED SPLIT OF THE PARENT TRIGGER. Giving the arm a typed source identity would make the SUBJECT referable and may be worth doing on its own, but it neither enumerates the exposed required identities nor is needed to; naming that new arm identity here would repeat the same rejected move one level down. What would permit an honest BoundedPopulation is a typed PRODUCER of the exposed population at this grain -- a derivation joining a run's required-identity dispositions to the CpuDeadlineArmed policy, or another closed authority that enumerates every affected identity",
   },
-  next_rung_trigger: "the construction-bound authority named in this row's grounding EXISTS and is CONSUMED by the required-floor verdict at the declared subject grain, with its over-bound control refused on the real acceptance path; no volume of execution sampling retires this row, and a widening of the measurement campaign does not move it"
+  next_rung_trigger: climbs_when(capability: "the construction-bound authority named in this row's grounding EXISTS and is CONSUMED by the required-floor verdict at the declared subject grain, with its over-bound control refused on the real acceptance path; no volume of execution sampling retires this row, and a widening of the measurement campaign does not move it"),
 }
