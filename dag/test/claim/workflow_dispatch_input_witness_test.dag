@@ -187,9 +187,15 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
 }
 
+// The org-actions mode mints its credential in-run from the App key: the step names the App's
+// installation token endpoint and the key's Secret Manager version, and the workflow carries no
+// repository secret for it (the interim PAT design was superseded before it was ever taken).
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
-  string_contains(
-    s: gunbc_ci_org_actions_converge_invoke(),
-    pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
-  )
+  let invoke = gunbc_ci_org_actions_converge_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet")
+    && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
+    && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
+    && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
+    && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
+    && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }

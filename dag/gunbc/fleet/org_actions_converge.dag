@@ -228,7 +228,7 @@ fn completed_groups(reads: List<ObservedGroupRead>) -> List<ObservedGroupAccess>
 func org_actions_converge_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
-    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent")
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
     Present { value: _ } => {
       let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: org_actions_organization)
       if !listed.success {
