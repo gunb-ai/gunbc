@@ -41,6 +41,27 @@ data ray_factory_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data ray_threshold_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/threshold_memory_monitor.h"
+  }
+}
+
+data ray_event_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/event_memory_monitor.h"
+  }
+}
+
+data ray_noop_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/noop_memory_monitor.h"
+  }
+}
+
 data ray_config_macro_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -91,6 +112,34 @@ data ray_built_monitors_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: ray_factory_authority,
   further_citations: []
+}
+
+// THE CLASSIFIER IS CITED BECAUSE IT DECIDES ADMISSION, AND ITS CRITERION IS NOT `IsEnabled()`.
+// `ray_built_monitor_enforces` selects whether a serving host is treated as having a live memory
+// enforcer, so an authored mapping verified only against authored expectations would be this
+// module's own opinion sitting on the decisive branch. It is read from the three implementation
+// headers at the tag, and the criterion is CAN IT INVOKE THE KILL-WORKERS CALLBACK:
+//
+//   ThresholdMemoryMonitor -- "checks the memory usage periodically and invokes the callback"
+//   EventMemoryMonitor     -- monitors memory events "when the memory.high is reached or exceeded
+//                             and trigger the kill workers callback"
+//   NoopMemoryMonitor      -- "does not perform any monitoring"; `Enable` and `Disable` have empty
+//                             bodies
+//
+// `IsEnabled()` WOULD HAVE GIVEN THE WRONG ANSWER, which is why the criterion is stated rather than
+// left to the obvious method. NoopMemoryMonitor overrides `IsEnabled() const` to `return true` while
+// doing nothing at all, so a classifier keyed on it would report the disabled configuration as
+// enforcing -- the exact direction that admits a host nothing is watching.
+data ray_built_monitor_enforces_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_built_monitor_enforces",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_threshold_impl_authority,
+  further_citations: [ray_event_impl_authority, ray_noop_impl_authority]
 }
 
 data ray_config_env_spelling_scope: ExternalModelScope = ExternalModelScope {

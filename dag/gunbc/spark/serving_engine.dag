@@ -156,9 +156,9 @@ fn spark_engine_slot_admits(
 // RAY'S TWO MONITORS ARE TWO KINDS, BECAUSE THEY MEASURE DIFFERENT THINGS. An earlier revision had
 // a single `RayThresholdMonitor` standing for "Ray is enforcing", which forced every live Ray
 // configuration to be reported as the threshold monitor -- including the one where the factory
-// builds no threshold monitor at all. The event monitor watches a cgroup event counter and the
-// threshold monitor polls a byte total against a limit; a refusal that names the wrong one is a
-// fabricated cause, which is worse than no refusal because it will be read as a finding.
+// builds no threshold monitor at all. A refusal that names the wrong one is a fabricated cause,
+// which is worse than no refusal because it will be read as a finding. HOW each one triggers is a
+// property of Ray's implementations and is stated by the citation, not restated here.
 type MemoryEnforcerKind = RayThresholdMonitor | RayEventMonitor | HostMemGuard | KernelOomKiller
 
 // WHETHER AN ENFORCER SEES THE DEVICE RESERVATION HAS THREE ANSWERS, AND THE THIRD IS NOT A `false`.
@@ -167,9 +167,11 @@ type MemoryEnforcerKind = RayThresholdMonitor | RayEventMonitor | HostMemGuard |
 // never faulted in. That is the measured asymmetry and the whole reason a unified pool tolerates one
 // of these and not the other.
 //
-// RAY'S EVENT MONITOR IS THE ONE WE HAVE NOT ESTABLISHED. It fires off a cgroup event counter rather
-// than a byte comparison, and nothing read for this module says whether that accounting includes a
-// device reservation on a unified pool. A `Bool` has nowhere to put that: returning `false` would
+// RAY'S EVENT MONITOR IS THE ONE WE HAVE NOT ESTABLISHED. Nothing read for this module says whether
+// its accounting includes a device reservation on a unified pool. The honest fact is exactly that --
+// THIS REPOSITORY HAS NOT ESTABLISHED IT -- and no mechanism story is asserted here to explain why,
+// because a borrowed explanation would be a citation to a file nobody here read. A `Bool` has
+// nowhere to put that: returning `false` would
 // assert it is safe on the strength of not having checked, which is the fabricated-plausible-answer
 // failure, and returning `true` would invent the measurement. So the answer is a third arm, and on a
 // unified pool it REFUSES -- an enforcer whose accounting is unknown is exactly as unsafe to admit as

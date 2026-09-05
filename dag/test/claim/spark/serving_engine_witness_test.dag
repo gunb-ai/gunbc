@@ -223,8 +223,8 @@ test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Boo
 //
 // AND IT REFUSES AS THE EVENT MONITOR, NOT THE THRESHOLD ONE. The factory built `[Event, Noop]`, so
 // there is no threshold monitor on this host. Reporting one would be a fabricated cause. Whether
-// Ray's event monitor counts a device reservation is UNESTABLISHED -- it fires off a cgroup event
-// counter rather than a byte comparison, and nothing read for the citation settles it -- so the
+// Ray's event monitor counts a device reservation is UNESTABLISHED -- nothing read for the citation
+// settles it, and no mechanism story is asserted here to explain why -- so the
 // refusal carries that as its own arm. Refusing on unknown accounting is the fail-closed reading:
 // admitting would assert safety on the strength of not having checked.
 //
@@ -254,7 +254,8 @@ test fn w_the_same_configuration_admits_once_the_monitor_is_off() -> Bool {
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_guard], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorRay))
 }
 
-// CONTROL. A NON-Ray backend on a unified pool admits with the monitor flag untouched -- the rule is
+// CONTROL. A NON-Ray backend on a unified pool admits under a configuration that WOULD build a live
+// enforcing monitor on a Ray backend -- the rule is
 // about what is counting, not about unified memory in general.
 test fn w_a_non_ray_backend_is_outside_the_monitor_rule() -> Bool {
   enforcer_admitted(
