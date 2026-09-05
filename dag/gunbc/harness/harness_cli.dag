@@ -321,6 +321,11 @@ fn harness_reviewer_system_prompt_at(verdict_path: String) -> String {
 // run the check, write one file. A review that needs forty rounds is investigating, not judging.
 data harness_reviewer_step_budget: Int = 20
 
+// THE REVIEWER'S REPLICA IS SEEDED ON ITS VERDICT PATH, NOT THE WORKTREE. The worker seeds on the
+// worktree so one attempt's rounds stay on one engine; six reviewers of one attempt share that
+// worktree, so the same seed put all six on one replica while the other idled -- measured 2026-09-05,
+// eleven connections to .232 against five to .225 with every one of ours on .232. The verdict path
+// carries head and criterion, so an attempt's reviewers spread across the roster.
 fn harness_reviewer_config(
   worktree: FilePath,
   timeout_program: FilePath,
@@ -329,7 +334,7 @@ fn harness_reviewer_config(
   verdict_path: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: worktree as String),
+    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: verdict_path),
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,

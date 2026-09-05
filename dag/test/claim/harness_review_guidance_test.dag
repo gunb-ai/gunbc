@@ -1,6 +1,7 @@
 module test.claim.harness_review_guidance_test
 
 import std.types { Bool, String, List }
+import gunbc.harness.harness_wire { harness_engine_replica_index }
 import gunbc.harness.harness_review_guidance {
   ReviewPremise, CapabilityWithheld, ChangeTheTree, ReviewGroundedPremise,
   harness_reviewer_guidance_at, review_guidance_prose, review_conclusions, TheOutputIsTheVerdictNotAChange, RunTheCheckBeforeJudging,
@@ -33,4 +34,13 @@ test fn dropping_the_withheld_change_premise_drops_its_conclusion() -> Bool {
   any(full, c => match c { TheOutputIsTheVerdictNotAChange => true  _ => false })
     && !any(reduced, c => match c { TheOutputIsTheVerdictNotAChange => true  _ => false })
     && any(reduced, c => match c { RunTheCheckBeforeJudging => true  _ => false })
+}
+
+// DISCRIMINATING: six reviewers of one attempt do not all land on one replica. Seeded on the shared
+// worktree they would; seeded on their verdict paths they spread.
+test fn the_six_criterion_reviewers_of_one_attempt_spread_across_replicas() -> Bool {
+  let base = "/state/attempt-1/review/86dd174c96."
+  let keys = ["goal", "redundancy", "single-authority", "grounding", "fail-closed", "how-to-work"]
+  let picks = map(keys, k => harness_engine_replica_index(seed: join([base, k, ".json"], "")))
+  any(picks, i => i == 0) && any(picks, i => i == 1)
 }
