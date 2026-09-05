@@ -8,11 +8,9 @@ import extdeps.network.ipv4 { ipv4_address_eq }
 import extdeps.vllm.engine_args { KvFp8DsMla, ExecutorRay, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_intent_network { operator_host_srv6, operator_host_srv5 }
-import gunbc.spark.pair_serving_observed { first_pair_ray_head, first_pair_kv_pool }
-import gunbc.spark.fabric_link_desired {
-  Srv5Srv6, Srv7Srv8, Rail0, fabric_link_identity, spark_fabric_endpoint, FabricEndpointFound,
-  FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
-}
+import gunbc.spark.pair_serving_observed { first_pair_kv_pool }
+import gunbc.spark.fabric_link_desired { Srv5Srv6, Srv7Srv8 }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_engine_args,
   spark_pair_serving_unit, spark_pair_serving_unit_with,
@@ -53,25 +51,17 @@ test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
 
 data w_measured: SparkPairServingSeqCapacity = SeqCapacityMeasured { max_num_seqs: 32, basis: "witness fixture, not a measurement" as NonEmptyStr }
 
-// WITH A MEASURED POOL THE FIRST PAIR RESOLVES BOTH RANKS THROUGH THE FABRIC LINK: two distinct
-// hosts, each address equal to its endpoint on rail 0 as the fabric authority answers it, and the
-// engine is vLLM.
-test fn a_measured_pool_resolves_both_ranks_through_the_fabric_link() -> Bool {
+// WITH A MEASURED POOL THE FIRST PAIR RESOLVES BOTH RANKS THROUGH THE SWITCHED RAIL: two distinct
+// hosts, each address equal to its rail address as the rail authority derives it from the observed
+// lane, and the engine is vLLM.
+test fn a_measured_pool_resolves_both_ranks_through_the_switched_rail() -> Bool {
   match spark_pair_serving_unit_with(pair: Srv5Srv6, capacity: w_measured) {
     SparkPairServingUnitRefused { pair: _, cause: _ } => false
     SparkPairServingUnitReady { pair: _, engine: e, head: h, worker: w } =>
       !host_identity_eq(a: h.host, b: w.host)
         && (match e { VllmServing { args: _ } => true  OllamaServing { profile: _ } => false })
-        && (match spark_fabric_endpoint(identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0), host: h.host) {
-              FabricEndpointFound { endpoint: ep } => ipv4_address_eq(a: ep.address, b: h.host_ip)
-              FabricEndpointHostNotOnLink { identity: _, host: _ } => false
-              FabricEndpointLinkUnresolved { lookup: _ } => false
-            })
-        && (match spark_fabric_endpoint(identity: fabric_link_identity(pair: Srv5Srv6, rail: Rail0), host: w.host) {
-              FabricEndpointFound { endpoint: ep } => ipv4_address_eq(a: ep.address, b: w.host_ip)
-              FabricEndpointHostNotOnLink { identity: _, host: _ } => false
-              FabricEndpointLinkUnresolved { lookup: _ } => false
-            })
+        && (match fabric_rail_address(host: h.host) { Present { value: a } => ipv4_address_eq(a: a, b: h.host_ip)  Absent => false })
+        && (match fabric_rail_address(host: w.host) { Present { value: a } => ipv4_address_eq(a: a, b: w.host_ip)  Absent => false })
   }
 }
 
@@ -99,15 +89,14 @@ test fn the_wire_names_the_pair_and_both_ranks_or_the_cause() -> Bool {
     && string_contains(s: refused, pattern: " refused: ")
 }
 
-// THE HEAD IS THE HOST THAT CARRIES THE RAY NODE ADDRESS. srv6 is the observed head; a derivation
-// from the fabric row's endpoint order would have made srv5 the head, and srv5 runs only the worker.
-test fn the_first_pair_head_is_srv6_at_the_ray_node_address_and_srv5_is_the_worker() -> Bool {
+// THE HEAD IS srv6 AND THE WORKER srv5, AS OBSERVED, and the head's address is its rail address.
+test fn the_first_pair_head_is_srv6_at_its_rail_address_and_srv5_is_the_worker() -> Bool {
   match spark_pair_serving_unit(pair: Srv5Srv6) {
     SparkPairServingUnitRefused { pair: _, cause: _ } => false
     SparkPairServingUnitReady { pair: _, engine: _, head: h, worker: w } =>
       host_identity_eq(a: h.host, b: operator_host_srv6)
         && host_identity_eq(a: w.host, b: operator_host_srv5)
-        && ipv4_address_eq(a: h.host_ip, b: first_pair_ray_head.node_ip)
+        && (match fabric_rail_address(host: operator_host_srv6) { Present { value: a } => ipv4_address_eq(a: a, b: h.host_ip)  Absent => false })
   }
 }
 

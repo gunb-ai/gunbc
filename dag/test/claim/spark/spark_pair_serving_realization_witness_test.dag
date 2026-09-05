@@ -53,7 +53,7 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
     string_contains(s: t, pattern: join([
         "ExecStartPre=/usr/bin/docker start gunbc-spark-pair\n",
         "ExecStartPre=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray stop --force\n",
-        "ExecStartPre=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --head --node-ip-address=192.168.102.10 --port=6379 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412\n",
+        "ExecStartPre=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --head --node-ip-address=192.168.110.14 --port=6379 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412\n",
         "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve",
       ], ""))
       && string_contains(s: t, pattern: "StandardOutput=append:/var/log/gunbc/spark-pair-head.log")
@@ -67,22 +67,23 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
 test fn the_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
   w_realized(f: fn(_h, w) {
     let t = w_unit_text(u: w.unit)
-    string_contains(s: t, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --address=192.168.102.10:6379 --node-ip-address=192.168.102.11 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412 --block")
+    string_contains(s: t, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/ray start --address=192.168.110.14:6379 --node-ip-address=192.168.110.11 --num-cpus=20 --num-gpus=1 --object-store-memory=38867934412 --block")
       && string_contains(s: t, pattern: "Restart=always")
   })
 }
 
-// EVERY INTERFACE NAME THE IMAGE BAKES IS OVERRIDDEN AT CREATE, FROM THE FABRIC ROW, ON BOTH HOSTS.
+// EVERY INTERFACE NAME THE IMAGE BAKES IS OVERRIDDEN AT CREATE, FROM THE OBSERVED LANE, ON BOTH HOSTS.
 // This is the 2026-09-05 drift made unwritable: an identity join against the image's own roster of
-// baked names, with the head's values equal to its rail-0 interface and address.
+// baked names, with the head's values equal to its leg netdev, RDMA device and rail address.
 test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric() -> Bool {
   w_realized(f: fn(h, w) {
     spark_pair_container_env_covers_every_baked_name(env: h.container.env)
       && spark_pair_container_env_covers_every_baked_name(env: w.container.env)
-      && any(h.container.env, e => (e.name as String) == "TP_SOCKET_IFNAME" && e.value == "enp1s0f0np0")
-      && any(h.container.env, e => (e.name as String) == "NCCL_SOCKET_IFNAME" && e.value == "enp1s0f0np0,enP2p1s0f0np0")
-      && any(h.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.102.10")
-      && any(w.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.102.11")
+      && any(h.container.env, e => (e.name as String) == "TP_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
+      && any(h.container.env, e => (e.name as String) == "NCCL_SOCKET_IFNAME" && e.value == "enp1s0f1np1")
+      && any(h.container.env, e => (e.name as String) == "NCCL_IB_HCA" && e.value == "rocep1s0f1")
+      && any(h.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.14")
+      && any(w.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.11")
       && any(h.container.env, e => (e.name as String) == "RAY_memory_monitor_refresh_ms" && e.value == "0")
   })
 }

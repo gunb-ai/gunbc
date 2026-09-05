@@ -18,10 +18,10 @@ import gunbc.spark.serving_engine {
   spark_memory_enforcer_admits,
 }
 import gunbc.spark.fabric_link_desired {
-  SparkFabricPair, Srv5Srv6, Srv7Srv8, SparkFabricRail, Rail0, Rail1,
-  fabric_link_identity, spark_fabric_pair_hosts, render_spark_fabric_pair,
-  spark_fabric_endpoint, FabricEndpointFound, FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
+  SparkFabricPair, Srv5Srv6, Srv7Srv8, spark_fabric_pair_hosts, render_spark_fabric_pair,
 }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_for_host }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve }
 import gunbc.fleet_intent_network { operator_host_srv7 }
@@ -40,8 +40,9 @@ import gunbc.fleet_intent_network { operator_host_srv7 }
 //     1048576 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
 //   - max-num-seqs is BY MEASURED POOL, and until that measurement is a row the unit refuses --
 //     a fabricated count would be exactly the plausible output §5 forbids;
-//   - which two hosts form a pair is the fabric's fact (gunbc.spark.fabric_link_desired), and each
-//     rank's host address is resolved through the link, never spelled here;
+//   - each rank's host address and interface are resolved through the SWITCHED rail
+//     (gunbc.spark.fabric_rail_desired over the observed lane), never spelled here; the direct-cable
+//     pair rows in fabric_link_desired no longer describe a wire and are not consulted;
 //   - a pair whose host still holds an undischarged llama.cpp RPC peer reservation is refused, the
 //     same wall test.claim.spark_llama_cpp_rpc_witness holds over the cell-role roster;
 //   - the head rank is an observed fact per pair (which host carries the serve process and the
@@ -78,8 +79,6 @@ data spark_pair_serving_ray_monitor_refresh: Millisecond = millisecond(count: 0)
 data spark_pair_serving_ray_resource_isolation_enabled: Bool = false
 data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
 
-data spark_pair_serving_rail: SparkFabricRail = Rail0
-
 // The pairs promoted to pair serving. srv7/srv8 wait on the RPC release receipt; srv9/srv11 wait
 // on their fabric pair being observed and enrolled in fabric_link_desired; srv10 is the RMA unit.
 data spark_pair_serving_pairs: List<SparkFabricPair> = [Srv5Srv6]
@@ -108,10 +107,10 @@ fn spark_pair_serving_engine_args(max_num_seqs: Nat) -> VllmEngineArgs {
 
 type SparkPairServingParticipant {
   pair: SparkFabricPair
-  rail: SparkFabricRail
   role: SparkPairServingRole
   host: HostIdentity
   host_ip: Ipv4Address
+  lane: FabricLaneObserved
 }
 
 type SparkPairServingUnit
@@ -140,19 +139,16 @@ type PairParticipantResolution
 
 fn spark_pair_serving_participant(
   pair: SparkFabricPair,
-  rail: SparkFabricRail,
   role: SparkPairServingRole,
   host: HostIdentity,
 ) -> PairParticipantResolution {
-  match spark_fabric_endpoint(identity: fabric_link_identity(pair: pair, rail: rail), host: host) {
-    FabricEndpointFound { endpoint: e } =>
+  match fabric_lane_for_host(host: host) {
+    Present { value: o } =>
       ParticipantResolved {
-        participant: SparkPairServingParticipant { pair: pair, rail: rail, role: role, host: host, host_ip: e.address },
+        participant: SparkPairServingParticipant { pair: pair, role: role, host: host, host_ip: fabric_rail_address_of(o: o), lane: o },
       }
-    FabricEndpointHostNotOnLink { identity: _, host: h } =>
-      ParticipantUnresolved { cause: join([h as String, " is not an endpoint of its own pair's fabric link"], "") as NonEmptyStr }
-    FabricEndpointLinkUnresolved { lookup: _ } =>
-      ParticipantUnresolved { cause: join(["the fabric link for pair ", render_spark_fabric_pair(pair: pair), " is not resolvable to exactly one row"], "") as NonEmptyStr }
+    Absent =>
+      ParticipantUnresolved { cause: join([host as String, " is not observed on the switched fabric, so it has no rail address"], "") as NonEmptyStr }
   }
 }
 
@@ -192,10 +188,10 @@ fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServin
                 match first(filter(hosts, h => !host_identity_eq(a: h, b: head_host))) {
                   Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists one host twice" as NonEmptyStr }
                   Present { value: worker_host } =>
-                    match spark_pair_serving_participant(pair: pair, rail: spark_pair_serving_rail, role: PairHead, host: head_host) {
+                    match spark_pair_serving_participant(pair: pair, role: PairHead, host: head_host) {
                       ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
                       ParticipantResolved { participant: head } =>
-                        match spark_pair_serving_participant(pair: pair, rail: spark_pair_serving_rail, role: PairWorker, host: worker_host) {
+                        match spark_pair_serving_participant(pair: pair, role: PairWorker, host: worker_host) {
                           ParticipantUnresolved { cause: c } => SparkPairServingUnitRefused { pair: pair, cause: c }
                           ParticipantResolved { participant: worker } =>
                             SparkPairServingUnitReady { pair: pair, engine: VllmServing { args: args }, head: head, worker: worker }

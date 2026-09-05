@@ -119,6 +119,10 @@ fn docker_start_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["start", name as String])
 }
 
+fn docker_remove_force_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["rm", "-f", name as String])
+}
+
 fn docker_stop_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["stop", name as String])
 }
