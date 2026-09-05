@@ -78,6 +78,35 @@ test fn a_concrete_alias_argument_formal_remains_accepted() -> Bool {
   application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype Inner = Wrapped<First>\ntype Specific = Record<Inner>\nfn take(q: Record<Inner>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
 }
 
+// Probe 630cc515 falsely refuses the equal pair: argument declaration names
+// differ while their complete applications agree. The distinct pair prevents
+// fixing that refusal by discarding Wrapped's phantom argument.
+test fn equivalent_argument_application_aliases_remain_accepted() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype InnerA = Wrapped<First>\ntype InnerB = Wrapped<First>\ntype Specific = Record<InnerB>\nfn take(q: Record<InnerA>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+test fn distinct_argument_application_aliases_are_refused() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Wrapped<T> { n: Int }\ntype Record<P> { n: Int }\ntype InnerA = Wrapped<First>\ntype InnerB = Wrapped<Second>\ntype Specific = Record<InnerB>\nfn take(q: Record<InnerA>) -> Int { q.n }\nfn probe(q: Specific) -> Int { take(q:q) }\n")
+}
+
+// fcf56b20 reproduces cache_interface's remaining refusal without std imports.
+// Enclosing parameter substitution already works (9796be29); a concrete alias
+// argument in the projected field exposed the produced-side shape loss.
+test fn a_projected_field_preserves_its_argument_application_alias() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> { n: Int }\ntype Inner = Wrapped<First>\ntype Record<P,Q> { n: Int }\ntype Specific = Record<First,Inner>\ntype Box<P> { value: Record<P,Inner> }\nfn take(q: Specific) -> Int { q.n }\nfn probe(q: Box<First>) -> Int { take(q:q.value) }\n")
+}
+
+test fn a_projected_field_preserves_distinct_enclosing_arguments() -> Bool {
+  application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype Specific = Record<First>\ntype Box<P> { value: Record<P> }\nfn take(q: Specific) -> Int { q.n }\nfn probe(q: Box<Second>) -> Int { take(q:q.value) }\n")
+}
+
+// A nongeneric projection base is the same owner/application fact at arity zero.
+// This covers the base shape of ConcurrentMemoryPeakSample and EffectStallBudget;
+// requiring a generic base would discard their authored field argument syntax.
+test fn a_nongeneric_base_preserves_its_field_application_alias() -> Bool {
+  application_source_is_clean(source: "module application\ntype First\ntype Wrapped<T> {n:Int}\ntype Inner=Wrapped<First>\ntype Record<P> {n:Int}\ntype Specific=Record<Inner>\ntype Box {value:Specific}\nfn take<P>(q:Record<P>)->Int {q.n}\nfn probe(q:Box)->Int {take(q:q.value)}\n")
+}
+
 test fn distinct_application_aliases_are_refused_by_inhabitance() -> Bool {
   application_source_refuses_distinct_argument(source: "module application\ntype First\ntype Second\ntype Record<P> { n: Int }\ntype FirstRecord = Record<First>\ntype SecondRecord = Record<Second>\nfn take(q: FirstRecord) -> Int { q.n }\nfn probe(q: SecondRecord) -> Int { take(q: q) }\n")
 }
