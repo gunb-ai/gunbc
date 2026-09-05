@@ -104,6 +104,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
+    decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
