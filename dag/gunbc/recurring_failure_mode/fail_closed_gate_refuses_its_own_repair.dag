@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fail_closed_gate_refuses_its_own_repair: RecurringFailureMode = RecurringFailureMode {
+  identity: "fail_closed_gate_refuses_its_own_repair" as NonEmptyStr,
+
+  receipts: [
+    "**a fail-closed gate predicates evaluation on base-revision health and therefore refuses the change that restores that health.** INVALID STATE: the gate correctly declines to compare an unreadable base, but has no representable arm for `the base defect is exactly the subject this change removes`. Its safety property becomes self-sealing: every ordinary change is rightly refused while the repair is refused for the same reason, so no gate-admitted transition can restore the precondition the gate requires. ",
+    "MEASURED SPECIMEN (2026-09-04): gunbc#10390 left an unattached `//` block at the tail of `dag/test/claim/emit_copy_qualification_witness_test.dag`; the base revision then failed parsing with 16 diagnostics. On gunbc#10428, which moved that block onto a declaration and made the file parse again, the namespace-wave-admission phase reported `NotEvaluated -- dag/test/claim/emit_copy_qualification_witness_test.dag does not parse at the base revision (16 diagnostic(s)), so its base-side declarations cannot be read`. The refusal was correct, and #10428 could repair main only because it landed despite that refusal. Its next run was green. ",
+    "DISTINGUISHING FACTS: nothing widened, defaulted, or fabricated, so this is NOT `absorbing_fallback`; the gate preserved ignorance as NotEvaluated exactly as fail-closed requires. The defect is transition reachability, not verdict truth. Recognition rule: for every gate that requires a healthy base, construct a base violating that precondition and a head differing only by removal of the violation; if the same refusal covers both that repair and an unrelated change, the gate has no repair discriminator and its invariant is self-sealing. ",
+    "HARM: a below-floor parse defect on main made its own direct repair unmergeable by the required admission mechanism, and every other pull request inherited the refusal until an operator used a route outside that mechanism. A gate intended to bound change thereby extended the outage and required an unmodeled exception at the moment its guarantee mattered most. ",
+    "RUNG FOUND AT: mitigatable by operator inspection and exceptional landing, with the invalid transition still writable and no mechanism distinguishing it. CEILING: mechanically preventable, not structural today: admitting a purported repair from the head alone is the obvious fail-open trap, because an ordinary change can conceal, relocate, or replace the unreadable base subject while claiming repair. A safe arm must establish both a bounded defect identity on the base and monotone removal of only that defect without pretending to compare base semantics the parser could not produce. NEXT-RUNG TRIGGER: a revision-scoped recovery-parse and change-classification capability sufficient to locate a bounded base defect in raw source, prove that the head removes that same defect, and prove that no outside-scope semantic change rides with it; the gate may then admit only that typed Repair transition while continuing to refuse every unclassified NotEvaluated change. ",
+  ],
+
+  evidence: [],
+}
