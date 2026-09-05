@@ -249,25 +249,47 @@ fn parse_expectation(wire: String) -> ClaimExpectation? {
 // row. One row, read by the renderer and by the reader.
 data ledger_returned_true_tag: String = "returned-true"
 
+// EVERY OTHER TAG GETS THE SAME ROW, because the hazard was never about this one tag. Each of these
+// was spelled once by the renderer and once by the reader, so the renderer could change a spelling
+// and the reader would go on testing the old one -- silently answering "no row matched" for a
+// terminal that is present in the file. One row per tag, read by both directions, is what makes
+// that divergence unwritable rather than merely unlikely (DESIGN section 3).
+//
+// THE DISPOSITION LABELS ARE DELIBERATELY NOT FOLDED IN HERE, even though two of them share a
+// spelling with a tag. `render_disposition` answers a different question over a different closed
+// vocabulary -- what the floor CONCLUDED about a row, not which terminal arm it reached -- and a
+// shared spelling between two vocabularies is a coincidence, not a shared fact. Routing both
+// through one row would fuse two meanings under one name, which is the fork this section forbids
+// pointing the other way: the spelling could then only change for both at once.
+data ledger_returned_false_tag: String = "returned-false"
+data ledger_returned_unreadable_tag: String = "returned-unreadable"
+data ledger_runtime_errored_tag: String = "runtime-errored"
+data ledger_panicked_tag: String = "panicked"
+data ledger_not_attempted_tag: String = "not-attempted"
+data ledger_budget_refused_tag: String = "budget-refused"
+data ledger_passed_over_budget_tag: String = "passed-over-budget"
+data ledger_budget_terminal_without_safety_cause_tag: String = "budget-terminal-without-safety-cause"
+data ledger_host_tool_unresolved_tag: String = "host-tool-unresolved"
+
 fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
   match terminal {
     Returned { observation: o } =>
       match o {
-        ObservedVerdict { holds: h } => if h { ledger_returned_true_tag } else { "returned-false" }
-        ObservationUnrepresentable { reason: _ } => "returned-unreadable"
+        ObservedVerdict { holds: h } => if h { ledger_returned_true_tag } else { ledger_returned_false_tag }
+        ObservationUnrepresentable { reason: _ } => ledger_returned_unreadable_tag
       }
-    RuntimeErrored { message: _ } => "runtime-errored"
-    Panicked { payload: _ } => "panicked"
-    NotAttempted { halted_by: _ } => "not-attempted"
+    RuntimeErrored { message: _ } => ledger_runtime_errored_tag
+    Panicked { payload: _ } => ledger_panicked_tag
+    NotAttempted { halted_by: _ } => ledger_not_attempted_tag
     BudgetRefused { safety: s } =>
       match s {
         SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
-          "budget-refused"
+          ledger_budget_refused_tag
         CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
-          "passed-over-budget"
-        CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
+          ledger_passed_over_budget_tag
+        CompletedWithinSafetyLimits => ledger_budget_terminal_without_safety_cause_tag
       }
-    HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
+    HostToolUnresolved { name: _, probed: _ } => ledger_host_tool_unresolved_tag
     RouteGap { operation: _, ground: g } => render_route_gap_ground_tag(ground: g)
   }
 }
@@ -745,28 +767,28 @@ fn readback_digest_agrees(readback: LedgerReadback) -> Bool {
 // written by a newer format and read by this one must say "I cannot read this", never "everything
 // I could not parse passed".
 fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
-  if row.terminal_tag == "runtime-errored" {
+  if row.terminal_tag == ledger_runtime_errored_tag {
     Present { value: RuntimeErroredBeforeVerdict }
   } else {
-  if row.terminal_tag == "panicked" {
+  if row.terminal_tag == ledger_panicked_tag {
     Present { value: PanickedBeforeVerdict }
   } else {
-  if row.terminal_tag == "not-attempted" {
+  if row.terminal_tag == ledger_not_attempted_tag {
     Present { value: NotAttemptedAfterAbort }
   } else {
-  if row.terminal_tag == "budget-refused" {
+  if row.terminal_tag == ledger_budget_refused_tag {
     Present { value: BudgetRefusedBeforeVerdict }
   } else {
-  if row.terminal_tag == "passed-over-budget" {
+  if row.terminal_tag == ledger_passed_over_budget_tag {
     match row.expectation {
       ExpectedToHold => Present { value: PassedOverBudget }
       ExpectedRed => Present { value: KnownRedNowPassing }
     }
   } else {
-  if row.terminal_tag == "budget-terminal-without-safety-cause" {
+  if row.terminal_tag == ledger_budget_terminal_without_safety_cause_tag {
     Present { value: BudgetTerminalWithoutSafetyCause }
   } else {
-  if row.terminal_tag == "host-tool-unresolved" {
+  if row.terminal_tag == ledger_host_tool_unresolved_tag {
     Present { value: HostToolUnresolvedBeforeVerdict }
   } else {
   if row.terminal_tag == "route-gap-unpublished-mock-case" {
@@ -778,7 +800,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "route-gap-filesystem-removal" {
     Present { value: RouteGapBeforeVerdict }
   } else {
-  if row.terminal_tag == "returned-unreadable" {
+  if row.terminal_tag == ledger_returned_unreadable_tag {
     Present { value: ObservationUnreadableBeforeVerdict }
   } else {
   if row.terminal_tag == ledger_returned_true_tag {
@@ -787,7 +809,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
       ExpectedRed => Present { value: KnownRedNowPassing }
     }
   } else {
-  if row.terminal_tag == "returned-false" {
+  if row.terminal_tag == ledger_returned_false_tag {
     match row.expectation {
       ExpectedToHold => Present { value: Failed }
       ExpectedRed => Present { value: KnownRedHeld }
