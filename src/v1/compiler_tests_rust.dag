@@ -425,7 +425,7 @@ fn ct_phantom_marker_identity_fixture_closure_discrimination_test() -> String {
     "    /// `expected Marker, found Alpha`. The witness's ceiling prose attributes E0573 to the\n",
     "    /// positional classifier; this construction did NOT reproduce it, so the expectation here is\n",
     "    /// the route's own adjudicated class rather than a prediction. See\n",
-    "    /// `FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE` for the full diagnostic and for what is\n",
+    "    /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is\n",
     "    /// deliberately not claimed from one construction.\n",
     "    ///\n",
     "    /// #[ignore] AND WHY, on the same terms as the three pairs beside it: this arm spawns cargo\n",

@@ -27,7 +27,7 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 // fixture and NOT observed; one construction does not settle whether that sentence is stale or
 // describes a construction this file does not reach, and it is recorded rather than quietly
 // dropped. The adjudicated expectation lives in
-// `v1_compiler.emitted_closure_compile_host` FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE.
+// `v1_compiler.emitted_closure_compile_host` `run_phantom_marker_identity_discrimination`.
 //
 // WHEN THE WALL CLIMBS -- type-position resolution consulting the TYPE namespace alone and
 // refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE

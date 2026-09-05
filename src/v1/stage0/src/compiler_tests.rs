@@ -769,7 +769,7 @@ mod compiler_tests {
     /// `expected Marker, found Alpha`. The witness's ceiling prose attributes E0573 to the
     /// positional classifier; this construction did NOT reproduce it, so the expectation here is
     /// the route's own adjudicated class rather than a prediction. See
-    /// `FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE` for the full diagnostic and for what is
+    /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is
     /// deliberately not claimed from one construction.
     ///
     /// #[ignore] AND WHY, on the same terms as the three pairs beside it: this arm spawns cargo
