@@ -1,13 +1,11 @@
 module gunbc.ci_workflow_expressions
 
 import extdeps.github.expressions {
-  Expression, ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals,
+  Expression, FunctionCall, StringLiteral,
   ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
-  HashFiles, Github,
+  HashFiles,
   serialize_template, runner_os, runner_arch, runner_temp
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn ci_cache_hash_files() -> Expression {
   FunctionCall {
@@ -17,46 +15,6 @@ fn ci_cache_hash_files() -> Expression {
       StringLiteral { value: "rust-toolchain.toml" }
     ]
   }
-}
-
-// MAIN COMMITS ARE NEVER SUPERSEDED (operator directive 2026-08-13: "we could really use
-// the information from all main commits"). The discriminator has three arms, read in
-// order by GitHub's `||`:
-//   - a pull_request event groups by PR number, so pushing to a PR still cancels its own
-//     in-flight run — supersession on a branch is the well-intended half and is retained;
-//   - a push to main groups by github.sha, which is unique per commit, so two main
-//     commits are never in the same concurrency group and neither can cancel the other;
-//   - everything else (merge_group, tags, other branches) keeps the ref key unchanged.
-// Precedence is GitHub's own — `==` binds tighter than `&&`, which binds tighter than
-// `||` — so the serialized form needs no parentheses and the AST carries the grouping.
-//
-// This is deliberately NARROWER than a globally unique key, and the distinction is the
-// one the stop-policy note below already drew: a run_id or a bare sha discriminator would
-// give EVERY event its own group, making cancellation unreachable everywhere while the
-// policy still read as if it worked. Only the main-push arm is exempted, and only because
-// on main a cancelled run destroys the sole verdict that commit will ever get.
-fn ci_concurrency_discriminator() -> Expression {
-  LogicalOr {
-    left: LogicalOr {
-      left: ContextAccess { context: Github, path: ["event", "pull_request", "number"] },
-      right: LogicalAnd {
-        left: Equals {
-          left: ContextAccess { context: Github, path: ["ref"] },
-          right: StringLiteral { value: "refs/heads/main" }
-        },
-        right: ContextAccess { context: Github, path: ["sha"] }
-      }
-    },
-    right: ContextAccess { context: Github, path: ["ref"] }
-  }
-}
-
-data ci_concurrency_group_template: ExpressionTemplate = {
-  segments: [
-    Interpolation { expression: ContextAccess { context: Github, path: ["workflow"] } },
-    LiteralText { text: "-" },
-    Interpolation { expression: ci_concurrency_discriminator() }
-  ]
 }
 
 data ci_setup_rust_home_template: ExpressionTemplate = {
@@ -98,7 +56,6 @@ data ci_cache_restore_keys_template: ExpressionTemplate = {
 }
 
 data ci_workflow_expression_templates: List<ExpressionTemplate> = [
-  ci_concurrency_group_template,
   ci_setup_rust_home_template,
   ci_cache_path_template,
   ci_cache_key_template,
@@ -128,8 +85,6 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 // explicitly. The RED control for this class lives in test.claim.ci_workflow_witness
 // push_to_main_family_carries_explicit_status_guard, which now reads this expression.
 data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
-
-data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 
 // set -e
 // BUILD='${{ needs.build.result }}'
@@ -181,50 +136,8 @@ data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 // Making the job unconditional-on-failure closes that pre-existing hole in the same motion rather
 // than leaving a second instance of the class behind.
 
-data ci_concurrency_cancel_in_progress_if: String = "${{ github.event_name != 'merge_group' }}"
+data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 
-// Event-scoped stop policy (operator ruling 2026-07-22; CI RESET lane 2026-08-10; main-push
-// exemption 2026-08-13): cancel-in-progress is true for pull_request / push / workflow_dispatch and
-// false for merge_group (the queue must not kill an in-flight check when another PR enters the
-// queue — gunbc.ci_workflow ci_merge_group_trigger_note). SUPERSESSION REQUIRES BOTH ARMS:
-// cancel-in-progress plus a shared group key, and main is now exempted through the GROUP arm rather
-// than the cancel arm. ci_concurrency_discriminator groups PR events by pull_request.number,
-// push-to-main by github.sha, and everything else by github.ref — never run_id, which is unique per
-// run and would give every event its own group, making cancellation unreachable everywhere while
-// this note still read as if it worked.
-//
-// WHY THE GROUP ARM AND NOT THE CANCEL ARM. Setting cancel-in-progress false for main would leave
-// main pushes sharing one group key, and GitHub QUEUES same-group runs when cancellation is off.
-// Measured 2026-08-13: the floor's merge-critical wall is 84.2 minutes (run 31672107941, the last
-// main run to complete) against a 9.8-minute median gap between main pushes — 8.6x — so a queued
-// policy accumulates an unbounded backlog and delivers each verdict hours after the commit it
-// judges. A per-commit group key runs them concurrently instead, which is the only arm that yields
-// a verdict per main commit at this arrival rate.
-//
-// WHAT THIS COSTS, stated because it is a real load increase and not a free win: a superseded main
-// run previously died after roughly 10 minutes, so cancellation was also acting as an unmeasured
-// load shedder. Retaining every main run raises average main CI cost from that partial run to the
-// full 84 minutes, roughly 8x aggregate main load on a fixed self-hosted fleet. That is the price
-// of observing main at all, and it falls as the floor shortens. If fleet saturation appears before
-// the floor lands, the next move is batching main verdicts across commits — NOT restoring
-// cancellation, which trades the saturation problem for a blindness problem.
-//
-// The expression pair is the single authority; dissolve-on: typed EventStopPolicy + group-key rows
-// per trigger replace the hand-spelled strings when the workflow model carries event-grain policy
-// by construction.
-
-data ci_concurrency_event_scoped_stop_policy_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_workflow_expressions",
-    decl_name: "ci_concurrency_cancel_in_progress_if",
-    field: WholeDeclaration
-  }
-}
-
-fn ci_concurrency_cancel_in_progress_expression() -> String { ci_concurrency_cancel_in_progress_if }
-
-fn ci_concurrency_group() -> String { serialize_template(template: ci_concurrency_group_template) }
 fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_home_template) }
 fn ci_cache_path() -> String { serialize_template(template: ci_cache_path_template) }
 fn ci_cache_key() -> String { serialize_template(template: ci_cache_key_template) }
