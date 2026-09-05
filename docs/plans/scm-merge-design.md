@@ -139,7 +139,8 @@ the workflow does not license, and they are withdrawn rather than left to decide
 What the workflow does bound: no remote tracking, no upstream, no reflog, no branch-of-branch, no
 rename.
 
-**Proposal:** the envelope holds a set of named commit refs, exactly one of which is checked out —
+**Proposal:** the envelope holds a set of named commit refs, at most one of which is checked out —
+"at most", because the withdrawal above governs and an unborn repository has none —
 the minimum that lets two lines coexist. Naming is required (not merely a second anonymous slot)
 because the merge outcome, the refusal diagnostics and the CLI surface all need to say *which* line,
 and an anonymous "other slot" would force position to carry identity, which is the positional-naming
@@ -414,7 +415,9 @@ and the target advance become coherently available or none of them does — an u
 receipt must never answer §D1's historical-integration query. Publication returns named success evidence,
 and that evidence is what retirement consumes.
 
-Four outcomes stay separately named, because each demands a different action:
+These outcomes stay separately named, because each demands a different action. **The obligations
+below govern, not their count** — `PublicationUnestablished` above is one of them, and publication-
+success and retirement carry their own:
 
 - **`PublicationFailed { cause }`** — publication is ESTABLISHED not to have applied. Only an outcome
   that establishes that may carry this meaning; a realization that installs the state and then loses
