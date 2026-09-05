@@ -1,5 +1,8 @@
 module v1.compiler.compile
 
+import std.type_application { TypeApplication }
+import std.decl_ref { WholeDeclaration, NamedField }
+
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -318,7 +321,9 @@ fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<
                 dag_emit_check_ref_target(node: application.formal.declared_type, key_to_id: key_to_id),
                 concat(
                   dag_emit_check_ref_target(node: application.formal.declaration_bound_conformance, key_to_id: key_to_id),
-                  dag_emit_check_ref_target(node: application.formal.substitution_basis, key_to_id: key_to_id)
+                  concat(dag_emit_check_ref_target(node: application.formal.substitution_basis, key_to_id: key_to_id),
+                    dag_emit_check_product_application(value: application.formal.product_application, key_to_id: key_to_id),
+                    dag_emit_check_product_application(value: application.produced_product_application, key_to_id: key_to_id))
                 )
               ))
             _ => []
@@ -559,12 +564,35 @@ fn serialize_resolved_call_formal(value: ResolvedCallFormal, key_to_id: Map<Stri
     ", \"declared_type\": ", serialize_node_ref(node: value.formal.declared_type, key_to_id: key_to_id),
     ", \"declaration_bound_conformance\": ", serialize_node_ref(node: value.formal.declaration_bound_conformance, key_to_id: key_to_id),
     ", \"substitution_basis\": ", serialize_node_ref(node: value.formal.substitution_basis, key_to_id: key_to_id),
+    ", \"product_application\": ", serialize_product_application(value: value.formal.product_application, key_to_id: key_to_id),
+    ", \"produced_product_application\": ", serialize_product_application(value: value.produced_product_application, key_to_id: key_to_id),
     ", \"matched_argument_index\": ", match value.matched_argument_index {
       Present { value: index } => to_string(value: index)
       Absent => "null"
     },
     "}"
   )
+}
+
+fn dag_emit_check_product_application(value: TypeApplication<Node>?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Present { value: application } => application.arguments |> flat_map(arg => dag_emit_check_ref_target(node: arg, key_to_id: key_to_id))
+    Absent => []
+  }
+}
+
+fn serialize_product_application(value: TypeApplication<Node>?, key_to_id: Map<String, String>) -> String {
+  match value {
+    Present { value: application } => concat(
+      "{\"owner\": {\"module_path\": ", json_quote(s: application.owner.module_path),
+      ", \"decl_name\": ", json_quote(s: application.owner.decl_name),
+      ", \"field\": ", match application.owner.field {
+        WholeDeclaration => "null"
+        NamedField { field_name: field_name } => json_quote(s: field_name)
+      },
+      "}, \"arguments\": [", application.arguments |> map(arg => serialize_node_ref(node: arg, key_to_id: key_to_id)) |> join(separator: ", "), "]}")
+    Absent => "null"
+  }
 }
 
 fn serialize_call_semantics(value: CallSemantics?, key_to_id: Map<String, String>) -> String {

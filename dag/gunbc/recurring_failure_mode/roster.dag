@@ -146,6 +146,10 @@ import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_it
 import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
 import gunbc.recurring_failure_mode.discriminating_evidence_authored_into_the_operational_population { discriminating_evidence_authored_into_the_operational_population }
 
+import gunbc.recurring_failure_mode.direct_generic_application_admits_a_distinct_phantom_argument { direct_generic_application_admits_a_distinct_phantom_argument }
+
+import gunbc.recurring_failure_mode.generic_position_admits_a_foreign_constructor { generic_position_admits_a_foreign_constructor }
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
@@ -281,4 +285,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   roster_is_its_own_denominator,
   instrument_answers_outside_its_domain,
   discriminating_evidence_authored_into_the_operational_population,
+  direct_generic_application_admits_a_distinct_phantom_argument,
+  generic_position_admits_a_foreign_constructor,
 ]
