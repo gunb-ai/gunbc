@@ -590,6 +590,14 @@ fn scm_ck_partial_repository(store: ObjectStore, root: CorpusManifestTarget) -> 
 //
 // The snapshot designation is asserted UNCHANGED across the repair -- same commit, same manifest
 // locator -- which is what separates "the source arrived" from "a different snapshot was frozen".
+//
+// THE FINAL OBSERVATION IS ON THE RETURNED REPOSITORY, AT THE REQUESTED REFERENCE, AGAINST THE
+// ORIGINALLY MINTED MANIFEST. An earlier cut compared two copies of the same commit list, which
+// verifies no property of the value the verb produced -- a success arm returning an empty commit list
+// would have passed it. This resolves the requested reference IN THE RETURNED REPOSITORY and compares
+// that commit's root to the manifest the fixture froze before any encoding happened, so the snapshot
+// is asserted to survive mint, encode, decode, repair and checkout as ONE identity. The returned
+// selection is checked too, because moving the selection is the other half of what checkout is for.
 fn scm_ck_decoded(repo: RepositoryEnvelope) -> RepositoryEnvelope? {
   match encode_repository_checked(repo: repo) {
     RepositoryEncodeRefused { cause: _ } => none
@@ -632,13 +640,6 @@ test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives(
              RepositoryCheckedOut { repository: returned, corpus: corpus } =>
                map(corpus, f => f.path as String) == ["gone.dag", "held.dag"]
                  && map(corpus, f => scm_ck_recovered_text(f: f)) == ["module never_stored", "module held"]
-                 // THE OBSERVATION IS ON THE RETURNED REPOSITORY, AT THE REQUESTED REFERENCE, AGAINST
-                 // THE ORIGINALLY MINTED MANIFEST. Comparing two copies of the same commit list --
-                 // which the previous cut did -- verifies no property of the value the verb produced:
-                 // a success arm returning `commits: []` would still have passed it. This resolves the
-                 // requested reference IN THE RETURNED REPOSITORY and compares that commit's root to
-                 // the manifest the fixture froze before any encoding happened, so the snapshot is
-                 // asserted to survive mint, encode, decode, repair and checkout as ONE identity.
                  && match scm_ck_root_locator_at(repo: returned, reference: scm_ck_ref(ordinal: 0)) {
                       Absent => false
                       Present { value: got } =>
@@ -647,7 +648,6 @@ test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives(
                           right: corpus_manifest_target_locator(target: snapshot.identity),
                         )
                     }
-                 // AND THE SELECTION MOVED, which is the other half of what checkout is for.
                  && scm_ck_selection_is(repo: returned, reference: scm_ck_ref(ordinal: 0))
              _ => false
            }
