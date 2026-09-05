@@ -66,8 +66,9 @@ pub fn service_receiver_resolved_name(
                             receiver.clone(),
                             source_indices.clone(),
                         );
-                        if ((type_name.clone() != "".to_string())
+                        if (((type_name.clone() != "".to_string())
                             && (type_name.clone() == expr_name.clone()))
+                            && v1_rt::contains(type_name.clone(), ".".to_string()))
                         {
                             Some(type_name.clone())
                         } else {

@@ -70,6 +70,36 @@ type ServiceMethodResult {
 // 05_emit_python decide call shape from them. A false positive here mints a parameter for a
 // service that does not exist; a false negative drops the parameter a real call needs. Both are
 // silent in the emitted program, which is why this judgment must come from resolution.
+// THE DOTTED REQUIREMENT IS BEHAVIOUR PRESERVATION, NOT A SPELLING RULE SNEAKING BACK IN, and it
+// is the difference between this predicate and the one CI refused.
+//
+// Name-equals-its-own-type-name is satisfied by THREE shapes, not one: a service occurrence
+// projected by service_spine_projection (`diagnostic.ipmi.Tool`), a single-segment service bound
+// directly (`Filesystem`), and a bare NAMESPACE ROOT (`cargo`, `diagnostic`) — because svc_locals
+// binds each root as a nominal whose resolved name is the root itself. The first is what this
+// predicate is for; the other two are not services being CALLED and admitting them changes emitted
+// behaviour in two different ways.
+//
+// THE SINGLE-SEGMENT CASE IS A FAIL-CLOSED GUARANTEE AND CI CAUGHT IT BEING BROKEN. The previous
+// form of this fn admitted `Filesystem`, so `Filesystem.Read(path:)` inside a pure `fn` was
+// collected as a service dependency and the emitted code bound it — deleting the
+// "unrealized host seam: service op Filesystem.Read" refusal that
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding exists to
+// assert. The predicate this replaces required an ExprFieldAccess receiver and therefore never
+// matched a single-segment name; requiring a dot reproduces that exactly. Single-segment services
+// were not collected before this branch and are not collected now, so nothing here changes their
+// treatment in either direction.
+//
+// THE NAMESPACE-ROOT CASE IS A FALSE POSITIVE that would mint a generated parameter for a service
+// that does not exist: `diagnostic` is a root, never a registered service. A root is single-segment
+// by construction, so the same requirement excludes it.
+//
+// WHAT WOULD BE STRICTLY BETTER, and why it is not done here: consulting the service registry, which
+// answers "is this name a service" directly instead of inferring it from shape. The registry is not
+// in scope at the four emit sites that consume this predicate — they receive only source_indices —
+// so threading it is a wider change than this repair, and is the same identity-preservation work
+// the A1/A4 lane owns. This is the narrow, behaviour-preserving form until that lands.
 fn service_receiver_resolved_name(receiver: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match receiver.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -78,7 +108,7 @@ fn service_receiver_resolved_name(receiver: Node, source_indices: Map<String, Ne
           if rt.connective == NoConnective && (rt.children |> count) == 0 {
             let type_name = authored_name_at(source_indices: source_indices, node: rt)
             let expr_name = expr_var_name_at(texpr: receiver, source_indices: source_indices)
-            if type_name != "" && type_name == expr_name {
+            if type_name != "" && type_name == expr_name && contains(type_name, ".") {
               Present { value: type_name }
             } else {
               none
