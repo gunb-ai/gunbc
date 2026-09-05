@@ -186,9 +186,9 @@ test fn a_request_outside_the_capability_stops_the_line() -> Bool {
 // ── The request round-trips, and refuses a document that is not one ──────────────────────────────
 
 test fn a_request_decodes_back_to_the_subject_it_was_written_from() -> Bool {
-  match publication_request_decode(request: publication_request_json(subject: ordinary_subject())) {
+  match publication_request_decode(request: publication_request_json(subject: ordinary_subject(), worktree: "/tmp/wt")) {
     RequestUndecodable { reason: _ } => false
-    RequestDecoded { subject } =>
+    RequestDecoded { subject, worktree: _ } =>
       subject.node_id == ordinary_subject().node_id
       && subject.attempt_key == ordinary_subject().attempt_key
       && (subject.branch as String) == (ordinary_subject().branch as String)
@@ -204,14 +204,14 @@ test fn a_document_of_another_schema_is_refused_rather_than_read_as_a_request() 
     request: "{\"schema\":\"roadmap-publication-receipt/v2\",\"subject\":{}}",
   ) {
     RequestUndecodable { reason: _ } => true
-    RequestDecoded { subject: _ } => false
+    RequestDecoded { subject: _, worktree: _ } => false
   }
 }
 
 test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -> Bool {
   match publication_request_decode(request: "not a document at all") {
     RequestUndecodable { reason: _ } => true
-    RequestDecoded { subject: _ } => false
+    RequestDecoded { subject: _, worktree: _ } => false
   }
 }
 
@@ -228,7 +228,7 @@ test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_ob
     instance_root: "/opt/gunbc",
     credential: CredentialSourceAbsent { reason: "no credential in this witness" },
     entry: "some-other-node.a1.2222222222222222222222222222222222222222.json",
-    request_text: publication_request_json(subject: ordinary_subject()),
+    request_text: publication_request_json(subject: ordinary_subject(), worktree: "/tmp/wt"),
   ) {
     HelperRequestUnreadable { entry: e, detail: _ } =>
       e == "some-other-node.a1.2222222222222222222222222222222222222222.json"

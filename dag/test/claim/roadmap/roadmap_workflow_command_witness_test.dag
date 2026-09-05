@@ -107,6 +107,8 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
       reason: "legacy attempt has no observed head",
     },
     publication_source: ReceiptSourceAbsent,
+    review: [],
+    goal_audit: [],
   })
   match activity_view_from_progress(progress: progress) {
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>

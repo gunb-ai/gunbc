@@ -1,6 +1,7 @@
 module extdeps.tools.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
+import std.measure { Second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -203,11 +204,25 @@ data coreutils_timeout_binary_name: NonEmptyStr = "timeout"
 // command rather than a program and a word list, so the deadline composes over any command that
 // already came through an admitted builder and cannot be used to smuggle an unbuilt argv into a
 // process -- the seal extdeps.exec.command holds is not weakened by wrapping.
-fn timeout_command(duration: NonEmptyStr, kill_after: NonEmptyStr, command: ArgvCommand) -> ArgvCommand {
+// THE OPERANDS ARE MAGNITUDES AND THE SUFFIX IS RENDERED HERE, which is the same boundary move
+// mke2fs_populate_command makes for its fs-size. coreutils reads an unsuffixed DURATION as seconds,
+// so a bare number happens to mean the right thing today and stops meaning it the moment a caller
+// intends minutes -- the unit would live in a call site's head rather than in the value. Carrying
+// std.measure's Second and emitting `s` here is what makes the operand mean one thing everywhere,
+// and it consumes the existing time authority rather than re-minting a duration vocabulary.
+fn coreutils_duration_operand(d: Second) -> String {
+  concat(to_string(second_count(s: d)), "s")
+}
+
+fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -> ArgvCommand {
   argv_command(
     program: coreutils_timeout_binary_name,
     arguments: concat(
-      ["--kill-after", kill_after as String, duration as String, command.program as String],
+      [
+        "--kill-after", coreutils_duration_operand(d: kill_after),
+        coreutils_duration_operand(d: duration),
+        command.program as String,
+      ],
       command.arguments,
     ),
   )

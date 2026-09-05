@@ -2,6 +2,7 @@ module gunbc.runner_microvm_boot_probe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
+import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
@@ -127,9 +128,9 @@ fn runner_microvm_boot_probe_config(root: String, image: RunnerGuestImage) -> Ru
 //
 // THE KILL ESCALATION IS NOT OPTIONAL. A TERM that a wedged VMM declines leaves the same orphan the
 // deadline existed to prevent, so the deadline escalates to KILL unconditionally.
-data runner_microvm_boot_probe_deadline: NonEmptyStr = "180s" as NonEmptyStr
+data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 
-data runner_microvm_boot_probe_kill_grace: NonEmptyStr = "10s" as NonEmptyStr
+data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
 fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
   timeout_command(
@@ -155,7 +156,7 @@ fn boot_probe_verdict(runner: ActionsRunnerRelease, console: ProcessOutcome) -> 
     ProcessRefused { exit_code: code, stderr: err } =>
       if code == coreutils_timeout_expired_exit_code {
         BootExceededHostDeadline {
-          deadline: runner_microvm_boot_probe_deadline as String,
+          deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
           console: err,
         }
       } else {

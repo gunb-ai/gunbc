@@ -326,6 +326,13 @@ fn runner_guest_runner_tarball_path(root: String, artifact: ActionsRunnerBinaryA
   join([runner_guest_base_dir(root: root), "/", actions_runner_tarball_filename(artifact: artifact)], "")
 }
 
+// unsquashfs CREATES ITS DESTINATION LEAF AND NOT THE PATH ABOVE IT, which is why the mkdir below
+// is part of the sequence rather than redundant with the fetch step's directory creation. Measured
+// on srv2 (fleet-converge run 33983516809): with `base/` and `images/` present but `tree/` absent,
+// `unsquashfs -f -d <root>/tree/<image>` exits 1 with "dir_scan: failed to make directory ...,
+// because No such file or directory". The tool makes the directory it was pointed at, one level, and
+// the earlier revision assumed it would make the chain.
+//
 // THE TREE IS REMOVED BEFORE IT IS BUILT, and that is what makes a rebuild mean what it says. A
 // second unsquashfs over a surviving tree from an earlier release would leave that release's files
 // standing wherever the new one does not overwrite them, and the resulting image would carry bytes
@@ -334,6 +341,7 @@ fn runner_guest_runner_tarball_path(root: String, artifact: ActionsRunnerBinaryA
 fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: ActionsRunnerBinaryArtifact) -> List<ArgvCommand> {
   [
     rm_force_command(path: runner_guest_tree_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_tree_dir(root: root, image: image)),
     unsquashfs_extract_command(
       archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
       into_directory: runner_guest_tree_dir(root: root, image: image),
@@ -497,6 +505,53 @@ func runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> Proce
   }
 }
 
+// THE RECEIPT IS WRITTEN ON EVERY ARM, INCLUDING THE ONES THAT FAILED, and that is a repair rather
+// than thoroughness. The earlier revision propagated a build failure straight out and wrote nothing,
+// so fleet-converge run 33983516809 measured BOTH base artifacts' first-contact digests -- the exact
+// measurement this fleet has no other route to -- and then discarded them because a LATER step
+// failed. Evidence a run produces must survive the failure that makes it interesting, which is the
+// same property the boot probe's console receipt needs and for the same reason.
+//
+// THE BUILD'S OWN OUTCOME IS NOT LAUNDERED BY THIS. image_digest reads the image path, so a build
+// that produced no image reports ArtifactNotMeasured, which guest_artifact_verdict_admits_build
+// refuses and the receipt exits non-zero on; and the build's exit is returned in preference to the
+// receipt's. Writing the receipt records what was learned. It does not decide the verdict.
+//
+// IT IS ITS OWN DECLARATION BECAUSE THE EXPLANATION HAS TO LIVE SOMEWHERE A READER FINDS IT. The
+// first attempt put this reasoning in a comment inside the converge body, which DESIGN 4c refuses at
+// module-item grain -- annotations attach to declarations, so a step worth explaining is a step worth
+// naming.
+func runner_guest_image_build_and_receipt_wet(
+  root: String,
+  image: RunnerGuestImage,
+  artifact: ActionsRunnerBinaryArtifact,
+  kernel: GuestArtifactVerdict,
+  rootfs: GuestArtifactVerdict,
+) -> ProcessExit {
+  let built = match run_shell_commands(commands: runner_guest_tree_commands(root: root, image: image, artifact: artifact), transport: LocalExec) {
+    ExitSuccess =>
+      match write_guest_agent_unit_wet(root: root, image: image) {
+        ExitSuccess =>
+          run_shell_commands(commands: runner_guest_image_commands(root: root, image: image), transport: LocalExec)
+        other => other
+      }
+    other => other
+  }
+  let receipt = runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
+    kernel: kernel,
+    rootfs: rootfs,
+    image_path: runner_guest_image_path(root: root, image: image),
+    image_digest: guest_artifact_verdict(
+      artifact: runner_guest_base_rootfs_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
+    ),
+  })
+  match built {
+    ExitSuccess => receipt
+    other => other
+  }
+}
+
 // OBSERVE MEASURES AND REPAIRS NOTHING, which is this repository's ordering law rather than this
 // module's preference: it fetches the base artifacts if they are absent, reports what their bytes
 // hash to, and reports whether an image already stands. It never builds one.
@@ -555,27 +610,9 @@ func runner_guest_image_converge_wet() -> ProcessExit
                   guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: rootfs),
                 ], ""))
               } else {
-                match run_shell_commands(commands: runner_guest_tree_commands(root: root, image: image, artifact: a), transport: LocalExec) {
-                  ExitSuccess =>
-                    match write_guest_agent_unit_wet(root: root, image: image) {
-                      ExitSuccess =>
-                        match run_shell_commands(commands: runner_guest_image_commands(root: root, image: image), transport: LocalExec) {
-                          ExitSuccess =>
-                            runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
-                              kernel: kernel,
-                              rootfs: rootfs,
-                              image_path: runner_guest_image_path(root: root, image: image),
-                              image_digest: guest_artifact_verdict(
-                                artifact: runner_guest_base_rootfs_artifact,
-                                observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
-                              ),
-                            })
-                          other => other
-                        }
-                      other => other
-                    }
-                  other => other
-                }
+                runner_guest_image_build_and_receipt_wet(
+                  root: root, image: image, artifact: a, kernel: kernel, rootfs: rootfs,
+                )
               }
             }
             other => other
