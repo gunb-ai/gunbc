@@ -232,6 +232,18 @@ data witness_floor_workflow_name: String = "witnesses"
 // The cost is that N concurrent main runs may execute where one used to. That is the intended
 // trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
 // under `target/` is worth identifying before this is widened further.
+//
+// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
+// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
+// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
+// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
+// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
+// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
+// per main commit at this arrival rate. This paragraph is carried here because it was the only
+// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
+// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
+// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
+// its rows are deleted with this one standing as the single authority.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
