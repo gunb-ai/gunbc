@@ -16150,12 +16150,6 @@ fn emit_compile_target_helpers(crate_name: String, pipeline_mod: String, artifac
     "    }\n",
     "    Ok(())\n",
     "}\n",
-    "\n",
-    "fn hard_errors(result: &", crate_name, "::", pipeline_mod, "::PipelineResult) -> bool {\n",
-    "    result.diagnostics.iter().any(|d| {\n",
-    "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n",
-    "    })\n",
-    "}\n",
     "\n")
 }
 
