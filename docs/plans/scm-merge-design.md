@@ -454,16 +454,38 @@ So merge does not get to invent a second presentation path. Whatever merge expos
 through that shape, or it becomes a parallel authority for "how this repository is presented to a
 foreign realization" — the §3 fork, in the one place the operator explicitly asked for a projection.
 
-## 8. Author and timestamp: blocked, and merge makes it acute
+## 8. Author and timestamp: an ADMISSION ruling, not a missing capability
 
-`ancestry.dag` records why `parent` could land while author and timestamp could not: parent is a
-structural fact decidable inside the model; author and timestamp are external observations, and this
-repository has no modeled clock and no modeled process identity to observe them WITH.
+**An earlier revision of this section said this repository has no modelled clock and no modelled
+process identity to observe author and timestamp with, and pointed the lane at acquiring them. That is
+false, and it is the fourth time in this lane's reporting that absence was claimed without looking.**
 
-A merge commit is exactly where that absence bites hardest — an integration with no author and no
-time is a weak receipt. This document does **not** resolve it and does not fabricate either field.
-It records that the merge lane will want a ruling on acquiring a modeled clock and process identity,
-and that the ruling is the operator's, not this lane's.
+Both capabilities exist on `main`:
+
+- `extdeps.clock` declares `Clock.Now`, cited to the POSIX `date` utility. `gunbc.clock_read`
+  `clock_now_probed_at` already consumes it and returns an **optional**, and `probed_at_word` renders
+  the absent arm as a loud word rather than a plausible-looking one — precisely the observe-type-admit-
+  or-refuse discipline this section was asking to have built.
+- `gunbc.worker_lifecycle` `ProcessIdentityEvidence = ProcessIdentityObserved { pid, started_at, owner }
+  | ProcessIdentityUnobserved { reason }` carries the other half, with the same split.
+
+`gunbc.scm.ancestry` carries the same stale claim in its own note; this document relayed it instead of
+checking it, and both are corrected in this change rather than left to be relayed again. Directing
+future work at acquiring an available capability is the §2 re-invention this project exists to prevent.
+
+**What is actually undecided is narrower, and it is an ADMISSION question about this subject:**
+
+> Does a `RepositoryCommit` admit an unreadable clock or an unobserved process identity, and what does
+> such a commit MEAN?
+
+The observation side is solved. The open half is whether a commit whose timestamp is absent is
+committable at all, or refused; and if committable, that the absence is carried as absence and never
+rendered into a field that reads as an instant — the failure `probed_at_word` exists because of.
+
+A merge commit sharpens the question rather than changing it: an integration receipt with no author
+and no time is a weak receipt, so merge is a strong argument for refusing rather than admitting. This
+document does not settle it and fabricates neither field. **What it corrects is the prerequisite: the
+binding and the admission rule are what merge waits on, not a clock.**
 
 ## 9. The evidence this design owes when it is built
 

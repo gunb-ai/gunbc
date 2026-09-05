@@ -115,9 +115,20 @@ type CommitAncestry
 //
 //   AUTHOR and TIMESTAMP are EXTERNAL OBSERVATIONS -- who ran the command, and what the clock said.
 //   Neither is derivable from the graph, and DESIGN is explicit that external reality is observed,
-//   typed, and admitted or refused, never fabricated. This repository has no modelled clock and no
-//   modelled process identity to observe them WITH, and acquiring either is the same frozen-host
-//   question that gates the store binding and process output.
+//   typed, and admitted or refused, never fabricated.
+//
+//   THIS NOTE PREVIOUSLY SAID THE REPOSITORY HAS NO MODELLED CLOCK AND NO MODELLED PROCESS IDENTITY.
+//   THAT WAS FALSE WHEN WRITTEN OR HAS SINCE GONE STALE, AND IT IS CORRECTED HERE RATHER THAN LEFT
+//   TO BE RELAYED AGAIN -- it was relayed once, into the merge design note. `extdeps.clock`
+//   declares `Clock.Now`, `gunbc.clock_read clock_now_probed_at` already consumes it and returns an
+//   OPTIONAL rather than a fabricated instant, and `probed_at_word` renders the absent arm as a loud
+//   word. `gunbc.worker_lifecycle ProcessIdentityEvidence` carries the observed/unobserved split for
+//   the other half. So both capabilities exist, with the admit-or-refuse discipline this note asks
+//   for already built into them.
+//
+//   WHAT IS ACTUALLY UNDECIDED IS NARROWER: whether a commit ADMITS an unreadable clock or an
+//   unobserved identity, and what a commit means when it does. That is an admission ruling about
+//   this subject, not a capability to acquire, and it is the only thing blocking these two fields.
 //
 // So modelling them here would mean inventing two facts to fill fields, which is the fabricated-
 // plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
