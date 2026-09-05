@@ -5839,13 +5839,14 @@ fn eval_var(
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
-                    if eval_profile_enabled() {
+                    let profile_on = eval_profile_enabled();
+                    if profile_on {
                         DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
                     }
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
-                    if eval_profile_enabled() {
+                    if profile_on {
                         DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
@@ -5872,13 +5873,14 @@ fn eval_var(
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
                         let key = Rc::as_ptr(fn_node) as usize;
-                        if eval_profile_enabled() {
+                        let profile_on = eval_profile_enabled();
+                        if profile_on {
                             DATA_EVAL_LOOKUPS.with(|c| c.set(c.get() + 1));
                         }
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
                         }
-                        if eval_profile_enabled() {
+                        if profile_on {
                             DATA_EVAL_EVALS.with(|c| c.set(c.get() + 1));
                         }
                         let v = eval_expr(body, &Env::empty(), ctx)?;
