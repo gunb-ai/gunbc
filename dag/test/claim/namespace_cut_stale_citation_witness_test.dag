@@ -17,7 +17,9 @@ import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
 import gunbc.namespace_cut_subject_roster { HostRustItemProbe, NamespaceCutSubjectProbe }
 import gunbc.namespace_cut_subject_observation {
   SubjectProbeObservation,
+  SubjectProbeUnobservable,
   host_probe_over_items,
+  observation_refuses,
   observation_verdict,
   unobservable_reason,
 }
@@ -110,4 +112,26 @@ test fn unread_file_refuses_with_a_distinct_reason() -> Bool {
   observation_verdict(o: o) == "UNOBSERVABLE"
     && !string_contains(s: why, pattern: "STALE CITATION")
     && string_contains(s: why, pattern: "cannot distinguish a deleted item from an unread file")
+}
+
+// THE HOLE IN THE WALL, AND THE RED THAT CLOSES IT. The refusal used to be decided by asking
+// whether the reason text was empty, which made "" mean both "does not refuse" and "refuses with no
+// reason". An Unobservable carrying no reason was therefore folded away as OBSERVED and the command
+// greened while the roster could not testify about its subject -- this instrument's original defect,
+// re-entering through its own repair. No production site constructs that observation, which is
+// exactly why it needs a fixture: section 4b asks whether the RED is AUTHORABLE, not whether it
+// fires on today's corpus, and a wall that is only untested because nobody happens to author the bad
+// input is not a wall. This is the state the check is now built to refuse, authored where it can be.
+test fn a_refusal_with_no_reason_still_refuses() -> Bool {
+  observation_refuses(o: SubjectProbeUnobservable {
+    probe: probe_citing(path: "src/v1/stage0/src/cli_run.rs", name: "build_import_adjacency"),
+    why: ""
+  })
+}
+
+// The paired control: the two OBSERVED verdicts must NOT refuse, so the repair cannot be satisfied
+// by a predicate that refuses everything -- which is the other way to make the digest useless.
+test fn observed_verdicts_do_not_refuse() -> Bool {
+  !observation_refuses(o: observe(path: "src/v1/stage0/src/cli_run/entry_resolve.rs", name: "build_import_adjacency"))
+    && !observation_refuses(o: observe(path: "src/v1/stage0/src/cli_run.rs", name: "an_item_that_never_existed"))
 }

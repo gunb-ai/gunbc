@@ -422,13 +422,43 @@ fn subject_report_lines() -> List<String> {
 // is an independent place for a new variant to be silently absorbed; one total projection makes the
 // compile-time guarantee single rather than replicated. Present and Absent are both OBSERVED
 // verdicts and neither refuses: ABSENT is this instrument's success verdict.
-fn unobservable_in_observation(acc: String, o: SubjectProbeObservation) -> String {
+// THE REFUSAL IS DECIDED BY THE VERDICT, NEVER BY THE REASON TEXT. An earlier cut of this decided
+// it by asking whether unobservable_reason returned "" -- which overloaded the empty string with two
+// meanings, "this observation does not refuse" and "this observation refuses and carries no reason".
+// SubjectProbeUnobservable { why: "" } was then folded away as if it were OBSERVED, the digest
+// stayed empty, and subject_roster_report returned ExitSuccess while the roster could not testify
+// about its subject -- exactly the behaviour this module exists to remove, re-entering through its
+// own repair. That is gunbc.recurring_failure_mode.state_space_conflation, and it arrived in the
+// same motion that removed a structural-equality residue: the predicates were correctly deleted and
+// replaced by a String projection whose empty value was doing sentinel duty.
+//
+// No current construction site passes an empty reason -- all eight carry real text -- but DESIGN
+// section 4b asks whether the RED is AUTHORABLE, not whether it fires on today's corpus, and a
+// fixture can construct that observation trivially. The witness now does exactly that.
+fn observation_refuses(o: SubjectProbeObservation) -> Bool {
+  observation_verdict(o: o) == "UNOBSERVABLE"
+}
+
+// A refusal that carries no reason is still a refusal, and it renders as one rather than vanishing.
+fn refusal_reason_render(o: SubjectProbeObservation) -> String {
   let why = unobservable_reason(o: o)
-  if why == "" {
-    acc
+  if why == "" { "refused with no reason recorded" } else { why }
+}
+
+fn unobservable_in_observation(acc: String, o: SubjectProbeObservation) -> String {
+  if observation_refuses(o: o) {
+    concat(acc, concat("\n  ", concat(probe_render(p: probe_of(o: o)), concat(" -- ", refusal_reason_render(o: o)))))
   } else {
-    concat(acc, concat("\n  ", concat(probe_render(p: probe_of(o: o)), concat(" -- ", why))))
+    acc
   }
+}
+
+fn row_refuses(r: SubjectObservationRow) -> Bool {
+  any(r.observations, o => observation_refuses(o: o))
+}
+
+fn rows_refuse(rows: List<SubjectObservationRow>) -> Bool {
+  any(rows, r => row_refuses(r: r))
 }
 
 fn unobservable_in_row(acc: String, r: SubjectObservationRow) -> String {
@@ -451,10 +481,10 @@ fn subject_roster_report(out: String) -> ProcessExit {
       concat(acc, concat(line, "\n"))
     })
     if Filesystem.Write(path: out, content: body).success {
-      let unobservable = unobservable_digest(rows: rows)
-      if unobservable == "" {
+      if !rows_refuse(rows: rows) {
         ExitSuccess
       } else {
+        let unobservable = unobservable_digest(rows: rows)
         exit_failure(reason: concat("subject_roster_report: refusing -- the roster cannot testify about every probe. The full report was written to ", concat(out, concat(" for analysis. Unobservable probe(s):", unobservable))))
       }
     } else {
