@@ -3,7 +3,7 @@ module v1.compiler.emit_core_support
 import v1.std.core {
   Node, ErrorNode, TextFile, NewlineIndex,
   authored_name_at, field_init_node_name_at,
-  make_error_node, ModuleFilenameCollision,
+  make_error_node, ModuleFilenameCollision, ServiceSymbolProjectionCollision,
   Connective, NoConnective,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
@@ -179,6 +179,73 @@ fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
+}
+
+// THE PROJECTION IS NOT INJECTIVE, SO THE ALLOCATION REFUSES WHERE IT COLLIDES.
+//
+// sanitize_service_name splits the authored name on "." and joins the capitalized segments with
+// nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
+// distinct service identities that project to one symbol. All three targets share this projection,
+// so the collision is a fact about the shared allocation rather than about any one emitter, and the
+// refusal lives here with it. Executed red: two services so named in one module emitted two
+// `pub struct CollisionProbe` definitions and bound one parameter for both, with zero blocking
+// diagnostics. service_var_name is the second channel, since to_snake of one symbol is one symbol.
+//
+// This wall is not a scaffold waiting on the injective allocation. It stays after that lands, as the
+// control that says the allocation is still injective; its next-rung trigger is an allocation whose
+// distinct service identities cannot share a symbol by construction, at which point this refusal
+// becomes permanently green rather than being deleted.
+fn service_symbol_collisions(service_names: List<String>) -> List<ServiceSymbolCollision> {
+  service_names
+    |> fold(init: ServiceSymbolAccum { by_symbol: empty_map(), collisions: [] }, f: (acc, sn) =>
+      let symbol = sanitize_service_name(name: sn)
+      match map_get(acc.by_symbol, symbol) {
+        Present { value: prior } =>
+          if prior == sn { acc }
+          else {
+            ServiceSymbolAccum {
+              by_symbol: acc.by_symbol,
+              collisions: list_push(acc.collisions, ServiceSymbolCollision {
+                symbol: symbol,
+                first_service_name: prior,
+                second_service_name: sn
+              })
+            }
+          }
+        Absent => ServiceSymbolAccum {
+          by_symbol: map_insert(acc.by_symbol, symbol, sn),
+          collisions: acc.collisions
+        }
+      }
+    ).collisions
+}
+
+type ServiceSymbolCollision {
+  symbol: String
+  first_service_name: String
+  second_service_name: String
+}
+
+type ServiceSymbolAccum {
+  by_symbol: Map<String, String>
+  collisions: List<ServiceSymbolCollision>
+}
+
+// The whole-graph producer, sibling of module_filename_collision_diagnostics: same grain, same
+// refuse-before-emitting-anything shape, and called by all three targets because the projection it
+// guards is shared by all three.
+fn service_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm =>
+    let mod_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
+    service_symbol_collisions(service_names: svc_items |> map(svc => authored_name_at(source_indices: tm.type_env.source_indices, node: svc)))
+      |> map(c => make_error_node(diagnostic: ServiceSymbolProjectionCollision {
+        colliding_symbol: c.symbol,
+        first_service: c.first_service_name,
+        second_service: c.second_service_name,
+        span: match svc_items |> first { Present { value: sv } => sv.span  Absent => no_span() }
+      }, module_name: mod_name))
+  )
 }
 
 fn capitalize_first(s: String) -> String {
