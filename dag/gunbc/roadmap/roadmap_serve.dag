@@ -34,7 +34,7 @@ import extdeps.languages.json.emit {
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -361,7 +361,6 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
     LaunchCauseNotPermitted { cause: _, mode: _ } => 409
     LaunchStaleSession { session_name: _, detail: _ } => 409
-    LaunchRevisionDrift { desired: _, local: _ } => 409
     LaunchTransitionInhibited { reason: _ } => 409
     LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } => 409
     LaunchSessionsUnobservable { reason: _ } => 503

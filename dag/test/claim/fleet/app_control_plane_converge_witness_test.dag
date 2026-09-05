@@ -22,6 +22,9 @@ import gunbc.fleet.app_control_plane_converge {
   HookUrlDecode, HookUrlDecoded, HookUrlRefused, decode_hook_url,
   RegistrationDecode, RegistrationDecoded, RegistrationDecodeRefused, decode_registration_json,
   HookConfigObservation, HookConfigRead,
+  HookDeliveryDecode, HookDeliveriesDecoded, HookDeliveryDecodeRefused, decode_deliveries_json,
+  HookDeliveryStanding, DeliveriesAccepted, DeliveriesRejected, DeliveriesUnobserved,
+  delivery_standing,
   AppHookConfigStanding, HookConfigConverged, HookConfigDiverged, HookConfigUnobserved,
   app_hook_config_standing, app_control_plane_receipt_text,
   registration_observed_app_id,
@@ -210,6 +213,7 @@ fn receipt_for(config: GitHubAppHookConfig) -> String {
     registration: observed_registration_row,
     config: config,
     standing: app_hook_config_standing(obs: HookConfigRead { config: config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesAccepted { sampled: 3 },
     observed_on: "2026-09-05"
   )
 }
@@ -235,4 +239,81 @@ test fn witness_receipt_carries_the_standing_and_both_sides_of_each_axis() -> Bo
     && contains(converged, "desired_insecure_ssl=0")
     && contains(converged, "observed_app_id=2653532")
     && contains(converged, "hook_url_scheme=https://")
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// REACHABILITY - the axis that was missing, and the live state that proved it missing.
+// ---------------------------------------------------------------------------------------------
+
+// The shape GitHub returns for deliveries its receiver ACCEPTED.
+data deliveries_accepted_json: String = "[{\"guid\": \"a-1\", \"event\": \"workflow_job\", \"status_code\": 200}, {\"guid\": \"a-2\", \"event\": \"workflow_job\", \"status_code\": 202}]"
+
+// THE MEASURED LIVE STATE, 2026-09-05: the configured endpoint named a Cloud Run service that no
+// longer exists, so every delivery came back 404. This is the document the repaired axis must
+// refuse, and the original three axes could not see at all.
+data deliveries_dead_endpoint_json: String = "[{\"guid\": \"d-1\", \"event\": \"workflow_job\", \"status_code\": 404}, {\"guid\": \"d-2\", \"event\": \"workflow_job\", \"status_code\": 404}]"
+
+data deliveries_empty_json: String = "[]"
+
+data deliveries_malformed_json: String = "[{\"guid\": \"m-1\", \"event\": \"workflow_job\"}]"
+
+test fn witness_accepted_deliveries_establish_reachability() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_accepted_json)) {
+    DeliveriesAccepted { sampled } => sampled == 2
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE WHOLE REPAIR. Before the delivery axis existed, a webhook whose
+// endpoint returned 404 to every delivery was reported CONVERGED, because TLS verification,
+// content type and secret presence are configuration properties that stay well-formed after the
+// thing they point at is deleted. Removing the DeliveriesRejected arm makes this pass and reds.
+test fn witness_dead_endpoint_deliveries_are_rejected_not_healthy() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_dead_endpoint_json)) {
+    DeliveriesRejected { failing, sampled } => failing == 2 && sampled == 2
+    _ => false
+  }
+}
+
+// AN EMPTY WINDOW IS UNOBSERVED, NEVER HEALTHY. Upstream retains deliveries for a bounded period,
+// so "none" is exactly the state of a webhook nobody has ever exercised. Reading it as accepted
+// would rebuild the vacuous green one layer up, which is why it is its own arm and the diff
+// refuses on it.
+test fn witness_empty_delivery_window_is_unobserved_not_accepted() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_empty_json)) {
+    DeliveriesUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_malformed_delivery_refuses() -> Bool {
+  match delivery_standing(decode: decode_deliveries_json(body: deliveries_malformed_json)) {
+    DeliveriesUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+// The receipt must retain the reachability verdict too: a configuration-converged run over a live
+// endpoint and one over a dead endpoint differ ONLY on this axis, so identical bytes here would be
+// the same evidence gap R4 repaired for the configuration axes.
+test fn witness_receipt_retains_the_reachability_verdict() -> Bool {
+  let live = app_control_plane_receipt_text(
+    registration: observed_registration_row,
+    config: converged_config,
+    standing: app_hook_config_standing(obs: HookConfigRead { config: converged_config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesAccepted { sampled: 2 },
+    observed_on: "2026-09-05"
+  )
+  let dead = app_control_plane_receipt_text(
+    registration: observed_registration_row,
+    config: converged_config,
+    standing: app_hook_config_standing(obs: HookConfigRead { config: converged_config, observed_on: "2026-09-05" }),
+    deliveries: DeliveriesRejected { failing: 2, sampled: 2 },
+    observed_on: "2026-09-05"
+  )
+  live != dead
+    && contains(live, "deliveries=accepted:2")
+    && contains(dead, "deliveries=rejected:2/2")
+    && contains(dead, "standing=converged")
 }

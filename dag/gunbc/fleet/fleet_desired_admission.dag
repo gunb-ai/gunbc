@@ -46,7 +46,7 @@ import gunbc.fleet_revision_acceptance {
 }
 import extdeps.git.plumbing { GitWorktreeAt }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, observe_required_ci_epoch_at_commit }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, observe_local_tree_revision }
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, local_tree_revision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput,
@@ -404,10 +404,10 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
           ) {
             AdmissionRefused { cause: why } => exit_failure(reason: why)
             AdmissionActionAuthorized { action: action } =>
-              match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
-                Absent =>
+              match local_tree_revision(repo: fleet_desired_admission_repo_root) {
+                LocalTreeRevisionUnobserved { cause: _ } =>
                   exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
-                Present { value: judge_source_observed } => {
+                LocalTreeRevisionObserved { revision: judge_source_observed } => {
                   let wrote = Filesystem.Write(
                     path: fleet_desired_admission_authorized_action_path,
                     content: fleet_desired_authorized_action_script(

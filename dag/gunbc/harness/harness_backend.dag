@@ -9,6 +9,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.harness.harness_wire {
   harness_engine_replica_addresses, harness_engine_port, harness_engine_model,
+  HarnessWireShape, harness_replica_pick, harness_backend_url_for_address,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -121,9 +122,66 @@ fn harness_standing_is_serving(standing: HarnessBackendStanding) -> Bool {
   }
 }
 
-fn harness_observe_backend() -> HarnessBackendStanding {
-  fold(harness_engine_replica_addresses, init: HarnessBackendServing { model: harness_engine_model }, f: (acc, a) =>
-    if harness_standing_is_serving(standing: acc) { harness_observe_replica(address: a) } else { acc })
+// THE ROSTER IS OBSERVED ONE REPLICA AT A TIME AND THE ANSWER KEEPS BOTH HALVES. The previous fold
+// answered for the whole backend with the first non-serving replica's standing, so one Spark down
+// refused every dispatch while the other served -- measured 2026-09-05 on srv1, .232 unreachable,
+// .225 advertising the model, dispatch refused at selection. That was the all-or-nothing reading of
+// a roster whose whole point is that attempts spread across it. Now: serving replicas are the set an
+// attempt may bind to; declined replicas are carried with their typed standing, so the count of what
+// is down is observable and never absorbed. None serving refuses, naming every replica's cause.
+type HarnessReplicaDecline {
+  address: String
+  standing: HarnessBackendStanding
+}
+
+type HarnessBackendRoster
+  = HarnessRosterServing { model: String, serving: List<String>, declined: List<HarnessReplicaDecline> }
+  | HarnessRosterNoneServing { model: String, declined: List<HarnessReplicaDecline> }
+
+type HarnessRosterFold {
+  serving: List<String>
+  declined: List<HarnessReplicaDecline>
+}
+
+fn harness_observe_roster() -> HarnessBackendRoster {
+  let folded = fold(harness_engine_replica_addresses, init: HarnessRosterFold { serving: [], declined: [] }, f: (acc, a) => {
+    let standing = harness_observe_replica(address: a)
+    if harness_standing_is_serving(standing: standing) {
+      HarnessRosterFold { serving: concat(acc.serving, [a]), declined: acc.declined }
+    } else {
+      HarnessRosterFold { serving: acc.serving, declined: concat(acc.declined, [HarnessReplicaDecline { address: a, standing: standing }]) }
+    }
+  })
+  if count(folded.serving) == 0 {
+    HarnessRosterNoneServing { model: harness_engine_model, declined: folded.declined }
+  } else {
+    HarnessRosterServing { model: harness_engine_model, serving: folded.serving, declined: folded.declined }
+  }
+}
+
+fn harness_declines_detail(declined: List<HarnessReplicaDecline>) -> String {
+  join(map(declined, d => join([
+    d.address, ": ", harness_standing_label(standing: d.standing), " -- ", harness_standing_detail(standing: d.standing),
+  ], "")), "; ")
+}
+
+// THE URL AN ATTEMPT POSTS TO, bound at process start from the replicas serving at that moment. The
+// seed spreads concurrent attempts across the serving set; a roster with nothing serving is a typed
+// refusal the entry point exits on, never a URL that will fail on the first turn.
+type HarnessBackendUrl
+  = BackendUrlBound { url: String, declined_count: Int }
+  | BackendUrlRefused { detail: String }
+
+fn harness_serving_backend_url(shape: HarnessWireShape, seed: String) -> HarnessBackendUrl {
+  match harness_observe_roster() {
+    HarnessRosterServing { model: _, serving, declined } =>
+      BackendUrlBound {
+        url: harness_backend_url_for_address(shape: shape, address: harness_replica_pick(seed: seed, replicas: serving)),
+        declined_count: count(declined),
+      }
+    HarnessRosterNoneServing { model: m, declined } =>
+      BackendUrlRefused { detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") }
+  }
 }
 
 fn harness_backend_report() -> String {

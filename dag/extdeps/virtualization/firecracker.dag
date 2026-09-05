@@ -5,6 +5,9 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit {
+  JsonValue, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json,
+}
 
 // FIRECRACKER IS AN INDEPENDENTLY VERSIONED UPSTREAM, so it owns its own extdeps module and its
 // real names are kept (DESIGN section 3). The configuration surface below is Firecracker's OWN
@@ -154,4 +157,79 @@ fn firecracker_root_drive_count(config: FirecrackerVmConfig) -> Int {
 
 fn firecracker_config_has_single_root(config: FirecrackerVmConfig) -> Bool {
   firecracker_root_drive_count(config: config) == 1
+}
+
+// --- the configuration FILE, which is upstream's own wire shape and not a rendering of ours ---
+
+// FIRECRACKER READS ONE JSON DOCUMENT WHOSE KEYS ARE HYPHENATED WHERE THE API PATHS ARE. The
+// `--config-file` document spells `boot-source`, `network-interfaces` and `machine-config` with
+// hyphens, while the MEMBER names inside each are the underscore field names the API accepts. That
+// asymmetry is upstream's, and it is reproduced here rather than normalized: a model that tidied it
+// would disagree with what the binary parses, which is the one thing an extdeps module may not do.
+//
+// THIS IS THE SAME ROWS READ IN THE OTHER DIRECTION, not a second authority for what a VM is. The
+// types above say what a Firecracker configuration IS; this says how that value is spelled on the
+// wire. A hand-authored JSON template beside them would be a second spelling of one VM, and the two
+// would drift the moment either moved.
+fn firecracker_boot_source_json(b: FirecrackerBootSource) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "kernel_image_path", value: json_string(s: b.kernel_image_path as String)),
+    json_kv(key: "boot_args", value: json_string(s: b.boot_args as String)),
+  ])
+}
+
+fn firecracker_drive_json(d: FirecrackerDrive) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "drive_id", value: json_string(s: d.drive_id as String)),
+    json_kv(key: "path_on_host", value: json_string(s: d.path_on_host as String)),
+    json_kv(key: "is_root_device", value: json_bool(b: d.is_root_device)),
+    json_kv(key: "is_read_only", value: json_bool(b: d.is_read_only)),
+  ])
+}
+
+fn firecracker_network_interface_json(n: FirecrackerNetworkInterface) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "iface_id", value: json_string(s: n.iface_id as String)),
+    json_kv(key: "host_dev_name", value: json_string(s: n.host_dev_name as String)),
+    json_kv(key: "guest_mac", value: json_string(s: n.guest_mac as String)),
+  ])
+}
+
+fn firecracker_machine_config_json(m: FirecrackerMachineConfig) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "vcpu_count", value: json_int(n: m.vcpu_count)),
+    json_kv(key: "mem_size_mib", value: json_int(n: m.mem_size_mib)),
+  ])
+}
+
+fn firecracker_vm_config_json(config: FirecrackerVmConfig) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "boot-source", value: firecracker_boot_source_json(b: config.boot_source)),
+    json_kv(key: "drives", value: json_array(elements: map(config.drives, d => firecracker_drive_json(d: d)))),
+    json_kv(
+      key: "network-interfaces",
+      value: json_array(elements: map(config.network_interfaces, n => firecracker_network_interface_json(n: n))),
+    ),
+    json_kv(key: "machine-config", value: firecracker_machine_config_json(m: config.machine_config)),
+  ])
+}
+
+fn firecracker_vm_config_document(config: FirecrackerVmConfig) -> String {
+  serialize_json(v: firecracker_vm_config_json(config: config))
+}
+
+// `--no-api` IS PART OF THE OPERATION, NOT A TUNING FLAG. Without it Firecracker starts, binds its
+// API socket and WAITS for an InstanceStart request that nobody here sends; the process would sit
+// there until the step's timeout and the run would report a hang rather than a boot. With it the
+// binary boots the configuration it was handed and exits when the guest powers off, which is the
+// lifetime a per-job VM has. A caller cannot reach the waiting form through this builder.
+//
+// THE GUEST'S SERIAL CONSOLE ARRIVES ON THIS PROCESS'S STDOUT, which is what makes the console
+// observable from outside the VM at all: the boot args carry `console=ttyS0`, Firecracker attaches
+// that port to its own stdout, and a caller capturing this command's output is reading the guest.
+fn firecracker_run_config_command(binary: String, config_path: String) -> ArgvCommand {
+  argv_command(
+    program: binary as NonEmptyStr,
+    arguments: ["--no-api", "--config-file", config_path],
+  )
 }

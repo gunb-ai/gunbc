@@ -1,7 +1,7 @@
 module v2.test.manual.sg1b_signature_realization_failclosed
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
+import v2.extdeps.languages.rust_sg2_mode2_test { rust_sg2_mode2_shared_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
@@ -70,7 +70,7 @@ test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
   match target_atom_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
-    host_target_model: rust_sg2_type_expr_target_model()
+    host_target_model: rust_sg2_mode2_shared_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
@@ -82,7 +82,7 @@ test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
     boundary_site: FunctionBoundaryParam,
-    host_target_model: rust_sg2_type_expr_target_model()
+    host_target_model: rust_sg2_mode2_shared_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid

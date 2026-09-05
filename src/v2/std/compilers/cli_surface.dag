@@ -140,7 +140,7 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
-    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
   ]
   = CliSurface {
     arguments: fold_list(

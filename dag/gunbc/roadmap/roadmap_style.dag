@@ -6,8 +6,8 @@ import gunbc.design.material {
   serialize_rules, reduced_motion_block,
 }
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
-import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration }
-import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class }
+import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration, FontSize, FontFamily, BorderRadius, Padding, MaxWidth, Overflow, TextOverflow, WhiteSpace, Background, Color }
+import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, standing_chip_class }
 import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
@@ -340,6 +340,33 @@ fn round_fill_schedule_decls() -> List<CssDecl> {
   ]
 }
 
+// THE STANDING CHIP: one neutral chip family, the state read from the class suffix. Claimed and in
+// progress take the figure halo; blocked and handed back take the loud band so a stuck node reads
+// as stuck; forked and incomplete histories take the boundary role, since they are facts about the
+// log, not about the work.
+fn standing_chip_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: standing_chip_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: BorderRadius, value: "3px"),
+      decl(prop: Padding, value: "1px 6px"),
+      decl(prop: MaxWidth, value: "28ch"),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: TextOverflow, value: "ellipsis"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      role_decl(prop: Background, r: FigureHaloRole),
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", standing_chip_class, "-blocked, .", standing_chip_class, "-handed_back"], "") }, decls: [
+      decl(prop: Background, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", standing_chip_class, "-forked, .", standing_chip_class, "-history_incomplete"], "") }, decls: [
+      role_decl(prop: Background, r: BoundaryRole),
+    ] },
+  ]
+}
+
 fn activity_round_strip_rules() -> List<BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: activity_round_strip_class }, decls: [
@@ -395,7 +422,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
 
 fn roadmap_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules(),
-    concat(figure_rules(), concat(activity_round_strip_rules(), roadmap_behavior_rules(rows: roadmap_behaviors))))
+    concat(figure_rules(), concat(activity_round_strip_rules(), concat(standing_chip_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.

@@ -169,15 +169,33 @@ fn observe_fleet_revision_relation(
   )
 }
 
-// The local half of the comparison: what revision THIS host's deployed tree is at.
-// Absent (typed, located in the cause the caller renders) when the repo path is not a
-// git repository or HEAD does not decode — never a fabricated revision.
-fn observe_local_tree_revision(repo: FilePath) -> GitObjectId? {
+// THE DEPLOYED TREE'S OWN REVISION, read locally and compared to nothing: which software is acting.
+// This is the fact the roadmap consumes -- a launch identity names the code that dispatched it, a
+// tick receipt names the code that ticked -- and it is NOT convergence. Whether this revision equals
+// the admitted fleet ref is the deploy path's question, answered by FleetRevisionStanding below for
+// the converge CLI and the deployed-tree report. Dispatch and the belt do not consult it (operator
+// ruling, 2026-09-05): desired advances on every green merge and a deploy takes minutes, so a gate
+// demanding equality was satisfiable only in the gap between two merges, and the tick refusing
+// under drift turned every merge into a pipeline outage on the host. Unreadable still refuses: a
+// dispatch that cannot name the code it runs has no identity to bind.
+type LocalTreeRevision
+  = LocalTreeRevisionObserved { revision: GitObjectId }
+  | LocalTreeRevisionUnobserved { cause: String }
+
+fn local_tree_revision(repo: FilePath) -> LocalTreeRevision {
   let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
   if read.exit_code == 0 {
-    git_object_id_from_untagged_hex(hex: trim(s: read.revision))
+    match git_object_id_from_untagged_hex(hex: trim(s: read.revision)) {
+      Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
+      Absent =>
+        LocalTreeRevisionUnobserved {
+          cause: concat("fleet_desired_observe: HEAD is not a decodable object id: ", trim(s: read.revision)),
+        }
+    }
   } else {
-    none
+    LocalTreeRevisionUnobserved {
+      cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
+    }
   }
 }
 
@@ -200,17 +218,14 @@ fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) 
   let observed = observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)
   match converge_target_revision(observed: observed) {
     Present { value: desired } =>
-      match observe_local_tree_revision(repo: repo) {
-        Present { value: local } =>
+      match local_tree_revision(repo: repo) {
+        LocalTreeRevisionObserved { revision: local } =>
           if git_object_id_eq(left: desired, right: local) {
             RevisionConverged { revision: desired }
           } else {
             RevisionDrifted { desired: desired, local: local }
           }
-        Absent =>
-          RevisionUnobserved {
-            cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
-          }
+        LocalTreeRevisionUnobserved { cause } => RevisionUnobserved { cause: cause }
       }
     Absent =>
       match observed {

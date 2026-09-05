@@ -498,6 +498,14 @@ fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification)
 // (which credential, whose lifetime) inside the dependency's interface, which DESIGN §3
 // places in the workflow layer. `-H @file` keeps the token off the process argument list,
 // where it would otherwise be world-readable in /proc.
+//
+// GetAppHookDeliveriesJson carries the AUTHORITATIVE REACHABILITY FACT, and it belongs to the
+// delivering party rather than to us: GitHub records the status code IT received for each delivery
+// it made, so that endpoint answers "did our receiver take the event" without us guessing from a
+// liveness probe of our own. A probe would have to assume a path and a method the receiver never
+// promised -- one answering POST /hook and 404ing GET / is correct, and a probe would convict it.
+// Deliveries are retained for a bounded window upstream, so an EMPTY list is an absence of evidence
+// and never evidence of health; preserving that distinction is the consumer's duty.
 service github.CliAppRegistration {
   operation GetAppRegistrationJson {
     input {
@@ -515,6 +523,26 @@ service github.CliAppRegistration {
         "-H", "@{jwt_header_file}",
         "-H", "Accept: application/vnd.github+json",
         "https://api.github.com/app"
+      ]
+    }
+  }
+
+  operation GetAppHookDeliveriesJson {
+    input {
+      jwt_header_file: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl", "--fail-with-body", "-sS",
+        "-H", "@{jwt_header_file}",
+        "-H", "Accept: application/vnd.github+json",
+        "https://api.github.com/app/hook/deliveries"
       ]
     }
   }
