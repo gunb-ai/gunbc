@@ -3379,17 +3379,14 @@ fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallS
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
   let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
-  let callee = match call_semantics {
-    Present { value: cs } => match call_semantics_target(cs: cs) {
-      SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-        lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity {
-          owner_module_path: owner,
-          decl_name: decl
-        })
-      RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => Absent
-      CallableTargetUndetermined => Absent
-    }
-    Absent => Absent
+  let callee = match call_semantics_target(cs: call_semantics) {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity {
+        owner_module_path: owner,
+        decl_name: decl
+      })
+    RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => Absent
+    CallableTargetUndetermined => Absent
   }
   let extra_args = match callee {
     Present { value: info } =>

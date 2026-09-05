@@ -1,0 +1,80 @@
+module test.claim.service_symbol_projection_collision_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.emit_core_support sanitize_service_name splits the authored service name
+// on '.' and joins the capitalized segments with nothing, so it is MANY-TO-ONE: `sspc.Probe` and
+// `SspcProbe` both render `SspcProbe`. All three targets name the emitted service type and its
+// bound parameter through that one projection, so before this wall two distinct services emitted
+// two declarations under one symbol and shared one binding, with no diagnostic -- two services
+// silently merged into one. service_var_name is the second channel, since to_snake of one symbol is
+// one symbol, so the collision reaches the parameter as well as the type.
+//
+// WHY THE FIXTURE AND NOT THE LIVE CORPUS. The class is LATENT: all 123 service names in the
+// checkout project to 123 distinct symbols today, so no live-tree probe can express the RED. The
+// forbidden state is perfectly authorable as source handed to the compiler, which is where the
+// evidence therefore lives -- declining it here would be specification-without-execution.
+
+data collide_source: String = "module sspc.probe\nimport std.types \{ String, Unit \}\nservice sspc.Probe \{\n  operation PingDotted \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nservice SspcProbe \{\n  operation PingFlat \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\n"
+
+data distinct_source: String = "module sspc.probe\nimport std.types \{ String, Unit \}\nservice sspc.Probe \{\n  operation PingDotted \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nservice SspcOther \{\n  operation PingFlat \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\n"
+
+fn collision_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("sspc/probe.dag", collide_source)],
+    entry: "sspc/probe.dag"
+  })
+}
+
+fn distinct_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("sspc/probe.dag", distinct_source)],
+    entry: "sspc/probe.dag"
+  })
+}
+
+fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn completed_without_the_class(o: MultiModuleCompileFixtureOutcome, unwanted: String) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(files) > 0 && n > 0 && !fixture_has_class(rows, unwanted),
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE DISCRIMINATING RED. Two services whose names differ only by the dotted segment boundary
+// refuse with the class that names the defect -- not merely "something refused", which a typo in
+// the fixture source would also satisfy.
+test fn dotted_and_flat_service_names_refuse_rather_than_merging() -> Bool {
+  refused_with_class(collision_run(), "ServiceSymbolProjectionCollision")
+}
+
+// THE POSITIVE CONTROL. The same two services with the second renamed so the symbols differ emit
+// normally. Without this the RED above is satisfied by a wall that refuses every service pair.
+test fn distinct_service_symbols_still_emit() -> Bool {
+  completed_without_the_class(distinct_run(), "ServiceSymbolProjectionCollision")
+}

@@ -1,8 +1,0 @@
-module test.fixture.service_segments.caller
-
-import test.fixture.service_segments.svc
-import std.types { String }
-
-fn call_three(tag: String) -> String { seg.deep.Probe.Ping(tag: tag).line }
-
-fn call_two(tag: String) -> String { seg.Flat.Ping(tag: tag).line }

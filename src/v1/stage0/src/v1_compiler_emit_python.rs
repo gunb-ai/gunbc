@@ -26,9 +26,10 @@ pub use crate::v1_compiler_emit::{
     emit_unified_operation_method, emit_unified_pattern, emit_unified_service_def,
     emit_unified_transport_dispatch, emit_unified_typed_expr, emit_unified_typed_func_body,
     empty_emit_scope, escape_python_interp_text, extract_string_interp_parts,
-    has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible, lookup_item,
-    module_emit_scope, order_typed_call_args, scope_after_expr, seed_bindings,
-    service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
+    has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible,
+    lookup_item_by_identity, module_emit_scope, order_typed_call_args, scope_after_expr,
+    seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
+    test_file_path,
 };
 pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
@@ -36,8 +37,9 @@ pub use crate::v1_compiler_emit_core_support::{
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
     is_leaf_type_item, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
     is_type_def_item, is_upper, language_spec, make_indent, module_filename_collision_diagnostics,
-    module_to_filename, sanitize_service_name, service_var_name, test_function_name, to_lower_char,
-    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
+    module_to_filename, sanitize_service_name, service_symbol_collision_diagnostics,
+    service_var_name, test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string,
+    to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -60,6 +62,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
+pub use crate::v1_std_core::DeclaredCallableIdentity;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
@@ -103,10 +106,14 @@ use std::rc::Rc;
 
 pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let filename_collisions =
+        let filename_collisions = v1_rt::concat(
             crate::v1_compiler_emit_core_support::module_filename_collision_diagnostics(
                 typed.clone(),
-            );
+            ),
+            crate::v1_compiler_emit_core_support::service_symbol_collision_diagnostics(
+                typed.clone(),
+            ),
+        );
         if ((filename_collisions.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -1009,7 +1016,10 @@ pub fn emit_py_fn_def(
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-            name.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
             body.clone(),
             registry.clone(),
             si.clone(),
@@ -1127,11 +1137,16 @@ pub fn emit_py_func_def(
 ) -> String {
     {
         let depth = 0;
-        let service_names =
-            match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
-                Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
+        let service_names = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
+        ) {
+            Some(info) => info.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let params_str = emit_py_func_params(
             params.clone(),
             uses.clone(),

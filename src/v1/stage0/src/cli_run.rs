@@ -15275,8 +15275,46 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let expanded_registry =
+    let effect_analysis =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    // Mirrors typecheck_with_census_extra: the registry is reachable only through the complete arm,
+    // and an incomplete summary carries its causes onto the graph's diagnostics rather than being
+    // unwrapped into something indistinguishable from a fixed point.
+    let (expanded_registry, incompleteness_diagnostics): (
+        Rc<im::HashMap<String, Rc<ItemInfo>>>,
+        Vec<Rc<ErrorNode>>,
+    ) = match effect_analysis.as_ref() {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
+            (registry.clone(), Vec::new())
+        }
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete { partial, causes } => {
+            let diags = causes
+                .iter()
+                .map(|cause| match cause.as_ref() {
+                    crate::v1_compiler_infer_service::EffectIncompleteness::UnresolvedCalleeEdge {
+                        item_identity,
+                        spelling,
+                    } => v1_compiler_infer::inference_error(
+                        format!(
+                            "effect summary incomplete: call to '{}' in {} has no established callee identity, so its effects cannot be joined",
+                            spelling,
+                            crate::v1_std_core::callable_identity(item_identity.clone())
+                        ),
+                        crate::v1_std_core::no_span(),
+                        item_identity.owner_module_path.clone(),
+                    ),
+                    crate::v1_compiler_infer_service::EffectIncompleteness::ExpansionBudgetExhausted {
+                        remaining_delta: _,
+                    } => v1_compiler_infer::inference_error(
+                        "effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(),
+                        crate::v1_std_core::no_span(),
+                        String::new(),
+                    ),
+                })
+                .collect();
+            (partial.clone(), diags)
+        }
+    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15284,6 +15322,7 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
+        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;

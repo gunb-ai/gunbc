@@ -148,7 +148,7 @@ pub use crate::v1_compiler_emit::{
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
     is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
-    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope,
+    keyed_container_has_target_inhabitant, lookup_item_by_identity, module_emit_scope,
     order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
     rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_ctors, service_field_decls, shell_emission_refusal_fact,
@@ -165,8 +165,9 @@ pub use crate::v1_compiler_emit_core_support::{
     has_mock_prefix, is_leaf_type_item, is_type_alias_item, is_type_alias_return_node,
     is_type_decl_item, is_type_def_item, is_upper, language_spec, make_indent,
     module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_var_name, test_function_name, to_lower_char, to_pascal, to_screaming_snake, to_snake,
-    to_string, to_string_helper, to_upper_char, unique_strings,
+    service_symbol_collision_diagnostics, service_var_name, test_function_name, to_lower_char,
+    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char,
+    unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -193,8 +194,9 @@ pub use crate::v1_compiler_infer_env::{
     type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::item_kind;
+pub use crate::v1_compiler_infer_items::duplicate_item_identity_marker;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
+pub use crate::v1_compiler_infer_items::{is_duplicate_item_identity_marker, item_kind};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
@@ -284,15 +286,15 @@ use crate::v1_std_core::VarBindingKind::{
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, declaration_provenance_of, empty_intern_table,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_binding_name_at,
-    field_binding_pattern, field_from_key_property_name, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
-    find_property, foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at,
-    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
-    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    binop_right, call_semantics_target, cast_expr, cast_target, declaration_provenance_of,
+    empty_intern_table, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_binding_name_at, field_binding_pattern, field_from_key_property_name,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
+    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_rest_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
     make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
     match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
     module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
@@ -5033,87 +5035,6 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
-pub fn build_qualified_item_registry(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        |acc: _, tm: _| {
-            let module_name = crate::v1_std_core::authored_name_at(
-                tm.type_env.clone().source_indices.clone(),
-                tm.module.clone(),
-            );
-            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
-                .iter()
-                .cloned()
-                .fold(acc, |acc2: _, item_name: String| {
-                    match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
-                        Some(info) => {
-                            let qualified_name = v1_rt::concat(
-                                v1_rt::concat(module_name.clone(), ".".to_string()),
-                                item_name.clone(),
-                            );
-                            match v1_rt::map_get(&acc2, qualified_name.clone()) {
-                                Some(_) => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    duplicate_qualified_item_registry_marker(
-                                        qualified_name.clone(),
-                                    ),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    info.clone(),
-                                ),
-                            }
-                        }
-                        std::option::Option::None => acc2.clone(),
-                    }
-                })
-        },
-    )
-}
-
-pub fn merge_item_registries(
-    bare: Rc<HashMap<String, Rc<ItemInfo>>>,
-    qualified: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    Rc::new(v1_rt::map_keys(&qualified)).iter().cloned().fold(
-        bare.clone(),
-        |acc: _, key: String| match v1_rt::map_get(&qualified, key.clone()) {
-            Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
-            std::option::Option::None => acc.clone(),
-        },
-    )
-}
-
-pub fn duplicate_qualified_item_registry_marker_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn duplicate_qualified_item_registry_marker(name: String) -> Rc<ItemInfo> {
-    Rc::new(ItemInfo {
-        name: name.clone(),
-        module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
-        kind: ItemKind::OtherItem,
-        service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
-        params: Rc::new(vec![]),
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-    })
-}
-
-pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
-    (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
-}
-
 pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
     {
         let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
@@ -5127,12 +5048,24 @@ pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 
 pub fn lookup_item_for_value_ref(
     resolved_name: String,
+    self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Option<Rc<ItemInfo>> {
-    crate::v1_compiler_emit::lookup_item(
-        registry.clone(),
-        value_ref_registry_lookup_key(resolved_name.clone()),
-    )
+    {
+        let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
+        let leaf = value_ref_qualified_leaf(resolved_name.clone());
+        crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: if (qualifier.clone() == "".to_string()) {
+                    self_module.clone()
+                } else {
+                    qualifier.clone()
+                },
+                decl_name: leaf.clone(),
+            }),
+        )
+    }
 }
 
 pub fn emit_qualified_value_ref_crate_ident(
@@ -5140,10 +5073,9 @@ pub fn emit_qualified_value_ref_crate_ident(
     info: Rc<ItemInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> String {
-    if is_duplicate_qualified_item_registry_marker(info.clone()) {
+    if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
         crate::v1_compiler_emit::emit_error_expr(
-            "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
-                .to_string(),
+            "duplicate item identity — two declarations of this leaf in one module".to_string(),
             RenderTarget::Rust,
         )
     } else {
@@ -5164,7 +5096,7 @@ pub fn emit_qualified_value_ref_crate_ident(
 
 pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
     crate::v1_compiler_emit::emit_error_expr(
-        "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
+        "duplicate item identity — two declarations of this leaf in one module".to_string(),
         RenderTarget::Rust,
     )
 }
@@ -6150,10 +6082,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
         });
-        let registry = merge_item_registries(
-            typed.item_registry.clone(),
-            build_qualified_item_registry(typed.modules.clone()),
-        );
+        let registry = typed.item_registry.clone();
         let data_items = build_data_item_index(typed.modules.clone());
         let workflow_funcs = collect_workflow_funcs(
             typed.modules.clone(),
@@ -6225,10 +6154,14 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 )
             },
         );
+        let service_collision_diags =
+            crate::v1_compiler_emit_core_support::service_symbol_collision_diagnostics(
+                typed.clone(),
+            );
         let test_projections =
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
-        let module_index = build_module_index(typed.modules.clone());
+        let module_index = build_module_index(typed.modules.clone(), registry.clone());
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         Rc::new(EmitRustContext {
             emit_info: emit_info.clone(),
@@ -6236,7 +6169,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             data_items: data_items.clone(),
             workflow_funcs: workflow_funcs.clone(),
             workflow_default_diags: workflow_default_diags.clone(),
-            anonymous_record_diags: anonymous_record_diags.clone(),
+            anonymous_record_diags: v1_rt::concat(
+                anonymous_record_diags.clone(),
+                service_collision_diags.clone(),
+            ),
             svc_module_map: svc_module_map.clone(),
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
@@ -7206,7 +7142,8 @@ pub fn emit_module(
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
+        let module_index =
+            build_module_index(Rc::new(vec![typed_module.clone()]), registry.clone());
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
@@ -10495,12 +10432,16 @@ pub fn is_import_graph_type_name(
 
 pub fn item_defining_module_filename(
     name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_index: Rc<ModuleIndex>,
     fallback: String,
 ) -> String {
-    match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
+    match v1_rt::map_get(&module_index.leaf_owners.clone(), name.clone()) {
         Some(info) => {
-            crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+            if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
+                fallback
+            } else {
+                crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+            }
         }
         std::option::Option::None => fallback,
     }
@@ -10510,9 +10451,40 @@ pub fn item_defining_module_filename(
 pub struct ModuleIndex {
     pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
+    pub leaf_owners: Rc<HashMap<String, Rc<ItemInfo>>>,
 }
 
-pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
+pub fn build_leaf_owner_index(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        |acc: _, key: String| match v1_rt::map_get(&registry, key.clone()) {
+            Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
+                Some(prior) => {
+                    if (prior.module_name.clone() == info.module_name.clone()) {
+                        acc.clone()
+                    } else {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            info.name.clone(),
+                            duplicate_item_identity_marker(info.name.clone()),
+                        )
+                    }
+                }
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.clone())
+                }
+            },
+            std::option::Option::None => acc.clone(),
+        },
+    )
+}
+
+pub fn build_module_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<ModuleIndex> {
     {
         let by_name = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -10553,6 +10525,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
         Rc::new(ModuleIndex {
             by_name: by_name.clone(),
             by_filename: by_filename.clone(),
+            leaf_owners: build_leaf_owner_index(registry.clone()),
         })
     }
 }
@@ -11435,7 +11408,7 @@ pub fn variant_parent_defining_module_filename(
                     source_indices.clone(),
                     item_defining_module_filename(
                         parent_enum.clone(),
-                        registry.clone(),
+                        module_index.clone(),
                         fallback.clone(),
                     ),
                     module_index.clone(),
@@ -11448,7 +11421,11 @@ pub fn variant_parent_defining_module_filename(
             typed_modules.clone(),
             export_sets.clone(),
             source_indices.clone(),
-            item_defining_module_filename(parent_enum.clone(), registry.clone(), fallback.clone()),
+            item_defining_module_filename(
+                parent_enum.clone(),
+                module_index.clone(),
+                fallback.clone(),
+            ),
             module_index.clone(),
         ),
     }
@@ -11703,7 +11680,7 @@ pub fn alias_rhs_base_module_filename(
     {
         let local_mod =
             crate::v1_compiler_emit_core_support::module_to_filename(alias_module.clone());
-        match crate::v1_compiler_emit::lookup_item(scope.item_registry.clone(), name.clone()) {
+        match v1_rt::map_get(&module_index.leaf_owners.clone(), name.clone()) {
             Some(info) => {
                 if (((info.module_name.clone() == alias_module.clone())
                     && ((info.kind.clone() == ItemKind::TypeItem)
@@ -11849,7 +11826,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                 crate::v1_compiler_emit_core_support::module_to_filename(import_module.clone())
             }
             std::option::Option::None => {
-                item_defining_module_filename(name.clone(), registry.clone(), local_mod.clone())
+                item_defining_module_filename(name.clone(), module_index.clone(), local_mod.clone())
             }
         },
     }
@@ -13019,7 +12996,7 @@ pub fn emit_specific_import_block(
                                     ),
                                     std::option::Option::None => item_defining_module_filename(
                                         p.clone(),
-                                        registry.clone(),
+                                        module_index.clone(),
                                         mod_name.clone(),
                                     ),
                                 }
@@ -13041,7 +13018,7 @@ pub fn emit_specific_import_block(
 } { __result.push(n); } } __result }).first().cloned();
 match rep_variant.clone() {
     Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()) == def_mod.clone()),
-    std::option::Option::None => (item_defining_module_filename(p.clone(), registry.clone(), mod_name.clone()) == def_mod.clone()),
+    std::option::Option::None => (item_defining_module_filename(p.clone(), module_index.clone(), mod_name.clone()) == def_mod.clone()),
 }
 } { __result.push(p); } } __result });
 if ((group.clone().len() as i64) > 0) {
@@ -13111,7 +13088,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         } { __result.push(n); } } __result });
 let parent_mod = match variants.clone().first().cloned() {
     Some(v) => variant_parent_defining_module_filename(parent.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()),
-    std::option::Option::None => item_defining_module_filename(parent.clone(), registry.clone(), mod_name.clone()),
+    std::option::Option::None => item_defining_module_filename(parent.clone(), module_index.clone(), mod_name.clone()),
 };
 let vars_str = variants.clone().join(&", ".to_string());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("use crate::".to_string(), parent_mod.clone()), "::".to_string()), parent.clone()), "::{".to_string()), vars_str.clone()), "};".to_string())
@@ -14820,7 +14797,13 @@ pub fn emit_typed_item(
                         std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                     };
                     let item_is_tco = crate::v1_compiler_emit::is_tco_eligible(
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: module_name.clone(),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                env.clone(),
+                                item.clone(),
+                            ),
+                        }),
                         fn_body.clone(),
                         registry.clone(),
                         env.source_indices.clone(),
@@ -14860,9 +14843,15 @@ pub fn emit_typed_item(
                         fn_return_type: emit_info.fn_return_type.clone(),
                         expected_type: emit_info.expected_type.clone(),
                     });
-                    let is_effectful = match crate::v1_compiler_emit::lookup_item(
+                    let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
                         registry.clone(),
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: module_name.clone(),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                env.clone(),
+                                item.clone(),
+                            ),
+                        }),
                     ) {
                         Some(info) => {
                             (((info.service_names.clone().len() as i64) > 0)
@@ -18068,13 +18057,19 @@ pub fn emit_fn_def(
             crate::v1_compiler_infer::build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-            name.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
             body.clone(),
             registry.clone(),
             si.clone(),
         );
         let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
-            name.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
             body.clone(),
             registry.clone(),
             si.clone(),
@@ -18670,11 +18665,16 @@ pub fn emit_func_def(
             return v1_rt::concat(v1_rt::concat("compile_error!(\"emit_func_def saw type params in `".to_string(), name.clone()), "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n".to_string());
         }
         let depth = 0;
-        let service_names =
-            match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
-                Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
+        let service_names = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
+        ) {
+            Some(info) => info.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let params_str = emit_func_params(
             params.clone(),
             uses.clone(),
@@ -21209,6 +21209,7 @@ pub fn variant_ref_self_wraps(
 
 pub fn emit_value_ref_ident(
     name: String,
+    self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -21217,7 +21218,7 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match lookup_item_for_value_ref(name.clone(), registry.clone()) {
+                match lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone()) {
     Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
     std::option::Option::None => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
 }
@@ -21326,77 +21327,83 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        std::option::Option::None => {
-                            match lookup_item_for_value_ref(resolved_name.clone(), registry.clone())
-                            {
-                                Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
-                                    } else {
-                                        {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
-                                                    emit_value_ref_ident(
-                                                        name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
-                                            } else {
+                        std::option::Option::None => match lookup_item_for_value_ref(
+                            resolved_name.clone(),
+                            module_name.clone(),
+                            registry.clone(),
+                        ) {
+                            Some(info) => {
+                                if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(
+                                    info.clone(),
+                                ) {
+                                    value_ref_item_info_refusal(info.clone())
+                                } else {
+                                    {
+                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                        if is_data.clone() {
+                                            v1_rt::concat(
+                                                emit_value_ref_ident(
+                                                    name.clone(),
+                                                    module_name.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                ),
+                                                "()".to_string(),
+                                            )
+                                        } else {
+                                            {
+                                                let is_function_value = match binding_kind
+                                                    .clone()
+                                                    .as_deref()
+                                                    .cloned()
                                                 {
-                                                    let is_function_value = match binding_kind
-                                                        .clone()
-                                                        .as_deref()
-                                                        .cloned()
-                                                    {
-                                                        Some(
-                                                            VarBindingKind::FunctionValueBinding,
-                                                        ) => true,
-                                                        _ => false,
-                                                    };
-                                                    let ident = emit_value_ref_ident(
-                                                        resolved_name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    );
-                                                    let ident_str = if is_function_value.clone() {
+                                                    Some(VarBindingKind::FunctionValueBinding) => {
+                                                        true
+                                                    }
+                                                    _ => false,
+                                                };
+                                                let ident = emit_value_ref_ident(
+                                                    resolved_name.clone(),
+                                                    module_name.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                );
+                                                let ident_str = if is_function_value.clone() {
+                                                    ident.clone()
+                                                } else {
+                                                    if moves_by_value.clone() {
                                                         ident.clone()
                                                     } else {
-                                                        if moves_by_value.clone() {
-                                                            ident.clone()
-                                                        } else {
-                                                            match resolved_type.clone() {
+                                                        match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                                        }
-                                                    };
-                                                    ident_str.clone()
-                                                }
+                                                    }
+                                                };
+                                                ident_str.clone()
                                             }
                                         }
                                     }
                                 }
-                                std::option::Option::None => {
-                                    let ident = emit_value_ref_ident(
-                                        resolved_name.clone(),
-                                        registry.clone(),
-                                        emit_info.clone(),
-                                    );
-                                    let ident_str = if moves_by_value.clone() {
-                                        ident.clone()
-                                    } else {
-                                        match resolved_type.clone() {
+                            }
+                            std::option::Option::None => {
+                                let ident = emit_value_ref_ident(
+                                    resolved_name.clone(),
+                                    module_name.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                );
+                                let ident_str = if moves_by_value.clone() {
+                                    ident.clone()
+                                } else {
+                                    match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                    };
-                                    ident_str.clone()
-                                }
+                                };
+                                ident_str.clone()
                             }
-                        }
+                        },
                     };
                     ref_str
                 }
@@ -21473,43 +21480,21 @@ pub fn emit_typed_expr_base(
                                     n.clone(),
                                     scope.module_name.clone(),
                                 );
-                                match lookup_item_for_value_ref(
-                                    resolved_name.clone(),
-                                    registry.clone(),
-                                ) {
-                                    Some(info) => {
-                                        if is_duplicate_qualified_item_registry_marker(info.clone())
-                                        {
-                                            value_ref_item_info_refusal(info.clone())
-                                        } else {
-                                            {
-                                                let is_data =
-                                                    (info.kind.clone() == ItemKind::DataItem);
-                                                if is_data.clone() {
-                                                    v1_rt::concat(
-                                                        emit_value_ref_ident(
-                                                            n.clone(),
-                                                            registry.clone(),
-                                                            emit_info.clone(),
-                                                        ),
-                                                        "()".to_string(),
-                                                    )
-                                                } else {
-                                                    emit_value_ref_ident(
-                                                        resolved_name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                    std::option::Option::None => emit_value_ref_ident(
-                                        resolved_name.clone(),
-                                        registry.clone(),
-                                        emit_info.clone(),
-                                    ),
+                                match lookup_item_for_value_ref(resolved_name.clone(), scope.module_name.clone(), registry.clone()) {
+    Some(info) => if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
+                            value_ref_item_info_refusal(info.clone())
+                        } else {
+                            {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+if is_data.clone() {
+                                    v1_rt::concat(emit_value_ref_ident(n.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()), "()".to_string())
+                                } else {
+                                    emit_value_ref_ident(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone())
                                 }
+}
+                        },
+    std::option::Option::None => emit_value_ref_ident(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()),
+}
                             }
                         }
                     }
@@ -22410,18 +22395,6 @@ pub fn call_semantics_supplied_application_plan(
     })
 }
 
-pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
-    match cs.clone().as_deref().cloned() {
-        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
-        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
-        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
-        Some(CallSemantics::FunctionValueCallSemantics) => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
-        }
-        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
-    }
-}
-
 pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Option<String> {
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
@@ -22475,7 +22448,7 @@ pub fn emit_rust_expr_call(
                 expr.inferred.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
-                call_semantics_target(cs.clone()),
+                crate::v1_std_core::call_semantics_target(cs.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -24021,9 +23994,12 @@ pub fn emit_typed_call(
                 owner_module_path: owner,
                 decl_name: decl,
                 ..
-            } => crate::v1_compiler_emit::lookup_item(
+            } => crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
-                v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), decl.clone()),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: owner.clone(),
+                    decl_name: decl.clone(),
+                }),
             ),
             _ => std::option::Option::None,
         };
@@ -31467,7 +31443,7 @@ pub fn emit_rust_tco_non_self_call(
                 frame.expr.clone().children.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
-                call_semantics_target(cs.clone()),
+                crate::v1_std_core::call_semantics_target(cs.clone()),
                 registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
@@ -37222,11 +37198,16 @@ pub fn to_workflow_func(
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        let svc_names =
-            match crate::v1_compiler_emit::lookup_item(registry.clone(), item_name.clone()) {
-                Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
+        let svc_names = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: module_name.clone(),
+                decl_name: item_name.clone(),
+            }),
+        ) {
+            Some(info) => info.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let param_defaults = item.params.clone().iter().cloned().fold(Rc::new(WorkflowParamDefaults {
     resolved: v1_rt::rc_empty_map::<String, String>(),
     ambiguous: v1_rt::rc_empty_map::<String, Rc<UnresolvableDataReference>>(),
@@ -37283,6 +37264,7 @@ match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), sou
 
 pub fn is_workflow_item(
     item: Rc<Node>,
+    module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -37292,9 +37274,15 @@ pub fn is_workflow_item(
         if ((item.uses.clone().len() as i64) > 0) {
             true
         } else {
-            match crate::v1_compiler_emit::lookup_item(
+            match crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: module_name.clone(),
+                    decl_name: crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        item.clone(),
+                    ),
+                }),
             ) {
                 Some(info) => {
                     (((info.service_names.clone().len() as i64) > 0)
@@ -37324,6 +37312,10 @@ pub fn collect_workflow_funcs(
                             for item in tm.items.clone().iter().cloned() {
                                 if is_workflow_item(
                                     item.clone(),
+                                    crate::v1_std_core::authored_name_at(
+                                        tm.type_env.clone().source_indices.clone(),
+                                        tm.module.clone(),
+                                    ),
                                     registry.clone(),
                                     tm.type_env.clone().source_indices.clone(),
                                 ) {

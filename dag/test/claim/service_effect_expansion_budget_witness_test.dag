@@ -1,0 +1,82 @@
+module test.claim.service_effect_expansion_budget_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.infer_service expand_transitive_services propagates each declaration's
+// service set to its callers, and it runs under a fixed pass budget. A call chain deeper than that
+// budget stops mid-propagation, and before this change the exhausted budget returned an ORDINARY
+// registry -- indistinguishable from a fixed point. The callers above the cut then emitted without
+// the service parameter their callees required, so the emitted Rust carried an unrealized-host-seam
+// panic where a working call belonged: a truncation published as a finished answer, which is the
+// absorbing-fallback shape DESIGN section 5 forbids. The analysis now returns EffectsComplete or
+// EffectsIncomplete, so the registry is reachable only through the complete arm and an exhausted
+// budget surfaces as a typed cause instead.
+//
+// WHY THE FIXTURE. The RED is a property of chain DEPTH against the budget, so it is authorable
+// only as source whose depth the test controls. The live corpus decides nothing here: it is either
+// under the budget, in which case it proves the wall never fires, or over it, in which case the
+// tree is already red for an unrelated reason.
+
+data deep_chain_source: String = "module setsw.chain\nimport std.types \{ String, Unit \}\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from "stdout" \}\n    readonly\n    transport shell \{ argv: ["echo", "\{tag\}"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\nfn f2(tag: String) -> String \{ f3(tag: tag) \}\nfn f3(tag: String) -> String \{ f4(tag: tag) \}\nfn f4(tag: String) -> String \{ f5(tag: tag) \}\nfn f5(tag: String) -> String \{ f6(tag: tag) \}\nfn f6(tag: String) -> String \{ f7(tag: tag) \}\nfn f7(tag: String) -> String \{ f8(tag: tag) \}\nfn f8(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
+
+data shallow_chain_source: String = "module setsw.chain\nimport std.types \{ String, Unit \}\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from "stdout" \}\n    readonly\n    transport shell \{ argv: ["echo", "\{tag\}"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\nfn f2(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
+
+fn deep_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("setsw/chain.dag", deep_chain_source)],
+    entry: "setsw/chain.dag"
+  })
+}
+
+fn shallow_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("setsw/chain.dag", shallow_chain_source)],
+    entry: "setsw/chain.dag"
+  })
+}
+
+fn refused_blocking(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE DISCRIMINATING RED. A call chain deeper than the pass budget refuses rather than publishing
+// the truncated summary. At the previous behaviour this same source compiled and emitted a panic
+// seam in the functions above the cut.
+test fn chain_deeper_than_the_pass_budget_refuses() -> Bool {
+  refused_blocking(deep_run())
+}
+
+// THE POSITIVE CONTROL. The same shape within the budget reaches its fixed point and emits.
+// Without this the RED above is satisfied by an analysis that reports incomplete for every chain.
+test fn chain_within_the_pass_budget_still_emits() -> Bool {
+  completed(shallow_run())
+}
