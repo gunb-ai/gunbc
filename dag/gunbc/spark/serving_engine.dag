@@ -176,20 +176,27 @@ type MemoryEnforcerKind
   | KernelOomKiller
 
 // WHETHER AN ENFORCER SEES THE DEVICE RESERVATION HAS THREE ANSWERS, AND THE THIRD IS NOT A `false`.
-// The threshold monitor polls a byte total that includes the reservation; the host guard is keyed on
-// MemAvailable and the kernel killer on resident pages, and neither can see a reservation that was
-// never faulted in. That is the measured asymmetry and the whole reason a unified pool tolerates one
-// of these and not the other.
 //
-// RAY'S EVENT MONITOR IS THE ONE WE HAVE NOT ESTABLISHED. Nothing read for this module says whether
-// its accounting includes a device reservation on a unified pool. The honest fact is exactly that --
-// THIS REPOSITORY HAS NOT ESTABLISHED IT -- and no mechanism story is asserted here to explain why,
-// because a borrowed explanation would be a citation to a file nobody here read. A `Bool` has
-// nowhere to put that: returning `false` would
-// assert it is safe on the strength of not having checked, which is the fabricated-plausible-answer
-// failure, and returning `true` would invent the measurement. So the answer is a third arm, and on a
-// unified pool it REFUSES -- an enforcer whose accounting is unknown is exactly as unsafe to admit as
-// one known to double-count, and the difference belongs in the CAUSE, not in the verdict.
+// ESTABLISHED -- ONE KIND, NOT THE WHOLE THRESHOLD FAMILY. The NON-ISOLATED host threshold monitor
+// polls a node byte total that includes the reservation; that is the measured asymmetry and the whole
+// reason a unified pool tolerates some of these and not others. The host guard is keyed on
+// MemAvailable and the kernel killer on resident pages, and neither can see a reservation that was
+// never faulted in.
+//
+// UNESTABLISHED -- TWO KINDS, AND NAMING ONLY ONE OF THEM WAS ITSELF A DEFECT. An earlier version of
+// this paragraph presented the EVENT monitor as the sole unknown while speaking of "the threshold
+// monitor" as a single counting subject. That re-fused in prose the two threshold subjects the type
+// had just been split into, so the annotation and the executable partition disagreed about the very
+// distinction the split existed to make. Both the ISOLATED user-slice threshold monitor and the event
+// monitor are unknown: nothing read for this module says whether either accounting includes a device
+// reservation on a unified pool, and no mechanism story is asserted here to explain why, because a
+// borrowed explanation would be a citation to a file nobody here read.
+//
+// A `Bool` has nowhere to put that: returning `false` would assert it is safe on the strength of not
+// having checked, which is the fabricated-plausible-answer failure, and returning `true` would invent
+// the measurement. So the answer is a third arm, and on a unified pool it REFUSES -- an enforcer whose
+// accounting is unknown is exactly as unsafe to admit as one known to double-count, and the
+// difference belongs in the CAUSE, not in the verdict.
 type DeviceReservationAccounting = CountsReservation | ExcludesReservation | AccountingUnestablished
 
 fn memory_enforcer_device_reservation_accounting(kind: MemoryEnforcerKind) -> DeviceReservationAccounting {
