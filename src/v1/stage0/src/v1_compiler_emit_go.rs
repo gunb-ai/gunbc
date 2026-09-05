@@ -64,7 +64,6 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
-pub use crate::v1_std_core::DeclaredCallableIdentity;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
@@ -1860,7 +1859,7 @@ pub fn go_export_ident(name: String) -> String {
             let result = crate::v1_compiler_emit::apply_naming_case(name.clone(), ec.clone());
             if {
                 let mut __found = false;
-                for r in go_reserved().iter().cloned() {
+                for r in go_reserved.iter().cloned() {
                     if (r.clone() == result.clone()) {
                         __found = true;
                         break;
@@ -1868,7 +1867,7 @@ pub fn go_export_ident(name: String) -> String {
                 }
                 __found
             } {
-                v1_rt::concat(result.clone(), go_reserved_escape_suffix())
+                v1_rt::concat(result.clone(), go_reserved_escape_suffix.clone())
             } else {
                 result.clone()
             }

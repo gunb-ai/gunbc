@@ -96,6 +96,17 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, N
 // resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration
 // Node — never a second, parallel re-parse or re-inference of the callee.
 
+// item_leaf_owner_modules IS THE REVERSE DIRECTION OF THE REGISTRY KEY, BUILT ONCE.
+// The item registry is keyed on a declaration's identity, so it answers "what is THIS declaration"
+// and cannot answer "which module declares this leaf". Emission asks the reverse wherever it holds
+// only a spelling -- an unqualified reference to an imported value above all. It used to come back
+// for free because the registry was itself leaf-keyed, and it came back wrong whenever two modules
+// declared the leaf. This index carries the OWNER MODULE PATH rather than the ItemInfo, for two
+// reasons: the row still has exactly one authority, the registry, and this module sits upstream of
+// v1.compiler.infer_items, so naming ItemInfo here would close an import cycle -- the one structural
+// law the graph has. A leaf claimed by more than one module maps to the empty string, which is not
+// a legal module path, so the identity lookup built from it misses and the consumer refuses: the
+// ambiguous case fails closed by construction rather than by a check.
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   type_decl_items: Map<String, Node>
@@ -121,6 +132,8 @@ type EmitGraphInfo {
   fn_type_env: TypeEnv
   fn_return_type: Node?
   expected_type: Node?
+
+  item_leaf_owner_modules: Map<String, String>
 }
 
 type EmitInfoBuildState {
@@ -133,6 +146,7 @@ type EmitInfoBuildState {
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
+    item_leaf_owner_modules: empty_map(),
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
     fn_decl_items: empty_map(),
@@ -159,6 +173,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 
 fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
   EmitGraphInfo {
+    item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     fn_decl_items: emit_info.fn_decl_items,
@@ -184,6 +199,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
 
 fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
+    item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     fn_decl_items: emit_info.fn_decl_items,
@@ -214,6 +230,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
 // (`Witness<Rc<RuntimeValueAcceptanceWitness>>`, E0308 x5 at v2.compiler.eval / v2.compiler.compile).
 fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
+    item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
     fn_decl_items: emit_info.fn_decl_items,

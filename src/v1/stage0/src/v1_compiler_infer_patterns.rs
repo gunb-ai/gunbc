@@ -27,8 +27,6 @@ use crate::v1_std_core::Connective::{Disj, NoConnective};
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
@@ -355,7 +353,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
             Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
-            std::option::Option::None => error_type(),
+            std::option::Option::None => error_type.clone(),
         };
         let value_field = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -561,8 +559,8 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
-        PatternSubject::PatternDynamic { span: _, .. } => error_type(),
-        PatternSubject::PatternLookupBlocked => error_type(),
+        PatternSubject::PatternDynamic { span: _, .. } => error_type,
+        PatternSubject::PatternLookupBlocked => error_type,
     }
 }
 
@@ -683,7 +681,7 @@ pub fn lookup_variant_in_type(
                                 if (optional_cardinality_subject.clone()
                                     && (variant_name.clone() == "Absent".to_string()))
                                 {
-                                    node_lookup_resolved(none_type())
+                                    node_lookup_resolved(none_type.clone())
                                 } else {
                                     if (witness_subject.clone()
                                         && (variant_name.clone() == "Holds".to_string()))
@@ -746,7 +744,7 @@ pub fn lookup_variant_in_type(
                                                             && (variant_name.clone()
                                                                 == "Absent".to_string()))
                                                         {
-                                                            node_lookup_resolved(none_type())
+                                                            node_lookup_resolved(none_type.clone())
                                                         } else {
                                                             variant_not_found_result(
                                                                 scrut_node.clone(),

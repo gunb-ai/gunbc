@@ -17,7 +17,6 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
-pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -59,7 +58,6 @@ pub use crate::v1_compiler_infer::{
 };
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
@@ -2009,7 +2007,7 @@ pub fn render_node_type(
                                     v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_coercion::coerce_primitive_type(crate::v1_compiler_coercion::type_reference_realization(n.clone(), tn.clone(), target.clone()), tn.clone()), spec.type_arg_open.clone()), param_strs.clone().join(&", ".to_string())), spec.type_arg_close.clone())
                                 }
                             } else {
-                                if (tn.clone() == tuple_type_name()) {
+                                if (tn.clone() == tuple_type_name.clone()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     crate::v1_compiler_coercion::coerce_primitive_type(
@@ -2137,7 +2135,7 @@ pub fn render_node_type(
             }
             __result
         });
-        if (tn.clone() == tuple_type_name()) {
+        if (tn.clone() == tuple_type_name.clone()) {
             {
                 let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
                 return multi_tuple_str;
@@ -4983,7 +4981,7 @@ pub fn child_from_key(
         let mut __result = Vec::new();
         for p in ch.properties.clone().iter().cloned() {
             if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
-                == field_from_key_property_name())
+                == field_from_key_property_name.clone())
             {
                 __result.push(p);
             }

@@ -23,8 +23,6 @@ use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-pub use crate::v1_std_core::ParsedModuleItemKind;
-use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
@@ -167,7 +165,7 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
         Rc::new(vec![
             crate::v1_compiler_infer_types::make_kernel_record_field(
                 "content".to_string(),
-                string_type(),
+                string_type.clone(),
             ),
         ]),
     )
@@ -251,7 +249,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<BuiltinSignature>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), int_type()));
+                __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), int_type.clone()));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
@@ -259,7 +257,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("code_point".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -268,9 +266,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
-                __m.insert("to_int".to_string(), derived_signature(Rc::new(vec!["s".to_string()]), "to_int".to_string(), int_type()));
+                __m.insert("to_int".to_string(), derived_signature(Rc::new(vec!["s".to_string()]), "to_int".to_string(), int_type.clone()));
                 __m.insert("scan_while".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
@@ -293,7 +291,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("scan_string_end".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -307,7 +305,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("scan_to_eol".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -321,7 +319,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("skip_horizontal_ws".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -335,7 +333,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("parse_int".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -344,7 +342,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: crate::v1_std_core::with_optional_cardinality(int_type()),
+        returns: crate::v1_std_core::with_optional_cardinality(int_type.clone()),
     }));
                 __m.insert("char_at".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -358,9 +356,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: string_type.clone(),
     }));
-                __m.insert("substring".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "start".to_string(), "end".to_string()]), "substring".to_string(), string_type()));
+                __m.insert("substring".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "start".to_string(), "end".to_string()]), "substring".to_string(), string_type.clone()));
                 __m.insert("from_code_point".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "cp".to_string(),
@@ -368,7 +366,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: string_type.clone(),
     }));
                 __m.insert("chars_to_string".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -392,23 +390,23 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: string_type.clone(),
     }));
                 __m.insert("record_source_chars_index_lookup".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("resolution_silent_pick_is_enabled".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("name_resolution_policy_is_namespace_only".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("type_ref_hit_ne_bind_measure_active".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("resolution_silent_pick_record_global_bare_lcp_pick".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -432,7 +430,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("resolution_silent_pick_record_global_bare_lcp_tie".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -451,7 +449,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("resolution_silent_pick_record_fn_parent_first_hit".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -475,9 +473,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
-                __m.insert("to_string".to_string(), derived_signature(Rc::new(vec!["value".to_string()]), "to_string".to_string(), string_type()));
+                __m.insert("to_string".to_string(), derived_signature(Rc::new(vec!["value".to_string()]), "to_string".to_string(), string_type.clone()));
                 __m.insert("discriminant".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "v".to_string(),
@@ -485,9 +483,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "discriminant_subject".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: string_type.clone(),
     }));
-                __m.insert("concat".to_string(), derived_signature(Rc::new(vec!["a".to_string(), "b".to_string()]), "concat".to_string(), string_type()));
+                __m.insert("concat".to_string(), derived_signature(Rc::new(vec!["a".to_string(), "b".to_string()]), "concat".to_string(), string_type.clone()));
                 __m.insert("map_insert".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string(), "value".to_string()]), "map_insert".to_string(), map_of_type_variables()));
                 __m.insert("map_merge".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "overlay".to_string()]), "map_merge".to_string(), map_of_type_variables()));
                 __m.insert("with".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string(), "value".to_string()]), "with".to_string(), map_of_type_variables()));
@@ -538,8 +536,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_compiler_infer_types::make_container_type("Set".to_string(), type_variable_node("set_elem".to_string())).ty.clone(),
     }));
-                __m.insert("map_contains_key".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_contains_key".to_string(), bool_type()));
-                __m.insert("map_has".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_has".to_string(), bool_type()));
+                __m.insert("map_contains_key".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_contains_key".to_string(), bool_type.clone()));
+                __m.insert("map_has".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_has".to_string(), bool_type.clone()));
                 __m.insert("map_is_empty".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "m".to_string(),
@@ -547,7 +545,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "map_subject".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("rc_ptr_eq".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -561,7 +559,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "rc_subject".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("rc_vec_ptr_eq".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -585,7 +583,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("set_contains".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -604,7 +602,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "set_elem".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("lookup".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "lookup".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
                 __m.insert("map_get".to_string(), derived_signature(Rc::new(vec!["m".to_string(), "key".to_string()]), "map_get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string()))));
@@ -643,7 +641,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Hash".to_string(),
     }),
     })]),
-        returns: hash_type(),
+        returns: hash_type.clone(),
     }));
                 __m.insert("atom_identity_hash".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -652,7 +650,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: hash_type(),
+        returns: hash_type.clone(),
     }));
                 __m.insert("trace_mark".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -661,15 +659,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("observed_peak_resident_bytes".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("observed_monotonic_nanos".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("string_contains".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -683,11 +681,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
-                __m.insert("length".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "length".to_string(), int_type()));
-                __m.insert("starts_with".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "prefix".to_string()]), "starts_with".to_string(), bool_type()));
-                __m.insert("replace".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "from".to_string(), "to".to_string()]), "replace".to_string(), string_type()));
+                __m.insert("length".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "length".to_string(), int_type.clone()));
+                __m.insert("starts_with".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "prefix".to_string()]), "starts_with".to_string(), bool_type.clone()));
+                __m.insert("replace".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "from".to_string(), "to".to_string()]), "replace".to_string(), string_type.clone()));
                 __m.insert("filesystem_read".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "path".to_string(),
@@ -771,7 +769,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("contiguous_loop_elementwise_kernel".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -954,7 +952,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("extdeps_external_authority_facts_for_qualified_name".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -967,11 +965,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("extdeps_external_authority_live_clean_tree_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("extdeps_external_authority_live_roster_module_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("seed_runner_bool_false_failure_detail".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -980,7 +978,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: string_type.clone(),
     }));
                 __m.insert("doc_graph_orphan_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -994,7 +992,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("doc_graph_admitted_root_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1008,15 +1006,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("doc_graph_dangling_link_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("doc_graph_doc_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("compile_dag_rust_emit_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1040,7 +1038,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("compile_dag_diagnostic_census".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1149,15 +1147,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("class_b_import_closure_gate_not_affected_skip".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("witness_layer_roots_compile_clean_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("witness_layer_roots_compile_clean_emit_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("install_or_consume_floor_compile_clean_gate_receipt".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1170,11 +1168,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("record_generated_artifact_drift_gate_clean".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: unit_type(),
+        returns: unit_type.clone(),
     }));
                 __m.insert("consume_generated_artifact_drift_gate_receipt".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1182,7 +1180,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("witness_compile_clean_cli_floor_verdicts_agree".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("test_migration_debt_module_names".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1198,7 +1196,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("test_migration_behavior_discovery_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("inert_carrier_names_live".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1206,23 +1204,23 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("inert_carrier_declared_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("non_fold_residue_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("non_fold_residue_unrostered_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("non_fold_residue_stale_roster_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("non_fold_residue_coproduct_universe_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("parse_stage0_cargo_manifest_bins".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1253,7 +1251,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("commit_witness_claim_pair_resolvable".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1267,27 +1265,27 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("non_fold_residue_wildcard_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("non_fold_residue_total_fold_green_fixture_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("non_fold_residue_roster_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("non_fold_residue_synthetic_unrostered_red_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("complexity_linearity_syntactic_finding_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("complexity_linearity_wildcard_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1300,7 +1298,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("fallback_arm_census_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
@@ -1313,19 +1311,19 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("fallback_arm_census_total".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("fallback_arm_census_reconciliation_holds".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("census_corpus_roots_follow_layer_authority".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("transport_script_position_facts_for_path".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1538,15 +1536,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("languages_consumer_census_data_decl_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("languages_consumer_census_per_language_row_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("languages_consumer_census_format_row_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("languages_consumer_census_external_consumer_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1555,7 +1553,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: int_type(),
+        returns: int_type.clone(),
     }));
                 __m.insert("languages_consumer_census_is_composition_only".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1564,7 +1562,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("languages_consumer_census_has_external_consumer".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1573,7 +1571,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("is_xid_start".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1582,7 +1580,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("is_xid_continue".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1591,7 +1589,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 __m.insert("is_emoji_ident".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1600,7 +1598,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: bool_type(),
+        returns: bool_type.clone(),
     }));
                 Rc::new(__m)
             };
@@ -1622,6 +1620,6 @@ pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
-        std::option::Option::None => unit_type(),
+        std::option::Option::None => unit_type,
     }
 }

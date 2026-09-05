@@ -15,7 +15,6 @@ use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::ExprCall;
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::ResolvedCallFormal;
 pub use crate::v1_std_core::{
     CallSemantics, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
 };

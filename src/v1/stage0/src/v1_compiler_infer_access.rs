@@ -108,12 +108,12 @@ pub fn check_index_access_node(
             crate::v1_compiler_infer_types::normalize_access_type_node(index_type.clone());
         let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
             normed.clone(),
-            string_type(),
+            string_type.clone(),
             source_indices.clone(),
         );
         let index_is_int = crate::v1_compiler_infer_types::node_type_equals(
             normed_index.clone(),
-            int_type(),
+            int_type.clone(),
             source_indices.clone(),
         );
         if base_is_string.clone() {
@@ -128,7 +128,7 @@ pub fn check_index_access_node(
                     )])
                 };
                 access_result(
-                    string_type(),
+                    string_type.clone(),
                     diags.clone(),
                     span.clone(),
                     "invalid string index access".to_string(),
@@ -165,7 +165,7 @@ pub fn check_index_access_node(
                                 module_name.clone(),
                             )]);
                             access_result(
-                                unit_type(),
+                                unit_type.clone(),
                                 malformed_diags.clone(),
                                 span.clone(),
                                 "malformed keyed collection type in index access".to_string(),
@@ -199,7 +199,7 @@ pub fn check_index_access_node(
                             {
                                 let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
                                 access_result(
-                                    unit_type(),
+                                    unit_type.clone(),
                                     diags.clone(),
                                     span.clone(),
                                     "invalid index access".to_string(),
@@ -226,7 +226,7 @@ pub fn check_slice_access_node(
             crate::v1_compiler_infer_types::normalize_access_type_node(base_type.clone());
         let base_is_string = crate::v1_compiler_infer_types::node_type_equals(
             normed_base.clone(),
-            string_type(),
+            string_type.clone(),
             source_indices.clone(),
         );
         let base_is_list = (crate::std_types::is_ordered_element_collection(
@@ -248,7 +248,7 @@ pub fn check_slice_access_node(
             crate::v1_compiler_infer_types::normalize_access_type_node(start_type.clone());
         let start_diags = if crate::v1_compiler_infer_types::node_type_equals(
             normed_start.clone(),
-            int_type(),
+            int_type.clone(),
             source_indices.clone(),
         ) {
             Rc::new(vec![])
@@ -263,7 +263,7 @@ pub fn check_slice_access_node(
             crate::v1_compiler_infer_types::normalize_access_type_node(end_type.clone());
         let end_diags = if crate::v1_compiler_infer_types::node_type_equals(
             normed_end.clone(),
-            int_type(),
+            int_type.clone(),
             source_indices.clone(),
         ) {
             Rc::new(vec![])
@@ -279,12 +279,12 @@ pub fn check_slice_access_node(
             end_diags.clone(),
         );
         let slice_result_type = if base_is_string.clone() {
-            string_type()
+            string_type.clone()
         } else {
             if base_is_list.clone() {
                 normed_base.clone()
             } else {
-                string_type()
+                string_type.clone()
             }
         };
         access_result(

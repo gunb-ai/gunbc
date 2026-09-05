@@ -33,7 +33,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {
-    match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
+    match v1_rt::lookup(&dag_keyword_set, text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }

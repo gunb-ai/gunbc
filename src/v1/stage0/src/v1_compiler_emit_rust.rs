@@ -54,20 +54,17 @@ pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
-pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
-pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
@@ -122,7 +119,6 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
-pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -194,7 +190,6 @@ pub use crate::v1_compiler_infer_env::{
     type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::duplicate_item_identity_marker;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{is_duplicate_item_identity_marker, item_kind};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
@@ -2686,7 +2681,7 @@ if peel.clone() {
                                                                 __result
                                                             });
                                                             let applied_ty = if (name.clone()
-                                                                == tuple_type_name())
+                                                                == tuple_type_name.clone())
                                                             {
                                                                 crate::v1_compiler_emit::render_tuple_parts(arg_list.clone(), RenderTarget::Rust)
                                                             } else {
@@ -4138,7 +4133,7 @@ pub fn rust_string_as_authored_policy() -> Rc<RustEnumWireSerde> {
 
 pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
     rust_serde_policy(
-        rust_serde_rename_all_snake_case(),
+        rust_serde_rename_all_snake_case.clone(),
         std::option::Option::None,
         std::option::Option::None,
         std::option::Option::None,
@@ -4147,7 +4142,7 @@ pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
 
 pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
     rust_serde_policy(
-        rust_serde_rename_all_screaming_snake_case(),
+        rust_serde_rename_all_screaming_snake_case.clone(),
         std::option::Option::None,
         std::option::Option::None,
         std::option::Option::None,
@@ -5746,7 +5741,7 @@ pub fn build_shared_types(
             );
         let collection_keys = Rc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
+            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates))
                 .iter()
                 .cloned()
             {
@@ -6592,7 +6587,10 @@ pub fn rust_module_render_selection_renders(
 }
 
 pub fn emitted_population_manifest_path() -> String {
-    v1_rt::concat(rust_source_root(), emitted_population_manifest_basename())
+    v1_rt::concat(
+        rust_source_root(),
+        emitted_population_manifest_basename.clone(),
+    )
 }
 
 pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> {
@@ -6616,7 +6614,7 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
             .cloned()
             {
                 __result.push(v1_rt::concat(
-                    emitted_population_manifest_line_prefix(),
+                    emitted_population_manifest_line_prefix.clone(),
                     path.clone(),
                 ));
             }
@@ -6627,8 +6625,8 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
             content: v1_rt::concat(
                 lines
                     .clone()
-                    .join(&emitted_population_manifest_line_separator()),
-                emitted_population_manifest_line_separator(),
+                    .join(&emitted_population_manifest_line_separator.clone()),
+                emitted_population_manifest_line_separator.clone(),
             ),
         })
     }
@@ -6969,7 +6967,7 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
 pub fn lib_rs_module_is_partition_owned(mod_name: String) -> bool {
     {
         let mut __found = false;
-        for row in generated_partition_crate_rows().iter().cloned() {
+        for row in generated_partition_crate_rows.iter().cloned() {
             if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == mod_name.clone()) { __found = true; break; } } __found }) { __found = true; break; }
         }
         __found
@@ -6983,10 +6981,7 @@ pub fn stage0_package_name_to_crate_ident(package_name: String) -> String {
 pub fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for pkg in generated_host_shell_partition_dependencies()
-            .iter()
-            .cloned()
-        {
+        for pkg in generated_host_shell_partition_dependencies.iter().cloned() {
             __result.push(v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(item_attr.clone(), "pub use ".to_string()),
@@ -7052,7 +7047,7 @@ pub fn emit_lib_rs_from_paths(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            generated_pub_mod_block()
+            generated_pub_mod_block.clone()
         } else {
             "".to_string()
         };
@@ -16315,7 +16310,7 @@ pub fn emit_struct_field_from_child(
                     if (crate::v1_std_core::field_init_node_name_at(
                         p.clone(),
                         env.source_indices.clone(),
-                    ) == field_from_key_property_name())
+                    ) == field_from_key_property_name.clone())
                     {
                         __result.push(p);
                     }
@@ -26898,7 +26893,7 @@ pub fn emit_typed_method_call(
                             } else {
                                 match Rc::new({
                                     let mut __result = Vec::new();
-                                    for s in rust_higher_order_methods().iter().cloned() {
+                                    for s in rust_higher_order_methods.iter().cloned() {
                                         if (s.method_name.clone() == method_name.clone()) {
                                             __result.push(s);
                                         }
@@ -30828,8 +30823,8 @@ pub fn binop_operator_realization(
         crate::std_operator_realization::operator_realization_for(
             op.clone(),
             realization.clone(),
-            structural_ordering_rows(),
-            structural_connective_rows(),
+            structural_ordering_rows.clone(),
+            structural_connective_rows.clone(),
         )
     }
 }

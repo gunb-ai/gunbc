@@ -506,15 +506,15 @@ pub fn uri_validated_scalar_construction(cp: i64) -> Rc<UriValidatedScalarConstr
             UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused { cp: cp.clone() },
         )
     } else {
-        if (cp.clone() > unicode_scalar_max_code_point()) {
+        if (cp.clone() > unicode_scalar_max_code_point.clone()) {
             Rc::new(
                 UriValidatedScalarConstruction::UriValidatedScalarOutOfRangeRefused {
                     cp: cp.clone(),
                 },
             )
         } else {
-            if ((cp.clone() >= unicode_surrogate_first_code_point())
-                && (cp.clone() <= unicode_surrogate_last_code_point()))
+            if ((cp.clone() >= unicode_surrogate_first_code_point.clone())
+                && (cp.clone() <= unicode_surrogate_last_code_point.clone()))
             {
                 Rc::new(
                     UriValidatedScalarConstruction::UriValidatedScalarSurrogateRefused {

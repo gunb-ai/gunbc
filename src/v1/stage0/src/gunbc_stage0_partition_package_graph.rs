@@ -34,7 +34,7 @@ pub fn stage0_partition_module_bearing_package_names() -> Rc<Vec<String>> {
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in generated_partition_crate_rows.iter().cloned() {
                 if stage0_partition_row_is_module_bearing_package(row.clone()) {
                     __result.push(row);
                 }
@@ -63,13 +63,13 @@ pub fn stage0_partition_package_dependency_names(
 }
 
 pub fn stage0_host_shell_package_name() -> String {
-    generated_host_shell_package_name()
+    generated_host_shell_package_name
 }
 
 pub fn stage0_host_shell_dependency_names() -> Rc<Vec<String>> {
-    generated_host_shell_partition_dependencies()
+    generated_host_shell_partition_dependencies
 }
 
 pub fn stage0_next_pass_executable_bin_name() -> String {
-    generated_next_pass_bin_name()
+    generated_next_pass_bin_name
 }
