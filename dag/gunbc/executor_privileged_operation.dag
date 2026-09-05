@@ -173,6 +173,18 @@ fn executor_privileged_operations_sudoers_body(
 // longer generated file and removes the traversal entirely.
 data executor_managed_directory_mode: NonEmptyStr = "755" as NonEmptyStr
 
+fn runner_slot_install_operations(
+  slot_dirs: List<NonEmptyStr>,
+  slot_owner: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  map(slot_dirs, d => EnsureOwnedDirectory {
+    path: d,
+    owner: slot_owner,
+    group: slot_owner,
+    mode: executor_managed_directory_mode,
+  })
+}
+
 fn runner_slot_privileged_operations(
   slot_dirs: List<NonEmptyStr>,
   slot_owner: NonEmptyStr,
