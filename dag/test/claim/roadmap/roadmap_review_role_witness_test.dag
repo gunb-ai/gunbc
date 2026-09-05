@@ -1,0 +1,60 @@
+module test.claim.roadmap.roadmap_review_role_witness_test
+
+import std.types { Bool, String }
+import gunbc.roadmap.roadmap_review_role {
+  ReviewVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
+  ReviewVerdictDecode, ReviewVerdictDecoded, ReviewVerdictUndecodable,
+  review_verdict_decode, review_verdict_key, review_verdict_detail, review_segment_state, review_brief,
+}
+import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused }
+
+test fn an_approve_verdict_decodes_and_completes_the_segment() -> Bool {
+  let d = review_verdict_decode(text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"does what the goal says\"}")
+  match d {
+    ReviewVerdictDecoded { verdict } =>
+      review_verdict_key(v: verdict) == "approved"
+        && review_verdict_detail(v: verdict) == "does what the goal says"
+        && match review_segment_state(d: d) { WorkflowSegmentComplete => true  _ => false }
+    ReviewVerdictUndecodable { reason: _ } => false
+  }
+}
+
+test fn request_changes_carries_located_reasons_and_fails_the_segment() -> Bool {
+  let d = review_verdict_decode(text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"request_changes\",\"reasons\":[{\"path\":\"dag/a.dag\",\"reason\":\"the arm is missing\"}]}")
+  match d {
+    ReviewVerdictDecoded { verdict } =>
+      review_verdict_key(v: verdict) == "changes_requested"
+        && review_verdict_detail(v: verdict) == "dag/a.dag: the arm is missing"
+        && match review_segment_state(d: d) { WorkflowSegmentFailed => true  _ => false }
+    ReviewVerdictUndecodable { reason: _ } => false
+  }
+}
+
+// DISCRIMINATING: the decoder refuses rather than guessing -- wrong schema, empty reasons, a bare
+// approve with no summary, and non-JSON are each undecodable and each refuses the segment.
+test fn malformed_verdicts_are_undecodable_and_refuse_the_segment() -> Bool {
+  let cases = [
+    "{\"schema\":\"other/v1\",\"verdict\":\"approve\",\"summary\":\"x\"}",
+    "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"request_changes\",\"reasons\":[]}",
+    "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\"}",
+    "not json at all",
+    "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"maybe\"}",
+  ]
+  all(cases, c => match review_verdict_decode(text: c) {
+    ReviewVerdictUndecodable { reason: _ } => match review_segment_state(d: review_verdict_decode(text: c)) { WorkflowSegmentRefused => true  _ => false }
+    ReviewVerdictDecoded { verdict: _ } => false
+  })
+}
+
+test fn cannot_judge_is_a_refusal_not_a_verdict_on_the_work() -> Bool {
+  let d = review_verdict_decode(text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"cannot_judge\",\"reason\":\"the acceptance command refused to start\"}")
+  match review_segment_state(d: d) { WorkflowSegmentRefused => true  _ => false }
+}
+
+test fn the_brief_names_the_diff_range_the_check_and_the_verdict_path() -> Bool {
+  let b = review_brief(node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed", verdict_path: "/v.json")
+  string_contains(s: b, pattern: "git diff aaa..bbb")
+    && string_contains(s: b, pattern: "Acceptance command: gunbc run x")
+    && string_contains(s: b, pattern: "Write your verdict to /v.json")
+    && string_contains(s: b, pattern: "Goal: H")
+}

@@ -1,0 +1,36 @@
+module test.claim.harness_review_guidance_test
+
+import std.types { Bool, String, List }
+import gunbc.harness.harness_review_guidance {
+  ReviewPremise, CapabilityWithheld, ChangeTheTree, ReviewGroundedPremise,
+  harness_reviewer_guidance_at, review_guidance_prose, review_conclusions, TheOutputIsTheVerdictNotAChange, RunTheCheckBeforeJudging,
+}
+
+fn rows() -> List<ReviewGroundedPremise> {
+  harness_reviewer_guidance_at(verdict_path: "/state/review/abc.json", verdict_shape: "SHAPE-TOKEN")
+}
+
+test fn the_reviewer_prompt_names_the_verdict_path_and_derives_its_imperatives() -> Bool {
+  let prose = review_guidance_prose(rows: rows())
+  string_contains(s: prose, pattern: "/state/review/abc.json")
+    && string_contains(s: prose, pattern: "SHAPE-TOKEN")
+    && string_contains(s: prose, pattern: "your output is the verdict file and nothing else")
+    && string_contains(s: prose, pattern: "run the acceptance command yourself before judging")
+    && string_contains(s: prose, pattern: "judge the diff against the goal")
+    && !string_contains(s: prose, pattern: "change files with that tool")
+}
+
+fn withholds_change(r: ReviewGroundedPremise) -> Bool {
+  match r.premise { CapabilityWithheld { capability: ChangeTheTree } => true  _ => false }
+}
+
+// DISCRIMINATING: the imperative is derived, not authored. Drop the premise that withholds changing
+// the tree and the "verdict, not a change" conclusion disappears while the others stay.
+test fn dropping_the_withheld_change_premise_drops_its_conclusion() -> Bool {
+  let without = filter(rows(), r => !withholds_change(r: r))
+  let full = review_conclusions(rows: rows())
+  let reduced = review_conclusions(rows: without)
+  any(full, c => match c { TheOutputIsTheVerdictNotAChange => true  _ => false })
+    && !any(reduced, c => match c { TheOutputIsTheVerdictNotAChange => true  _ => false })
+    && any(reduced, c => match c { RunTheCheckBeforeJudging => true  _ => false })
+}

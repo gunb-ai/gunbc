@@ -14,6 +14,8 @@ import gunbc.harness.harness_turn {
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
+import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire {
   harness_engine_backend_url, harness_engine_model, harness_engine_context_window,
 }
@@ -292,6 +294,77 @@ fn harness_worker_cli(
     ),
     prompt: brief,
     step_budget: harness_worker_step_budget,
+  )
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
+      ExitSuccess
+    _ =>
+      ExitFailure {
+        code: 1,
+        reason: join([
+          harness_outcome_label(outcome: outcome), ": ", harness_outcome_detail(outcome: outcome),
+        ], ""),
+      }
+  }
+}
+
+// THE REVIEWER ENTRY THE BELT SPAWNS FOR A VERIFIED HEAD. Same harness, same tool, same worktree
+// argument; a different system prompt (gunbc.harness.harness_review_guidance, the reviewer's own
+// syllogism) and one more fact the worker never receives: the path of the verdict file the review
+// is complete by. The exit says whether a turn completed, exactly as for the worker; whether a verdict
+// was written, and what it says, is read by the belt from that file, never from this exit.
+fn harness_reviewer_system_prompt_at(verdict_path: String) -> String {
+  review_guidance_prose(rows: harness_reviewer_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+}
+
+// A REVIEW IS READ-MOSTLY AND SHORT. Half the worker's rounds: read the diff, read what it touches,
+// run the check, write one file. A review that needs forty rounds is investigating, not judging.
+data harness_reviewer_step_budget: Int = 20
+
+fn harness_reviewer_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_path: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: harness_engine_backend_url(shape: harness_default_wire_shape, seed: worktree as String),
+    model: harness_default_model(),
+    max_tokens: harness_default_max_tokens,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: harness_reviewer_system_prompt_at(verdict_path: verdict_path),
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget,
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+  }
+}
+
+fn harness_reviewer_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_path: String,
+) -> ProcessExit {
+  let outcome = harness_run_turn(
+    config: harness_reviewer_config(
+      worktree: worktree as FilePath,
+      timeout_program: timeout_program as FilePath,
+      request_scratch_path: request_scratch_path as FilePath,
+      events_path: events_path as FilePath,
+      verdict_path: verdict_path,
+    ),
+    prompt: brief,
+    step_budget: harness_reviewer_step_budget,
   )
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>

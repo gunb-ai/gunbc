@@ -1,0 +1,184 @@
+module gunbc.roadmap.roadmap_review_role
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentState, WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused,
+}
+
+// THE REVIEW VERDICT, AS THE REVIEWER WRITES IT AND THE BELT READS IT. Three words because three
+// remedies: approved admits publication; changes requested carries located reasons and feeds the next
+// turn of the same lineage; cannot-judge is the reviewer's refusal -- a fact it needed and could not
+// establish -- which is an environment problem, never a verdict on the work, and must not be read as
+// either of the other two.
+type ReviewReason {
+  path: String
+  reason: String
+}
+
+type ReviewVerdict
+  = ReviewApproved { summary: String }
+  | ReviewChangesRequested { reasons: List<ReviewReason> }
+  | ReviewCannotJudge { reason: String }
+
+type ReviewVerdictDecode
+  = ReviewVerdictDecoded { verdict: ReviewVerdict }
+  | ReviewVerdictUndecodable { reason: String }
+
+data review_verdict_schema: String = "roadmap-review-verdict/v1"
+
+// The grammar the reviewer is told and the decoder enforces, one authority for both.
+fn review_verdict_shape_text() -> String {
+  join([
+    "{\"schema\": \"", review_verdict_schema, "\", \"verdict\": \"approve\" | \"request_changes\" | \"cannot_judge\", ",
+    "\"summary\": \"<one sentence, required for approve>\", ",
+    "\"reasons\": [{\"path\": \"<file>\", \"reason\": \"<what is wrong or missing>\"}] (required and non-empty for request_changes), ",
+    "\"reason\": \"<which fact could not be established>\" (required for cannot_judge)}",
+  ], "")
+}
+
+fn review_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn review_reason_of(v: JsonValue) -> ReviewReason? {
+  match review_member_string(doc: v, key: "path") {
+    Absent => none
+    Present { value: p } =>
+      match review_member_string(doc: v, key: "reason") {
+        Absent => none
+        Present { value: r } => Present { value: ReviewReason { path: p, reason: r } }
+      }
+  }
+}
+
+fn review_reasons_of(doc: JsonValue) -> List<ReviewReason>? {
+  match json_object_unique_member(v: doc, key: "reasons") {
+    JsonMemberFound { value: JsonArray { elements } } => {
+      let parsed = map(elements, e => review_reason_of(v: e))
+      if any(parsed, r => match r { Absent => true  Present { value: _ } => false }) {
+        none
+      } else {
+        Present { value: fold(parsed, init: [], f: (acc, r) => match r { Present { value: x } => concat(acc, [x])  Absent => acc }) }
+      }
+    }
+    _ => none
+  }
+}
+
+fn review_verdict_decode(text: String) -> ReviewVerdictDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => ReviewVerdictUndecodable { reason: join(["verdict file is not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match review_member_string(doc: doc, key: "schema") {
+        Absent => ReviewVerdictUndecodable { reason: "verdict file has no schema member" }
+        Present { value: s } =>
+          if s != review_verdict_schema {
+            ReviewVerdictUndecodable { reason: join(["verdict schema is ", s, ", expected ", review_verdict_schema], "") }
+          } else {
+            match review_member_string(doc: doc, key: "verdict") {
+              Absent => ReviewVerdictUndecodable { reason: "verdict file has no verdict member" }
+              Present { value: w } => review_verdict_of_word(doc: doc, word: w)
+            }
+          }
+      }
+  }
+}
+
+fn review_verdict_of_word(doc: JsonValue, word: String) -> ReviewVerdictDecode {
+  if word == "approve" {
+    match review_member_string(doc: doc, key: "summary") {
+      Present { value: s } => ReviewVerdictDecoded { verdict: ReviewApproved { summary: s } }
+      Absent => ReviewVerdictUndecodable { reason: "approve without a summary" }
+    }
+  } else if word == "request_changes" {
+    match review_reasons_of(doc: doc) {
+      Present { value: rs } =>
+        if count(rs) == 0 { ReviewVerdictUndecodable { reason: "request_changes with no reasons" } }
+        else { ReviewVerdictDecoded { verdict: ReviewChangesRequested { reasons: rs } } }
+      Absent => ReviewVerdictUndecodable { reason: "request_changes without a well-formed reasons array" }
+    }
+  } else if word == "cannot_judge" {
+    match review_member_string(doc: doc, key: "reason") {
+      Present { value: r } => ReviewVerdictDecoded { verdict: ReviewCannotJudge { reason: r } }
+      Absent => ReviewVerdictUndecodable { reason: "cannot_judge without a reason" }
+    }
+  } else {
+    ReviewVerdictUndecodable { reason: join(["unknown verdict word ", word], "") }
+  }
+}
+
+fn review_verdict_key(v: ReviewVerdict) -> String {
+  match v {
+    ReviewApproved { summary: _ } => "approved"
+    ReviewChangesRequested { reasons: _ } => "changes_requested"
+    ReviewCannotJudge { reason: _ } => "cannot_judge"
+  }
+}
+
+fn review_reason_text(r: ReviewReason) -> String {
+  join([r.path, ": ", r.reason], "")
+}
+
+fn review_verdict_detail(v: ReviewVerdict) -> String {
+  match v {
+    ReviewApproved { summary } => summary
+    ReviewChangesRequested { reasons } => join(map(reasons, r => review_reason_text(r: r)), "; ")
+    ReviewCannotJudge { reason } => reason
+  }
+}
+
+// Approved is the segment's completion; changes requested is the segment's failure (the work is
+// judged wanting, and the reasons are what the next turn acts on); cannot-judge and an undecodable
+// file are refusals, because neither is a judgment of the work.
+fn review_segment_state(d: ReviewVerdictDecode) -> WorkflowSegmentState {
+  match d {
+    ReviewVerdictDecoded { verdict: ReviewApproved { summary: _ } } => WorkflowSegmentComplete
+    ReviewVerdictDecoded { verdict: ReviewChangesRequested { reasons: _ } } => WorkflowSegmentFailed
+    ReviewVerdictDecoded { verdict: ReviewCannotJudge { reason: _ } } => WorkflowSegmentRefused
+    ReviewVerdictUndecodable { reason: _ } => WorkflowSegmentRefused
+  }
+}
+
+fn review_decode_detail(d: ReviewVerdictDecode) -> String {
+  match d {
+    ReviewVerdictDecoded { verdict } => join([review_verdict_key(v: verdict), " — ", review_verdict_detail(v: verdict)], "")
+    ReviewVerdictUndecodable { reason } => join(["verdict undecodable — ", reason], "")
+  }
+}
+
+// THE BRIEF CARRIES THE PER-CANDIDATE FACTS; THE ROLE'S STANDING FACTS ARE THE SYSTEM PROMPT
+// (gunbc.harness.harness_review_guidance). Goal, boundary and non-goals come from the node; the
+// acceptance command from its execution contract; base and head from the belt's diff window; the
+// verification detail from the belt's receipt for this head; the verdict path from the attempt state.
+fn review_brief(
+  node_id: String,
+  headline: String,
+  boundary: String,
+  out_of_scope: String,
+  red_control: String,
+  acceptance_command: String,
+  base_sha: String,
+  head_sha: String,
+  verification_detail: String,
+  verdict_path: String,
+) -> String {
+  join([
+    "Review of node ", node_id, ".\n",
+    "Goal: ", headline, "\n",
+    "Boundary: ", boundary, "\n",
+    "Out of scope: ", out_of_scope, "\n",
+    "What should go red if the change is wrong: ", red_control, "\n",
+    "Acceptance command: ", acceptance_command, "\n",
+    "Change under review: git diff ", base_sha, "..", head_sha, " (the worktree is at ", head_sha, ")\n",
+    "What the belt's own run of the acceptance command said about this head: ", verification_detail, "\n",
+    "Write your verdict to ", verdict_path, " in the shape given in your instructions.\n",
+  ], "")
+}

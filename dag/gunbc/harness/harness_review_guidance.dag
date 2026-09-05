@@ -1,0 +1,170 @@
+module gunbc.harness.harness_review_guidance
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+
+// THE REVIEWER IS ITS OWN SYLLOGISM, NOT THE WORKER'S PROMPT WITH A SWITCH. Its goal is different --
+// judge one candidate change against one stated goal, having written none of it -- so its premises
+// are a different vocabulary, grounded on the declarations that make each one true, and its
+// imperatives are DERIVED from those premises exactly as gunbc.harness.harness_guidance derives the
+// worker's. Nothing here is shared with the worker beyond the tool's wire name, because the two roles
+// share the tool and nothing else: the worker's completion is a changed tree that passes its check;
+// the reviewer's completion is a verdict file, and a changed tree would be a defect (operator,
+// 2026-09-05: each role's prompting is its own independent modeling based on its stated goals).
+
+type ReviewEvidenceSource
+  = TheDiffRange
+  | TheVerificationReceipt
+  | TheAcceptanceCommand
+  | TheGoalStatement
+
+type ReviewCapability = ReadTheTree | RunTheAcceptanceCommand | ChangeTheTree | CommitOrPublish
+
+type ReviewVerdictWord = ApproveWord | RequestChangesWord | CannotJudgeWord
+
+type ReviewPremise
+  = ReviewerOfOneCandidate
+  | ToolIs { tool: HarnessTool }
+  | ToolRunsInTheCandidateWorktree
+  | ToolReturnsCombinedOutput
+  | EvidenceOffered { source: ReviewEvidenceSource }
+  | CapabilityHeld { capability: ReviewCapability }
+  | CapabilityWithheld { capability: ReviewCapability }
+  | VerdictFileAt { path: String }
+  | VerdictShapeIs { shape: String }
+  | VerdictWordMeans { word: ReviewVerdictWord }
+
+type ReviewGroundedPremise {
+  premise: ReviewPremise
+  grounds: DeclarationRef
+}
+
+// Derived, never authored beside the premises.
+type ReviewConclusion
+  = TheOutputIsTheVerdictNotAChange
+  | RunTheCheckBeforeJudging
+  | JudgeTheDiffAgainstTheGoal
+  | WriteTheVerdictWithTheTool
+
+fn review_evidence_text(s: ReviewEvidenceSource) -> String {
+  match s {
+    TheDiffRange => "the brief names the base and head commits; git diff base..head in the worktree shows exactly the change under review"
+    TheVerificationReceipt => "the brief carries what the belt's own run of the acceptance check said about this head"
+    TheAcceptanceCommand => "the brief carries the acceptance command the goal is measured by"
+    TheGoalStatement => "the brief states the goal, its boundary, and what is out of scope"
+  }
+}
+
+fn review_capability_text(c: ReviewCapability) -> String {
+  match c {
+    ReadTheTree => "read any file in the worktree"
+    RunTheAcceptanceCommand => "run the acceptance command yourself"
+    ChangeTheTree => "change any file"
+    CommitOrPublish => "commit or publish"
+  }
+}
+
+fn review_verdict_word_text(w: ReviewVerdictWord) -> String {
+  match w {
+    ApproveWord => "approve means the change does what the goal states and nothing the non-goals forbid, and you ran the check and it passed"
+    RequestChangesWord => "request_changes means something specific is wrong or missing, and each reason names a path and says what"
+    CannotJudgeWord => "cannot_judge means you could not establish the facts a verdict needs, and the reason says which fact"
+  }
+}
+
+fn review_premise_text(p: ReviewPremise) -> String {
+  match p {
+    ReviewerOfOneCandidate => "You are the reviewer of one candidate change against one stated goal. You did not write the change and you will not fix it."
+    ToolIs { tool: t } => join(["Your one tool is ", harness_tool_wire_name(tool: t) as String, "."], "")
+    ToolRunsInTheCandidateWorktree => "It runs in the candidate's worktree, which already holds the change."
+    ToolReturnsCombinedOutput => "It returns the command's combined stdout and stderr."
+    EvidenceOffered { source: s } => join(["Evidence: ", review_evidence_text(s: s), "."], "")
+    CapabilityHeld { capability: c } => join(["You may ", review_capability_text(c: c), "."], "")
+    CapabilityWithheld { capability: c } => join(["You may not ", review_capability_text(c: c), "."], "")
+    VerdictFileAt { path } => join(["This review is complete only once a verdict file exists at ", path, "."], "")
+    VerdictShapeIs { shape } => join(["The verdict file is JSON of exactly this shape: ", shape], "")
+    VerdictWordMeans { word: w } => join([review_verdict_word_text(w: w), "."], "")
+  }
+}
+
+fn review_conclusion_text(c: ReviewConclusion) -> String {
+  match c {
+    TheOutputIsTheVerdictNotAChange => "So your output is the verdict file and nothing else; a changed file is a defect in the review, not a contribution."
+    RunTheCheckBeforeJudging => "So run the acceptance command yourself before judging; a verdict that did not run it can only be cannot_judge."
+    JudgeTheDiffAgainstTheGoal => "So read the diff first and judge the diff against the goal, not the tree against your taste."
+    WriteTheVerdictWithTheTool => "So write the verdict file with the tool, as a heredoc, at the named path."
+  }
+}
+
+fn premise_withholds_change(p: ReviewPremise) -> Bool {
+  match p { CapabilityWithheld { capability: ChangeTheTree } => true  _ => false }
+}
+fn premise_holds_acceptance(p: ReviewPremise) -> Bool {
+  match p { CapabilityHeld { capability: RunTheAcceptanceCommand } => true  _ => false }
+}
+fn premise_offers_diff(p: ReviewPremise) -> Bool {
+  match p { EvidenceOffered { source: TheDiffRange } => true  _ => false }
+}
+fn premise_offers_goal(p: ReviewPremise) -> Bool {
+  match p { EvidenceOffered { source: TheGoalStatement } => true  _ => false }
+}
+fn premise_requires_verdict_file(p: ReviewPremise) -> Bool {
+  match p { VerdictFileAt { path: _ } => true  _ => false }
+}
+
+fn any_review_premise(rows: List<ReviewGroundedPremise>, f: fn(ReviewPremise) -> Bool) -> Bool {
+  any(rows, r => f(r.premise))
+}
+
+fn review_conclusions(rows: List<ReviewGroundedPremise>) -> List<ReviewConclusion> {
+  let verdict = any_review_premise(rows: rows, f: premise_requires_verdict_file)
+  concat(
+    concat(
+      if verdict && any_review_premise(rows: rows, f: premise_withholds_change) { [TheOutputIsTheVerdictNotAChange] } else { [] },
+      if verdict && any_review_premise(rows: rows, f: premise_holds_acceptance) { [RunTheCheckBeforeJudging] } else { [] },
+    ),
+    concat(
+      if any_review_premise(rows: rows, f: premise_offers_diff) && any_review_premise(rows: rows, f: premise_offers_goal) { [JudgeTheDiffAgainstTheGoal] } else { [] },
+      if verdict { [WriteTheVerdictWithTheTool] } else { [] },
+    ),
+  )
+}
+
+fn review_guidance_prose(rows: List<ReviewGroundedPremise>) -> String {
+  join(
+    concat(
+      map(rows, r => review_premise_text(p: r.premise)),
+      map(review_conclusions(rows: rows), c => review_conclusion_text(c: c)),
+    ),
+    " ",
+  )
+}
+
+fn review_grounded(premise: ReviewPremise, module_path: String, decl_name: String) -> ReviewGroundedPremise {
+  ReviewGroundedPremise { premise: premise, grounds: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+// The verdict shape is named by the module that decodes it, so the prompt and the decoder cannot
+// disagree about the file's grammar.
+fn harness_reviewer_guidance_at(verdict_path: String, verdict_shape: String) -> List<ReviewGroundedPremise> {
+  [
+    review_grounded(premise: ReviewerOfOneCandidate, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
+    review_grounded(premise: ToolIs { tool: RunCommandTool }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
+    review_grounded(premise: ToolRunsInTheCandidateWorktree, module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),
+    review_grounded(premise: ToolReturnsCombinedOutput, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    review_grounded(premise: EvidenceOffered { source: TheGoalStatement }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
+    review_grounded(premise: EvidenceOffered { source: TheDiffRange }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
+    review_grounded(premise: EvidenceOffered { source: TheAcceptanceCommand }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
+    review_grounded(premise: EvidenceOffered { source: TheVerificationReceipt }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_brief"),
+    review_grounded(premise: CapabilityHeld { capability: ReadTheTree }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    review_grounded(premise: CapabilityHeld { capability: RunTheAcceptanceCommand }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+    review_grounded(premise: CapabilityWithheld { capability: ChangeTheTree }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
+    review_grounded(premise: CapabilityWithheld { capability: CommitOrPublish }, module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+    review_grounded(premise: VerdictFileAt { path: verdict_path }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
+    review_grounded(premise: VerdictShapeIs { shape: verdict_shape }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_shape_text"),
+    review_grounded(premise: VerdictWordMeans { word: ApproveWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+    review_grounded(premise: VerdictWordMeans { word: RequestChangesWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+    review_grounded(premise: VerdictWordMeans { word: CannotJudgeWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "ReviewVerdict"),
+  ]
+}
