@@ -257,10 +257,14 @@ data ledger_returned_true_tag: String = "returned-true"
 //
 // THE DISPOSITION LABELS ARE DELIBERATELY NOT FOLDED IN HERE, even though two of them share a
 // spelling with a tag. `render_disposition` answers a different question over a different closed
-// vocabulary -- what the floor CONCLUDED about a row, not which terminal arm it reached -- and a
-// shared spelling between two vocabularies is a coincidence, not a shared fact. Routing both
-// through one row would fuse two meanings under one name, which is the fork this section forbids
-// pointing the other way: the spelling could then only change for both at once.
+// vocabulary: what the floor CONCLUDED about a row, not which terminal arm it reached.
+//
+// The proof that these are two vocabularies is the MAPPING between them, not the number of
+// spelling collisions. It is many-to-many in both directions. One tag reaches different
+// dispositions depending on the row's expectation -- returned-true is Passed under ExpectedToHold
+// and KnownRedNowPassing under ExpectedRed -- and the three route-gap tags below all collapse
+// into the single RouteGapBeforeVerdict disposition. A shared row would therefore be asserting a
+// bijection that does not exist, and the spelling could only ever change for both at once.
 data ledger_returned_false_tag: String = "returned-false"
 data ledger_returned_unreadable_tag: String = "returned-unreadable"
 data ledger_runtime_errored_tag: String = "runtime-errored"
@@ -270,6 +274,9 @@ data ledger_budget_refused_tag: String = "budget-refused"
 data ledger_passed_over_budget_tag: String = "passed-over-budget"
 data ledger_budget_terminal_without_safety_cause_tag: String = "budget-terminal-without-safety-cause"
 data ledger_host_tool_unresolved_tag: String = "host-tool-unresolved"
+data ledger_route_gap_unpublished_mock_case_tag: String = "route-gap-unpublished-mock-case"
+data ledger_route_gap_no_mock_response_tag: String = "route-gap-no-mock-response"
+data ledger_route_gap_filesystem_removal_tag: String = "route-gap-filesystem-removal"
 
 fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
   match terminal {
@@ -307,9 +314,9 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
 // with three different remedies.
 fn render_route_gap_ground_tag(ground: FloorRouteGapGround) -> String {
   match ground {
-    UnpublishedMockCase => "route-gap-unpublished-mock-case"
-    NoMockResponse => "route-gap-no-mock-response"
-    FilesystemRemoval => "route-gap-filesystem-removal"
+    UnpublishedMockCase => ledger_route_gap_unpublished_mock_case_tag
+    NoMockResponse => ledger_route_gap_no_mock_response_tag
+    FilesystemRemoval => ledger_route_gap_filesystem_removal_tag
   }
 }
 
@@ -729,10 +736,6 @@ fn parse_ledger_body(lines: List<String>, header_fields: List<String>) -> Ledger
 // parsed row count, or a silent skip. Rendering the expected count and comparing text has no such
 // arm. It is total, it needs no failure branch, and a footer that does not say what the planned
 // population says fails the comparison whatever it says instead.
-//
-// The referent is the PLANNED count the caller already holds, never the rows this reader parsed:
-// comparing the footer to the rows read is an identity, and a truncation that also rewrote the
-// footer would agree with itself.
 // TWO FIELDS SIT OUTSIDE THE ROW SEAL, AND THAT IS WHY THE SEAL ALONE ADMITS A TAMPERED LEDGER.
 // readback_rows_digest covers the SERIALIZED ROWS ONLY. The footer's row count and the header's
 // roster identity are neither rows nor inputs to that digest, so a ledger whose count reads
@@ -775,6 +778,20 @@ fn readback_roster_identity_agrees(readback: LedgerReadback) -> Bool {
   }
 }
 
+// THIS FUNCTION'S REFERENT IS THE PLANNED COUNT THE CALLER HOLDS, never the rows this reader
+// parsed. That is what makes it the INDEPENDENT population admission: it can answer "is this the
+// ledger the invocation was supposed to produce", which nothing recomputed from the artifact can.
+// A truncation that rewrote the rows, the footer count and the seal together agrees with itself
+// and passes the two self-consistency checks above; it cannot agree with a count established
+// before the artifact existed.
+//
+// A CORRECTION TO WHAT THIS NOTE USED TO SAY. It claimed comparing the footer to the parsed rows
+// was "an identity" and therefore worthless. That is wrong, and the wrongness had teeth: the two
+// fields are separately serialized and CAN disagree, so the comparison discriminates exactly the
+// single-field mutation the checks above are written against. The true statement is narrower --
+// self-consistency is INSUFFICIENT for expected-population admission, not empty. The note was also
+// sitting above the wrong declaration after those checks were inserted, so it read as an argument
+// against them. Scoped to this function, where it belongs.
 fn readback_footer_count_agrees(readback: LedgerReadback, planned_rows: Int) -> Bool {
   match readback {
     LedgerUnreadable { reason: _, at: _ } => false
@@ -842,13 +859,13 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == ledger_host_tool_unresolved_tag {
     Present { value: HostToolUnresolvedBeforeVerdict }
   } else {
-  if row.terminal_tag == "route-gap-unpublished-mock-case" {
+  if row.terminal_tag == ledger_route_gap_unpublished_mock_case_tag {
     Present { value: RouteGapBeforeVerdict }
   } else {
-  if row.terminal_tag == "route-gap-no-mock-response" {
+  if row.terminal_tag == ledger_route_gap_no_mock_response_tag {
     Present { value: RouteGapBeforeVerdict }
   } else {
-  if row.terminal_tag == "route-gap-filesystem-removal" {
+  if row.terminal_tag == ledger_route_gap_filesystem_removal_tag {
     Present { value: RouteGapBeforeVerdict }
   } else {
   if row.terminal_tag == ledger_returned_unreadable_tag {

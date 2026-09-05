@@ -975,7 +975,15 @@ test fn the_production_roster_demands_evidence_the_ordinary_floor_does_not_plan(
 // collapsed to empty text fails rather than reading as success. And this row asserts renderability
 // directly, so the collapse is caught at its source instead of being inferred from a downstream
 // symptom.
-test fn every_fixture_ledger_actually_renders() -> Bool {
+//
+// ITS NAME USED TO CLAIM A POPULATION IT DOES NOT HAVE. As "every_fixture_ledger_actually_renders"
+// it read as a census over every specimen this file builds; it renders ONE row set -- the
+// all-passing one -- across the three snapshots. The missing-row, false-verdict, known-red,
+// duplicate-observation and tampered specimens are not enumerated here. Widening the test merely
+// to earn the old name would be inventing coverage to match a sentence, so the NAME is narrowed to
+// what the row does. The renderer-failure path stays closed by the per-cause assertions above,
+// which is where that defect was actually repaired.
+test fn the_all_passing_row_set_renders_at_every_snapshot() -> Bool {
   let rows = every_nomination_passing()
   rendered_ledger(commit_a(), ledger_fixture_subject, rows) != ""
     && rendered_ledger(commit_b(), ledger_fixture_subject, rows) != ""
