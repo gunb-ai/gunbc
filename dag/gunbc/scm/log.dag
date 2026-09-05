@@ -23,6 +23,7 @@ import gunbc.scm.object_store {
   NodeRecordAbsent,
   NodeRecordFound,
   NodeRecordIsAuthoredSource,
+  NodeRecordIsCorpusManifest,
   ObjectStore,
   SemanticNodeObjectRef,
   find_node_record,
@@ -44,10 +45,17 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // `LoggedCommitRootHeld`: a log row claiming a checkoutable root where checkout refuses. The two
 // negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
 // they are separate arms rather than one Bool.
+//
+// A CORPUS MANIFEST IS A THIRD SUCH THING, and it arrives by the same route: the store holds one, a
+// locator can be present and be it, and a log row claiming a checkoutable root over one would be the
+// same false report this type was split to prevent. It is named rather than folded into the authored
+// -source arm because a log is read by a person deciding what to repair, and "there is a file here"
+// sends them somewhere different from "there is a corpus manifest here".
 type LoggedCommitStanding
   = LoggedCommitRootHeld
   | LoggedCommitRootMissingFromStore
   | LoggedCommitRootIsAuthoredSource
+  | LoggedCommitRootIsCorpusManifest
 
 // The row exposes the commit's own opaque identity, not a value derived from its list position or
 // root. Consumers may hand it back as a reference; they must not inspect its ordinal for ordering or
@@ -84,6 +92,7 @@ fn logged_commit_standing(store: ObjectStore, root: SemanticNodeObjectRef) -> Lo
     NodeRecordFound(_) => LoggedCommitRootHeld
     NodeRecordAbsent { identity: _ } => LoggedCommitRootMissingFromStore
     NodeRecordIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource
+    NodeRecordIsCorpusManifest { identity: _ } => LoggedCommitRootIsCorpusManifest
   }
 }
 
@@ -144,6 +153,7 @@ fn commit_log_is_fully_held(log: CommitLog) -> Bool {
             LoggedCommitRootHeld => true
             LoggedCommitRootMissingFromStore => false
             LoggedCommitRootIsAuthoredSource => false
+            LoggedCommitRootIsCorpusManifest => false
           }
         } else {
           false

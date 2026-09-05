@@ -19,6 +19,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsCorpusManifest,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
@@ -32,6 +33,7 @@ import gunbc.scm.log {
   CommitLogRow,
   LoggedCommitRootHeld,
   LoggedCommitRootIsAuthoredSource,
+  LoggedCommitRootIsCorpusManifest,
   LoggedCommitRootMissingFromStore,
 }
 
@@ -76,6 +78,7 @@ fn log_witness_mint(repo: RepositoryEnvelope, root: SemanticNodeTarget, message:
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
+    RepositoryCommitMintRootIsCorpusManifest { root: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
   }
 }
@@ -181,6 +184,7 @@ test fn a_commit_whose_root_is_not_held_is_marked_rather_than_listed_as_ordinary
         LoggedCommitRootHeld => "held"
         LoggedCommitRootMissingFromStore => "missing"
         LoggedCommitRootIsAuthoredSource => "source"
+        LoggedCommitRootIsCorpusManifest => "manifest"
       }) == ["held", "missing"]
   }
 }

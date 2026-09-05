@@ -29,7 +29,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequirementAtWrongKind,
 }
 import gunbc.scm.supersession {
   HeadSlot, SupersessionEvidence, SupersessionOutcome,
@@ -207,7 +207,7 @@ test fn proposing_the_generation_already_installed_refuses() -> Bool {
 // supply the missing objects.
 //
 // THE CONJUNCTION IS THE WHOLE POPULATION, and it was not: this claim's name quantifies over EVERY
-// non-permitting standing while it checked four of the five, so `LoadRequiresNodeAtAuthoredSource`
+// non-permitting standing while it checked four of the five, so `LoadRequirementAtWrongKind`
 // could have collapsed to the permitting arm with this claim still green. A universally named claim
 // that enumerates a subset is worse than a narrower name, because the gap is invisible at the call
 // site. `standing_name` below already carried all six arms, which is what makes the omission a
@@ -217,7 +217,7 @@ test fn every_non_permitting_standing_refuses_and_says_which() -> Bool {
     && standing_refusal_is_itself(standing: LoadPartial)
     && standing_refusal_is_itself(standing: LoadUnsupportedProtocol)
     && standing_refusal_is_itself(standing: LoadIdentityCollision)
-    && standing_refusal_is_itself(standing: LoadRequiresNodeAtAuthoredSource)
+    && standing_refusal_is_itself(standing: LoadRequirementAtWrongKind)
     && supersession_applied(outcome: sup_admitting_outcome())
 }
 
@@ -228,7 +228,7 @@ fn standing_name(s: LoadStanding) -> String {
     LoadUnsupportedProtocol => "protocol"
     LoadDocumentMalformed => "malformed"
     LoadIdentityCollision => "collision"
-    LoadRequiresNodeAtAuthoredSource => "source_occupied"
+    LoadRequirementAtWrongKind => "source_occupied"
   }
 }
 
