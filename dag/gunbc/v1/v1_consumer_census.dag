@@ -1,5 +1,6 @@
 module gunbc.v1_consumer_census
 
+import gunbc.ci_release_bins { ci_floor_required_artifact_names }
 import std.types { List, String, NonEmptyStr, FilePath, CommitSha, Bool, Int }
 import std.content_hash { Sha1Digest }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
@@ -597,8 +598,122 @@ fn v1_shim_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPartition {
   )
 }
 
+// L4 operational selector trace. These are additional relations in THIS census, not a
+// second cutover roster. The command records the method: inspect the live selector's
+// body and its callers, including argv and in-process linkage. This establishes the
+// named paths below, NOT whole-repository reachability or an execution receipt.
+// Historical producers above keep their original source pins; remeasuring these roots
+// does not retroactively remeasure the older rows.
+data producer_native_cutover_selectors: DiscoveryProducer = discovery_producer(
+  instrument: "operational selector and call-body trace, including rebuilt-seed regeneration",
+  command: "rg -n 'repo_self_build_package|witness_bin_build_args|witness_bin_ensure_built_typed|run_gunbc_claims_ready|heal_regen_step|heal_repair_declaration_step|heal_repo_local_git_config_step|ci_floor_required_artifact_names' dag/gunbc; rg -n 'compile_sources_selected|run_built_seed_regen|Command::new|run_in_context_with_args' src/v1/stage0/src/required_regen_host.rs src/v1/stage0/src/main.rs; rg -n '^name =|^path =' src/v1/stage0/Cargo.toml",
+  source_revision: "06a30d90376d5fb1fef91d6963604e3b053b9df1",
+  source_tree_hex: "16cb8f059c6e34120632cb34094be27b5ebddb42",
+)
+
+fn v1_operational_consumer(
+  consumer: DeclarationRef,
+  authority: DeclarationRef,
+  medium: ConsumerMedium,
+  subject: V1Subject,
+  obligation: String
+) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(
+      consumer: consumer,
+      authority: authority,
+      disposition: retained_open(justification: obligation)
+    ),
+    medium: medium,
+    subject: subject,
+    discovered_by: producer_native_cutover_selectors
+  }
+}
+
+// The pack's population is derived from its existing authority, never copied into
+// a list of bin names here. Each relation now names ONE executable main, rather
+// than treating disposition of the pack as disposition of all its members. The
+// Cargo manifest at the discovery pin establishes this name-to-entry mapping;
+// targets outside the pack and future manifest path changes remain census work.
+fn v1_release_bin_main(bin: String) -> DeclarationRef {
+  if bin == "gunbc" {
+    gunbc_cli_bin
+  } else {
+    decl_ref(module_path: concat("v1_compiler.bin.", bin), decl_name: "main")
+  }
+}
+
+fn v1_release_pack_consumers() -> List<V1ConsumerRow> {
+  ci_floor_required_artifact_names() |> map(bin => v1_operational_consumer(
+    consumer: decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_required_artifact_names"),
+    authority: v1_release_bin_main(bin: bin),
+    medium: CargoBinTarget,
+    subject: V1HostedCiBinary,
+    obligation: "This executable is included in the pack built, verified and unpacked by the required and fleet workflows. Packing is not proof that every member executes. Its target and callers require individual replacement or an explicit retirement; retaining the package build leaves a required v1 dependency even if another CLI is installed."
+  ))
+}
+
+fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
+  [
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "gunbc.repo_self_build", decl_name: "repo_self_build_package"),
+      authority: v1_compiler_crate_root,
+      medium: DagArgvRow, subject: V1CompilerCrate,
+      obligation: "repo_self_build_command and repo_self_build_all_bins_command choose v1-compiler for required CI and fleet builds. Replacing target/release/gunbc alone does not retire the cold-build route. The admitted replacement must supply the required target population on a cold runner."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "witness_bin_build_args"),
+      authority: v1_compiler_crate_root,
+      medium: DagArgvRow, subject: V1CompilerCrate,
+      obligation: "witness_bin_ensure_built_typed calls BuildInheritEnv with these v1-compiler args when an enrolled executable is absent. A warm-path native binary does not discharge this reachable cold-path seed build. Cutover must remove this rebuild route, with missing-artifact refusal tested."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "run_gunbc_claims_ready"),
+      authority: decl_ref(module_path: "v1_compiler.bin.claim_batch", decl_name: "main"),
+      medium: DagArgvRow, subject: V1Interpreter,
+      obligation: "The claim transport invokes target/release/claim_batch; claim_batch links v1_interpreter and evaluates claims through it. A native compiler CLI does not replace this dispatch. Preserve required case identities, positive and refusal outcomes, and wet effect execution."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_regen_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job runs tools.generated_artifact_gate main_wet through gunbc run, then main to check generated-file agreement. Keep the committed_generated_artifacts population and byte-agreement contract when moving execution to the admitted native generation."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_repair_declaration_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job executes heal_repair_declaration through gunbc run before regeneration. This predecessor observation must survive cutover; running only the regenerator loses the repair declaration."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_repo_local_git_config_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job executes repo_local_git_config converge through gunbc run. The generated git hooks themselves only configure git and run formatting; this CI invocation is a separate live interpreter dependency."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.main", decl_name: "run_verb"),
+      authority: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "run_in_context_with_args"),
+      medium: RustUseEdge, subject: V1Interpreter,
+      obligation: "The ordinary CLI Run arm executes through the linked v1 interpreter. This reaches product workflows and generated-artifact producers, not only compiler tests. Retire the operational interpreter route after the native run contract is satisfied."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "compile_stage0"),
+      authority: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_sources_selected"),
+      medium: RustUseEdge, subject: V1CompilerCrate,
+      obligation: "Required regeneration calls the linked v1 compile_sources_selected over regen_input_sources. This is an internal dependency inside the deletion set. Preserve required source and generated-file populations; a passing byte comparison is not native successor production."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "run_built_seed_regen"),
+      authority: claim_executor_bin,
+      medium: RustUseEdge, subject: V1HostedCiBinary,
+      obligation: "The convergence driver hashes current_exe and launches the rebuilt executable with --required-regen. That artifact is the seed claim_executor and its regeneration calls compile_stage0. This existing second-generation route cannot be relabeled as seed-independent G1-to-G2 production."
+    )
+  ]
+}
+
 fn v1_consumers_for(rows: List<RustSourceNamespaceRow>) -> List<V1ConsumerRow> {
-  list_append(left: v1_static_consumers, right: v1_shim_partition(rows: rows).cited)
+  list_append(
+    left: list_append(left: v1_static_consumers, right: v1_native_cutover_selector_consumers()),
+    right: list_append(left: v1_release_pack_consumers(), right: v1_shim_partition(rows: rows).cited)
+  )
 }
 
 fn v1_consumers() -> List<V1ConsumerRow> {
@@ -617,9 +732,9 @@ fn v1_uncitable_consumers() -> List<V1UncitableConsumer> {
 fn v1_consumer_population_for(rows: List<RustSourceNamespaceRow>) -> ConsumerPopulation {
   let partition = v1_shim_partition(rows: rows)
   PopulationMeasuredLowerBound {
-    rows: list_append(left: v1_static_consumers, right: partition.cited),
+    rows: v1_consumers_for(rows: rows),
     uncitable: partition.uncitable,
-    missing_basis: "seven per-medium sweeps, unjoined. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 88 .dag files name a v1 binary in a string position and only the two ci_release_bins rosters were traced to a consumer; (2) the deletion-set blind spot the floor cut measured has one row here (workspace_members) and no instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) reachability is not measured for any row: every disposition above is a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census. The uncitable column is NOT a fourth hole any more: under the live namespace table it is empty by construction, and the tooling row that made it so was necessary for Complete, not sufficient.",
+    missing_basis: "per-medium sweeps plus the L4 operational selector trace, unjoined. L4 names cold-build, claim dispatch, heal and regeneration paths and derives executable relations from the live CI pack; it does not establish whole-repository reachability, and its source pin does not remeasure the historical rows. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 88 .dag files name a v1 binary in a string position and the selected roots traced here do not classify that whole population; (2) the deletion-set blind spot the floor cut measured has workspace_members and compile_stage0 relations here but no complete instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) whole-repository reachability is not measured: the named selector body traces establish specific possible paths, but presence of an unexecuted pack member is still only a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census. The uncitable column is NOT a fourth hole any more: under the live namespace table it is empty by construction, and the tooling row that made it so was necessary for Complete, not sufficient.",
   }
 }
 
