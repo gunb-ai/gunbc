@@ -25,6 +25,23 @@ import gunbc.tools.reference_binding_provenance_calibration {
   cell_render,
   non_matching_render,
   unsound_cells,
+  calibration_verdict,
+  consumer_standing,
+  consumer_standing_for,
+  standing_is_demonstrated,
+  cell_is_sound,
+  traversal_is_complete,
+  declared_cell_population,
+  ProvenanceCell,
+  CalibrationStanding,
+  CalibrationDemonstrated,
+  CalibrationNotDemonstrated,
+  CalibrationUnsupportedByThisRoute,
+  CalibrationRefusedOrIncomplete,
+  cell_key,
+  distinct_cell_key_count,
+  distinct_arm_label_count,
+  distinct_kind_label_count,
   arm_of_resolution,
   kind_of_observation,
   observation_kind_label,
@@ -33,6 +50,11 @@ import gunbc.tools.reference_binding_provenance_calibration {
   observation_for,
 }
 import v2.std.optional { Present, Absent }
+import std.reference_binding_observation {
+  RepeatedMentionDependencyObservation,
+  StructuralBindingResolved,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
 // THE CONTROLS. A measurement instrument whose output cannot vary carries no information, so these
 // establish that both distinguishability arms are reachable on the real consumer and that the
@@ -67,6 +89,23 @@ test fn the_denominator_is_the_declared_vocabulary_not_the_traversal_list() -> B
     && list_length(items: calibration_observation_kinds) == 4
     && list_length(items: calibration_resolution_arms) == 7
     && list_length(items: calibration_cells()) == 28
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the control above proves only the
+// count half. calibration_cells folds one traversal list across the other, so its cardinality is a
+// PRODUCT -- and a product cannot tell 28 distinct cells from 28 cells in which one key appears
+// twice and another never appears at all. The falsifying input is concrete: put
+// IndexTransportRefusedArm in calibration_resolution_arms TWICE and drop ProductionRefusedArm.
+// list_length(arms) is still 7, list_length(cells) is still 28, and the round-trip fold above still
+// passes, because it checks each ELEMENT relabels to itself -- which a duplicate satisfies exactly
+// as well as a unique element does. One arm would be measured twice, one never measured, every
+// control green. The exhaustive matches wall an arm ADDED UPSTREAM; they say nothing about an
+// omission paired with a duplication INSIDE the list, which is how a hand-maintained list actually
+// fails.
+test fn the_traversal_lists_are_duplicate_free_and_the_cells_are_distinctly_keyed() -> Bool {
+  distinct_arm_label_count() == 7
+    && distinct_kind_label_count() == 4
+    && distinct_cell_key_count(cells: calibration_cells()) == 28
 }
 
 
@@ -108,13 +147,154 @@ test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
     && cell_render(kind: DistinctHomonymKind, arm: ProductionRefusedArm) == t
 }
 
-// THE ORACLE IS THE REFUSAL FIRING, NOT A CELL COUNT. This asserted == 28 and that was a count
-// standing where a check belonged: a repair of ONE cell would have failed it with "expected 28",
-// which reports a genuine improvement as a regression and tells the next author to restore the
-// defect. The count also has no independent referent -- it is this run's own measurement compared
-// to itself. What must stay true is that the instrument's refusal path is REACHED, which is a
-// property of the refusal and not of how much is currently broken; the specific collapse is carried
-// by the discriminating controls above, where a repair makes exactly the right row go red.
-test fn the_instrument_reaches_its_refusal_path() -> Bool {
-  list_length(items: unsound_cells(cells: calibration_cells())) > 0
+// THIS ASSERTS THE VERDICT ITSELF, WHICH IS THE THIRD REPAIR OF ONE DEFECT IN THIS FILE.
+//
+// It began as a count (== 28 unsound cells): a measurement compared against itself, which would also
+// have failed on a repair of ONE cell and told the next author to restore the defect. It was then
+// weakened to `unsound_cells(...) > 0` -- which is not the refusal at all, but the INPUT to the
+// decision. The decision lived inside provenance_calibration_report behind an argument guard and a
+// filesystem write, so the control could not distinguish "refuses because cells are unsound" from
+// "never evaluated that branch", which is precisely what its name promised.
+//
+// The name was the tell both times: a function called reaches_its_refusal_path that evaluates a
+// subexpression of the refusal's condition. So the repair is construction rather than a bigger test
+// -- calibration_verdict is now a pure cells-to-ProcessExit function, the report calls it after the
+// write, and this asserts on the verdict with no filesystem in the way. The fusion that made the
+// decision untestable is gone rather than worked around.
+// WHAT THIS CONTROL DOES NOT COVER, STATED BECAUSE ITS EARLIER NAME CLAIMED IT DID.
+//
+// It asserts the VERDICT, not the report. REPLACING provenance_calibration_report'S POST-WRITE
+// REFUSAL WITH ExitSuccess LEAVES EVERY CONTROL IN THIS FILE GREEN -- that one sentence is the whole
+// residual gap, and it is why the function is named for the verdict rather than for the instrument.
+// Factoring calibration_verdict out was necessary and is not sufficient: a factored decision only
+// helps if the real report consumes it, and nothing here proves it does.
+//
+// WHY NO CONTROL COVERS IT, which is a boundary and not an omission: provenance_calibration_report
+// performs a host effect (Filesystem.Write), and the required floor's hermetic envelope refuses host
+// effects during preparation -- so a witness whose subject is that function would be COUNTED
+// EXECUTED while its assertion never ran, which is worse than absent because it would be cited as
+// coverage. Mocking the write would assert against a fabricated success.
+//
+// The report's consumption of the verdict is therefore established only by direct execution, cited
+// by naming the producer rather than by transcribing its output:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/reference_binding_provenance_calibration.dag \
+//     --function provenance_calibration_report --arg out=<path>
+// NEXT-RUNG TRIGGER, a capability and not an artifact: a witness-executable route that can run an
+// effectful entry point under the floor and observe its ProcessExit, SUFFICIENT FOR the report's
+// refusal arm to carry an enrolled discriminating red rather than an operator-run one.
+test fn the_verdict_refuses_on_the_measured_matrix() -> Bool {
+  match calibration_verdict(cells: calibration_cells()) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE VERDICT, without which the one above is satisfied by a function that
+// refuses unconditionally -- a wall that cannot report health, the same defect inverted.
+//
+// It supplies a FULLY POPULATED sound matrix rather than an empty list, and the difference is the
+// point: an empty population also has no unsound cell, so before the traversal-integrity clause an
+// empty list read as SUCCESS -- "nothing was measured" and "nothing was wrong" arriving at the same
+// exit, which is the absorbing arm. The empty case is now asserted to REFUSE, below.
+fn sound_cell(kind: CalibrationObservationKind, arm: CalibrationResolutionArm) -> ProvenanceCell {
+  ProvenanceCell {
+    kind: kind,
+    arm: arm,
+    consumer_standing: CalibrationDemonstrated { conditions: "synthetic sound cell" },
+    distinguishability: ProvenanceDistinguished { admission: cell_key(c: ProvenanceCell {
+      kind: kind,
+      arm: arm,
+      consumer_standing: CalibrationDemonstrated { conditions: "" },
+      distinguishability: ProvenanceDistinguished { admission: "" },
+      production_standing: CalibrationDemonstrated { conditions: "" },
+    }) },
+    production_standing: CalibrationDemonstrated { conditions: "synthetic sound cell" },
+  }
+}
+
+fn fully_sound_matrix() -> List<ProvenanceCell> {
+  fold(calibration_observation_kinds, init: [], f: fn(acc, kind) {
+    fold(calibration_resolution_arms, init: acc, f: fn(inner, arm) {
+      concat(inner, [sound_cell(kind: kind, arm: arm)])
+    })
+  })
+}
+
+test fn the_verdict_accepts_a_fully_populated_sound_matrix() -> Bool {
+  list_length(items: fully_sound_matrix()) == declared_cell_population()
+    && match calibration_verdict(cells: fully_sound_matrix()) {
+      ExitSuccess => true
+      ExitFailure { code: _, reason: _ } => false
+    }
+}
+
+// AN EMPTY OR SHORT TRAVERSAL MUST REFUSE, NOT SUCCEED. This is the absorbing arm the verdict grew a
+// clause for: no cells means no unsound cells, and reporting that as success would say "nothing was
+// wrong" when the truth is "nothing was measured".
+test fn an_incomplete_traversal_refuses_rather_than_succeeding() -> Bool {
+  !traversal_is_complete(cells: [])
+    && match calibration_verdict(cells: []) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+}
+
+// CONSUMER STANDING MUST BE CONSUMED BY ADMISSION, AND IT WAS NOT. cell_is_sound read only
+// distinguishability and production standing, so an otherwise-perfect cell whose CONSUMER standing
+// was RefusedOrIncomplete was admitted as sound. The matrix stays red today only because the
+// production axis is unsupported -- repair that axis and this hole would have admitted everything
+// silently. This supplies exactly that cell and requires admission to FAIL.
+//
+// It is a TEST CONSTRUCTION and is not evidence that the production route emits such a cell.
+test fn a_cell_with_incomplete_consumer_standing_is_not_sound() -> Bool {
+  !cell_is_sound(c: ProvenanceCell {
+    kind: SameFileNeighbourKind,
+    arm: ResolvedArm,
+    consumer_standing: CalibrationRefusedOrIncomplete { cause: "synthetic: discovery failed" },
+    distinguishability: ProvenanceDistinguished { admission: "Established(SameFileEarlierNeighbourVisible)" },
+    production_standing: CalibrationDemonstrated { conditions: "synthetic" },
+  })
+    && !cell_is_sound(c: ProvenanceCell {
+      kind: SameFileNeighbourKind,
+      arm: ResolvedArm,
+      consumer_standing: CalibrationNotDemonstrated { note: "synthetic: never reached judging" },
+      distinguishability: ProvenanceDistinguished { admission: "Established(SameFileEarlierNeighbourVisible)" },
+      production_standing: CalibrationDemonstrated { conditions: "synthetic" },
+    })
+}
+
+// THE CONSUMER STANDING CAN ACTUALLY VARY, which is what the constant function made unwritable
+// anywhere. Two of the three non-demonstrated arms are reached here through the real derivation: an
+// observation kind that carries no resolution at all yields REFUSED/INCOMPLETE, and a case whose
+// supplied observation does not judge as the intended kind yields NOT DEMONSTRATED. A vocabulary
+// whose other arms no input can produce carries no information, however well it reads.
+test fn the_consumer_standing_reaches_its_non_demonstrated_arms() -> Bool {
+  let unjudgeable = consumer_standing_for(
+    intended_kind: SameFileNeighbourKind,
+    intended_arm: ResolvedArm,
+    observation: RepeatedMentionDependencyObservation {
+      provider_file: "dag/provider.dag",
+      projected_dependencies: ["dag/provider.dag"],
+    },
+    resolution: resolution_for_arm(kind: SameFileNeighbourKind, arm: ResolvedArm),
+  )
+  let wrong_kind = consumer_standing_for(
+    intended_kind: SameFileNeighbourKind,
+    intended_arm: ResolvedArm,
+    observation: observation_for(
+      kind: DistinctHomonymKind,
+      resolution: resolution_for_arm(kind: DistinctHomonymKind, arm: ResolvedArm),
+    ),
+    resolution: resolution_for_arm(kind: SameFileNeighbourKind, arm: ResolvedArm),
+  )
+  match unjudgeable {
+    CalibrationRefusedOrIncomplete { cause: _ } => true
+    _ => false
+  }
+    && match wrong_kind {
+      CalibrationNotDemonstrated { note: _ } => true
+      _ => false
+    }
+    && standing_is_demonstrated(s: consumer_standing(kind: SameFileNeighbourKind, arm: ResolvedArm))
 }

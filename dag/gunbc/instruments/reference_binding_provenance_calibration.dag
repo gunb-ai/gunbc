@@ -74,8 +74,10 @@ import gunbc.namespace_reference_derived_closure_admission {
 // FROM A CELL THAT FIRES AND FINDS NOTHING. A corpus run over thousands of sources that reports no
 // index-refusal provenances is reporting one of two utterly different facts -- the corpus is clean,
 // or the instrument cannot express that answer -- and nothing in the output separates them. This
-// module measures which cells the production path can actually produce, on controlled fixtures,
-// so the corpus run's zeros become readable.
+// module measures, on controlled fixtures, WHICH CELLS THE CONSUMER CAN TELL APART, so the corpus
+// run's zeros become readable. It does NOT measure what the production path can produce -- it hands
+// the consumer a constructed resolution and never executes the producer -- and that limit is
+// recorded per cell as UNSUPPORTED BY THIS ROUTE with the missing input named.
 //
 // THE MATRIX IS FOUR BY SEVEN and deliberately not larger. The rows are the four observation KINDS
 // carried by ReferenceBindingObservation; the columns are the seven arms of
@@ -510,24 +512,74 @@ fn cell_distinguishability(
   }
 }
 
-// THE CONSUMER STANDING IS DEMONSTRATED FOR EVERY CELL, and each of the three clauses is worth
-// stating because a case that never reached the judging stage and "passed" is not a demonstration:
-// the intended resolution arm is SUPPLIED by resolution_for_arm, it REACHES the judging stage --
-// assess_reference_binding_observation, the real consumer, not a copy of it -- and the attributed
-// result is the render that judging returns. The conditions are carried because a demonstration
-// establishes this cell under THESE inputs and does not establish universal capability over
-// arbitrary ones.
+// THE CONSUMER STANDING IS DERIVED, AND IT WAS A CONSTANT FUNCTION UNTIL IT WAS CAUGHT.
+//
+// It returned CalibrationDemonstrated unconditionally, with only the conditions string varying. So
+// three arms of a four-armed vocabulary were UNCONSTRUCTIBLE on this route and the field carried
+// zero information -- a fixture pinned at an absorbing extreme, where admission cannot fail because
+// the input cannot differ. In the instrument built to find distinctions that die before their
+// consumer, that is the defect wearing the instrument's own clothes.
+//
+// It now derives from structure that can actually differ, and the derivation is the demonstration's
+// three clauses read literally: the intended case was SUPPLIED, it REACHED the intended judging
+// stage, and it produced the attributed result. Clause two is the one a constant cannot express --
+// a case that never reached the judging stage and "passed" is not a demonstration -- so it is
+// checked by round-tripping the constructed observation and resolution back through the same total
+// matches that bind the denominator, and a mismatch is NOT DEMONSTRATED rather than a quiet pass.
+//
+// The parameterised form exists so the RED is authorable: a fixture can hand it a deliberately
+// mismatched observation and see the standing fall, which is the discriminating input the constant
+// form made impossible to write anywhere.
+fn consumer_standing_for(
+  intended_kind: CalibrationObservationKind,
+  intended_arm: CalibrationResolutionArm,
+  observation: ReferenceBindingObservation,
+  resolution: StructuralBindingResolution,
+) -> CalibrationStanding {
+  match kind_of_observation(o: observation) {
+    Absent =>
+      CalibrationRefusedOrIncomplete {
+        cause: "the supplied observation carries no StructuralBindingResolution, so it has no column in a kind-by-arm matrix and this route cannot judge it -- not a negative observation about the subject",
+      }
+    Present { value: judged_kind } =>
+      if observation_kind_label(k: judged_kind) != observation_kind_label(k: intended_kind) {
+        CalibrationNotDemonstrated {
+          note: concat("the supplied case judges as ",
+            concat(observation_kind_label(k: judged_kind),
+              concat(" rather than the intended ", concat(observation_kind_label(k: intended_kind),
+                " -- it never reached the intended judging stage, so a passing result would not be a demonstration")))),
+        }
+      } else {
+        if resolution_arm_label(a: arm_of_resolution(r: resolution)) != resolution_arm_label(a: intended_arm) {
+          CalibrationNotDemonstrated {
+            note: concat("the supplied resolution carries ",
+              concat(resolution_arm_label(a: arm_of_resolution(r: resolution)),
+                concat(" rather than the intended ", resolution_arm_label(a: intended_arm)))),
+          }
+        } else {
+          CalibrationDemonstrated {
+            conditions: concat(
+              "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); supplied resolution arm ",
+              concat(resolution_arm_label(a: intended_arm),
+                concat("; judged by gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation as ",
+                  observation_kind_label(k: intended_kind)))),
+          }
+        }
+      }
+  }
+}
+
 fn consumer_standing(
   kind: CalibrationObservationKind,
   arm: CalibrationResolutionArm,
 ) -> CalibrationStanding {
-  CalibrationDemonstrated {
-    conditions: concat(
-      "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); supplied resolution arm ",
-      concat(resolution_arm_label(a: arm),
-        concat("; judged by gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation as ",
-          observation_kind_label(k: kind)))),
-  }
+  let resolution = resolution_for_arm(kind: kind, arm: arm)
+  consumer_standing_for(
+    intended_kind: kind,
+    intended_arm: arm,
+    observation: observation_for(kind: kind, resolution: resolution),
+    resolution: resolution,
+  )
 }
 
 // THE PRODUCTION STANDING IS A DIFFERENT SUBJECT AND THIS ROUTE CANNOT TESTIFY ABOUT IT.
@@ -554,7 +606,7 @@ fn production_standing(arm: CalibrationResolutionArm) -> CalibrationStanding {
       }
     ProductionRefusedArm =>
       CalibrationUnsupportedByThisRoute {
-        missing_input: "a producer for StructuralBindingProductionRefused; a whole-tree symbol census finds no module that constructs it",
+        missing_input: "a PRODUCTION-ROUTE producer for StructuralBindingProductionRefused; a whole-tree symbol census finds none on any production path -- the only constructions are in evidence carriers, THIS INSTRUMENT INCLUDED, which is why the claim is scoped to the production route rather than stated as none anywhere",
         reason: "the route constructs the resolution, so it obtains no evidence about producibility; the arm is declared and fixture-constructible with no known production route to it",
       }
     _ =>
@@ -630,15 +682,26 @@ fn calibration_body() -> String {
 // stops. A green here would mean the provenance the carrier pays to preserve survives to a consumer,
 // and that every arm's production route is established -- which is exactly what the corpus run
 // would otherwise assume without having asked.
+fn standing_is_demonstrated(s: CalibrationStanding) -> Bool {
+  match s {
+    CalibrationDemonstrated { conditions: _ } => true
+    CalibrationNotDemonstrated { note: _ } => false
+    CalibrationUnsupportedByThisRoute { missing_input: _, reason: _ } => false
+    CalibrationRefusedOrIncomplete { cause: _ } => false
+  }
+}
+
+// SOUNDNESS READS BOTH STANDINGS, AND IT READ ONLY ONE. The consumer standing was carried, rendered,
+// and never consumed by the admission -- so a cell with RefusedOrIncomplete consumer standing was
+// SOUND as long as its production standing was demonstrated. Descriptive data standing where an
+// admission obligation belonged, which is the distinction this whole instrument exists to enforce,
+// unenforced on itself. It stays red today only because the production axis is unsupported; repair
+// that axis and the consumer axis would have silently admitted everything.
 fn cell_is_sound(c: ProvenanceCell) -> Bool {
   match c.distinguishability {
     ProvenanceDistinguished { admission: _ } =>
-      match c.production_standing {
-        CalibrationDemonstrated { conditions: _ } => true
-        CalibrationNotDemonstrated { note: _ } => false
-        CalibrationUnsupportedByThisRoute { missing_input: _, reason: _ } => false
-        CalibrationRefusedOrIncomplete { cause: _ } => false
-      }
+      standing_is_demonstrated(s: c.consumer_standing)
+        && standing_is_demonstrated(s: c.production_standing)
     ProvenanceCollapsed { collapses_with: _, mechanism: _ } => false
   }
 }
@@ -649,18 +712,83 @@ fn unsound_cells(cells: List<ProvenanceCell>) -> List<ProvenanceCell> {
   })
 }
 
+// THE KEY IS (kind, arm) AND IT EXISTS SO COMPLETENESS CAN BE AN IDENTITY JOIN RATHER THAN A COUNT.
+// calibration_cells folds one list across the other, so its cardinality is a PRODUCT of two traversal
+// lists -- and a product cannot distinguish 28 distinct cells from 28 cells in which one key appears
+// twice and another never appears at all. Keying each cell makes that difference visible.
+fn cell_key(c: ProvenanceCell) -> String {
+  concat(observation_kind_label(k: c.kind), concat(" x ", resolution_arm_label(a: c.arm)))
+}
+
+fn distinct_labels(labels: List<String>) -> List<String> {
+  fold(labels, init: [], f: fn(acc, l) {
+    if fold(acc, init: false, f: fn(seen, a) { seen || a == l }) { acc } else { concat(acc, [l]) }
+  })
+}
+
+fn distinct_cell_key_count(cells: List<ProvenanceCell>) -> Int {
+  list_length(items: distinct_labels(labels: fold(cells, init: [], f: fn(acc, c) {
+    concat(acc, [cell_key(c: c)])
+  })))
+}
+
+fn distinct_arm_label_count() -> Int {
+  list_length(items: distinct_labels(labels: fold(calibration_resolution_arms, init: [], f: fn(acc, a) {
+    concat(acc, [resolution_arm_label(a: a)])
+  })))
+}
+
+fn distinct_kind_label_count() -> Int {
+  list_length(items: distinct_labels(labels: fold(calibration_observation_kinds, init: [], f: fn(acc, k) {
+    concat(acc, [observation_kind_label(k: k)])
+  })))
+}
+
+// THE VERDICT IS SEPARATED FROM THE EFFECT, and that separation is what makes the refusal testable
+// rather than merely believed. Fused into the report, the refusal arm was reachable only through an
+// argument guard and a filesystem write, so a control could assert the PREDICATE that feeds the
+// decision and never the decision itself -- and could not distinguish "refuses because cells are
+// unsound" from "never evaluated that branch at all". That is this file's own count-oracle defect a
+// third time: asserting a precondition of an outcome and naming it after the outcome. A pure
+// cells-to-ProcessExit function removes the fusion instead of testing around it.
+// TRAVERSAL INTEGRITY IS PART OF THE VERDICT, because an EMPTY or INCOMPLETE traversal has an empty
+// unsound-cell list and would otherwise be reported as success -- the absorbing arm, where "nothing
+// was wrong" and "nothing was measured" produce the same exit. The declared population is the
+// product of the two declared axes, and the cells must carry that many DISTINCT (kind, arm) keys;
+// counting entries cannot tell a complete traversal from one that visited an arm twice and another
+// never.
+fn declared_cell_population() -> Int {
+  list_length(items: calibration_observation_kinds) * list_length(items: calibration_resolution_arms)
+}
+
+fn traversal_is_complete(cells: List<ProvenanceCell>) -> Bool {
+  distinct_arm_label_count() == list_length(items: calibration_resolution_arms)
+    && distinct_kind_label_count() == list_length(items: calibration_observation_kinds)
+    && distinct_cell_key_count(cells: cells) == declared_cell_population()
+}
+
+fn calibration_verdict(cells: List<ProvenanceCell>) -> ProcessExit {
+  if !traversal_is_complete(cells: cells) {
+    exit_failure(reason: "provenance_calibration_report: refusing -- the traversal is incomplete or carries a duplicate key, so the matrix does not cover the declared population and an empty unsound-cell list would mean nothing was measured rather than nothing was wrong.")
+  } else {
+    if list_length(items: unsound_cells(cells: cells)) == 0 {
+      ExitSuccess
+    } else {
+      exit_failure(reason: "provenance_calibration_report: refusing -- not every cell is both provenance-distinguished at the consumer and production-demonstrated, so a corpus run's silence about a resolution arm is not evidence that arm is clean.")
+    }
+  }
+}
+
 fn provenance_calibration_report(out: String) -> ProcessExit {
   if out == "" {
     exit_failure(reason: "provenance_calibration_report: --arg out=<path> is required -- the matrix is written, not printed")
   } else {
     let cells = calibration_cells()
     if Filesystem.Write(path: out, content: calibration_body()).success {
-      if list_length(items: unsound_cells(cells: cells)) == 0 {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat(
-          "provenance_calibration_report: refusing -- not every cell is both provenance-distinguished at the consumer and production-demonstrated, so a corpus run's silence about a resolution arm is not evidence that arm is clean. Full matrix written to ",
-          concat(out, " for analysis.")))
+      match calibration_verdict(cells: cells) {
+        ExitSuccess => ExitSuccess
+        ExitFailure { code: _, reason: reason } =>
+          exit_failure(reason: concat(reason, concat(" Full matrix written to ", concat(out, " for analysis."))))
       }
     } else {
       exit_failure(reason: concat("provenance_calibration_report: derived and could not be written to ", out))
