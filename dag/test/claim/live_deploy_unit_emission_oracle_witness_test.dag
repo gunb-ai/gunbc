@@ -1,6 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
@@ -10,6 +10,7 @@ import gunbc.live_deploy.emit {
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
   live_deploy_belt_service_unit_file,
+  live_deploy_serve_unit_file,
   live_deploy_tree_sync_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -19,6 +20,7 @@ import gunbc.live_deploy.spec {
   DeploymentServiceConfig,
   deployment_spec_srv1,
 }
+import extdeps.http.server { HttpServerListenConfig }
 import extdeps.systemd.unit_file {
   ServiceUnitFile,
   SystemdServiceDirective,
@@ -240,6 +242,9 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
   !has_directive(
     dirs: belt_service_directives_of(spec: wrong_spec),
     target: WorkingDirectory { path: live_spec().service.repo_root })
+    && has_directive(
+      dirs: belt_service_directives_of(spec: wrong_spec),
+      target: WorkingDirectory { path: wrong_root })
 }
 
 // RED: a spec with a different repo_root makes tree_sync_execstart go red.
@@ -254,7 +259,138 @@ test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
     " --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts",
     " \"$\{GUNBC_TREE_SRC\}/\" ", live_spec().service.repo_root as String, "/",
   ], "")
+  let wrong_exec = join([
+    "/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude",
+    " --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home",
+    " --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts",
+    " \"$\{GUNBC_TREE_SRC\}/\" ", wrong_root as String, "/",
+  ], "")
   !has_directive(
     dirs: tree_sync_service_directives_of(spec: wrong_spec),
     target: ExecStart { command: original_exec as NonEmptyStr })
+    && has_directive(
+      dirs: tree_sync_service_directives_of(spec: wrong_spec),
+      target: ExecStart { command: wrong_exec as NonEmptyStr })
+}
+
+// ── ADDITIONAL REDs ──────────────────────────────────────────────────────────────────────────
+//
+// The spec_with_principal pattern: rebuild DeploymentServiceConfig field by field,
+// changing only service_user to a divergent value.
+
+fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: wrong_user,
+              service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+fn serve_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
+    ServiceUnitFile { service: s, .. } => s
+  }
+}
+
+// RED: a spec with a different principal makes belt_service_runs_as_service_principal go red.
+// The emitter TRACKS the mutation: the wrong user IS present, the original user is ABSENT.
+test fn belt_service_user_goes_red_under_different_principal() -> Bool {
+  let wrong = join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+  let wrong_spec = spec_with_principal(wrong_user: wrong)
+  !has_directive(
+    dirs: belt_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(
+      dirs: belt_service_directives_of(spec: wrong_spec),
+      target: ServiceUser { name: wrong })
+}
+
+// RED: same pattern for the serve unit.
+test fn serve_unit_user_goes_red_under_different_principal() -> Bool {
+  let wrong = join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+  let wrong_spec = spec_with_principal(wrong_user: wrong)
+  !has_directive(
+    dirs: serve_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(
+      dirs: serve_service_directives_of(spec: wrong_spec),
+      target: ServiceUser { name: wrong })
+}
+
+// RED: same pattern for the tree-sync unit.
+test fn tree_sync_user_goes_red_under_different_principal() -> Bool {
+  let wrong = join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+  let wrong_spec = spec_with_principal(wrong_user: wrong)
+  !has_directive(
+    dirs: tree_sync_service_directives_of(spec: wrong_spec),
+    target: ServiceUser { name: live_spec().service.service_user })
+    && has_directive(
+      dirs: tree_sync_service_directives_of(spec: wrong_spec),
+      target: ServiceUser { name: wrong })
+}
+
+// RED: serve ExecStart goes red under a different port.
+// The positive claim pins the port in the ExecStart string; changing it produces a mismatch.
+fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: su, service_uid: uid,
+              listen: HttpServerListenConfig { host: l.host, port: wrong_port },
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+test fn serve_unit_execstart_goes_red_under_different_port() -> Bool {
+  let svc = live_spec().service
+  let wrong_port = 8081 // a different port within the valid range
+  let wrong_spec = spec_with_port(wrong_port: wrong_port)
+  let original_exec = join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", svc.listen.host, " --port ", to_string(svc.listen.port),
+    " --release-revision ", "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    " --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000",
+  ], "")
+  let wrong_exec = join([
+    svc.serve_binary as String,
+    " serve --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+    " --host ", svc.listen.host, " --port ", to_string(wrong_port),
+    " --release-revision ", "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    " --eval-budget-cpu-ms 30000 --eval-budget-wall-ms 30000",
+  ], "")
+  !has_directive(
+    dirs: serve_service_directives_of(spec: wrong_spec),
+    target: ExecStart { command: original_exec as NonEmptyStr })
+    && has_directive(
+      dirs: serve_service_directives_of(spec: wrong_spec),
+      target: ExecStart { command: wrong_exec as NonEmptyStr })
 }
