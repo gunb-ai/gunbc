@@ -197,5 +197,7 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
     && string_contains(s: invoke, pattern: "secrets/ci-github-app-private-key/")
     && string_contains(s: invoke, pattern: "openssl dgst -sha256 -sign")
     && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
+    && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
+    && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
     && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
