@@ -74,10 +74,14 @@ import v2.std.orchestration {
   EnvSet,
   EnvUnset,
   EscalationLevel,
+  Exit,
   FailFast,
+  If,
+  IntNe,
   LogMatches,
   Pipeline,
   PipelineStep,
+  Predicate,
   Retry,
   Run
 }
@@ -1491,6 +1495,38 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
 // Authorization header; the token never enters an argv (where /proc would expose it to every
 // process on the runner) and never enters the converge process's own environment. The trap
 // wipes the file whether the step succeeds, fails, or is cancelled.
+// THE KEY-UNREADABLE GUARD, AS A MODELED BRANCH RATHER THAN AN OPAQUE SHELL STRING (review 60996).
+// The first cut wrote `if [ "$APP_SM_CODE" != 200 ]; then ...; exit 1; fi` inside a Run command, so
+// the branch, its body and its exit were three shell facts the substrate could not see -- a
+// pipeline reader could not tell this step branches at all. std.orchestration already models
+// exactly this: Predicate.IntNe is the integer test, If carries the arms, and Exit carries the
+// status, with bash emission in v2.extdeps.languages.bash_orch_if and operand-alphabet refusal in
+// 05_emit_orchestration (^orch_emit_int_ne_operand_invalid), so metachar injection is unwritable at
+// emit rather than trusted. The remaining Run commands here are single non-branching invocations,
+// which Do is the modeled carrier for; the control flow is what had to stop being a string.
+fn app_jwt_key_unreadable_message() -> String {
+  join([
+    "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for ",
+    secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+    " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT."
+  ], "")
+}
+
+fn app_jwt_key_unreadable_guard() -> PipelineStep {
+  If {
+    cond: IntNe { lhs: "\"$APP_SM_CODE\"", rhs: "200" },
+    then_: Pipeline {
+      steps: [
+        Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
+        Do { run: ci_retry_body_run(command: join(["echo \"", app_jwt_key_unreadable_message(), "\" >&2"], "")) },
+        Exit { status: "1" }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
 fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -1516,15 +1552,7 @@ fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
       )
     },
     Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_HDR\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$APP_SM_CODE\" != 200 ]; then rm -f \"$APP_SM_BODY\"; echo \"AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for ",
-          secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-          " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT.\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
+    app_jwt_key_unreadable_guard(),
     Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$APP_SM_BODY\" > \"$APP_KEY_FILE\"") },
     Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },

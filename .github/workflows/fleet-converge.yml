@@ -355,7 +355,11 @@ jobs:
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$APP_SM_HDR"
           APP_SM_CODE="$(curl -sS -o "$APP_SM_BODY" -w '%{http_code}' -H @"$APP_SM_HDR" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest:access")"
           rm -f "$APP_SM_HDR"
-          if [ "$APP_SM_CODE" != 200 ]; then rm -f "$APP_SM_BODY"; echo "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT." >&2; exit 1; fi
+          if [ "$APP_SM_CODE" -ne 200 ]; then
+          rm -f "$APP_SM_BODY"
+          echo "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT." >&2
+          exit 1
+          fi
           python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$APP_SM_BODY" > "$APP_KEY_FILE"
           rm -f "$APP_SM_BODY"
           chmod 600 "$APP_KEY_FILE"
