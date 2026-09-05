@@ -15,7 +15,7 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit, spark_pair_serving_unit_with,
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
   SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured,
-  spark_pair_serving_seq_capacity, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
+  spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
   spark_pair_serving_unit_wire,
 }
 
@@ -44,6 +44,19 @@ test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
           SeqCapacityUnmeasured => false
           SeqCapacityMeasured { max_num_seqs: n, basis: _ } => n == 32
         })
+}
+
+// EACH PROMOTED GROUP'S CAPACITY IS GROUNDED IN ITS OWN LAUNCH LINE, not the first pair's, and
+// the count is the operator-observed 32 on both.
+test fn each_groups_capacity_cites_its_own_pool_and_carries_the_observed_count() -> Bool {
+  (match spark_pair_serving_seq_capacity_for(group: FabricGroupA) {
+     SeqCapacityUnmeasured => false
+     SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11767856 tokens read from this group's own head stdout")
+   })
+    && (match spark_pair_serving_seq_capacity_for(group: FabricGroupB) {
+         SeqCapacityUnmeasured => false
+         SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11952124 tokens") && !string_contains(s: b as String, pattern: "inherited")
+       })
 }
 
 // GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,

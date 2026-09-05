@@ -7,6 +7,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.fabric_link_desired { SparkFabricPair, Srv5Srv6 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 
 // THE FIRST PAIR AS IT ACTUALLY RUNS, READ ON 2026-09-05 FROM THE HOSTS, NOT FROM THE DESIRED ROW.
 // Head 192.168.1.225 (srv6, spark-3bd5) serves DeepSeek V4 Flash at tensor-parallel 2 with worker
@@ -241,6 +242,44 @@ data first_pair_kv_pool: KvPoolObserved = KvPoolObserved {
   rank0_available_kv_wire: "24.04 GiB (Worker_TP0, 192.168.1.225)" as NonEmptyStr,
   rank1_available_kv_wire: "21.01 GiB (Worker_TP1, 192.168.1.226)" as NonEmptyStr,
   source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 4,632,182 tokens" as NonEmptyStr,
+}
+
+// EACH GROUP'S OWN LAUNCH LINE, read from its head's captured stdout after the roster promoted it.
+// A group's admission count is sized from its own pool; the first pair's pool above is history.
+type GroupKvPoolObserved {
+  group: FabricGroup
+  pool_tokens: Nat
+  max_concurrency_at_max_model_len_wire: NonEmptyStr
+  probed_at: NonEmptyStr
+  source_line: NonEmptyStr
+}
+
+data group_kv_pools_observed: List<GroupKvPoolObserved> = [
+  GroupKvPoolObserved {
+    group: FabricGroupA,
+    pool_tokens: 11767856,
+    max_concurrency_at_max_model_len_wire: "11.22x for 1,048,576 tokens per request" as NonEmptyStr,
+    probed_at: "2026-09-05T20:44Z" as NonEmptyStr,
+    source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+  },
+  GroupKvPoolObserved {
+    group: FabricGroupB,
+    pool_tokens: 11952124,
+    max_concurrency_at_max_model_len_wire: "11.40x for 1,048,576 tokens per request" as NonEmptyStr,
+    probed_at: "2026-09-05T21:20:37Z" as NonEmptyStr,
+    source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,952,124 tokens" as NonEmptyStr,
+  },
+]
+
+fn fabric_group_same(a: FabricGroup, b: FabricGroup) -> Bool {
+  match a {
+    FabricGroupA => match b { FabricGroupA => true  FabricGroupB => false }
+    FabricGroupB => match b { FabricGroupA => false  FabricGroupB => true }
+  }
+}
+
+fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
+  first(filter(group_kv_pools_observed, r => fabric_group_same(a: r.group, b: group)))
 }
 
 // The head host of the first pair as observed: the unit and the serve process are on srv6, and the

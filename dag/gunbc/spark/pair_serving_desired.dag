@@ -24,7 +24,7 @@ import gunbc.spark.fabric_switch_observed {
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
-import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve }
+import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve, group_kv_pool_observed }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
 // Flash does not fit one Spark's unified pool, so the desired serving state is one vLLM engine
@@ -38,9 +38,9 @@ import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observ
 // What this module decides, and refuses to decide:
 //   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
 //     1048576 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
-//   - max-num-seqs is BY MEASURED POOL of the first launch of that group; until a group's pool has
-//     been read from its own engine, the unit carries the first pair's measured 32 as the admission
-//     count and the pool row records that it is inherited, not measured;
+//   - max-num-seqs is BY MEASURED POOL of the first launch of that group: a group whose pool has
+//     been read from its own engine carries a capacity whose basis is that pool; a group whose pool
+//     has not been read carries the first pair's measured 32 and a basis that says it is inherited;
 //   - each rank's host address and interface are resolved through the switched rail
 //     (gunbc.spark.fabric_rail_desired over the observed lane), never spelled here;
 //   - a group whose member still holds an undischarged llama.cpp RPC peer reservation is refused;
@@ -60,11 +60,23 @@ type SparkPairServingSeqCapacity
   | SeqCapacityUnmeasured
 
 // The first pair's pool (gunbc.spark.pair_serving_observed first_pair_kv_pool) sized max-num-seqs at
-// 32; a group of four has a larger pool per rank and the same admission count until its own launch
-// line is read back, at which point this row moves to that measurement.
+// 32, the operator's observed-safe admission count. A group's capacity is grounded in its OWN pool
+// once that launch line is read (group_kv_pool_observed); the count stays at 32 because no law from
+// pool tokens to admitted sequences is modeled — the pool bounds concurrency at full context (the
+// engine's own "Nx" figure), and requests are shorter than full context by an unmodeled margin.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
   max_num_seqs: first_pair_vllm_serve.max_num_seqs,
   basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the first pair's captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String, "; inherited by groups until their own launch line is read"], "") as NonEmptyStr,
+}
+
+fn spark_pair_serving_seq_capacity_for(group: FabricGroup) -> SparkPairServingSeqCapacity {
+  match group_kv_pool_observed(group: group) {
+    Absent => spark_pair_serving_seq_capacity
+    Present { value: pool } => SeqCapacityMeasured {
+      max_num_seqs: first_pair_vllm_serve.max_num_seqs,
+      basis: join(["pool of ", to_string(pool.pool_tokens), " tokens read from this group's own head stdout at ", pool.probed_at as String, "; ", pool.max_concurrency_at_max_model_len_wire as String, "; admission count carried from the operator-observed tuple"], "") as NonEmptyStr,
+    }
+  }
 }
 
 // "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
@@ -219,7 +231,7 @@ fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSe
 }
 
 fn spark_pair_serving_unit(group: FabricGroup) -> SparkPairServingUnit {
-  spark_pair_serving_unit_with(group: group, capacity: spark_pair_serving_seq_capacity)
+  spark_pair_serving_unit_with(group: group, capacity: spark_pair_serving_seq_capacity_for(group: group))
 }
 
 data spark_pair_serving_desired: List<SparkPairServingUnit> = map(spark_pair_serving_groups, g => spark_pair_serving_unit(group: g))
