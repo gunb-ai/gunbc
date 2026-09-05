@@ -21966,3 +21966,155 @@ mod listing_collector_refuses_rather_than_narrowing {
         );
     }
 }
+
+/// THE SECOND PRODUCER'S OWN EVIDENCE, BY EXECUTION.
+///
+/// `src/v1/05_emit_rust.dag` `file_list_match_expr` is a SEPARATE COPY of the listing decision --
+/// the emitted Rust runtime cannot call the interpreter's collector -- so the specimens above
+/// establish nothing about it. Neither does a clean regeneration or a standalone compile: one shows
+/// the mirror matches its authority, the other that the emitted text is well-formed Rust. Both are
+/// silent about what it DECIDES.
+///
+/// So this materializes the emitted expression from its `.dag` authority, compiles it, and runs it
+/// against real directories. Two of the three routes are provokable that way -- a name carrying the
+/// delimiter, and a native name that is not Unicode -- and both are created here rather than
+/// committed, because a repository carrying such filenames would be a hazard to every tool that
+/// walks the tree for reasons unrelated to this repair.
+///
+/// The advancement error is NOT provokable this way and is deliberately not faked: a fixture that
+/// forced `read_dir` to fail at a chosen step would be a second implementation of enumeration
+/// wearing the emitted code's name. That route's evidence is the injected collector specimen above,
+/// and the two implementations' agreement on it rests on review of both, which is stated rather
+/// than claimed as executed.
+#[cfg(test)]
+mod the_emitted_listing_producer_refuses_too {
+    fn emitted_list_expression() -> String {
+        let authority = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../05_emit_rust.dag")
+            .canonicalize()
+            .expect("the emitter authority is where this test says it is");
+        let source = std::fs::read_to_string(&authority).expect("read the emitter authority");
+        let line = source
+            .lines()
+            .find(|l| l.starts_with("data file_list_match_expr:"))
+            .expect("file_list_match_expr is still the listing authority");
+        let literal = line.split_once("= ").expect("a data row assigns").1.trim();
+        let inner = literal
+            .strip_prefix('"')
+            .and_then(|l| l.strip_suffix('"'))
+            .expect("the row's value is a string literal");
+        let mut out = String::new();
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        }
+        out
+    }
+
+    /// Compile the emitted expression into a probe binary and run it over `dir`, answering the
+    /// (success, error) pair the file transport would carry.
+    fn run_emitted_listing(work: &std::path::Path, dir: &std::path::Path) -> (bool, String) {
+        let src = work.join("probe.rs");
+        std::fs::write(
+            &src,
+            format!(
+                "fn main() {{\n    let file_path = std::env::args().nth(1).unwrap();\n    \
+                 let (file_success, file_content, file_error, _b): (bool, String, String, i64) = {}\n    \
+                 let _ = file_content;\n    println!(\"{{}}\\t{{}}\", file_success, file_error);\n}}\n",
+                emitted_list_expression()
+            ),
+        )
+        .expect("write the probe");
+        let bin = work.join("probe");
+        let compiled = std::process::Command::new("rustc")
+            .args(["--edition", "2021", "-o"])
+            .arg(&bin)
+            .arg(&src)
+            .output()
+            .expect("rustc runs");
+        assert!(
+            compiled.status.success(),
+            "the emitted listing expression must be well-formed Rust: {}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        let run = std::process::Command::new(&bin)
+            .arg(dir)
+            .output()
+            .expect("the probe runs");
+        // Split BEFORE trimming: `trim_end` treats the tab separator as trailing whitespace when
+        // the error half is empty, so trimming first collapsed the healthy `true\t` case into an
+        // unsplittable `true` and the fallback then read the whole line as the success field. The
+        // ordinary-directory control is what caught it -- the two refusal specimens were green
+        // throughout, which is exactly the false positive a control exists to rule out.
+        let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+        let line = stdout.strip_suffix('\n').unwrap_or(&stdout);
+        let (success, error) = line.split_once('\t').unwrap_or((line, ""));
+        (success == "true", error.to_string())
+    }
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-emitted-listing-{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch directory");
+        dir
+    }
+
+    #[test]
+    fn an_ordinary_directory_still_lists() {
+        let work = scratch("ordinary");
+        let subject = work.join("subject");
+        std::fs::create_dir_all(&subject).unwrap();
+        std::fs::write(subject.join("repo.json"), "{}").unwrap();
+        let (success, error) = run_emitted_listing(&work, &subject);
+        assert!(success, "an ordinary directory must still list: {error}");
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn a_name_carrying_the_delimiter_refuses_rather_than_fabricating_an_entry() {
+        let work = scratch("delimiter");
+        let subject = work.join("subject");
+        std::fs::create_dir_all(&subject).unwrap();
+        std::fs::write(subject.join("prefix\nrepo.json"), "x").unwrap();
+        let (success, error) = run_emitted_listing(&work, &subject);
+        assert!(!success, "a delimiter-bearing name must refuse the listing");
+        assert!(error.contains("line feed"), "{error}");
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_native_name_that_is_not_unicode_refuses_rather_than_being_dropped() {
+        use std::os::unix::ffi::OsStrExt;
+        let work = scratch("native");
+        let subject = work.join("subject");
+        std::fs::create_dir_all(&subject).unwrap();
+        let name = std::ffi::OsStr::from_bytes(&[0x66, 0x80, 0x66]);
+        std::fs::write(subject.join(name), "x").unwrap();
+        let (success, error) = run_emitted_listing(&work, &subject);
+        assert!(!success, "a non-Unicode name must refuse the listing");
+        assert!(error.contains("not valid UTF-8"), "{error}");
+        std::fs::remove_dir_all(&work).ok();
+    }
+}
