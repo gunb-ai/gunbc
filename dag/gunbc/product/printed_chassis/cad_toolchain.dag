@@ -103,56 +103,129 @@ fn provision_system_libraries_command(prefix: String) -> ArgvCommand {
   )
 }
 
-// THE OBSERVED STATE OF ONE REQUIREMENT. Unobserved is its own arm rather than folded into absent,
-// because "we did not look" and "we looked and it is not there" are different facts and only the
-// second justifies telling someone to change an image.
+// THE OBSERVED STATE OF ONE SYSTEM LIBRARY. Unobserved is its own arm rather than folded into
+// absent, because "we did not look" and "we looked and it is not there" are different facts and only
+// the second justifies telling someone to change an image.
 type LibraryObservation
   = LibraryPresent { soname: SharedLibrarySoname }
   | LibraryAbsent { soname: SharedLibrarySoname, provider_package: NonEmptyStr }
   | LibraryUnobserved { soname: SharedLibrarySoname }
 
-// THE TOOLCHAIN VERDICT. Every arm that is not Ready REFUSES and carries what is missing; none
-// substitutes a partial toolchain or a "best effort" run. A CadQuery program executed against a
+fn library_observation_soname(o: LibraryObservation) -> SharedLibrarySoname {
+  match o {
+    LibraryPresent { soname: s } => s
+    LibraryAbsent { soname: s, provider_package: _ } => s
+    LibraryUnobserved { soname: s } => s
+  }
+}
+
+fn library_observation_satisfies(o: LibraryObservation) -> Bool {
+  match o {
+    LibraryPresent { soname: _ } => true
+    LibraryAbsent { soname: _, provider_package: _ } => false
+    LibraryUnobserved { soname: _ } => false
+  }
+}
+
+// THE PYTHON SIDE IS OBSERVED TOO, AND THAT IS A REPAIR RATHER THAN AN ADDITION.
+//
+// This module declared the pinned distributions and a command to install them, and then judged the
+// toolchain on the SYSTEM LIBRARIES ALONE. A host carrying both SONAMEs and no importable CadQuery
+// therefore minted an execution plan, and the mint's whole claim is that the toolchain was judged.
+// A requirement that no observation can contradict is not a requirement; it is documentation sitting
+// inside a gate.
+type DistributionObservation
+  = DistributionImportable { distribution: NonEmptyStr, version: NonEmptyStr }
+  | DistributionMissing { distribution: NonEmptyStr }
+  | DistributionVersionMismatch { distribution: NonEmptyStr, found: NonEmptyStr, wanted: NonEmptyStr }
+  | DistributionUnobserved { distribution: NonEmptyStr }
+
+fn distribution_observation_name(o: DistributionObservation) -> NonEmptyStr {
+  match o {
+    DistributionImportable { distribution: d, version: _ } => d
+    DistributionMissing { distribution: d } => d
+    DistributionVersionMismatch { distribution: d, found: _, wanted: _ } => d
+    DistributionUnobserved { distribution: d } => d
+  }
+}
+
+fn distribution_observation_satisfies(o: DistributionObservation, wanted: NonEmptyStr) -> Bool {
+  match o {
+    DistributionImportable { distribution: _, version: v } => (v as String) == (wanted as String)
+    DistributionMissing { distribution: _ } => false
+    DistributionVersionMismatch { distribution: _, found: _, wanted: _ } => false
+    DistributionUnobserved { distribution: _ } => false
+  }
+}
+
+// COVERAGE OVER THE DECLARED POPULATION, WHICH IS THE OTHER HALF OF THE SAME DEFECT.
+//
+// Refusing only the EMPTY observation list closes the vacuous case and leaves the incomplete one
+// wide open: one present SONAME and a silently omitted second one produced Ready, because nothing
+// was absent and nothing was unobserved among what was supplied. "Every observation I was handed
+// passed" is not "every requirement is met", and the difference is invisible -- a short list does
+// not look short. So each requirement is looked up BY IDENTITY in the observations, and a
+// requirement with no matching observation refuses as unobserved rather than being skipped.
+fn library_observation_for(soname: SharedLibrarySoname, observations: List<LibraryObservation>) -> List<LibraryObservation> {
+  filter(observations, o =>
+    (shared_library_soname_text(s: library_observation_soname(o: o)) as String)
+      == (shared_library_soname_text(s: soname) as String))
+}
+
+fn provision_is_met(p: SystemLibraryProvision, observations: List<LibraryObservation>) -> Bool {
+  let matched = library_observation_for(soname: provision_soname(p: p), observations: observations)
+  if matched.length() == 1 {
+    fold(matched, init: true, f: (acc, o) => acc && library_observation_satisfies(o: o))
+  } else {
+    false
+  }
+}
+
+fn distribution_observation_for(name: NonEmptyStr, observations: List<DistributionObservation>) -> List<DistributionObservation> {
+  filter(observations, o => (distribution_observation_name(o: o) as String) == (name as String))
+}
+
+fn python_requirement_is_met(r: PythonDistributionRequirement, observations: List<DistributionObservation>) -> Bool {
+  let matched = distribution_observation_for(name: r.distribution, observations: observations)
+  if matched.length() == 1 {
+    fold(matched, init: true, f: (acc, o) => acc && distribution_observation_satisfies(o: o, wanted: r.version))
+  } else {
+    false
+  }
+}
+
+// THE TOOLCHAIN VERDICT. Every arm that is not Ready REFUSES and names what is unmet; none
+// substitutes a partial toolchain or a best-effort run. A CadQuery program executed against a
 // half-provisioned kernel does not produce a worse solid -- it produces no solid and a traceback,
 // and the failure arrives at the point of use rather than at the point of decision.
 type CadToolchainStanding
   = CadToolchainReady
-  | CadToolchainSystemLibrariesMissing { missing: List<LibraryObservation> }
-  | CadToolchainUnobserved { requirements: List<SystemLibraryProvision> }
+  | CadToolchainSystemLibrariesUnmet { unmet: List<SystemLibraryProvision> }
+  | CadToolchainDistributionsUnmet { unmet: List<PythonDistributionRequirement> }
 
-fn cad_library_absent(o: LibraryObservation) -> Bool {
-  match o {
-    LibraryPresent { soname: _ } => false
-    LibraryUnobserved { soname: _ } => false
-    LibraryAbsent { soname: _, provider_package: _ } => true
-  }
-}
-
-fn cad_library_unobserved(o: LibraryObservation) -> Bool {
-  match o {
-    LibraryPresent { soname: _ } => false
-    LibraryAbsent { soname: _, provider_package: _ } => false
-    LibraryUnobserved { soname: _ } => true
-  }
-}
-
-// AN EMPTY OBSERVATION LIST IS NOT A READY TOOLCHAIN. Folding it into Ready would make the verdict
-// vacuously green exactly when nothing had been measured, which is the empty-domain trap: the
-// predicate is satisfied because its domain is empty, and the result reads as evidence.
-fn judge_cad_toolchain(observations: List<LibraryObservation>) -> CadToolchainStanding {
-  if observations.length() == 0 {
-    CadToolchainUnobserved { requirements: cad_toolchain_system_provisions }
+// JUDGED AGAINST THE DECLARED ROSTERS, NOT AGAINST THE EVIDENCE SUPPLIED. Both populations are
+// walked; the observations are looked up. There is no arm in which an omitted requirement is
+// silently satisfied, and no empty-list special case is needed because an empty list simply fails to
+// cover anything.
+fn judge_cad_toolchain(
+  library_observations: List<LibraryObservation>,
+  distribution_observations: List<DistributionObservation>,
+) -> CadToolchainStanding {
+  let unmet_libraries = filter(
+    cad_toolchain_system_provisions,
+    p => provision_is_met(p: p, observations: library_observations) == false,
+  )
+  let unmet_distributions = filter(
+    cad_toolchain_python_requirements,
+    r => python_requirement_is_met(r: r, observations: distribution_observations) == false,
+  )
+  if unmet_libraries.length() > 0 {
+    CadToolchainSystemLibrariesUnmet { unmet: unmet_libraries }
   } else {
-    let absent = filter(observations, o => cad_library_absent(o: o))
-    let unobserved = filter(observations, o => cad_library_unobserved(o: o))
-    if unobserved.length() > 0 {
-      CadToolchainUnobserved { requirements: cad_toolchain_system_provisions }
+    if unmet_distributions.length() > 0 {
+      CadToolchainDistributionsUnmet { unmet: unmet_distributions }
     } else {
-      if absent.length() > 0 {
-        CadToolchainSystemLibrariesMissing { missing: absent }
-      } else {
-        CadToolchainReady
-      }
+      CadToolchainReady
     }
   }
 }
@@ -173,10 +246,10 @@ fn admit_cadquery_execution(
   script_path: String,
 ) -> CadQueryExecutionAdmission {
   match standing {
-    CadToolchainSystemLibrariesMissing { missing: m } =>
-      CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesMissing { missing: m } }
-    CadToolchainUnobserved { requirements: r } =>
-      CadQueryExecutionRefused { standing: CadToolchainUnobserved { requirements: r } }
+    CadToolchainSystemLibrariesUnmet { unmet: u } =>
+      CadQueryExecutionRefused { standing: CadToolchainSystemLibrariesUnmet { unmet: u } }
+    CadToolchainDistributionsUnmet { unmet: u } =>
+      CadQueryExecutionRefused { standing: CadToolchainDistributionsUnmet { unmet: u } }
     CadToolchainReady =>
       CadQueryExecutionAdmitted {
         plan: CadQueryExecutionPlan { command: cadquery_run_program_command(script_path: script_path) },

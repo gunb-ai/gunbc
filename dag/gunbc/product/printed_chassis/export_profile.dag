@@ -3,7 +3,7 @@ module product.printed_chassis.export_profile
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, Nanometer, nanometer, nanometer_count, micrometer_to_nanometer }
-import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs }
+import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs, stl_export_knobs_eq, RelativeDeflection, AbsoluteDeflection }
 
 // HOW ROUND A HOLE COMES OUT IS A MEASUREMENT DECISION, NOT A FILE-FORMAT DETAIL.
 //
@@ -38,10 +38,16 @@ fn chord_subject_eq(a: ChordSubject, b: ChordSubject) -> Bool {
 //
 // The undersize is nanometres because it is genuinely sub-micrometre on the smallest features, and
 // rounding to micrometres would report zero deviation for exactly the cases whose margin is claimed.
+// THE OBSERVATION CARRIES THE PROFILE IT WAS MEASURED UNDER, so a deviation can never be presented
+// as evidence for a profile it never ran against. The earlier shape took knobs as a free argument
+// beside the standings, which admits measure-under-P1 then admit-P2 -- and this module's own history
+// says why that is not paranoia: the first tolerance study re-exported a cached mesh, so a number
+// here can be about a different export than the one being authorized without anything looking wrong.
 type ChordObservation sole_constructor {
   subject: ChordSubject
   nominal_diameter: Micrometer
   measured_undersize: Nanometer
+  measured_under: StlExportKnobs
   instrument: NonEmptyStr
 }
 
@@ -49,15 +55,19 @@ fn chord_observation(
   subject: ChordSubject,
   nominal_diameter: Micrometer,
   measured_undersize: Nanometer,
+  measured_under: StlExportKnobs,
   instrument: NonEmptyStr,
 ) -> ChordObservation {
   ChordObservation {
     subject: subject,
     nominal_diameter: nominal_diameter,
     measured_undersize: measured_undersize,
+    measured_under: measured_under,
     instrument: instrument,
   }
 }
+
+fn observation_profile(o: ChordObservation) -> StlExportKnobs { o.measured_under }
 
 fn observation_subject(o: ChordObservation) -> ChordSubject { o.subject }
 
@@ -95,23 +105,30 @@ fn requirement_subject(r: ChordRequirement) -> ChordSubject {
 // away to nothing. A bias does not earn the cancellation the rule assumes, so the budget is set at
 // twice the conventional ratio. That is the whole justification, and it is falsifiable: establish a
 // bound showing the bias is compensated elsewhere in the chain and the doubling should go.
+// THE TWO FACTS ARE HELD APART AND THE RATIO IS DERIVED, so attribution is exact. Authoring 20 with
+// the rule named beside it would read as though the gaugemaker convention said twenty. It does not:
+// it says ten. The doubling is this repository's policy and it is separately falsifiable.
 type ChordBudgetPolicy sole_constructor {
-  ratio: Nat
-  convention: NonEmptyStr
-  why_stricter: NonEmptyStr
+  cited_ratio: Nat
+  cited_convention: NonEmptyStr
+  directional_bias_margin: Nat
+  margin_rationale: NonEmptyStr
 }
 
+fn budget_required_ratio(b: ChordBudgetPolicy) -> Nat { b.cited_ratio * b.directional_bias_margin }
+
 data chord_error_budget: ChordBudgetPolicy = ChordBudgetPolicy {
-  ratio: 20,
-  convention: "gaugemaker's rule: an instrument resolves ten times finer than the tolerance it judges",
-  why_stricter: "the rule assumes random error that partially cancels; an inscribed polygon undersizes every time, so this bias never averages out and is budgeted at twice the ratio",
+  cited_ratio: 10,
+  cited_convention: "gaugemaker's rule: an instrument resolves ten times finer than the tolerance it judges",
+  directional_bias_margin: 2,
+  margin_rationale: "the cited rule is stated for random error that partially cancels; an inscribed polygon undersizes every time, so this bias never averages out and does not earn that cancellation",
 }
 
 // THE COMPARISON IS A MULTIPLICATION, NOT A SUBTRACTION, and that is load-bearing rather than
 // stylistic. Nat subtraction in this substrate yields a NEGATIVE value: it neither saturates nor
 // refuses, so `smallest - undersize > 0` would silently read as satisfied for exactly the
 // observations that blow the budget. Scaling the observation up has no such arm.
-data chord_error_safety_factor: Nat = chord_error_budget.ratio
+data chord_error_safety_factor: Nat = budget_required_ratio(b: chord_error_budget)
 
 // ADJUDICATION JOINS THE TWO BY SUBJECT. A pair whose subjects disagree is not a weak verdict, it is
 // a mis-join, and it takes its own arm rather than being folded into a refusal that would read as a
@@ -140,6 +157,33 @@ fn adjudicate_chord(o: ChordObservation, r: ChordRequirement) -> ChordStanding {
   }
 }
 
+fn standing_profile(s: ChordStanding) -> StlExportKnobs {
+  match s {
+    WithinRequiredDistinction { observation: o, requirement: _ } => observation_profile(o: o)
+    ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_profile(o: o)
+    RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_profile(o: o)
+    ChordSubjectMismatch { observation: o, requirement: _ } => observation_profile(o: o)
+  }
+}
+
+fn standing_subject(s: ChordStanding) -> ChordSubject {
+  match s {
+    WithinRequiredDistinction { observation: o, requirement: _ } => observation_subject(o: o)
+    ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_subject(o: o)
+    RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_subject(o: o)
+    ChordSubjectMismatch { observation: o, requirement: _ } => observation_subject(o: o)
+  }
+}
+
+fn count_standings_for(subject: ChordSubject, standings: List<ChordStanding>) -> Nat {
+  fold(standings, init: 0, f: (acc, st) =>
+    if chord_subject_eq(a: standing_subject(s: st), b: subject) { acc + 1 } else { acc })
+}
+
+fn subject_in_roster(subject: ChordSubject, roster: List<ChordSubject>) -> Bool {
+  fold(roster, init: false, f: (acc, r) => acc || chord_subject_eq(a: r, b: subject))
+}
+
 fn standing_is_within(s: ChordStanding) -> Bool {
   match s {
     WithinRequiredDistinction { observation: _, requirement: _ } => true
@@ -149,34 +193,117 @@ fn standing_is_within(s: ChordStanding) -> Bool {
   }
 }
 
+// THE ROSTER IS THE DENOMINATOR, AND IT IS DECLARED RATHER THAN INFERRED FROM THE EVIDENCE.
+//
+// This is the defect that a review found and that an earlier witness in this module DEMONSTRATED
+// while being read as closing it. The admission used to take only the standings a caller chose to
+// supply, so "every standing I was handed passed" was returned as "the profile is safe". A caller
+// holding one green coupon standing and omitting both fan features received an admission, and the
+// paired witness that removed the undeclared feature and watched the call flip to admitted was
+// exhibiting exactly that writable state rather than proving a refusal.
+//
+// The repair is the same one this module already applies one level down. There, a measurement may
+// not carry its own pass criterion; here, evidence may not select its own subject population. Both
+// are the wrong-denominator error, and this one is worse because it is invisible: nothing about a
+// short list looks short.
+data export_profile_subject_roster: List<ChordSubject> = [
+  coupon_top_rung_subject,
+  fan_mounting_hole_subject,
+  fan_bore_subject,
+]
+
+// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT. Equal cardinality is satisfied by a foreign subject
+// standing in for a missing one, which is the substitution most likely to occur and least likely to
+// be noticed. Missing, foreign and duplicated are separate arms because they have separate remedies:
+// measure the feature, remove the stray, or resolve which of two readings is the one that counts.
+type SubjectCoverage
+  = CoverageComplete
+  | CoverageMissing { subjects: List<ChordSubject> }
+  | CoverageForeign { subjects: List<ChordSubject> }
+  | CoverageDuplicated { subjects: List<ChordSubject> }
+
+fn cover_roster(roster: List<ChordSubject>, standings: List<ChordStanding>) -> SubjectCoverage {
+  let missing = filter(roster, r => count_standings_for(subject: r, standings: standings) == 0)
+  let duplicated = filter(roster, r => count_standings_for(subject: r, standings: standings) > 1)
+  let foreign = filter(
+    map(standings, st => standing_subject(s: st)),
+    sub => subject_in_roster(subject: sub, roster: roster) == false,
+  )
+  if missing.length() > 0 {
+    CoverageMissing { subjects: missing }
+  } else {
+    if foreign.length() > 0 {
+      CoverageForeign { subjects: foreign }
+    } else {
+      if duplicated.length() > 0 {
+        CoverageDuplicated { subjects: duplicated }
+      } else {
+        CoverageComplete
+      }
+    }
+  }
+}
+
+// THE ADMITTED PROFILE IS DERIVED FROM THE EVIDENCE, NEVER SUPPLIED BESIDE IT. There is no `knobs`
+// parameter: the profile an admission authorizes is the one every observation was measured under,
+// and if the standings do not agree on that profile the admission refuses. A caller cannot name the
+// profile it wants blessed.
 type ExportProfileAdmission
   = ExportProfileAdmitted { knobs: StlExportKnobs, standings: List<ChordStanding> }
-  | ExportProfileRefusedUnmeasured { knobs_offered: StlExportKnobs }
-  | ExportProfileRefusedUnsettled { knobs_offered: StlExportKnobs, unsettled: List<ChordStanding> }
+  | ExportProfileRefusedIncomplete { coverage: SubjectCoverage }
+  | ExportProfileRefusedUnsettled { unsettled: List<ChordStanding> }
+  | ExportProfileRefusedProfileDisagreement { standings: List<ChordStanding> }
 
-// AN UNMEASURED PROFILE IS NOT AN ADMITTED PROFILE. The empty list takes its own refusal arm rather
-// than falling through: a fold over no standings finds no violation, so folding the empty case into
-// the green arm would make the profile MOST admissible exactly when nothing had been measured.
-fn admit_export_profile(knobs: StlExportKnobs, standings: List<ChordStanding>) -> ExportProfileAdmission {
-  if standings.length() == 0 {
-    ExportProfileRefusedUnmeasured { knobs_offered: knobs }
-  } else {
-    let unsettled = filter(standings, s => standing_is_within(s: s) == false)
-    if unsettled.length() > 0 {
-      ExportProfileRefusedUnsettled { knobs_offered: knobs, unsettled: unsettled }
-    } else {
-      ExportProfileAdmitted { knobs: knobs, standings: standings }
-    }
+// COVERAGE IS PROVEN BEFORE ANY GEOMETRY IS FOLDED, so a short or mismatched evidence set can never
+// reach the arm that reports on deviations. The empty list needs no special case any more: it is
+// simply the coverage failure that misses every rostered subject, which is a better diagnostic than
+// the bare "unmeasured" arm it replaces because it names WHICH subjects are unaccounted for.
+fn standings_share_one_profile(standings: List<ChordStanding>) -> Bool {
+  fold(standings, init: true, f: (acc, st) =>
+    acc && fold(standings, init: true, f: (inner, other) =>
+      inner && stl_export_knobs_eq(a: standing_profile(s: st), b: standing_profile(s: other))))
+}
+
+fn admit_export_profile(
+  roster: List<ChordSubject>,
+  standings: List<ChordStanding>,
+) -> ExportProfileAdmission {
+  match cover_roster(roster: roster, standings: standings) {
+    CoverageMissing { subjects: m } =>
+      ExportProfileRefusedIncomplete { coverage: CoverageMissing { subjects: m } }
+    CoverageForeign { subjects: f } =>
+      ExportProfileRefusedIncomplete { coverage: CoverageForeign { subjects: f } }
+    CoverageDuplicated { subjects: d } =>
+      ExportProfileRefusedIncomplete { coverage: CoverageDuplicated { subjects: d } }
+    CoverageComplete =>
+      if standings_share_one_profile(standings: standings) == false {
+        ExportProfileRefusedProfileDisagreement { standings: standings }
+      } else {
+        let unsettled = filter(standings, s => standing_is_within(s: s) == false)
+        if unsettled.length() > 0 {
+          ExportProfileRefusedUnsettled { unsettled: unsettled }
+        } else {
+          ExportProfileAdmitted {
+            knobs: fold(standings, init: exercised_stl_knobs, f: (acc, st) => standing_profile(s: st)),
+            standings: standings,
+          }
+        }
+      }
   }
 }
 
 // THE PROFILE THAT WAS ACTUALLY EXERCISED.
 //
-// WHY NOT TIGHTER. A finer angular tolerance buys deviation already far below the distinction the
-// coupon resolves, and pays for it in facet count and file size on every part forever. WHY NOT THE
-// LINEAR KNOB. It was varied across five values and the exported facet count did not move: on these
-// shapes the angular tolerance binds and the linear one is inert, so pinning it tighter would be a
-// number chosen to look careful.
+// WHY THESE VALUES. Under ABSOLUTE deflection the linear tolerance is the control that matters: it
+// bounds the chord error as a length, and at one micrometre every feature from a 3 mm hole to a
+// 76 mm bore lands near 1000 nm undersize regardless of size. That size-independence is the property
+// worth having, because a coupon and a bore should not be held to accidentally different fidelity.
+//
+// AN EARLIER REVISION CLAIMED THE LINEAR KNOB WAS INERT AND THAT WAS WRONG. It is inert under
+// RELATIVE deflection, which is what cq.exporters.export silently selects, and the deviation there
+// scales with diameter instead -- 932 nm on a 3 mm hole against 23622 nm on the bore, a 24x spread
+// that had nothing to do with either part's requirement. Declaring the interpretation is what turned
+// the knob back into a control.
 //
 // HOW THAT MEASUREMENT WENT WRONG FIRST, because the failure is reproducible and quiet. OCC caches a
 // triangulation on the shape, so re-exporting one shape at five tolerances returns the FIRST mesh
@@ -185,6 +312,7 @@ fn admit_export_profile(knobs: StlExportKnobs, standings: List<ChordStanding>) -
 data exercised_stl_knobs: StlExportKnobs = stl_export_knobs(
   linear_tolerance: micrometer(count: 1),
   angular_tolerance_text: "0.1",
+  deflection: AbsoluteDeflection,
 )
 
 // THE SUBJECT NAMES A FEATURE ON A PART, NOT A DIAMETER. An earlier revision of this roster labelled
@@ -204,20 +332,23 @@ data exercised_chord_observations: List<ChordObservation> = [
   chord_observation(
     subject: coupon_top_rung_subject,
     nominal_diameter: micrometer(count: 4000),
-    measured_undersize: nanometer(count: 1243),
-    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+    measured_undersize: nanometer(count: 993),
+    measured_under: exercised_stl_knobs,
+    instrument: "141 segments under absolute deflection; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
   ),
   chord_observation(
     subject: fan_mounting_hole_subject,
     nominal_diameter: micrometer(count: 4400),
-    measured_undersize: nanometer(count: 1368),
-    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+    measured_undersize: nanometer(count: 991),
+    measured_under: exercised_stl_knobs,
+    instrument: "148 segments under absolute deflection; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
   ),
   chord_observation(
     subject: fan_bore_subject,
     nominal_diameter: micrometer(count: 76000),
-    measured_undersize: nanometer(count: 23622),
-    instrument: "126 segments on the exported mesh; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
+    measured_undersize: nanometer(count: 998),
+    measured_under: exercised_stl_knobs,
+    instrument: "613 segments under absolute deflection; (r - r*cos(pi/n)) * 2, a DIAMETER undersize",
   ),
 ]
 

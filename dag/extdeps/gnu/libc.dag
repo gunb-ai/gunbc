@@ -58,12 +58,15 @@ fn platform_c_library_identity_tag(library: PlatformCLibrary) -> NonEmptyStr {
 // declares a MINIMUM glibc through its symbol versions, and whether a host can execute it is
 // decided by comparing two versions, not by matching two strings.
 //
-// So the ordering is authored as structure and the spelling is DERIVED from it by
-// render_glibc_version. The direction is what keeps this to one authority: the structured value is
-// the fact, the string is its projection. Authoring the string and parsing it back would be the
-// second scheme this module already refused -- and std carries no string splitter or numeric
-// parser, so a parser written here would additionally be a general-purpose facility minted to serve
-// one comparison.
+// So the ordering is authored as structure. The direction matters and is what keeps this to one
+// authority: a consumer needing upstream's spelling projects it FROM the structured value, never the
+// reverse. Authoring the string and parsing it back would be the second scheme this module already
+// refused -- and std carries no string splitter or numeric parser, so a parser written here would
+// additionally be a general-purpose facility minted to serve one comparison.
+//
+// NO PROJECTION IS DECLARED YET, because nothing consumes one. A renderer was written here first and
+// had no caller: review caught it as dead, and an unused projection is worse than a missing one
+// because it reads as a bridge that something is crossing.
 type GlibcVersion sole_constructor {
   major: Nat
   minor: Nat
@@ -71,10 +74,6 @@ type GlibcVersion sole_constructor {
 
 fn glibc_version(major: Nat, minor: Nat) -> GlibcVersion {
   GlibcVersion { major: major, minor: minor }
-}
-
-fn render_glibc_version(v: GlibcVersion) -> NonEmptyStr {
-  concat(concat(to_string(v.major), "."), to_string(v.minor)) as NonEmptyStr
 }
 
 // LEXICOGRAPHIC ON (major, minor), WRITTEN AS COMPARISONS RATHER THAN AS ARITHMETIC ON A COMBINED

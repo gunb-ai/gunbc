@@ -4,9 +4,11 @@ import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
 import extdeps.printing.orca_slicer { orca_slicer_required_glibc }
 import product.printed_chassis.slicing_toolchain {
   HostRuntimeObservation, HostGlibcObserved, HostGlibcUnobserved,
-  SlicerStanding, SlicerRunnable, SlicerAbiFloorUnmet, SlicerHostUnobserved,
+  HostAbiStanding, BelowObservedArtifactFloor, MeetsObservedArtifactFloor, HostAbiUnobserved,
+  OrcaExecutionStanding, ExecutionUnattempted, ExecutionRefused, ExecutionReady,
   SliceAdmission, SliceAdmitted, SliceRefused,
-  judge_slicer, admit_slice, observed_container_glibc,
+  judge_host_abi, judge_orca_execution, admit_slice,
+  observed_container_glibc, observed_srv2_glibc, container_execution, srv2_execution,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -15,11 +17,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // becomes an admission -- and paired, so they cannot be satisfied by a judgement that refuses
 // everything.
 
-fn standing_name(s: SlicerStanding) -> String {
-  match s {
-    SlicerRunnable { program: _ } => "runnable"
-    SlicerAbiFloorUnmet { provided: _, required: _ } => "abi-floor-unmet"
-    SlicerHostUnobserved => "host-unobserved"
+fn abi_name(a: HostAbiStanding) -> String {
+  match a {
+    MeetsObservedArtifactFloor { provided: _, required: _ } => "meets-floor"
+    BelowObservedArtifactFloor { provided: _, required: _ } => "below-floor"
+    HostAbiUnobserved => "unobserved"
+  }
+}
+
+fn execution_name(e: OrcaExecutionStanding) -> String {
+  match e {
+    ExecutionReady { attempt: _ } => "ready"
+    ExecutionRefused { receipt: _ } => "refused"
+    ExecutionUnattempted { abi: _ } => "unattempted"
   }
 }
 
@@ -30,65 +40,90 @@ fn admission_name(a: SliceAdmission) -> String {
   }
 }
 
-fn judged(v: GlibcVersion) -> String {
-  standing_name(s: judge_slicer(
+fn abi_of(v: GlibcVersion) -> String {
+  abi_name(a: judge_host_abi(observation: HostGlibcObserved { version: v, instrument: "fixture" }))
+}
+
+fn attempt(v: GlibcVersion, started: Bool) -> OrcaExecutionStanding {
+  judge_orca_execution(
     observation: HostGlibcObserved { version: v, instrument: "fixture" },
     program: "orca-slicer",
-  ))
+    started: started,
+    receipt: "fixture",
+  )
 }
 
-// THE BOUNDARY, BOTH SIDES. 2.37 must refuse and 2.38 must run: a comparison that answered one way
-// for every input would satisfy either witness alone, and neither alone would notice an off-by-one
-// in the wrong direction -- which is the error that would refuse a host that actually works.
-test fn w_the_abi_floor_refuses_below_and_admits_at_the_measured_version() -> Bool {
-  judged(v: glibc_version(major: 2, minor: 37)) == "abi-floor-unmet"
-  && judged(v: glibc_version(major: 2, minor: 38)) == "runnable"
-  && judged(v: glibc_version(major: 2, minor: 39)) == "runnable"
+// THE FLOOR COMPARISON, BOTH SIDES. 2.37 is below and 2.38 meets: a comparison answering one way for
+// every input satisfies either half alone, and neither alone catches an off-by-one in the direction
+// that rejects a host which would have worked.
+test fn w_the_abi_floor_separates_below_from_meets_at_the_measured_version() -> Bool {
+  abi_of(v: glibc_version(major: 2, minor: 37)) == "below-floor"
+  && abi_of(v: glibc_version(major: 2, minor: 38)) == "meets-floor"
+  && abi_of(v: glibc_version(major: 2, minor: 39)) == "meets-floor"
 }
 
-// A MAJOR VERSION AHEAD WITH A SMALLER MINOR MUST STILL SATISFY. Comparing the minor alone, or
-// packing the pair into one number, both pass the witness above and fail this one.
+// A HIGHER MAJOR WITH A LOWER MINOR STILL SATISFIES. Comparing the minor alone, or packing the pair
+// into a single number, passes the witness above and fails this one.
 test fn w_a_higher_major_with_a_lower_minor_still_satisfies() -> Bool {
-  judged(v: glibc_version(major: 3, minor: 0)) == "runnable"
-  && judged(v: glibc_version(major: 1, minor: 99)) == "abi-floor-unmet"
+  abi_of(v: glibc_version(major: 3, minor: 0)) == "meets-floor"
+  && abi_of(v: glibc_version(major: 1, minor: 99)) == "below-floor"
 }
 
-// AN UNMEASURED HOST IS NOT A PASSING HOST. The arm exists so the dynamic linker is never the thing
-// that discovers a decision nobody made.
+// MEETING THE FLOOR IS NOT RUNNING, AND THIS IS THE WITNESS THE EARLIER SHAPE GOT WRONG. It asserted
+// that 2.38 "runs", which execution disproved within the hour on a host at 2.39. Clearing the floor
+// only means the loader will not reject the binary for a missing glibc symbol; the rest of the
+// runtime closure is still unproven, so an attempt above the floor may still refuse.
+test fn w_meeting_the_floor_does_not_by_itself_establish_execution() -> Bool {
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), started: false)) == "refused"
+  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 39), started: true)) == "ready"
+}
+
+// BELOW THE FLOOR THERE IS NOTHING TO ATTEMPT, and that is a different verdict from an attempt that
+// failed -- they have different remedies. A started=true claim below the floor must NOT be honoured,
+// or the ABI check is decorative.
+test fn w_below_the_floor_is_unattempted_even_if_a_caller_claims_it_started() -> Bool {
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: true)) == "unattempted"
+  && execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: false)) == "unattempted"
+}
+
+// AN UNOBSERVED HOST REFUSES rather than being assumed compatible, so the dynamic linker is never
+// the thing that discovers a decision nobody made.
 test fn w_an_unobserved_host_refuses_rather_than_being_assumed_compatible() -> Bool {
-  standing_name(s: judge_slicer(observation: HostGlibcUnobserved, program: "orca-slicer"))
-    == "host-unobserved"
+  execution_name(e: judge_orca_execution(
+    observation: HostGlibcUnobserved, program: "orca-slicer", started: true, receipt: "fixture",
+  )) == "unattempted"
 }
 
-// THIS CONTAINER, AS MEASURED. If the execution environment is ever changed to one that meets the
-// floor, this witness goes RED -- which is correct: it is the declared refusal's own regression
-// control, and its flip is the signal to retire the refusal rather than to edit the expectation.
-test fn w_this_container_does_not_meet_the_slicers_measured_floor() -> Bool {
-  standing_name(s: judge_slicer(observation: observed_container_glibc, program: "orca-slicer"))
-    == "abi-floor-unmet"
+// THE TWO ARMS THAT ARE NOT THE SAME FAILURE. A host below the floor never reaches an attempt; a
+// host above it can still be refused. The fixture supplies the first and the two RECORDED hosts
+// supply the second -- both of them now, because the session image was upgraded past the floor and
+// the artifact still does not run.
+//
+// AN EARLIER VERSION OF THIS WITNESS PAIRED THE FIXTURE ROLE WITH THE RECORDED CONTAINER, asserting
+// it was below the floor. That went red the hour the image moved to Debian 13, exactly as designed.
+// The recorded rows were re-measured; the expectation was not edited to keep them green.
+test fn w_below_the_floor_and_refused_above_it_are_different_failures() -> Bool {
+  execution_name(e: attempt(v: glibc_version(major: 2, minor: 36), started: true)) == "unattempted"
+  && execution_name(e: container_execution) == "refused"
+  && execution_name(e: srv2_execution) == "refused"
 }
 
-// AND THE PLAN IS NOT MINTED. A refusal that still handed back a runnable command would be the
-// escape hatch DESIGN section 5 forbids; the paired admission proves the function can mint at all.
-test fn w_no_slice_plan_is_minted_while_the_floor_is_unmet_and_one_is_when_it_is_met() -> Bool {
-  let refused = admit_slice(
-    standing: judge_slicer(observation: observed_container_glibc, program: "orca-slicer"),
+// AND NO PLAN IS MINTED FROM EITHER, while a started attempt above the floor does mint one -- so the
+// refusal is not satisfied by a function that refuses everything.
+test fn w_no_plan_is_minted_from_either_recorded_host_and_one_is_from_a_started_attempt() -> Bool {
+  admission_name(a: sliced(s: container_execution)) == "refused"
+  && admission_name(a: sliced(s: srv2_execution)) == "refused"
+  && admission_name(a: sliced(s: attempt(v: glibc_version(major: 2, minor: 39), started: true)))
+       == "admitted"
+}
+
+fn sliced(s: OrcaExecutionStanding) -> SliceAdmission {
+  admit_slice(
+    standing: s,
     input_model: "fan_mount.stl",
     output_project: "fan_mount.3mf",
     printer_profile: "a1-mini",
     filament_profile: "petg",
     process_profile: "0.20mm",
   )
-  let admitted = admit_slice(
-    standing: judge_slicer(
-      observation: HostGlibcObserved { version: glibc_version(major: 2, minor: 39), instrument: "fixture" },
-      program: "orca-slicer",
-    ),
-    input_model: "fan_mount.stl",
-    output_project: "fan_mount.3mf",
-    printer_profile: "a1-mini",
-    filament_profile: "petg",
-    process_profile: "0.20mm",
-  )
-  admission_name(a: refused) == "refused" && admission_name(a: admitted) == "admitted"
 }

@@ -44,9 +44,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data orca_slicer_version: NonEmptyStr = "2.4.2"
 
-// THE PUBLISHED ARTIFACT FOR THIS ARCHITECTURE, read first-party from the release API rather than
-// relayed. aarch64 Linux appears at v2.4.0 and every aarch64 asset upstream publishes is built on
-// Ubuntu 24.04; there is no aarch64 asset built against an older toolchain to fall back to.
+// THE SELECTED ARTIFACT, AND THE CLAIM IS ABOUT THE APPIMAGE ROUTE ONLY. An earlier revision said
+// "aarch64 support appears at v2.4.0", which is false: upstream published an aarch64 FLATPAK at
+// v2.3.1. The narrow true statement is the one that bears on the choice made here -- the aarch64
+// AppImage, which is the no-root route, appears at v2.4.0, and every aarch64 AppImage upstream ships
+// is built on Ubuntu 24.04, so there is no AppImage built against an older toolchain to fall back
+// to. The flatpak does not help independently, because this environment has neither flatpak nor
+// bubblewrap; it is named so the census is not read as broader than it is.
 data orca_slicer_linux_aarch64_appimage: NonEmptyStr = "OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage"
 
 // THE CONTENT DIGEST OF THE ARTIFACT THAT WAS ACTUALLY FETCHED AND EXAMINED. A version alone does
@@ -56,12 +60,22 @@ data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f17662
 
 // THE ABI FLOOR, MEASURED FROM THE ARTIFACT AND NOT INFERRED FROM ITS FILENAME.
 //
-// The AppImage was extracted and its slicer binary's symbol versions read directly: the highest
-// versioned reference is GLIBC_2.38. The Ubuntu 24.04 in the asset name would have SUGGESTED a floor
-// of 2.39, and that guess would have been WRONG IN THE DIRECTION THAT REFUSES A WORKING HOST -- a
-// build host's glibc is an upper bound on what a binary may reference, never the floor it actually
-// requires. extdeps.gnu.libc exists because a target triple does not carry this fact; a distribution
-// codename in a filename does not carry it either.
+// The AppImage was extracted and symbol versions read across its WHOLE ELF CLOSURE -- 150 objects,
+// executables and shared libraries alike -- not from the main binary alone. The highest versioned
+// reference is GLIBC_2.38. Censusing only the entry binary was the first shape of this measurement
+// and it is the wrong denominator: a bundled plugin may reference a newer symbol than the executable
+// that loads it, and the floor that decides executability is the maximum over the closure.
+//
+// The Ubuntu 24.04 in the asset name would have SUGGESTED 2.39, and that guess would have been WRONG
+// IN THE DIRECTION THAT REFUSES A WORKING HOST -- a build host's glibc is an upper bound on what a
+// binary may reference, never the floor it actually requires. extdeps.gnu.libc exists because a
+// target triple does not carry this fact; a codename in a filename does not carry it either.
+//
+// AND THE FLOOR IS NECESSARY, NOT SUFFICIENT. Meeting it says the loader will not reject the binary
+// for a missing glibc symbol. It says nothing about the rest of the artifact's runtime closure, and
+// this was demonstrated rather than reasoned: on a host at 2.39, well above the floor, the artifact
+// still refused to start for want of libOpenGL, libGLU, libEGL and WebKitGTK. Any model that treats
+// clearing the floor as "runs" is overstating its own measurement.
 data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 38)
 
 // THE CLI, WHICH IS THE ONLY INTERFACE THIS REPOSITORY USES. The desktop application is the same

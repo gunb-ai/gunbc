@@ -1,6 +1,6 @@
 module extdeps.cadquery.cadquery
 
-import std.types { String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { Micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -65,13 +65,49 @@ fn cadquery_run_program_command(script_path: String) -> ArgvCommand {
 // it in millimetres -- and this substrate carries lengths. Spelling a length as a string merges the
 // quantity with its textual realization, which DESIGN section 3 separates: the interface here is a
 // length, and the Python spelling is one realization of it.
+// RELATIVE IS EXPLICIT BECAUSE IT CHANGES WHAT THE LINEAR NUMBER MEANS. Upstream's `relative` flag
+// switches linear deflection between an absolute length and a fraction of the shape's size, so a
+// tolerance measured under one interpretation is not a tolerance under the other. Leaving it to the
+// default meant every deviation recorded downstream was CONDITIONAL on a value nothing declared --
+// the measurement would still have been taken, and would silently have been about a different
+// policy than the one being authorized.
+type DeflectionInterpretation = AbsoluteDeflection | RelativeDeflection
+
+fn deflection_is_relative(d: DeflectionInterpretation) -> Bool {
+  match d {
+    AbsoluteDeflection => false
+    RelativeDeflection => true
+  }
+}
+
+fn render_python_bool(b: Bool) -> String {
+  if b { "True" } else { "False" }
+}
+
 type StlExportKnobs sole_constructor {
   linear_tolerance: Micrometer
   angular_tolerance_text: NonEmptyStr
+  deflection: DeflectionInterpretation
 }
 
-fn stl_export_knobs(linear_tolerance: Micrometer, angular_tolerance_text: NonEmptyStr) -> StlExportKnobs {
-  StlExportKnobs { linear_tolerance: linear_tolerance, angular_tolerance_text: angular_tolerance_text }
+fn stl_export_knobs(
+  linear_tolerance: Micrometer,
+  angular_tolerance_text: NonEmptyStr,
+  deflection: DeflectionInterpretation,
+) -> StlExportKnobs {
+  StlExportKnobs {
+    linear_tolerance: linear_tolerance,
+    angular_tolerance_text: angular_tolerance_text,
+    deflection: deflection,
+  }
+}
+
+// EQUALITY OVER EVERY FIELD, so a consumer asking whether two measurements share a profile cannot be
+// answered yes by two profiles that differ in the field it forgot to compare.
+fn stl_export_knobs_eq(a: StlExportKnobs, b: StlExportKnobs) -> Bool {
+  micrometer_count(m: a.linear_tolerance) == micrometer_count(m: b.linear_tolerance)
+  && (a.angular_tolerance_text as String) == (b.angular_tolerance_text as String)
+  && deflection_is_relative(d: a.deflection) == deflection_is_relative(d: b.deflection)
 }
 
 // RENDERED IN EXPONENT FORM RATHER THAN AS A DECIMAL FRACTION, because a micrometre is exactly one
@@ -82,11 +118,30 @@ fn render_millimetre_tolerance(t: Micrometer) -> String {
   concat(to_string(micrometer_count(m: t)), "e-3")
 }
 
+// THE CALL IS Shape.exportStl AND NOT exporters.export, AND THAT IS FORCED BY THE MODEL RATHER THAN
+// PREFERRED. exporters.export takes no `relative` parameter at all: it forwards to exportStl
+// positionally and lets relative and parallel fall to their defaults, so relative is True and the
+// linear tolerance is a FRACTION OF SHAPE SIZE. This module types that tolerance as a Micrometer --
+// an absolute length -- so routing through export would have the emission mean something the model
+// does not say, which is the model/emission disagreement class in its purest form.
+//
+// Measured rather than argued. At one micrometre with relative deflection every hole tessellates to
+// the same 126 segments and the deviation SCALES with diameter: 932 nm on a 3 mm hole and 23622 nm
+// on a 76 mm bore. Under absolute deflection the segment count adapts -- 126, 141, 148, 613 -- and
+// every deviation converges on the tolerance itself, near 1000 nm, which is what an absolute linear
+// bound is supposed to do. The earlier claim that the linear knob was inert on these shapes was true
+// only under the relative interpretation that nothing had declared.
+//
+// Every remaining parameter is passed explicitly for the same reason: a default not written down is
+// a policy nobody chose, and the measurement above is only about the policy it actually ran under.
 fn stl_export_call(destination: String, knobs: StlExportKnobs) -> String {
   join([
-    "cq.exporters.export(result, \"", destination, "\"",
+    "result.val().exportStl(\"", destination, "\"",
     ", tolerance=", render_millimetre_tolerance(t: knobs.linear_tolerance),
     ", angularTolerance=", knobs.angular_tolerance_text as String,
+    ", ascii=False",
+    ", relative=", render_python_bool(b: deflection_is_relative(d: knobs.deflection)),
+    ", parallel=True",
     ")\n",
   ], "")
 }

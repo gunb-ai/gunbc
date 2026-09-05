@@ -2,15 +2,18 @@ module test.claim.printed_chassis_export_profile_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { micrometer, nanometer }
+import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs, RelativeDeflection }
 import product.printed_chassis.export_profile {
   ChordSubject, chord_subject, ChordObservation, chord_observation,
   ChordRequirement, DistinctionDeclared, DistinctionUndeclared,
   ChordStanding, WithinRequiredDistinction, ExceedsRequiredDistinction,
   RequiredDistinctionUndeclared, ChordSubjectMismatch,
   adjudicate_chord, admit_export_profile,
-  ExportProfileAdmission, ExportProfileAdmitted, ExportProfileRefusedUnmeasured,
-  ExportProfileRefusedUnsettled,
-  exercised_stl_knobs, coupon_top_rung_subject, fan_bore_subject,
+  ExportProfileAdmission, ExportProfileAdmitted, ExportProfileRefusedUnsettled,
+  exercised_stl_knobs, coupon_top_rung_subject, fan_bore_subject, fan_mounting_hole_subject,
+  SubjectCoverage, CoverageComplete, CoverageMissing, CoverageForeign, CoverageDuplicated,
+  cover_roster, export_profile_subject_roster, ExportProfileRefusedIncomplete,
+  ExportProfileRefusedProfileDisagreement,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,8 +34,9 @@ fn standing_name(s: ChordStanding) -> String {
 fn admission_name(a: ExportProfileAdmission) -> String {
   match a {
     ExportProfileAdmitted { knobs: _, standings: _ } => "admitted"
-    ExportProfileRefusedUnmeasured { knobs_offered: _ } => "unmeasured"
-    ExportProfileRefusedUnsettled { knobs_offered: _, unsettled: _ } => "unsettled"
+    ExportProfileRefusedIncomplete { coverage: _ } => "incomplete"
+    ExportProfileRefusedProfileDisagreement { standings: _ } => "disagreement"
+    ExportProfileRefusedUnsettled { unsettled: _ } => "unsettled"
   }
 }
 
@@ -41,9 +45,29 @@ fn probe_observation(subject: ChordSubject, undersize: Nat) -> ChordObservation 
     subject: subject,
     nominal_diameter: micrometer(count: 4000),
     measured_undersize: nanometer(count: undersize),
+    measured_under: exercised_stl_knobs,
     instrument: "fixture",
   )
 }
+
+// A SECOND PROFILE, USED ONLY TO PROVE THE ADMISSION NOTICES. It differs from the exercised profile
+// in the deflection interpretation, which is exactly the field whose omission made the earlier
+// measurement mean something other than what the model said.
+fn probe_observation_under(subject: ChordSubject, undersize: Nat, k: StlExportKnobs) -> ChordObservation {
+  chord_observation(
+    subject: subject,
+    nominal_diameter: micrometer(count: 4000),
+    measured_undersize: nanometer(count: undersize),
+    measured_under: k,
+    instrument: "fixture",
+  )
+}
+
+data other_profile: StlExportKnobs = stl_export_knobs(
+  linear_tolerance: micrometer(count: 1),
+  angular_tolerance_text: "0.1",
+  deflection: RelativeDeflection,
+)
 
 data coupon_requirement: ChordRequirement = DistinctionDeclared {
   subject: coupon_top_rung_subject,
@@ -56,7 +80,7 @@ data coupon_requirement: ChordRequirement = DistinctionDeclared {
 // that and is the reason this one is not satisfiable by a constructor that always answers within.
 test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool {
   standing_name(s: adjudicate_chord(
-    o: probe_observation(subject: coupon_top_rung_subject, undersize: 1243),
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 993),
     r: coupon_requirement,
   )) == "within"
 }
@@ -80,7 +104,7 @@ test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool {
 // have admitted one nobody had judged.
 test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
   standing_name(s: adjudicate_chord(
-    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+    o: probe_observation(subject: fan_bore_subject, undersize: 993),
     r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
   )) == "undeclared"
 }
@@ -90,30 +114,112 @@ test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
 // bookkeeping error to the mesh.
 test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch() -> Bool {
   standing_name(s: adjudicate_chord(
-    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+    o: probe_observation(subject: fan_bore_subject, undersize: 993),
     r: coupon_requirement,
   )) == "mismatch"
 }
 
-// THE EMPTY DOMAIN. Nothing measured must not read as nothing wrong.
-test fn w_an_unmeasured_profile_is_refused_rather_than_admitted() -> Bool {
-  admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [])) == "unmeasured"
+fn coverage_name(c: SubjectCoverage) -> String {
+  match c {
+    CoverageComplete => "complete"
+    CoverageMissing { subjects: _ } => "missing"
+    CoverageForeign { subjects: _ } => "foreign"
+    CoverageDuplicated { subjects: _ } => "duplicated"
+  }
 }
 
-// ONE UNSETTLED FEATURE REFUSES THE WHOLE PROFILE, and the pair is what makes that non-vacuous: the
-// same call admits once the undeclared subject is removed, so the refusal is caused by that feature
-// and not by the function being unable to admit anything.
-test fn w_one_undeclared_feature_refuses_the_profile_and_its_removal_admits_it() -> Bool {
-  let good = adjudicate_chord(
-    o: probe_observation(subject: coupon_top_rung_subject, undersize: 1243),
+fn coupon_standing() -> ChordStanding {
+  adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 993),
     r: coupon_requirement,
   )
-  let unsettled = adjudicate_chord(
-    o: probe_observation(subject: fan_bore_subject, undersize: 1243),
+}
+
+fn bore_standing() -> ChordStanding {
+  adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 993),
     r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
   )
-  admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [good, unsettled]))
-      == "unsettled"
-  && admission_name(a: admit_export_profile(knobs: exercised_stl_knobs, standings: [good]))
-      == "admitted"
+}
+
+// THE DENOMINATOR IS THE ROSTER, NOT THE EVIDENCE. This replaces a witness that asserted the
+// opposite: the previous pairing removed the undeclared feature from the ARGUMENT and watched the
+// call flip to admitted, which exhibited the writable state rather than closing it. Dropping a
+// rostered subject must now refuse as MISSING, and it must be distinguishable from a subject that
+// was measured and failed -- those have different remedies.
+test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bool {
+  admission_name(a: admit_export_profile(
+    roster: export_profile_subject_roster,
+    standings: [coupon_standing()],
+  )) == "incomplete"
+  && coverage_name(c: cover_roster(
+    roster: export_profile_subject_roster,
+    standings: [coupon_standing()],
+  )) == "missing"
+}
+
+// AND THE PAIRED ADMISSION, so the refusal above is not satisfied by a function that refuses
+// everything: a roster naming exactly the one measured subject admits on the same evidence. What
+// changed between the two calls is the DECLARED SUBJECT POPULATION, which is the distinction the
+// old witness could not make.
+test fn w_a_roster_of_exactly_the_measured_subject_admits_on_the_same_evidence() -> Bool {
+  admission_name(a: admit_export_profile(
+    roster: [coupon_top_rung_subject],
+    standings: [coupon_standing()],
+  )) == "admitted"
+}
+
+// A FOREIGN SUBJECT CANNOT STAND IN FOR A MISSING ONE. Equal cardinality is the substitution most
+// likely to happen and least likely to be seen, so coverage is an identity join and this witness is
+// what makes that non-decorative: the count matches and it still refuses.
+test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool {
+  coverage_name(c: cover_roster(
+    roster: [coupon_top_rung_subject],
+    standings: [bore_standing()],
+  )) == "missing"
+  && coverage_name(c: cover_roster(
+    roster: [coupon_top_rung_subject, fan_bore_subject],
+    standings: [coupon_standing(), coupon_standing()],
+  )) == "missing"
+}
+
+// THE FULL DECLARED ROSTER REFUSES TODAY, and that is the honest state rather than a failure: two of
+// its three subjects have no measured requirement. If this ever reads "admitted" without those
+// requirements being authored, the roster or the adjudication has been weakened.
+test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -> Bool {
+  admission_name(a: admit_export_profile(
+    roster: export_profile_subject_roster,
+    standings: [coupon_standing(), fan_hole_standing(), bore_standing()],
+  )) == "unsettled"
+}
+
+fn fan_hole_standing() -> ChordStanding {
+  adjudicate_chord(
+    o: probe_observation(subject: fan_mounting_hole_subject, undersize: 1368),
+    r: DistinctionUndeclared { subject: fan_mounting_hole_subject, because: "fixture" },
+  )
+}
+
+// EVIDENCE CANNOT BE MEASURED UNDER ONE PROFILE AND USED TO BLESS ANOTHER. The admission derives the
+// profile it authorizes FROM the standings, so a set that disagrees about which profile it ran under
+// has no answer to derive and refuses. This is the measure-under-P1 then admit-P2 hole, and the OCC
+// cache incident is why it is not hypothetical: a number here can be about a different export than
+// the one being authorized with nothing looking wrong.
+test fn w_standings_measured_under_different_profiles_refuse() -> Bool {
+  let a = adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    r: coupon_requirement,
+  )
+  let b = adjudicate_chord(
+    o: probe_observation_under(subject: fan_bore_subject, undersize: 993, k: other_profile),
+    r: DistinctionDeclared { subject: fan_bore_subject, smallest: micrometer(count: 100), authority: "fixture" },
+  )
+  admission_name(a: admit_export_profile(
+    roster: [coupon_top_rung_subject, fan_bore_subject],
+    standings: [a, b],
+  )) == "disagreement"
+  && admission_name(a: admit_export_profile(
+    roster: [coupon_top_rung_subject],
+    standings: [a],
+  )) == "admitted"
 }
