@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn standing_name(s: ChordStanding) -> String {
   match s {
-    WithinRequiredDistinction { observation: _, requirement: _ } => "within"
+    WithinRequiredDistinction { judgment: _ } => "within"
     ExceedsRequiredDistinction { observation: _, requirement: _ } => "exceeds"
     RequiredDistinctionUndeclared { observation: _, requirement: _ } => "undeclared"
     ChordSubjectMismatch { observation: _, requirement: _ } => "mismatch"

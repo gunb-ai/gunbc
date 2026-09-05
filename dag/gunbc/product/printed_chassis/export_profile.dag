@@ -4,6 +4,10 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, Nanometer, nanometer, nanometer_count, micrometer_to_nanometer }
 import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs, stl_export_knobs_eq, RelativeDeflection, AbsoluteDeflection }
+import product.printed_chassis.coupon {
+  LadderConstruction, LadderReady, LadderStepIsZero, LadderTooFewRungs,
+  ladder_step, hole_ladder_spec,
+}
 
 // HOW ROUND A HOLE COMES OUT IS A MEASUREMENT DECISION, NOT A FILE-FORMAT DETAIL.
 //
@@ -133,8 +137,22 @@ data chord_error_safety_factor: Nat = budget_required_ratio(b: chord_error_budge
 // ADJUDICATION JOINS THE TWO BY SUBJECT. A pair whose subjects disagree is not a weak verdict, it is
 // a mis-join, and it takes its own arm rather than being folded into a refusal that would read as a
 // finding about the geometry.
+// THE PASSING ARM CARRIES A SEALED JUDGMENT; THE FAILING ARMS DO NOT NEED TO. Every arm here was a
+// public constructor, so a caller could wrap an excessive deviation -- or an UNDECLARED requirement
+// -- in WithinRequiredDistinction for all three subjects and be admitted, with adjudicate_chord
+// never running. Coverage was an identity join over subjects that were never actually judged.
+//
+// Only the passing arm is sealed, and the asymmetry is the point rather than an omission: an
+// authored REFUSAL costs an export that would have been fine, an authored PASS admits a profile
+// nothing measured. Sealing the arms a caller can only hurt itself with would buy nothing and cost
+// every fixture the ability to state a failure directly.
+type ChordJudgment sole_constructor {
+  observation: ChordObservation
+  requirement: ChordRequirement
+}
+
 type ChordStanding
-  = WithinRequiredDistinction { observation: ChordObservation, requirement: ChordRequirement }
+  = WithinRequiredDistinction { judgment: ChordJudgment }
   | ExceedsRequiredDistinction { observation: ChordObservation, requirement: ChordRequirement }
   | RequiredDistinctionUndeclared { observation: ChordObservation, requirement: ChordRequirement }
   | ChordSubjectMismatch { observation: ChordObservation, requirement: ChordRequirement }
@@ -149,7 +167,7 @@ fn adjudicate_chord(o: ChordObservation, r: ChordRequirement) -> ChordStanding {
       DistinctionDeclared { subject: _, smallest: s, authority: _ } =>
         if nanometer_count(n: o.measured_undersize) * chord_error_safety_factor
              <= nanometer_count(n: micrometer_to_nanometer(m: s)) {
-          WithinRequiredDistinction { observation: o, requirement: r }
+          WithinRequiredDistinction { judgment: ChordJudgment { observation: o, requirement: r } }
         } else {
           ExceedsRequiredDistinction { observation: o, requirement: r }
         }
@@ -159,7 +177,7 @@ fn adjudicate_chord(o: ChordObservation, r: ChordRequirement) -> ChordStanding {
 
 fn standing_profile(s: ChordStanding) -> StlExportKnobs {
   match s {
-    WithinRequiredDistinction { observation: o, requirement: _ } => observation_profile(o: o)
+    WithinRequiredDistinction { judgment: j } => observation_profile(o: j.observation)
     ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_profile(o: o)
     RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_profile(o: o)
     ChordSubjectMismatch { observation: o, requirement: _ } => observation_profile(o: o)
@@ -168,7 +186,7 @@ fn standing_profile(s: ChordStanding) -> StlExportKnobs {
 
 fn standing_subject(s: ChordStanding) -> ChordSubject {
   match s {
-    WithinRequiredDistinction { observation: o, requirement: _ } => observation_subject(o: o)
+    WithinRequiredDistinction { judgment: j } => observation_subject(o: j.observation)
     ExceedsRequiredDistinction { observation: o, requirement: _ } => observation_subject(o: o)
     RequiredDistinctionUndeclared { observation: o, requirement: _ } => observation_subject(o: o)
     ChordSubjectMismatch { observation: o, requirement: _ } => observation_subject(o: o)
@@ -186,7 +204,7 @@ fn subject_in_roster(subject: ChordSubject, roster: List<ChordSubject>) -> Bool 
 
 fn standing_is_within(s: ChordStanding) -> Bool {
   match s {
-    WithinRequiredDistinction { observation: _, requirement: _ } => true
+    WithinRequiredDistinction { judgment: _ } => true
     ExceedsRequiredDistinction { observation: _, requirement: _ } => false
     RequiredDistinctionUndeclared { observation: _, requirement: _ } => false
     ChordSubjectMismatch { observation: _, requirement: _ } => false
@@ -258,10 +276,17 @@ type ExportProfileAdmission
 // reach the arm that reports on deviations. The empty list needs no special case any more: it is
 // simply the coverage failure that misses every rostered subject, which is a better diagnostic than
 // the bare "unmeasured" arm it replaces because it names WHICH subjects are unaccounted for.
+// EQUALITY IS TRANSITIVE, SO ONE PASS SUFFICES. This compared every standing against every other,
+// which is the copied-accumulator shape DESIGN section 6 says to fix regardless of the realized n --
+// three subjects today, and n is not a time-stable fact. Comparing each standing to the FIRST one
+// establishes exactly the same predicate in a single linear fold.
 fn standings_share_one_profile(standings: List<ChordStanding>) -> Bool {
-  fold(standings, init: true, f: (acc, st) =>
-    acc && fold(standings, init: true, f: (inner, other) =>
-      inner && stl_export_knobs_eq(a: standing_profile(s: st), b: standing_profile(s: other))))
+  match map(standings, st => standing_profile(s: st)) |> first {
+    Absent => true
+    Present { value: reference } =>
+      fold(standings, init: true, f: (acc, st) =>
+        acc && stl_export_knobs_eq(a: standing_profile(s: st), b: reference))
+  }
 }
 
 // THE ROSTER IS CLOSED OVER, NOT RECEIVED. An earlier revision took the roster as a parameter, which
@@ -362,12 +387,40 @@ data exercised_chord_observations: List<ChordObservation> = [
 // what has been established about the law so far is only its DIRECTION -- an inscribed polygon can
 // only undersize -- not a bound holding across every rung. So the requirement below is authored as
 // the rung spacing with a safety factor, and the distinguishability claim is deliberately not made.
+// THE SPACING IS CONSUMED FROM THE LADDER, NOT COPIED BESIDE A STRING NAMING IT. This row held a
+// literal 100 with an `authority` field that spelled out where the number came from -- which reads
+// as a citation and creates no dependency whatsoever. Changing the canonical step in
+// gunbc.product.printed_chassis.coupon hole_ladder_spec moves every rung of the printed geometry
+// while a copied budget here stays silently at the old value, and the string would still look
+// correct. A prose citation is not a single authority; consuming the value is.
+//
+// THE DEGENERATE LADDER REFUSES RATHER THAN SUBSTITUTING A DEFAULT. length_ladder already refuses a
+// zero step and a one-rung ladder, and there is no spacing to hold a chord error against in either
+// case, so the requirement becomes UNDECLARED and admission refuses -- the same verdict any other
+// unmeasured subject gets.
+fn coupon_rung_spacing_requirement(construction: LadderConstruction) -> ChordRequirement {
+  match construction {
+    LadderReady { ladder: l } =>
+      DistinctionDeclared {
+        subject: coupon_top_rung_subject,
+        smallest: ladder_step(l: l),
+        authority: "hole_ladder_spec step in gunbc.product.printed_chassis.coupon",
+      }
+    LadderStepIsZero =>
+      DistinctionUndeclared {
+        subject: coupon_top_rung_subject,
+        because: "the hole ladder declares a zero step, so no rung spacing exists to hold a chord error against",
+      }
+    LadderTooFewRungs { supplied: _ } =>
+      DistinctionUndeclared {
+        subject: coupon_top_rung_subject,
+        because: "the hole ladder declares fewer than two rungs, so there is no spacing between rungs",
+      }
+  }
+}
+
 data exercised_chord_requirements: List<ChordRequirement> = [
-  DistinctionDeclared {
-    subject: coupon_top_rung_subject,
-    smallest: micrometer(count: 100),
-    authority: "hole_ladder_spec step in gunbc.product.printed_chassis.coupon",
-  },
+  coupon_rung_spacing_requirement(construction: hole_ladder_spec),
   DistinctionUndeclared {
     subject: fan_mounting_hole_subject,
     because: "the fit this hole must hold against an M4 fastener has not been measured",
