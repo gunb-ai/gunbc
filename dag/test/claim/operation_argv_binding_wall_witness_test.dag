@@ -197,8 +197,14 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
 // The two GetSystem arms that used to stand here (the exact shell argv materialization and the
 // RED credential-injection refusal) no longer have a subject: `shell_materialize_operation_argv`
 // applies to shell transports only, and a rest row has no argv. The classes they pinned are
-// superseded by construction — a rest row's success flag is a modeled response block that
-// cannot be dropped, and a credential cannot be injected into an argv token that does not
-// exist. The argv-binding wall itself remains covered by the systemctl/git/cargo arms above.
-// The discriminating RED for undeclared-credential-injection is structurally impossible
-// for rest ops (DESIGN §5: construction makes it unwritable, not just detected).
+// superseded by construction for the ARGV form — a rest row's success flag is a modeled
+// response block that cannot be dropped, and a credential cannot be injected into a literal
+// argv token.
+//
+// HOWEVER: the rest route's undeclared-parameter wall is PRE-EXISTING AND UNENROLLED.
+// `build_service_param_env` (v1_interpreter.rs:10750) silently accepts any named argument
+// without validating it against the operation's declared parameters. A fixture handing the
+// compiler a rest operation with an undeclared parameter receives no refusal — the extra
+// value is inserted into the environment and ignored. This is a known gap, pre-existing
+// (shell had the wall via `shell_materialize_operation_argv`; rest never had equivalent
+// protection), and is not made worse by this migration. Filing as a separate deficiency.
