@@ -183,12 +183,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "an_empty_out_path_refuses_by_real_execution" },
-      entry: "dag/test/claim/provenance_calibration_report_real_execution_witness_test.dag",
-      function: "an_empty_out_path_refuses_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.commit_writer_heal_admission_real_execution", function: "clean_staged_index_admits_by_real_execution" },
       entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag",
       function: "clean_staged_index_admits_by_real_execution",

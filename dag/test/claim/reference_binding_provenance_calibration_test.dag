@@ -26,6 +26,7 @@ import gunbc.tools.reference_binding_provenance_calibration {
   non_matching_render,
   unsound_cells,
   calibration_verdict,
+  provenance_calibration_report_over,
   consumer_standing,
   consumer_standing_for,
   standing_is_demonstrated,
@@ -239,6 +240,22 @@ test fn a_duplicated_cell_in_the_supplied_population_refuses() -> Bool {
       ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
+}
+
+// THE ARGUMENT GUARD IS A DIFFERENT REFUSAL FROM THE VERDICT'S AND MUST NOT BE MISTAKEN FOR IT. An
+// empty out path refuses BEFORE any write, so a control that only asked "did it refuse" could be
+// satisfied without the decision ever being reached.
+//
+// IT LIVES HERE RATHER THAN IN THE WET WITNESS, and that is a correction rather than a filing
+// choice: this arm performs NO HOST EFFECT -- no temp directory, no write, no shell -- because the
+// guard returns before the report touches anything. A test with no host effect does not belong in a
+// wet witness; putting it there because it was topically adjacent made a hermetic property depend
+// on a lane it does not need, and the floor said so by name.
+test fn an_empty_out_path_refuses() -> Bool {
+  match provenance_calibration_report_over(cells: calibration_cells(), out: "") {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
 }
 
 // AN EMPTY OR SHORT TRAVERSAL MUST REFUSE, NOT SUCCEED. This is the absorbing arm the verdict grew a

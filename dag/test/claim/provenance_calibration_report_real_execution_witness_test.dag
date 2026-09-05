@@ -149,18 +149,3 @@ test fn the_written_payload_is_the_measured_matrix_and_not_another_one() -> Bool
       && calibration_body_of(cells: measured) != calibration_body_of(cells: fully_sound_matrix())
   })
 }
-
-// THE ARGUMENT GUARD IS A DIFFERENT REFUSAL AND MUST NOT BE MISTAKEN FOR THE VERDICT'S. An empty
-// out path refuses BEFORE any write.
-//
-// SCOPE, NARROWED BECAUSE THE EARLIER WORDING CLAIMED MORE THAN THE BOOLEAN ESTABLISHES: this
-// asserts only that the guard REFUSES. It does NOT observe the absence of a write -- no path is
-// supplied, so there is nothing this assertion could read to establish that nothing was written.
-// The claim it supports is that the guard's refusal is reached, which is what distinguishes it from
-// the verdict's refusal; "without writing" is a property of the code path, not of this measurement.
-test fn an_empty_out_path_refuses_by_real_execution() -> Bool {
-  match provenance_calibration_report_over(cells: calibration_cells(), out: "") {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: _ } => true
-  }
-}
