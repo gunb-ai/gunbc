@@ -98,3 +98,49 @@ func mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
       exit_failure(reason: "mtcollins1 handoff: controller not admitted for out-of-band drive")
   }
 }
+
+// THE SECOND BOOT ROUTE FOR THE SAME UNIT, and it is the shape this module predicted: a second
+// wrapper over the IDENTICAL operation, not a second operation. Everything that differs between
+// netbooting and booting the BMC's virtual CD is a value — the device word and the text ipmitool
+// renders for it — so oob_boot_handoff is reused unchanged.
+//
+// WHY A CD ROUTE EXISTS AT ALL ON A UNIT THAT DEMONSTRABLY PXE-BOOTS. Measured 2026-09-05, the
+// controller answers `local_media_support: 0` and `sd_media: 0`, so it cannot HOLD a boot image;
+// it answers `remote_media_support: 1` and enumerates images from an NFS share, so it can PRESENT
+// one. That split is the whole reason this route matters: the host reaches a bootstrap without any
+// PXE server on the segment, because the controller fetches the image itself and offers it as
+// removable media. The DHCP capture in gunbc.machine_intake_mtcollins1_netboot_client_observation
+// records the other half — the host asks for a boot file over PXE and nothing on the segment
+// answers — so today this is the only delivery route that reaches this machine at all.
+data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
+
+// Measured, not guessed: `chassis bootdev cdrom` followed by `chassis bootparam get 5` renders
+// "Boot Device Selector : Force Boot from CD/DVD". The netboot route's rendering is "Force PXE",
+// a different string for the same field, which is exactly why the arm takes the expected text from
+// its caller rather than deriving it from the device word.
+data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
+
+func mtcollins1_cdrom_handoff(password_file_raw: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let outcome = oob_boot_handoff(
+    bmc_host: mtcollins1_endpoint.host,
+    username: mtcollins1_bmc_username,
+    password_file: mtcollins1_password_file(raw: password_file_raw),
+    device: mtcollins1_cdrom_device,
+    expected_rendering: mtcollins1_cdrom_readback_rendering,
+    power_action: mtcollins1_power_action,
+  )
+
+  return match outcome {
+    BootHandoffCompleted { selected: _ } => ExitSuccess
+    BootSelectionRefused =>
+      exit_failure(reason: "mtcollins1 cdrom handoff: controller refused the boot source override")
+    BootSelectionNotApplied { requested: d, readback: r } =>
+      exit_failure(reason: concat("mtcollins1 cdrom handoff: override for '", d, "' did not take; boot parameter 5 read back: ", r))
+    PowerCycleRefused { selected: d } =>
+      exit_failure(reason: concat("mtcollins1 cdrom handoff: override for '", d, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"))
+    BootHandoffNotAdmitted { admission: _ } =>
+      exit_failure(reason: "mtcollins1 cdrom handoff: controller not admitted for out-of-band drive")
+  }
+}
