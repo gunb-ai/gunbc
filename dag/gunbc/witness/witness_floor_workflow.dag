@@ -965,11 +965,22 @@ fn build_lane_run_step() -> Step {
 // must not prevent the receipts from being published, or the one run that needs its evidence read
 // would be the run that discarded it. `!cancelled()` rather than `always()`, matching every other
 // step in this job: a cancelled run stops, a failed earlier step does not silence this.
+// THE SHELL BODY IS THE CARRIER, AND IT SAYS SO. The argv is modeled -- fabric_gate_standing_command
+// derives it from the same claim_executor builder every other invocation here uses -- but what the
+// step emits is a `run:` block executed by a foreign shell, which is the same hand-shell carrier
+// rust_clippy_all_targets_shell_emit_dissolution_trigger already declares one file down. A modeled
+// argv inside an unmodeled executor is exactly the state that reads as finished and is not, so the
+// marker travels IN THE EMITTED SCRIPT rather than in an annotation no Accepted program can read.
+data fabric_gate_standing_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: fabric_gate_standing_step -- hand-shell `run:` carrier for the one claim_executor --fabric-gate-standing invocation; the argv is modeled by gunbc.fabric_witness_run fabric_gate_standing_command, the step body is a foreign-executor shell line carrying a ROOT assignment and a cd. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this command -- the same capability rust_clippy_all_targets_shell_emit_dissolution_trigger and ci_pin_rustup_default_script wait on, at which point this row and the concat below delete together.")
+
 fn fabric_gate_standing_step() -> Step {
   RunStep {
     name: Present { value: "FCI: adjudicate the published ledger against the fabric gate roster" },
     id: none,
-    run: required_lane_run_script(command: fabric_gate_standing_command()),
+    run: concat(
+      concat("# ", concat(dissolution_description(condition: fabric_gate_standing_shell_emit_dissolution_trigger), "\n")),
+      required_lane_run_script(command: fabric_gate_standing_command())
+    ),
     shell: none,
     env: none,
     working_directory: none,
