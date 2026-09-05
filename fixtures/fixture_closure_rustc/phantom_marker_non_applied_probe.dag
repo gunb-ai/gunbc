@@ -27,11 +27,19 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 // mechanism is the kind of thing a later reader adopts (gunbc DESIGN section 3's concern about a
 // carrier citing the wrong mechanism, not merely a stale name).
 //
-// WHY IT IS NOT IN THE RULED POSITION, WHICH IS THE DISCRIMINATION. `Alpha` here stands in a record
-// field, never as an argument of an applied type node, so it is outside the position
-// `rust_type_arg_identity_spelling` decides. The green arm beside it uses the SAME variant of the
-// SAME coproduct as an APPLIED argument and its emitted crate compiles. The single variable across
-// the two arms is the POSITION the identity stands in.
+// WHY IT IS NOT IN THE RULED POSITION. `Alpha` here stands in a record field, never as an argument
+// of an applied type node, so it is outside the position `rust_type_arg_identity_spelling` decides.
+// The control arm beside it uses the SAME variant of the SAME coproduct as an APPLIED argument and
+// its emitted crate compiles.
+//
+// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, AND AN EARLIER REVISION CLAIMED IT DID.
+// These two arms differ in their RETURN CONTRACT as well as in the position: the control returns an
+// `Int` read through a wrapper, while this file returns its `Alpha`-typed field from a function
+// declared to return `Marker` -- and the E0308 measured here lands AT that return, so the return
+// contract is load-bearing for the refusal rather than incidental to it. What the pair
+// characterizes is these two CONCRETE CONSTRUCTIONS: one that compiles and one that rustc refuses.
+// Reading it as a single-variable experiment over position would credit it with an isolation it
+// does not perform.
 //
 // E0573 -- expected type, found variant -- was PREDICTED for this fixture from the witness's
 // ceiling row and NOT observed, and the reason is a property of THIS FILE rather than of the
@@ -45,8 +53,8 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 // refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE
 // KEPT (DESIGN 4b(4)). What changes then is this pair's expectation, not the fixture's existence.
 // The names carry no domain semantics, for the reason stated in full at the control arm beside
-// this file: shape only, and no leaf spelling shared with a real `std.measure` declaration, so the
-// only variable across the pair stays the position.
+// this file: shape only, with no leaf spelling shared with a real `std.measure` declaration, so
+// nothing in the pair turns on a name colliding with the live corpus.
 type Marker = Alpha | Beta
 
 type NonApplied {

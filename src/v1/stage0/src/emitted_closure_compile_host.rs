@@ -1418,7 +1418,7 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
 /// declares it cannot reach, because `compile_dag_rust_emit_check` stops at emitted TEXT and never
 /// invokes rustc.
 ///
-/// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the same
+/// WHAT THE TWO ARMS ARE, AND WHAT THEY DO NOT ISOLATE. Both declare the same
 /// coproduct `Marker = Alpha | Beta`. The green arm puts `Alpha` and `Beta` in the RULED
 /// POSITION — arguments of an applied type node — where they become distinct zero-sized markers
 /// and the emitted crate compiles. The red arm puts `Alpha` in a NON-APPLIED position, a record
@@ -1427,9 +1427,16 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
 /// type, and returning it where `Marker` is declared is what rustc rejects. The measured
 /// diagnostic below is the authority for that; an earlier revision of this comment described the
 /// annotation as naming a variant with nothing to bind, which the measurement contradicts.) So a
-/// green here is not
-/// "some crate compiled" and the red is not "something in the tree is broken": the only variable
-/// is the position.
+/// green here is not "some crate compiled" and the red is not "something in the tree is broken".
+///
+/// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, and an earlier revision of this docblock
+/// claimed it did (native comment review 5120541804). The arms also differ in their RETURN
+/// CONTRACT: the control returns an `Int` read through a wrapper, the red returns its `Alpha`-typed
+/// field from a function declared to return `Marker`, and the measured `E0308` lands AT that
+/// return. So the return contract is load-bearing for the refusal, not incidental to it. What this
+/// pair characterizes is two CONCRETE CONSTRUCTIONS -- one whose emitted crate compiles, one whose
+/// emitted crate rustc refuses -- and reading it as a single-variable experiment over position
+/// would credit it with an isolation it does not perform.
 ///
 /// WHY THE RED IS A KNOWN HOLE AND NOT A WALL WORKING. It is
 /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at its own filed

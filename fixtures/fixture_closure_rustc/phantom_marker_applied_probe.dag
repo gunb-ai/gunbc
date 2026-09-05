@@ -21,8 +21,9 @@ module fixture.closure.rustc_phantom_marker_applied_probe
 // spelling half of this class uses -- which read as a compiler fixture minting a unit ontology,
 // and, worse, gave the arm leaf spellings SHARED with real `std.measure` declarations. Same-leaf
 // different-declaration is a confound this very witness family has a row about
-// (`declaration_identity_wins_over_same_leaf_spelling`), so borrowing those spellings put a second
-// variable inside a pair whose whole claim is that only ONE thing differs across its arms.
+// (`declaration_identity_wins_over_same_leaf_spelling`), so borrowing those spellings would have
+// put a name collision with the live corpus inside a pair that is trying to characterize an
+// emitter decision.
 type Marker = Alpha | Beta
 
 type Wrapper<M> {

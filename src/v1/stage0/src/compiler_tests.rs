@@ -753,13 +753,20 @@ mod compiler_tests {
     /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never
     /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
     ///
-    /// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the
-    /// same coproduct `Marker = Alpha | Beta`. The control puts `Alpha` and `Beta` in the
-    /// RULED POSITION -- arguments of an applied type node -- where they become distinct
-    /// zero-sized markers, and its emitted crate COMPILES. The red puts `Alpha` in a NON-APPLIED
-    /// position, a record field, and its emitted crate is REFUSED. So a green here is not "some
-    /// crate compiled" and the red is not "something in the tree is broken": the only variable
-    /// across the pair is the position the identity stands in.
+    /// WHAT THE TWO ARMS ARE, AND WHAT THEY DO NOT ISOLATE. Both declare the same coproduct
+    /// `Marker = Alpha | Beta`. The control puts `Alpha` and `Beta` in the RULED POSITION --
+    /// arguments of an applied type node -- where they become distinct zero-sized markers, and
+    /// its emitted crate COMPILES. The red puts `Alpha` in a NON-APPLIED position, a record
+    /// field, and returns that `Alpha`-typed field from a function declared to return `Marker`;
+    /// its emitted crate is REFUSED at that return. So a green here is not "some crate compiled"
+    /// and the red is not "something in the tree is broken".
+    ///
+    /// THE PAIR DOES NOT ISOLATE POSITION AS THE SOLE CAUSE, and an earlier revision of this
+    /// description claimed it did (native comment review 5120541804). The arms also differ in
+    /// their RETURN CONTRACT -- the control returns an `Int` read through a wrapper -- and the
+    /// measured E0308 lands AT the return, so the return contract is load-bearing for the refusal
+    /// rather than incidental. What the pair characterizes is two CONCRETE CONSTRUCTIONS, not a
+    /// single-variable experiment over position.
     ///
     /// THE RED IS A KNOWN HOLE, NOT A WALL WORKING, and it is named as one so nobody reads its red
     /// as coverage. It is `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`
@@ -800,7 +807,7 @@ mod compiler_tests {
         );
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
-            "the applied-position control must COMPILE and the NON-APPLIED arm must be refused by rustc in its own emitted module carrying the class this pair claims; a red failing that is a pair that stopped discriminating position from projection; control={} red={} attribution={:?} diagnostic={:?}",
+            "the applied-marker fixture must COMPILE, and the non-applied-field-plus-parent-return fixture must reach rustc and be refused in its own emitted module with the attributed E0308 this pair claims; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
