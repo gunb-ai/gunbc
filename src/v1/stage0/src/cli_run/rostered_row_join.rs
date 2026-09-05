@@ -38,6 +38,17 @@
 //! contributing nothing must be refused, not dropped), and its evidence is a measurement of the
 //! population, not an executed refusal.
 //!
+//! WHY THIS FILE SITS UNDER `cli_run/` AND NOT AT THE STAGE0 CRATE ROOT, recorded because the
+//! first placement was refused by CI and the refusal was RIGHT. `committed_generated_basenames`
+//! walks the stage0 crate's TOP LEVEL and treats every `.rs` there as a committed generated
+//! mirror unless an authored roster exempts it, so a hand-written module at the root is compared
+//! against an emitted population that does not contain it and refuses as
+//! `CommittedMirrorNoLongerEmitted`. The two remedies were: add a row to
+//! `HAND_MAINTAINED_STAGE0_FILES`, or live in a hand-maintained DIRECTORY. The directory is the
+//! one that adds no second enumeration of a membership fact — which is precisely the class this
+//! module exists to make loud, so paying for it here would have been the defect wearing a fix's
+//! clothes.
+//!
 //! `type_name` IS A SPELLING. `DataDeclTypeFact` carries the authored head name of the declared
 //! type annotation, so membership here is a string comparison over discovery evidence, not typed
 //! membership. It is exact only because each enrolled spelling is, today, declared in one module.

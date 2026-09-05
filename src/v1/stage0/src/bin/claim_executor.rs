@@ -663,9 +663,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // is read through the `data_decl_type_facts` producer — the same walk the
                     // `v2.std.decl_index` builtin marshals, not a second derivation of it.
                     //
-                    // IT LIVES IN THE `build` LANE BECAUSE THE PARSE DOES. No job is added; the
-                    // roster of required jobs is closed to growth, and this check belongs to a
-                    // phase that already exists.
+                    // IT LIVES IN THE LANE THE PARSE PHASE LIVES IN, whichever that is: it is a
+                    // rider, not a phase, so `RequiredCiPhase::Parse`'s lane ownership answers for
+                    // it and no second routing fact exists to drift. No job is added; the roster of
+                    // required jobs is closed to growth, and this check belongs to a phase that
+                    // already exists.
                     match v1_compiler::cli_run::rostered_row_join::run_rostered_row_join(
                         &sweep.index,
                     ) {

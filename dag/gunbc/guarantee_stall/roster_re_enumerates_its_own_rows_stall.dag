@@ -88,7 +88,9 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // a declared-versus-rostered identity join executing as a merge-blocking check on every rostered
 // row type -- is built and enrolled: `gunbc.rostered_row_join` declares the enrolled row types,
 // `v1_compiler.cli_run.rostered_row_join` executes the join inside the required-CI PARSE phase, and
-// it therefore runs in the `build` lane on every push and pull request with no job added. The
+// it therefore runs on every push and pull request, in whichever lane owns that phase, with no job
+// added -- the phase's own lane ownership answers for the join, so there is no second routing fact
+// to drift. The
 // declared population is read through `v2.std.decl_index` `data_decl_type_facts` -- the same host
 // walk that builtin marshals, shared rather than re-derived -- and each roster's membership is read
 // out of the parse that phase has already performed, because a list literal's element NAMES are
