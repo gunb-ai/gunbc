@@ -33,19 +33,20 @@ import std.minted_identity { MintedId, minted_id_eq }
 // row list, and it is refused here for the same reason and one layer deeper.
 //
 // EXACTLY ONE PARENT, AND THIS IS THE DECISION THAT WOULD BE UNWRITABLE LATER, so it is derived from
-// what the model's own merge does rather than from what git does.
+// what this model's own commit-producing operation does rather than from what git does.
 //
-// gunbc.scm.merge `merge` takes ONE target Commit and a LIST OF PROPOSALS, and answers `Merged`
-// carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
-// root, no message and no identity in history. So a merge in THIS model combines one commit with N
-// things that were never commits, and the result has exactly one commit antecedent. Git's second
-// parent exists because git merges two BRANCHES, which are two commits; that shape has no referent
-// here, because nothing in this model can merge two commits at all.
+// gunbc.scm.role_requirement_integration `integrate_role_requirements` takes ONE target Commit and
+// a LIST OF PROPOSALS, and answers `RoleRequirementsIntegrated` carrying ONE commit. A Proposal is a
+// set of authored requirements -- it is not a commit, it has no root, no message and no identity in
+// history. So that operation combines one commit with N things that were never commits, and the
+// result has exactly one commit antecedent. Git's second parent exists because git merges two
+// BRANCHES, which are two commits; that shape has no referent here, because nothing in this model
+// performs a two-commit merge at all.
 //
 // So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
 // can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
 // the model does not have. WIDENING TRIGGER, stated so the reason is checkable rather than trusted:
-// if `merge` ever takes two Commits rather than one commit and N proposals, this coproduct gains a
+// if an operation ever takes TWO Commits rather than one commit and N proposals, this coproduct gains a
 // several-parents arm, and the change is a compile error at every consumer rather than a silent
 // reinterpretation -- which is what makes single-parent a safe decision now rather than an
 // irreversible one.
@@ -114,13 +115,31 @@ type CommitAncestry
 //
 //   AUTHOR and TIMESTAMP are EXTERNAL OBSERVATIONS -- who ran the command, and what the clock said.
 //   Neither is derivable from the graph, and DESIGN is explicit that external reality is observed,
-//   typed, and admitted or refused, never fabricated. This repository has no modelled clock and no
-//   modelled process identity to observe them WITH, and acquiring either is the same frozen-host
-//   question that gates the store binding and process output.
+//   typed, and admitted or refused, never fabricated.
 //
-// So modelling them here would mean inventing two facts to fill fields, which is the fabricated-
-// plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
-// blocked on a ruling; parent was not. Recording that difference is the point of this note.
+//   THIS NOTE PREVIOUSLY SAID THE REPOSITORY HAS NO MODELLED CLOCK AND NO MODELLED PROCESS IDENTITY.
+//   THAT WAS FALSE WHEN WRITTEN OR HAS SINCE GONE STALE, AND IT IS CORRECTED HERE RATHER THAN LEFT
+//   TO BE RELAYED AGAIN -- it was relayed once, into the merge design note. `extdeps.clock`
+//   declares `Clock.Now`, `gunbc.clock_read clock_now_probed_at` already consumes it and returns an
+//   OPTIONAL rather than a fabricated instant, and `probed_at_word` renders the absent arm as a loud
+//   word. `gunbc.worker_lifecycle ProcessIdentityEvidence` carries the observed/unobserved split for
+//   the other half. So both capabilities exist, with the admit-or-refuse discipline this note asks
+//   for already built into them.
+//
+//   WHAT IS ACTUALLY UNDECIDED IS NARROWER THAN ACQUISITION AND WIDER THAN ADMISSION ALONE. Commit
+//   metadata still needs an applicable observation PRODUCER, a BINDING to this commit and to a
+//   declared attribution role, a defined TIMESTAMP EVENT (authoring, integration and publication are
+//   different instants), and only then an ADMISSION policy for unavailable evidence. Reusing an
+//   existing observation means retaining its FAILURE CONTRACT, not its rendered output:
+//   `probed_at_word` returns a NonEmptyStr on both arms, so a rendered nonempty value does not
+//   establish that an instant was observed.
+//
+// So modelling them here, WITH NO PRODUCER AND NO BINDING ESTABLISHED, would mean inventing two facts
+// to fill fields -- the fabricated-plausible-output failure at the exact boundary a commit is supposed
+// to be trustworthy. THE QUALIFIER IS LOAD-BEARING AND WAS MISSING: an unavailable or unverified
+// binding is a reason not to fabricate a VALUE, and is not proof that modelling these fields over
+// existing observation carriers inherently fabricates anything. They are blocked on that contract;
+// parent was not. Recording that difference is the point of this note.
 
 
 // The history this walk may traverse, supplied as the commit identities the repository holds. It is

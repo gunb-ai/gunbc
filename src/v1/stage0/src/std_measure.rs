@@ -3,6 +3,7 @@
 
 use self::ClockBasis::*;
 use self::ClockDomain::*;
+use self::FiniteByteSizeBuild::*;
 use self::InstantOrder::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
@@ -389,7 +390,11 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
+
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
+
+pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
@@ -642,6 +647,44 @@ pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
     }
 }
 
+pub type FiniteByteSize = Rc<Measure<Memory, One, Rc<PositiveMeasureCount>>>;
+
+pub fn finite_byte_size(count: Rc<PositiveMeasureCount>) -> FiniteByteSize {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn finite_byte_size_count(size: FiniteByteSize) -> i64 {
+    positive_measure_count_value(size.count.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FiniteByteSizeBuild {
+    FiniteByteSizeBuilt { size: FiniteByteSize },
+    FiniteByteSizeNonPositive { observed: i64 },
+}
+
+pub fn finite_byte_size_from_byte_size(size: ByteSize) -> Rc<FiniteByteSizeBuild> {
+    {
+        let observed = byte_size_count(size.clone());
+        match (*positive_measure_count_from_int(observed.clone())).clone() {
+            PositiveMeasureCountBuild::PositiveMeasureCountBuilt {
+                count: positive, ..
+            } => Rc::new(FiniteByteSizeBuild::FiniteByteSizeBuilt {
+                size: finite_byte_size(positive.clone()),
+            }),
+            PositiveMeasureCountBuild::PositiveMeasureCountRefused { cause: _, .. } => {
+                Rc::new(FiniteByteSizeBuild::FiniteByteSizeNonPositive {
+                    observed: observed.clone(),
+                })
+            }
+        }
+    }
+}
+
 pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
         count: count.clone(),
@@ -822,6 +865,19 @@ pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
 }
 
 pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
+    measure_count(m.clone())
+}
+
+pub type UsdWholeDollars = MoneyAmount<One>;
+
+pub fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
     measure_count(m.clone())
 }
 
@@ -1018,6 +1074,17 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
+    measure_count(c.clone())
+}
+
 pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1026,6 +1093,17 @@ pub fn merge_queue_entry_count(count: Nat) -> MergeQueueEntryCount {
 }
 
 pub fn merge_queue_entry_count_value(c: MergeQueueEntryCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn power_cord_count(count: Nat) -> PowerCordCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn power_cord_count_value(c: PowerCordCount) -> Nat {
     measure_count(c.clone())
 }
 
@@ -1064,6 +1142,19 @@ pub fn bandwidth(count: Nat) -> Bandwidth {
 
 pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
+}
+
+pub type PacketRate = Rc<Measure<Frequency, One, i64>>;
+
+pub fn packet_rate(count: Nat) -> PacketRate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn packet_rate_count(r: PacketRate) -> Nat {
+    measure_count(r.clone())
 }
 
 pub type Nanosecond = Rc<Measure<Time, Nano, i64>>;

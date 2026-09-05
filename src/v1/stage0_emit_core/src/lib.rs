@@ -44,6 +44,10 @@ pub mod v1_compiler_languages {
     pub use v1_stage0_v1_artifact::v1_compiler_languages::*;
 }
 
+pub mod v1_compiler_parse {
+    pub use v1_stage0_v1_infer::v1_compiler_parse::*;
+}
+
 pub mod v1_rt {
     pub use v1_stage0_runtime::v1_rt::*;
 }

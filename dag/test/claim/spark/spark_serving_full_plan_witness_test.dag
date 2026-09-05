@@ -1,7 +1,6 @@
 module test.claim.spark_serving_full_plan_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
-import std.measure { token_count, positive_slot_count, positive_measure_count }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
@@ -52,7 +51,7 @@ import gunbc.spark.serving_release {
   SparkServingReleaseIdentity,
   SparkServingOccurrence,
   SparkServingRelease,
- ServingContract , ServingLaunchProfile, OllamaSingleHost }
+}
 import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
@@ -84,7 +83,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifactOutcome,
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.spark.serving_converge_plan {
   spark_serving_scheduled_rows_for,
   spark_serving_axis_for_observation,
@@ -118,7 +117,7 @@ import gunbc.spark.serving_desired {
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
   spark_serving_occurrence,
- spark_serving_desired_bind_listen }
+}
 import gunbc.spark.serving_observe {
   SparkServingHostObservation,
   SparkServingObservedUnit,
@@ -145,17 +144,6 @@ import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
 // The subject moves to srv5, where a seven-member serving install is what the role authority says
 // should happen. srv6's retirement claims live in the P0 retirement witness, over the production
 // artifact root, because they are claims about the OTHER role.
-
-// THE CONTRACT IS A FIXTURE: the fleet's own is a refusal until a per-realization observation is
-// recorded, and these witnesses exercise the digest/observe path, a function of the contract given.
-fn w_contract() -> ServingContract {
-  ServingContract {
-    bind: spark_serving_desired_bind_listen,
-    default_context: token_count(count: 1048576),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-  }
-}
-
 data subject_host: HostIdentity = "srv5" as HostIdentity
 
 // The subject is the DECLARED release, so these claims move with the real authority rather than a
@@ -244,7 +232,7 @@ fn full_plan_writes(
     Present { value: r } =>
       plan_writes(
         p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
           projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
         ),
@@ -265,7 +253,7 @@ fn full_plan_refuses(
     Absent => false
     Present { value: r } =>
       match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
@@ -288,7 +276,7 @@ test fn the_declared_desired_population_is_seven_members() -> Bool {
     Absent => false
     Present { value: r } =>
       length(spark_serving_desired_members(
-        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
       )) == 7
   }
@@ -430,7 +418,7 @@ fn removal_refusing_plan() -> MembershipPlan<SparkServingMember, SparkServingMem
 // refusal action and is still authorable. What this claim can no longer reach is that comparison, so
 // it asserts the refusal it actually causes instead of a message it no longer produces.
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
-  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: [], contract: w_contract()) {
+  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
     SparkServingTypedActionsRefused { cause: c } =>
       string_contains(c, "refusal action") && !string_contains(c, "planned member actions projected")
     SparkServingTypedActionsProjected { rows: _ } => false
@@ -442,7 +430,8 @@ test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> B
 test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
   match fleet_converge_spark_serving_typed_actions(
     plan: spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
-    desired: [spark_serving_desired_linger_member(host: subject_host)], contract: w_contract()) {
+    desired: [spark_serving_desired_linger_member(host: subject_host)],
+  ) {
     SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
     SparkServingTypedActionsRefused { cause: _ } => false
   }
@@ -465,7 +454,7 @@ fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMembe
     host: subject_host,
     runtime: complete_required_runtime(),
     store: complete_required_store(),
-    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitManagerEnabled,
     activity: UnitActivityRunning,
           linger: LingerObservedEnabled,
@@ -477,7 +466,7 @@ test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
     Absent => false
     Present { value: r } =>
       match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: observed_exactly_desired(r: r),
       ) {
@@ -509,7 +498,7 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
     Absent => false
     Present { value: r } =>
       match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: spark_serving_observed_members(
     provenance: witness_provenance(host: subject_host),
@@ -522,7 +511,7 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
             },
             further_defects: [],
           },
-          unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+          unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
           enablement: UserUnitManagerEnabled,
           activity: UnitActivityRunning,
           linger: LingerObservedEnabled,
@@ -830,7 +819,7 @@ test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect()
         host: subject_host,
               runtime: complete_required_runtime(),
               store: complete_required_store(),
-              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
               enablement: UserUnitManagerEnabled,
               activity: UnitActivityRunning, linger: LingerUnobservedState,
             ),
@@ -854,7 +843,7 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
         host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitManagerEnabled,
             activity: UnitActivityRunning, linger: LingerObservedDisabled,
           ),
@@ -886,7 +875,7 @@ test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
         host: subject_host,
         runtime: complete_required_runtime(),
         store: complete_required_store(),
-        unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+        unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
         enablement: UserUnitManagerUnobserved,
         activity: UnitActivityUnobserved, linger: LingerObservedEnabled,
       ) {
@@ -933,13 +922,13 @@ test fn a_correct_but_disabled_and_running_unit_plans_exactly_one_member() -> Bo
     Present { value: r } =>
       plan_writes(
         p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
           projection: project(
             host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitManagerDisabled,
             activity: UnitActivityRunning, linger: LingerObservedEnabled,
           ),
@@ -959,13 +948,13 @@ test fn an_enabled_but_dead_unit_plans_exactly_one_member() -> Bool {
     Present { value: r } =>
       plan_writes(
         p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
           projection: project(
             host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitManagerEnabled,
             activity: UnitActivityStopped, linger: LingerObservedEnabled,
           ),
@@ -994,7 +983,7 @@ test fn an_unobserved_enablement_refuses_the_artifact_rather_than_enabling() -> 
               host: subject_host,
               runtime: complete_required_runtime(),
               store: complete_required_store(),
-              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
               enablement: UserUnitManagerUnobserved,
               activity: UnitActivityUnobserved, linger: LingerObservedEnabled,
             ),
@@ -1018,7 +1007,7 @@ test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bo
             host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
             enablement: UserUnitManagerDisabled,
             activity: UnitActivityRunning, linger: LingerObservedEnabled,
           ),
@@ -1038,7 +1027,7 @@ test fn a_bare_host_freezes_exactly_one_enable_operation() -> Bool {
     Present { value: r } =>
       length(flat_map(
         spark_serving_desired_members(
-          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
         ),
         m => spark_serving_install_effects_for_add(member: m),
@@ -1193,7 +1182,7 @@ fn frozen_order(
     Absent => []
     Present { value: r } =>
       match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() }),
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
@@ -1280,7 +1269,7 @@ test fn a_host_needing_only_the_model_schedules_that_one_row() -> Bool {
   let order = frozen_order(
     host: subject_host,
     runtime: complete_required_runtime(), store: bare_store(),
-    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitManagerEnabled,
     activity: UnitActivityRunning,
     linger: LingerObservedEnabled,
@@ -1328,7 +1317,7 @@ fn c3_projection_at(
     host: host,
     store: complete_required_store(),
     runtime: RuntimeMaterializationAbsent,
-    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitManagerEnabled,
     activity: UnitActivityRunning,
     linger: linger,
@@ -1388,6 +1377,7 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   ) {
     FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: a } =>
@@ -1504,7 +1494,7 @@ test fn a_hermetic_observation_cannot_produce_a_bound_plan() -> Bool {
       runtime: RuntimeMaterializationAbsent,
       store: complete_required_store(),
       observed_unit: SparkServingObservedUnit {
-        state: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest(contract: w_contract()) },
+        state: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
         enablement: UserUnitManagerEnabled,
         activity: UnitActivityRunning,
       },
@@ -1599,6 +1589,7 @@ fn artifact_outcome_for(
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
   )
 }
 

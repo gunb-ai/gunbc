@@ -39,6 +39,8 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::Wildcard;
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
@@ -179,6 +181,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         is_self_recursive: structural.is_self_recursive.clone(),
         has_non_tail_self_call: structural.has_non_tail_self_call.clone(),
         match_pattern: structural.match_pattern.clone(),
+        module_item_kind: structural.module_item_kind.clone(),
         expr_data: structural.expr_data.clone(),
     })
 }
@@ -582,6 +585,7 @@ pub fn substitute_type_slots_scoped(
                                             .has_non_tail_self_call
                                             .clone(),
                                         match_pattern: child.match_pattern.clone(),
+                                        module_item_kind: child.module_item_kind.clone(),
                                         expr_data: child.expr_data.clone(),
                                         ident: None,
                                     })
@@ -631,6 +635,7 @@ pub fn substitute_type_slots_scoped(
                     is_self_recursive: n.is_self_recursive.clone(),
                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                     match_pattern: n.match_pattern.clone(),
+                    module_item_kind: n.module_item_kind.clone(),
                     expr_data: n.expr_data.clone(),
                     ident: None,
                 })
@@ -757,6 +762,7 @@ pub fn resolve_nominal_alias_rhs(
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
+                        module_item_kind: n.module_item_kind.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
                     }),
                     diagnostics: v1_rt::concat(arg_diags.clone(), validation.diagnostics.clone()),
@@ -914,6 +920,7 @@ pub fn resolve_node_bounded(
                         is_self_recursive: n.is_self_recursive.clone(),
                         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                         match_pattern: n.match_pattern.clone(),
+                        module_item_kind: n.module_item_kind.clone(),
                         expr_data: n.expr_data.clone(),
                         ident: None,
                     }),
@@ -956,6 +963,7 @@ pub fn resolve_node_bounded(
                                             is_self_recursive: false,
                                             has_non_tail_self_call: false,
                                             match_pattern: std::option::Option::None,
+                                            module_item_kind: n.module_item_kind.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         }),
@@ -1004,6 +1012,7 @@ Rc::new(NodeResolveResult {
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
+    module_item_kind: child.module_item_kind.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1047,6 +1056,7 @@ Rc::new(NodeResolveResult {
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: n.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     }),
@@ -1124,6 +1134,7 @@ Rc::new(NodeResolveResult {
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
+    module_item_kind: field_child.module_item_kind.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1152,6 +1163,7 @@ Rc::new(NodeResolveResult {
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
+    module_item_kind: variant_child.module_item_kind.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1195,6 +1207,7 @@ Rc::new(NodeResolveResult {
                                             is_self_recursive: false,
                                             has_non_tail_self_call: false,
                                             match_pattern: std::option::Option::None,
+                                            module_item_kind: n.module_item_kind.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         }),
@@ -1364,6 +1377,7 @@ Rc::new(NodeResolveResult {
                                     is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
+                                    module_item_kind: n.module_item_kind.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1387,6 +1401,7 @@ Rc::new(NodeResolveResult {
                                     is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
+                                    module_item_kind: n.module_item_kind.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1437,6 +1452,7 @@ Rc::new(NodeResolveResult {
                                     is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
+                                    module_item_kind: n.module_item_kind.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1461,6 +1477,7 @@ Rc::new(NodeResolveResult {
                                         is_self_recursive: is_recursive.clone(),
                                         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                         match_pattern: n.match_pattern.clone(),
+                                        module_item_kind: n.module_item_kind.clone(),
                                         expr_data: n.expr_data.clone(),
                                         ident: None,
                                     }),
@@ -1586,6 +1603,7 @@ Rc::new(NodeResolveResult {
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -1609,6 +1627,7 @@ Rc::new(NodeResolveResult {
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -1634,6 +1653,7 @@ Rc::new(NodeResolveResult {
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
                                         match_pattern: std::option::Option::None,
+                                        module_item_kind: n.module_item_kind.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     }),
@@ -1708,6 +1728,8 @@ Rc::new(NodeResolveResult {
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
                                                 match_pattern: std::option::Option::None,
+                                                module_item_kind:
+                                                    ParsedModuleItemKind::NotAModuleItem,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             });
@@ -1734,6 +1756,7 @@ Rc::new(NodeResolveResult {
                                                     is_self_recursive: false,
                                                     has_non_tail_self_call: false,
                                                     match_pattern: std::option::Option::None,
+                                                    module_item_kind: n.module_item_kind.clone(),
                                                     expr_data: Rc::new(ExprData::NoExprData),
                                                     ident: None,
                                                 }),
@@ -2014,6 +2037,7 @@ pub fn resolve_optional_node(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -2105,6 +2129,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             is_self_recursive: authored.is_self_recursive.clone(),
             has_non_tail_self_call: authored.has_non_tail_self_call.clone(),
             match_pattern: authored.match_pattern.clone(),
+            module_item_kind: authored.module_item_kind.clone(),
             expr_data: authored.expr_data.clone(),
             ident: None,
         })
@@ -2127,6 +2152,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             is_self_recursive: resolved.is_self_recursive.clone(),
             has_non_tail_self_call: resolved.has_non_tail_self_call.clone(),
             match_pattern: resolved.match_pattern.clone(),
+            module_item_kind: resolved.module_item_kind.clone(),
             expr_data: resolved.expr_data.clone(),
             ident: None,
         })
@@ -2943,6 +2969,7 @@ pub fn resolve_expr_types(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });
@@ -3710,6 +3737,7 @@ pub fn resolve_item_types(
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
                                 match_pattern: std::option::Option::None,
+                                module_item_kind: child.module_item_kind.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -3772,6 +3800,7 @@ pub fn resolve_item_types(
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
                                                 match_pattern: std::option::Option::None,
+                                                module_item_kind: field.module_item_kind.clone(),
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }),
@@ -3814,6 +3843,7 @@ pub fn resolve_item_types(
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
+                                    module_item_kind: variant.module_item_kind.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -3870,6 +3900,7 @@ pub fn resolve_item_types(
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
+                module_item_kind: item.module_item_kind.clone(),
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),

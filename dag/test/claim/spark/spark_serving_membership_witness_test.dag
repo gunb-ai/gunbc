@@ -1,8 +1,6 @@
 module test.claim.spark_serving_membership_witness
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.measure { token_count, positive_slot_count, positive_measure_count }
-import gunbc.spark.serving_release { ServingContract , ServingLaunchProfile, OllamaSingleHost }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.ownership { Ownership, Owned, Ensured }
@@ -32,7 +30,7 @@ import gunbc.spark.serving_desired {
   spark_serving_occurrence,
   spark_serving_desired_model_artifact,
   spark_serving_automation_principal,
- spark_serving_desired_bind_listen }
+}
 import gunbc.spark.serving_install_paths { spark_serving_user_unit_path }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark.serving_membership {
@@ -56,20 +54,6 @@ import gunbc.spark.serving_membership {
   spark_serving_user_unit_file_write_intent,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-
-// THE CONTRACT IS A FIXTURE. The fleet no longer declares a window or slot count globally -- both
-// come from a per-realization observation, and the live realization has none, so the fleet's own
-// contract is a refusal. These witnesses exercise the render/observe path, which is a function of
-// the contract it is given; the values are the ones the fleet used to carry, so the assertions keep
-// their historical meaning.
-fn w_contract() -> ServingContract {
-  ServingContract {
-    bind: spark_serving_desired_bind_listen,
-    default_context: token_count(count: 1048576),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-  }
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -162,7 +146,7 @@ test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() 
 test fn w_spark_serving_noop_when_converged() -> Bool {
   match spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = spark_serving_occurrence(host: w_host(), serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() })
+      let occ = spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = spark_serving_membership_reconcile(desired: desired, observed: desired)
       spark_serving_membership_noop(plan: plan)
@@ -185,7 +169,7 @@ test fn w_spark_serving_noop_when_converged_synthetic_fixture() -> Bool {
 }
 
 test fn w_spark_serving_modified_is_change_not_add() -> Bool {
-  let from_unit = spark_serving_user_unit_state_digest(contract: w_contract())
+  let from_unit = spark_serving_user_unit_state_digest()
   let to_unit = "unit-drifted" as NonEmptyStr
   let plan = spark_serving_membership_reconcile(
     desired: [w_unit_member(state: to_unit, ownership: Owned)],
@@ -220,7 +204,7 @@ test fn w_spark_serving_runtime_upgrade_is_change_not_remove_add() -> Bool {
 test fn w_spark_serving_added_when_runtime_absent() -> Bool {
   match spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = spark_serving_occurrence(host: w_host(), serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() })
+      let occ = spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = spark_serving_membership_reconcile(desired: desired, observed: [])
       membership_write_count(plan: plan) == count(desired)
@@ -297,7 +281,7 @@ test fn w_spark_serving_user_unit_path_uses_unit_identity_authority() -> Bool {
 }
 
 test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> Bool {
-  let intent = spark_serving_user_unit_file_write_intent(contract: w_contract())
+  let intent = spark_serving_user_unit_file_write_intent()
   intent.path == spark_serving_user_unit_path()
     && intent.spec.service_type == ("simple" as NonEmptyStr)
     && intent.spec.exec_subcommand == ("serve" as NonEmptyStr)
@@ -328,7 +312,7 @@ test fn w_spark_serving_change_projects_effect_replace() -> Bool {
 test fn w_spark_serving_model_slot_address_is_primary() -> Bool {
   match spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = spark_serving_occurrence(host: w_host(), serving_release: r, profile: ServingLaunchProfile { engine: OllamaSingleHost, contract: w_contract() })
+      let occ = spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = spark_serving_desired_members(occurrence: occ, serving_release: r)
       any(
         desired,

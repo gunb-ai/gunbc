@@ -1117,7 +1117,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
 /// A citation may name a module by its LOGICAL path — `v2.` stripped — the identity
 /// `decl_facts` published and the corpus is authored against. Both spellings resolve to the
 /// one module; the fallback only ever finds a module that really declares itself `v2.x`.
-fn resolve_cited_module<'a>(
+pub(crate) fn resolve_cited_module<'a>(
     index: &'a DeclarationIndex,
     module_path: &str,
 ) -> Option<&'a ModuleDeclarationRecord> {
@@ -2407,4 +2407,373 @@ fn site_owned(row: &(&str, &str, &str, &str, &str)) -> (String, String, String, 
         row.3.to_string(),
         row.4.to_string(),
     )
+}
+
+// GATE 1 OF THE IMPORT-DECLARATION CUT: an import declaration must have ZERO binding authority.
+//
+// IT LIVES HERE, AND AS A TEST, FOR A REASON THAT WAS RULED ON. An earlier attempt widened the
+// multi-module compile fixture's public result with a ResolvedCallTarget carrier so a `.dag` witness
+// could read the bound declaration. That was REFUSED on PURPOSE admission: v1_maintenance_standing's
+// refused classes DOMINATE the admitted axis, and PublicSurfaceGrowth applied. The carrier was also
+// unnecessary -- compile_to_resolved, ResolvedGraph, Node.expr_data and CallSemantics are all
+// reachable from a crate test, so the observation type can be PRIVATE TO THIS MODULE and the seed
+// grows by nothing. The `.dag` route is separately closed: a nested compile from `.dag` refuses with
+// NoSuchField Node.ident, which is why both existing nested-compile instruments route through a host
+// builtin -- that explains the closure, it does not license a builtin when a Rust test suffices.
+//
+// WHY THE SIGNATURES ARE IDENTICAL. cut.a and cut.b declare ONE spelling with the same arity and
+// types, so an illicit selection stays COMPILE-GREEN and only the resolver's own recorded target
+// separates them. Accept/refuse cannot express this subject: it sees a MISSING selection, never a
+// WRONG one. Nothing here reads diagnostics, counts, emitted Rust, or a rendered string.
+#[cfg(test)]
+mod import_binding_authority_tests {
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_std_core::{CallSemantics, CallTargetIdentity, ExprData, Node};
+    use std::rc::Rc;
+
+    // The pipeline takes the persistent vector, not std's.
+    use im::Vector;
+
+    /// Every distinct state the observation can be in. PRIVATE, so this costs no seed surface.
+    ///
+    /// `CallSemanticsAbsent` STAYS DISTINCT FROM `TargetUndetermined`. "The call carries no
+    /// semantics at all" and "lookup ran and could not determine a target" are different facts, and
+    /// collapsing them would let a DELETED SELECTOR or a SKIPPED PHASE pass as successful
+    /// nonbinding -- which is exactly the false green the cut must not be able to produce.
+    ///
+    /// `FunctionValueCall` is its own arm because `CallSemantics::target()` PANICS on that variant.
+    /// Matching the constructor is therefore not a stylistic choice over calling the accessor; the
+    /// accessor is unsafe here by construction.
+    #[derive(Debug, Clone, PartialEq)]
+    enum ObservedTarget {
+        SourceDeclarationTarget {
+            owner_module_path: String,
+            decl_name: String,
+        },
+        RuntimePrimitiveTarget {
+            primitive_name: String,
+        },
+        TargetUndetermined,
+        FunctionValueCall,
+        CallSemanticsAbsent,
+        NoCallNodeFound,
+        CompileRefused {
+            diagnostic_count: usize,
+        },
+    }
+
+    fn source(path: &str, content: &str) -> Rc<SourceFile> {
+        Rc::new(SourceFile {
+            path: path.to_string(),
+            content: content.to_string(),
+        })
+    }
+
+    /// Depth-first over every child list a call can hide in. The direct child of a call argument is
+    /// a wrapper whose children carry the value, so a shallow walk misses real calls.
+    fn find_first_call(node: &Rc<Node>, out: &mut Vec<Rc<Node>>) {
+        if matches!(*node.expr_data, ExprData::ExprCall { .. }) {
+            out.push(node.clone());
+        }
+        for child in node.children.iter() {
+            find_first_call(child, out);
+        }
+        for param in node.params.iter() {
+            find_first_call(param, out);
+        }
+        if let Some(body) = node.body.as_ref() {
+            find_first_call(body, out);
+        }
+    }
+
+    /// The observation, read from what the resolver itself recorded.
+    fn observe_bare_call(entry: &str) -> ObservedTarget {
+        let sources = Rc::new(Vector::from(vec![
+            source(
+                "cut/a.dag",
+                "module cut.a\n\nfn cut_probe(cut_v: Int) -> Int { cut_v }\n",
+            ),
+            source(
+                "cut/b.dag",
+                "module cut.b\n\nfn cut_probe(cut_v: Int) -> Int { cut_v }\n",
+            ),
+            source(
+                "cut/c.dag",
+                "module cut.c\n\nfn cut_unrelated_marker(cut_w: Int) -> Int { cut_w }\n",
+            ),
+            source("cut/entry.dag", entry),
+        ]));
+        let resolved = compile_to_resolved(sources);
+        let graph = match resolved.graph.as_ref() {
+            Some(g) => g.clone(),
+            // A REFUSAL IS ITS OWN STATE, never folded into "no target". Reporting a refused
+            // compile as nonbinding would let the cut green by breaking the compiler.
+            None => {
+                return ObservedTarget::CompileRefused {
+                    diagnostic_count: resolved.diagnostics.len(),
+                }
+            }
+        };
+
+        let mut calls: Vec<Rc<Node>> = Vec::new();
+        for module in graph.modules.iter() {
+            if module.module.name != "cut.entry" {
+                continue;
+            }
+            for item in module.items.iter() {
+                find_first_call(item, &mut calls);
+            }
+        }
+
+        let call = match calls.first() {
+            Some(c) => c.clone(),
+            None => return ObservedTarget::NoCallNodeFound,
+        };
+
+        let semantics = match &*call.expr_data {
+            ExprData::ExprCall { call_semantics, .. } => call_semantics.clone(),
+            _ => return ObservedTarget::NoCallNodeFound,
+        };
+
+        let semantics = match semantics {
+            Some(s) => s,
+            None => return ObservedTarget::CallSemanticsAbsent,
+        };
+
+        let target = match &*semantics {
+            CallSemantics::PlainCallSemantics { target } => target.clone(),
+            CallSemantics::ResolvedDirectCallSemantics { target, .. } => target.clone(),
+            CallSemantics::LookupCallSemantics { target } => target.clone(),
+            CallSemantics::FunctionValueCallSemantics => return ObservedTarget::FunctionValueCall,
+        };
+
+        match &*target {
+            CallTargetIdentity::SourceDeclarationCall {
+                owner_module_path,
+                decl_name,
+            } => ObservedTarget::SourceDeclarationTarget {
+                owner_module_path: owner_module_path.clone(),
+                decl_name: decl_name.clone(),
+            },
+            CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
+                ObservedTarget::RuntimePrimitiveTarget {
+                    primitive_name: primitive_name.clone(),
+                }
+            }
+            CallTargetIdentity::CallableTargetUndetermined => ObservedTarget::TargetUndetermined,
+        }
+    }
+
+    /// The builtin-rival subjects. `string_length` is a real builtin, so a bare call to it can
+    /// reach `builtin_callable_candidates` -- which is what makes the third visibility state
+    /// observable at all.
+    const ENTRY_BUILTIN_NO_IMPORTS: &str =
+        "module cut.entry\n\nfn cut_use() -> Int { string_length(cut_s: \"ab\") }\n";
+    const ENTRY_BUILTIN_UNLISTED: &str = "module cut.entry\n\nimport cut.c { cut_unrelated_marker }\n\nfn cut_use() -> Int { string_length(cut_s: \"ab\") }\n";
+    const ENTRY_BUILTIN_UNLISTED_WITH_RIVAL: &str = "module cut.entry\n\nimport cut.c { cut_unrelated_marker }\n\nfn string_length(cut_s: String) -> Int { 7 }\n\nfn cut_use() -> Int { string_length(cut_s: \"ab\") }\n";
+    const ENTRY_BUILTIN_RIVAL_NO_IMPORTS: &str = "module cut.entry\n\nfn string_length(cut_s: String) -> Int { 7 }\n\nfn cut_use() -> Int { string_length(cut_s: \"ab\") }\n";
+
+    const ENTRY_IMPORTS_A: &str = "module cut.entry\n\nimport cut.a { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n";
+    const ENTRY_IMPORTS_B: &str = "module cut.entry\n\nimport cut.b { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n";
+    const ENTRY_IMPORTS_NONE: &str =
+        "module cut.entry\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n";
+    const ENTRY_IMPORTS_AC: &str = "module cut.entry\n\nimport cut.a { cut_probe }\nimport cut.c { cut_unrelated_marker }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n";
+    const ENTRY_IMPORTS_CA: &str = "module cut.entry\n\nimport cut.c { cut_unrelated_marker }\nimport cut.a { cut_probe }\n\nfn cut_use() -> Int { cut_probe(cut_v: 1) }\n";
+
+    /// CONTROL 0 -- THE FIXTURE IS LIVE. Without this, every arm agreeing on `NoCallNodeFound`
+    /// would satisfy the invariant for the worst possible reason.
+    #[test]
+    fn the_bare_call_is_observed_at_all() {
+        assert_eq!(
+            observe_bare_call(ENTRY_IMPORTS_A),
+            ObservedTarget::SourceDeclarationTarget {
+                owner_module_path: "cut.a".to_string(),
+                decl_name: "cut_probe".to_string(),
+            }
+        );
+    }
+
+    /// THE QUALIFIED CONTROL: the exact constructor AND payload, not a rendered string.
+    #[test]
+    fn the_reported_owner_is_the_resolved_one_and_not_the_consumer() {
+        match observe_bare_call(ENTRY_IMPORTS_B) {
+            ObservedTarget::SourceDeclarationTarget {
+                owner_module_path, ..
+            } => {
+                assert_ne!(owner_module_path, "cut.entry");
+            }
+            other => panic!("expected a source declaration target, got {other:?}"),
+        }
+    }
+
+    /// ORDER IS ALREADY INERT, and this arm is GREEN TODAY. It stays enrolled as an ordinary
+    /// regression control rather than retiring because it happens to pass (DESIGN §4b(4)).
+    #[test]
+    fn reordering_import_declarations_does_not_change_the_bare_call() {
+        assert_eq!(
+            observe_bare_call(ENTRY_IMPORTS_AC),
+            observe_bare_call(ENTRY_IMPORTS_CA)
+        );
+    }
+
+    /// THE MEASURED PRE-CUT STATE, ASSERTED AS WHAT IT IS RATHER THAN AS THE INVARIANT.
+    ///
+    /// This is NOT the gate-1 invariant and must not be read as one. `rust-unit-tests` is a `needs`
+    /// of the required aggregate, so a test that is red today would red the required lane for
+    /// everyone; the gate-1 invariant is therefore DEMONSTRATED at review time and lands WITH the
+    /// cut. What this records is that the three arms are DISTINGUISHABLE today -- which is the fact
+    /// that makes the invariant's RED authorable at all. A wall whose red was never authorable is a
+    /// decoration, and worse than absent because it gets cited as coverage.
+    ///
+    /// It is deliberately NOT written as `imports_still_decide_binding`: an inverted green test
+    /// ratifies the defect as the assertion, and when it flips the red is ambiguous between "the cut
+    /// landed" and "something else broke".
+    #[test]
+    fn the_three_arms_are_distinguishable_before_the_cut() {
+        let with_a = observe_bare_call(ENTRY_IMPORTS_A);
+        let with_b = observe_bare_call(ENTRY_IMPORTS_B);
+        let with_none = observe_bare_call(ENTRY_IMPORTS_NONE);
+        assert_ne!(with_a, with_b, "import selection is live today");
+        assert_ne!(with_a, with_none, "import presence is live today");
+    }
+
+    /// A `TypeEnv` identical in every field except `authored_import_names`. The two arms of the
+    /// gate below are built only through this, so "the arms differ in one field" is enforced by
+    /// construction rather than asserted in a comment.
+    fn type_env_with_authored(names: &[&str]) -> Rc<crate::v1_compiler_infer_env::TypeEnv> {
+        let base = crate::v1_compiler_infer_env::empty_type_env();
+        let mut authored = crate::v1_rt::empty_map::<String, bool>();
+        for n in names {
+            authored = crate::v1_rt::map_insert(authored, n.to_string(), true);
+        }
+        Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+            authored_import_names: Rc::new(authored),
+            ..(*base).clone()
+        })
+    }
+
+    /// The declaration must sit in a PARENT env: `callable_lookup_over_candidates` checks
+    /// `func_env.local` first and returns immediately on a hit, so a local declaration never
+    /// reaches the authored-membership branch. `v2.std.collection` / `map_get` is not an arbitrary
+    /// choice -- it is the specimen carrying `DivergentProjection` fidelity, which is the condition
+    /// `declared_candidate_rivals_the_builtin` requires.
+    fn parent_env_declaring_map_get() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
+        use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig};
+        let sig = Rc::new(ResolvedFuncSig {
+            name: "map_get".to_string(),
+            params: crate::v1_std_core::empty_node_list(),
+            // This synthetic declaration deliberately has no parameters. Its empty formal
+            // population is kernel-grounded, not awaiting a module-context resolution pass.
+            resolved_formals: Rc::new(ResolvedFormals::KernelGroundedFormals {
+                formals: Rc::new(im::Vector::new()),
+            }),
+            inferred: crate::v1_std_core::unit_type(),
+            is_async: false,
+            output_provenance: Rc::new(im::Vector::new()),
+            variant_provenance: crate::v1_rt::rc_empty_map(),
+        });
+        let parent = Rc::new(ResolvedFuncEnv {
+            name: "v2.std.collection".to_string(),
+            local: Rc::new(crate::v1_rt::map_insert(
+                crate::v1_rt::empty_map(),
+                "map_get".to_string(),
+                sig,
+            )),
+            parents: Rc::new(im::Vector::new()),
+        });
+        Rc::new(ResolvedFuncEnv {
+            name: "cut.entry".to_string(),
+            local: crate::v1_rt::rc_empty_map(),
+            parents: Rc::new(im::Vector::from(vec![parent])),
+        })
+    }
+
+    /// THE AUTHORED-MEMBERSHIP DECISION GATE, OBSERVED AT THE FuncSigLookup SEAM.
+    ///
+    /// WHY NOT AT TARGET IDENTITY -- MEASURED, NOT ASSUMED. Two arms built over `CallTargetIdentity`
+    /// were executed and BOTH FAILED TO DISCRIMINATE, for two independent structural reasons. A
+    /// locally declared rival never reaches the visibility branch at all, because
+    /// `callable_lookup_over_candidates` checks `func_env.local` FIRST and returns on a hit. And on
+    /// the zero-declared arm the builtin IS admitted, but a lone builtin is deliberately mapped back
+    /// to `FuncSigUnresolved` (the registry carries no declared parameter list), after which
+    /// `builtin_call_target_or_undetermined` reconstructs `RuntimePrimitiveCall` FROM THE NAME. So
+    /// both the lookup verdict and the projected target collapse the difference in that population.
+    /// That is an OBSERVATION-BOUNDARY defect, not a bad fixture spelling.
+    ///
+    /// AND IT DOES NOT MEAN THE POLICY IS DEAD. That convenient reading is refuted by a specimen in
+    /// the tree: `map_get` is declared at `v2.std.collection` with `DivergentProjection` fidelity in
+    /// `std.primitive_projection`, which is exactly the condition
+    /// `declared_candidate_rivals_the_builtin` tests. So the collision is real, reachable from
+    /// authored source, and already witnessed by `callable_candidate_ambiguity_witness_test`.
+    ///
+    /// THIS CONTROL ISOLATES THE CAUSE. Both arms share the same `ResolvedFuncEnv` carrying one
+    /// PARENT declaration (parent, not local, or the early return fires) and the same `TypeEnv` in
+    /// every other field. They differ in `authored_import_names` AND NOTHING ELSE, so a difference
+    /// in the verdict is attributable to authored membership alone.
+    #[test]
+    fn authored_membership_alone_decides_the_callable_verdict() {
+        use crate::v1_compiler_infer_lookup::callable_lookup_over_candidates;
+        use crate::v1_compiler_infer_sigs::{CallableIdentity, FuncSigLookup};
+
+        let env = parent_env_declaring_map_get();
+
+        let named = callable_lookup_over_candidates(
+            env.clone(),
+            type_env_with_authored(&["map_get"]),
+            "map_get".to_string(),
+        );
+        let omitted = callable_lookup_over_candidates(
+            env,
+            type_env_with_authored(&["cut_unrelated_marker"]),
+            "map_get".to_string(),
+        );
+
+        // THE DIRECTION IS ASSERTED, NOT MERE INEQUALITY. A control demanding only that the arms
+        // differ would pass if BOTH moved to the wrong verdict together -- the shared-corruption
+        // shape a comparison cannot detect.
+        match &*named {
+            FuncSigLookup::FuncSigResolved { declared, .. } => {
+                assert_eq!(declared.owner_module_path, "v2.std.collection");
+                assert_eq!(declared.decl_name, "map_get");
+            }
+            other => panic!(
+                "naming the callable must suppress the builtin co-candidate and resolve to the \
+                 declaration, got {other:?}"
+            ),
+        }
+
+        // AND THE AMBIGUOUS ARM IS CHECKED BY ITS EXACT IDENTITY SET, never by a count and never by
+        // list order. A count would pass on a substitution, and an order-sensitive comparison would
+        // make candidate ordering -- which nothing declares to be semantic -- part of the assertion.
+        match &*omitted {
+            FuncSigLookup::FuncSigAmbiguous { candidates, .. } => {
+                let mut observed: Vec<String> = candidates
+                    .iter()
+                    .map(|c| match &*c.identity {
+                        CallableIdentity::DeclaredCallable { identity } => format!(
+                            "declared:{}:{}",
+                            identity.owner_module_path, identity.decl_name
+                        ),
+                        CallableIdentity::BuiltinCallable { primitive_name } => {
+                            format!("builtin:{primitive_name}")
+                        }
+                    })
+                    .collect();
+                observed.sort();
+                observed.dedup();
+                assert_eq!(
+                    observed,
+                    vec![
+                        "builtin:map_get".to_string(),
+                        "declared:v2.std.collection:map_get".to_string(),
+                    ],
+                    "the two rival authorities must both be present, and only those two"
+                );
+            }
+            other => panic!(
+                "omitting it from a NONEMPTY authored list must admit the builtin rival and go \
+                 ambiguous, got {other:?}"
+            ),
+        }
+    }
 }

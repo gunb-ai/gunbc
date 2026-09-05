@@ -9,7 +9,7 @@ import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -121,30 +121,42 @@ test fn the_live_subject_is_not_empty() -> Bool {
     )
 }
 
-// ── THE SHAPE GAP, HELD OPEN BY EXECUTION ─────────────────────────────────────────────────────
+// ── THE SHAPE GAP: CLOSED, AND THE PAIR STAYS ────────────────────────────────────────────────
 //
-// THE TWO ROWS ABOVE PASS AND THAT IS NOT EVIDENCE OF ANYTHING. The live judgment CANNOT FAIL over
-// a fn_arrow_decl_facts_live population, so its green carries no information, and the positive
-// control does not detect this: the population is non-empty and the entry module is present, which
-// is exactly the precondition passing while the check itself is blind. A non-empty subject is a
-// necessary precondition masquerading as the check.
+// THE TWO ROWS ABOVE ONCE PASSED WITHOUT CARRYING INFORMATION, and the record of why is kept here
+// because it is the useful part. The live judgment COULD NOT FAIL over a fn_arrow_decl_facts_live
+// population: `v1_compiler.coproduct_reflection` `marshal_skeleton` built every fn-arrow body node
+// through `conj_record`, i.e. `TypeNode { connective: Conj }`, while `v2.std.node_query`
+// `node_is_call` matches `ComputationNode { behavior: Transform }` and is false otherwise. So
+// `node_callee_symbol` was Absent at every skeleton node and `v2.lens.determinism` classified every
+// body Deterministic by non-membership. The positive control did not detect this and could not: the
+// population was non-empty and the entry module present, which is the precondition passing while
+// the check itself is blind.
 //
-// THE CAUSE IS A SHAPE MISMATCH BETWEEN TWO SYMBOLS AND IT IS NAMED SO IT CAN BE CHECKED.
-// `v1_compiler.coproduct_reflection` `marshal_skeleton` builds every fn-arrow body node through
-// `conj_record`, i.e. `TypeNode { connective: Conj }`. `v2.std.node_query` `node_is_call` matches
-// `ComputationNode { behavior: Transform }` and is false otherwise. So `node_callee_symbol` is
-// Absent at every skeleton node and `v2.lens.determinism` classifies every body Deterministic by
-// non-membership. Pre-existing and not a regression: both symbols are unchanged by the change that
-// restored this consumer, so no §4b(3) drop is filed -- a capability that was never real was never
-// dropped. It is a §4b(2) STALL whose next-rung trigger is the CAPABILITY: the fn-arrow body
-// skeleton represents a call at a shape `node_is_call` accepts.
+// THE §4b(2) STALL FILED HERE IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE, AND THE TRIGGER HAS
+// FIRED. It named the CAPABILITY -- the fn-arrow body skeleton represents a call at a shape
+// `node_is_call` accepts -- and gunbc#10282 landed exactly that: `marshal_generic` returns a
+// `ComputationNode { behavior: Transform }` record for an `ExprCall` with a non-empty authored
+// name, whose first positional child is already the callee identity leaf. The seed-side executing
+// evidence that the PRODUCER emits the accepted shape is
+// `marshaled_call_carries_the_transform_call_carrier`, with
+// `marshaled_non_call_stays_a_conj_type_node` as its control, on the required
+// `cargo test -p v1-compiler --lib` lane -- deliberately there and not here, because both rows
+// below construct their nodes by hand and a hand-built node can attest a lens, never a marshal.
 //
-// THESE TWO ROWS ARE THE STALL'S EXECUTING CONTROL, and they are here rather than in a plan doc
-// because a stall tracked by prose is retired by someone remembering. They differ in ONE field --
-// the node kind -- and carry the same callee atom, so together they assert that this lens is
-// CORRECT AND LIVE while the subject shape cannot represent what it detects. Both pass today. When
-// the marshal capability lands, the blind arm reds and names itself for removal; that red is the
-// trigger firing, and it is what makes the paragraph in v2.lens.determinism retire by execution.
+// WHAT IS NOW TRUE. A call in a fn-arrow body skeleton is a call as this lens recognises one, and
+// `v2.std.fn_index.callees_from_node` reads that call channel across the whole output subtree. The
+// live judgment's green is therefore a statement about the closure rather than about either a
+// representation gap or a depth-one horizon. The nested-body pair below remains the regression
+// control for that subtree read.
+//
+// THE PAIR DOES NOT RETIRE ON THE CLIMB (§4b(4)). The prediction written here when the stall was
+// filed -- that the blind arm would red when the capability landed -- was wrong, and stating why is
+// worth more than deleting it: the blind arm asserts that a `Conj` node carrying a callee atom is
+// NOT a call, which was true before the repair and is true after it. What changed is not this
+// arm's verdict but whether the live substrate can produce the other one. So the pair converts from
+// the stall's control into the permanent regression control: it is what reds if a later marshal
+// change quietly returns calls to a shape this lens cannot see.
 //
 // The callee spelling is `map_keys` because v2.lens.determinism's own header cites it as the
 // order-leaking realization (v1_rt map_keys over im::HashMap on std RandomState), so the atom names
@@ -167,7 +179,8 @@ fn shape_gap_transform_shaped_call() -> Node {
   }
 }
 
-// The shape `conj_record` actually emits for every fn-arrow body node.
+// The shape the marshal emitted for EVERY fn-arrow body node before gunbc#10282, and which it now
+// emits for every node that is not a named call.
 fn shape_gap_conj_shaped_call() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -180,7 +193,7 @@ test fn the_determinism_lens_fires_on_a_transform_shaped_call() -> Bool {
   length(xs: determinism_findings(root: shape_gap_transform_shaped_call())) > 0
 }
 
-test fn the_determinism_lens_is_blind_to_the_conj_shape_the_skeleton_emits() -> Bool {
+test fn the_determinism_lens_is_blind_to_the_conj_shape_the_marshal_no_longer_emits() -> Bool {
   length(xs: determinism_findings(root: shape_gap_conj_shaped_call())) == 0
 }
 
@@ -206,25 +219,35 @@ fn call_node(callee: String) -> Node {
   }
 }
 
-// THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
-// from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
-// those of its IMMEDIATE children — because the skeleton the Rust marshal produces hoists callee
-// atoms onto the body root. A first version of this fixture wrapped the callee atom inside the call
-// node, one level deeper. Nothing was reachable, and BOTH discrimination rows below agreed for that
-// reason rather than for the reason they claim: the leak-is-found row went red, and the
-// leak-outside-the-graph row went green while proving nothing at all. That is the empty-fixture
-// failure in miniature — two rows in apparent agreement, one shared wrong cause — so the shape is
-// recorded here rather than silently corrected.
+// THE FIXTURE WAS ONCE FLATTENED TO MATCH THE READER, AND THAT IS NO LONGER EITHER TRUE OR
+// REQUIRED. A first version of this fixture wrapped the callee atom one level deeper. Nothing was
+// reachable, and BOTH discrimination rows below agreed for that reason rather than for the reason
+// they claim: the leak-is-found row went red, and the leak-outside-the-graph row went green while
+// proving nothing at all. That is the empty-fixture failure in miniature — two rows in apparent
+// agreement, one shared wrong cause. The repair flattened the fixture and wrote down why:
+// `call_reachable_decls` read callees from `decl.output` at DEPTH ONE, so a reachable callee had
+// to be an atom child of the body root.
 //
-// A CALL EDGE is therefore a bare atom child of the body root; a LEAKING CALL is a call node child,
-// which determinism_findings reaches because it folds the whole subtree.
+// THAT PREMISE IS DEAD AND THE READER IS WHAT CHANGED, not the fixture. `callees_from_node` now
+// reads call carriers across the whole `decl.output` subtree, decided by execution over the live
+// corpus rather than by this paragraph: the population that hid below the root is counted by
+// v2.lens.fn_index_depth_agreement. So the accommodation is retired, and the
+// nested rows at the end of this file are what hold the grain — they are RED against a depth-one
+// reader, which is the control the flattened fixture could not carry. The class is filed as
+// gunbc.recurring_failure_mode `fixture_flattened_to_the_reader_grain_it_should_falsify`.
+//
+// THE SEED BODY IS NOW THE CALL CARRIER ITSELF and this is the second correction of the same
+// mistake in this fixture, in the opposite direction. It stood as a Conj root carrying a bare
+// callee atom — a shape NO marshal produced, because the marshal spelled a call `Conj` while
+// node_is_call demanded `ComputationNode { behavior: Transform }`, so nothing the corpus could hand
+// these lenses was ever a call. The marshal now emits the carrier
+// (v1.stage0.coproduct_reflection transform_record), which is what makes `call_node` below the
+// shape of a real `fn seed() -> X { reached_fn(..) }` body rather than a shape invented to make the
+// row pass. A LEAKING CALL two hops out is a call node nested under a body root, which
+// determinism_findings reaches because it folds the whole subtree.
 
 fn body_referencing(callee: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: atom_node(lexeme: callee) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  call_node(callee: callee)
 }
 
 fn body_invoking_primitive(primitive: String) -> Node {
@@ -258,6 +281,25 @@ fn primitive_decl(qualified_name: String, name: String, primitive: String) -> Fn
 // twin, so the pair discriminates the classification rather than merely the presence of a call.
 data leaking_callee: String = "map_keys"
 data deterministic_callee: String = "sorted_map_keys"
+data no_terminal_callees: List<String> = []
+
+test fn bare_atom_is_not_a_call_edge() -> Bool {
+  length(xs: callees_from_node(
+    node: shape_gap_conj_shaped_call(),
+    terminal_callee_symbols: no_terminal_callees
+  )) == 0
+}
+
+test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
+  contains(
+    xs: callees_from_node(
+      node: call_node(callee: "src/fixture.dag"),
+      terminal_callee_symbols: no_terminal_callees
+    ),
+    item: "src/fixture.dag",
+    eq: fn(a, b) { a == b }
+  )
+}
 
 // entry -> reached -> (leak). The leak is TWO HOPS from the entry and in a DIFFERENT module, which
 // is exactly the shape the per-tree door cannot see.
@@ -316,4 +358,110 @@ test fn deterministic_callee_in_the_same_shape_is_clean() -> Bool {
       primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee)
     ]
   )
+}
+
+// ── the nested-body grain: a depth-one reader is blind here ───────────────────────────────────
+
+// A BLOCK BODY, BUILT FROM THE SAME CALL CARRIER THE SINGLE-CALL ROWS USE. `body_referencing` IS
+// `call_node`, because a body that is one call marshals as the carrier itself; a `let`-block body
+// is a Conj of statements with that carrier one level down, so the callee atom sits at depth two.
+// Nesting `call_node` rather than inventing a second Conj is what keeps this row a claim about
+// DEPTH: the two shapes differ only in the statement record between the root and the call.
+fn nested_body_referencing(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: call_node(callee: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn nested_calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: nested_body_referencing(callee: callee),
+    params: []
+  }
+}
+
+// RED CONTROL AGAINST DEPTH ONE. The same two-hop cross-module leak as above, reached through an
+// entry whose call sits one statement-record below its body root. A depth-one reader finds no
+// callee on the entry at all, reaches nothing, and returns zero findings.
+test fn leak_reached_through_a_nested_body_is_found() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        nested_calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+        primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: leaking_callee),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: deterministic_callee)
+      ]
+    )
+  ) > 0
+}
+
+// THE DISCRIMINATOR THAT KEEPS THE DEEPER READ FROM BECOMING "FOLD EVERYTHING". Same nested entry,
+// leak moved out of the call graph. A transitive read of a declaration's OWN body must not become a
+// transitive read of the corpus: this row is green only because reachability still decides.
+test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        nested_calling_decl(qualified_name: "fix.det.entry.seed", name: "seed", callee: "reached_fn"),
+        primitive_decl(qualified_name: "fix.det.reached.reached_fn", name: "reached_fn", primitive: deterministic_callee),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) == 0
+}
+
+// ── the call channel excludes atom senders by construction ───────────────────────────────────
+
+// THE LOWER-RUNG PARAMETER EXCLUSION IS GONE, AND ITS EVIDENCE STAYS. The first declaration
+// carries a parameter reference whose lexeme collides with a leaking declaration name. The second
+// changes that occurrence into the producer's actual Transform call carrier. The pair differs in
+// structural role, which is the fact callees_from_node now reads; parameter names and lexeme shape
+// no longer participate in deciding whether an edge exists.
+fn decl_with_param_reference(qualified_name: String, name: String, param: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: qualified_name,
+    name: name,
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [ Edge { label: Positional, target: atom_node(lexeme: param) } ],
+      occurrence_id: OccurrenceSynthetic
+    },
+    params: [ FnArrowParam { name: symbol_intern_lexeme(lexeme: param), node: atom_node(lexeme: param) } ]
+  }
+}
+
+test fn a_parameter_reference_naming_a_declaration_is_not_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        decl_with_param_reference(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          param: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) == 0
+}
+
+// POSITIVE CONTROL ON THE STRUCTURAL ROLE: the same callee lexeme in a real call position reaches
+// the leak. A reader that rejects all colliding lexemes would make this row red.
+test fn the_same_lexeme_in_call_position_is_a_call_edge() -> Bool {
+  length(
+    xs: findings_over(
+      decls: [
+        nested_calling_decl(
+          qualified_name: "fix.det.entry.seed",
+          name: "seed",
+          callee: "orphan_fn"
+        ),
+        primitive_decl(qualified_name: "fix.det.unreached.orphan_fn", name: "orphan_fn", primitive: leaking_callee)
+      ]
+    )
+  ) > 0
 }

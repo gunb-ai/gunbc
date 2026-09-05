@@ -839,6 +839,78 @@ fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
 /// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
 /// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
 /// cannot be un-stripped back into a module identity.
+/// One top-level `data` declaration with its declared-type spelling, keyed at declaration
+/// identity — the row `data_decl_type_facts` marshals into a `DataDeclTypeFact`.
+///
+/// THE HOST SHAPE EXISTS SO THE BUILTIN AND ITS ONE HOST CONSUMER ARE NOT TWO PRODUCERS.
+/// `v1_compiler.cli_run.rostered_row_join` runs the declared-versus-rostered identity join
+/// inside required CI, where there is no `InterpContext` to marshal a `Value` into; deriving
+/// the same population a second way would be exactly the second authority DESIGN §3 refuses,
+/// agreeing today and diverging on the first amendment. So the walk, the filter and the
+/// declared-type projection stay here, and the builtin is a marshaller over these rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataDeclTypeRow {
+    pub module_path: String,
+    pub decl_name: String,
+    pub type_name: String,
+    pub rel_path: String,
+}
+
+/// Every source this walk ACCOUNTED FOR, whether or not it declared any `data`.
+///
+/// EXISTENCE BEFORE MEANING. A consumer asking "is every declared row rostered" cannot answer
+/// from the rows alone: a source that contributed no row and a source the walk never reached
+/// render identically in a list of rows, and "it did not parse" is not an exclusion policy. The
+/// module inventory is therefore returned beside the rows, so a caller can join it against the
+/// files on disk and refuse, naming the source, for anything unaccounted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataDeclTypePopulation {
+    pub rows: Vec<DataDeclTypeRow>,
+    /// `(module_path, rel_path)` for every module this walk read, in path order.
+    pub accounted_modules: Vec<(String, String)>,
+}
+
+/// The declared `data` population of the named pool roots, fail-closed on every source it reaches.
+pub fn data_decl_type_rows(pool_roots: &[String]) -> Result<DataDeclTypePopulation, String> {
+    let defects = pool_root_defects(pool_roots);
+    if !defects.is_empty() {
+        return Err(pool_root_refusal_message(
+            &defects,
+            pool_roots.len(),
+            "data_decl_type_facts",
+        ));
+    }
+    let ws = crate::cli_run::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let (data_decls, _module_count) = decls_parse_only_fail_closed(
+        &abs_pool_roots,
+        &[],
+        &[ItemKind::DataItem],
+        "data_decl_type_facts",
+    )?;
+    let mut accounted: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    for (module_path, rel_path) in crate::cli_run::build_module_path_index(&abs_pool_roots) {
+        accounted.insert((module_path, rel_path.replace('\\', "/")));
+    }
+    let rows = data_decls
+        .iter()
+        .map(|decl| DataDeclTypeRow {
+            module_path: decl.module_path.clone(),
+            decl_name: decl.name.clone(),
+            type_name: data_decl_type_name(decl),
+            rel_path: decl.rel_path.clone(),
+        })
+        .collect();
+    Ok(DataDeclTypePopulation {
+        rows,
+        accounted_modules: accounted.into_iter().collect(),
+    })
+}
+
 pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],
@@ -853,33 +925,24 @@ pub fn eval_data_decl_type_facts(
             },
         );
     }
-    let ws = crate::cli_run::workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-    let (data_decls, module_count) = decls_parse_only_fail_closed(
-        &abs_pool_roots,
-        &[],
-        &[ItemKind::DataItem],
-        "data_decl_type_facts",
-    )
-    .map_err(|msg| InterpError::TypeError { msg })?;
-    let mut rows: Vec<Value> = Vec::with_capacity(data_decls.len());
-    for decl in data_decls.iter() {
+    let population =
+        data_decl_type_rows(pool_roots).map_err(|msg| InterpError::TypeError { msg })?;
+    let mut rows: Vec<Value> = Vec::with_capacity(population.rows.len());
+    for row in population.rows.iter() {
         rows.push(Value::Record {
             type_name: ctx.sym("DataDeclTypeFact"),
             fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("module_path"), str_value(decl.module_path.clone())),
-                (ctx.sym("decl_name"), str_value(decl.name.clone())),
-                (ctx.sym("type_name"), str_value(data_decl_type_name(decl))),
-                (ctx.sym("rel_path"), str_value(decl.rel_path.clone())),
+                (ctx.sym("module_path"), str_value(row.module_path.clone())),
+                (ctx.sym("decl_name"), str_value(row.decl_name.clone())),
+                (ctx.sym("type_name"), str_value(row.type_name.clone())),
+                (ctx.sym("rel_path"), str_value(row.rel_path.clone())),
             ])),
         });
     }
     eprintln!(
-        "data_decl_type_facts: {} data declarations from {module_count} modules",
-        rows.len()
+        "data_decl_type_facts: {} data declarations from {} modules",
+        rows.len(),
+        population.accounted_modules.len()
     );
     Ok(crate::v1_interpreter::list_value(rows))
 }
@@ -1065,6 +1128,41 @@ fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
     )
 }
 
+fn nullary_behavior_variant(ctx: &InterpContext, name: &str) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("Behavior"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn node_kind_computation_node(ctx: &InterpContext, behavior: Value) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("NodeKind"),
+        variant_name: ctx.sym("ComputationNode"),
+        fields: Rc::new(vec![(ctx.sym("behavior"), behavior)]),
+    }
+}
+
+// A CALL IS A CALL IN BOTH REPRESENTATIONS. `v2.std.node_query::node_is_call` recognises a call as
+// a `ComputationNode { behavior: Transform }` whose first positional child is a callee reference --
+// the shape `v2.compiler.body_lowering_fold` produces for the lowered body, and the shape every
+// call-shaped lens matches on. This marshal emitted `TypeNode { connective: Conj }` for EVERY node
+// including calls, so `node_is_call` was false on every skeleton node the corpus can produce, and
+// each lens folding a skeleton through it (`v2.lens.determinism` transitive findings,
+// `v2.lens.machine_shape`, the origin probe's call walk) was GREEN BY CONSTRUCTION: the state it
+// refuses had no constructor on its own input. That is DESIGN §4b's decoration -- worse than an
+// absent check, because it was cited as coverage -- and its §3 receipt was already standing in
+// `v2.lens.no_dual_representation_test.scan`, which carried a SECOND call predicate spelled against
+// the Conj shape because the shared one could not answer here.
+fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
+    node_record(
+        ctx,
+        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Transform")),
+        edges,
+    )
+}
+
 fn marshal_skeleton(
     ctx: &InterpContext,
     node: &Rc<Node>,
@@ -1188,7 +1286,18 @@ fn marshal_generic(
             refs.remove(&pname);
         }
     }
-    (conj_record(ctx, edges), refs)
+    // The callee atom is `edges[0]` on exactly this condition: an `ExprCall` with a non-empty
+    // authored name takes either the parameter-reference arm or the callee-atom arm above, and both
+    // push the identity leaf before any child skeleton. A call through an unnamed callee expression
+    // stays `Conj` -- it has no callee reference to be first, so `node_is_call` would refuse it
+    // anyway, and claiming the Transform kind without one would be the shape without the fact.
+    let is_call_shaped =
+        matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty();
+    if is_call_shaped {
+        (transform_record(ctx, edges), refs)
+    } else {
+        (conj_record(ctx, edges), refs)
+    }
 }
 
 // A statement sequence -- a block's children, or a standalone `let` (optional children[1] is
@@ -2337,6 +2446,162 @@ mod parse_only_uppercase_variant_regression_tests {
             skeleton_children_len(&ctx, &skel),
             1,
             "infer-stamped VariantValueBinding must still emit the skeleton atom"
+        );
+    }
+
+    fn call_expr(
+        callee: &str,
+        args: Vec<Rc<crate::v1_std_core::Node>>,
+    ) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            callee.to_string(),
+            Rc::new(ExprData::ExprCall {
+                call_semantics: None,
+                descent_evidence: None,
+            }),
+            Rc::new(args.into()),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn var_expr(name: &str) -> Rc<crate::v1_std_core::Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            dummy_span(),
+            dummy_span(),
+        )
+    }
+
+    fn field(ctx: &InterpContext, value: &Value, key: &str) -> Option<Value> {
+        match value {
+            Value::Record { fields, .. } => {
+                let k = ctx.sym(key);
+                fields
+                    .iter()
+                    .find(|(fk, _)| *fk == k)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+        match value {
+            Value::Variant { fields, .. } => {
+                let key = ctx.sym(name);
+                fields
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_is(ctx: &InterpContext, value: Option<&Value>, expected: &str) -> bool {
+        matches!(
+            value,
+            Some(Value::Variant { variant_name, .. }) if *variant_name == ctx.sym(expected)
+        )
+    }
+
+    // THE WHOLE ACCEPTED SHAPE, NOT ITS OUTER TAG. `node_is_call` reads two nested variants -- the
+    // kind's `behavior` and the callee child's `connective` -- so a probe asserting only
+    // `ComputationNode` and `TypeNode` is satisfied by a marshal emitting `behavior: Loop` over a
+    // `connective: Conj` child, which `node_is_call` refuses. That is the §5 tell in this module's
+    // own test: an assertion that passes while the realization lies. These two read the full path.
+    fn is_transform_computation_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "ComputationNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "behavior").as_ref(),
+                        "Transform",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_atom_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Atom",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn is_conj_type_node(ctx: &InterpContext, skel: &Value) -> bool {
+        match field(ctx, skel, "kind") {
+            Some(kind) => {
+                variant_is(ctx, Some(&kind), "TypeNode")
+                    && variant_is(
+                        ctx,
+                        variant_field(ctx, &kind, "connective").as_ref(),
+                        "Conj",
+                    )
+            }
+            None => false,
+        }
+    }
+
+    fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
+        match field(ctx, skel, "children") {
+            Some(Value::List(items)) => items
+                .iter()
+                .next()
+                .and_then(|edge| field(ctx, edge, "target")),
+            _ => None,
+        }
+    }
+
+    // THE DISCRIMINATING PAIR FOR THE CALL CARRIER. `v2.std.node_query::node_is_call` accepts a
+    // node only when its kind is `ComputationNode { behavior: Transform }` AND its first positional
+    // child is a callee reference. Before this marshal emitted the carrier, the first assertion
+    // below read `TypeNode` for every node the corpus could produce, so every call-shaped lens over
+    // a skeleton was green with no reachable red. The second row is the control that keeps the fix
+    // from degenerating into "everything is a call".
+    #[test]
+    fn marshaled_call_carries_the_transform_call_carrier() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) =
+            marshal_generic(&ctx, &call_expr("map_keys", vec![var_expr("m")]), &[], &si);
+        assert!(
+            is_transform_computation_node(&ctx, &skel),
+            "a marshaled call must carry ComputationNode {{ behavior: Transform }} -- the exact \
+             kind node_is_call matches, behavior included"
+        );
+        let callee = first_child_target(&ctx, &skel).expect("call skeleton has a first child");
+        assert!(
+            is_atom_type_node(&ctx, &callee),
+            "the first positional child must be TypeNode {{ connective: Atom }} -- node_is_call's \
+             second predicate, node_is_callee_reference, accepts only Atom or Arrow"
+        );
+    }
+
+    #[test]
+    fn marshaled_non_call_stays_a_conj_type_node() {
+        let ctx = test_ctx();
+        let si = ctx.source_indices();
+        let (skel, _) = marshal_generic(&ctx, &var_expr("m"), &[], &si);
+        assert!(
+            is_conj_type_node(&ctx, &skel),
+            "only a call node may carry the call carrier; everything else stays TypeNode {{ connective: Conj }}"
         );
     }
 

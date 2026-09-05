@@ -20,14 +20,12 @@ module test.claim.spark.spark_serving_hermetic_acquisition_fixture
 // REFUSES a non-acquired observation needs to author one.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { token_count, positive_slot_count, positive_measure_count }
-import gunbc.spark.serving_release { ServingContract }
 import std.content_hash { serialize_content_hash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash }
 import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
- spark_serving_desired_bind_listen }
+}
 import product.placement_supply { HostIdentity }
 import extdeps.ssh { SshPublicKey, Ed25519 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -118,20 +116,6 @@ import gunbc.spark.serving_observed_members {
   LingerObservedEnabled,
   LingerObservedDisabled,
   LingerUnobservedState,
-}
-
-
-// THE CONTRACT IS A FIXTURE. The fleet no longer declares a window or slot count globally -- both
-// come from a per-realization observation, and the live realization has none, so the fleet's own
-// contract is a refusal. These witnesses exercise the render/observe path, which is a function of
-// the contract it is given; the values are the ones the fleet used to carry, so the assertions keep
-// their historical meaning.
-fn w_contract() -> ServingContract {
-  ServingContract {
-    bind: spark_serving_desired_bind_listen,
-    default_context: token_count(count: 1048576),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-  }
 }
 
 data hermetic_identity_file: NonEmptyStr = "/tmp/gunbc-hermetic-acquisition-fixture-key"
@@ -508,7 +492,7 @@ fn hermetic_unit_captures() -> List<SparkServingProbeLegCapture>
     hermetic_leg(
       request: UserUnitReadRequest,
       exit_code: 0,
-      out: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: w_contract())),
+      out: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       err: "",
     ),
     hermetic_leg(request: UserUnitIsEnabledRequest, exit_code: 0, out: "enabled", err: ""),

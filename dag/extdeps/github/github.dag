@@ -57,12 +57,6 @@ type GitHubScope
   | ScopeReadOrg
   | ScopeReadUser
 
-type Pagination {
-  per_page: Int
-  cursor: String?
-  has_next: Bool
-}
-
 type GitHubPermission = PermRead | PermWrite | PermAdmin
 
 data default_api_base: NonEmptyStr = "https://api.github.com"

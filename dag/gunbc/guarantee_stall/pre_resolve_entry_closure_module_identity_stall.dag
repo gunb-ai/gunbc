@@ -1,0 +1,20 @@
+module gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+
+// THE DELIBERATELY DROPPED HALF OF gunbc#10258'S DISPLAY CONTRACT. That lane printed module
+// identity beside source path from ResolvedGraph, but only after typed resolution. The
+// loader-boundary preflight that replaced it answers the actual landing decision at its native
+// grain -- repository-path intersection -- and cannot project resolved module identity because
+// SourceFile carries only path and content. Reparsing the content or reconstructing a plausible
+// path-to-name mapping would mint a second identity authority, so the replacement refuses that
+// tempting widening and records the absent capability here instead.
+data pre_resolve_entry_closure_module_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a routed entry's exact loader-boundary closure can be enumerated by repository path before typed resolution, but cannot be enumerated by resolved module identity at that same pre-resolution boundary",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["claim_batch --print-entry-closure"] },
+  next_rung_trigger: "the modeled routed-entry execution path exposes module identity joined to every loader-boundary source path before typed resolution, derived from its existing module-declaration facts rather than by reparsing source text or reconstructing identity from path spelling"
+}

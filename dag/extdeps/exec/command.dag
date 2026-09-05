@@ -12,6 +12,7 @@ import gunbc.remote_shell_command {
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
   RemoteExecCommandRefusalCause,
+  remote_exec_command_rendered,
   remote_exec_command_string,
 }
 
@@ -97,6 +98,10 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program_command"),
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
+    decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
@@ -181,7 +186,8 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
     SshExec { ssh_target: t, interpretation: interp } =>
       match remote_exec_command_string(argv: map(argv_words(command: command), a => a as NonEmptyStr), interpretation: interp) {
         RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
-        RemoteExecCommandBuilt { command: s } =>
+        RemoteExecCommandBuilt { command: sealed } =>
+          let s = remote_exec_command_rendered(command: sealed)
           CommandOverTransportBuilt {
             command: argv_command(
               program: sshpass_binary_name,

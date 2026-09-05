@@ -1,8 +1,9 @@
 module test.claim.witness_floor_workflow_consolidation_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, List, String }
+import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -268,46 +269,63 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 // necessarily carries a `needs` edge, so a row forbidding the token outright would have made
 // the fail-closed repair unrepresentable.
 //
-// The claim is therefore stated at the grain that actually matters. A lane waiting on the other
-// renders as that lane's job carrying `needs: [<other lane>]`, so both single-lane forms are
-// refused; the aggregator's two-lane edge is required to be present. That is a strictly sharper
-// discriminator than the token count was, because it distinguishes the serialization being
-// forbidden from the aggregation being demanded, which "no needs anywhere" could not.
+// The claim is therefore stated at the grain that actually matters. The typed lane jobs must
+// carry no `needs`, while the one roster from which the aggregate derives its `needs` must carry
+// exactly both lane identities. Reading those narrow producers avoids serializing the aggregate's
+// large gate program merely to recover fields that existed before serialization. This remains a
+// strictly sharper discriminator than the old token count: it distinguishes the serialization
+// being forbidden from the aggregation being demanded, which "no needs anywhere" could not.
 //
 // It is a RED that can be authored in both directions: giving either lane job a `needs` row
 // fails the negatives, and dropping the aggregator's fails the positive.
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
-        && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
-        && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
-    WitnessFloorGenerationRefused { reason: _ } => false
-  }
+  length(xs: build_lane_needs()) == 0
+    && length(xs: witness_floor_lane_needs()) == 0
+    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
+    && count_where(
+      xs: non_empty_to_list(xs: required_lanes_roster()),
+      predicate: fn(lane) { lane.job_id == build_lane_job_id },
+    ) == 1
+    && count_where(
+      xs: non_empty_to_list(xs: required_lanes_roster()),
+      predicate: fn(lane) { lane.job_id == floor_lane_job_id },
+    ) == 1
 }
 
 // THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
 //
-// It replaces w_RED_fabric_evidence_failure_reaches_required_context, whose subject was the
-// gating edge that gunbc.rung_drop `fabric_evidence_gating` withdraws. That row is not
-// retired as obsolete -- its subject is real and its restoration is the drop's trigger -- it is
-// asserting a fact that is deliberately no longer true, so keeping it would have been a red
-// against the declared state rather than evidence about it.
+// It replaces w_RED_fabric_evidence_executes_without_gating, whose subject was the lane still
+// EXECUTING while `gunbc.rung_drop` `fabric_evidence_gating` withheld only its merge block. The
+// 2026-09-04 runner-capacity ruling deleted the job itself, so that row asserted a fact that is
+// deliberately no longer true. It is not retired as obsolete -- the lane's restoration is still
+// the drop's trigger -- it is restated at the subject the drop now covers.
 //
-// What survives is the half the drop does NOT withdraw: the calibration keeps executing on every
-// push and pull request, so the evidence stream is unbroken and only the merge block is gone. A
-// diff that deletes the job to "finish" the drop authors RED here; so does one that restores the
-// needs edge or the FABRIC_EVIDENCE binding without also retiring the drop, because the second
-// and third conjuncts forbid exactly the two spellings the gating form emits.
-test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("  ", concat(fabric_evidence_job_id, ":")))
-        && string_contains(s: yml, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
-        && !string_contains(s: yml, pattern: "FABRIC_EVIDENCE")
-        && !string_contains(s: yml, pattern: concat(", ", concat(fabric_evidence_job_id, "]")))
-    WitnessFloorGenerationRefused { reason: _ } => false
-  }
+// SO THE CLAIM IS ABSENCE AT THE TYPED PRODUCERS rather than after whole-workflow serialization.
+// A diff that re-adds any deleted job authors RED here; so does one that restores only the
+// FABRIC_EVIDENCE roster binding, because a lane that gates without running is the fail-open a
+// skipped required check produces. The row goes green again only together with the drop's
+// retirement, which is a measured wall and not a pull request.
+//
+// PERMANENT AFTER OBSERVED RED (DESIGN 4b(4)). Run 33924210916 supplied `fabric-evidence` and
+// observed this exact identity return Bool(false). This probe is therefore a regression control,
+// not scaffolding: keep it enrolled for as long as any of the three citing rung drops stands.
+// POSITIVE-CONTROL SEAM: the countable must author RED when a deleted lane is supplied. Without
+// this input boundary, a planned/pass receipt would not distinguish a live absence wall from a
+// vacuous projection that always returned an empty list.
+fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
+  !any(xs: job_ids, predicate: fn(job_id) {
+      job_id == "fabric-evidence"
+        || job_id == "rust-unit-tests"
+        || job_id == "emit-copy-qualification-battery"
+    })
+}
+
+test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
+  deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
+    && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
+    && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
+      lane.var_name == "FABRIC_EVIDENCE"
+    })
 }
 
 // THE GATE RUNS FOR EVERY ATTEMPT, INCLUDING A CANCELLED ONE, AND THEN REFUSES A NON-SUCCESS

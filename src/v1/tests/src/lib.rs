@@ -19,10 +19,14 @@ mod field_of_fractions_construction_test;
 #[cfg(test)]
 mod field_of_fractions_single_declaration_test;
 #[cfg(test)]
+mod item_kind_dispatch_totality_test;
+#[cfg(test)]
 mod materialization_provider_resolved_graph_consumer_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod none_undetermined_carrier_refuse_test;
+#[cfg(test)]
+mod record_literal_declared_type_inhabitance_test;
 #[cfg(test)]
 mod whole_tree_wiring_enum_test;

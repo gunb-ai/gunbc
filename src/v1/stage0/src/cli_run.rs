@@ -89,6 +89,7 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 mod required_floor_runner;
+pub mod rostered_row_join;
 mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -152,8 +153,8 @@ pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
 pub use emit_host::{
-    compile_dag_multi_module_fixture, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3086,6 +3087,52 @@ pub enum MultiModuleCompileFixtureOutcome {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReferenceOccurrenceBindingDisposition {
+    Bound {
+        declaration_occurrence: i64,
+        provider_module: String,
+        binding_source: UnlistedImportBindingSource,
+    },
+    Unresolved,
+    Ambiguous {
+        candidates: Vec<i64>,
+    },
+    Refused {
+        cause: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceOccurrenceDenominatorRow {
+    pub occurrence: i64,
+    pub consumer_file: String,
+    pub consumer_module: String,
+    pub authored_name: String,
+    pub category: crate::std_occurrence_identity::OccurrenceCategory,
+    pub file_reference_ordinal: i64,
+    pub span_start: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceOccurrenceBindingRow {
+    pub denominator: ReferenceOccurrenceDenominatorRow,
+    pub disposition: ReferenceOccurrenceBindingDisposition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReferenceOccurrenceBindingCensus {
+    Refused {
+        cause: String,
+    },
+    Observed {
+        source_digest: String,
+        compiler_digest: String,
+        denominator: Vec<ReferenceOccurrenceDenominatorRow>,
+        observations: Vec<ReferenceOccurrenceBindingRow>,
+    },
+}
+
 /// Structural digest of the supplied manifest — path and content of every module, in the order
 /// the caller supplied them, so a reordering is a different subject and a whitespace edit is a
 /// different subject. Same fnv1a64 authority every other identity key in the seed consumes
@@ -3394,7 +3441,8 @@ pub(crate) fn string_list_data_from_module_source(
         .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
     for item in module.children.iter() {
         if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+            || item.module_item_kind
+                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
         }
@@ -9503,7 +9551,14 @@ pub enum BudgetCompletion {
 // consumer should act on, and unifying that is what closed an earlier absorption. The split
 // here is on PASSED-VERSUS-INTERRUPTED, which that same note calls a real distinction because
 // IT DETERMINES THE REMEDY: an interrupted row produced no verdict and its elapsed figure is a
-// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is EXACT.
+// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is an UPPER
+// BOUND WITHIN ONE MILLISECOND -- the cost is known, and the rendered integer is its CEILING.
+// The two are still opposite readings and the distinction still determines the remedy: an
+// interrupted row's true cost is somewhere ABOVE its figure and unbounded, a completed row's is
+// somewhere BELOW its figure and within a millisecond of it. What a completed figure is NOT is
+// exact, and it must not say so: `crossing_figure_ms` rounds up so that a reported cost can
+// never tie the budget it is refused against, and an adjective asserting a precision the
+// arithmetic does not have is the same defect the rounding was landed to repair.
 // Rendering one as the other is what produced a ledger describing a single row three
 // inconsistent ways (`BUDGET-REFUSED`, `outcome=timed_out`, and "cost exactly 57193ms").
 //
@@ -9585,8 +9640,9 @@ impl ClaimOutcome {
                 budget_ms,
                 kind,
             } => Some(format!(
-                "{} budget {}ms EXCEEDED; cost={}ms EXACT — the witness ran to completion and \
-                 was then reclassified on cost, so this figure is a measurement of the row",
+                "{} budget {}ms EXCEEDED; cost={}ms CEILING — the witness ran to completion \
+                 and was then reclassified on cost, so its cost is known to within a millisecond \
+                 and this figure is that cost rounded UP, never a point measurement",
                 kind.label(),
                 budget_ms,
                 elapsed_ms
@@ -9601,8 +9657,15 @@ impl ClaimOutcome {
 
 #[cfg(test)]
 mod budget_figure_rendering_tests {
-    use super::{BudgetKind, ClaimOutcome};
+    use super::{
+        budget_completion_outcome, wall_budget_completion_outcome, BudgetKind, ClaimOutcome,
+    };
 
+    // THE FIELD SPELLING IS LOAD-BEARING AND STAYS `cost=` ON BOTH ARMS. Rendering the completed
+    // arm as `cost<=` to carry the ceiling reading would have been more literal and would have
+    // silently broken this very control, which splits on `cost=` — the honesty belongs in the
+    // adjective, where a reader looks, not in the field name, where a parser does.
+    //
     // THE FIELD, NOT THE CAVEAT. The defect this guards is not that the sentence lacked a
     // qualification — it carried "UNMEASURED" in capitals and three readers still read the
     // number as a cost, one of them while quoting that word. So the assertion is positional:
@@ -9658,7 +9721,16 @@ mod budget_figure_rendering_tests {
         .budget_figure_phrase()
         .expect("completed-over-budget rows render a budget figure");
         assert_eq!(cost_field(&phrase), "5002ms", "{phrase}");
-        assert!(phrase.contains("EXACT"), "{phrase}");
+        // THE ADJECTIVE IS ASSERTED, NOT INCIDENTAL. `crossing_figure_ms` rounds the figure UP,
+        // so a completed crossing reports a CEILING and the word EXACT would overclaim by up to a
+        // millisecond -- which is the same kind of defect as the truncation it replaced, a figure
+        // wrong HIGH still calling itself a measurement instead of one wrong LOW. This asserts
+        // both directions so neither word can drift back in.
+        assert!(phrase.contains("CEILING"), "{phrase}");
+        assert!(
+            !phrase.contains("EXACT"),
+            "a rounded-up figure must not call itself exact: {phrase}"
+        );
     }
 
     // THE FIGURE IS KEPT, IN ITS OWN FIELD. Dropping it would trade one wrong reading for a
@@ -9687,6 +9759,68 @@ mod budget_figure_rendering_tests {
 
     // NON-BUDGET OUTCOMES CARRY NO FIGURE, so no caller can render one for a row that never
     // met a ceiling.
+    // THE DISCRIMINATING RED FOR THE TRUNCATION, AND IT IS THE INVARIANT RATHER THAN A SAMPLE.
+    // In a completed-over-budget row the reported cost must be STRICTLY GREATER than the reported
+    // budget, because the arm is only constructed when the nanosecond cost strictly exceeds the
+    // nanosecond budget. Under the old truncating divide this failed at every cost in the first
+    // millisecond above the line, and the row printed `budget 500ms EXCEEDED; cost=500ms EXACT`.
+    #[test]
+    fn a_crossing_can_never_report_a_cost_equal_to_the_budget_it_crossed() {
+        // One nanosecond over is the tightest input the comparison admits, so it is the input
+        // that decides the rendering: anything that rounds it down lands it back on the line.
+        for over_nanos in [1u128, 999_999, 1_000_000, 8_000_000] {
+            let cpu_nanos = 500u128 * 1_000_000 + over_nanos;
+            let outcome = budget_completion_outcome(Some(500), ClaimOutcome::Pass, cpu_nanos);
+            let ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                ..
+            } = outcome
+            else {
+                panic!(
+                    "a cost strictly over the budget must produce the crossing arm: {outcome:?}"
+                );
+            };
+            assert!(
+                elapsed_ms > budget_ms,
+                "a crossing reported cost={elapsed_ms}ms against budget={budget_ms}ms from                  {cpu_nanos}ns — a figure equal to the line it is refused against reads as a                  boundary defect in the gate, and the gate is innocent"
+            );
+        }
+    }
+
+    // THE SAME INVARIANT ON THE WALL ARM. The two arms are separate functions and the truncation
+    // was authored into both, so a control over only the CPU side would leave the class alive at
+    // the other and green on the axis it names.
+    #[test]
+    fn the_wall_crossing_carries_the_same_invariant() {
+        let wall_nanos = 500u128 * 1_000_000 + 1;
+        let outcome = wall_budget_completion_outcome(Some(500), ClaimOutcome::Pass, wall_nanos);
+        let ClaimOutcome::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            ..
+        } = outcome
+        else {
+            panic!("a wall cost strictly over the budget must produce the crossing arm");
+        };
+        assert!(
+            elapsed_ms > budget_ms,
+            "wall crossing reported cost={elapsed_ms}ms against budget={budget_ms}ms"
+        );
+    }
+
+    // THE POSITIVE CONTROL FOR THE GATE ITSELF, kept beside the rendering controls so that a
+    // future repair cannot satisfy them by widening the comparison. A cost of EXACTLY the budget
+    // does not cross, and must stay a Pass.
+    #[test]
+    fn a_cost_of_exactly_the_budget_does_not_cross() {
+        let outcome = budget_completion_outcome(Some(500), ClaimOutcome::Pass, 500u128 * 1_000_000);
+        assert!(
+            matches!(outcome, ClaimOutcome::Pass),
+            "the comparison is strict: exactly the budget is within it, got {outcome:?}"
+        );
+    }
+
     #[test]
     fn outcomes_without_a_budget_render_no_figure() {
         assert!(ClaimOutcome::Pass.budget_figure_phrase().is_none());
@@ -11930,9 +12064,10 @@ thread_local! {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
+        module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::ExprError {
             kind: ExprErrorKind::CensusHeadsBodyStripped,
-            message: "pool census heads-only: function body stripped — refuse to interpret"
+            message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
                 .to_string(),
         }),
         ident: None,
@@ -15361,10 +15496,11 @@ fn parse_module_heads_for_pool_census(
         m
     });
     // The HEADS reading of the grammar, not the full one. Every declaration head is
-    // parsed by the same productions; a brace-delimited fn body is skipped at token
-    // grain instead of being built, because `census_heads_module_node` two lines below
-    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
-    // of function bodies for a consumer that discards them was the largest single term
+    // parsed by the same productions; brace-delimited fn bodies and data initializer
+    // values are skipped at token grain instead of being built, because
+    // `census_heads_module_node` below replaces every body with the shared stand-in
+    // anyway. Building thousands of modules' bodies for a consumer that discards them
+    // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
     // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
     //
@@ -18349,6 +18485,35 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     }
 }
 
+/// Milliseconds for a figure that is being REPORTED BESIDE THE BUDGET IT CROSSED, rounded UP.
+///
+/// THE COMPARISON IS IN NANOSECONDS AND IS STRICT, SO THE REPORT MUST NOT BE ABLE TO TIE IT.
+/// Truncating dividing put every cost in (500.000, 500.999]ms on the literal `500`, which the
+/// crossing message then printed as `cpu budget 500ms EXCEEDED; cost=500ms EXACT` — a sentence
+/// that is self-contradictory on its face and reads as an off-by-one in the GATE. It is not: the
+/// gate is innocent and the renderer destroyed the precision the word EXACT asserts.
+///
+/// THE HARM IS DEMONSTRATED, NOT HYPOTHESISED. Two independent readers competent on this subject
+/// read that row as a boundary defect within an hour of each other on gunbc#10327, and the second
+/// was one message from escalating it to an operator as a `>=` bug. A truncated figure printed
+/// beside the budget it is refused against MANUFACTURES FALSE REPORTS AGAINST THE GATE.
+///
+/// ROUNDING UP RATHER THAN CARRYING A DECIMAL keeps the column an integer millisecond count, which
+/// every existing consumer parses, while making the reported figure unable to equal the budget:
+/// the true cost is strictly greater than `budget_ms * 1_000_000` nanoseconds, so its ceiling in
+/// milliseconds is strictly greater than `budget_ms`. The invariant is derived from the
+/// comparison rather than asserted beside it.
+///
+/// IT IS DELIBERATELY NOT USED FOR ORDINARY COSTS. A figure that did not cross anything is not
+/// being compared to a line, so rounding it up would overstate the corpus; this is a REPORTING
+/// rule for the crossing arms, not a change to how cost is measured. Note the direction of the
+/// old bias while it stood: truncation understated EVERY reported cost by up to a millisecond, so
+/// the budget looked roomier and the corpus cheaper than either is, and any historical reasoning
+/// about where the line should sit was done against systematically low numbers.
+fn crossing_figure_ms(nanos: u128) -> u64 {
+    nanos.div_ceil(1_000_000) as u64
+}
+
 fn budget_completion_outcome(
     budget: Option<u64>,
     outcome: ClaimOutcome,
@@ -18357,7 +18522,7 @@ fn budget_completion_outcome(
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
             ClaimOutcome::CompletedOverBudget {
-                elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                elapsed_ms: crossing_figure_ms(cpu_nanos),
                 budget_ms,
                 kind: BudgetKind::Cpu,
             }
@@ -18390,7 +18555,7 @@ fn wall_budget_completion_outcome(
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
             ClaimOutcome::CompletedOverBudget {
-                elapsed_ms: (wall_nanos / 1_000_000) as u64,
+                elapsed_ms: crossing_figure_ms(wall_nanos),
                 budget_ms,
                 kind: BudgetKind::Wall,
             }
@@ -20357,6 +20522,7 @@ mod closure_bare_disposition_tests {
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
@@ -36161,7 +36327,6 @@ pub fn extdeps_shape_transport_policy_module_facts(
     module_path: &str,
 ) -> ExtdepsShapeTransportPolicyModuleFacts {
     use crate::v1_compiler_emit::effective_operation_transport;
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     use crate::v1_std_core::{
         field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData,
     };
@@ -36245,7 +36410,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
 
     let mut embedded_facts: Vec<ExtdepsEmbeddedFactRaw> = Vec::new();
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name.is_empty() {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name.is_empty()
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36362,7 +36529,6 @@ fn project_external_authority_named_data(
     data_name: &str,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     let path = source_path_for_module_path(module_path.to_string());
     if try_resolve_extdeps_module_source_path(&path).is_none() {
         return ExternalAuthorityAnchorProjection::Refused {
@@ -36371,7 +36537,9 @@ fn project_external_authority_named_data(
     }
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != data_name {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != data_name
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -36395,9 +36563,10 @@ fn read_external_authority_anchor_from_items(
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_compiler_emit_core_support::is_data_def_item;
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+            || item.name != "extdeps_external_authority_anchor"
+        {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
@@ -37764,6 +37933,11 @@ mod sigs_env_flat_parents {
         Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
             name: fn_name.to_string(),
             params: Rc::new(im::vector![]),
+            resolved_formals: Rc::new(
+                crate::v1_compiler_infer_sigs::ResolvedFormals::KernelGroundedFormals {
+                    formals: Rc::new(im::vector![]),
+                },
+            ),
             inferred: crate::v1_std_core::leaf_node_with_span(
                 std::rc::Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
@@ -40584,17 +40758,73 @@ fn spawn_floor_heartbeat() {
     // the leaf recorded zero high events while its parent slices recorded 141M, so the level
     // that is throttling is not the level that owns the limit, and only the walk shows it.
     let mut beat: u64 = 0;
+    // THE STALL WINDOW, OPENED HERE AT SPAWN rather than at the first beat, for the same reason
+    // `started` and `cpu_baseline_ms` are taken here: so the FIRST emitted sample closes a real
+    // window (spawn to beat one) instead of a sentinel. Opening it inside the loop left every run
+    // printing `na` on its first beat, which is worst exactly where this line matters most -- a
+    // short green run that ends after one beat would carry no comparable stall figure at all,
+    // which is the observability hole this repair exists to close (review 59540).
+    //
+    // The line already carried `cpu_ms` and a cumulative `majflt`, and neither is the refusal's
+    // quantity: `cpu_ms` is utime PLUS stime, and the kernel bills reclaim labour to the faulting
+    // process as system time, so it reads a pure treadmill as roughly one-third computing. A
+    // census over 60 recent floor runs reconstructed a share from those fields and ranked a
+    // REFUSING run healthier than a green one, which is what a reconstruction from the wrong
+    // quantity buys.
+    //
+    // These deltas feed `memory_governor`'s own mirrors, so this is one producer read twice, at a
+    // second window, rather than a second computation that agrees today and drifts later.
+    let mut stall_window = match (
+        crate::memory_governor::self_major_faults(),
+        crate::memory_governor::self_user_cpu_ms(),
+    ) {
+        (Some(major_faults), Some(self_user_cpu_ms)) => {
+            Some(required_floor_runner::FloorStallWindow {
+                started: std::time::Instant::now(),
+                major_faults,
+                self_user_cpu_ms,
+            })
+        }
+        // Unreadable counters stay unreadable: the sentinel survives for platforms with no
+        // procfs, where a check that cannot observe must not fabricate a reading.
+        _ => None,
+    };
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
         let seam = FLOOR_SEAM
             .lock()
             .map(|g| g.clone())
             .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        // Read both counters through the governor's readers -- `self_user_cpu_ms` is utime alone
+        // BY CONSTRUCTION, which is the whole point of routing through it rather than re-reading
+        // /proc here as the resource sample does.
+        let now_faults = crate::memory_governor::self_major_faults();
+        let now_user_cpu = crate::memory_governor::self_user_cpu_ms();
+        let stall_fields = match (&stall_window, now_faults, now_user_cpu) {
+            (Some(prev), Some(f), Some(c)) => required_floor_runner::floor_stall_metric_fields(
+                prev.started.elapsed().as_millis() as u64,
+                Some(f.saturating_sub(prev.major_faults)),
+                Some(c.saturating_sub(prev.self_user_cpu_ms)),
+            ),
+            // A window that cannot be read has no figures, and renders the sentinel rather than
+            // a zero -- a zero share is the most severe reading this line can carry, so
+            // fabricating one manufactures a stall. With the window opened at spawn this arm is
+            // reached only where the counters themselves do not read.
+            _ => required_floor_runner::floor_stall_metric_fields(0, None, None),
+        };
+        if let (Some(f), Some(c)) = (now_faults, now_user_cpu) {
+            stall_window = Some(required_floor_runner::FloorStallWindow {
+                started: std::time::Instant::now(),
+                major_faults: f,
+                self_user_cpu_ms: c,
+            });
+        }
         eprintln!(
-            "[floor-heartbeat] wall_s={} phase={} {}",
+            "[floor-heartbeat] wall_s={} phase={} {} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample(cpu_baseline_ms)
+            floor_resource_sample(cpu_baseline_ms),
+            stall_fields
         );
         beat += 1;
         if beat % 10 == 0 {
@@ -41788,6 +42018,7 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
     run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
     FixtureClosureOutcome,
 };
 

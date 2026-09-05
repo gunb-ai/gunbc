@@ -9,7 +9,7 @@ import v2.std.algebra {
   TailFound, TailAbsent,
 }
 import gunbc.host_effect {
-  HostEffect, ShellCommand,
+  HostEffect,
   HostEffectIntent,
   HostEffectEvidence,
   NodeControlPlane,
@@ -24,6 +24,7 @@ import std.realization_reconcile {
   reconciliation_converged,
 }
 import std.types { String }
+import v2.std.collection { Present, Absent }
 
 type HostEffectPlan = EffectPlan<HostEffect>
 
@@ -35,57 +36,52 @@ type HostEffectPlanContext {
 
 data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"
 
-fn host_effect_plan_placeholder_effect() -> HostEffect {
-  ShellCommand { script: "" }
-}
-
-fn host_effect_plan_unsupported_step_refusal(
-  ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+// A refusal before a Do leaf has no attempted effect. Present retains the actual
+// intent returned by host_effect_apply, including its own failed attempts.
+fn host_effect_plan_unsupported_step_refusal() -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
   NotConverged {
     reason: host_effect_plan_unsupported_step_reason,
-    applied: HostEffectIntent {
-      target: ctx.target,
-      effect: host_effect_plan_placeholder_effect(),
-      evidence: ctx.evidence,
-      transport: ctx.transport,
-      privilege_denial: none,
-    },
+    applied: Absent,
   }
 }
 
 fn host_effect_plan_apply_step(
   step: EffectPlanStep<HostEffect>,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
   match step {
     Do { effect: e } =>
-      host_effect_apply(
+      match host_effect_apply(
         target: ctx.target,
         effect: e,
         evidence: ctx.evidence,
         transport: ctx.transport,
-      )
+      ) {
+        Converged { evidence: observed, applied: intent } =>
+          Converged { evidence: observed, applied: Present { value: intent } }
+        NotConverged { reason: why, applied: intent } =>
+          NotConverged { reason: why, applied: Present { value: intent } }
+      }
     If { cond: _, then_: _, else_: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
     For { binder: _, over: _, body: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
     While { cond: _, body: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
     Retry { body: _, escalations: _, on_exhausted: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
     Let { name: _, value: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
     Call { callee: _, args: _ } =>
-      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+      host_effect_plan_unsupported_step_refusal()
   }
 }
 
 fn host_effect_plan_apply_rest(
-  head_result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  head_result: Reconciliation<HostEffectIntent?, HostEffectEvidence>,
   rest: FreeMonoid<EffectPlanStep<HostEffect>>,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
   if !reconciliation_converged(r: head_result) {
     head_result
   } else {
@@ -107,18 +103,12 @@ fn host_effect_plan_apply_rest(
 fn host_effect_plan_apply(
   plan: HostEffectPlan,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
   match list_head(xs: plan.steps) {
     HeadAbsent =>
       NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
-        applied: HostEffectIntent {
-          target: ctx.target,
-          effect: host_effect_plan_placeholder_effect(),
-          evidence: ctx.evidence,
-          transport: ctx.transport,
-          privilege_denial: none,
-        },
+        applied: Absent,
       }
     HeadFound { value: first } =>
       host_effect_plan_apply_rest(

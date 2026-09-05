@@ -41,7 +41,9 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 // its CLI word and lane -- construction, not a list a phase can be omitted from. Four phases are
 // the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
 // generated-artifact wall restored after its declared population produced a real drift incident:
-// parse, namespace-wave-admission, regen, generated-artifact, floor.
+// parse, namespace-wave-admission, generated-artifact, floor. `generated-artifact` is ONE phase
+// over both declared generated populations below. The former sibling `regen` phase was removed
+// when its independently-green verdict hid a drift in the stage0-mirror half for five hours.
 //
 // WALL-CLOCK PRICE OF THIS WIDENING, recorded here because `gunbc.rung_drop`
 // `required_gate_bankruptcy` requires every static-roster widening to be priced on the roster's
@@ -56,16 +58,53 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 type RequiredCiPhase
   = ParsePhase
   | NamespaceWaveAdmissionPhase
-  | RegenPhase
   | GeneratedArtifactPhase
+  | RegenFixedPointPhase
   | FloorPhase
+
+// TWO NAMED ARMS, NEVER A WIDENED PATH PREDICATE. A path that neither authority owns is in
+// neither arm; inability to produce either arm refuses GeneratedArtifactPhase. The registry arm
+// is gunbc.generated_artifact committed_generated_artifacts. The mirror arm is
+// v1.compiler.emit_rust emit_emitted_population_manifest joined against the committed stage0
+// source directory. The required host runs both adjudicators before issuing one terminal verdict.
+type DeclaredGeneratedArtifactPopulation
+  = RegistryProjectionPopulation
+  | Stage0MirrorPopulation
+
+data declared_generated_artifact_populations: List<DeclaredGeneratedArtifactPopulation> = [
+  RegistryProjectionPopulation,
+  Stage0MirrorPopulation,
+]
+
+// Both component verdicts survive the fold. This is deliberately not `Accepted | Refused` with a
+// single cause: when both populations refuse, both precise causes must reach the terminal report.
+// `PopulationRefused` also covers a drift; the located per-artifact diagnosis remains owned by the
+// component adjudicator and is carried here without being reclassified.
+type GeneratedArtifactPopulationAdjudication
+  = GeneratedArtifactPopulationClean
+  | GeneratedArtifactPopulationRefused
+
+type WholeGeneratedArtifactAdjudication {
+  registry_projections: GeneratedArtifactPopulationAdjudication
+  stage0_mirrors: GeneratedArtifactPopulationAdjudication
+}
+
+fn whole_generated_artifact_adjudication_clean(a: WholeGeneratedArtifactAdjudication) -> Bool {
+  match a.registry_projections {
+    GeneratedArtifactPopulationRefused => false
+    GeneratedArtifactPopulationClean => match a.stage0_mirrors {
+      GeneratedArtifactPopulationRefused => false
+      GeneratedArtifactPopulationClean => true
+    }
+  }
+}
 
 fn required_ci_phase_name(p: RequiredCiPhase) -> String {
   match p {
     ParsePhase => "parse"
     NamespaceWaveAdmissionPhase => "namespace-wave-admission"
-    RegenPhase => "regen"
     GeneratedArtifactPhase => "generated-artifact"
+    RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
   }
 }
@@ -76,8 +115,8 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
   match p {
     ParsePhase => WitnessesLane
     NamespaceWaveAdmissionPhase => WitnessesLane
-    RegenPhase => BuildLane
     GeneratedArtifactPhase => BuildLane
+    RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
   }
 }
@@ -89,8 +128,8 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
 data required_ci_phases: List<RequiredCiPhase> = [
   ParsePhase,
   NamespaceWaveAdmissionPhase,
-  RegenPhase,
   GeneratedArtifactPhase,
+  RegenFixedPointPhase,
   FloorPhase,
 ]
 

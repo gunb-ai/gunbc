@@ -16,11 +16,13 @@ import v2.std.algebra {
   list_snoc_item,
   list_tail
 }
-import v2.std.collection { Absent, List, Present }
+import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_nodes }
+import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
 type FnArrowParam {
@@ -50,6 +52,19 @@ data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition
 // (docs/plans/live-read-witness-classification-design.md §9 P1 / §14). Dissolves when fn-arrow body
 // projection is a modeled substrate fold emitting the same skeleton facts as
 // fn_arrow_decl_facts_live, retiring the hand-Rust marshal_generic expansion.
+
+// WHAT SHAPE `FnArrowDecl.output` IS, STATED HERE BECAUSE THIS IS WHERE CONSUMERS FIND THE TYPE AND
+// A CONSUMER THAT GUESSES WRONG GETS A GREEN. A skeleton node is `TypeNode { connective: Conj }`,
+// EXCEPT a named call, which carries `ComputationNode { behavior: Transform }` with the callee
+// identity leaf as its first positional child -- the same carrier `v2.compiler.body_lowering_fold`
+// produces for a lowered body, so `v2.std.node_query` `node_is_call` / `call_callee_target` /
+// `call_argument_targets` are the authority over this substrate and a consumer needs no predicate of
+// its own. UNTIL gunbc#10282 THE MARSHAL SPELLED CALLS `Conj` TOO, and the cost of leaving that
+// undocumented is measured rather than hypothetical: every call-shaped lens folding these skeletons
+// was green with no authorable red, and `v2.lens.no_dual_representation_test.scan` grew a private
+// copy of `node_is_call` respelled against `Conj` because the shared one could not read its own
+// input. Both are repaired; this paragraph exists so the next consumer reads the shape instead of
+// inferring it from whichever node it happened to sample.
 
 // THE SUBJECT IS CALLER-NAMED (gunbc#10156 clause 2). `pool_roots` are workspace-relative
 // source roots, and the returned population is every declared function under them and nothing
@@ -174,20 +189,22 @@ fn decls_matching_callee(
   )
 }
 
-// A path literal is never a callee: the fn-arrow skeleton marshals string-literal atoms
-// into the same atom channel as call identities, so the reachability walk must reject
-// them by shape or it will chase declarations named after a source path.
+// Shared only by literal/reference readers. Call reachability does not consult lexeme shape.
 fn is_path_like_lexeme(text: String) -> Bool {
   string_contains(s: text, pattern: ".dag")
     || starts_with(s: text, prefix: "src/")
     || starts_with(s: text, prefix: "dag/")
 }
 
-// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
-// children — the fold_node it once ran recursed the whole subtree while its step discarded
-// every child's collected atoms, so the descent computed results nothing consumed
-// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
+fn param_names_of(decl: FnArrowDecl) -> List<String> {
+  fold_list(xs: decl.params, empty: empty_fn_arrow_string_list, cons: fn(acc, p) {
+    list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
+  })
+}
+
+// Immediate atom identities remain the literal/reference reader used by the effect and live-read
+// lenses. Call reachability does not consume this channel: callees_from_node selects call nodes
+// structurally below.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
     match node_atom_identity_optional(node: e.target) {
@@ -211,19 +228,78 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   }
 }
 
+type AtomScanState {
+  node: Node
+  atoms: List<Symbol>
+}
+
+fn atom_scan_init(n: Node) -> AtomScanState {
+  AtomScanState { node: n, atoms: empty_fn_arrow_symbol_list }
+}
+
+fn atom_scan_snoc(xs: List<Symbol>, sym: Symbol) -> List<Symbol> {
+  if contains(xs: xs, item: sym, eq: fn_index_symbol_eq) {
+    xs
+  } else {
+    list_snoc_item(xs: xs, item: sym)
+  }
+}
+
+fn atom_scan_step(acc: AtomScanState, _edge: Edge, child: AtomScanState) -> AtomScanState {
+  let merged = fold_list(
+    xs: child.atoms,
+    empty: acc.atoms,
+    cons: fn(a, sym) { atom_scan_snoc(xs: a, sym: sym) }
+  )
+  let with_child = match node_atom_identity_optional(node: child.node) {
+    Present { value: sym } => atom_scan_snoc(xs: merged, sym: sym)
+    Absent => merged
+  }
+  AtomScanState { node: acc.node, atoms: with_child }
+}
+
+// Whole-subtree atom identities remain an independent reader for lenses that inspect atom
+// population and depth directly. Call reachability no longer consumes this channel.
+fn atom_identities_in_subtree(node: Node) -> List<Symbol> {
+  let from_descendants = fold_node(
+    n: node,
+    algebra: NodeFold { init: atom_scan_init, step: atom_scan_step }
+  ).atoms
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => atom_scan_snoc(xs: from_descendants, sym: sym)
+    Absent => from_descendants
+  }
+}
+
+fn callee_text_from_call(node: Node) -> String? {
+  if node_is_call(node: node) {
+    match call_callee_target(node: node) {
+      Accepted { value: callee, diagnostics: _ } =>
+        match node_atom_identity_optional(node: callee) {
+          Present { value: sym } => optional_present(value: symbol_lexeme(sym: sym))
+          Absent => optional_absent()
+        }
+      Rejected { diagnostics: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
   fold_list(
-    xs: atom_identities_in_node(node: node),
+    xs: node_subtree_nodes(root: node),
     empty: empty_fn_arrow_string_list,
-    cons: fn(acc, sym) {
-      let text = symbol_lexeme(sym: sym)
-      if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
-        || is_path_like_lexeme(text: text) {
-        acc
-      } else if contains(xs: acc, item: text, eq: fn_index_string_eq) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: text)
+    cons: fn(acc, subtree_node) {
+      match callee_text_from_call(node: subtree_node) {
+        Present { value: text } =>
+          if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
+            || contains(xs: acc, item: text, eq: fn_index_string_eq) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: text)
+          }
+        Absent => acc
       }
     }
   )
@@ -332,5 +408,3 @@ fn call_reachable_decls_from_root(
     reached: empty_fn_arrow_decl_list
   )
 }
-
-

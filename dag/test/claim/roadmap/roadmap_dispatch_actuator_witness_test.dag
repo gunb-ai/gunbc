@@ -68,6 +68,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_spawn_commands_for_instance,
   dispatch_spawn_commands_for_inventory,
   DispatchSpawnCommands,
+  HostExecArgv,
+  SystemdUnitContainer,
+  TmuxSessionContainer,
   DispatchSpawnReady,
   DispatchSpawnRefused,
   git_worktree_add_argv,
@@ -355,13 +358,23 @@ test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
     && !string_contains(s: wire, pattern: "--ephemeral")
 }
 
+// THE TMUX COMMANDS LIVE INSIDE THE SESSION CONTAINER (DispatchSpawnCommands.session_container); a
+// unit-backed attempt has none, and this Codex witness is about the tmux arm only.
 fn codex_tmux_command_shape_holds(
   cmds: DispatchSpawnCommands,
   codex_executable: String,
 ) -> Bool {
-  let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
-  let provider_wire = join(cmds.provider_start.args, separator: "\0")
-  cmds.tmux_spawn.program == "/usr/bin/tmux"
+  match cmds.session_container {
+    SystemdUnitContainer { run: _ } => false
+    TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start } =>
+      codex_tmux_arm_shape_holds(spawn: spawn, provider_start: provider_start, codex_executable: codex_executable)
+  }
+}
+
+fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv, codex_executable: String) -> Bool {
+  let create_wire = join(spawn.args, separator: "\0")
+  let provider_wire = join(provider_start.args, separator: "\0")
+  spawn.program == "/usr/bin/tmux"
     && string_contains(s: create_wire, pattern: "\0/usr/bin/sh")
     && !string_contains(s: create_wire, pattern: "\0codex\0")
     && string_contains(
@@ -404,6 +417,14 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 }
 
 fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
+  match commands.session_container {
+    SystemdUnitContainer { run: _ } => false
+    TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe, provider_start } =>
+      lab_instance_tmux_shape_holds(commands: commands, lab: lab, spawn: spawn, event_pipe: event_pipe, provider_start: provider_start)
+  }
+}
+
+fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance, spawn: HostExecArgv, event_pipe: HostExecArgv, provider_start: HostExecArgv) -> Bool {
   match dashboard_instance_provider_executable(instance: lab) {
     Absent => false
     Present { value: codex_path } => {
@@ -411,9 +432,9 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDa
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
-  let tmux_wire = join(commands.tmux_spawn.args, separator: "\0")
-  let pipe_wire = join(commands.tmux_event_pipe.args, separator: "\0")
-  let provider_wire = join(commands.provider_start.args, separator: "\0")
+  let tmux_wire = join(spawn.args, separator: "\0")
+  let pipe_wire = join(event_pipe.args, separator: "\0")
+  let provider_wire = join(provider_start.args, separator: "\0")
   string_contains(
     s: git_wire,
     pattern: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",

@@ -23,6 +23,8 @@ use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
@@ -190,6 +192,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
+        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1071,6 +1074,35 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     })]),
         returns: type_variable_node("multi_module_compile_fixture_result".to_string()),
+    }));
+                __m.insert("compile_dag_reference_occurrence_binding_census".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "paths".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "contents".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "entry".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: type_variable_node("reference_occurrence_binding_census_result".to_string()),
     }));
                 __m.insert("parsed_import_statements".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

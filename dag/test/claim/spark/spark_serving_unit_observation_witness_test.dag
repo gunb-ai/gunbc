@@ -1,9 +1,6 @@
 module test.claim.spark_serving_unit_observation_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
-import std.measure { token_count, positive_slot_count, positive_measure_count }
-import gunbc.spark.serving_desired { spark_serving_desired_bind_listen }
-import gunbc.spark.serving_release { ServingContract }
 import gunbc.spark.serving_observed_members {
   SparkServingUnitManagerState,
   UserUnitManagerEnabled,
@@ -29,20 +26,6 @@ import gunbc.spark.serving_unit_render {
 import std.materialization_ladder { string_list_contains }
 import gunbc.spark.serving_install_paths { spark_serving_user_unit_path }
 
-
-// THE CONTRACT IS A FIXTURE. The fleet no longer declares a window or slot count globally -- both
-// come from a per-realization observation, and the live realization has none, so the fleet's own
-// contract is a refusal. These witnesses exercise the render/observe path, which is a function of
-// the contract it is given; the values are the ones the fleet used to carry, so the assertions keep
-// their historical meaning.
-fn w_contract() -> ServingContract {
-  ServingContract {
-    bind: spark_serving_desired_bind_listen,
-    default_context: token_count(count: 1048576),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-  }
-}
-
 fn digest_of(state: SparkServingObservedUnitState) -> String {
   match state {
     UserUnitStateObserved { unit_state_digest: d } => d as String
@@ -62,10 +45,10 @@ test fn a_unit_matching_the_rendering_observes_the_desired_digest() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: w_contract())),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
-  ) == (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+  ) == (spark_serving_user_unit_state_digest() as String)
 }
 
 // ── Drifted: present, but not what was asked for ────────────────────────────────────────────────
@@ -80,7 +63,7 @@ test fn a_drifted_unit_does_not_observe_the_desired_digest() -> Bool {
       read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
       file_absent: false,
     ),
-  ) != (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+  ) != (spark_serving_user_unit_state_digest() as String)
 }
 
 // A drifted unit is still OBSERVED -- we read it and know what it holds. Rendering drift as
@@ -105,7 +88,7 @@ test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
       read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=x"),
       file_absent: false,
     ),
-  ) != (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+  ) != (spark_serving_user_unit_state_digest() as String)
 }
 
 // ── Absent is not unobserved, and a failed read is not absence ──────────────────────────────────
@@ -183,10 +166,10 @@ test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: w_contract())),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
-  ) == (spark_serving_desired_user_unit_content_identity(contract: w_contract()) as String)
+  ) == (spark_serving_desired_user_unit_content_identity() as String)
 }
 
 // THE REGRESSION FOR THE UNCONVERGEABLE MEMBER, and it is a round trip rather than a restatement.
@@ -200,7 +183,7 @@ test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
 // desired text ends in one, so encoding it, handing it to the classifier as the probe would, and
 // requiring the desired identity back is exactly the path that was broken.
 test fn a_host_holding_the_declared_unit_observes_as_the_declared_identity() -> Bool {
-  let text = spark_serving_desired_user_unit_text(contract: w_contract())
+  let text = spark_serving_desired_user_unit_text()
   string_contains(text, "WantedBy")
     && digest_of(
          state: classify_observed_user_unit(
@@ -208,13 +191,13 @@ test fn a_host_holding_the_declared_unit_observes_as_the_declared_identity() -> 
            read_stdout: spark_serving_user_unit_content_wire(text: text),
            file_absent: false,
          ),
-       ) == (spark_serving_desired_user_unit_content_identity(contract: w_contract()) as String)
+       ) == (spark_serving_desired_user_unit_content_identity() as String)
 }
 
 // The wire is NOT the raw text: if these were equal the claim above would hold vacuously on an
 // encoder that returned its input, and the trim would still be eating the newline.
 test fn the_wire_form_is_an_encoding_and_not_the_text() -> Bool {
-  let text = spark_serving_desired_user_unit_text(contract: w_contract())
+  let text = spark_serving_desired_user_unit_text()
   spark_serving_user_unit_content_wire(text: text) != text
     && !string_contains(spark_serving_user_unit_content_wire(text: text), "WantedBy")
 }
@@ -228,7 +211,7 @@ test fn a_host_holding_other_bytes_observes_as_a_different_identity() -> Bool {
       read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
       file_absent: false,
     ),
-  ) != (spark_serving_desired_user_unit_content_identity(contract: w_contract()) as String)
+  ) != (spark_serving_desired_user_unit_content_identity() as String)
 }
 
 // AN EMPTY FILE IS DRIFT, not an impossible state. The identity is taken over `String`, so `""` needs
@@ -240,7 +223,7 @@ test fn an_empty_file_gets_a_real_identity_rather_than_a_cast() -> Bool {
     ),
   )
   e != "<absent>" && e != "<unobserved>"
-    && e != (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+    && e != (spark_serving_user_unit_state_digest() as String)
 }
 
 // ENABLEMENT IS PART OF THE STATE. A unit with exactly the right bytes that is DISABLED will not
@@ -253,10 +236,10 @@ test fn exact_bytes_that_are_disabled_still_match_the_desired_content() -> Bool 
   digest_of(
     state: classify_observed_user_unit(
       read_succeeded: true,
-      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: w_contract())),
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
       file_absent: false,
     ),
-  ) == (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+  ) == (spark_serving_user_unit_state_digest() as String)
 }
 
 // An unregistered unit is distinct from a disabled one: different remedies, different states. That
@@ -277,11 +260,11 @@ test fn a_not_found_enablement_is_distinct_from_disabled() -> Bool {
 test fn an_unobserved_enablement_leaves_the_read_content_observed() -> Bool {
   match classify_observed_user_unit(
     read_succeeded: true,
-    read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text(contract: w_contract())),
+    read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
     file_absent: false,
   ) {
     UserUnitStateObserved { unit_state_digest: d } =>
-      (d as String) == (spark_serving_user_unit_state_digest(contract: w_contract()) as String)
+      (d as String) == (spark_serving_user_unit_state_digest() as String)
     UserUnitStateUnobserved => false
     UserUnitStateAbsent => false
   }

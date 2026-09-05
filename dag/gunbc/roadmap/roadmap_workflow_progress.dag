@@ -32,6 +32,7 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
+import gunbc.harness.harness_throughput { HarnessRoundLedger }
 import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_reconcile }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
 import gunbc.roadmap_workflow_stage {

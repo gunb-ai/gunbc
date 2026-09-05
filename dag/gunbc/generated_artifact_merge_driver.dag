@@ -1,5 +1,10 @@
 module gunbc.generated_artifact_merge_driver
 
+import gunbc.shell_bash_runner { bash_escape_double_quote_specials_except_expansion }
+import extdeps.tools.sed { sed_script_arguments }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
 // `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves
 // the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's
@@ -62,6 +67,24 @@ data generated_artifact_merge_driver_shell_program: String = "bash"
 // by exact name, so a non-hook file beside them is inert. Placeholders are git's own: %O base, %A
 // ours AND the result path git reads back, %B theirs, %P the pathname in the worktree.
 
+// THE MEDIUM IS DECLARED ON THIS CARRIER, NOT INHERITED FROM THE HOOK-EMIT FAMILY. This script is
+// concat-built shell text, and a git merge driver is one of the foreign executors DESIGN's
+// shell-to-intent routing names: git runs it with no gunbc runtime present, so the emitted medium
+// is bash and the interim spelling is a string. That is a declared disposition and not an unmarked
+// hand-shell expansion -- the registered Disposition is gunbc.local_tidy_spec
+// generated_artifact_merge_driver_emit_scaffold, a Scaffold binding
+// expected_generated_artifact_merge_driver_sh with dissolves_to RealizationDispatch, and the trigger
+// below is its condition. It is stated HERE rather than left to the githooks_pre_commit_emit family
+// row for the reason review 45175 gave the pre-push sibling: a family trigger tracked once lets each
+// member inherit it implicitly, which is the shape the medium gate asks not to rely on.
+//
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT, per DESIGN section 4b(3). Emitting THIS
+// script through the grammar path retires nothing on its own; what retires the row is the bash
+// medium being modeled well enough that a diagnostic line's variable references and quoting are
+// DECLARED rather than spelled -- which is also the ceiling this module's own defect class names,
+// since every defect repaired here is a rendering the author could not see in the authored string.
+data generated_artifact_merge_driver_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: expected_generated_artifact_merge_driver_sh — concat-built foreign-executor (git merge driver) diagnostic script whose recipe lines are shell text with an escaping pass applied at emit time; DISSOLVES WHEN the bash medium is read forward from GrammarRelationRow rows (DESIGN section 4, one grammar in both directions) such that a diagnostic line's variable references and shell-active characters are declared rather than spelled, and this module emits through that path with no concat-built shell literal and no emit-time escaping arm")
+
 fn generated_artifact_merge_driver_config_value_at(script_path: String) -> String {
   concat(
     concat(generated_artifact_merge_driver_shell_program, " "),
@@ -84,20 +107,97 @@ fn generated_artifact_merge_driver_config_value() -> String {
 
 // STEP 3 IS NOT REDUNDANT WITH STEP 2. The regen route emits the seed by running a binary built FROM the seed, so a single pass can self-verify for the wrong reason: the binary that emitted the output predates the change it was emitting. The second build-and-verify is what makes the fixed point a claim about the merged authorities rather than about the stale binary.
 // THE RECIPE NAMED regen_stage0 UNTIL 2026-08-20, AND THAT BINARY WAS DELETED AT THE ROOT BY THE REGEN CUT. A repair recipe is printed at exactly the moment an author is blocked, so a recipe naming a deleted producer is the same stranding this repository just closed inside required-regen itself: the stop is real, and the only move it offers does not exist. Measured cost: it was followed, verbatim, by the session that landed the producer repair. The steps now name the surviving route, whose first pass WRITES the candidate tree before adjudicating it (v2.workflow.required_regen required_regen_run), which is what makes step 2 a producer instruction rather than a request to re-run a check. NOT SWEPT HERE, and named rather than left to be rediscovered: other regen_stage0 citations survive in the corpus (v1_source_audit_witness_test, stage0_regen_convergence_real_execution_witness_test, stage0_crates and workspace_members generated-file headers, several plan carriers). They are a census of their own; this fix covers the one recipe that strands an author mid-merge. This recipe is the author-facing repair for an unmerged generated projection; the CI transport recipe is gunbc.proactive_verification_ledger spine_regen_recipe and is deliberately not restated here.
+// STEP 3'S FIXED-POINT CALL CARRIES --source-root, AND ITS ABSENCE WAS THE SAME STRANDING ONE STEP LATER. claim_executor's `--required-regen-fixed-point` branch sits BELOW the binary's generic argument guard, so a run with no root exits 2 on `provide at least one --source-root` before the mode is ever reached -- the mode itself reads none, which is exactly why the omission looked harmless to write and could not be caught by reading the mode. The cost lands worst here: it is the LAST command of the wildcard arm every generated projection except the two heal-delegated rosters takes, so the author has already paid two builds and two regen passes when the recipe refuses. Found by a lane following this recipe verbatim, which is the only instrument that reads it.
 fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<String> {
   [
     concat("1. regenerate the derived projections: ", regen_command),
     "2. rebuild and run the seed emitter: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 (it writes the candidate tree under target/stage0-regen-candidate/src BEFORE it judges it; install every generated file it names into src/v1/stage0/src)",
-    "3. rebuild from the installed seed and verify AGAIN: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 && target/release/claim_executor --required-regen-fixed-point",
+    "3. rebuild from the installed seed and verify AGAIN: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 && target/release/claim_executor --required-regen-fixed-point --source-root dag --source-root src/v2",
     "   (the first pass runs a binary that predates the change it emits, so one pass can self-verify at divergence 0 for the wrong reason)",
   ]
 }
 
+// STEP 1 USED TO SAY "stage the driver-left bytes", AND THAT INSTRUCTION DELETED ROWS. The
+// worktree bytes this driver leaves are the OURS side, so staging them commits this branch's
+// rows OVER the base's and drops every row the base added since the merge base, adding none of
+// this branch's own. The common diagnostic above already says so -- "Taking either side drops
+// the other side's authority-derived content" -- and the route then instructed taking one.
+// Measured 2026-09-04 across five heads that hit this driver on docs/design-failure-modes.md:
+// the four that followed step 1 as written each committed a 97-row projection against a base of
+// 98 and an authority of 99, silently dropping the same two rows; the one head that did not
+// follow it was the only clean one. THE ROUTE INSTRUCTED THE ACTION THAT DISARMS THE GUARD --
+// committing the provisional bytes MOVES THE MERGE BASE, after which this driver has nothing
+// left to refuse, merge-tree reports clean, GitHub admits, and every instrument is green over a
+// head that deletes rows. That is gunbc.recurring_failure_mode.guard_precondition_discharged_by
+// _the_route_that_uses_it with the route itself as the discharging agent.
+//
+// TAKING THE BASE SIDE IS NOT A RESOLUTION AND IS NOT CLAIMED AS ONE. It leaves the tree
+// authority-ahead-of-artifact by exactly this branch's own rows, which is the state heal exists
+// to repair and which the generated-artifact gate can still see. What it removes is the DELETION,
+// which nothing downstream can see at all.
+// THE EXTRACTOR IS THE ONE PRINTED LINE THAT IS A PROGRAM RATHER THAN PROSE, AND IT IS DECLARED
+// RATHER THAN SPELLED so that the program a lane is told to run and the program a witness executes
+// are ONE declaration. This is the same one-concept-two-names problem the escaper above had, one
+// layer up: the recipe now carries TWO sed clauses because the two delegated projections spell a row
+// identity differently, and two clauses inside a prose sentence are two things any executed copy can
+// drift from. `-e` is not spelled here -- extdeps.tools.sed sed_script_arguments owns that pairing,
+// beside the `-i` it already owned -- and the single-quote wrapping is
+// extdeps.posix.shell_command_language posix_single_quote rather than a literal quote pair, because
+// the recipe is placing a program inside a shell word and that encoding has an authority.
+//
+// WHAT THE DECLARATION BUYS, concretely: test.claim.generated_artifact_merge_driver_real_execution
+// runs THESE expressions through real sed over a fixture built from the two rosters and requires the
+// extraction to name every rostered row. That is a coverage join rather than a non-emptiness check,
+// and it is the enrolled form of the hole this recipe carried on docs/design-rung-drops.md -- a
+// correct program pointed at a row shape it could not match, which rendered perfectly and read zero
+// of 35 rows. Dropping either clause reds that witness; the recipe reading as sensible English does
+// not.
+//
+// THE EMITTED BYTES ARE UNCHANGED by this lift, which is the point: the recipe a lane pastes is the
+// same recipe, now derived from the expressions instead of restating them.
+
+data generated_artifact_merge_driver_row_identity_extraction_expressions: List<String> = [
+  "s/^- `\\([a-z0-9_]*\\)`.*/\\1/p",
+  "s/^### \\(.*\\) — .*/\\1/p",
+]
+
+fn generated_artifact_merge_driver_row_extractor_function() -> String {
+  join(
+    [
+      "rows() { sed -n ",
+      join(
+        sed_script_arguments(
+          expressions: map(
+            generated_artifact_merge_driver_row_identity_extraction_expressions,
+            e => posix_single_quote(spelling: e)
+          )
+        ),
+        " "
+      ),
+      " | sort; }",
+    ],
+    ""
+  )
+}
+
+fn generated_artifact_merge_driver_dark_row_set_difference_step() -> String {
+  join(
+    [
+      "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both, or the check reads zero rows on the file it cannot parse and reports a pass it never measured: ",
+      generated_artifact_merge_driver_row_extractor_function(),
+      "; comm -23 <(git show <base-ref>:$merged_path | rows) <(git show HEAD:$merged_path | rows) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
+    ],
+    ""
+  )
+}
+
 fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
   [
-    "1. stage the driver-left bytes as an explicitly PROVISIONAL projection: git add -- $merged_path",
-    "2. finish the authority merge and push the branch; do not regenerate this projection locally",
-    "3. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",
+    "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base",
+    generated_artifact_merge_driver_dark_row_set_difference_step(),
+    "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
+    "4. finish the authority merge and push the branch; do not regenerate this projection locally",
+    "5. heal-generated-artifacts derives it from the merged authorities, pushes the healed head, and dispatches revalidation; the generated-artifact gate must then agree on that exact head",
   ]
 }
 
@@ -121,8 +221,32 @@ fn emit_heal_path_case_pattern(paths: List<String>) -> String {
   join(paths, "|")
 }
 
+// THE ECHO IS DOUBLE-QUOTED BECAUSE THESE LINES ARE TEMPLATES: $merged_path must interpolate at
+// the moment git runs the driver, so single quotes are not available and $ must stay active. Double
+// quotes leave three other characters active, and one of them was live: the backtick. MEASURED, NOT
+// REASONED -- the emitted heal recipe carries a sed program whose capture group is written between
+// backticks, so bash ran `\\([a-z0-9_]*\\)` as a COMMAND SUBSTITUTION at echo time. Two "command not
+// found" lines on stderr, and worse, the printed instruction came out with the capture group
+// SILENTLY DELETED: an author pasting it got a sed that extracts nothing and a set difference that
+// is empty because both sides are -- the vacuous pass this recipe exists to prevent, produced by
+// the recipe itself. Escaping belongs here, where the quoting decision is made, rather than in each
+// authored line, because a line author cannot see the quoting.
+//
+// THE RECIPE ALSO MAY NOT SPELL A POSITIONAL, AND THAT IS THIS SAME BOUNDARY READ FROM THE OTHER
+// SIDE. $ stays active on purpose, so a $1 written inside a recipe line is the DRIVER's argv, not
+// the reader's -- an extractor drafted as a shell function taking $1 rendered as `git show
+// "O:docs/design-rung-drops.md"`, git's %O placeholder substituted into the instruction. Escaping
+// it would only print a backslash, since the escaper doubles backslashes first. So a recipe line
+// names $merged_path, which is the one variable the driver DEFINES, and pipes into a parameterless
+// function instead of passing arguments to one.
+// IT IS THE SHARED ESCAPER, NOT A SECOND ONE, AND THE ONE CHARACTER OF DIFFERENCE IS WHY THE SHARED
+// ONE IS SPLIT RATHER THAN COPIED. gunbc.shell_bash_runner owns bash double-quote escaping;
+// bash_escape_for_double_quotes is the literal-line form and escapes $ as well, which is exactly
+// wrong for a template whose whole job is to name the path git handed the driver. So that function
+// is now composed from bash_escape_double_quote_specials_except_expansion, and this module calls the
+// same shared arm rather than authoring a second implementation of one concept (DESIGN section 3).
 fn emit_driver_stderr_echo(line: String) -> String {
-  concat(concat("echo \"", line), "\" >&2\n")
+  concat(concat("echo \"", bash_escape_double_quote_specials_except_expansion(s: line)), "\" >&2\n")
 }
 
 fn emit_driver_lines(lines: List<String>, indent: String) -> String {

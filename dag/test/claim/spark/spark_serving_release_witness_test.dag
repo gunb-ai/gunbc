@@ -11,11 +11,12 @@ import gunbc.spark.serving_realization {
   NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
   SparkServingRealization, UserUnitRealization, SystemUnitRealization,
 }
+import gunbc.spark.serving_engine {
+  ServingEngine, OllamaServing, OllamaServingLaunchProfile, SparkServingBindListen,
+}
 import gunbc.spark.serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence,
   SparkServingRelease, RuntimeArtifactIdentity,
-  ServingLaunchProfile, ServingContract, ServingEngine, OllamaSingleHost,
-  SparkServingBindListen,
   spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingInstallRequired,
@@ -77,25 +78,19 @@ fn witness_bind() -> SparkServingBindListen {
   SparkServingBindListen { host: "0.0.0.0", port: 11434 }
 }
 
-fn profile_base() -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    engine: OllamaSingleHost,
-    contract: ServingContract {
-      bind: witness_bind(),
-      default_context: token_count(count: 4096),
-      serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-    },
+fn profile_base() -> OllamaServingLaunchProfile {
+  OllamaServingLaunchProfile {
+    bind: witness_bind(),
+    default_context: token_count(count: 4096),
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
   }
 }
 
-fn profile_other_window() -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    engine: OllamaSingleHost,
-    contract: ServingContract {
-      bind: witness_bind(),
-      default_context: token_count(count: 8192),
-      serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-    },
+fn profile_other_window() -> OllamaServingLaunchProfile {
+  OllamaServingLaunchProfile {
+    bind: witness_bind(),
+    default_context: token_count(count: 8192),
+    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
   }
 }
 
@@ -127,7 +122,7 @@ fn occ_srv5() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv5",
     release_identity: spark_serving_release_identity(spec: release_base()),
-    launch_profile: profile_base(),
+    engine: OllamaServing { profile: profile_base() },
   }
 }
 
@@ -135,7 +130,7 @@ fn occ_srv6_same() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv6",
     release_identity: spark_serving_release_identity(spec: release_base()),
-    launch_profile: profile_base(),
+    engine: OllamaServing { profile: profile_base() },
   }
 }
 
@@ -143,7 +138,7 @@ fn occ_srv6_other() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv6",
     release_identity: spark_serving_release_identity(spec: release_other_revision()),
-    launch_profile: profile_base(),
+    engine: OllamaServing { profile: profile_base() },
   }
 }
 

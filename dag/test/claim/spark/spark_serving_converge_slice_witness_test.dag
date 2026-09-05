@@ -1,7 +1,6 @@
 module test.claim.spark_serving_converge_slice_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
-import std.measure { token_count, positive_slot_count, positive_measure_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection_of,
@@ -27,7 +26,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifactRefused,
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
 import gunbc.spark.serving_execution_schedule {
   scheduled_rows_empty,
@@ -41,12 +40,12 @@ import gunbc.spark.serving_converge_plan {
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
- ServingContract }
+}
 import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
- spark_serving_desired_bind_listen }
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.ollama_runtime_bundle {
   ModelStoreComplete,
@@ -125,19 +124,6 @@ fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
   hermetic_fixture_provenance(host: host)
 }
 
-
-// THE CONTRACT IS A FIXTURE. The fleet no longer declares a window or slot count globally -- both
-// come from a per-realization observation, and the live realization has none, so the fleet's own
-// contract is a refusal. These witnesses exercise the realizer, which is a function of the contract
-// it is given; the values are the ones the fleet used to carry, so the assertions keep their meaning.
-fn w_contract() -> ServingContract {
-  ServingContract {
-    bind: spark_serving_desired_bind_listen,
-    default_context: token_count(count: 1048576),
-    serving_slots: positive_slot_count(count: positive_measure_count(predecessor: 3)),
-  }
-}
-
 test fn linger_slice_noop_when_linger_already_enabled() -> Bool {
   spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
 }
@@ -174,7 +160,6 @@ test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool
   match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
-    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
@@ -188,7 +173,6 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
   match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
-    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
@@ -201,7 +185,6 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize_spark_serving_install_effect_commands(
     effects: [EnableLingerForOwnAccount, RunContainerAsOwnUser],
     executor_login: spark_serving_automation_principal_login(),
-    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
     SparkServingInstallRemoteCommandsPresent { steps: _ } => false
@@ -230,6 +213,7 @@ fn slice_artifact(linger_enabled: Bool) -> FleetConvergePlanArtifact? {
         observed_slots: [],
         observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv5 as HostIdentity),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       ) {
         FleetConvergePlanArtifactRefused { refusal: _ } => none
         FleetConvergePlanArtifactReady { artifact: a } => Present { value: a }
@@ -607,7 +591,6 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
   match realize_spark_serving_install_effect_commands(
     effects: [ReloadUserManager, EnableUserUnit],
     executor_login: spark_serving_automation_principal_login(),
-    contract: w_contract(),
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2

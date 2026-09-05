@@ -48,7 +48,7 @@ fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
     ImportGrammarProductions => "the v2 import grammar: lex rule, formal rows, productions, emit rows" as NonEmptyStr
     ImportParseSurfaceV1 => "the v1 import parse surface" as NonEmptyStr
     ImportAstCarriers => "the import AST carriers on both frontends" as NonEmptyStr
-    ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names and the import admission folds" as NonEmptyStr
+    ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names AND authored_import_names, with the import admission folds and the callable-visibility policy that reads the second" as NonEmptyStr
     ImportScopeOverlays => "the import scope overlays in v1 inference" as NonEmptyStr
     ImportDerivedModuleAdjacency => "import-derived module adjacency and the build ordering it feeds" as NonEmptyStr
     HostImportClosureAssembly => "host import-closure assembly in the stage0 CLI" as NonEmptyStr
@@ -114,22 +114,28 @@ fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
       rest: [
         DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "resolve_module_imports" },
         DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "admit_imports" },
+        DagDeclarationFieldProbe { module_path: "v1.compiler.infer_env", decl_name: "TypeEnv", field_name: "authored_import_names" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer_lookup", decl_name: "AuthorNamedVisibility" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer_lookup", decl_name: "author_named_visibility" },
       ],
     }
     ImportScopeOverlays => NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "merge_scope_from_imports" },
       rest: [
         DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "overlay_direct_import_exports" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "func_env_views_for_import" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "selective_func_env_view" },
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "rewire_func_env_parent_links" },
       ],
     }
     ImportDerivedModuleAdjacency => NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "topological_sort" },
       rest: [
-        HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "build_import_adjacency" },
+        HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run/entry_resolve.rs", item_name: "build_import_adjacency" },
       ],
     }
     HostImportClosureAssembly => NamespaceCutSubjectProbes {
-      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "import_closure_from_adjacency" },
+      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run/entry_resolve.rs", item_name: "import_closure_from_adjacency" },
       rest: [
         HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "compile_entry_on_declared_import_closure_only" },
       ],

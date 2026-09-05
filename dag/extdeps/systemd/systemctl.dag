@@ -475,6 +475,39 @@ service systemd.Systemctl {
     }
   }
 
+  operation ListUnitsAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded inactive dead GitHub Actions Runner\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsAllLoaded (complete loaded-unit population)"
+    }
+  }
+
   operation Status {
     input { unit: NonEmptyStr }
     output {

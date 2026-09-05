@@ -1057,6 +1057,19 @@ fn run() -> Result<ExitCode, ExitCode> {
 }
 
 fn main() -> ExitCode {
+    // THE SAME BIND claim_executor performs, and it is here because the validation of that
+    // change found this binary refusing where the other one would have proceeded: claim_batch
+    // asked for its budget on a remote action bound by nothing, took the correct
+    // HostBudgetUnreadable refusal, and no witness could run. Two entry points reach the same
+    // resolve, so a limit bound by only one of them leaves the other exactly as unbounded as
+    // before — and it is claim_batch that runs a `.dag` witness, so the developer route to the
+    // witness corpus stays dead without this.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return ExitCode::FAILURE;
+    }
     match run() {
         Ok(code) => code,
         Err(code) => code,
