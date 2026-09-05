@@ -1044,12 +1044,11 @@ data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = Das
   ref_name: "refs/gunbc/srv2-admitted" as GitRef,
 }
 
-// THE SRV2 DEPLOY INSTANCE BRANCHES ATTEMPTS FROM ITS OWN DEPLOY BRANCH, not from main, while the
-// deploy branch is ahead of main: an attempt based on main would lack every oracle its node names
-// and refuse verification by construction. This row returns to origin/main when the branch lands
-// (PR gunb-ai/gunbc#10443). Its clone's origin was repointed at GitHub on 2026-09-05 so publication
-// can run here: attempts are published against srv2-deploy (dispatch_base_branch), and the admitted
-// revision stays the local ref above.
+// THE SRV2 DEPLOY INSTANCE BRANCHES ATTEMPTS FROM origin/main AGAIN. While its deploy branch was ahead
+// of main it branched from origin/srv2-deploy, because an attempt based on main would have lacked every
+// oracle its node named; that branch landed (PR gunb-ai/gunbc#10443, 2026-09-05) and the row returned
+// here as its own annotation said it would. The clone's origin is GitHub, so publication runs here and
+// attempts are published against main (dispatch_base_branch); the admitted revision stays the local ref.
 fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv2_deploy_dashboard_id,
@@ -1059,7 +1058,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     local_origin_root: srv2_deploy_repo_root,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv2_deploy_repo_root,
-    dispatch_base_ref: "origin/srv2-deploy" as NonEmptyStr,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
