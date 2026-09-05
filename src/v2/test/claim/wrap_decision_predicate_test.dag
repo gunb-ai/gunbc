@@ -51,11 +51,11 @@ import v2.std.optional { Absent, Present }
 // reds together says less than one whose profile names which witness guards which arm.
 //
 // COST: the target is the fixture in v2.extdeps.languages.rust_wrap_decision_test rather than
-// rust_sg2_type_expr_target_model(), whose bundle constructs six edge targets — serialize_source,
-// translation_rules, selection_policy, declared_inhabitants, collection_realization,
-// signature_realizations — that no claim here reaches through wrap_decision_gate. The ownership
-// catalog stays rust's live one, which is what keeps the flow controls above answering the
-// question they are stated to answer.
+// rust_sg2_type_expr_target_model(), which no claim here needs — wrap_decision_gate reaches only
+// use_site_ownership_realizations, reference_layer_tokens and value_semantics_carriers. The
+// fixture is a cheaper model to build, which is the saving; it is not a claim that the edges it
+// omits cost anything unread. The ownership catalog stays rust's live one, which is what keeps
+// the flow controls above answering the question they are stated to answer.
 
 fn wrap_decision_gate_is_by_value(
   target: TargetModel,
