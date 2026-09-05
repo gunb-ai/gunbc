@@ -49,6 +49,18 @@
 //! module exists to make loud, so paying for it here would have been the defect wearing a fix's
 //! clothes.
 //!
+//! WHICH PATH A GREEN RUN COVERS, AND WHICH IT DOES NOT. The control's refusal is routed to the
+//! CONTROL bucket, so a green required run executes the finding PRODUCTION path and does NOT
+//! execute the `findings` → `phase_failures` push that stops the line. Those are two different
+//! claims and only the first is evidenced by a green. The executed evidence for production is a
+//! measurement rather than an argument: the first run of this join, before the five omissions it
+//! surfaced were rostered, produced them as `FAIL` rows on exactly that path — a demonstrated red
+//! on the live corpus, not a fixture one. The push itself is the same two lines the sibling joins
+//! in this phase use, and nothing here establishes it independently.
+//!
+//! A LATER READER MUST NOT CITE THIS GREEN AS COVERAGE OF THE PUSH. That would be rung inflation
+//! (§4b(1)), which is worse than sitting low, because an inflated class never ranks for climbing.
+//!
 //! `type_name` IS A SPELLING. `DataDeclTypeFact` carries the authored head name of the declared
 //! type annotation, so membership here is a string comparison over discovery evidence, not typed
 //! membership. It is exact only because each enrolled spelling is, today, declared in one module.
