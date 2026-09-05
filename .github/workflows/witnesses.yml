@@ -249,6 +249,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: "FCI: adjudicate the published ledger against the fabric gate roster"
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cd "$ROOT"
+          'target/release/claim_executor' '--fabric-gate-standing' '--source-root' 'dag' '--source-root' 'src/v2'
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Record runner filesystem at job end
         run: |
           # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
