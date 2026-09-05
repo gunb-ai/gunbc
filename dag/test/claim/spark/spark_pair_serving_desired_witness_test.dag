@@ -7,7 +7,7 @@ import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired {
@@ -61,16 +61,24 @@ test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
   }
 }
 
-// GROUP B RESOLVES TOO (srv9 head, three workers) BUT IS NOT PROMOTED YET: the roster names A only,
-// and the desired host projection carries exactly the ready units' hosts.
-test fn group_b_resolves_but_only_promoted_groups_reach_the_desired_hosts() -> Bool {
+// BOTH GROUPS ARE PROMOTED: group B resolves as srv9 head with three workers, and the desired host
+// projection carries exactly the ready units' hosts — all eight fabric hosts.
+test fn both_groups_are_promoted_and_every_fabric_host_reaches_the_desired_hosts() -> Bool {
   (match spark_pair_serving_unit(group: FabricGroupB) {
      SparkPairServingUnitRefused { group: _, cause: _ } => false
-     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: ws } => length(ws) == 3
+     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } =>
+       length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
    })
-    && length(spark_pair_serving_groups) == 1
-    && length(spark_pair_serving_desired_hosts()) == 4
+    && length(spark_pair_serving_groups) == 2
+    && length(spark_pair_serving_desired_hosts()) == 8
     && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv6))
+    && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
+}
+
+test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {
+  let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB))
+  string_contains(s: w, pattern: "group group-b tp=4 head=srv9@192.168.110.17 workers=")
+    && string_contains(s: w, pattern: "srv12@192.168.110.16")
 }
 
 test fn the_wire_names_the_group_its_degree_and_every_rank() -> Bool {

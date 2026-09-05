@@ -74,8 +74,9 @@ data spark_pair_serving_ray_resource_isolation_enabled: Bool = false
 data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
 
 // The groups promoted to serving. Group A first: its head srv6 carries the JIT caches and the front
-// door the harness already points at. Group B follows once A's launch line is read back.
-data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
+// door the harness already points at. Group B was promoted once A's launch line was read back
+// (pool 11,767,856 tokens at tp=4, 2026-09-05).
+data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA, FabricGroupB]
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
 // (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the

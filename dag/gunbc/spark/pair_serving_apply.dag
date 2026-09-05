@@ -66,7 +66,9 @@ fn unit_render_text(u: SparkPairUnitRender) -> String? {
   }
 }
 
-// The privileged script for one host of the pair.
+// The privileged script for one host of the pair. THE RESTART IS CONDITIONAL: the unit is bounced
+// only when its rendered text changed or it is not active, so re-applying a converged roster leaves
+// a serving group's engine alone instead of paying its model load again.
 fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEmptyStr, unit_text: String, retired_unit: NonEmptyStr) -> String {
   let ctr = spark_pair_container_name as String
   let old = first_pair_container_runtime.container_name as String
@@ -78,12 +80,14 @@ fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEm
     "install -d -m 755 ", spark_pair_runtime_build_dir as String, "\n",
     "printf '%s' ", shell_quote(arg: gunbc_spark_pair_runtime_dockerfile()), " > ", spark_pair_runtime_build_dir as String, "/Dockerfile\n",
     "if docker container inspect ", old, " >/dev/null 2>&1; then docker cp ", old, ":/cache/huggingface/. ", cache, "/ 2>/dev/null || true; fi\n",
-    "printf '%s' ", shell_quote(arg: unit_text), " > /etc/systemd/system/", unit_name as String, "\n",
+    "printf '%s' ", shell_quote(arg: unit_text), " > /etc/systemd/system/", unit_name as String, ".next\n",
+    "if cmp -s /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "; then changed=0; else changed=1; fi\n",
+    "mv -f /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "\n",
     "systemctl daemon-reload\n",
     "systemctl disable --now ", retired_unit as String, " >/dev/null 2>&1 || true\n",
     "if docker container inspect ", old, " >/dev/null 2>&1; then docker update --restart=no ", old, " >/dev/null; docker stop ", old, " >/dev/null 2>&1 || true; fi\n",
     "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
-    "systemctl restart ", unit_name as String, "\n",
+    "if [ \"$changed\" = 1 ] || ! systemctl is-active --quiet ", unit_name as String, "; then systemctl restart ", unit_name as String, "; echo restarted; else echo unchanged; fi\n",
     "systemctl is-active ", unit_name as String, "\n",
   ], "")
 }
@@ -130,6 +134,20 @@ fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
         }
       }
   }
+}
+
+// EVERY PROMOTED GROUP IS PLANNED, IN ROSTER ORDER. One refusal anywhere refuses the whole apply:
+// a converge that brought up group A while silently skipping group B would report success for a
+// desired state it did not reach.
+fn spark_pair_apply_plans() -> List<SparkPairApplyPlan> {
+  map(spark_pair_realizations(), r => spark_pair_apply_plan(r: r))
+}
+
+fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<String> {
+  flat_map(plans, p => match p {
+    SparkPairApplyRefused { cause: c } => [c]
+    SparkPairApplyPlanned { workers: _, head: _ } => [] as List<String>
+  })
 }
 
 type SparkPairHostApplyOutcome
@@ -190,12 +208,13 @@ func spark_pair_serving_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  match first(spark_pair_realizations()) {
-    Absent => exit_failure(reason: "spark_pair_serving_apply: no pair is promoted to pair serving")
-    Present { value: realization } =>
-      match spark_pair_apply_plan(r: realization) {
-        SparkPairApplyRefused { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: the pair realization refused: ", c], ""))
-        SparkPairApplyPlanned { workers: wps, head: hp } =>
+  let plans = spark_pair_apply_plans()
+  let refusals = spark_pair_apply_plan_refusals(plans: plans)
+  if length(plans) == 0 {
+    exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
+  } else if length(refusals) != 0 {
+    exit_failure(reason: join(["spark_pair_serving_apply: a group realization refused: ", join(refusals, "; ")], ""))
+  } else {
           match read_bootstrap_credential() {
             BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
             BootstrapCredentialReady { secret: administrator } =>
@@ -210,13 +229,18 @@ func spark_pair_serving_apply_wet() -> ProcessExit
                         identity_file_name: "gunbc-spark-pair-apply-admin-password" as NonEmptyStr,
                         secret_bytes: administrator as Secret,
                         use: fn(file) {
-                          let ws = map(wps, p => spark_pair_privileged_leg(trust: trust, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
-                          let h = if spark_pair_apply_all_applied(outcomes: ws) {
-                            spark_pair_privileged_leg(trust: trust, plan: hp, admin_credential: administrator as Secret, admin_credential_file: file)
-                          } else {
-                            SparkPairHostApplyFailed { host: hp.host, cause: "not attempted: a worker apply failed" }
-                          }
-                          concat(ws, [h])
+                          flat_map(plans, gp => match gp {
+                            SparkPairApplyRefused { cause: _ } => [] as List<SparkPairHostApplyOutcome>
+                            SparkPairApplyPlanned { workers: wps, head: hp } => {
+                              let ws = map(wps, p => spark_pair_privileged_leg(trust: trust, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
+                              let h = if spark_pair_apply_all_applied(outcomes: ws) {
+                                spark_pair_privileged_leg(trust: trust, plan: hp, admin_credential: administrator as Secret, admin_credential_file: file)
+                              } else {
+                                SparkPairHostApplyFailed { host: hp.host, cause: "not attempted: a worker apply failed" }
+                              }
+                              concat(ws, [h])
+                            }
+                          })
                         },
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
@@ -236,6 +260,5 @@ func spark_pair_serving_apply_wet() -> ProcessExit
                 }
               }
           }
-      }
   }
 }
