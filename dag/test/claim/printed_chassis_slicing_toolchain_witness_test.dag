@@ -1,0 +1,114 @@
+module test.claim.printed_chassis_slicing_toolchain_witness_test
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
+import extdeps.printing.orca_slicer { orca_slicer_required_glibc }
+import product.printed_chassis.slicing_toolchain {
+  HostRuntimeObservation, HostGlibcObserved, HostGlibcUnobserved,
+  HostAbiStanding, BelowObservedArtifactFloor, MeetsObservedArtifactFloor, HostAbiUnobserved,
+  OrcaExecutionStanding, ExecutionUnattempted, ExecutionRefused, ExecutionReady,
+  SliceAdmission, SliceAdmitted, SliceRefused,
+  judge_host_abi, admit_slice,
+  observed_container_glibc, observed_srv2_glibc, container_execution, srv2_execution,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REFUSAL IS THE BEHAVIOUR UNDER TEST, so these witnesses are written to fail if it ever quietly
+// becomes an admission -- and paired, so they cannot be satisfied by a judgement that refuses
+// everything.
+
+fn abi_name(a: HostAbiStanding) -> String {
+  match a {
+    MeetsObservedArtifactFloor { provided: _, required: _ } => "meets-floor"
+    BelowObservedArtifactFloor { provided: _, required: _ } => "below-floor"
+    HostAbiUnobserved => "unobserved"
+  }
+}
+
+fn execution_name(e: OrcaExecutionStanding) -> String {
+  match e {
+    ExecutionReady { attempt: _ } => "ready"
+    ExecutionRefused { receipt: _ } => "refused"
+    ExecutionUnattempted { abi: _ } => "unattempted"
+  }
+}
+
+fn admission_name(a: SliceAdmission) -> String {
+  match a {
+    SliceAdmitted { plan: _ } => "admitted"
+    SliceRefused { standing: _ } => "refused"
+  }
+}
+
+fn abi_of(v: GlibcVersion) -> String {
+  abi_name(a: judge_host_abi(observation: HostGlibcObserved { version: v, instrument: "fixture" }))
+}
+
+// THE FLOOR COMPARISON, BOTH SIDES. 2.37 is below and 2.38 meets: a comparison answering one way for
+// every input satisfies either half alone, and neither alone catches an off-by-one in the direction
+// that rejects a host which would have worked.
+test fn w_the_abi_floor_separates_below_from_meets_at_the_measured_version() -> Bool {
+  abi_of(v: glibc_version(major: 2, minor: 37)) == "below-floor"
+  && abi_of(v: glibc_version(major: 2, minor: 38)) == "meets-floor"
+  && abi_of(v: glibc_version(major: 2, minor: 39)) == "meets-floor"
+}
+
+// A HIGHER MAJOR WITH A LOWER MINOR STILL SATISFIES. Comparing the minor alone, or packing the pair
+// into a single number, passes the witness above and fails this one.
+test fn w_a_higher_major_with_a_lower_minor_still_satisfies() -> Bool {
+  abi_of(v: glibc_version(major: 3, minor: 0)) == "meets-floor"
+  && abi_of(v: glibc_version(major: 1, minor: 99)) == "below-floor"
+}
+
+fn sliced(s: OrcaExecutionStanding) -> SliceAdmission {
+  admit_slice(
+    standing: s,
+    input_model: "fan_mount.stl",
+    output_project: "fan_mount.3mf",
+    printer_profile: "a1-mini",
+    filament_profile: "petg",
+    process_profile: "0.20mm",
+  )
+}
+
+// WHAT CAN NO LONGER BE WITNESSED HERE, STATED RATHER THAN QUIETLY DROPPED.
+//
+// Three witnesses in this file used to establish the READY arm and an admitted SlicePlan from a
+// fixture-supplied outcome. They are gone, and their absence is the wall landing rather than
+// coverage being lost: AttemptedExecution is now mintable only by attempt_orca_execution, which is
+// effectful and reaches a real process. A hermetic evaluation replays a declared mock_response and
+// constructs no argv, so a hermetic positive control could only assert the mock -- specification
+// without execution, green while proving nothing, which is exactly the shape the removed witnesses
+// had.
+//
+// The positive control therefore belongs in a WET receipt beside command_runner's own, and until
+// one exists the Ready arm carries no executed evidence. NEXT-RUNG TRIGGER: a wet receipt that runs
+// attempt_orca_execution over a real process and asserts a SlicePlan is minted from it, plus its
+// discriminating red -- a process that exits nonzero, admitting no plan.
+
+// THE REFUSALS STILL DISCRIMINATE, and this is what remains provable hermetically. Both recorded
+// hosts refuse, and neither yields a plan -- the pairing that keeps admit_slice from being a
+// function that refuses everything now comes from the ABI arms above rather than from a fabricated
+// attempt.
+test fn w_neither_recorded_host_yields_a_plan() -> Bool {
+  execution_name(e: container_execution) == "refused"
+  && execution_name(e: srv2_execution) == "refused"
+  && admission_name(a: sliced(s: container_execution)) == "refused"
+  && admission_name(a: sliced(s: srv2_execution)) == "refused"
+}
+
+// AND AN UNATTEMPTED STANDING IS A DIFFERENT REFUSAL FROM A REFUSED ONE, which is the distinction
+// the single-verdict shape could not express and the one that decides the remedy: install a runtime
+// closure, or move to a host that clears the floor at all.
+test fn w_unattempted_and_refused_are_different_failures() -> Bool {
+  execution_name(e: ExecutionUnattempted {
+    abi: judge_host_abi(observation: HostGlibcObserved {
+      version: glibc_version(major: 2, minor: 36),
+      instrument: "fixture",
+    }),
+  }) == "unattempted"
+  && execution_name(e: container_execution) == "refused"
+  && admission_name(a: sliced(s: ExecutionUnattempted {
+    abi: judge_host_abi(observation: HostGlibcUnobserved),
+  })) == "refused"
+}
