@@ -48,17 +48,19 @@ data ray_config_macro_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE MASTER AUTHORITY EXISTS ONLY TO GROUND A CONTRAST, AND THAT IS WHY IT IS A SEPARATE ROW.
-// `ray_config_absences` asserts that a field is present on master and absent at the tag. That is a
-// claim about TWO revisions, so citing only the tag would leave half of it ungrounded -- and this
-// module has already been bitten twice by master content sitting under a tag pin. A contrast needs
-// both ends named.
-data ray_config_master_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/ray-project/ray/blob/master/src/ray/common/ray_config_def.h"
-  }
-}
+// THE ABSENCE ROW ASSERTS ONE REVISION, BECAUSE THE OTHER END WAS NEVER PINNABLE.
+// An earlier revision of this module carried a second authority pointing at
+// `blob/master/src/ray/common/ray_config_def.h` so that `ray_config_absences` could assert a field
+// is present on master AND absent at the tag. That authority was deleted and the positive half of
+// the contrast with it. `master` is not a revision: it is whichever commit occupies the branch when
+// a reader follows the link, so the cited end could change while this authored row stayed fixed --
+// which is the same "wrong about one field, and undetectably so" failure the pin below exists to
+// prevent, re-entering through the citation instead of through the defaults.
+//
+// The exact master commit that was read is NOT recoverable after the fact, and reconstructing a
+// plausible one would be a fabricated citation rather than a repair. So the row keeps only the half
+// that is grounded at a pinned revision -- absent from `ray_config_def.h` at `ray-2.58.0` -- which
+// is also the only half any consumer needs.
 
 data ray_threshold_monitor_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -112,7 +114,7 @@ data ray_config_absences_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [ray_config_master_authority]
+  further_citations: []
 }
 
 data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
@@ -130,8 +132,8 @@ data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
 // ── THE REVISION IS THE ONE WE EXECUTE, NOT THE ONE THAT WAS EASIEST TO READ ────────────────────
 //
 // THIS PIN IS LOAD-BEARING AND IT ALREADY CAUGHT ONE ERROR. The defaults below were first read from
-// `master`, and `master` carries `count_swap_in_memory_monitor` -- a field that DOES NOT EXIST at
-// 2.58.0. Writing the master list into a row pinned here would have cited a knob absent from the
+// an unpinned branch read, which listed `count_swap_in_memory_monitor` -- a field that DOES NOT
+// EXIST at 2.58.0. Writing that list into a row pinned here would have cited a knob absent from the
 // version the fleet runs, in a shape no later reader could detect: the row would name a real
 // repository, a real file and a real revision, and be wrong about one field.
 //
@@ -183,7 +185,7 @@ fn ray_config_env_spelling(c: RayThresholdMonitorConfig) -> NonEmptyStr {
 // `count_swap_in_memory_monitor` is carried as an explicit ABSENCE at this revision rather than
 // simply left out. A field that is merely missing from a list is indistinguishable from one nobody
 // looked for, and this one was looked for and found not to exist -- the distinction that keeps the
-// next author from re-adding it off a master search. WHY it matters to a particular deployment --
+// next author from re-adding it off an unpinned search. WHY it matters to a particular deployment --
 // whether that deployment has swap at all -- is a fleet fact and belongs to the consumer, not here.
 type RayConfigAbsentAtRevision sole_constructor {
   field_name: NonEmptyStr
@@ -195,7 +197,7 @@ data ray_config_absences: List<RayConfigAbsentAtRevision> = [
   RayConfigAbsentAtRevision {
     field_name: "count_swap_in_memory_monitor" as NonEmptyStr,
     absent_at: ray_source_revision_read,
-    ground: "Present on master, absent from ray_config_def.h at ray-2.58.0. Present on master and read as absent at the tag; recorded because an earlier draft of this module nearly cited it from master." as NonEmptyStr
+    ground: "Read as absent from ray_config_def.h at ray-2.58.0. Recorded as a verified negative because an earlier draft of this module nearly cited this field into a row pinned at this tag after reading an unpinned branch." as NonEmptyStr
   }
 ]
 
@@ -325,7 +327,13 @@ fn ray_line_explains_absent_threshold_alarm(line: RayMonitorLogLine) -> Bool {
 
 // ── SCOPE: THE LINUX PATH, SAID RATHER THAN LEFT IMPLICIT ──────────────────────────────────────
 //
-// EVERYTHING ABOVE IS READ FROM THE LINUX FACTORY PATH. An earlier revision carried a
+// THE FACTORY CONSTRUCTION BELOW -- `RayBuiltMonitor` and `ray_linux_built_monitors` -- IS READ FROM
+// THE LINUX FACTORY PATH. This block once opened "EVERYTHING ABOVE", which was true where it was
+// first written and became FALSE when it moved: above it now sit the defaults from
+// `ray_config_def.h`, the environment spelling from `ray_config.h`, and the diagnostics from
+// `threshold_memory_monitor.cc`, none of which are factory material. A pointer that names a REGION
+// rather than a SYMBOL is invalidated by any edit that moves either end, which is why the scope is
+// stated against the two declarations it governs. An earlier revision carried a
 // `NonLinuxPlatform -> Noop` arm taken from a comment on MASTER's header, and deleting it was right
 // -- the 2.58.0 body read for this module has no platform branch, so asserting one would have been a
 // citation to a revision it was not read at, the same failure the absence row above records.

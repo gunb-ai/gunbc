@@ -142,9 +142,15 @@ test fn w_only_the_noop_monitor_does_not_enforce() -> Bool {
     && !ray_built_monitor_enforces(m: NoopMonitorBuilt)
 }
 
-// THE DISABLED CASE IS ANNOUNCED, NOT INFERRED. Because the zero interval swaps the OBJECT and logs
-// on construction, a silent threshold log separates into three decidable causes rather than two
-// indistinguishable ones.
+// WHAT THIS ROW ACTUALLY DECIDES, WHICH IS NARROWER THAN WHAT IT FIRST CLAIMED. It said a silent
+// threshold log "separates into three decidable causes". It does not: the function under it consumes
+// a `RayMonitorLogLine` and therefore classifies only lines that are PRESENT. The no-line case --
+// nothing emitted at all -- is not one of its inputs and cannot be one of its verdicts.
+//
+// The executable claim is that among the modeled lines, exactly the three non-measurements explain
+// why a threshold alarm may be absent, and the two measurement lines do not. Deciding what a total
+// SILENCE means needs an observation that the monitor was consulted at all, which is a fleet receipt
+// and stays downstream in `gunbc.spark`.
 test fn w_the_lines_that_explain_an_absent_alarm_are_exactly_the_non_measurements() -> Bool {
   ray_line_explains_absent_threshold_alarm(line: ThresholdMonitorDisabled)
     && ray_line_explains_absent_threshold_alarm(line: NodeMemoryUncapturable)
