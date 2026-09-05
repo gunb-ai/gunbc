@@ -9,6 +9,7 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -832,7 +833,28 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // trigger would inherit the credibility of a prediction that just died, so whatever that trigger
 // eventually becomes is argued fresh.
 
-data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-deferral-reason-authority -- the deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one. THIS IS A DIFFERENT CAPABILITY FROM THE PREDICATE ONE and formerly shared its name: feature:where-refinement-predicate-coproduct was cited here and at six other sites for three different capabilities, so satisfying it here would have retired gunbc.where_refinement_predicate_vocabulary where_refinement_unenrolled_predicate_dissolve_trigger while every classifier that row names still stood."
+// THE SCAFFOLD STATE BEHIND THE TRIGGER BELOW, held here as an annotation because it is rationale
+// rather than program data. owner: v1.compiler.infer, the 00_core diagnostic partition. lane:
+// where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a
+// closed-string sum, and any unlisted reason fails closed to blocking. bound: the deferral strings
+// 04_infer emits today; classifier, eval and equivalence arms must change together until the
+// authority lands.
+//
+// WHY THE TRIGGER WAS RENAMED, recorded because a meaning fork that is silently corrected leaves
+// the next reader unable to tell two capabilities were ever confused. This row formerly cited
+// feature:where-refinement-predicate-coproduct, a name that was carried at seven sites for THREE
+// different capabilities: this one, the predicate declaration authority in
+// gunbc.where_refinement_predicate_vocabulary, and refinement evidence at non-literal positions in
+// std.content_hash and std.decimal. DESIGN 4b(3) retires a drop by its trigger and by nothing else,
+// so satisfying the shared name here would have retired the predicate row while every string
+// classifier it names still stood.
+//
+// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below
+// and was mirrored verbatim into the stage0 seed, which DESIGN 4c names as misplaced or dead data:
+// a dissolution condition belongs in a typed carrier and rationale belongs in an annotation. Moving
+// it here removes it from the emitted seed entirely -- annotations are captured on a lexical channel
+// disjoint from semantic occurrence allocation, so they reach no target bytes.
+data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
