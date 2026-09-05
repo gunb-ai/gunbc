@@ -158,9 +158,8 @@ fn stg_bound_path_count(repository: RepositoryEnvelope) -> Int {
 // claim was tested and is false: `commit_candidate` leaves `staged` PRESENT, so this specimen never
 // has an absent stage and never reaches `candidate_inherited_from_base` at all. Reverting the
 // inheritance rule leaves this claim GREEN -- measured, by running exactly that mutation. The
-// inheritance path is reached only where the stage is absent AND a commit is selected, which is a v4
-// predecessor document or a repository just after a clean checkout, and it has its own controls
-// below. Naming a mutation a claim does not discriminate is the inflation DESIGN section 4b forbids,
+// inheritance path is reached only where the stage is absent AND a commit is selected, and the claims
+// that do reach it are below. Naming a mutation a claim does not discriminate is the inflation DESIGN section 4b forbids,
 // arriving in the evidence rather than in the production code.
 //
 // THE EXPECTED CONTENT IS FIXED BEFORE THE OPERATION, not read back from the same value the mutation
@@ -210,9 +209,17 @@ test fn scm_stg_an_add_after_a_commit_extends_the_committed_corpus() -> Bool {
 // ABOVE DO NOT.
 //
 // The inheritance path needs a stage that is ABSENT while a commit is SELECTED, and neither claim
-// above produces one, because committing leaves the stage present. Two ordinary things produce it: a
-// v4 predecessor document, which records no stage at all, and a repository just after a clean
-// checkout, which normalizes the override away. This specimen builds it directly.
+// above produces one, because committing leaves the stage present.
+//
+// THIS SPECIMEN CONSTRUCTS THAT SHAPE DIRECTLY, AND THAT IS THE LIMIT OF WHAT IT ESTABLISHES. Two
+// ordinary routes also produce it -- a v4 predecessor document, which records no stage at all, and a
+// repository just after a clean checkout -- and an earlier wording of this note said this claim
+// covered them. It does not: building the post-normalization envelope by hand BYPASSES the decoder
+// and the checkout that would produce it, which are exactly the steps such a claim would be about.
+// What this one tests is the inheritance rule over an in-memory state, which is worth testing on its
+// own and is not a migration control. The decoder route has its own claim below; the checkout route
+// is covered by scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base, which obtains
+// its state through checkout_repository_at rather than constructing an equivalent envelope.
 //
 // MUTATION IT IS AIMED AT: `candidate_inherited_from_base` answering the empty corpus. Under it the
 // `add` below yields a one-entry candidate, `b.dag` is deleted, and nothing refuses -- which is the
