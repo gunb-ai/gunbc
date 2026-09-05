@@ -9,6 +9,7 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -857,14 +858,18 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // entirely, because annotations are captured on a lexical channel disjoint from semantic occurrence
 // allocation and reach no target bytes.
 //
-// THE ROW BELOW IS STILL A STRING AND THAT IS STILL A 4c DEFECT, stated rather than left for a
-// reader to notice. Its dissolve-on is a dissolution condition and 4c says those belong in a typed
-// carrier; the terminal is gunbc.rung_drop, whose whole job is restoration triggers. That migration
-// is NOT done here for two reasons: the violation pre-dates this change and is not this change's to
-// carry, and putting the fact in some OTHER typed carrier first would author an intermediate
-// representation destined to be discarded -- the replacement-migration cost DESIGN 3 prices, with
-// the discarded form standing as an attractor meanwhile. Filed as a follow-up against rung_drop.
-data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-deferral-reason-authority."
+// THE CARRIER BELOW IS TYPED, AND WHICH TYPE IT IS WAS THE CONTESTED PART. gunbc.rung_drop was
+// proposed as the terminal and is the WRONG one: its RungDropReason is a closed coproduct of
+// LostAsPassenger, DeletedWithoutReplacement and ReplacementStaged -- three ways a guarantee FELL --
+// and nothing fell here. This row declares that an interim construction exists and names what ends
+// it, so forcing it into rung_drop would require lying about which arm applied. DESIGN 5 says a
+// dissolution condition describes how admitted debt ends, and std.dissolution DissolutionCondition
+// is the type for exactly that, used by gunbc.compile_diagnostic_census
+// compile_diagnostic_census_hand_rust_dissolve_trigger and by
+// gunbc.where_refinement_predicate_vocabulary where_refinement_unenrolled_predicate_dissolve_trigger.
+// The scaffold CONTEXT -- owner, lane, interim, bound -- stays above as rationale, because it is not
+// the condition; only the condition is data.
+data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {

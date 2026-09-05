@@ -31,6 +31,9 @@ pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -1018,13 +1021,13 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     }
 }
 
-pub fn where_refinement_deferral_reason_scaffold_note() -> String {
+pub fn where_refinement_deferral_reason_scaffold_note() -> Rc<DissolutionCondition> {
     thread_local! {
-        static CACHED: String = {
-            "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-deferral-reason-authority.".to_string()
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.".to_string())
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
