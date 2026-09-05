@@ -1,8 +1,7 @@
 module test.claim.extdeps_dpkg_witness
 
 import std.logic { Bool }
-import std.types { String, List }
-import extdeps.dpkg { dpkg_status_argv }
+import std.types { String, List, NonEmptyStr }
 import extdeps.apt { package_tailscale }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
@@ -17,23 +16,28 @@ fn argv_join(argv: List<String>) -> String {
   join(argv, " ")
 }
 
-fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = operation_argv_tokens_or_refusal_label(
+// THE SUBJECT CHANGED WHEN dpkg_status_argv WAS DELETED, and the change is what the witness is
+// for. It used to assert that gunbc's own argv builder agreed with this operation's transport row
+// -- an equality between two spellings of one fact, which passes for as long as someone keeps them
+// in sync and says nothing once one of them is gone. There is now one spelling, so the assertion
+// that carries information is that materializing the row against the cited manual page's invocation
+// answers `dpkg -s <package>` and nothing else.
+fn dpkg_status_materialized(package: NonEmptyStr) -> List<String> {
+  operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       dpkg_status_path,
       dpkg_status_service,
       dpkg_status_operation,
-      [operation_argv_bind_text(name: "package", text: package_tailscale as String)]
+      [operation_argv_bind_text(name: "package", text: package as String)]
     )
   )
-  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 test fn extdeps_dpkg_status_argv_holds() -> Bool {
-  witness_dpkg_status_argv_matches_transport_row()
+  argv_join(argv: dpkg_status_materialized(package: package_tailscale))
+    == concat("dpkg -s ", package_tailscale as String)
 }
 
 test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool {
-  argv_join(argv: dpkg_status_argv(package: package_tailscale)) != "dpkg -s nodejs"
+  argv_join(argv: dpkg_status_materialized(package: package_tailscale)) != "dpkg -s nodejs"
 }

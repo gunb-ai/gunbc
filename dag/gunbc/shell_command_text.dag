@@ -8,6 +8,7 @@ import v2.extdeps.languages.bash_build {
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node, bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 
 // One authority for "an argv this repository intends to run" becoming shell text. The argv is built
 // as a bash grammar tree (v2.extdeps.languages.bash_build) and serialized once, at the
@@ -26,8 +27,15 @@ fn shell_command_intent(words: List<String>) -> Node {
   bash_build_command_with_words(words: shell_literal_words(words: words))
 }
 
+// THE TWO ELEVATION TOKENS ARE READ, NOT RESPELLED. This function previously carried its own
+// ["sudo", "-n"] literal pair, which is extdeps.sudo.elevation's calling convention authored a
+// second time -- and a second spelling of one binary is the §3 fork, not a shorthand. sudo_elevate
+// answers WHICH binary and WHICH flag in WHICH position; the delta visible in emitted bytes is that
+// sudo is now named by absolute path, which is the claim elevation.dag's
+// program_spelling_is_an_observation_claim requires of a privilege boundary: a PATH-resolved
+// spelling lets the caller's own PATH decide which binary crosses it.
 fn shell_privileged_command_intent(argv: List<String>) -> Node {
-  shell_command_intent(words: concat(["sudo", "-n"], argv))
+  shell_command_intent(words: sudo_elevate_argv(command: argv))
 }
 
 fn shell_command_text_of_node(stmt: Node) -> String {
