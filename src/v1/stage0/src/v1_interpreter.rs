@@ -4135,6 +4135,9 @@ impl PreparedScopeIndexes {
         for (name, item) in self.fn_nodes.iter() {
             lines.push(format!("fn\t{}\t{:p}", name, Rc::as_ptr(item)));
         }
+        for (name, item) in self.type_items.iter() {
+            lines.push(format!("type_item\t{}\t{:p}", name, Rc::as_ptr(item)));
+        }
         for name in self.ambiguous_bare_function_names.iter() {
             lines.push(format!("ambiguous\t{}", name));
         }
@@ -9241,8 +9244,167 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
 }
 
 #[cfg(test)]
-#[path = "cast_scope_index_tests.rs"]
-mod cast_scope_index_tests;
+mod cast_scope_index_tests {
+    use super::*;
+
+    fn fixture() -> (ResolvedGraph, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+        let mut first = String::from("module fixture.cast_first\ntype Shared = String\n");
+        for i in 0..512 {
+            first.push_str(&format!("data unused_{i}: Int = {i}\n"));
+        }
+        let files = [
+            ("cast_first.dag", first),
+            (
+                "cast_second.dag",
+                "module fixture.cast_second\ntype Shared = Int\n".to_string(),
+            ),
+        ]
+        .into_iter()
+        .map(|(path, content)| {
+            Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content,
+            })
+        })
+        .collect();
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files));
+        let graph = result.graph.as_ref().expect("fixture resolves");
+        ((**graph).clone(), result.source_indices.clone())
+    }
+
+    // The counted work is the host-side declaration walk, which eval_steps cannot see.
+    // Multiple fresh frames have the same prepared scope, exactly as on the required floor.
+    // Reverting to a frame-owned index authors the red: each first lookup walks every item.
+    #[test]
+    fn fresh_cast_frames_do_not_rescan_the_prepared_scope() {
+        PROFILE_FLAG.with(|flag| flag.set(Some(true)));
+        let (graph, sources) = fixture();
+        let indexes = InterpContext::build_scope_indexes(&graph, sources);
+        let mut samples = Vec::new();
+        for _ in 0..4 {
+            let ctx = InterpContext::over_scope_indexes(
+                indexes.clone(),
+                ExecutionMode::Hermetic,
+                None,
+                None,
+            );
+            let before = cast_lookup_counters().2;
+            let started = thread_cpu_nanos();
+            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
+            let cold_cpu = thread_cpu_nanos().saturating_sub(started);
+            let cold_visits = cast_lookup_counters().2 - before;
+            let started = thread_cpu_nanos();
+            assert!(lookup_type_item_across_modules(&ctx, "Shared").is_some());
+            let warm_cpu = thread_cpu_nanos().saturating_sub(started);
+            let warm_visits = cast_lookup_counters().2 - before - cold_visits;
+            samples.push((cold_visits, warm_visits, cold_cpu, warm_cpu));
+        }
+        eprintln!(
+            "cast-scope-index (cold visits, warm visits, cold cpu ns, warm cpu ns): {samples:?}"
+        );
+        assert!(samples
+            .iter()
+            .all(|(cold, warm, _, _)| *cold == 0 && *warm == 0));
+    }
+
+    // Both modules author Shared with different kernels. Alias lookup has always used
+    // graph order, first declaration wins, independently of function lookup precedence.
+    #[test]
+    fn cast_lookup_preserves_graph_order_even_with_reversed_function_precedence() {
+        let (graph, sources) = fixture();
+        let first = graph
+            .modules
+            .iter()
+            .flat_map(|m| m.items.iter())
+            .find(|item| authored_name_at(sources.clone(), (*item).clone()) == "Shared")
+            .expect("fixture has colliding declarations")
+            .clone();
+        let order: Vec<String> = graph
+            .modules
+            .iter()
+            .rev()
+            .map(|module| module.func_env.name.clone())
+            .collect();
+        for module_order in [None, Some(order.as_slice())] {
+            let indexes = InterpContext::build_scope_indexes_with_module_order(
+                &graph,
+                sources.clone(),
+                module_order,
+                None,
+            );
+            let ctx =
+                InterpContext::over_scope_indexes(indexes, ExecutionMode::Hermetic, None, None);
+            let selected =
+                lookup_type_item_across_modules(&ctx, "Shared").expect("Shared resolves");
+            assert!(Rc::ptr_eq(&selected, &first));
+            assert!(lookup_type_item_across_modules(&ctx, "Absent").is_none());
+            assert!(lookup_type_item_across_modules(&ctx, "fixture.cast_first.Shared").is_none());
+        }
+    }
+
+    // Offline differential oracle for the removed scan, never reachable in production.
+    // This explicitly resolves the lane's real scope; ordinary unit runs stay fixture-bounded.
+    #[test]
+    #[ignore = "real repository scope; run explicitly on a remote worker"]
+    fn real_scope_cast_index_matches_the_retired_scan() {
+        use crate::cli_run::{
+            claim_scope_for, evaluation_frame, prepare_repository_closure, process_shared_index,
+            witness_exclusion_substrings,
+        };
+        // Locate the runtime checkout: remote builds can remap CARGO_MANIFEST_DIR to a
+        // relative compilation path, which is not a usable execution-time source root.
+        let cwd = std::env::current_dir().expect("test working directory");
+        let root = cwd
+            .ancestors()
+            .find(|path| path.join("dag").is_dir() && path.join("src/v2").is_dir())
+            .expect("test runs inside the repository checkout");
+        // Repository preparation resolves indexed, repo-relative entry paths against cwd.
+        // This ignored probe runs alone with --test-threads=1; restore cwd even on panic.
+        struct RestoreDirectory(std::path::PathBuf);
+        impl Drop for RestoreDirectory {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+        let _restore = RestoreDirectory(cwd.clone());
+        std::env::set_current_dir(root).expect("enter repository root");
+        let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
+        let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
+        let index = process_shared_index(&roots);
+        let (prepared, _) = prepare_repository_closure(
+            &roots,
+            &witness_exclusion_substrings(),
+            Some((&index, std::slice::from_ref(&entry))),
+        )
+        .expect("real scope prepares strictly");
+        let scope = claim_scope_for(&prepared, &entry).expect("real scope exists");
+        let ctx = evaluation_frame(&scope, ExecutionMode::Hermetic, None, None);
+        let mut legacy = HashMap::new();
+        let mut visited = 0;
+        let started = thread_cpu_nanos();
+        for module in ctx.modules.iter() {
+            for item in module.items.iter() {
+                visited += 1;
+                let name = authored_name_at(ctx.si(), item.clone());
+                if !name.is_empty() {
+                    legacy.entry(name).or_insert_with(|| item.clone());
+                }
+            }
+        }
+        let legacy_cpu = thread_cpu_nanos().saturating_sub(started);
+        assert_eq!(legacy.len(), ctx.indexes.type_items.len());
+        for (name, item) in &legacy {
+            assert!(Rc::ptr_eq(
+                item,
+                ctx.indexes.type_items.get(name).expect("same name")
+            ));
+        }
+        let started = thread_cpu_nanos();
+        assert!(lookup_type_item_across_modules(&ctx, "NonEmptyStr").is_some());
+        let lookup_cpu = thread_cpu_nanos().saturating_sub(started);
+        eprintln!("real-cast-scope modules={} visited={visited} names={} legacy_cpu_ns={legacy_cpu} prepared_lookup_cpu_ns={lookup_cpu}", ctx.modules.len(), legacy.len());
+    }
+}
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     let direct = authored_name_at(ctx.si(), rhs.clone());
