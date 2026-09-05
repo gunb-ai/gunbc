@@ -156,6 +156,20 @@ data state_space_conflation: RecurringFailureMode = RecurringFailureMode {
     "The guard's state space has no cell for content divergence, so its count is the same either way. ",
 
     "What such a check must additionally do is adjudicate any surviving duplicate against main's BYTES and REFUSE when neither copy matches, rather than resolve by position or first-wins, which is silent.",
+
+    "**A SIXTH FORM, whose consequence is not a bad message but a SILENT SAFETY HOLE: a `Bool` return carrying a three-valued question, where the collapsed value is the ADMITTING one.** Specimen (gunbc#10337, 2026-09-04): `where_refinement_brand_nominal_mismatch` returned `Bool` over three outcomes -- these are distinct declarations, these are the same declaration, and I CANNOT TELL which declarations these are. The third collapsed onto `false` with the second, and the consumer read `false` as admit, so a cast whose brand identity could not be determined was ACCEPTED. ",
+
+    "The paired sentinel made it concrete: the declaration-key producer returned the empty string for a type with no declaring span and the consumer guarded on `key != \"\"`, so absence of identity was spelled as a value and read as permission. ",
+
+    "**WHAT DISTINGUISHES THIS FORM FROM THE EARLIER ONES IS THE DIRECTION OF THE COLLAPSE.** They produce a wrong or unrankable ANSWER; this one produces NO ANSWER AT ALL on the collapsed arm, because the admitting value is indistinguishable from a genuine pass. A wall with this defect emits no diagnostic, so no red exists for review to find and no population exists to count -- the type's inadequacy is the safety hole rather than a symptom of one. ",
+
+    "**Recognition rule for this form: for every `Bool` that gates a refusal, ask which value means UNKNOWN. If unknown shares a value with permitted, the predicate cannot refuse what it cannot determine, and the wall has a hole exactly the size of its unknown set.** ",
+
+    "**AND A NEW DETECTION ROUTE FOR THIS CLASS, which is why the specimen is worth its length: the earlier receipts in this row were found by READING the producer. This one was invisible to reading in the strong sense -- it was read, and approved, by three separate reviews of the diff, and by its own author who had rejected the identical fail-open shape in a competing design an hour earlier.** It was settled by EXECUTING a fixture: `fn f(a: String where brand(\"x\"))` is an inline brand-carrying type with no declaration site, it parses and compiles, and it admitted one brand into a different brand -- the exact violation the wall's own refusing arm exists to catch. ",
+
+    "Reading establishes that an arm is reachable IN PRINCIPLE; only executing establishes that the state is AUTHORABLE and that the hole is live. Per DESIGN section 4b, the authorability question is decided by what a FIXTURE can hand the compiler, never by what the accepted corpus happens to contain. ",
+
+    "CLIMB, and it is construction rather than a better check: the key producer now returns `String?` so an undeterminable key is NOT REPRESENTABLE, and the predicate returns a four-variant `BrandNominalVerdict` so no consumer can inherit an answer from a magic value. Fixing only the sentinel would have closed the instance and left the `Bool` free to spawn the collapse again at the next consumer -- the return TYPE was the authority at fault, not the arm.",
   ],
 
   evidence: [],
