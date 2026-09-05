@@ -1494,7 +1494,36 @@ const SECRET_ACCESS_ENSURE_MOVE_LABEL: &str =
     "gunbc#10514 access-grant widening: the Secret Manager access ensure moves to the auth layer, \
      from gunbc.spark.secret_access_ensure to gunbc.auth.gcp_secret_access";
 
+/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
+/// declared its own `repository_status_lines` that independently re-assembled the status line
+/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
+/// (DESIGN.md §3), which the repository's own
+/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
+/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
+/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
+/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
+/// names the exact (module, declaration, spelling) triple and admits nothing else.
+///
+/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
+/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
+/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
+/// touch. Adjudicate that deletion by joining the row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const SCM_STATUS_LINES_UNFORK_LABEL: &str =
+    "gunbc#10602 status composition un-fork: repository_status_lines is declared once, in \
+     gunbc.scm.status, and gunbc.scm.render's forked copy is deleted";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: SCM_STATUS_LINES_UNFORK_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.scm.render",
+            in_declaration: "scm_status_document",
+            spelling: "repository_status_lines",
+            target: "gunbc.scm.status",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
         subject: AdmissionSubject::Binding {
