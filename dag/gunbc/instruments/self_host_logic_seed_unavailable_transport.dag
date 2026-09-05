@@ -74,6 +74,7 @@ fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
+    "[features]\ntext_lookup_work_counter = []\n\n",
     "[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n",
     "[dependencies]\n",
     "im = { version = \"15.1\", features = [\"serde\"] }\n",
