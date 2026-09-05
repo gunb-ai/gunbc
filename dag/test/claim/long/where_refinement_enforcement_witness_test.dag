@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WhereRefinementUnenforced counting; no new policy. Witness scaffold dissolves when the v1
 // compile-clean witness layer can assert diagnostic shape without the seed host bin
 // (docs/plans/witness-realization-plan.md P0 lane). Predicate-kind strings: dissolve-on
-// feature:where-refinement-predicate-coproduct.
+// feature:where-refinement-predicate-declaration-authority.
 
 fn w_positive_int_direct_return_red() -> Bool {
   compile_dag_rust_emit_check(

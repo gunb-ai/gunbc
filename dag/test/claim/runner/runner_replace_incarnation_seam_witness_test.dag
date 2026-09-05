@@ -25,7 +25,7 @@ import gunbc.host_effect {
   host_effect_identity_evidence,
   HostEffectIntent,
 }
-import gunbc.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, ShellOnHost, IncompatibleCell }
+import gunbc.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, IncompatibleCell }
 import gunbc.runner_lifecycle_realize { runner_lifecycle_realize_replace_runner_incarnation }
 import std.realization_reconcile { Converged, NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -126,7 +126,6 @@ test fn witness_replace_host_effect_apply_routes_to_lifecycle_scaffold() -> Bool
 
 test fn witness_replace_incarnation_on_host_is_not_shell_script() -> Bool {
   match resolve_host_effect_cell(target: srv3_os_target(), effect: witness_replace_fixture_effect()) {
-    ShellOnHost { node: _, script: _ } => false
     ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => true
     IncompatibleCell { reason: _ } => false
     _ => false

@@ -145,7 +145,8 @@ pub(crate) fn witness_exclusion_rows_from_module_source(
     let data_name = WITNESS_EXCLUSION_FRONTIER_DATA_NAME;
     for item in module.children.iter() {
         if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+            || item.module_item_kind
+                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
         }
