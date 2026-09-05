@@ -153,13 +153,27 @@ fn spark_engine_slot_admits(
 // a total function of the kind, so a caller cannot declare that one of Ray's monitors ignores the
 // device reservation. A `swap_aware` field is deleted outright rather than derived: it had no
 // consumer AND no measurement behind it for any kind, and deriving it would have been invention.
-// RAY'S TWO MONITORS ARE TWO KINDS, BECAUSE THEY MEASURE DIFFERENT THINGS. An earlier revision had
+// RAY'S THRESHOLD MONITOR IS TWO SUBJECTS, NOT ONE, AND THE FORK IS THE ISOLATION FLAG. The tagged
+// header says it plainly: with resource isolation enabled the threshold monitor "will only monitor
+// user application memory usage", and with it disabled it reads node memory. Those observe different
+// populations, so they cannot share one accounting answer. The measurement this module was built
+// around -- a node-memory reading that includes the GPU reservation -- is about the NON-isolated
+// path; nothing here establishes that a resource-isolated user slice charges that reservation the
+// same way. Collapsing them would have extended a measured fact to an unmeasured subject, which is
+// the defect the event-monitor arm just closed, reappearing one kind over.
+//
+// RAY'S MONITORS ARE SEPARATE KINDS, BECAUSE THEY MEASURE DIFFERENT THINGS. An earlier revision had
 // a single `RayThresholdMonitor` standing for "Ray is enforcing", which forced every live Ray
 // configuration to be reported as the threshold monitor -- including the one where the factory
 // builds no threshold monitor at all. A refusal that names the wrong one is a fabricated cause,
 // which is worse than no refusal because it will be read as a finding. HOW each one triggers is a
 // property of Ray's implementations and is stated by the citation, not restated here.
-type MemoryEnforcerKind = RayThresholdMonitor | RayEventMonitor | HostMemGuard | KernelOomKiller
+type MemoryEnforcerKind
+  = RayHostThresholdMonitor
+  | RayUserSliceThresholdMonitor
+  | RayEventMonitor
+  | HostMemGuard
+  | KernelOomKiller
 
 // WHETHER AN ENFORCER SEES THE DEVICE RESERVATION HAS THREE ANSWERS, AND THE THIRD IS NOT A `false`.
 // The threshold monitor polls a byte total that includes the reservation; the host guard is keyed on
@@ -180,7 +194,8 @@ type DeviceReservationAccounting = CountsReservation | ExcludesReservation | Acc
 
 fn memory_enforcer_device_reservation_accounting(kind: MemoryEnforcerKind) -> DeviceReservationAccounting {
   match kind {
-    RayThresholdMonitor => CountsReservation
+    RayHostThresholdMonitor => CountsReservation
+    RayUserSliceThresholdMonitor => AccountingUnestablished
     RayEventMonitor => AccountingUnestablished
     HostMemGuard => ExcludesReservation
     KernelOomKiller => ExcludesReservation
@@ -249,6 +264,7 @@ fn ray_implied_enforcers(
           resource_isolation_enabled: resource_isolation_enabled,
           refresh: monitor_refresh,
         ),
+        resource_isolation_enabled: resource_isolation_enabled,
       )
   }
 }
@@ -261,13 +277,24 @@ fn ray_built_monitor_is_threshold(m: RayBuiltMonitor) -> Bool {
   }
 }
 
-fn ray_enforcing_member(built: List<RayBuiltMonitor>) -> List<MemoryEnforcerKind> {
+// THE ISOLATION FLAG SURVIVES THE SELECTION, BECAUSE IT NAMES THE THRESHOLD MONITOR'S SUBJECT. An
+// earlier version consumed it only to decide WHICH monitors the factory builds and then dropped it,
+// so every threshold monitor got the node-memory accounting answer whether it was reading node
+// memory or a user slice. The flag is threaded through to the member instead.
+fn ray_enforcing_member(
+  built: List<RayBuiltMonitor>,
+  resource_isolation_enabled: Bool,
+) -> List<MemoryEnforcerKind> {
   match any(built, m => ray_built_monitor_enforces(m: m)) {
     false => []
     true =>
       match any(built, m => ray_built_monitor_is_threshold(m: m)) {
-        true => [RayThresholdMonitor]
         false => [RayEventMonitor]
+        true =>
+          match resource_isolation_enabled {
+            true => [RayUserSliceThresholdMonitor]
+            false => [RayHostThresholdMonitor]
+          }
       }
   }
 }
