@@ -1,0 +1,78 @@
+module test.claim.emission_provenance_extent_test
+
+import std.types { String, NonEmptyStr }
+import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, content_hash_of_value, compare_content_hash }
+import std.occurrence_identity { OccurrenceIndexEntry, occurrence_id_eq }
+import v1.std.core { build_newline_index, source_text_at }
+import v1.compiler.compile { SourceFile, front_end_sources }
+import v1.compiler.annotation_bind { annotation_subjects }
+
+fn extent_fixture_is_kept(entry: OccurrenceIndexEntry) -> Bool {
+  entry.projection.authored_name == "kept" && (entry.containment.ancestors |> count) == 1
+}
+
+// This observes the parser's occurrence transport and its existing extent producer. It does
+// not scan the fixture text for a function body or substitute the declaration's keyword span.
+// Missing or ambiguous subjects refuse the observation rather than returning a default digest.
+fn extent_fixture_observed_content(source: String) -> ContentHash? {
+  let path = "fixture/emission_extent.dag"
+  let frontend = front_end_sources(sources: [SourceFile { path: path, content: source }])
+  if (frontend.diagnostics |> count) > 0 { return none }
+  let declarations = frontend.occurrence_transport.index.entries |> filter(extent_fixture_is_kept)
+  if (declarations |> count) != 1 { return none }
+  match declarations |> first {
+    Absent => none
+    Present { value: declaration } => {
+      let subjects = annotation_subjects(
+        transport: frontend.occurrence_transport,
+        source_length: string_length(s: source)
+      ) |> filter(subject => occurrence_id_eq(left: subject.occurrence, right: declaration.projection.occurrence))
+      if (subjects |> count) != 1 { return none }
+      match subjects |> first {
+        Absent => none
+        Present { value: subject } => {
+          let content = source_text_at(index: build_newline_index(file: path, source: source), span: subject.span)
+          if string_length(s: content) == 0 { none }
+          else { Present { value: content_hash_of_value(value: content as NonEmptyStr) } }
+        }
+      }
+    }
+  }
+}
+
+fn extent_fixture_same_content(left: String, right: String) -> Bool {
+  match extent_fixture_observed_content(source: left) {
+    Absent => false
+    Present { value: before } => match extent_fixture_observed_content(source: right) {
+      Absent => false
+      Present { value: after } => match compare_content_hash(left: before, right: after) {
+        ContentHashEqual => true
+        _ => false
+      }
+    }
+  }
+}
+
+test fn emission_extent_excludes_added_moved_deleted_annotations() -> Bool {
+  let plain = "module fixture.emission_extent\n\nfn kept() -> Int { 1 }\n"
+  let added = "module fixture.emission_extent\n\n// fixture rationale\nfn kept() -> Int { 1 }\n"
+  let moved = "// fixture rationale\nmodule fixture.emission_extent\n\nfn kept() -> Int { 1 }\n"
+  extent_fixture_same_content(left: plain, right: added)
+    && extent_fixture_same_content(left: added, right: moved)
+    && extent_fixture_same_content(left: moved, right: plain)
+}
+
+test fn emission_extent_observes_a_changed_body_token() -> Bool {
+  let before_source = "module fixture.emission_extent\n\n// fixture rationale\nfn kept() -> Int { 1 }\n"
+  let after_source = "module fixture.emission_extent\n\n// fixture rationale\nfn kept() -> Int { 2 }\n"
+  match extent_fixture_observed_content(source: before_source) {
+    Absent => false
+    Present { value: before } => match extent_fixture_observed_content(source: after_source) {
+      Absent => false
+      Present { value: after } => match compare_content_hash(left: before, right: after) {
+        ContentHashDifferent => true
+        _ => false
+      }
+    }
+  }
+}
