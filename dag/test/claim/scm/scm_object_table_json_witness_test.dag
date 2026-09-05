@@ -628,8 +628,36 @@ fn ot_empty_manifest_entry() -> JsonValue {
 // manifest-source-at-a-node; this is manifest-source-at-a-manifest, which had been standing on its
 // sibling. Four positively-resolved wrong-kind causes, four executed standings, no arm asserted by
 // family resemblance.
+// AND IT IS THE ONE CELL WITH NO COMPANION CAUSE CLAIM, so the standing cannot lean on one. The
+// three contained cells above each have a sibling asserting their exact cause -- edge_target_source,
+// edge_target_manifest, manifest_source_node -- and this pairing has none, so
+// ot_wrong_kind_barred alone would accept three different decoders: the right one, one reporting
+// this manifest as a semantic node (same standing, wrong kind named), and one naming reference "1",
+// the referring entry, instead of "0", its occupant. Neither the classifier nor the permission table
+// reads the payload, so neither would go red.
+//
+// So this claim binds ONE decoded result and asks all three questions of it: the manifest-specific
+// cause, the reference that names the occupant, and the standing and permission that cause produces.
+// Asserting the cause and then calling the entries-taking helper would decode the document twice and
+// leave the two answers unjoined.
 test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requirement() -> Bool {
-  ot_wrong_kind_barred(
+  match ot_decoded(
     entries: [ot_empty_manifest_entry(), ot_manifest_entry(path: "witness/only.dag", at: "0")]
-  )
+  ).refusal {
+    Absent => false
+    Present { value: cause } =>
+      match cause {
+        ObjectTableManifestSourceIsCorpusManifest { reference: reference } =>
+          (reference == "0")
+            && match object_table_load_standing(cause: cause) {
+              LoadRequirementAtWrongKind =>
+                match standing_permission_refusal(standing: LoadRequirementAtWrongKind) {
+                  Present { value: _ } => true
+                  Absent => false
+                }
+              _ => false
+            }
+        _ => false
+      }
+  }
 }
