@@ -254,6 +254,7 @@ pub enum VarBindingKind {
     FunctionValueBinding,
     VariantValueBinding { parent_enum: String },
     MatchBoundBinding,
+    ServiceValueBinding,
 }
 impl VarBindingKind {
     pub fn parent_enum(&self) -> String {
@@ -264,6 +265,7 @@ impl VarBindingKind {
                 parent_enum: __val, ..
             } => __val.clone(),
             VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
+            VarBindingKind::ServiceValueBinding => panic!("no parent_enum on unit variant"),
         }
     }
 }

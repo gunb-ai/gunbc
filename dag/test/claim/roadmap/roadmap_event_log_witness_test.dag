@@ -1,0 +1,76 @@
+module test.claim.roadmap.roadmap_event_log_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
+  RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_envelope, roadmap_event_wire_text,
+  RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
+  RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
+  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+}
+
+fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
+
+fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent { node: node(), author: author as NonEmptyStr, parent: parent, kind: kind, recorded_at: at })
+}
+
+// DISCRIMINATING: the id is a function of the event's content. The same event twice is one id; a
+// different note is a different id.
+test fn the_event_id_is_content_addressed() -> Bool {
+  let a = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let b = ev(kind: Progress { note: "read the diff" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  let c = ev(kind: Progress { note: "wrote the fix" as NonEmptyStr }, parent: none, author: "s1", at: "t1")
+  (a.id as String) == (b.id as String) && (a.id as String) != (c.id as String) && string_length(s: a.id as String) > 8
+}
+
+// DISCRIMINATING: the wire form round-trips, and a wire whose id does not match its content refuses.
+test fn the_wire_form_round_trips_and_a_mismatched_id_refuses() -> Bool {
+  let claimed = ev(kind: Claimed, parent: none, author: "session-a", at: "2026-09-05T20:00:00Z")
+  let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: "belt", at: "t2")
+  let ok = match roadmap_event_decode(text: roadmap_event_wire_text(env: receipt)) {
+    RoadmapEventDecoded { envelope } => (envelope.id as String) == (receipt.id as String) && (match envelope.event.parent { Present { value: p } => (p as String) == (claimed.id as String)  Absent => false })
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  let forged = replace(s: roadmap_event_wire_text(env: claimed), from: "session-a", to: "session-b")
+  let refused = match roadmap_event_decode(text: forged) {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "does not match")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  let unknown = match roadmap_event_decode(text: "{\"id\":\"x\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"n\",\"author\":\"a\",\"parent\":\"\",\"kind\":\"celebrated\",\"recorded_at\":\"\"}}") {
+    RoadmapEventUndecodable { reason } => string_contains(s: reason, pattern: "unknown")
+    RoadmapEventDecoded { envelope: _ } => false
+  }
+  ok && refused && unknown
+}
+
+// DISCRIMINATING: a linear chain folds in causal order regardless of list order; receipts do not
+// change the holder's state; release returns to open.
+test fn a_linear_history_folds_in_causal_order() -> Bool {
+  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let e2 = ev(kind: Progress { note: "half done" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t2")
+  let e3 = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "v.json" as NonEmptyStr, verdict: "failed" as NonEmptyStr }, parent: Present { value: e2.id }, author: "belt", at: "t3")
+  let e4 = ev(kind: Blocked { reason: "oracle needs a fixture" as NonEmptyStr }, parent: Present { value: e3.id }, author: "s1", at: "t4")
+  let shuffled = [e3, e1, e4, e2]
+  let blocked = roadmap_node_standing(envs: shuffled)
+  let progressed = roadmap_node_standing(envs: [e2, e1, e3])
+  let released = roadmap_node_standing(envs: [e1, ev(kind: Released, parent: Present { value: e1.id }, author: "s1", at: "t2")])
+  roadmap_node_standing_key(s: blocked) == "blocked" && string_contains(s: roadmap_node_standing_text(s: blocked), pattern: "oracle needs a fixture")
+    && roadmap_node_standing_key(s: progressed) == "in_progress"
+    && roadmap_node_standing_key(s: released) == "open"
+    && roadmap_node_standing_key(s: roadmap_node_standing(envs: [])) == "open"
+}
+
+// DISCRIMINATING: two writers on the same parent are a fork, named as such, never resolved by clock;
+// an event whose parent is absent makes the history incomplete rather than a root.
+test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
+  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let a = ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t9")
+  let b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t2")
+  let forked = roadmap_node_standing(envs: [e1, a, b])
+  let orphan = ev(kind: Progress { note: "c" as NonEmptyStr }, parent: Present { value: "deadbeefdeadbeef" as RoadmapEventId }, author: "s3", at: "t3")
+  let incomplete = roadmap_node_standing(envs: [e1, orphan])
+  (match forked { NodeForked { heads } => count(heads) == 2  _ => false })
+    && roadmap_node_standing_key(s: incomplete) == "history_incomplete"
+}

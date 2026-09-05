@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.floor_cost_basis_boundedness_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
 
 // NO MEASUREMENT CAMPAIGN CAN DISCHARGE THIS ARM, AND THAT IS WHY IT IS A STALL RATHER THAN UNBUILT
 // WORK. `gunbc.rung_drop.floor_cost_claim_qualification_unavailable` states that its restoration
@@ -57,6 +57,64 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // drop's previous/temporary/reason fields have no answer here. The two rows are also different
 // facts: the drop states the standing unavailability, this states that one named restoration
 // conjunct is unreachable BY MEASUREMENT and what would reach it.
+// THE CONVERSION BELOW IS A CARRIER REPAIR, NOT A CORRECTION TO THIS ROW'S CONTENT. It makes NO
+// CLAIM ABOUT ANYONE'S CONDUCT: commit order establishes neither fault nor its absence without
+// branch and review context, and this repair needs no attribution investigation to be correct.
+//
+// WHAT IT IS, ACCURATELY. A REPRESENTATION AND TYPE-CORRECTNESS REPAIR PRESERVING THIS ROW'S
+// SUBSTANTIVE CAPABILITY REQUIREMENT. It is NOT a no-semantic-change edit: an incompatible
+// `String` initializer becoming a product construction is compiler-observable, and that is the
+// entire point of making it.
+//
+// THE ORDER, MEASURED IN BOTH DIRECTIONS BECAUSE AN EARLIER DRAFT HAD IT BACKWARDS. The carrier
+// landed FIRST: 86be37f355 (gunbc#10582) at 17:21:02 already declared
+// `next_rung_trigger: NextRungTrigger` and supplied `climbs_when`. This row landed at 18:35:47,
+// SEVENTY-FOUR MINUTES LATER, in 45074b4e9c (gunbc#10281), spelling the field as a bare `String`.
+// `git merge-base --is-ancestor` answers YES carrier-before-row and NO the other way. So gunbc#10582
+// DID NOT STRAND THIS ROW, WHICH LANDED LATER -- and that is all the ordering establishes; it says
+// nothing about whether every OTHER constructor was migrated correctly.
+//
+// THE MEASURED CONSEQUENCE. 31 of the 33 rows in this directory use the constructor; this one did
+// not, and the closure enumerating them refuses with `type mismatch: expected
+// 'Product(NextRungTrigger)', got 'Primitive(String)'`. A branch merging main could not resolve
+// that closure until this conversion was made.
+//
+// THE INCIDENT, AT ITS MEASURED GRAIN AND NO WIDER. After the product carrier landed, this
+// old-format declaration was added to main. The examined required run succeeded for its selected
+// work while all eleven roster-consuming witnesses were explicitly declined before preparation and
+// not executed. THAT SUCCESS DID NOT ESTABLISH THAT THIS DECLARATION SATISFIED THE CURRENT
+// CARRIER. This conversion repairs the initializer, not admission.
+//
+// THE MECHANISM, IN ONE LINE: DISCOVERING AN IDENTITY SO IT CAN RECEIVE A DISPOSITION IS NOT THE
+// SAME OPERATION AS PREPARING AND EXECUTING ITS DEPENDENCY CLOSURE. Read from the artifact rather
+// than inferred: the required-floor-disposition TSV (artifact 9975676354, run 33986383584 at
+// 2f8819b891, checked against its published SHA-256) carries all ELEVEN identities of
+// `test.claim.guarantee_stall_witness_test` as `declined_outside_gate_closure` / `not_executed`.
+// The narrowing itself is
+// `gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector`, which
+// is the authority for that shape; this comment mints no second wording for it.
+//
+// ONE EXPLANATION IS WITHDRAWN AND ONE DEMONSTRATED FACT IS NOT, and an earlier draft of this
+// paragraph collapsed them. WITHDRAWN: "the roster is enumerated somewhere the floor does not
+// compile" -- inadequate, because the witnesses exist and consume the roster through live folds.
+// NOT WITHDRAWN, because it is measured: those witnesses were EXCLUDED FROM PREPARATION and did
+// not execute. The witnesses existing does not refute their exclusion; it refutes only the claim
+// that nothing reaches the roster.
+//
+// THE BUILD LANE DOES NOT ESTABLISH THIS EITHER, which is why no CI green is cited above as
+// evidence. Main's required-witnesses-build at 2f8819b891 reported SUCCESS with this exact type
+// error present. Compiling the DECLARATION of `NextRungTrigger` does not establish that an
+// INITIALIZER using it was checked, and the run's own identity census makes that distinction.
+//
+// WHAT THIS DOES NOT LICENSE: it is not an argument for compiling everything whenever the selector
+// is uncertain. That is the absorbing fallback -- denominated in the corpus rather than the change,
+// growing until the budget breaks instead of the build. A widening must be explicit, bounded, and
+// credited only for the population it actually restores.
+//
+// THE CONVERSION IS MECHANICAL AND VERIFIED AS SUCH: the capability text is byte-identical at 321
+// characters, and `awaiting: []` discards nothing -- the original trigger carried no
+// delivering-lane provenance to lose. It restores resolution; IT CLOSES NOTHING about admission.
+
 data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   subject: "the BOUNDEDNESS-BY-CONSTRUCTION arm of conjunct (ii) of gunbc.rung_drop.floor_cost_claim_qualification_unavailable's restoration trigger: repeated execution measurement cannot establish it, because every observed maximum is a LOWER bound on the smallest valid bound rather than an upper bound over the admitted envelope",
   current: OutsideTheLadder,
@@ -67,5 +125,5 @@ data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   population: UncountedNotEnumerable {
     reason: "the subject is ONE ARM of conjunct (ii) of a restoration trigger authored as prose inside gunbc.rung_drop.floor_cost_claim_qualification_unavailable. The population this carrier reports is the EXPOSURE, not a roster of the source artifacts that carry or discuss the subject, and the exposed set here is every required identity for which the CPU deadline is armed, derived per run. That set is produced by execution rather than declared in source, so no authored list in this standing row would be true when written. It is finite, not mathematically infinite, and a run may well emit its own occurrence roster; what does not exist is a stable source-level authority this row could name. TWO EARLIER REVISIONS OF THIS FIELD WERE WRONG IN DIFFERENT WAYS, recorded because the second failure is the instructive one. The first list named gunbc.floor_cost_distribution.RunCost.eval_steps, a field that does not exist -- RunCost declares run and rows -- so its BoundedPopulation was not an identity join and the bound was never real. The second revision substituted a symbol that does exist, v2.workflow.required_floor.claim_safety_outcome, and was still wrong, because the defect was the SHAPE rather than the bad member: the list enumerated CARRIERS -- an instrument column, a deciding consumer, and the parent drop -- which is one-carrier-answers-for-the-whole-population, the move `gunbc.guarantee_stall.two_nat_authorities_stall` rejects under this same StallPopulation carrier even though its own declaration half and four direct importers are perfectly enumerable. THE FUTURE BOUNDARY IS NOT A TYPED SPLIT OF THE PARENT TRIGGER. Giving the arm a typed source identity would make the SUBJECT referable and may be worth doing on its own, but it neither enumerates the exposed required identities nor is needed to; naming that new arm identity here would repeat the same rejected move one level down. What would permit an honest BoundedPopulation is a typed PRODUCER of the exposed population at this grain -- a derivation joining a run's required-identity dispositions to the CpuDeadlineArmed policy, or another closed authority that enumerates every affected identity",
   },
-  next_rung_trigger: "the construction-bound authority named in this row's grounding EXISTS and is CONSUMED by the required-floor verdict at the declared subject grain, with its over-bound control refused on the real acceptance path; no volume of execution sampling retires this row, and a widening of the measurement campaign does not move it"
+  next_rung_trigger: climbs_when(capability: "the construction-bound authority named in this row's grounding EXISTS and is CONSUMED by the required-floor verdict at the declared subject grain, with its over-bound control refused on the real acceptance path; no volume of execution sampling retires this row, and a widening of the measurement campaign does not move it"),
 }

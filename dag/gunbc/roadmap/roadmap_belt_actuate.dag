@@ -41,14 +41,14 @@ import gunbc.roadmap_belt {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
-  launch_host_halt_transition, launch_host_stage_revision, LaunchHostRevisionStage, HostRevisionConverged, HostRevisionHalted,
+  launch_host_halt_transition, launch_host_stage_revision, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted,
   launch_host_refusal,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
@@ -83,8 +83,8 @@ import extdeps.languages.json.parse {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.harness.harness_backend {
-  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent,
-  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_observe_backend,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
+  harness_observe_roster, harness_declines_detail,
 }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
@@ -363,9 +363,9 @@ import gunbc.git_diff_change_window {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.fleet_desired_observe {
-  admitted_revision_standing,
+  local_tree_revision,
   FleetRevisionStanding,
-  RevisionConverged, RevisionDrifted, RevisionUnobserved,
+  LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
@@ -1394,25 +1394,12 @@ fn belt_provider_preflight_for_instance(
         detail: "cursor dispatch is not yet wired on this actuator path",
       }
     GunbcHarnessProvider =>
-      match harness_observe_backend() {
-        HarnessBackendServing { model: _ } => ProviderPreflightOk
-        HarnessBackendModelAbsent { model: m, advertised: a } =>
+      match harness_observe_roster() {
+        HarnessRosterServing { model: _, serving: _, declined: _ } => ProviderPreflightOk
+        HarnessRosterNoneServing { model: m, declined } =>
           ProviderPreflightRefused {
-            step: "harness-backend-model",
-            detail: join([
-              "the harness backend is reachable but does not advertise ", m,
-              "; it advertises: ", a,
-            ], ""),
-          }
-        HarnessBackendUnreachable { url: u } =>
-          ProviderPreflightRefused {
-            step: "harness-backend-reachability",
-            detail: join(["the harness backend did not answer ", u], ""),
-          }
-        HarnessBackendUnreadable { cause: c } =>
-          ProviderPreflightRefused {
-            step: "harness-backend-model-list",
-            detail: join(["the harness backend answered unreadably: ", c], ""),
+            step: "harness-backend-roster",
+            detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], ""),
           }
       }
   }
@@ -5868,30 +5855,27 @@ fn belt_session_liveness_from_process(
 // matched BeltSessionLiveness directly. Consumers match the coproduct.
 data belt_dispatch_wire_contract_exemplar_provider: String = "codex"
 
-// DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, because every fact this path consumes —
-// node roster, signoff, contract, the command it runs — comes from the deployed tree.
-// `gunbc.fleet_desired_observe` `fleet_revision_standing` already decided that cell three ways, and
-// its ONLY consumer was `gunbc.fleet_converge_cli`: convergence knew the host was drifted while the
-// served page dispatched against the drifted tree, saying nothing. Not a stale display — a worker
-// spawned from code the fleet never admitted, reported as an ordinary spawn.
-//
-// So the standing is consulted FIRST — before node lookup, session observation, worktree — because
-// a roster from an unadmitted tree cannot be trusted to name the right node, and refusing later
-// means refusing after acting on it.
-//
-// BOTH non-converged arms refuse, neither an absorbing widen: `RevisionDrifted` carries BOTH
-// revisions (the membership-diff `from` ruling — a catch-up needs the prior, a receipt must name
-// what it observed); `RevisionUnobserved` carries its cause and is unobserved-GRADE, never
-// satisfied. Dispatching on `RevisionUnobserved` would be the empty-observation narrow:
-// could-not-compare rendered as nothing-is-wrong.
+// DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, and binds it into the launch identity:
+// every fact this path consumes -- node roster, signoff, contract, the command it runs -- comes from
+// the deployed tree, so an attempt must name the code that produced it. What it does NOT do, as of
+// the 2026-09-05 operator ruling, is refuse when that revision differs from the admitted fleet ref.
+// It did: `fleet_revision_standing` was consulted first and both non-converged arms refused, on the
+// argument that a roster from an unadmitted tree cannot be trusted to name the right node. The
+// argument priced the wrong side. The worker checks out origin/main itself, the belt verifies
+// against main, publication opens a PR against main -- convergence decides only which version of
+// the CONTROL software runs, and desired advances on every green merge while a deploy takes
+// minutes, so equality held only in the gap between two merges. Because the tick shared the gate,
+// a host one merge behind stopped verifying, reviewing and publishing as well: convergence lag
+// became a pipeline outage. Drift is a host fact for the deployed-tree report and the deploy path;
+// here only an UNREADABLE revision refuses, because an attempt with no code to name has no identity.
 //
 // The repo path is `instance.repo_root`, not the `srv1_gunbc_repo_root` constant
-// `fleet_converge_cli` uses: the gate is a fact about the instance dispatched, and hardcoding srv1
+// `fleet_converge_cli` uses: the read is a fact about the instance dispatched, and hardcoding srv1
 // would mint a second path authority answering for the wrong host on any other instance.
 // THE TRANSITION GATE DOMINATES THE REVISION GATE; the order is the safety property. A repository
 // convergence advances the base ref BEFORE it transitions the worktree, so a converge that died in
 // between leaves the ref at the admitted revision over a tree that never moved — and
-// `fleet_revision_standing` reads that ref. The revision gate would answer CONVERGED and admit a
+// a revision read alone would see an ordinary HEAD and admit a
 // dispatch into exactly the half-transitioned tree the belt must stay out of. Asking the inhibition
 // first stops a gate being satisfied by the artifact of the failure it should notice.
 //
@@ -5912,7 +5896,7 @@ fn belt_transition_admission_for_instance(instance: HostDashboardInstance) -> Ac
 // THE ONE STAGED OBSERVER behind the page, POST /dispatch and the timer. It reads in gate order and
 // stops at the first refusal: instance posture is a model fact (no effect); the transition file is
 // read only for an actuating instance; the fleet revision only under an admitted transition; tmux
-// only under a converged revision. Each halt is a LaunchHostHalted whose later fields do not exist,
+// only under an observed revision. Each halt is a LaunchHostHalted whose later fields do not exist,
 // so `tmux listed under an inhibited transition` is not a state it can produce (DESIGN 4b: no
 // constructor). The refusal in a halt is derived by the admission's own gate functions
 // (launch_host_halt_transition, launch_host_stage_revision), never spelled here.
@@ -5930,14 +5914,10 @@ fn belt_launch_host_standing_for_instance_with_capacity(
         ActuationAdmitted =>
           match launch_host_stage_revision(
             instance_id: instance_id,
-            revision: admitted_revision_standing(
-              repo: instance.repo_root,
-              remote: instance.admitted_revision.remote,
-              ref_name: instance.admitted_revision.ref_name,
-            ),
+            revision: local_tree_revision(repo: instance.repo_root),
           ) {
             HostRevisionHalted { standing } => standing
-            HostRevisionConverged { revision } =>
+            HostRevisionObserved { revision } =>
               LaunchHostObserved {
                 instance_id: instance.instance_id,
                 actuation: DashboardActuating,
@@ -6178,7 +6158,6 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
     LaunchRevisionUnobserved { cause: _ } => BandLoud
-    LaunchRevisionDrift { desired: _, local: _ } => BandLoud
     LaunchAuthorityUnobserved { detail: _ } => BandLoud
     LaunchSessionsUnobservable { reason: _ } => BandLoud
     LaunchStaleSession { session_name: _, detail: _ } => BandLoud
@@ -7090,35 +7069,24 @@ fn belt_verification_presentation_detail(
 }
 
 // THE EXECUTION STANDING IS OBSERVED AT THE MINT SITE from the instance the tick ran for and the
-// revision standing of that instance's tree -- the same admitted_revision_standing read the
-// dispatch preflight makes, against the same per-instance admitting ref, because a tick receipt
-// that answered from a different authority than the gate would report a revision the gate never
-// admitted -- and the mode is the production row the tick itself consumed. A drifted or
-// unobservable revision withholds the binding rather than recording a revision the tick did not
-// serve.
+// deployed tree's own revision -- the same local_tree_revision read the launch gate and the
+// dispatch preflight make, because a tick receipt that answered from a different authority than
+// the gate would report a revision the gate never bound -- and the mode is the production row the
+// tick itself consumed. An unreadable revision withholds the binding rather than recording a
+// revision the tick did not serve. Drift from the fleet ref is not consulted (operator ruling,
+// 2026-09-05; see launch_revision_outcome).
 fn belt_tick_execution_standing_for_instance(
   instance: HostDashboardInstance,
   mode: SpawnMode,
 ) -> BeltTickExecutionStanding {
-  match admitted_revision_standing(
-    repo: instance.repo_root,
-    remote: instance.admitted_revision.remote,
-    ref_name: instance.admitted_revision.ref_name,
-  ) {
-    RevisionConverged { revision: r } =>
+  match local_tree_revision(repo: instance.repo_root) {
+    LocalTreeRevisionObserved { revision: r } =>
       TickExecuted {
         instance_id: instance.instance_id as String,
         deployed_revision: git_object_id_wire_hex(oid: r) as String,
         spawn_mode: mode,
       }
-    RevisionDrifted { desired: d, local: l } =>
-      TickExecutionWithheld {
-        refusal: join([
-          "revision drifted: desired ", git_object_id_wire_hex(oid: d) as String,
-          " local ", git_object_id_wire_hex(oid: l) as String,
-        ], ""),
-      }
-    RevisionUnobserved { cause: c } =>
+    LocalTreeRevisionUnobserved { cause: c } =>
       TickExecutionWithheld { refusal: join(["revision unobserved: ", c], "") }
   }
 }
