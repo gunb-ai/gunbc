@@ -121,6 +121,31 @@ data runner_guest_base_rootfs_artifact: GuestBaseArtifact = GuestBaseArtifact {
   },
 }
 
+// THE IMAGE THIS MODULE PRODUCES, AS ONE ROW, BECAUSE ASKING IT TWICE ANSWERED DIFFERENTLY.
+// A built artifact has NO pin to verify against -- its digest is a RECEIPT of the build that just
+// ran, not a claim to check -- so its integrity is Unpinned and stays that way. Pinning it would
+// demand byte-reproducible mke2fs output and would red on every legitimate change to the tree,
+// which is the opposite of what a receipt is for.
+//
+// It exists as a row because it previously existed TWICE: the standing renderer built this
+// descriptor inline, while BOTH verdict sites passed runner_guest_base_rootfs_artifact -- the BASE
+// ROOTFS -- as the artifact whose pin the BUILT IMAGE's bytes were compared against. That
+// comparison can only ever contradict, because the two are different files by construction.
+//
+// It stayed invisible until the pins landed. At fleet-converge run 33985760921 the rootfs was still
+// Unpinned (that run is what recorded its digest), so the mismatched comparison rendered as a
+// REPORT and nothing refused. Committing the pin ARMED a check that had been wrong the whole time,
+// and run 33995287883 failed with expected=<the rootfs pin> observed=<the built image>. A wrong
+// comparison that is dormant until an unrelated row is filled in is the reason the descriptor is a
+// single authority rather than a value each site constructs for itself.
+data runner_guest_built_image_artifact: GuestBaseArtifact = GuestBaseArtifact {
+  url: "about:built-here" as NonEmptyStr,
+  filename: "guest-image" as NonEmptyStr,
+  integrity: ArtifactDigestUnpinned {
+    cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against",
+  },
+}
+
 // THE IMAGE SIZE IS A PRODUCT DECISION AND IS DECLARED AS ONE. It is not derived from the cell
 // envelope -- a disk is not memory -- and it is not derived from the extracted tree's measured size
 // either, because a filesystem sized exactly to its contents has no room for the job that runs in
@@ -482,14 +507,7 @@ fn runner_guest_image_standing_text(s: RunnerGuestImageStanding) -> String {
     guest_artifact_verdict_text(artifact: runner_guest_kernel_artifact, verdict: s.kernel), "\n",
     guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: s.rootfs), "\n",
     "image=", s.image_path, "\n",
-    guest_artifact_verdict_text(
-      artifact: GuestBaseArtifact {
-        url: "about:built-here" as NonEmptyStr,
-        filename: "guest-image" as NonEmptyStr,
-        integrity: ArtifactDigestUnpinned { cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against" },
-      },
-      verdict: s.image_digest,
-    ),
+    guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: s.image_digest),
   ], "")
 }
 
@@ -581,7 +599,7 @@ func runner_guest_image_build_and_receipt_wet(
     rootfs: rootfs,
     image_path: runner_guest_image_path(root: root, image: image),
     image_digest: guest_artifact_verdict(
-      artifact: runner_guest_base_rootfs_artifact,
+      artifact: runner_guest_built_image_artifact,
       observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
     ),
   })
@@ -612,7 +630,7 @@ func runner_guest_image_observe_wet() -> ProcessExit
             rootfs: measure_artifact_wet(root: root, artifact: runner_guest_base_rootfs_artifact),
             image_path: runner_guest_image_path(root: root, image: image),
             image_digest: guest_artifact_verdict(
-              artifact: runner_guest_base_rootfs_artifact,
+              artifact: runner_guest_built_image_artifact,
               observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
             ),
           })
