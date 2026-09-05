@@ -1,6 +1,6 @@
 module test.claim.spark.serving_engine_witness_test
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { TokenCount, Percent, token_count, percent, PositiveSlotCount, positive_slot_count, positive_measure_count, Millisecond, millisecond }
 import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
@@ -16,11 +16,13 @@ import gunbc.spark.serving_engine {
   SparkEngineSlotVerdict, EngineSlotAvailable, EngineSlotRefused,
   SparkEngineSlotRefusal, UnifiedPoolAlreadyOccupied,
   spark_engine_slot_admits,
-  MemoryEnforcerKind, RayThresholdMonitor, HostMemGuard, KernelOomKiller,
-  memory_enforcer_counts_device_reservation,
+  MemoryEnforcerKind, RayThresholdMonitor, RayEventMonitor, HostMemGuard, KernelOomKiller,
+  DeviceReservationAccounting, CountsReservation, ExcludesReservation, AccountingUnestablished,
+  memory_enforcer_device_reservation_accounting,
   EnforcerVerdict, EnforcerAdmitted, EnforcerRefused,
   EnforcerRefusal, NoEnforcerDeclared, MoreThanOneEnforcer,
   DeviceReservationCountingEnforcerOnUnifiedPool,
+  UnestablishedReservationAccountingOnUnifiedPool,
   spark_memory_enforcer_admits
 }
 import extdeps.ollama.api { ollama_default_port }
@@ -105,6 +107,20 @@ test fn w_discrete_memory_hosts_are_outside_this_refusal() -> Bool {
 
 // ── THE ENFORCER RULE ──────────────────────────────────────────────────────────────────────────
 
+// THE KIND IS PART OF THE CLAIM, SO THE HELPER READS IT. This function used to discard the refusal's
+// `kind` with a wildcard and compare only the cause. That is what let a live EVENT monitor be
+// reported as `DeviceReservationCountingEnforcerOnUnifiedPool { kind: RayThresholdMonitor }` and
+// still go green: the row proved that SOME counting refusal fired, never that the refusal named the
+// mechanism actually present. A wildcard in an oracle is the oracle declining to check the field.
+fn enforcer_kind_tag(k: MemoryEnforcerKind) -> NonEmptyStr {
+  match k {
+    RayThresholdMonitor => "ray_threshold" as NonEmptyStr
+    RayEventMonitor => "ray_event" as NonEmptyStr
+    HostMemGuard => "host_guard" as NonEmptyStr
+    KernelOomKiller => "kernel_oom" as NonEmptyStr
+  }
+}
+
 fn enforcer_refused_with(v: EnforcerVerdict, wanted: NonEmptyStr) -> Bool {
   match v {
     EnforcerAdmitted { enforcer: _ } => false
@@ -112,8 +128,19 @@ fn enforcer_refused_with(v: EnforcerVerdict, wanted: NonEmptyStr) -> Bool {
       match c {
         NoEnforcerDeclared => wanted == "none" as NonEmptyStr
         MoreThanOneEnforcer { count: _ } => wanted == "many" as NonEmptyStr
-        DeviceReservationCountingEnforcerOnUnifiedPool { kind: _ } => wanted == "counts" as NonEmptyStr
+        DeviceReservationCountingEnforcerOnUnifiedPool { kind: k } =>
+          wanted == (concat("counts:", enforcer_kind_tag(k: k) as String) as NonEmptyStr)
+        UnestablishedReservationAccountingOnUnifiedPool { kind: k } =>
+          wanted == (concat("unestablished:", enforcer_kind_tag(k: k) as String) as NonEmptyStr)
       }
+  }
+}
+
+fn accounting_is(a: DeviceReservationAccounting, wanted: NonEmptyStr) -> Bool {
+  match a {
+    CountsReservation => wanted == "counts" as NonEmptyStr
+    ExcludesReservation => wanted == "excludes" as NonEmptyStr
+    AccountingUnestablished => wanted == "unestablished" as NonEmptyStr
   }
 }
 
@@ -147,7 +174,7 @@ test fn w_two_enforcers_refuse_rather_than_layering() -> Bool {
 test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: true, monitor_refresh: fx_ray_live_refresh, backend: ExecutorRay),
-    wanted: "counts" as NonEmptyStr)
+    wanted: "counts:ray_threshold" as NonEmptyStr)
 }
 
 // RED. THE SAME REFUSAL WHEN THE MONITOR IS DECLARED RATHER THAN IMPLIED. Keyed on the backend flag
@@ -157,7 +184,7 @@ test fn w_a_live_ray_monitor_on_a_unified_pool_refuses() -> Bool {
 test fn w_a_declared_ray_monitor_refuses_although_ray_started_none() -> Bool {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [fx_ray_monitor], resource_isolation_enabled: false, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorMp),
-    wanted: "counts" as NonEmptyStr)
+    wanted: "counts:ray_threshold" as NonEmptyStr)
 }
 
 // RED. A declared enforcer BESIDE the implied one is the two-enforcer incident, reached by the
@@ -176,22 +203,30 @@ test fn w_a_declared_guard_beside_rays_implied_monitor_is_two_enforcers() -> Boo
 // monitor is off, Ray is still enforcing, unified pool -- admitted silently under the Bool and
 // refuses here.
 //
+// AND IT REFUSES AS THE EVENT MONITOR, NOT THE THRESHOLD ONE. The factory built `[Event, Noop]`, so
+// there is no threshold monitor on this host. Reporting one would be a fabricated cause. Whether
+// Ray's event monitor counts a device reservation is UNESTABLISHED -- it fires off a cgroup event
+// counter rather than a byte comparison, and nothing read for the citation settles it -- so the
+// refusal carries that as its own arm. Refusing on unknown accounting is the fail-closed reading:
+// admitting would assert safety on the strength of not having checked.
+//
 // This is the whole reason the extdeps citation exists rather than a local flag: the fleet's model
 // of Ray was wrong in the direction that admits, and no amount of care in THIS file could have found
 // that, because the fact lives in Ray's factory and not here.
 test fn w_a_zero_refresh_with_isolation_on_is_still_a_live_ray_monitor() -> Bool {
   enforcer_refused_with(
     v: spark_memory_enforcer_admits(memory_kind: UnifiedShared, enforcers: [], resource_isolation_enabled: true, monitor_refresh: fx_ray_zero_refresh, backend: ExecutorRay),
-    wanted: "counts" as NonEmptyStr)
+    wanted: "unestablished:ray_event" as NonEmptyStr)
 }
 
 // CONTROL, AND THE DISCRIMINATOR FOR THE DERIVED FIELD. What an enforcer counts is now a total
 // function of what it IS, so this row goes red if any kind's answer is edited -- which is the check
 // the deleted `counts_device_reservation` field could never carry, because a caller supplied it.
 test fn w_only_rays_monitor_counts_the_device_reservation() -> Bool {
-  memory_enforcer_counts_device_reservation(kind: RayThresholdMonitor)
-    && !memory_enforcer_counts_device_reservation(kind: HostMemGuard)
-    && !memory_enforcer_counts_device_reservation(kind: KernelOomKiller)
+  accounting_is(a: memory_enforcer_device_reservation_accounting(kind: RayThresholdMonitor), wanted: "counts" as NonEmptyStr)
+    && accounting_is(a: memory_enforcer_device_reservation_accounting(kind: RayEventMonitor), wanted: "unestablished" as NonEmptyStr)
+    && accounting_is(a: memory_enforcer_device_reservation_accounting(kind: HostMemGuard), wanted: "excludes" as NonEmptyStr)
+    && accounting_is(a: memory_enforcer_device_reservation_accounting(kind: KernelOomKiller), wanted: "excludes" as NonEmptyStr)
 }
 
 // CONTROL. Disabling the monitor admits the same configuration. Without this the row above would be

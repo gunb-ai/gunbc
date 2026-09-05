@@ -6,7 +6,10 @@ import std.measure { TokenCount, Percent, PositiveSlotCount, Millisecond }
 import std.types { Port }
 import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
 import extdeps.vllm.engine_args { VllmEngineArgs, VllmDistributedExecutorBackend, ExecutorRay, ExecutorMp, ExecutorExternalLauncher }
-import extdeps.ray.threshold_memory_monitor { ray_linux_built_monitors, ray_built_monitor_enforces }
+import extdeps.ray.threshold_memory_monitor {
+  RayBuiltMonitor, ThresholdMonitorBuilt, EventMonitorBuilt, NoopMonitorBuilt,
+  ray_linux_built_monitors, ray_built_monitor_enforces
+}
 
 type SparkServingBindListen {
   host: NonEmptyStr
@@ -150,17 +153,35 @@ fn spark_engine_slot_admits(
 // a total function of the kind, so a caller cannot declare that Ray's monitor ignores the device
 // reservation. A `swap_aware` field is deleted outright rather than derived: it had no consumer AND
 // no measurement behind it for any of the three kinds, and deriving it would have been invention.
-type MemoryEnforcerKind = RayThresholdMonitor | HostMemGuard | KernelOomKiller
+// RAY'S TWO MONITORS ARE TWO KINDS, BECAUSE THEY MEASURE DIFFERENT THINGS. An earlier revision had
+// a single `RayThresholdMonitor` standing for "Ray is enforcing", which forced every live Ray
+// configuration to be reported as the threshold monitor -- including the one where the factory
+// builds no threshold monitor at all. The event monitor watches a cgroup event counter and the
+// threshold monitor polls a byte total against a limit; a refusal that names the wrong one is a
+// fabricated cause, which is worse than no refusal because it will be read as a finding.
+type MemoryEnforcerKind = RayThresholdMonitor | RayEventMonitor | HostMemGuard | KernelOomKiller
 
-// RAY'S MONITOR COUNTS THE DEVICE RESERVATION; THE OTHER TWO DO NOT. The host guard is keyed on
+// WHETHER AN ENFORCER SEES THE DEVICE RESERVATION HAS THREE ANSWERS, AND THE THIRD IS NOT A `false`.
+// The threshold monitor polls a byte total that includes the reservation; the host guard is keyed on
 // MemAvailable and the kernel killer on resident pages, and neither can see a reservation that was
-// never faulted in. This is the measured asymmetry, and it is the whole reason a unified pool
-// tolerates one of these and not the other.
-fn memory_enforcer_counts_device_reservation(kind: MemoryEnforcerKind) -> Bool {
+// never faulted in. That is the measured asymmetry and the whole reason a unified pool tolerates one
+// of these and not the other.
+//
+// RAY'S EVENT MONITOR IS THE ONE WE HAVE NOT ESTABLISHED. It fires off a cgroup event counter rather
+// than a byte comparison, and nothing read for this module says whether that accounting includes a
+// device reservation on a unified pool. A `Bool` has nowhere to put that: returning `false` would
+// assert it is safe on the strength of not having checked, which is the fabricated-plausible-answer
+// failure, and returning `true` would invent the measurement. So the answer is a third arm, and on a
+// unified pool it REFUSES -- an enforcer whose accounting is unknown is exactly as unsafe to admit as
+// one known to double-count, and the difference belongs in the CAUSE, not in the verdict.
+type DeviceReservationAccounting = CountsReservation | ExcludesReservation | AccountingUnestablished
+
+fn memory_enforcer_device_reservation_accounting(kind: MemoryEnforcerKind) -> DeviceReservationAccounting {
   match kind {
-    RayThresholdMonitor => true
-    HostMemGuard => false
-    KernelOomKiller => false
+    RayThresholdMonitor => CountsReservation
+    RayEventMonitor => AccountingUnestablished
+    HostMemGuard => ExcludesReservation
+    KernelOomKiller => ExcludesReservation
   }
 }
 
@@ -172,6 +193,7 @@ type EnforcerRefusal
   = NoEnforcerDeclared
   | MoreThanOneEnforcer { count: Nat }
   | DeviceReservationCountingEnforcerOnUnifiedPool { kind: MemoryEnforcerKind }
+  | UnestablishedReservationAccountingOnUnifiedPool { kind: MemoryEnforcerKind }
 
 // AN IMPLIED ENFORCER IS STILL AN ENFORCER, SO IT JOINS THE LIST INSTEAD OF BECOMING A SEPARATE ARM.
 // A Ray-backed executor brings the threshold monitor with it whether or not anyone declared it. That
@@ -200,7 +222,15 @@ type EnforcerRefusal
 // members one-for-one would hand `MoreThanOneEnforcer { count: 2 }` to every ordinary Ray host,
 // turning a correct citation into a refusal of the normal case. The population this module counts is
 // ENFORCING SUBSYSTEMS over one pool, and Ray is one of those however many objects it builds
-// internally -- so the join is `any`, not a map.
+// internally -- so the cardinality join is `any`, not a map.
+//
+// BUT THE MEMBER MUST NAME WHAT WAS ACTUALLY BUILT. A first version of this derivation answered
+// `[RayThresholdMonitor]` whenever anything enforced, and at a zero interval with isolation on the
+// factory builds `[Event, Noop]` -- NO THRESHOLD MONITOR. That labelled the event monitor as the
+// threshold monitor and then inherited the threshold monitor's device-reservation accounting for it,
+// so the refusal named a mechanism that was not present. Right host, invented cause. Whether
+// anything enforces is read from `ray_built_monitor_enforces`; WHICH enforcer it is comes from the
+// composition, so the two questions stay separate.
 fn ray_implied_enforcers(
   backend: VllmDistributedExecutorBackend,
   resource_isolation_enabled: Bool,
@@ -210,15 +240,30 @@ fn ray_implied_enforcers(
     ExecutorMp => []
     ExecutorExternalLauncher => []
     ExecutorRay =>
-      match any(
-        ray_linux_built_monitors(
+      ray_enforcing_member(
+        built: ray_linux_built_monitors(
           resource_isolation_enabled: resource_isolation_enabled,
           refresh: monitor_refresh,
         ),
-        m => ray_built_monitor_enforces(m: m),
-      ) {
+      )
+  }
+}
+
+fn ray_built_monitor_is_threshold(m: RayBuiltMonitor) -> Bool {
+  match m {
+    ThresholdMonitorBuilt => true
+    EventMonitorBuilt => false
+    NoopMonitorBuilt => false
+  }
+}
+
+fn ray_enforcing_member(built: List<RayBuiltMonitor>) -> List<MemoryEnforcerKind> {
+  match any(built, m => ray_built_monitor_enforces(m: m)) {
+    false => []
+    true =>
+      match any(built, m => ray_built_monitor_is_threshold(m: m)) {
         true => [RayThresholdMonitor]
-        false => []
+        false => [RayEventMonitor]
       }
   }
 }
@@ -261,10 +306,7 @@ fn spark_memory_enforcer_admits(
       match length(live) > 1 {
         true => EnforcerRefused { cause: MoreThanOneEnforcer { count: length(live) } }
         false =>
-          match counting_enforcer_refused_on(memory_kind: memory_kind, kind: e) {
-            true => EnforcerRefused { cause: DeviceReservationCountingEnforcerOnUnifiedPool { kind: e } }
-            false => EnforcerAdmitted { enforcer: e }
-          }
+          unified_pool_accounting_verdict(memory_kind: memory_kind, kind: e)
       }
   }
 }
@@ -272,10 +314,17 @@ fn spark_memory_enforcer_admits(
 // A DISCRETE HOST IS OUTSIDE THIS RULE. There the device reservation and the host's own memory are
 // separately accounted, so a monitor that counts the reservation is merely conservative rather than
 // wrong -- the refusal is about a UNIFIED pool, where the two are the same bytes.
-fn counting_enforcer_refused_on(memory_kind: MemoryKind, kind: MemoryEnforcerKind) -> Bool {
+fn unified_pool_accounting_verdict(memory_kind: MemoryKind, kind: MemoryEnforcerKind) -> EnforcerVerdict {
   match memory_kind {
-    Dram => false
-    Hbm => false
-    UnifiedShared => memory_enforcer_counts_device_reservation(kind: kind)
+    Dram => EnforcerAdmitted { enforcer: kind }
+    Hbm => EnforcerAdmitted { enforcer: kind }
+    UnifiedShared =>
+      match memory_enforcer_device_reservation_accounting(kind: kind) {
+        ExcludesReservation => EnforcerAdmitted { enforcer: kind }
+        CountsReservation =>
+          EnforcerRefused { cause: DeviceReservationCountingEnforcerOnUnifiedPool { kind: kind } }
+        AccountingUnestablished =>
+          EnforcerRefused { cause: UnestablishedReservationAccountingOnUnifiedPool { kind: kind } }
+      }
   }
 }
