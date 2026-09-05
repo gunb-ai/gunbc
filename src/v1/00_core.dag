@@ -9,6 +9,7 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -832,7 +833,43 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // trigger would inherit the credibility of a prediction that just died, so whatever that trigger
 // eventually becomes is argued fresh.
 
-data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
+// THE SCAFFOLD STATE BEHIND THE TRIGGER BELOW, held here as an annotation because it is rationale
+// rather than program data. owner: v1.compiler.infer, the 00_core diagnostic partition. lane:
+// where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a
+// closed-string sum, and any unlisted reason fails closed to blocking. bound: the deferral strings
+// 04_infer emits today; classifier, eval and equivalence arms must change together until the
+// authority lands.
+//
+// WHY THE TRIGGER WAS RENAMED, recorded because a meaning fork that is silently corrected leaves
+// the next reader unable to tell two capabilities were ever confused. This row formerly cited
+// feature:where-refinement-predicate-coproduct, a name that was carried at seven sites for THREE
+// different capabilities: this one, the predicate declaration authority in
+// gunbc.where_refinement_predicate_vocabulary, and refinement evidence at non-literal positions in
+// std.content_hash and std.decimal. DESIGN 4b(3) retires a drop by its trigger and by nothing else,
+// so satisfying the shared name here would have retired the predicate row while every string
+// classifier it names still stood.
+//
+// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below,
+// which is mirrored verbatim into the stage0 seed, so the rename roughly DOUBLED a commentary row
+// that ships in the compiler. DESIGN 4c names that shape exactly: rationale belongs in an annotation,
+// and 4c's own history is the receipt -- making `//` a parse error did not make commentary
+// unwritable, it made the corpus hoist comments into `data ...: String` rows, and the first cleanup
+// swept 215 of them. This was very nearly the 216th. Moving it here removes it from the emitted seed
+// entirely, because annotations are captured on a lexical channel disjoint from semantic occurrence
+// allocation and reach no target bytes.
+//
+// THE CARRIER BELOW IS TYPED, AND WHICH TYPE IT IS WAS THE CONTESTED PART. gunbc.rung_drop was
+// proposed as the terminal and is the WRONG one: its RungDropReason is a closed coproduct of
+// LostAsPassenger, DeletedWithoutReplacement and ReplacementStaged -- three ways a guarantee FELL --
+// and nothing fell here. This row declares that an interim construction exists and names what ends
+// it, so forcing it into rung_drop would require lying about which arm applied. DESIGN 5 says a
+// dissolution condition describes how admitted debt ends, and std.dissolution DissolutionCondition
+// is the type for exactly that, used by gunbc.compile_diagnostic_census
+// compile_diagnostic_census_hand_rust_dissolve_trigger and by
+// gunbc.where_refinement_predicate_vocabulary where_refinement_unenrolled_predicate_dissolve_trigger.
+// The scaffold CONTEXT -- owner, lane, interim, bound -- stays above as rationale, because it is not
+// the condition; only the condition is data.
+data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
