@@ -86,11 +86,21 @@ data direct_rust_door_awaiting_cargo_cause: Symbol = ^direct_rust_door_awaiting_
 // Binding returns when the write -> Cargo -> behavior seam exists — the successor lane, blocked
 // behind the door reaching ArtifactProduced at all.
 
-// SCAFFOLD: feature:medium_structure_containment — direct_rust_door_cargo_toml is a hand-authored
-// TOML medium piped into Filesystem.Write without grammar-emitted Cargo.toml serialization
-// (transport-is-a-handler debt). dissolve-on: emit the fixture workspace manifest through the
-// target-model / serialize_target path (or a cited Toml medium carrier) so write_rust_workspace
-// stops writing a raw string literal; this note and direct_rust_door_cargo_toml delete together.
+// SCAFFOLD: direct_rust_door_cargo_toml is a hand-authored TOML medium piped into
+// Filesystem.Write without grammar-emitted Cargo.toml serialization (transport-is-a-handler debt).
+// THE TRIGGER IS STATED AS A CAPABILITY BECAUSE ITS PREDECESSOR NAMED A DELETED MECHANISM. This
+// note previously read `feature:medium_structure_containment`, and that lens was deleted in #6831 --
+// recorded by v2.std.compilers.target_model target_text_carrier_scaffold_note and by
+// gunbc.plans.self_applying_lenses, neither of which any trigger citing it could see. A trigger
+// retired by a mechanism that no longer exists is retired by nothing, which is the class filed as
+// gunbc.recurring_failure_mode.dissolution_trigger_cites_a_mechanism_that_is_later_deleted.
+// dissolve-on, at capability grain: a Cargo manifest AUTHORITY that produces this manifest
+// structurally -- a TOML medium model serialized through the target-model / serialize_target path --
+// so write_rust_workspace stops writing a raw string literal. THAT AUTHORITY DOES NOT EXIST TODAY,
+// measured 2026-09-05: there is no TOML model under extdeps/formats or extdeps/languages, and every
+// Cargo.toml this repository produces is string concatenation. So this is a stall whose next-rung
+// trigger is an absent capability, not a scheduled edit; this note and direct_rust_door_cargo_toml
+// delete together when it lands.
 
 data direct_rust_door_cargo_toml: String = "[package]\nname = \"direct_rust_door_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\""
 

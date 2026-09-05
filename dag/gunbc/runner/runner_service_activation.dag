@@ -21,7 +21,7 @@ import gunbc.runner_activation {
 }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, BoundedPopulation, stall_report_message }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, BoundedPopulation, stall_report_message, climbs_when }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
 data runner_service_activation_scope_disposition: Disposition = SingleAuthority
@@ -515,7 +515,7 @@ data runner_activation_reachability_stall: GuaranteeStall = GuaranteeStall {
   population: BoundedPopulation {
     members: map(fleet_runner_host_deploys, d => d.host_label as String),
   },
-  next_rung_trigger: "FIRST the host observation transaction lands and a production caller can supply ActivationReadinessObserved, which is what makes the admission reachable at all; THEN gunbc_compile_pool_placement declares a managed compile-pool slice, in the same motion that shrinks runner_pool so the host allocation still conserves. Both, in that order: the second alone changes nothing observable, because the pool receipt is a field inside a readiness value that is never Observed. At the end of both, the admission has a reachable green and this row's current rung is the wall's own rung rather than off-ladder",
+  next_rung_trigger: climbs_when(capability: "FIRST the host observation transaction lands and a production caller can supply ActivationReadinessObserved, which is what makes the admission reachable at all; THEN gunbc_compile_pool_placement declares a managed compile-pool slice, in the same motion that shrinks runner_pool so the host allocation still conserves. Both, in that order: the second alone changes nothing observable, because the pool receipt is a field inside a readiness value that is never Observed. At the end of both, the admission has a reachable green and this row's current rung is the wall's own rung rather than off-ladder"),
 }
 
 fn runner_activation_reachability_report() -> String {
@@ -571,7 +571,7 @@ data runner_activation_safety_stall: GuaranteeStall = GuaranteeStall {
   population: BoundedPopulation {
     members: map(fleet_runner_host_deploys, d => d.host_label as String),
   },
-  next_rung_trigger: "the job user stops holding the systemctl verbs: activation runs through a root-owned helper that consumes and validates an activation receipt, or through a root-owned convergence service that holds the systemd authority while the job user holds none. A narrower sudoers match does not climb this rung -- any grant that lets the sanctioned path run the command lets the grantee run it directly",
+  next_rung_trigger: climbs_when(capability: "the job user stops holding the systemctl verbs: activation runs through a root-owned helper that consumes and validates an activation receipt, or through a root-owned convergence service that holds the systemd authority while the job user holds none. A narrower sudoers match does not climb this rung -- any grant that lets the sanctioned path run the command lets the grantee run it directly"),
 }
 
 fn runner_activation_safety_report() -> String {

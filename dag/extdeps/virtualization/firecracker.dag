@@ -1,5 +1,6 @@
 module extdeps.virtualization.firecracker
 
+import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
@@ -38,6 +39,54 @@ data firecracker_release_aarch64: FirecrackerRelease = FirecrackerRelease {
 // access to /dev/kvm exposed by the KVM module. Modeled as a datum rather than prose because a
 // consumer must be able to refuse on it, and prose cannot be read by an Accepted program.
 data firecracker_requires_kvm_device: FilePath = "/dev/kvm"
+// The group udev hands /dev/kvm to on Ubuntu (50-udev-default.rules: KERNEL=="kvm", GROUP="kvm",
+// MODE="0660"); a process that is not a member cannot open the device.
+data kvm_device_group: NonEmptyStr = "kvm" as NonEmptyStr
+
+// THE RELEASE ARTIFACT IS IDENTIFIED BY VERSION, ARCHITECTURE AND DIGEST, all three read from the
+// upstream release page on 2026-09-05: firecracker-v1.16.1-aarch64.tgz and the sha256 upstream
+// publishes beside it. The tarball unpacks to release-<version>-<arch>/firecracker-<version>-<arch>.
+fn firecracker_release_tarball_filename(rel: FirecrackerRelease) -> String {
+  join(["firecracker-", rel.version as String, "-", rel.arch as String, ".tgz"], "")
+}
+
+fn firecracker_release_download_url(rel: FirecrackerRelease) -> String {
+  join([
+    "https://github.com/firecracker-microvm/firecracker/releases/download/",
+    rel.version as String, "/", firecracker_release_tarball_filename(rel: rel),
+  ], "")
+}
+
+fn firecracker_release_binary_path_in_tarball(rel: FirecrackerRelease) -> String {
+  join([
+    "release-", rel.version as String, "-", rel.arch as String,
+    "/firecracker-", rel.version as String, "-", rel.arch as String,
+  ], "")
+}
+
+data firecracker_release_aarch64_tarball_sha256: NonEmptyStr = "8d0e69f6d6f9a1724551f607f18504052c16c1828ee3d4d7b6e6c73380871e0e" as NonEmptyStr
+
+// `firecracker --version` prints `Firecracker v<version>` on its first line; the readback compares
+// the modeled version against that line rather than trusting a path.
+fn firecracker_version_command(binary: String) -> ArgvCommand {
+  argv_command(program: binary as NonEmptyStr, arguments: ["--version"])
+}
+
+fn firecracker_version_line(rel: FirecrackerRelease) -> String {
+  join(["Firecracker ", rel.version as String], "")
+}
+
+// THE VENDOR'S CI GUEST ARTIFACTS ARE A CITED SMOKE IMAGE, NOT THE RUNNER GUEST IMAGE. Upstream
+// publishes a kernel and an Ubuntu 24.04 rootfs per architecture for its own CI; they prove that a
+// host can boot a Firecracker guest, and nothing about what a runner guest should contain (that is
+// gunbc.runner_microvm's RunnerGuestImage). Digests are not published beside them (the manifest is
+// a package list), so these carry URL identity only -- a declared gap, refused rather than
+// fabricated: a consumer needing integrity must pin a digest it measured.
+data firecracker_ci_artifacts_prefix: String = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/"
+
+data firecracker_ci_smoke_kernel_url: String = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/vmlinux-6.1.128"
+
+data firecracker_ci_smoke_rootfs_url: String = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/ubuntu-24.04.squashfs"
 
 // SUPPORTED GUEST ARCHITECTURES, AS A CLOSED SET. Upstream supports exactly x86_64 and aarch64;
 // an open string here would admit a target Firecracker cannot boot and defer the refusal to

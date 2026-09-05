@@ -6,8 +6,10 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.rust {
   rust_type_expression_projection,
-  rust_sg2_type_expr_projection_probe_target_model,
   rust_target_atom_realization_symbol
+}
+import v2.extdeps.languages.rust_freemonoid_char_test {
+  fmc_fixture_target_model
 }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -43,7 +45,7 @@ fn fmc_freemonoid_char_source_node() -> Node {
 }
 
 fn fmc_target() -> TargetModel {
-  rust_sg2_type_expr_projection_probe_target_model()
+  fmc_fixture_target_model()
 }
 
 fn fmc_native_string_type_form_node() -> Node {

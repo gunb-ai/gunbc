@@ -2,6 +2,8 @@ module v1.compiler.emit_python
 
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
   authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at,
@@ -96,10 +98,9 @@ import v1.compiler.emit_core_support {
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
   apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, extract_test_projections
+  is_type_alias_return_node,
+  is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item,
+  extract_test_projections
 }
 
 
@@ -249,7 +250,7 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
   let items = typed_module.items
   let has_structs = items |> any(item => is_type_def_item(item: item) && item.connective == Conj)
   let has_enums = items |> any(item => is_type_def_item(item: item) && item.connective == Disj)
-  let has_services = items |> any(item => is_service_item(item: item))
+  let has_services = items |> any(item => item.module_item_kind == ModuleItemService)
 
   let future_import = "from __future__ import annotations\n"
   let dc_import = if has_structs { "from dataclasses import dataclass, field\n" } else { "" }
@@ -260,30 +261,69 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
   concat(future_import, dc_import, enum_import, typing_import, async_import)
 }
 
+// EXHAUSTIVE ON THE ITEM KIND -- see the note on emit_go_typed_item for the axis split and for why
+// the function and data arms still match on their optional fields.
+//
+// WHAT THE RESIDUAL ARM USED TO DO HERE, recorded because the repair makes it invisible: this
+// dispatcher's `else` emitted `# unhandled node: X` -- A COMMENT. An item no predicate claimed was
+// SILENTLY OMITTED from the emitted Python module, which is section 5's fabricated-plausible-output
+// with the failure arm widening instead of refusing, while the same residual in the Rust target
+// rendered compile_error! and in Go a panicking init(). It was found by a census taken to enumerate
+// what these predicates refuse, not by anything watching this arm, and the class is on the roster as
+// gunbc.recurring_failure_mode emitter_residual_renders_inert_text.
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
-  if is_type_def_item(item: item) {
-    emit_py_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-    concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_indices: env.source_indices))
-  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    ""
-  } else if is_function_item(item: item) {
-    if item.uses |> count > 0 {
-      emit_py_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
-    } else {
-      emit_py_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: item.body.value, registry: registry, scope: scope)
-    }
-  } else if is_data_def_item(item: item) {
-    emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  } else if is_service_def_item(item: item) {
-    emit_py_service_def(item: item, registry: registry, env: env)
-  } else if is_resource_def_item(item: item) {
-    emit_py_resource_def(item: item, env: env)
-  } else {
-    concat("# unhandled node: ", item_text)
+  match item.module_item_kind {
+    ModuleItemTypeDeclaration =>
+      if is_type_def_item(item: item) {
+        emit_py_type_def_from_connective(item: item, env: env)
+      } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+        concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_indices: env.source_indices))
+      } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
+        ""
+      } else {
+        emit_py_item_refusal(item_text: item_text, reason: "type declaration matches no declared type structure")
+      }
+    ModuleItemFunction =>
+      match item.body {
+        Present { value: fn_body } =>
+          if item.uses |> count > 0 {
+            emit_py_func_def(name: item_text, params: item.params, inferred: resolved_type(n: item), uses: item.uses, body: fn_body, registry: registry, scope: scope)
+          } else {
+            emit_py_fn_def(name: item_text, params: item.params, inferred: resolved_type(n: item), body: fn_body, registry: registry, scope: scope)
+          }
+        Absent => emit_py_item_refusal(item_text: item_text, reason: "function item carries no body")
+      }
+    ModuleItemDataValue =>
+      match item.type_annotation {
+        Present { value: anno } =>
+          match item.body {
+            Present { value: value_expr } =>
+              emit_py_data_def(name: item_text, type_node: anno, value: value_expr, registry: registry, scope: scope)
+            Absent => emit_py_item_refusal(item_text: item_text, reason: "data item carries no value")
+          }
+        Absent => emit_py_item_refusal(item_text: item_text, reason: "data item carries no declared type")
+      }
+    ModuleItemService =>
+      if item.children |> count == 0 {
+        emit_py_item_refusal(item_text: item_text, reason: "service declares no operations")
+      } else {
+        emit_py_service_def(item: item, registry: registry, env: env)
+      }
+    ModuleItemResource => emit_py_resource_def(item: item, env: env)
+    ModuleItemUnrecognized =>
+      emit_py_item_refusal(item_text: item_text, reason: "item form carries no item kind")
+    NotAModuleItem =>
+      emit_py_item_refusal(item_text: item_text, reason: "node in module-item position was not constructed by an item constructor")
   }
+}
+
+// A REFUSAL PYTHON CANNOT IGNORE. There is no compile_error! in Python, so the nearest equivalent
+// stop is a module-level raise: importing the emitted module fails, loudly and located, instead of
+// the declaration quietly not being there.
+fn emit_py_item_refusal(item_text: String, reason: String) -> String {
+  concat("raise SyntaxError(\"EMIT REFUSED: ", reason, ": ", item_text, "\")")
 }
 
 fn emit_py_type_def_from_connective(item: Node, env: TypeEnv) -> String {
@@ -496,15 +536,29 @@ fn emit_py_local_call(op_name: String) -> String {
     "return ", emit_ident(name: op_name, target: Python), "()")
 }
 
+// A CAPABILITY-LESS RESOURCE IS REACHABLE HERE ONLY BECAUSE THE KIND IS NOW CARRIED, and Python is
+// the one target whose empty form was never written. `resource Network` and `resource AuthContext`
+// declare no capabilities, so before the kind carrier they lost the emitter if-chain to the type
+// arm and this function never saw them; now they arrive, and a class whose body is indentation
+// followed by nothing is an IndentationError rather than an empty class. Rust already answered this
+// case -- emit_resource_def branches to `pub struct X;` on zero children -- so the empty form is a
+// gap in this emitter, not a state to refuse: the declaration is legitimate, occupied by two live
+// rows, and `pass` is what Python spells an empty body with. Refusing here would fail a corpus that
+// is correct.
 fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let depth = 0
   let cap_children = item.children
-  let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c, env: env))
-  let methods_str = methods |> join(separator: "\n\n")
-  concat("from abc import ABC, abstractmethod\n\n",
+  let header = concat("from abc import ABC, abstractmethod\n\n",
     language_spec(target: Python).items.struct_keyword, " ", item_text, "(ABC):\n",
-    make_indent(level: depth + 1), methods_str)
+    make_indent(level: depth + 1))
+  if cap_children |> count == 0 {
+    concat(header, "pass")
+  } else {
+    let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c, env: env))
+    let methods_str = methods |> join(separator: "\n\n")
+    concat(header, methods_str)
+  }
 }
 
 fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {

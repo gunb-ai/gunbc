@@ -20,13 +20,17 @@ use crate::v1_std_core::Connective::{Arrow, Conj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::{EnumAccessor, StoredField, TupleFirst, TupleSecond};
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+use crate::v1_std_core::ParsedModuleItemKind::{
+    ModuleItemDataValue, ModuleItemFunction, ModuleItemResource, ModuleItemService,
+    ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
+};
 pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    NewlineIndex, Node,
+    NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -371,17 +375,16 @@ pub fn emit_graph_records_type_decl(
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
         std::option::Option::None => {
-            ((((item.connective.clone() == Connective::NoConnective)
+            ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                && (item.connective.clone() == Connective::NoConnective))
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
-                && (item.transport.clone() == std::option::Option::None))
         }
     }
 }
 
 pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
-    ((item.body.clone() != std::option::Option::None)
-        && (item.type_annotation.clone() == std::option::Option::None))
+    (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemFunction)
 }
 
 pub fn derive_variant_to_enum(

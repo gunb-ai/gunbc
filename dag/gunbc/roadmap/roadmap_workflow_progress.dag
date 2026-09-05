@@ -24,6 +24,7 @@ import gunbc.roadmap_provider_events {
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
+  ProviderBudgetSpent,
   ProviderEventsRefused,
   provider_execution_state,
   provider_execution_state_label,
@@ -31,6 +32,9 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
+import gunbc.harness.harness_throughput { HarnessRoundLedger }
+import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_reconcile }
+import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind,
   EnvironmentWorkflowSegment,
@@ -46,6 +50,7 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentComplete,
   WorkflowSegmentFailed,
   WorkflowSegmentRefused,
+  WorkflowSegmentStopped,
   WorkflowSegment,
   roadmap_attempt_workflow_segment_kinds,
   workflow_segment_kind_key,
@@ -153,6 +158,8 @@ type WorkflowAttemptEvidence {
   verification_source: VerificationReceiptFileSource
   publication_subject: PublicationSubjectObservation
   publication_source: PublicationReceiptSource
+  review: List<CriterionReviewEvidence>
+  goal_audit: List<CriterionReviewEvidence>
 }
 
 type WorkflowAttemptProgress {
@@ -165,6 +172,7 @@ type WorkflowAttemptProgress {
   validation_summary: String
   segments: List<WorkflowSegment>
   reconciliation: WorkflowReconcileReport
+  rounds: HarnessRoundLedger
 }
 
 // The row progress bar is a pure projection over independent evidence, never a stored workflow
@@ -231,6 +239,7 @@ fn provider_execution_reconcile_process(
 ) -> ProviderExecutionState {
   match provider {
     ProviderFailed { activity: _, detail: _ } => provider
+    ProviderBudgetSpent { activity: _, detail: _ } => provider
     ProviderEventsRefused { activity: _, detail: _ } => provider
     ProviderCompleted { activity } =>
       match process {
@@ -377,6 +386,12 @@ fn provider_workflow_segment(
       WorkflowSegment {
         kind: AgentWorkflowSegment,
         state: WorkflowSegmentFailed,
+        detail: join([activity, ": ", detail], ""),
+      }
+    ProviderBudgetSpent { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentStopped,
         detail: join([activity, ": ", detail], ""),
       }
     ProviderEventsRefused { activity, detail } =>
@@ -776,17 +791,60 @@ fn workflow_segment_from_evidence(
         publication_source: evidence.publication_source,
       )
     ReviewWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting an exact-head pull-request binding and review verdict",
-      }
+      review_segment(
+        verification: verification_segment(
+          provider: provider,
+          validation_summary: evidence.validation_summary,
+          verification_subject: evidence.verification_subject,
+          verification_selection: evidence.verification_selection,
+          verification_source: evidence.verification_source,
+        ),
+        review: evidence.review,
+      )
     GoalAuditWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: WorkflowSegmentPending,
-        detail: "awaiting an independent audit of the exact candidate against the current approved goal",
-      }
+      goal_audit_segment(
+        verification: verification_segment(
+          provider: provider,
+          validation_summary: evidence.validation_summary,
+          verification_subject: evidence.verification_subject,
+          verification_selection: evidence.verification_selection,
+          verification_source: evidence.verification_source,
+        ),
+        goal_audit: evidence.goal_audit,
+      )
+  }
+}
+
+// THE REVIEW SEGMENT IS THE RECONCILIATION OF ONE VERDICT PER CRITERION (gunbc.roadmap.roadmap_review_role
+// review_reconcile), and before the head is verified it says so: the review pass spawns no reviewer
+// for an unverified head.
+fn review_segment(
+  verification: WorkflowSegment,
+  review: List<CriterionReviewEvidence>,
+) -> WorkflowSegment {
+  match verification.state {
+    WorkflowSegmentComplete => {
+      let r = review_reconcile(evidence: review)
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: r.state, detail: r.detail }
+    }
+    _ =>
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
+  }
+}
+
+// THE GOAL AUDIT SEGMENT IS THE AUDITOR'S ONE VERDICT, read through the same reconciliation as the
+// review (a roster of one), and pending on verification before that, as the review is.
+fn goal_audit_segment(
+  verification: WorkflowSegment,
+  goal_audit: List<CriterionReviewEvidence>,
+) -> WorkflowSegment {
+  match verification.state {
+    WorkflowSegmentComplete => {
+      let r = goal_audit_reconcile(evidence: goal_audit)
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: r.state, detail: r.detail }
+    }
+    _ =>
+      WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting a passed verification of this head" }
   }
 }
 
@@ -799,6 +857,7 @@ fn workflow_fact_state_from_segment_state(
     WorkflowSegmentComplete => WorkflowFactSatisfied
     WorkflowSegmentFailed => WorkflowFactFailed
     WorkflowSegmentRefused => WorkflowFactRefused
+    WorkflowSegmentStopped => WorkflowFactSatisfied
   }
 }
 
@@ -919,6 +978,7 @@ fn workflow_attempt_progress(
       evidence: evidence,
       segments: segments,
     ),
+    rounds: harness_round_ledger_from_events(body: evidence.provider_events),
   }
 }
 

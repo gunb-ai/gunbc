@@ -45,59 +45,48 @@ type ServiceMethodResult {
   op_params: List<Node>
 }
 
-// THE DOTTED PATH A RECEIVER EXPRESSION SPELLS, at any depth. `diagnostic.ipmi.Tool` parses as a
-// field access whose base is itself a field access whose base is a variable, so recovering the name
-// is a walk down that spine and not a single join. Both predicates below were written as one join,
-// which is why a service name was silently required to have exactly two segments.
+// THE JUDGMENT IS READ, NOT RE-DERIVED. service_spine_projection resolved this occurrence against
+// the service registry and stamped ServiceValueBinding on the result; this fn asks for that stamp
+// and nothing else. It cannot be wrong about a name it does not read.
 //
-// The walk bottoms out ONLY on a variable. Anything else — a call result, an index, a literal —
-// returns Absent rather than a partial string, because a receiver that is not a pure dotted name is
-// not a service path at all and a partial rendering of one would be a name nothing declared.
-fn dotted_receiver_path(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match texpr.expr_data {
-    ExprVar { binding_kind: _ } =>
-      Present { value: expr_var_name_at(texpr: texpr, source_indices: source_indices) }
-    ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: texpr, source_indices: source_indices)
-      match dotted_receiver_path(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
-        Present { value: base } => Present { value: concat(base, ".", f) }
-        Absent => none
+// WHY NOT CONSULT THE REGISTRY HERE, which is the obvious alternative: the emitters cannot reach
+// it. 371 functions across 05_emit, 05_emit_rust, 05_emit_go and 05_emit_python thread
+// `source_indices`, and adding a parallel `services` parameter beside it would duplicate that
+// plumbing to carry a fact the node can carry itself.
+//
+// THREE EARLIER SHAPES GUESSED, AND EACH GUESS WAS WRONG IN ITS OWN WAY. A field access rooted in a
+// variable with an ASCII-uppercase leaf admitted `x.inner.User`, an ordinary value. Name-equals-its-
+// own-resolved-type-name admitted single-segment `Filesystem`, which deleted the fail-closed
+// "unrealized host seam" refusal a service op in a pure fn must produce — CI caught that one — and
+// admitted bare namespace roots like `cargo`, which are not services at all. Requiring a dot
+// reproduced the previous behaviour exactly and was still a semantic fact inferred from a
+// character. The stamp ends the sequence rather than adding a fourth spelling to it.
+// THE VARIANT IS MATCHED IN ITS OWN match RATHER THAN NESTED IN THE OUTER PATTERN, and that is an
+// emission constraint rather than a style choice: spelling it as
+// `ExprVar { binding_kind: Present { value: ServiceValueBinding } }` emits Rust that matches a bare
+// variant against an `Rc<VarBindingKind>` field and does not compile. Binding the payload and
+// eliminating it separately emits correctly. Measured by regen, not assumed.
+fn service_receiver_resolved_name(receiver: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match receiver.expr_data {
+    ExprVar { binding_kind: Present { value: bk } } =>
+      match bk {
+        ServiceValueBinding =>
+          Present { value: expr_var_name_at(texpr: receiver, source_indices: source_indices) }
+        _ => none
       }
     _ => none
   }
 }
 
-// The uppercase test applies to the LAST segment, which is the service's own final name component
-// (`Build` in cargo.Build, `Tool` in diagnostic.ipmi.Tool). It is a separate assumption from the
-// arity one and is deliberately left as it was: this edit makes segmentation free and changes
-// nothing about capitalization.
 fn is_typed_service_call_receiver(receiver: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match receiver.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: receiver, source_indices: source_indices)
-      match dotted_receiver_path(texpr: field_access_base(texpr: receiver), source_indices: source_indices) {
-        Present { value: _ } => {
-          match f |> chars |> first {
-            Present { value: ch } => ch >= 65 && ch <= 90
-            Absent => false
-          }
-        }
-        Absent => false
-      }
-    _ => false
+  match service_receiver_resolved_name(receiver: receiver, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
-// The receiver of a service method call IS the service's dotted name, so extracting it is the same
-// spine walk. The previous form joined exactly one variable to one field and therefore could only
-// ever produce a two-segment name, silently returning Absent for a deeper one — which made every
-// emitter treat a three-segment service call as an ordinary field access.
 fn extract_typed_service_name(receiver: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match receiver.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      dotted_receiver_path(texpr: receiver, source_indices: source_indices)
-    _ => none
-  }
+  service_receiver_resolved_name(receiver: receiver, source_indices: source_indices)
 }
 
 fn collect_typed_service_calls(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
@@ -242,48 +231,26 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
   expand_transitive_services_loop(module_callees: build_module_callees(modules: modules), registry: registry, remaining_passes: remaining_passes)
 }
 
-// WHETHER ANY REGISTERED SERVICE LIVES BENEATH THIS DOTTED PATH. A path that is not itself a
-// service may still be an INTERMEDIATE NAMESPACE on the way to one — `diagnostic.ipmi` is not a
-// service, `diagnostic.ipmi.Tool` is — and the two are distinguished by exactly this question.
-// The prefix is joined with a trailing dot so a path is never treated as a namespace of itself and
-// so `diagnostic.ipmix` cannot be admitted as a namespace of `diagnostic.ipmi.Tool`.
-fn service_registry_has_namespace(service_registry: Map<String, List<OpEntry>>, prefix: String) -> Bool {
-  let dotted = concat(prefix, ".")
-  service_registry |> map_keys |> any(k => starts_with(s: k, prefix: dotted))
-}
-
-// SERVICE NAMES ARE ARBITRARILY SEGMENTED, and this fn is where that is decided (operator ruling,
-// 2026-09-05: "you should be able to arbitrarily segment any name in the repo"). It walks ONE field
-// hop, so a dotted service name is resolved by being walked one segment at a time; the arity lives
-// in the number of hops the expression makes, never in this fn.
+// ONE HOP, AND DELIBERATELY STILL ONE HOP. This fn answers a narrow question — is
+// `<base> "." <field>` itself a complete registered service — and it is left exactly as it was.
+// Arbitrary segmentation is NOT solved here; it is solved by resolving the whole dotted occurrence
+// at once in service_spine_projection (src/v1/04_infer.dag), before any hop-by-hop inference runs.
 //
-// WHAT WAS WRONG, AND WHY NOTHING CAUGHT IT. The Absent arm returned `none` unconditionally, which
-// silently required every service name to be COMPLETE after exactly one hop — i.e. exactly two
-// segments. `cargo.Build` resolved because base `cargo` plus field `Build` is a whole registry key;
-// `diagnostic.ipmi.Tool` refused because `diagnostic.ipmi` is not a key and the walk had nowhere to
-// go. The registry itself was never the problem: it is keyed on the full dotted name at every
-// insertion site, so it always held `diagnostic.ipmi.Tool` correctly and simply was never asked a
-// question it could answer. THE ASSUMPTION SURVIVED BECAUSE THE CORPUS NEVER TESTED IT — every
-// service declared before 2026-09-05 had one or two segments, and the only two three-segment
-// services (diagnostic.ipmi.Tool, diagnostic.edac.RasMcCtl) had no `.dag` caller at all, appearing
-// only as quoted strings in mock-corpus rows, which never reach this resolver.
-//
-// THE INTERMEDIATE ARM IS NOT A FALLBACK. It returns a nominal type for the partial path only when
-// a registered service actually lives beneath it, so an unknown path still refuses with the same
-// "no field" diagnostic it always did; what changes is that a path on the way to a real service is
-// no longer indistinguishable from a typo. Resolution of the final hop is unchanged and still
-// happens in check_service_method_call_node against the full name.
+// AN EARLIER REVISION OF THIS FN SOLVED IT HERE AND WAS WRONG. It added an Absent arm returning a
+// nominal type whenever the joined path was a PREFIX of some registry key, so that a walk could
+// continue through an intermediate namespace. That conflated two different facts — "a declaration
+// exists below this namespace" and "this namespace denotes a value" — and the second is false:
+// with `diagnostic.ipmi.Tool` registered, bare `diagnostic.ipmi` became an admissible expression
+// naming nothing at all, because nothing required a further field hop to complete it. It also
+// scanned the entire service population on every intermediate lookup, which is the cost shape
+// DESIGN §6 fixes regardless of realized n. Resolving the complete occurrence has neither problem:
+// a prefix is never looked up, so it can never be admitted, and one map_get answers the question.
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {
   if base_type.connective == NoConnective && base_type.children |> count == 0 {
     let path = concat(authored_name_at(source_indices: source_indices, node: base_type), ".", field)
     match map_get(service_registry, path) {
       Present { value: _ } => Present { value: nominal_type_ref(name: path) }
-      Absent =>
-        if service_registry_has_namespace(service_registry: service_registry, prefix: path) {
-          Present { value: nominal_type_ref(name: path) }
-        } else {
-          none
-        }
+      Absent => none
     }
   } else { none }
 }
@@ -301,9 +268,9 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
               Present { value: ServiceMethodResult {
                 result_type: Node {
                   occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none,
-                  children: map(op.outputs, f => Node { occurrence_identity: OccurrenceSynthetic, name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
+                  children: map(op.outputs, f => Node { occurrence_identity: OccurrenceSynthetic, name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }),
                   connective: Conj,
-                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData
                 },
                 op_params: op.params
               } }

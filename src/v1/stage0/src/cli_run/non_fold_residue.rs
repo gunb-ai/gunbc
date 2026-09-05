@@ -155,7 +155,8 @@ pub(crate) fn non_fold_residue_units_from_module_source(
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
     for item in module.children.iter() {
         if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+            || item.module_item_kind
+                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
         {
             continue;
         }

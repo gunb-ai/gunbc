@@ -7,11 +7,9 @@ import gunbc.self_host_compile_phase_frontier {
   TargetDefaultedToHost,
   TargetPinnedOnInvocation,
   CompilePhaseFrontierReceipt,
-  CompilePhaseFrontierStanding,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
   current_compile_phase_frontier_standing,
-  self_host_compile_phase_frontier_receipts,
   ParseReached,
   CompilePhaseInvocation
 }
@@ -35,6 +33,10 @@ import gunbc.self_host_compile_phase_live_gate {
   live_comparability,
   live_tree_frontier_verdict
 }
+import test.fixture.compile_phase_frontier_receipt_fixture {
+  synthetic_compile_phase_receipt,
+  synthetic_successor_receipt
+}
 
 // THE SUBJECT OF EVERY PROBE BELOW IS THE JOIN, NOT A SECOND CENSUS. Each one builds the live
 // observation FROM THE LATEST PERSISTED RECEIPT'S OWN POPULATIONS and then perturbs exactly one
@@ -45,8 +47,15 @@ import gunbc.self_host_compile_phase_live_gate {
 // They are also written against the SERIES rather than against a named receipt, so appending a
 // receipt cannot silently retire them: whatever the latest receipt is, the probes re-derive from
 // it. No count literal appears anywhere in this file.
+//
+// Claims whose subject IS the live population's specific content (case b in the floor-cost-w3
+// brief) remain on the real series via latest_receipt() / current_compile_phase_frontier_standing().
+// Claims that test the gate's perturbation or comparability mechanics (case a) use a synthetic
+// 3-identity receipt fixture to avoid validating the full 2000-identity real series per claim.
+// See test.fixture.compile_phase_frontier_receipt_fixture.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// Helper kept for the one claim that MUST use the real series (claim 1).
 fn latest_receipt() -> CompilePhaseFrontierReceipt? {
   match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => Present { value: latest }
@@ -73,6 +82,17 @@ fn observation_of(receipt: CompilePhaseFrontierReceipt, identities: List<String>
   }
 }
 
+// THE DISCRIMINATING RED. One identity the latest receipt does not carry, planted in a file the
+// receipt already holds diagnostics for so no newly-exposed cause could admit it, must refuse and
+// must NAME the planted identity — a red that did not name it would leave a reader unable to tell
+// this regression from any other. The file src/v2_std_compilers_target_model.rs is observed by the
+// synthetic fixture (two E0308 identities there at lines 669 and 736).
+data planted_live_regression_identity: String = "src/v2_std_compilers_target_model.rs:740:1	E0308	mismatched types"
+
+// ---------------------------------------------------------------------------
+// CLAIM 1: Real-series control (case b) — asserts on population content
+// ---------------------------------------------------------------------------
+
 // THE ACCEPTED POSITIVE CONTROL, and it carries more than "the gate can say yes". The live census
 // here is the latest receipt's own raw identity rows, folded by the frontier's fold rather than
 // copied from the receipt's board — so a green also establishes that the live path and the
@@ -85,33 +105,31 @@ test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool {
         standing: current_compile_phase_frontier_standing(),
         observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
       ) {
-        LiveFrontierHeld { live_identity_count: n } => n == count(latest.raw_error_diagnostic_identities)
+        LiveFrontierHeld { live_identity_count: n } => count(latest.raw_error_diagnostic_identities) == n
         verdict => false
       }
   }
 }
 
-// THE DISCRIMINATING RED. One identity the latest receipt does not carry, planted in a file the
-// receipt already holds diagnostics for so no newly-exposed cause could admit it, must refuse and
-// must NAME the planted identity — a red that did not name it would leave a reader unable to tell
-// this regression from any other.
-data planted_live_regression_identity: String = "src/v2_compile.rs:1:1\tE0308\tmismatched types"
+// ---------------------------------------------------------------------------
+// CLAIMS 2-4: Perturbation mechanics (case a) — fixture-replaceable
+// ---------------------------------------------------------------------------
 
+// A GAINED IDENTITY THAT WAS NOT IN THE LATEST RECEIPT REFUSES AND NAMES IT. The identity must be
+// named so that the actuator can cite what it found; giving one "unable to reproduce" diagnostic
+// for a population of non-reproducible errors and listing none is a wall to say without saying.
 test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: current_compile_phase_frontier_standing(),
-        observation: observation_of(
-          receipt: latest,
-          identities: concat(latest.raw_error_diagnostic_identities, [planted_live_regression_identity])
-        )
-      ) {
-        LiveFrontierRefused { identities: ids, reason: _ } =>
-          any(ids, identity => identity == planted_live_regression_identity)
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: [latest]),
+    observation: observation_of(
+      receipt: latest,
+      identities: concat(latest.raw_error_diagnostic_identities, [planted_live_regression_identity])
+    )
+  ) {
+    LiveFrontierRefused { identities: ids, reason: _ } =>
+      any(ids, identity => identity == planted_live_regression_identity)
+    verdict => false
   }
 }
 
@@ -119,23 +137,20 @@ test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
 // the join must refuse at identity grain. This is the probe that would go green if anyone replaced
 // the join with a population-size comparison.
 test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: current_compile_phase_frontier_standing(),
-        observation: observation_of(
-          receipt: latest,
-          identities: concat(
-            latest.raw_error_diagnostic_identities |> skip(n: 1),
-            [planted_live_regression_identity]
-          )
-        )
-      ) {
-        LiveFrontierRefused { identities: ids, reason: _ } =>
-          any(ids, identity => identity == planted_live_regression_identity)
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: [latest]),
+    observation: observation_of(
+      receipt: latest,
+      identities: concat(
+        latest.raw_error_diagnostic_identities |> skip(n: 1),
+        [planted_live_regression_identity]
+      )
+    )
+  ) {
+    LiveFrontierRefused { identities: ids, reason: _ } =>
+      any(ids, identity => identity == planted_live_regression_identity)
+    verdict => false
   }
 }
 
@@ -143,50 +158,47 @@ test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> B
 // every repair unlandable, which is the failure direction opposite to the one above and is just as
 // disqualifying.
 test fn a_live_tree_that_removed_an_identity_holds() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: current_compile_phase_frontier_standing(),
-        observation: observation_of(
-          receipt: latest,
-          identities: latest.raw_error_diagnostic_identities |> skip(n: 1)
-        )
-      ) {
-        LiveFrontierHeld { live_identity_count: _ } => true
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: [latest]),
+    observation: observation_of(
+      receipt: latest,
+      identities: latest.raw_error_diagnostic_identities |> skip(n: 1)
+    )
+  ) {
+    LiveFrontierHeld { live_identity_count: _ } => true
+    verdict => false
   }
 }
+
+// ---------------------------------------------------------------------------
+// CLAIMS 5-10: Toolchain comparability (case a) — fixture-replaceable
+// ---------------------------------------------------------------------------
 
 // A MEASUREMENT TAKEN UNDER A DIFFERENT TOOLCHAIN IS NOT A SMALLER OR LARGER POPULATION, IT IS NOT
 // A POPULATION AT ALL. The arm must be Unmeasured rather than Held: this is the one the CI runner
 // architecture makes live, because the persisted receipts were measured on x86_64 and a host that
 // is not that host would otherwise silently compare two different censuses and call it a pass.
 test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } => {
-      let foreign = LiveCompilePhaseObservation {
-        parse_observation: match latest.parse_evidence { ParseReached { evidence: parse } => parse },
-        raw_error_diagnostic_identities: latest.raw_error_diagnostic_identities,
-        toolchain: LiveToolchainReading {
-          cargo_identity: latest.subject.cargo_identity,
-          rustc_identity: latest.subject.rustc_identity,
-          invocation: CompilePhaseInvocation {
-            target: concat(latest.subject.invocation.target, "-not-this-host"),
-            target_selection: latest.subject.invocation.target_selection,
-            profile: latest.subject.invocation.profile,
-            features: latest.subject.invocation.features
-          },
-          classification_policy_digest: latest.subject.classification_policy_digest
-        }
-      }
-      match live_tree_frontier_verdict(standing: current_compile_phase_frontier_standing(), observation: foreign) {
-        LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "host target")
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  let foreign = LiveCompilePhaseObservation {
+    parse_observation: match latest.parse_evidence { ParseReached { evidence: parse } => parse },
+    raw_error_diagnostic_identities: latest.raw_error_diagnostic_identities,
+    toolchain: LiveToolchainReading {
+      cargo_identity: latest.subject.cargo_identity,
+      rustc_identity: latest.subject.rustc_identity,
+      invocation: CompilePhaseInvocation {
+        target: concat(latest.subject.invocation.target, "-not-this-host"),
+        target_selection: latest.subject.invocation.target_selection,
+        profile: latest.subject.invocation.profile,
+        features: latest.subject.invocation.features
+      },
+      classification_policy_digest: latest.subject.classification_policy_digest
     }
+  }
+  match live_tree_frontier_verdict(standing: compile_phase_frontier_standing(series: [latest]), observation: foreign) {
+    LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "host target")
+    verdict => false
   }
 }
 
@@ -201,40 +213,33 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
 // distinction is a constructor rather than a note: with `target` a bare String there is nothing here
 // to perturb.
 test fn a_pinned_live_invocation_is_incomparable_to_a_defaulted_receipt() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } => {
-      let pinned = LiveToolchainReading {
-        cargo_identity: latest.subject.cargo_identity,
-        rustc_identity: latest.subject.rustc_identity,
-        invocation: CompilePhaseInvocation {
-          target: latest.subject.invocation.target,
-          target_selection: TargetPinnedOnInvocation,
-          profile: latest.subject.invocation.profile,
-          features: latest.subject.invocation.features
-        },
-        classification_policy_digest: latest.subject.classification_policy_digest
-      }
-      match live_comparability(latest: latest, live: pinned) {
-        LiveIncomparable { reason: why } =>
-          string_contains(s: why as String, pattern: "selects its target differently")
-            && latest.subject.invocation.target == pinned.invocation.target
-        LiveComparable => false
-      }
-    }
+  let latest = synthetic_compile_phase_receipt()
+  let pinned = LiveToolchainReading {
+    cargo_identity: latest.subject.cargo_identity,
+    rustc_identity: latest.subject.rustc_identity,
+    invocation: CompilePhaseInvocation {
+      target: latest.subject.invocation.target,
+      target_selection: TargetPinnedOnInvocation,
+      profile: latest.subject.invocation.profile,
+      features: latest.subject.invocation.features
+    },
+    classification_policy_digest: latest.subject.classification_policy_digest
+  }
+  match live_comparability(latest: latest, live: pinned) {
+    LiveIncomparable { reason: why } =>
+      string_contains(s: why as String, pattern: "selects its target differently")
+        && latest.subject.invocation.target == pinned.invocation.target
+    LiveComparable => false
   }
 }
 
 // The comparability predicate's own accepted control, so the probe above is not simply "this
 // predicate always refuses".
 test fn a_live_observation_on_the_receipts_own_toolchain_is_comparable() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_comparability(latest: latest, live: toolchain_of(receipt: latest)) {
-        LiveComparable => true
-        LiveIncomparable { reason: _ } => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_comparability(latest: latest, live: toolchain_of(receipt: latest)) {
+    LiveComparable => true
+    LiveIncomparable { reason: _ } => false
   }
 }
 
@@ -242,16 +247,13 @@ test fn a_live_observation_on_the_receipts_own_toolchain_is_comparable() -> Bool
 // tree to be ratcheted against, and the honest answer is that no comparison was made — the arm a
 // gate is most tempted to render as a pass.
 test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: compile_phase_frontier_standing(series: []),
-        observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
-      ) {
-        LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "empty")
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: []),
+    observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
+  ) {
+    LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "empty")
+    verdict => false
   }
 }
 
@@ -260,17 +262,14 @@ test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held
 // frontier's own fold already refuses; the live gate must inherit that refusal rather than reach
 // past it to a board.
 test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts |> skip(n: 1)),
-        observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
-      ) {
-        LiveFrontierRefused { identities: _, reason: why } =>
-          string_contains(s: why as String, pattern: "does not validate")
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: [synthetic_successor_receipt()]),
+    observation: observation_of(receipt: latest, identities: latest.raw_error_diagnostic_identities)
+  ) {
+    LiveFrontierRefused { identities: _, reason: why } =>
+      string_contains(s: why as String, pattern: "does not validate")
+    verdict => false
   }
 }
 
@@ -282,23 +281,23 @@ test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
 // because a reading is a value a fixture may build; the frontier's own duplicate-population wall
 // carries the same shape and the same justification.
 test fn a_live_observation_folded_under_another_classification_policy_is_unmeasured() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } => {
-      let reading = toolchain_of(receipt: latest)
-      let foreign = LiveToolchainReading {
-        cargo_identity: reading.cargo_identity,
-        rustc_identity: reading.rustc_identity,
-        invocation: reading.invocation,
-        classification_policy_digest: content_hash_atom(value: "not-the-frontier-classification-policy" as NonEmptyStr)
-      }
-      match live_comparability(latest: latest, live: foreign) {
-        LiveIncomparable { reason: why } => string_contains(s: why as String, pattern: "classification policy")
-        LiveComparable => false
-      }
-    }
+  let latest = synthetic_compile_phase_receipt()
+  let reading = toolchain_of(receipt: latest)
+  let foreign = LiveToolchainReading {
+    cargo_identity: reading.cargo_identity,
+    rustc_identity: reading.rustc_identity,
+    invocation: reading.invocation,
+    classification_policy_digest: content_hash_atom(value: "not-the-frontier-classification-policy" as NonEmptyStr)
+  }
+  match live_comparability(latest: latest, live: foreign) {
+    LiveIncomparable { reason: why } => string_contains(s: why as String, pattern: "classification policy")
+    LiveComparable => false
   }
 }
+
+// ---------------------------------------------------------------------------
+// CLAIMS 11-12: Unreached measurement (case a) — fixture-replaceable
+// ---------------------------------------------------------------------------
 
 // THE FALSIFIER FOR THE GATE BEING QUIETLY DISCONNECTED, AND IT IS THE MOST IMPORTANT ONE HERE.
 //
@@ -320,17 +319,14 @@ data unreached_measurement: EmissionMeasurement = EmissionSubjectUnestablished {
 }
 
 test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_verdict_for_measurement(
-        standing: current_compile_phase_frontier_standing(),
-        m: unreached_measurement,
-        toolchain: toolchain_of(receipt: latest)
-      ) {
-        LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "absent census is not an empty one")
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_verdict_for_measurement(
+    standing: compile_phase_frontier_standing(series: [latest]),
+    m: unreached_measurement,
+    toolchain: toolchain_of(receipt: latest)
+  ) {
+    LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "absent census is not an empty one")
+    verdict => false
   }
 }
 
@@ -338,18 +334,19 @@ test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() ->
 // verdict: no observation is produced at all, which is what makes the empty-census spelling
 // unwritable rather than merely unwritten.
 test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_observation_from_measurement(
-        m: unreached_measurement,
-        toolchain: toolchain_of(receipt: latest)
-      ) {
-        LiveObservationNotTaken { cause: _ } => true
-        LiveObservationTaken { observation: _ } => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_observation_from_measurement(
+    m: unreached_measurement,
+    toolchain: toolchain_of(receipt: latest)
+  ) {
+    LiveObservationNotTaken { cause: _ } => true
+    LiveObservationTaken { observation: _ } => false
   }
 }
+
+// ---------------------------------------------------------------------------
+// CLAIM 13: Empty census from completed measurement (case a) — fixture-replaceable
+// ---------------------------------------------------------------------------
 
 // THE CONTROL THAT MAKES THE TWO ABOVE MEAN SOMETHING, and it is the one that would catch the wall
 // being tightened into "nothing is ever measurable". A completed measurement whose census is
@@ -358,15 +355,12 @@ test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool {
 // measurement-ABSENT versus census-EMPTY, exactly as claimed, and not a blanket suspicion of small
 // populations. Without this probe, "always answer Unmeasured" would pass every test above.
 test fn an_empty_census_from_a_completed_measurement_still_holds() -> Bool {
-  match latest_receipt() {
-    Absent => false
-    Present { value: latest } =>
-      match live_tree_frontier_verdict(
-        standing: current_compile_phase_frontier_standing(),
-        observation: observation_of(receipt: latest, identities: [])
-      ) {
-        LiveFrontierHeld { live_identity_count: n } => n == 0
-        verdict => false
-      }
+  let latest = synthetic_compile_phase_receipt()
+  match live_tree_frontier_verdict(
+    standing: compile_phase_frontier_standing(series: [latest]),
+    observation: observation_of(receipt: latest, identities: [])
+  ) {
+    LiveFrontierHeld { live_identity_count: n } => n == 0
+    verdict => false
   }
 }

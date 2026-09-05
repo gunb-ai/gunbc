@@ -3,6 +3,7 @@ module gunbc.auth.access_token_source
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { Secret, NonEmptyStr, Bool, String }
+import std.algebra { trim }
 import std.resources { Network }
 import std.upsert_decision {
   Absent,
@@ -21,6 +22,7 @@ import extdeps.cloud.gcp.auth_print_access_token {
 type AccessTokenSource
   = GcloudPrintToken
   | OperatorSuppliedToken { token: Secret }
+  | WorkloadIdentityToken
 
 type GoogleCloudInteractiveAuthenticationRequired {}
 
@@ -39,8 +41,60 @@ type AccessTokenResolution
 // Absent/Apply(GoogleCloudInteractiveAuthenticationRequired) only when stderr carries an observed
 // authentication deficit; missing binary, network, or other infrastructure failures classify Refuse
 // with the stderr detail preserved. Re-driving after the upsert resumes the same operation.
-// OperatorSuppliedToken remains an explicit compatibility handler. A future workload-identity/OAuth
-// handler can realize the same ensure without changing BMC convergence.
+// OperatorSuppliedToken remains an explicit compatibility handler. WorkloadIdentityToken is the
+// third realizer of the same ensure -- added, not planned -- and it changed no BMC convergence,
+// which is the property this paragraph predicted and the arm below now executes.
+
+// THE WORKLOAD ARM EXISTS SO A TYPED EFFECT CAN RUN IN CI AT ALL. Until it landed this coproduct
+// had exactly two arms, both operator-shaped: GcloudPrintToken needs an interactive human session
+// and OperatorSuppliedToken needs a human to have put a token somewhere. So every typed
+// gcp.SecretManager.* effect in the tree was unreachable from a workflow run, and CI reached Secret
+// Manager the only way left to it -- hand-written shell preludes that curl the REST API with the
+// WIF step's token. That is one fact with two realizations (§3): the modeled effect and the
+// prelude answer the same question, and only the prelude ever runs.
+//
+// This arm is the missing realization, not a new capability. GitHub OIDC -> Workload Identity
+// Federation already gives the run a GCP identity and the workflow already exports the access token
+// it mints; what was absent was any way for ensure_access_token to SAY so. With the arm present the
+// typed effects run under the run's own identity, and the preludes have somewhere to dissolve into.
+//
+// THE TOKEN ARRIVES BY VALUE HERE, AND THAT IS A DEPARTURE WORTH STATING. gunbc.auth.gcp_secret_access
+// takes its operator token by PATH because an environment variable holding a secret leaks into any
+// diagnostic that dumps the environment. That rule is not relaxed: the hazard it was written against
+// is argv and receipts, and gunbc.credential_argv_exposure measures the concrete incident -- a
+// `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"` whose shell expansion put the token in a
+// runner-readable argv word. This arm reads the variable in-process and passes a Secret; it never
+// interpolates it into a command line. The variable is set by the WIF auth step and its lifetime is
+// the job, so the value is already in the job environment whatever this module does -- reading it
+// here removes an argv exposure rather than creating an environment one.
+data workload_identity_token_env: NonEmptyStr = "WIF_ACCESS_TOKEN" as NonEmptyStr
+
+// PURE, so the arms are witnessable without an environment. An absent variable and an empty one are
+// two different operator situations -- the workflow did not run the auth step, versus the auth step
+// ran and produced nothing -- and collapsing them to one message would send the reader to the wrong
+// half of the workflow.
+fn workload_identity_token_resolution(present: Bool, raw: String) -> AccessTokenResolution {
+  if present == false {
+    AccessTokenEnsureRefused {
+      reason: join([
+        "no ", workload_identity_token_env as String,
+        " in the environment: this run has no workload identity token, so the Workload Identity Federation auth step did not run or did not export one. Refusing rather than falling back to an operator credential, which a workflow run must never hold.",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    let token = trim(s: raw)
+    if token == "" {
+      AccessTokenEnsureRefused {
+        reason: join([
+          workload_identity_token_env as String,
+          " is set but empty: the Workload Identity Federation auth step ran and exported no token, which is never a usable bearer token.",
+        ], "") as NonEmptyStr,
+      }
+    } else {
+      AccessTokenReady { token: token as Secret }
+    }
+  }
+}
 
 fn gcloud_access_ensure_refusal_reason(stderr: String) -> NonEmptyStr {
   if string_length(s: stderr) > 0 {
@@ -114,6 +168,11 @@ func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
       )
     }
     OperatorSuppliedToken { token: t } => AccessTokenReady { token: t }
+    WorkloadIdentityToken =>
+      match shell.Env.Get(name: workload_identity_token_env).value {
+        Absent => workload_identity_token_resolution(present: false, raw: "")
+        Present { value: raw } => workload_identity_token_resolution(present: true, raw: raw)
+      }
   }
 }
 
