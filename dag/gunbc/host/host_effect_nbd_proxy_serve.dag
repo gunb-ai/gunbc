@@ -98,7 +98,7 @@ fn host_effect_nbd_proxy_serve_systemd_run_transient(
   command_argv: List<String>,
   transport: HostEffectTransport,
 ) -> String? {
-  match systemd_run_transient_read(transport: transport, unit: unit, command_argv: command_argv) {
+  match systemd_run_transient_read(transport: transport, unit: unit, properties: [], command_argv: command_argv) {
     SystemdRunTransientStarted { stdout: _ } => Absent
     SystemdRunTransientRefused { reason: why } =>
       Present { value: concat(concat("unit ", unit as String), concat(": ", why)) }
