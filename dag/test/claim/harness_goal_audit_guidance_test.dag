@@ -1,0 +1,38 @@
+module test.claim.harness_goal_audit_guidance_test
+
+import std.types { Bool, String, List }
+import gunbc.harness.harness_goal_audit_guidance {
+  AuditGroundedPremise, AuditPremise, EvidenceOffered, TheDisplacedCost,
+  harness_auditor_guidance_at, audit_guidance_prose, audit_conclusions, JudgeTheOutcomeAgainstThePurpose, AskWhetherTheCheckProvesTheGoal,
+}
+import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_brief }
+
+fn rows() -> List<AuditGroundedPremise> { harness_auditor_guidance_at(verdict_path: "/state/audit/abc.json", verdict_shape: "SHAPE-TOKEN") }
+
+test fn the_auditor_prompt_is_independent_of_the_brief_and_asks_whether_the_check_proves_the_goal() -> Bool {
+  let prose = audit_guidance_prose(rows: rows())
+  string_contains(s: prose, pattern: "/state/audit/abc.json")
+    && string_contains(s: prose, pattern: "were not shown the worker's instructions")
+    && string_contains(s: prose, pattern: "whether a green acceptance check is evidence the goal is met")
+    && string_contains(s: prose, pattern: "against the goal and the cost it was meant to displace")
+}
+
+fn offers_cost(r: AuditGroundedPremise) -> Bool { match r.premise { EvidenceOffered { source: TheDisplacedCost } => true  _ => false } }
+
+// DISCRIMINATING: drop the displaced-cost evidence and the purpose conclusion disappears while the
+// check-proves-goal conclusion stays.
+test fn dropping_the_displaced_cost_evidence_drops_the_purpose_conclusion() -> Bool {
+  let reduced = audit_conclusions(rows: filter(rows(), r => !offers_cost(r: r)))
+  let full = audit_conclusions(rows: rows())
+  any(full, c => match c { JudgeTheOutcomeAgainstThePurpose => true  _ => false })
+    && !any(reduced, c => match c { JudgeTheOutcomeAgainstThePurpose => true  _ => false })
+    && any(reduced, c => match c { AskWhetherTheCheckProvesTheGoal => true  _ => false })
+}
+
+test fn the_audit_brief_carries_purpose_evidence_and_never_the_worker_slice() -> Bool {
+  let b = goal_audit_brief(node_id: "n1", headline: "H", boundary: "B", displaced_cost: "the pain", handback: "stop if X", acceptance_command: "gunbc run x", verification_detail: "passed", review_detail: "all approved", base_sha: "aaa", head_sha: "bbb", verdict_path: "/v.json")
+  string_contains(s: b, pattern: "Cost this goal exists to displace: the pain")
+    && string_contains(s: b, pattern: "git diff aaa..bbb")
+    && string_contains(s: b, pattern: "could it pass with the goal unmet")
+    && !string_contains(s: b, pattern: "first slice")
+}

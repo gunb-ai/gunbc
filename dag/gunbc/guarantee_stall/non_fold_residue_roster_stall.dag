@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.non_fold_residue_roster_stall
 
 import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
 
 data non_fold_residue_roster_stall: GuaranteeStall = GuaranteeStall {
   subject: "the live non-fold residue contains an unrostered or stale identity",
@@ -10,5 +10,5 @@ data non_fold_residue_roster_stall: GuaranteeStall = GuaranteeStall {
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_no_unrostered_or_stale", tail: Empty {} } },
-  next_rung_trigger: "the derived unrostered and stale non-fold-residue populations are both empty"
+  next_rung_trigger: climbs_when(capability: "the derived unrostered and stale non-fold-residue populations are both empty")
 }

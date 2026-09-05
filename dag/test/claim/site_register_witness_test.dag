@@ -74,6 +74,8 @@ fn brass_paints_text_somewhere(rules: List<BuildRule>) -> Bool {
       fold(decls, init: false, f: (inner, d) => inner || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole)))
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
       fold(concat(base_decls, response_decls), init: false, f: (inner, d) => inner || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole)))
+    AmbientRule { selector: _, cycle, timing: _, repeat: _ } =>
+      fold(cycle.frames, init: false, f: (inner, k) => inner || fold(k.decls, init: false, f: (i2, d) => i2 || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole))))
   })
 }
 
