@@ -7,7 +7,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -190,6 +190,16 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
 // The org-actions mode mints its credential in-run from the App key: the step names the App's
 // installation token endpoint and the key's Secret Manager version, and the workflow carries no
 // repository secret for it (the interim PAT design was superseded before it was ever taken).
+// The bootstrap mode is the runner-side shape of the workstation apply: same prelude as the grant
+// install (fleet key agent, per-target administrator credential file), one target per run.
+test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_its_entry() -> Bool {
+  let invoke = gunbc_ci_spark_bootstrap_invoke()
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
+    && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
+    && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
+    && string_contains(s: expected_fleet_converge_yml_content(), pattern: "mode == 'spark_bootstrap'")
+}
+
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
   let invoke = gunbc_ci_org_actions_converge_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet")

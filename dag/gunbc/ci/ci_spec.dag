@@ -798,6 +798,11 @@ data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarge
   function: "spark_grant_install_ci_wet",
 }
 
+data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/managed_access_apply.dag",
+  function: "spark_managed_access_bootstrap_ci_wet",
+}
+
 data gunbc_ci_spark_serving_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/serving_observe.dag",
   function: "spark_serving_observe_ci_wet",
@@ -914,7 +919,7 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 26 declarations, 26 entries. That equality is the thing nothing checks.
+// Counted at authoring: 27 declarations, 27 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
@@ -932,6 +937,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
+    gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_observe_target,
     gunbc_ci_spark_serving_converge_slice_target,
     gunbc_ci_collect_fleet_convergence_target,
@@ -1746,6 +1752,20 @@ fn gunbc_ci_spark_serving_durability_invoke() -> String {
     function: gunbc_ci_spark_serving_durability_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-durability-receipt.txt"
+  )
+}
+
+// The bootstrap shares the grant-install prelude: same fleet-key agent from the job, same per-target
+// administrator credential materialized to the same file, so the two cannot drift on how a Spark
+// is reached or authenticated.
+fn gunbc_ci_spark_bootstrap_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_bootstrap_target.entry,
+    function: gunbc_ci_spark_bootstrap_target.function,
+    claim_run: false,
+    receipt_rel: "target/spark-apply-receipt.txt"
   )
 }
 
