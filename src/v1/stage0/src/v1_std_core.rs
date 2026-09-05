@@ -8,6 +8,8 @@ use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
 use self::ContainerSpellingVerdict::*;
+use self::DiagnosticGateDisposition::*;
+use self::DiagnosticSeverity::*;
 use self::ExprData::*;
 use self::ExprErrorKind::*;
 use self::FieldAccessStyle::*;
@@ -770,6 +772,38 @@ pub enum CompilerDiagnostic {
     },
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum DiagnosticSeverity {
+    SeverityError,
+    SeverityNonError,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DiagnosticGateDisposition {
+    GateBlocking,
+    GateAdvisoryTypecheck,
+    GateRenderedUncounted { reason: String },
+}
+impl DiagnosticGateDisposition {
+    pub fn reason(&self) -> String {
+        match self {
+            DiagnosticGateDisposition::GateBlocking => panic!("no reason on unit variant"),
+            DiagnosticGateDisposition::GateAdvisoryTypecheck => panic!("no reason on unit variant"),
+            DiagnosticGateDisposition::GateRenderedUncounted { reason: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DiagnosticDisposition {
+    pub severity: DiagnosticSeverity,
+    pub gate: Rc<DiagnosticGateDisposition>,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorNode {
     pub diagnostic: Rc<CompilerDiagnostic>,
@@ -1008,18 +1042,244 @@ pub fn diagnostic_frontier_occurrence_key(
     }
 }
 
-pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
+pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposition> {
     match (*d.clone()).clone() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => false,
-        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => false,
-        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => false,
-        CompilerDiagnostic::UnlistedVariantValueUse { .. } => false,
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
-        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
-        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
-            !is_where_refinement_unenforced_advisory_reason(r.clone())
-        }
-        _ => true,
+    CompilerDiagnostic::UnresolvedImport { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MissingExport { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::UnresolvedType { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ArityMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::VariantNotFound { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::FieldNotFound { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MethodNotFound { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MethodExistenceUndecided { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::ReceiverTypeUnestablished { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MissingField { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::NonExhaustiveMatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CircularDependency { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::DuplicateModule { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::DuplicateDeclaration { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::MissingAnnotation { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ParseError { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::InternalError { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ComplexityUnknown { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateRenderedUncounted {
+    reason: "complexity analysis is the only producer, and its violations are reported to the author without gating the corpus: they are errors about a function's cost shape rather than about its meaning, so blocking would stop the line on a cost fact and counting them as advisory would enter them in the discovery-corpus frontier they do not belong to. Preserved as measured; whether this coordinate should stay occupied is an open question and not settled here.".to_string(),
+}),
+}),
+    CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => if is_where_refinement_unenforced_advisory_reason(r.clone()) {
+        Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+})
+    } else {
+        Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+})
+    },
+    CompilerDiagnostic::OwnershipViolation { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::VariantCollision { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::SoleConstructorViolation { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::OptionalCastNotEliminated { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::SourceAnnotationRefused { refusal: _, .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::UnlistedImportUse { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::UnlistedVariantValueUse { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::AmbiguousReference { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ModuleFilenameCollision { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CallArgumentNameUnknown { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CallPositionalSurplus { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CallArgumentDuplicate { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CallPositionalDeficit { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EqualityOnFunctionMember { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeArgumentArityMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::OccurrenceTransportViolation { refusal: _, .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+}
+}
+
+pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
+    match diagnostic_disposition(d.clone()).severity.clone() {
+        DiagnosticSeverity::SeverityError => true,
+        DiagnosticSeverity::SeverityNonError => false,
     }
 }
 
@@ -1033,49 +1293,26 @@ pub fn where_refinement_deferral_reason_scaffold_note() -> Rc<DissolutionConditi
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*d.clone()).clone() {
-        CompilerDiagnostic::ComplexityUnknown { .. } => false,
-        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
-            !is_where_refinement_unenforced_advisory_reason(r.clone())
-        }
-        CompilerDiagnostic::UnlistedImportUse { .. } => false,
-        CompilerDiagnostic::UnlistedVariantValueUse { .. } => false,
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
-        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
-        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => false,
-        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => false,
-        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => false,
-        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => false,
-        _ => true,
+    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
+        DiagnosticGateDisposition::GateBlocking => true,
+        DiagnosticGateDisposition::GateAdvisoryTypecheck => false,
+        DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
     }
 }
 
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*d.clone()).clone() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => true,
-        CompilerDiagnostic::UnlistedVariantValueUse { .. } => true,
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
-        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
-        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => true,
-        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => true,
-        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => true,
-        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => true,
-        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
-            is_where_refinement_unenforced_advisory_reason(r.clone())
-        }
-        _ => false,
+    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
+        DiagnosticGateDisposition::GateBlocking => false,
+        DiagnosticGateDisposition::GateAdvisoryTypecheck => true,
+        DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
     }
 }
 
 pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    if (is_interpreter_blocking_diagnostic(d.clone()) == false) {
-        false
-    } else {
-        if is_discovery_corpus_advisory_typecheck_diagnostic(d.clone()) {
-            false
-        } else {
-            true
-        }
+    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
+        DiagnosticGateDisposition::GateBlocking => true,
+        DiagnosticGateDisposition::GateAdvisoryTypecheck => false,
+        DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
     }
 }
 
@@ -4964,6 +5201,10 @@ pub struct ShellTransport;
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LocalTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SeverityError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SeverityNonError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleItemTypeDeclaration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
