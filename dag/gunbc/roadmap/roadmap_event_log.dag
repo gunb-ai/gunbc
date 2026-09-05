@@ -307,6 +307,28 @@ fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStandin
   }
 }
 
+// ONE ROW PER NODE THAT HAS EVENTS, and the observation that wraps the roster: a reader that could not
+// reach the carrier says so once, never renders every node as untouched.
+type NodeStandingRow {
+  node_id: String
+  standing: RoadmapNodeStanding
+}
+
+type RoadmapStandings
+  = StandingsObserved { rows: List<NodeStandingRow> }
+  | StandingsUnobserved { reason: String }
+
+fn standing_for_node(standings: RoadmapStandings, node_id: String) -> RoadmapNodeStanding? {
+  match standings {
+    StandingsUnobserved { reason: _ } => none
+    StandingsObserved { rows } =>
+      match (filter(rows, r => r.node_id == node_id)).first() {
+        Present { value: r } => Present { value: r.standing }
+        Absent => none
+      }
+  }
+}
+
 fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
   match s {
     NodeOpen => "open"

@@ -1,5 +1,6 @@
 module gunbc.roadmap_sandbox
 
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress }
 import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
@@ -394,7 +395,7 @@ fn fixture_moseying_ledger() -> HarnessRoundLedger {
   ] }
 }
 
-fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: HarnessRoundLedger, worker_alive: Bool) -> WorkRowView {
+fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: HarnessRoundLedger, worker_alive: Bool, standing: RoadmapNodeStanding?) -> WorkRowView {
   WorkRowView {
     node_id: node_id,
     headline: "Record which generator actually produced each result",
@@ -408,6 +409,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: Harnes
     disclosure: NoDisclosure,
     rounds: rounds,
     worker_alive: worker_alive,
+    standing: standing,
   }
 }
 
@@ -417,7 +419,7 @@ fn fixture_active_view() -> WorkRowView {
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
-    current_activity: "Worked for 6m 34s"), worker_alive: true)
+    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: "session-a" as NonEmptyStr, last_note: "wiring the fold" as NonEmptyStr } })
 }
 
 fn fixture_refused_view() -> WorkRowView {
@@ -429,7 +431,7 @@ fn fixture_refused_view() -> WorkRowView {
     remaining: 6,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
-    current_activity: ""), worker_alive: false)
+    current_activity: ""), worker_alive: false, standing: none)
 }
 
 fn fixture_row_li(view: WorkRowView) -> Fragment {
@@ -485,6 +487,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     disclosure: NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    standing: none,
   }
 }
 

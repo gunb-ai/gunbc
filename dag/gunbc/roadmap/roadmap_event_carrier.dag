@@ -17,6 +17,7 @@ import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDi
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
+  NodeStandingRow, RoadmapStandings, StandingsObserved, StandingsUnobserved, roadmap_node_standing,
 }
 
 // THE CARRIER IS TWO OPERATIONS AND NOTHING ELSE: append one event; read one node's events. Everything
@@ -244,5 +245,46 @@ fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -
           }
         }
       }
+  }
+}
+
+// EVERY NODE'S STANDING IN ONE SYNC: one fetch, then one fold per node directory. The belt's served
+// observation reads this on every tick so the board shows the log without a merge; a carrier that
+// cannot be reached is StandingsUnobserved with the step that failed, never an empty roster.
+fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["ensure/", step, ": ", reason], "") }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["sync/", step, ": ", reason], "") }
+        CarrierReady => {
+          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+          let listing = Filesystem.List(path: root)
+          if !listing.success {
+            StandingsObserved { rows: [] }
+          } else {
+            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+            let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
+            match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+              Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
+              _ => StandingsObserved { rows: fold(reads, init: [], f: (acc, r) => match r {
+                EventsRead { node, envelopes } => concat(acc, [NodeStandingRow { node_id: node as String, standing: roadmap_node_standing(envs: envelopes) }])
+                EventsReadRefused { node: _, step: _, reason: _ } => acc
+              }) }
+            }
+          }
+        }
+      }
+  }
+}
+
+// The per-node read without its own ensure and sync, for a caller that already synced.
+fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+  let dir = roadmap_event_node_dir(layout: layout, node: node)
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    EventsRead { node: node, envelopes: [] }
+  } else {
+    roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
   }
 }
