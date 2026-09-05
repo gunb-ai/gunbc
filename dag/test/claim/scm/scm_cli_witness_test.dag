@@ -27,6 +27,8 @@ import gunbc.scm.init {
   ScmInitRefused,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
+  ScmInitRetiredRepositoryPresent,
+  init_present_refusal,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry,
   ScmInitDecision,
@@ -234,6 +236,7 @@ fn decision_arm(d: ScmInitDecision) -> String {
       match c {
         ScmInitRepositoryPresent { path: _ } => "repository_present"
         ScmInitForeignFilePresent { path: _ } => "foreign_present"
+        ScmInitRetiredRepositoryPresent { path: _, found: _ } => "retired_present"
         ScmInitPathUnobserved { path: _, cause: _ } => "unobserved"
         ScmInitNameNotAnEntry { name: _, cause: _ } => "name_not_an_entry"
       }
@@ -378,6 +381,7 @@ test fn a_refused_name_refuses_before_any_filesystem_operation() -> Bool {
         ScmInitNameNotAnEntry { name: _, cause: _ } => true
         ScmInitRepositoryPresent { path: _ } => false
         ScmInitForeignFilePresent { path: _ } => false
+        ScmInitRetiredRepositoryPresent { path: _, found: _ } => false
         ScmInitPathUnobserved { path: _, cause: _ } => false
       }
   }
@@ -436,4 +440,54 @@ test fn an_established_absence_derives_the_only_path_it_authorizes() -> Bool {
     FilesystemFileObservationsDisagree { path: _, cause: _ } => false
     FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
   }
+}
+
+// INIT MUST NOT CALL A RETIRED REPOSITORY A FOREIGN FILE, and this drives the real decision function
+// over the real fixture bytes rather than constructing the verdict and testing its printout.
+//
+// Review of gunbc#10560 traced it: init_present_refusal mapped EVERY decode refusal to
+// ScmInitForeignFilePresent, whose rendering says "a file is already there that is not a repository,
+// and init would destroy it". For someone holding a repository written in the retired format, every
+// clause of that sentence is false except the refusal itself -- and the refusal is the part that was
+// never in doubt. Both arms refuse the write; what differs is the remedy, and a remedy the operator
+// cannot infer is not delivered.
+data scm_cli_retired_v3_document: String = "{\"format\": \"gunbc-scm-repository-v3\", \"identity_rule\": \"scm-object-identity-v2\", \"objects\": [], \"next_commit_ordinal\": 0, \"commits\": [], \"checked_out\": null}"
+
+data scm_cli_foreign_document: String = "{\"unrelated\": true}"
+
+test fn init_names_a_retired_repository_rather_than_calling_it_foreign() -> Bool {
+  match init_present_refusal(path: "repo.json", content: scm_cli_retired_v3_document) {
+    ScmInitRetiredRepositoryPresent { path: p, found: f } =>
+      p == "repo.json" && f == "gunbc-scm-repository-v3"
+    ScmInitForeignFilePresent { path: _ } => false
+    ScmInitRepositoryPresent { path: _ } => false
+    ScmInitPathUnobserved { path: _, cause: _ } => false
+    ScmInitNameNotAnEntry { name: _, cause: _ } => false
+  }
+}
+
+// THE CONTROL: genuinely foreign bytes must still be foreign, so the new arm cannot be reached by
+// everything. Without it, an init that answered "retired" for any unreadable file would pass above.
+test fn init_still_calls_genuinely_foreign_bytes_foreign() -> Bool {
+  match init_present_refusal(path: "repo.json", content: scm_cli_foreign_document) {
+    ScmInitForeignFilePresent { path: p } => p == "repo.json"
+    ScmInitRetiredRepositoryPresent { path: _, found: _ } => false
+    ScmInitRepositoryPresent { path: _ } => false
+    ScmInitPathUnobserved { path: _, cause: _ } => false
+    ScmInitNameNotAnEntry { name: _, cause: _ } => false
+  }
+}
+
+// AND THE RENDERING SAYS SO WHILE STILL REFUSING. The write refusal is asserted alongside the text,
+// because the repair must not have relaxed init into creating over a repository it cannot read.
+test fn a_retired_repository_renders_its_format_and_still_refuses_to_initialize() -> Bool {
+  let response = scm_init_response(
+    outcome: ScmInitRefused {
+      cause: ScmInitRetiredRepositoryPresent { path: "repo.json", found: "gunbc-scm-repository-v3" }
+    }
+  )
+  wire_refuses(r: response)
+    && string_contains(haystack: wire_bytes(r: response), needle: "gunbc-scm-repository-v3")
+    && string_contains(haystack: wire_bytes(r: response), needle: "a repository is already there")
+    && (string_contains(haystack: wire_bytes(r: response), needle: "that is not a repository") == false)
 }

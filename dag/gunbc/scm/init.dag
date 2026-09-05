@@ -68,7 +68,11 @@ import gunbc.scm.repository_envelope {
   empty_repository,
   decode_repository,
   RepositoryDecoded,
-  RepositoryDecodeRefused
+  RepositoryDecodeRefused,
+  repository_document_protocol,
+  RepositoryProtocolRetired,
+  RepositoryProtocolUnrecognized,
+  RepositoryProtocolNotTheRefusal
 }
 import gunbc.scm.repository_save {
   RepositorySave,
@@ -91,8 +95,16 @@ import std.measure { ByteSize }
 // same thing in both, so it is ONE type. Giving each its own refusal arms would be two spellings of
 // one concept, which is the fork DESIGN section 3 forbids; and folding the decision into the outcome
 // would put an arm on the outcome that is only ever intermediate.
+// A REPOSITORY THIS BUILD CANNOT READ IS NOT A FOREIGN FILE, and it gets its own arm because the two
+// mean opposite things to whoever is holding the path. "Foreign" says these bytes were never ours and
+// init would destroy something unrelated; "retired format" says this IS your repository, written in a
+// format whose reader no longer ships here. Both refuse the write -- that is not what differs -- but
+// the remedy does: one is move your file, the other is get a build that reads that format. Folding
+// the second into the first tells an operator their repository was never a repository, which is the
+// well-formed-answer-about-the-wrong-subject defect this module's neighbours keep paying for.
 type ScmInitRefusal
   = ScmInitRepositoryPresent { path: String }
+  | ScmInitRetiredRepositoryPresent { path: String, found: String }
   | ScmInitForeignFilePresent { path: String }
   | ScmInitPathUnobserved { path: String, cause: String }
   | ScmInitNameNotAnEntry { name: String, cause: String }
@@ -134,7 +146,13 @@ fn init_present_refusal(path: String, content: String) -> ScmInitRefusal {
     JsonDocumentParsed { value: v } =>
       match decode_repository(v: v) {
         RepositoryDecoded { envelope: _ } => ScmInitRepositoryPresent { path: path }
-        RepositoryDecodeRefused { cause: _ } => ScmInitForeignFilePresent { path: path }
+        RepositoryDecodeRefused { cause: c } =>
+          match repository_document_protocol(cause: c) {
+            RepositoryProtocolRetired { found: f } =>
+              ScmInitRetiredRepositoryPresent { path: path, found: f }
+            RepositoryProtocolUnrecognized { found: _ } => ScmInitForeignFilePresent { path: path }
+            RepositoryProtocolNotTheRefusal => ScmInitForeignFilePresent { path: path }
+          }
       }
   }
 }

@@ -1631,6 +1631,34 @@ fn decode_repository_checkout(
 // might legitimately implement and this build might lack: acyclicity is a substrate law, so no
 // conforming writer emits one at any version. Classifying it as unsupported would tell a reader to
 // stand aside for a document that is damaged, which inverts the remedy.
+// THE PROTOCOL STANDING IS PROJECTED HERE BECAUSE THE FORMAT IS OWNED HERE. A surface that has to
+// tell an operator "this build does not read your repository's format" needs the DECLARED TAG, and the
+// only honest source of it is the module that decides formats. Duplicating a tag table in a renderer
+// or a CLI would be a second authority for the same fact, and it would drift the moment a version
+// moves -- which is exactly the event that makes anyone need this projection.
+//
+// IT IS NOT `LoadStanding`, and the difference is the point. `repository_envelope_load_standing`
+// answers what a CONSUMER MAY DO -- LoadUnsupportedProtocol equally covers an unrecognized tag and a
+// retired one, and that is correct for permission. It cannot answer WHAT TO SAY, because "a format
+// this build has never heard of" and "the format this repository was written in, which this build has
+// retired" have different remedies: one is someone else's document, the other is your own repository
+// and a reader you no longer have.
+//
+// The third arm exists so this cannot become an absorbing answer: a refusal that is not about the
+// format at all says so, rather than being rendered as some default format complaint.
+type RepositoryDocumentProtocol
+  = RepositoryProtocolRetired { found: String }
+  | RepositoryProtocolUnrecognized { found: String }
+  | RepositoryProtocolNotTheRefusal
+
+fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDocumentProtocol {
+  match cause {
+    RepositoryFormatRetired { found: f } => RepositoryProtocolRetired { found: f }
+    RepositoryFormatUnrecognized { found: f } => RepositoryProtocolUnrecognized { found: f }
+    _ => RepositoryProtocolNotTheRefusal
+  }
+}
+
 fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStanding {
   match cause {
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol

@@ -57,6 +57,7 @@ import gunbc.scm.init {
   ScmInitRefusal,
   ScmInitRepositoryPresent,
   ScmInitForeignFilePresent,
+  ScmInitRetiredRepositoryPresent,
   ScmInitPathUnobserved,
   ScmInitNameNotAnEntry
 }
@@ -294,6 +295,12 @@ fn scm_init_refusal_lines(cause: ScmInitRefusal) -> List<String> {
         concat("refusing to initialize ", p),
         "  a repository is already there, and init would replace its whole history"
       ]
+    ScmInitRetiredRepositoryPresent { path: p, found: f } =>
+      [
+        concat("refusing to initialize ", p),
+        concat("  a repository is already there in format ", f),
+        "  this build has no reader for that format, and init would replace its whole history"
+      ]
     ScmInitForeignFilePresent { path: p } =>
       [
         concat("refusing to initialize ", p),
@@ -324,6 +331,8 @@ fn scm_init_refusal_exit(cause: ScmInitRefusal) -> ProcessExit {
   match cause {
     ScmInitRepositoryPresent { path: _ } =>
       exit_failure(reason: "repository already present")
+    ScmInitRetiredRepositoryPresent { path: _, found: _ } =>
+      exit_failure(reason: "repository already present in a format this build does not read")
     ScmInitForeignFilePresent { path: _ } =>
       exit_failure(reason: "path occupied by a non-repository file")
     ScmInitPathUnobserved { path: _, cause: _ } =>

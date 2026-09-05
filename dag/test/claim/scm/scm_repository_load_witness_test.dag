@@ -15,7 +15,7 @@ module test.claim.scm_repository_load_witness
 // would be refused by the interpreter's hermetic carve-out as a host effect rather than answered
 // as a failed read, and the claim would be measuring the sandbox instead of this module.
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.repository_load {
   RepositoryLoad,
@@ -26,6 +26,7 @@ import gunbc.scm.repository_load {
   RepositoryDocumentUnparseable,
   RepositoryDocumentRefused,
   load_repository,
+  repository_load_refusal_lines,
 }
 import gunbc.scm.repository_envelope {
   RepositoryDecodeRefusal,
@@ -165,4 +166,59 @@ test fn scm_repository_load_keystone_holds() -> Bool {
     scm_rl_a_parseable_non_repository_is_refused_by_schema() &&
     scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() &&
     scm_rl_a_damaged_document_is_not_a_protocol_gap()
+}
+
+// THE REFUSAL MUST REACH THE OPERATOR AS A RETIREMENT, NOT AS "NOT A REPOSITORY".
+//
+// The load witness above asserts the decoder's cause and standing, and stops there. Review of gunbc#10560
+// traced what happens after: the structured cause survives the loader and the read command, and the
+// TEXT PROJECTION discarded it -- every RepositoryDocumentRefused rendered as
+// "not a repository document: <path>". So the one population that most needs the distinction, someone
+// holding a repository this build has retired, was told their repository is not a repository. A
+// correct tag assertion that stops before the rendering boundary does not establish the
+// operator-visible claim, which is the whole point of the finding.
+//
+// These drive the SAME fixtures through the real projection.
+fn scm_rl_refusal_text(path: String) -> List<String> {
+  match load_repository(path: path) {
+    RepositoryLoaded { path: _, envelope: _ } => []
+    RepositoryLoadRefused { cause: cause } => repository_load_refusal_lines(cause: cause)
+  }
+}
+
+fn scm_rl_says(path: String, line: String) -> Bool {
+  fold(scm_rl_refusal_text(path: path), init: false, f: fn(seen, l) { seen || (l == line) })
+}
+
+fn scm_rl_line_count(path: String) -> Int {
+  length(xs: scm_rl_refusal_text(path: path))
+}
+
+test fn scm_rl_a_retired_document_renders_as_a_format_this_build_does_not_read() -> Bool {
+  scm_rl_says(path: scm_rl_retired_v3_path, line: "this build does not read repository format gunbc-scm-repository-v3")
+    && scm_rl_says(path: scm_rl_retired_v3_path, line: concat("  at ", scm_rl_retired_v3_path))
+    && (scm_rl_says(
+          path: scm_rl_retired_v3_path,
+          line: concat("not a repository document: ", scm_rl_retired_v3_path)
+        ) == false)
+}
+
+// THE CONTROLS THAT STOP "EVERYTHING IS RETIRED" FROM SATISFYING THE CLAIM ABOVE. A healthy v4
+// document renders no refusal at all; a genuinely damaged one must not borrow the retirement wording;
+// and an unrecognized format is its own remedy -- nothing here was ever readable, rather than a reader
+// having been withdrawn.
+test fn scm_rl_a_healthy_document_renders_no_refusal_text() -> Bool {
+  scm_rl_line_count(path: scm_rl_empty_repository_path) == 0
+}
+
+test fn scm_rl_a_damaged_document_does_not_render_as_a_retired_format() -> Bool {
+  (scm_rl_line_count(path: scm_rl_malformed_document_path) > 0)
+    && (scm_rl_says(
+          path: scm_rl_malformed_document_path,
+          line: "this build does not read repository format gunbc-scm-repository-v3"
+        ) == false)
+}
+
+test fn scm_rl_an_unknown_format_renders_as_unrecognized_rather_than_retired() -> Bool {
+  scm_rl_says(path: scm_rl_unknown_format_path, line: "unrecognized repository format gunbc-scm-repository-v99")
 }

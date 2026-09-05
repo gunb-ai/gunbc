@@ -63,6 +63,10 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded,
   RepositoryDecodeRefused,
   RepositoryDecodeRefusal,
+  repository_document_protocol,
+  RepositoryProtocolRetired,
+  RepositoryProtocolUnrecognized,
+  RepositoryProtocolNotTheRefusal,
 }
 
 // THE REFUSALS ARE THEIR OWN TYPE SO A CONSUMER CAN CARRY ONE WITHOUT BEING ABLE TO HOLD A SUCCESS.
@@ -163,7 +167,20 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
       [concat("cannot read repository at ", path), concat("  ", error)]
     RepositoryDocumentUnparseable { path: path, gap: _ } =>
       [concat("repository document is not valid JSON: ", path)]
-    RepositoryDocumentRefused { path: path, cause: _ } =>
-      [concat("not a repository document: ", path)]
+    RepositoryDocumentRefused { path: path, cause: c } =>
+      match repository_document_protocol(cause: c) {
+        RepositoryProtocolRetired { found: f } =>
+          [
+            concat("this build does not read repository format ", f),
+            concat("  at ", path),
+            "  the document is intact; this reader was retired, and no reader for that format ships here",
+          ]
+        RepositoryProtocolUnrecognized { found: f } =>
+          [
+            concat("unrecognized repository format ", f),
+            concat("  at ", path),
+          ]
+        RepositoryProtocolNotTheRefusal => [concat("not a repository document: ", path)]
+      }
   }
 }
