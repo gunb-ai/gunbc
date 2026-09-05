@@ -347,11 +347,7 @@ fn floor_expected_red_chunk_02() -> List<String> {
 // Keep both distinct from wet evidence. The mock deficit is recorded in
 // gunbc.recurring_failure_mode.transport_mock_success_independent_of_request.
 fn floor_expected_red_chunk_03() -> List<String> {
-  Cons { head: "test.claim.host_effect_apply_witness.witness_converged_is_settled", tail:
-  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail:
-  Cons { head: "test.claim.host_effect_apply_witness.witness_typed_read_on_host_success_converges", tail:
-  Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution", tail:
-  Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_typed_read_witness_holds_by_real_execution", tail: Empty {} } } } } }
+  Cons { head: "test.claim.host_effect_apply_witness.witness_converged_is_settled", tail: Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host_effect_apply_witness.witness_typed_read_on_host_success_converges", tail: Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution", tail: Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_typed_read_witness_holds_by_real_execution", tail: Empty {} } } } } }
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
