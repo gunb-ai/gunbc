@@ -15917,6 +15917,22 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
 // is not a compile verdict; a rejected compile is (1); a completed compile writes its emitted text
 // to stdout and exits 0. Collapsing the first two would report a typo in a path as a compiler
 // diagnostic.
+//
+// THE REJECTED ARM PRINTS THE DIAGNOSTICS, and the reason it must is that the alternative was
+// tried: this arm shipped as `eprintln!("gunbc: refused: {}", source_path)`, which discards every
+// diagnostic the pipeline produced and hands the operator a refusal naming a file and no cause --
+// loud but content-free, so a compile error and any other rejection are indistinguishable. DESIGN
+// section 5 requires a failure arm to refuse with typed, located facts rather than widen into a
+// bare message, and `Outcome::Rejected` carries `NonEmptyDiagnostics`, so the located causes were
+// present and thrown away. The Accepted arm prints `value.carried` faithfully; this one owes the
+// same fidelity.
+//
+// IT RENDERS THROUGH `{:#?}` BECAUSE v2 HAS NO DIAGNOSTIC RENDERER YET. Every emitted type carries
+// Debug in its derive list, so the dump is complete -- reason, Locus and correction for the head
+// and every tail element. Writing a renderer inline in this emitter would mint a SECOND rendering
+// authority for a fact v2 should own (DESIGN section 3), which is worse than an ugly-but-total
+// dump. WHEN v2 declares a diagnostic renderer, this arm calls it and the `{:#?}` goes away; that
+// is the trigger, and nothing smaller retires it.
 fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {
@@ -15938,8 +15954,9 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
       "            print!(\"{}\", value.carried);\n",
       "            std::process::exit(0);\n",
       "        }\n",
-      "        ", crate_name, "::v2_std_diagnostic::Outcome::Rejected { .. } => {\n",
-      "            eprintln!(\"gunbc: refused: {}\", source_path);\n",
+      "        ", crate_name, "::v2_std_diagnostic::Outcome::Rejected { diagnostics } => {\n",
+      "            eprintln!(\"REFUSED: {} did not compile\", source_path);\n",
+      "            eprintln!(\"{:#?}\", diagnostics);\n",
       "            std::process::exit(1);\n",
       "        }\n",
       "    }\n",
