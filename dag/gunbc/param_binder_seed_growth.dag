@@ -1,0 +1,49 @@
+module gunbc.param_binder_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for param_name_matches_declared, a pure free function extracted from
+// the fn-call path's inline closure and shared with the service-rest binding path. Homed here
+// rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.
+//
+// WHAT THE CHANGE IS. build_service_param_env in v1_interpreter.rs silently accepted any named
+// argument without validating it against the operation's declared parameters. An undeclared name
+// was inserted into the bindings HashMap and either displaced a positional/default (producing a
+// fabricated plausible output) or went unread. The fix adds a declared-parameter check at the top
+// of the named-arg loop, using param_name_matches_declared as the single authority for the
+// name-matching rule (DESIGN §3 — the same rule now lives in one site instead of two).
+//
+// WHY SEED RUST IS NEEDED (REACHABILITY LIMIT — see §4b and parse_refusal_location_seed_growth
+// for the authority). build_service_param_env is called from eval_service_call at line 10523,
+// which sits behind full interpreter evaluation. No .dag witness can reach this code path
+// without a service operation that has both a mock arm AND declared params — and even then,
+// the CallContractMismatch error is an interpreter-level Err variant, not a compile diagnostic
+// that compile_dag_diagnostic_census can observe. The function was modified in place (zero net
+// new hand items beyond the extraction); param_name_matches_declared is extracted from the
+// fn-call path's closure so the rule is not spelled twice at two call sites.
+//
+// TRIGGER (capability, see §4b(3)): when a declared-parameter validation check exists in the
+// substrate binding path — i.e. rest operations have a typed input-contract that the compiler
+// enforces rather than relying on the interpreter's runtime validation — and a .dag witness can
+// exercise it, these assertions move to the substrate unchanged. The trigger does NOT dissolve
+// on a simple migration: the substrate must have a validation check with the same or stronger
+// refusal semantics (undeclared names refused with a typed diagnostic, duplicates the same), and
+// that check must be observable from a .dag witness. A partial migration (e.g. the check moves
+// to emit-only but the interpreter still lacks it) does not dissolve this row.
+
+data param_binder_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "param_name_matches_declared" as NonEmptyStr,
+      field: WholeDeclaration
+    },
+  ],
+  reason: "param_name_matches_declared is a pure free function extracted from the fn-call path's inline closure and shared with the service-rest binding path (build_service_param_env). It implements the name-matching convention that accepts x against declared x, _x, or _. One site, one rule — DESIGN §3. The function was extracted to eliminate a nicknaming violation where the same rule was spelled in two inline closures that could drift. The root change it serves (the built_service_param_env wall) is a floor-class correctness bug: an undeclared named argument silently displaces the caller's intended value to a positional or default slot, producing a fabricated plausible output (DESIGN §5). The wall cannot be tested from .dag because build_service_param_env sits behind full interpreter evaluation with no hermetic entry point (no rest-side analogue of shell_materialize_operation_argv).",
+  owning_dissolution_lane: "transport-argv-anemia-dissolution" as RoadmapNodeId,
+  trigger: "Retired when a declared-parameter validation check exists in the substrate binding path — i.e. rest operations have a typed input-contract that the compiler enforces rather than relying on the interpreter's runtime validation — and a .dag witness can exercise it, with the same or stronger refusal semantics (undeclared names refused with a typed diagnostic, duplicates refused the same way). A partial migration (check moves to emit-only but the interpreter still lacks it, or the check exists but no .dag witness can observe it) does NOT dissolve this row.",
+  current_boundary: "v1_compiler.v1_interpreter param_name_matches_declared; build_service_param_env (undeclared-name + duplicate-label guards)"
+}
