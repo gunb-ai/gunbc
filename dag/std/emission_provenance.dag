@@ -44,14 +44,16 @@ type EmissionResolutionCoverage
 // Content is assembled FROM this tree, never reconstructed by searching emitted strings.
 // A composition retains its own contributor and all nested contributors. In particular a
 // runtime wrapper forwarding an upstream realization does not replace that realization's origin.
-// The boilerplate arm is an explicit producer claim, never the default for unknown content.
+// Authored target text remains authored when its declaration lives in a .dag file. Derived
+// means the producer observed a fold of modeled structure, never that the producer's path has
+// a particular extension. Neither leaf arm absorbs an unobserved nested contributor.
 type EmissionContribution
-  = EmissionSourceFragment { origin: DeclarationRef, source: String }
+  = EmissionAuthoredFragment { origin: DeclarationRef, source: String }
   | EmissionSourceComposition {
       origin: DeclarationRef
       parts: FreeMonoid<EmissionContribution>
     }
-  | EmissionGeneratedFragment { producer: DeclarationRef, source: String }
+  | EmissionDerivedFragment { producer: DeclarationRef, source: String }
   | EmissionUnobservedFragment {
       producer: DeclarationRef
       cause: NonEmptyStr
@@ -265,20 +267,20 @@ fn emission_resolution_correspondence(
 
 fn emission_contribution_source(contribution: EmissionContribution) -> String {
   match contribution {
-    EmissionSourceFragment { origin: _, source } => source
+    EmissionAuthoredFragment { origin: _, source } => source
     EmissionSourceComposition { origin: _, parts } =>
       parts |> map(part => emission_contribution_source(contribution: part)) |> join(separator: "")
-    EmissionGeneratedFragment { producer: _, source } => source
+    EmissionDerivedFragment { producer: _, source } => source
     EmissionUnobservedFragment { producer: _, cause: _, source } => source
   }
 }
 
 fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
   match contribution {
-    EmissionSourceFragment { origin: _, source: _ } => []
+    EmissionAuthoredFragment { origin: _, source: _ } => []
     EmissionSourceComposition { origin: _, parts } =>
       parts |> flat_map(part => emission_contribution_unobserved(contribution: part))
-    EmissionGeneratedFragment { producer: _, source: _ } => []
+    EmissionDerivedFragment { producer: _, source: _ } => []
     EmissionUnobservedFragment { producer, cause: _, source: _ } => [producer]
   }
 }
@@ -323,10 +325,10 @@ fn emission_origin_read_add(acc: EmissionOriginRead, contribution: EmissionContr
 // parent-child structure and distinct contribution occurrences. Multiplicity is retained here too.
 fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
   match contribution {
-    EmissionSourceFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
+    EmissionAuthoredFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
     EmissionSourceComposition { origin, parts } =>
       parts |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: emission_origin_read_add)
-    EmissionGeneratedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
+    EmissionDerivedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
     EmissionUnobservedFragment { producer, cause, source: _ } => EmissionOriginsIncomplete {
       observed: [], missing: FreeSemigroup { head: EmissionOriginGap { producer: producer, cause: cause }, tail: [] }
     }

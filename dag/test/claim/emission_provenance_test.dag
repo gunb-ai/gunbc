@@ -11,7 +11,7 @@ import std.emission_provenance {
   EmissionModuleMember, EmissionModuleRemoved,
   EmissionResolutionComplete, EmissionResolutionUnreached,
   EmissionResolutionCompared, EmissionResolutionComparisonUnavailable,
-  EmissionSourceFragment, EmissionSourceComposition, EmissionUnobservedFragment,
+  EmissionAuthoredFragment, EmissionDerivedFragment, EmissionSourceComposition, EmissionUnobservedFragment,
   EmissionOriginsObserved, EmissionOriginsIncomplete,
   emission_declaration_correspondence,
   emission_resolution_correspondence,
@@ -63,6 +63,20 @@ fn provenance_fixture_member(name: String, body: String, local_id: Int) -> Emiss
     occurrence: OccurrenceMinted { id: OccurrenceId { value: local_id } },
     content: as_content_hash_structural(structural: content_hash_atom(value: body as NonEmptyStr))
   }
+}
+
+test fn emission_authored_text_is_distinct_from_derived_output() -> Bool {
+  let authored = EmissionAuthoredFragment {
+    origin: decl_ref(module_path: "fixture.runtime", decl_name: "rust_blob"),
+    source: "pub fn value() -> i64 { 1 }"
+  }
+  let derived = EmissionDerivedFragment {
+    producer: decl_ref(module_path: "fixture.runtime", decl_name: "render_model"),
+    source: "pub fn value() -> i64 { 1 }"
+  }
+  emission_contribution_source(contribution: authored) == emission_contribution_source(contribution: derived)
+    && (match authored { EmissionAuthoredFragment { origin: _, source: _ } => true  _ => false })
+    && (match derived { EmissionDerivedFragment { producer: _, source: _ } => true  _ => false })
 }
 
 // The two graphs deliberately assign DIFFERENT occurrence ids to the preserved declaration.
@@ -118,7 +132,7 @@ test fn emission_nested_contributor_survives_flattening() -> Bool {
   let leaf = decl_ref(module_path: "fixture.upstream", decl_name: "canonical_block")
   let contribution = EmissionSourceComposition {
     origin: wrapper,
-    parts: [EmissionSourceFragment { origin: leaf, source: "implementation" }]
+    parts: [EmissionAuthoredFragment { origin: leaf, source: "implementation" }]
   }
   match emission_contribution_origins(contribution: contribution) {
     EmissionOriginsObserved { origins } =>
