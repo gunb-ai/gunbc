@@ -42,6 +42,7 @@ import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
+import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
 import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
@@ -167,6 +168,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   runner_activation_reachability_stall,
   runner_activation_safety_stall,
   declaration_index_fixture_exemption_classification_stall,
+  axis_list_re_enumerates_its_variant_type_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

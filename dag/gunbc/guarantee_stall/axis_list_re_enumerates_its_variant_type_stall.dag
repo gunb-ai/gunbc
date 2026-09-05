@@ -1,0 +1,66 @@
+module gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+
+// WHY THIS IS A STALL AND NOT A DECLARED DROP, stated first because the wrong carrier was the
+// first thing proposed for it. A gunbc.rung_drop records a REGRESSION -- a class that held a rung
+// and no longer does, with a previous rung to restore. Axis completeness against the variant types
+// was NEVER established here, so there is no height to restore and a restoration trigger would
+// name a capability that never existed. This is DESIGN section 4b(2)'s no-untracked-stall
+// obligation instead: a class below its ceiling naming what it waits on.
+//
+// THE SUBJECT, AND THE FIXTURE THAT DEMONSTRATES IT RATHER THAN A DESCRIPTION OF IT.
+// gunbc.tools.reference_binding_provenance_calibration declares two coproducts,
+// CalibrationObservationKind and CalibrationResolutionArm, and two authored data lists that are
+// supposed to enumerate their variants. NOTHING BINDS EITHER LIST TO ITS TYPE. Measured on the
+// admission path, not argued: empty the arm list, supply cells = [], and every conjunct of the
+// completeness predicate held -- the arm-label conjunct 0 == 0, the kind conjunct 4 == 4, length
+// == declared 0 == 4*0, distinct keys == declared 0 == 0, and an empty unsound list -- so
+// calibration_verdict returned ExitSuccess HAVING MEASURED NOTHING. The two conjuncts that look
+// like axis guards are vacuously true exactly when the axes are most broken.
+//
+// THAT SPECIFIC STATE NOW REFUSES AND THE CLASS STILL STALLS, which is the distinction this row
+// exists to keep. gunbc#10545 made the axes PARAMETERS of the admission predicate and added a
+// positive denominator, so empty, short and label-colliding axes are refused and three controls
+// are enrolled against them -- the empty-axis control verified discriminating by SABOTAGE
+// (conjunct removed, control false; restored, true). What none of that reaches is a list that is
+// SHORT OF ITS TYPE: add a variant to either coproduct without appending to the list and the
+// declared population silently shrinks, the cells shrink with it, every conjunct holds, and an
+// entire axis goes unmeasured under a success exit. The refusals are real and they are about
+// DEGENERATE axes, never about INCOMPLETE ones.
+//
+// WHY NO CONSTRUCTION CLOSES IT TODAY -- an enumeration of the surface, so one counterexample
+// falsifies it and a future reader can check it in a minute. Deriving an axis list from its type
+// needs enumeration of a declared coproduct's constructors from inside a fold. The substrate
+// offers no unfold, no range, and no constructor-listing primitive; std's list surface is
+// list_block, list_item, list_length and list_to_stack, and a coproduct's variants are reachable
+// only by writing each one. A THIRD hand-maintained list -- an index, a label roster, a count --
+// would be a second authority for the same fact, would rot exactly as the first two can, and
+// would make this stall LOOK discharged, which is the nicknaming failure this repository already
+// rosters.
+//
+// SIBLING, AND THE DIFFERENCE IS THE MISSING PRIMITIVE RATHER THAN THE SHAPE.
+// gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall is the same shape one layer over
+// -- an authored list that must mirror a declared population -- and it waits on declaration VALUE
+// BINDING for data declarations. This row waits on CONSTRUCTOR ENUMERATION for a coproduct type.
+// Neither capability implies the other: binding a discovered `data` declaration as a typed value
+// says nothing about listing a type's constructors, and vice versa. That row is also the
+// precedent for classifying a missing LANGUAGE capability as AwaitsOneGrounding rather than
+// ClimbableButUnbuilt, and the reasoning is the same here: the climb is not merely unstarted, it
+// is unavailable with every construction the language currently offers.
+data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeStall {
+  subject: "an axis list enumerates by hand the variants of the coproduct it must cover, so a variant absent from the list silently shrinks the declared population and an incomplete traversal reports success",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "constructor enumeration for a declared coproduct: a fold over the variants of a coproduct TYPE, not over an authored list of them, so an axis list is derived rather than written",
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.tools.reference_binding_provenance_calibration calibration_observation_kinds",
+      "gunbc.tools.reference_binding_provenance_calibration calibration_resolution_arms",
+    ],
+  },
+  next_rung_trigger: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is DESIGN section 4b(3)'s trigger naming less than the capability it restores",
+}
