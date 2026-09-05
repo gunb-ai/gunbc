@@ -1,10 +1,14 @@
 # SCM merge: the design ruling, recorded before implementation
 
 This document settles what merge IS in `gunbc.scm` before any merge code exists. It is written
-first because the answer to §5 decides the shape of `CorpusManifestObject`, and building that
-authority before this ruling would be the §3 replacement-migration trap: a load-bearing authority in
-place, every nearby question answered in its vocabulary, and the vocabulary already scheduled for
-death.
+first because a merge and publication consumer, once cut, fixes the vocabulary every nearby question is
+then answered in — and a vocabulary cut against an unproven correspondence contract is the §3
+replacement-migration trap.
+
+**An earlier revision of this document opened by saying §5 decides the shape of
+`CorpusManifestObject`. That was false and is corrected in §5:** that object already exists in
+`gunbc.scm.object_store`, its shape is already ruled there, and it is not gated by this document. The
+pending boundary is a consumer / commit-root cut, which is materially smaller.
 
 Nothing here is implemented. Where a question is open, it is marked open rather than resolved by
 plausible reasoning.
@@ -74,6 +78,44 @@ So a merge commit carries a `MergeAbsorption` receipt naming the absorbed tip (a
 stays linear and traversal stays honest; the question "what did this absorb" becomes answerable
 without reviving the line.
 
+### D1. The receipt is only real if a QUERY consumes it
+
+A receipt nobody reads is data, not evidence. This document therefore fixes the consumer before the
+producer, because the producer's shape is determined by what the query must answer.
+
+**The query.** Given a source tip S and a target ref T: *does T's history contain a commit whose
+absorption receipt names S?* It is scoped two ways and both are load-bearing:
+
+- **exact source.** The receipt names a specific absorbed tip. "Some commit from that line" is a
+  different, weaker question, and answering it while claiming the strong one is fabrication.
+- **target lineage.** The answer is relative to T. A receipt sitting in a line T cannot reach does
+  not mean the work is in T. So the query walks T's ancestry (§4's arms apply, with the same per-arm
+  refusals) and inspects receipts along that chain — it does not scan the store.
+
+**Three facts stay distinct, and collapsing any two is the defect this section exists to prevent:**
+
+1. **Ancestry membership** — S is literally an ancestor of T. Under squash this is normally FALSE for
+   absorbed work, which is exactly why (2) exists.
+2. **A committed absorption receipt** — some commit reachable from T recorded absorbing S. This is a
+   historical claim about an act, and it is the only one the receipt itself supports.
+3. **Newly derived content comparison** — the content of S is present in T's current tree. This is a
+   fresh derivation over current state, not a receipt read.
+
+**(2) does not imply (3).** Work absorbed and later reverted still carries its receipt. So the query
+answers *"was this integrated?"* and never *"is this effective now?"*; a consumer needing the latter
+must derive it, and the outcome vocabulary must name which question it answered. Historical
+integration and current effect are separately reported, never one boolean.
+
+**Survival of collection.** The query must remain answerable after the absorbed objects are collected
+(the open question below). That is a constraint on the receipt's contents: it holds the absorbed tip's
+identity and the derived base's identity as VALUES, so answering never requires dereferencing the
+absorbed line. A query that needs the collected objects would make garbage collection silently
+destroy history's answers.
+
+**Refusals.** Not-found is `NoAbsorptionRecorded`, distinct from `TargetHistoryUnwalkable { cause }`
+carrying the §4 walk arm, distinct from `SourceNotInRepository`. "No" and "cannot tell" are different
+answers.
+
 **Open:** whether the absorbed commits' objects are retained in the store or become unreachable. This
 is a garbage-collection question with its own ruling, and it is deliberately not decided here. What
 IS decided: the receipt names the absorbed tip whether or not that tip's objects survive, because a
@@ -119,101 +161,164 @@ With both chains traced, the outcomes are:
   distinct from a conflict-free merge that happens to change nothing, and collapsing them would
   report "merged successfully" for work that was already in.
 - **`TargetIsAncestorOfSource`** — the target's tip is in the source's chain. The target has not
-  moved since the branch started. No integration is required and the head can simply advance.
-  (Whether this is exposed as its own outcome or squashed anyway is **open**: under "always squash"
-  there is an argument for treating it identically, and an argument that pretending an integration
-  happened is dishonest.)
+  moved since the branch started, so no content reconciliation is required. **This is now RULED
+  rather than open, because leaving it open left a loophole that defeats §2.** If publication is
+  allowed to advance T onto S's tip, then S's development commits become part of T's history — the
+  dev history the workflow exists to kill — and, worse, no absorption receipt is written, so §D1's
+  query returns `NoAbsorptionRecorded` for work that WAS integrated. Cheap reconciliation was
+  silently converted into a different publication.
+  The ruling separates the two: **reconciliation may be trivial; publication is uniform.** Merge
+  reports that no reconciliation was needed, and publication still produces a new commit M whose
+  `CommitAncestry` is `DescendsFrom { parent: A }` — the exact observed target tip — carrying an
+  absorption receipt naming S. M's root may be identical in content to S's root; that is a content
+  fact and does not license an ancestry shortcut. Fast-forward as a HISTORY operation is therefore
+  not available in this workflow, and the outcome name says "no reconciliation needed", not
+  "fast-forward".
 - **`BaseDerived { base }`** — the lines diverged from a common ancestor. This is the real merge.
 - **`NoCommonAncestor`** — two unrelated histories. Refuse; this is not a conflict, it is the absence
   of a base, and reporting it as a conflict would misname it.
 
 A boolean or a single `MergeFailed` here would rebuild exactly the collapse `ancestry.dag` deleted.
 
-## 5. THE QUESTION THAT DECIDES THE MANIFEST: is conflict structural or per-path?
+**One consequence for `gunbc.scm.ancestry`.** That module currently names its next-rung trigger as the
+arrival of a consumer that merges two commits, on the expectation that such a consumer would force a
+several-parents arm. §2 rules that expectation false: the consumer arrived and it does NOT want the
+arm. That trigger is therefore superseded rather than satisfied, and it must be replaced rather than
+deleted — a trigger removed with nothing in its place is an untracked stall (§4b(2)). The replacement
+trigger this document proposes is the arrival of a workflow that must PRESERVE both integrated lines
+as traversable history; until then `DescendsFrom` is the ceiling, not a stall.
 
-This is why this document precedes `CorpusManifestObject`.
+## 5. CORRECTED: authored source stays authoritative. Structural interpretation is a derived view.
 
-**Per-path (the git shape).** Merge compares `path -> content` maps. Conflict is "the same path
-changed on both sides". The manifest IS the merge subject and must carry per-path content identity.
+**The first cut of this section was wrong, and it was wrong in the way this document exists to
+prevent.** It ruled that the merge subject is the semantic node graph and demoted
+`CorpusManifestObject` to "a projection for emission, not the authority a merge reads". That
+conclusion forked an authority this repository already holds, and it did so in a document whose
+stated purpose is avoiding exactly that. The correction is recorded in place rather than quietly
+rewritten, because a design note that hides its own reversal teaches the next reader nothing.
 
-**Structural (native to this substrate).** The store is content-addressed nodes and edges. Merge
-compares semantic node graphs. Conflict is "the same semantic node diverged". The manifest is then a
-projection used for *checkout and emission* — it says where to write a result — and is not the merge
-subject at all.
+**Two factual corrections come first, because the original section was reasoning from a false census.**
 
-The shapes are materially different, and the second is where the differentiating claim lives: two
-changes to different functions in the same file do not conflict, because they are different nodes.
-That is precisely the class §4b describes as beginning *above* the ordinary compiler floor, and it is
-also the operator's actual goal — *simpler and faster merges* — rather than a purity argument.
+1. `CorpusManifestObject` and `CorpusManifestEntry { path: NonEmptyStr, source: AuthoredSourceTarget }`
+   **already exist** in `gunbc.scm.object_store`, and `gunbc.scm.object_table_json` already encodes and
+   decodes them. This document's earlier framing of the manifest as unbuilt was wrong.
+2. What has NOT changed is `RepositoryCommit.root`, which is still `SemanticNodeObjectRef`. **So the
+   pending boundary is a consumer / commit-root cut, not the creation of a missing object kind** —
+   materially smaller than "build the keystone", and it means `add`/`commit` are nearer than this lane
+   previously reported.
 
-**Recommendation: structural, with the algorithm deliberately unsettled.** What this document rules
-is the **subject** of a merge — the semantic node graph, not the path map. What it explicitly does
-NOT rule is how a three-way structural merge is computed, which needs its own design and its own
-witness floor. Deciding the subject is enough to unblock the manifest, because it settles the
-manifest's ROLE: a projection for emission, not the authority a merge reads.
+**And the model had already ruled on the question §5 tried to settle.** `object_store.dag` states that
+a manifest entry is path-to-authored-source *and deliberately nothing else*, because a semantic root is
+a DERIVED INGESTION RESULT whose value depends on the source object, the corpus and its imports, the
+ingestion rule, and language and rule versions. Carrying it in the entry would fuse an input with a
+realization result and would make a manifest **unauthorable for malformed or not-yet-ingested source
+— "precisely the corpora a source-control system must still be able to freeze."** That module names
+the same comment-only-edit case used against §5 below.
 
-**Risk, stated rather than hidden:** structural merge is harder than per-path merge, and I have not
-demonstrated it is tractable here. If the structural algorithm proves out of reach, the fallback is
-per-path — and that fallback would change the manifest's shape, which is the one thing this ordering
-is meant to prevent. So the honest sequencing is: settle the subject now, and prove the structural
-merge is tractable *before* the manifest hardens, not after.
+### The counterexample is information loss, not algorithmic difficulty
 
-## 5a. Tractability, answered where §5 left it open: the edge label already partitions it
+Two authored snapshots differ only in a comment. §4c erases annotations from the semantic projection,
+so **their semantic graphs are identical**. A merge handed only those graphs cannot determine which
+authored change occurred. No choice of three-way graph algorithm recovers the distinction, because the
+distinction was destroyed before the algorithm was reached.
 
-§5 recorded "I have not demonstrated a three-way structural merge is tractable here" as an open
-risk. It is now answerable from the model rather than by guess, and the answer is neither yes nor no.
+Authored placement adds a second obligation the graph cannot answer: where does a moved declaration
+belong in the output, and what happens when independent additions select the same destination. Source
+that cannot be ingested at all adds a third — it still needs an honest source-control disposition
+rather than vanishing because the structural view is unavailable.
 
-`v2.std.node` gives:
+### The separation this document now rules
 
-```
-Node      { kind, children: List<Edge>, occurrence_id }
-Edge      { label: EdgeLabel, target: Node }
-EdgeLabel = Named { name: Symbol } | Positional
-```
+> **The authored snapshot is authoritative for what was authored. Structural interpretation and
+> correspondence are DERIVED VIEWS used to reconcile changes. A merge produces a new authored
+> snapshot, and must not silently discard distinctions its semantic view cannot represent.**
 
-**That coproduct is the partition.** A three-way merge descends from the root comparing digests, and
-what it can do at each node depends entirely on which arm its children carry.
+That is not two authorities for one fact. *What was authored* and *an interpretation of what was
+authored* are different questions, and §3's replacement-migration doctrine does not reach them: it
+applies when X and Y answer the SAME semantic question and X is intended to disappear. Neither holds
+here, and applying it anyway is what produced the error.
 
-**`Named` edges: tractable, and by a known algorithm.** Children align by name, exactly as a tree
-merge aligns directory entries by filename. At each aligned child the three digests decide it with no
-heuristic: `ours == theirs` take either; `ours == base` take theirs; `theirs == base` take ours; all
-three differ, recurse. The recursion terminates because the substrate is bounded and forward. This is
-where the differentiating claim of §5 actually lives — two changes to differently-named children do
-not conflict, whatever file they were written in.
+Two consequences follow, and they are why the original binary was false:
 
-**`Positional` edges: NOT tractable today, and the reason is structural rather than unfinished.**
-Position is the only identity such a child has, so concurrent insertions on both sides cannot be
-aligned: there is no fact in the model saying which of *ours[2]* and *theirs[2]* are "the same child
-moved". Two escapes exist and both are closed:
+- **How a complete source snapshot is represented and frozen**, and **at what granularity changes are
+  compared and reconciled**, are INDEPENDENT choices. A path-to-source manifest can support structural
+  reconciliation; adopting a more conservative merge algorithm later does not inherently change the
+  manifest's shape.
+- **So the manifest is not blocked behind merge.** The ordering constraint is narrower than this
+  document first claimed: *do not make the permanent merge and publication consumer depend on an
+  unproven correspondence or source-reconstruction contract.* Preserve the complete authored subject,
+  establish a bounded structural capability over it, and cut the consumer against the demonstrated
+  contract.
 
-- **Occurrence identity is deliberately not available.** `occurrence_id` is outside content identity
-  by design — `gunbc.scm.checkout` records that two parses minting different occurrence ids store and
-  reconstruct identically, and that asserting on provenance would assert the one property the model
-  says must not matter. So it cannot be used to track a moved positional child.
-- **A sequence-alignment heuristic is not admissible.** Guessing the correspondence is exactly what
-  §4 rules out — in a closed, grounded system a heuristic is never necessary, and reaching for one
-  *locates* the anemic modeling rather than solving it. A diff3-style alignment would be a confidence
-  threshold selecting an arm, which §5 names as a smuggled heuristic.
+If a lossless authored representation derived from a semantic graph is ever proposed, it is a
+**materially different subject with a replacement proof to supply** — not something established by the
+phrase "semantic node graph".
 
-**So the ruling is a refusal, not a fallback.** A merge that reaches a node whose positional children
-diverged on both sides **refuses**, typed and located, naming the node. It does not align, does not
-take a side, and does not degrade to per-path merging for that subtree — a failure arm must refuse,
-never widen. `MergeConflict` is therefore not one arm: a *named* conflict is a real content conflict
-an author can resolve, while a *positional* one is the model declining to guess, and collapsing them
-would report a modeling limit as an authoring problem.
+### One correction to this document's own git comparison
 
-**What this does to §5's risk.** The risk was that structural merge proves intractable and the
-fallback is per-path, changing the manifest's shape. That risk is now bounded rather than open: the
-named case carries the merge, the positional case refuses, and **neither outcome requires the manifest
-to be the merge subject**. §5's ruling therefore stands on a narrower and firmer base than when it was
-written, and the manifest may proceed as an emission projection.
+The original section claimed per-path merging means "the same path changed on both sides". That is not
+git's general conflict predicate — git performs three-way merging of file *contents* and admits custom
+merge drivers. So "two edits to different functions in one file" is not by itself a differentiating
+demonstration, and it is withdrawn as one. The differentiator, if it exists, must be stated in terms of
+correspondence guarantees (§5a), not in terms of a strawman.
 
-**What remains genuinely open, and is now the smaller question:** how much of a real corpus sits under
-`Positional` edges. If most of a program's interesting structure is positional, a merge that refuses
-on all of it is honest but useless, and the lane would need a *modeled* child identity — a separate
-capability with its own ruling, not a heuristic. **That measurement is the next concrete step, and it
-is a measurement rather than a design argument:** count `Named` versus `Positional` edges over the
-live corpus, at the grain a merge would descend. It is deliberately not estimated here.
+## 5a. The tractability boundary is CORRESPONDENCE and COMPOSITION
+
+An earlier revision of this section argued that `EdgeLabel = Named { name } | Positional` partitions
+the merge problem, with named children alignable and positional children refused. That partition is
+real and is retained below, **but it is not sufficient, and presenting it as the tractability answer
+overstated it.** Alignment by label is one form of correspondence EVIDENCE; it is not correspondence.
+
+**`ObjectId` recognizes unchanged content. It does not identify one logical declaration across an
+edit.** Three counterexamples bound the claim:
+
+- **Changed ancestors.** One side edits `f`, the other edits `g`. Both change their function's digest
+  and every enclosing digest up to the root. At root grain *both sides diverged*, so digest comparison
+  alone reports a conflict for two edits that never touched each other. Descent requires a justified
+  correspondence between components first.
+- **Content identity is not occurrence identity.** Two logical occurrences may reference the same
+  stored subtree. Editing one must not edit the other, and a replacement keyed only on the old
+  subtree's content identity would hit both.
+- **Renames and moves.** A name is evidence and a position is evidence, but neither is a stable
+  identity across precisely the change that alters it.
+
+And structural disjointness does not establish independence: one side may delete a declaration while
+the other adds a caller, and two independently added declarations may collide on one name. The combined
+graph still needs binding and admission judgments. **Behavioral compatibility is an additional claim,
+never a corollary of touching different nodes.**
+
+### What the first capability must promise
+
+Deliberately narrower than arbitrary structural merge. **Once base-relative correspondence is
+established**, the ordinary cases are straightforward: equal target and source agree; a side unchanged
+from base yields to the changed side; otherwise descend only into components with an established
+composition rule, or return an explicit contention or unsupported-correspondence outcome. **Absence
+participates explicitly**, so deletion-versus-modification and competing additions cannot disappear
+into a default.
+
+Three interface obligations, which this document fixes and the algorithm design later discharges:
+
+1. **What evidence establishes that these are the corresponding logical components?**
+2. **What does the automatic arm guarantee about the combination it produces?**
+3. **What does it return when either answer is unavailable?**
+
+The answer to (3) is a **named inability to decide** — never a guessed rename, never an automatic side
+selection, and never a silent fallback to path-based merging. The `Positional` case above is one
+instance of (3), not a separate mechanism: position is the only identity such a child has, occurrence
+identity is deliberately outside content identity, and a sequence-alignment heuristic is what §4 rules
+out in a closed system.
+
+### The performance claim is withdrawn until it has a denominator
+
+This document earlier implied structural merge serves the "simpler and faster merges" goal. That is
+not established. The denominator is the whole operation — interpretation, correspondence and indexing,
+the merge, source reconstruction, and admission — and `object_store` records its own list-backed
+lookup and traversal as quadratic. **Content addressing does not by itself establish faster merging**,
+and no speed claim should be made until measured against that full path.
+
+Also recorded: reducing the number of reported conflicts is not evidence of improvement, because a more
+aggressive reconciliation can miss real conflicts. Any future claim here needs a discriminating
+oracle, not a lower count.
 
 ## 6. What merge produces, and what it must refuse
 
@@ -227,6 +332,35 @@ unresolved conflict. In particular there is **no "take ours" or "take theirs" fa
 the merge itself. That is an escape hatch in §5's sense — a toggle whose only effect is to proceed as
 if the refusal had not fired — and a resolution supplied by an author is a different, named input,
 not a mode the merge can select on its own.
+
+### D5. The candidate is bound to the generation it observed
+
+"Observe, then compare-and-swap" is not enough on its own, because it does not say WHAT the swap
+compares. A candidate is derived against a specific target tip; if the target moves between derivation
+and publication, publishing the candidate silently discards whatever moved it — a lost update wearing
+the shape of a successful merge.
+
+So the candidate **carries the exact target generation it observed** (the `HeadSlot` generation
+`observe_generation` returned, in `supersession`'s existing vocabulary) and the source tip identity it
+absorbed. Publication passes both to `supersede_head_slot`; a generation mismatch refuses and the
+candidate is not publishable — it must be re-derived against the new target. A candidate is not a
+value that stays valid; it is a value indexed by the state it was computed from.
+
+Four outcomes stay separately named, because each demands a different action:
+
+- **`PublicationFailed { cause }`** — the swap itself did not complete. State unchanged; retry is the
+  correct response.
+- **`TargetGenerationStale { observed, current }`** — the target moved. Re-derive; do NOT retry.
+- **`WrongTargetSlot { expected, actual }`** — publication was attempted against a slot other than
+  the one observed. This is a caller error and must not be absorbed into staleness.
+- **`SourceMovedSinceDerivation { observed_tip, current_tip }`** — the source line advanced after the
+  candidate was built. The candidate absorbs less than the caller now means by "the source".
+
+**Retirement is bound to the same subjects.** Dropping the source ref, and any later collection of its
+objects, names the SOURCE GENERATION that was absorbed — not the ref name, which may be reused. And it
+happens only after the integration is durable: retirement follows a completed publication, never a
+derived candidate. Retiring on the strength of a candidate that then fails to publish destroys the
+line and integrates nothing.
 
 ## 7. The projection obligation
 
@@ -255,18 +389,43 @@ and that the ruling is the operator's, not this lane's.
 Stated now so the implementation cannot be declared done by typecheck (§5's
 specification-without-execution):
 
-- one control per `AncestryWalk` arm, per side, reaching a distinct merge refusal;
-- `AlreadyAbsorbed` and `NoCommonAncestor` each discriminated from a real merge;
+- one control per `AncestryWalk` REFUSAL arm, per side — `AncestryStartNotInHistory`,
+  `AncestryBrokenAt`, `AncestryRevisitsACommit` — each reaching a distinct, named merge refusal;
+  `AncestryTraced` is the success arm, and the controls it owes are the four traced/traced outcomes
+  below rather than a refusal;
+- the traced/traced partition discriminated four ways: `AlreadyAbsorbed`, `TargetIsAncestorOfSource`,
+  `BaseDerived`, `NoCommonAncestor` — each from a real merge and from each other;
 - a merge whose result is asserted by CONTENT, not by "it succeeded" — the mutation that returns an
   empty or unchanged graph must go red;
 - a refusal that stays a refusal: a conflict specimen with no author-supplied resolution must not
   produce a commit;
 - the absorption receipt asserted to be present AND the ancestry asserted to remain single-parent,
-  because the whole ruling of §2 is that those two facts coexist.
+  because the whole ruling of §2 is that those two facts coexist;
+- **D1** — the receipt query answered on a target whose chain CONTAINS the absorbing commit and on one
+  whose chain does not, plus `NoAbsorptionRecorded` discriminated from `TargetHistoryUnwalkable` and
+  from `SourceNotInRepository`; and the absorbed-then-reverted specimen, which must report integrated
+  historically and not-present currently, since collapsing those two is the defect §D1 names;
+- **D2** — the no-reconciliation-needed case asserted to produce a commit with `DescendsFrom { parent:
+  A }` and an absorption receipt naming S; the mutation that advances the head onto S's tip must go
+  red, because that mutation is precisely the loophole;
+- **D4** — a comment-only-edit specimen whose semantic roots are equal and whose authored snapshots
+  differ, asserted to preserve the authored distinction; a changed-ancestors specimen (`f` and `g`
+  edited on opposite sides) asserted NOT to report a root-grain conflict; and a shared-subtree
+  specimen where editing one occurrence leaves the other unchanged. Each is a discriminating red for
+  a correspondence claim, not a demonstration that a merge algorithm exists;
+- **D5** — a candidate published against a moved target asserted to refuse with
+  `TargetGenerationStale`, discriminated from `PublicationFailed`, from `WrongTargetSlot`, and from
+  `SourceMovedSinceDerivation`; and a failed publication asserted to leave the source ref unretired.
 
 ## 10. What this document does not claim
 
 It does not claim a structural merge algorithm is BUILT, and §5a's tractability finding is derived from the node model rather than demonstrated by a running merge. It does not settle the ref model (§3 open), the
 fast-forward presentation (§4 open), object retention for absorbed lines (§2 open), or author and
-timestamp (§8). It does not authorize `CorpusManifestObject` to be built — it settles what that
-object's role must be, which is a precondition for building it and not a substitute.
+timestamp (§8). It does not claim a bounded structural correspondence capability is feasible — §5a records that as an
+obligation to demonstrate, not a result. Its performance claim is withdrawn (§5a) rather than weakened.
+
+It does not authorize a merge implementation to be built. What it settles is the vocabulary those
+consumers must preserve. **It does not gate `CorpusManifestObject`**: that object exists today in
+`gunbc.scm.object_store`, this document's earlier claim to the contrary was false, and the ordering
+constraint §5 actually establishes reaches only the permanent merge and publication consumer — not the
+authored-source primitive, and not `add`/`commit`.
