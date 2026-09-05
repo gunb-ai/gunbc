@@ -81,7 +81,7 @@ pub struct EnrolledRowType {
 /// Every rostered row type, joined against `RosteredRowType`'s variants in both directions on
 /// every required run — the same shape as `claim_executor`'s phase-roster join, for the same
 /// reason: nothing else holds these two enumerations together.
-pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 4] = [
+pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
     EnrolledRowType {
         variant: "GuaranteeStallRows",
         type_name: "GuaranteeStall",
@@ -99,6 +99,12 @@ pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 4] = [
         type_name: "RungDrop",
         roster_module: "gunbc.rung_drop.roster",
         roster_declaration: "rung_drop_roster",
+    },
+    EnrolledRowType {
+        variant: "CollisionRowControl",
+        type_name: "CollisionControlRow",
+        roster_module: "test.fixture.rostered_row_join.collision_control_roster",
+        roster_declaration: "collision_control_roster",
     },
     EnrolledRowType {
         variant: "OmittedRowControl",
@@ -119,6 +125,10 @@ pub enum JoinFindingKind {
     RosterDeclarationAbsent,
     /// A declared row of an enrolled type that its roster does not name.
     DeclaredNotRostered,
+    /// A roster member spelling that resolves to more than one module.
+    RosterMemberAmbiguous,
+    /// A roster member spelling imported from a module the index does not carry.
+    RosterMemberUnresolved,
     /// An enrolled type whose declared population is EMPTY — the join ranged over nothing.
     DeclaredPopulationEmpty,
     /// The join checked fewer rows than it declared, so its own subject narrowed mid-run.
@@ -149,9 +159,10 @@ impl JoinFinding {
 
 /// The denominators a green must name: nothing here reads as coverage without them.
 ///
-/// `rostered` IS A SUPERSET AND IS NEVER COMPARED TO ANYTHING. It counts the names the roster
-/// declaration mentions, which for a list literal includes its own declared type as well as its
-/// members, so it is a denominator for the reader and not a term in any verdict. Membership is
+/// `rostered` IS A SUPERSET AND IS NEVER COMPARED TO ANYTHING. It counts the DECLARATION
+/// IDENTITIES the roster declaration resolves to, which for a list literal includes its own
+/// declared type as well as its members, so it is a denominator for the reader and not a term in
+/// any verdict. Membership is
 /// decided one declaration at a time by lookup; `declared == rostered` would be exactly the count
 /// equality this join exists to refuse, and it is not computed anywhere.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,20 +200,92 @@ fn content_digest(bytes: &[u8]) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
-/// Which names a roster declaration NAMES, read from the parse of the roster's own module.
+/// Which DECLARATIONS a roster declaration names — as (module path, declaration name) pairs,
+/// resolved, never as bare spellings.
 ///
-/// A roster is a list literal of bare references, and a reference is a name OCCURRENCE enclosed
-/// by the declaration that carries it — which is exactly what the declaration index records. The
-/// import line is NOT membership: an import claim is not a declaration, so it contributes no
-/// occurrence here, and a row imported and then left out of the list is still unrostered.
-fn rostered_names(record: &ModuleDeclarationRecord, roster_declaration: &str) -> BTreeSet<String> {
-    record
+/// WHY THE MODULE COMPONENT IS LOAD-BEARING AND A BARE NAME IS NOT A MEMBERSHIP KEY. The first
+/// version of this join tested `rostered.contains(&row.decl_name)` against the set of spellings
+/// occurring inside the roster declaration. Both sides carried a module path and both discarded it
+/// before the decision, so two eligible declarations sharing a bare name in different modules were
+/// one key: `alpha.row` rostered and `beta.row` not, and BOTH read as rostered. Every accounting
+/// equality still held — population 2, declared 2, excluded 0, checked 2 — because the check
+/// examined both declarations and gave one of them the wrong answer, which no denominator
+/// reconciliation can see. It was latent rather than live (measured: the three enrolled row types
+/// carried no bare-name collision at the time), and current-corpus uniqueness is an accident, not an
+/// enforced precondition, so it could not be cited as the guard. Found in review of gunbc#10496.
+///
+/// HOW A MEMBER RESOLVES. A roster is a list of bare references, and the roster module's own import
+/// claims say where each name comes from — the same surface the resolver reads. A spelling declared
+/// by the roster module itself resolves to that module; otherwise every `import M { .. S .. }`
+/// naming it contributes `M`. This needs REFERENCE-TARGET resolution only; it does not need the
+/// declaration VALUE binding the ceiling awaits, which is why the repair was affordable here.
+///
+/// AMBIGUITY REFUSES RATHER THAN WIDENING. If a spelling resolves to more than one module, the
+/// join reports it and admits NEITHER identity: taking the union would be the absorbing fallback
+/// (§5) — "cannot tell which declaration this names, so accept both" — in the one position where
+/// the answer decides whether a row is rostered.
+fn rostered_identities(
+    index: &DeclarationIndex,
+    record: &ModuleDeclarationRecord,
+    roster_declaration: &str,
+    row_type: &str,
+) -> (BTreeSet<(String, String)>, Vec<JoinFinding>) {
+    let mut identities = BTreeSet::new();
+    let mut findings = Vec::new();
+    let spellings: BTreeSet<&str> = record
         .referenced
         .iter()
         .chain(record.authored_type_references.iter())
         .filter(|(in_declaration, _)| in_declaration == roster_declaration)
-        .map(|(_, spelling)| spelling.clone())
-        .collect()
+        .map(|(_, spelling)| spelling.as_str())
+        .collect();
+    for spelling in spellings {
+        let mut homes: BTreeSet<String> = BTreeSet::new();
+        if record.declared.contains(spelling) {
+            homes.insert(record.module_path.clone());
+        }
+        for claim in record.imports.iter() {
+            if !claim.members.iter().any(|(name, _)| name == spelling) {
+                continue;
+            }
+            match crate::cli_run::declaration_index::resolve_cited_module(index, &claim.target) {
+                Some(target) => {
+                    homes.insert(target.module_path.clone());
+                }
+                // An import of a module the index does not carry names no declaration this join
+                // can key on. It is not admitted as a member and it is not silent.
+                None => findings.push(JoinFinding {
+                    kind: JoinFindingKind::RosterMemberUnresolved,
+                    row_type: row_type.to_string(),
+                    subject: format!("{}.{roster_declaration} names `{spelling}`", record.module_path),
+                    detail: format!(
+                        "imported from `{}`, which is absent from the index, so this member                          resolves to no declaration and is not admitted as one",
+                        claim.target
+                    ),
+                }),
+            }
+        }
+        if homes.len() > 1 {
+            findings.push(JoinFinding {
+                kind: JoinFindingKind::RosterMemberAmbiguous,
+                row_type: row_type.to_string(),
+                subject: format!(
+                    "{}.{roster_declaration} names `{spelling}`",
+                    record.module_path
+                ),
+                detail: format!(
+                    "which resolves to {:?} — the join admits none of them, because accepting \
+                     either would decide membership by guess",
+                    homes
+                ),
+            });
+            continue;
+        }
+        for home in homes {
+            identities.insert((home, spelling.to_string()));
+        }
+    }
+    (identities, findings)
 }
 
 /// Join the host roster against `RosteredRowType`, in both directions.
@@ -343,7 +426,7 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
             module_is_fixture_carrier(&row.module_path, &row.rel_path) == fixture_home
         });
 
-        let rostered: BTreeSet<String> = match roster_record {
+        let rostered: BTreeSet<(String, String)> = match roster_record {
             None => {
                 findings.push(JoinFinding {
                     kind: JoinFindingKind::RosterModuleAbsent,
@@ -368,13 +451,24 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
                 });
                 BTreeSet::new()
             }
-            Some(record) => rostered_names(record, enrolled.roster_declaration),
+            Some(record) => {
+                let (identities, member_findings) = rostered_identities(
+                    index,
+                    record,
+                    enrolled.roster_declaration,
+                    enrolled.variant,
+                );
+                findings.extend(member_findings);
+                identities
+            }
         };
 
         let mut checked = 0usize;
         for row in declared.iter() {
             checked += 1;
-            if rostered.contains(&row.decl_name) {
+            // THE KEY IS THE DECLARATION IDENTITY, module path included. A bare name is not an
+            // identity: see `rostered_identities`.
+            if rostered.contains(&(row.module_path.clone(), row.decl_name.clone())) {
                 continue;
             }
             findings.push(JoinFinding {
