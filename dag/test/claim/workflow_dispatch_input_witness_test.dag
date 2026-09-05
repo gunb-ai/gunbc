@@ -4,6 +4,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
 import gunbc.fleet_converge_workflow {
+  fleet_converge_spark_bootstrap_step_if,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
@@ -197,7 +198,7 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
   string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
     && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
     && string_contains(s: invoke, pattern: "SparkAdministratorCredentialHostUnrostered")
-    && string_contains(s: expected_fleet_converge_yml_content(), pattern: "mode == 'spark_bootstrap'")
+    && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
