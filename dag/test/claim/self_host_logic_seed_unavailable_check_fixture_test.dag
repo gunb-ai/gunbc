@@ -42,7 +42,6 @@ test fn clean_file_passes_v1_rt_check() -> Bool {
 test fn file_with_v1_rt_call_fails_check() -> Bool {
   let dir = shell.Mktemp.Dir()
   let bad_file = concat(dir.path, "/test_module.rs")
-  // This file contains v1_rt::lookup -- a reference to the seed runtime
   let written = Filesystem.Write(
     path: bad_file,
     content: "pub fn do_lookup(key: String) -> String { v1_rt::lookup(key) }\n"
@@ -65,7 +64,6 @@ test fn v1_rt_rs_with_calls_permitted() -> Bool {
     path: rt_file,
     content: "// Runtime shim\nextern crate im;\npub fn lookup<K: Eq + Hash>(key: K, map: ...) -> ... { ... }\n"
   )
-  // v1_rt.rs is permitted -- the check verifies non-v1_rt.rs files only
   let result = written.success
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && written.success && result && cleaned.success
