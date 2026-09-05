@@ -192,6 +192,35 @@ mod tests {
     }
 
     #[test]
+    fn regeneration_expands_imports_before_refusing_scanner_widening() {
+        let corpus = Corpus::new("module scanner.consumer\nimport scanner.provider { scanner_answer }\nfn probe() -> Int { scanner.provider.scanner_answer() }\n");
+        let entry_root = corpus.0.join("entry");
+        std::fs::create_dir(&entry_root).unwrap();
+        std::fs::rename(
+            corpus.0.join("consumer.dag"),
+            entry_root.join("consumer.dag"),
+        )
+        .unwrap();
+        let index = corpus.index();
+        let consumer = index.source_files.get("scanner.consumer").unwrap().clone();
+        assert!(
+            extend_sources_to_both_closure_fixpoint(vec![consumer], &index).is_err(),
+            "raw seeds reproduce the pre-repair regeneration refusal"
+        );
+        let sources =
+            regen_input_sources_over_roots(&entry_root, &[corpus.0.to_string_lossy().into_owned()])
+                .unwrap();
+        let names: BTreeSet<_> = sources
+            .iter()
+            .map(|(_, content)| extract_module_path(content).unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            BTreeSet::from(["scanner.consumer".to_owned(), "scanner.provider".to_owned()])
+        );
+    }
+
+    #[test]
     fn floor_preparation_cannot_add_a_provider_skipped_by_import_bearing_entry_scan() {
         let corpus = Corpus::new("module scanner.consumer\nimport scanner.unused { unrelated }\nfn probe() -> Int { scanner_answer() }\n");
         std::fs::write(

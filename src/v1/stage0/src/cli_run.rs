@@ -3676,32 +3676,13 @@ fn regen_input_sources_over_roots(
         }
     }
 
-    // Grow the closure through `extend_sources_to_both_closure_fixpoint` — import edges PLUS
-    // dotted-reference PLUS bare-reference modules, to a joint fixpoint — not the import-only
-    // walk this function used to run.
-    //
-    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the SAME
-    // dependency edge, so an import-only walk is not a narrower closure but one that goes BLIND
-    // when a module spells a dependency any other way. That function's doc-comment calls itself
-    // "The ONE closure-extension authority" and names "Both source loaders — the per-entry
-    // witness loader and the affected-set compile-clean gate loader". There are THREE; this was
-    // the third, and its subject feeds regeneration of the seed itself. The single-authority
-    // claim was true of its own enumeration and false of the concept — the prose asserting the
-    // fork's absence was load-bearing and never re-audited against the call graph.
-    //
-    // The same class was repaired once for the gate loader, which ran only
-    // `extend_with_reference_closure` and dropped providers reached purely by bare name (ARM1
-    // ref-only = 3 unresolved-type diags; +bare = 0).
-    //
-    // LATENT HERE, FATAL NEXT DOOR. On this branch every seed dependency is still spelled as an
-    // import, so the import-only walk reaches everything and the defect is unobservable from the
-    // corpus alone. On `integration/namespace-cut`, where the `dag/` imports are deleted, the
-    // identical code admits `src/v1` and NOTHING else: the queue drains on its first pass and
-    // regen refuses with `unresolved type 'std.types.SourceSpan'` while `std.types` sits present
-    // in the authority. The regression test below fixes the behaviour independently of either
-    // corpus.
+    // Regeneration starts with raw entry-root seeds, unlike the entry and gate
+    // loaders. Prepared-cut bridge: preserve import supply before scanner observation.
+    // Dissolves when the complete reference-derived binding projection supplies
+    // regeneration's required file closure with no scanner or pool fallback.
     let mei = build_multi_entry_index(abs_roots);
-    let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+    let sources = resolve_transitively(seeds, &mei.source_files, &mei.module_graph_facts)?;
+    let closure = extend_sources_to_both_closure_fixpoint(sources, &mei)?;
 
     let mut result: Vec<(String, String)> = closure
         .into_iter()
