@@ -8,7 +8,7 @@ import extdeps.gunb_ai.frontend {
   MarkFeature, MarkRoundedRect, MarkCircle,
   mark_body, mark_eye_left, mark_eye_right, mark_mouth,
   StoicGiantMark, gunb_stoic_giant_mark,
-  MarkScale, MarkScaleExact, MarkScaleNotDivisible, MarkScaleRatio, mark_scale_ratio_value,
+  MarkScale, MarkScaleExact, MarkScaleNotDivisible, MarkScaleZeroWidth, MarkScaleRatio, mark_scale_ratio_value,
   mark_scale_for_width, scale_frame_length,
 }
 
@@ -46,6 +46,7 @@ test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
 // 60 mm is the declared insert width BECAUSE it divides: 60000 um over 1200 tenths is exactly 50.
 test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> Bool {
   match mark_scale_for_width(width: micrometer(count: 60000)) {
+    MarkScaleZeroWidth { requested_width: w } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
     MarkScaleExact { ratio: per } =>
       mark_scale_ratio_value(r: per) == 50
@@ -58,6 +59,7 @@ test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> B
 // independently and a circle would stop being concentric with the opening it sits in.
 test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
   match mark_scale_for_width(width: micrometer(count: 50000)) {
+    MarkScaleZeroWidth { requested_width: w } => false
     MarkScaleExact { ratio: per } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } =>
       r == 800 && s == mark_frame_span && micrometer_count(m: w) == 50000
@@ -154,4 +156,33 @@ test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bo
   feature_inside_body(f: mark_feature_above_the_body) == false
     && feature_min_x(f: mark_feature_above_the_body) >= 0
     && feature_max_x(f: mark_feature_above_the_body) <= mark_frame_span
+}
+
+// THE DISCRIMINATING RED FOR THE ZERO ARM, and the reason it is a separate witness rather than one
+// more assertion inside the 50 mm refusal: 50 mm and 0 mm refuse for DIFFERENT REASONS, and a
+// single witness that accepted either refusal would go green on a mark_scale_for_width that had
+// lost the zero check entirely, because zero would then answer MarkScaleNotDivisible... except it
+// would not: zero divides 1200 exactly, so a build without this arm answers MarkScaleExact and
+// this witness is the only thing in the file that goes red.
+//
+// It asserts the arm AND the value it carries. A refusal that named the wrong width would still
+// have refused, and a refusal is not evidence that the function understood its own input.
+test fn w_a_zero_width_mark_refuses_rather_than_scaling_to_nothing() -> Bool {
+  match mark_scale_for_width(width: micrometer(count: 0)) {
+    MarkScaleExact { ratio: per } => false
+    MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
+    MarkScaleZeroWidth { requested_width: w } => micrometer_count(m: w) == 0
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ORDERING, which the zero witness alone does not establish. Refusing
+// zero first is only correct if it did not also start refusing the smallest LEGITIMATE width. One
+// micrometre per tenth is the least nonzero exact scale the frame admits, so this is the value
+// immediately adjacent to the refusal, and it must still be admitted.
+test fn w_the_smallest_nonzero_exact_width_is_still_admitted() -> Bool {
+  match mark_scale_for_width(width: micrometer(count: mark_frame_span)) {
+    MarkScaleZeroWidth { requested_width: w } => false
+    MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
+    MarkScaleExact { ratio: per } => mark_scale_ratio_value(r: per) == 1
+  }
 }

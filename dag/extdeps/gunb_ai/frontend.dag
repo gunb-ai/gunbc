@@ -159,15 +159,32 @@ fn mark_scale_ratio_value(r: MarkScaleRatio) -> Nat { r.micrometres_per_tenth }
 
 type MarkScale
   = MarkScaleExact { ratio: MarkScaleRatio }
+  | MarkScaleZeroWidth { requested_width: Micrometer }
   | MarkScaleNotDivisible { requested_width: Micrometer, frame_span: Nat, remainder: Nat }
 
+// ZERO IS REFUSED BEFORE DIVISIBILITY IS EVEN ASKED, and the order is the whole point. Zero
+// divides the frame span exactly, so a divisibility-first reading answers MarkScaleExact with a
+// ratio of 0 -- and a ratio of 0 scales every feature in the mark to zero extent. That degenerate
+// mark then passes every downstream check there is, because a zero-extent solid fits inside every
+// build envelope, clears every neighbouring feature, and violates no bound. It is the absorbing
+// extreme: the value that satisfies each constraint individually by having no size to test.
+//
+// SEALING THE RATIO DOES NOT CLOSE THIS. MarkScaleRatio is sole_constructor, so no caller can forge
+// one -- but the zero arrives through the ADMITTED arm, minted right here by the sanctioned route,
+// which is precisely the route a seal is built to trust. A capability wall answers "who may mint
+// this"; it never answers "is this particular value meaningful". Those are two questions and this
+// function is the only place the second one can be asked.
 fn mark_scale_for_width(width: Micrometer) -> MarkScale {
   let w = micrometer_count(m: width)
-  let r = w - ((w / mark_frame_span) * mark_frame_span)
-  if r == 0 {
-    MarkScaleExact { ratio: MarkScaleRatio { micrometres_per_tenth: w / mark_frame_span } }
+  if w == 0 {
+    MarkScaleZeroWidth { requested_width: width }
   } else {
-    MarkScaleNotDivisible { requested_width: width, frame_span: mark_frame_span, remainder: r }
+    let r = w - ((w / mark_frame_span) * mark_frame_span)
+    if r == 0 {
+      MarkScaleExact { ratio: MarkScaleRatio { micrometres_per_tenth: w / mark_frame_span } }
+    } else {
+      MarkScaleNotDivisible { requested_width: width, frame_span: mark_frame_span, remainder: r }
+    }
   }
 }
 
