@@ -18,9 +18,11 @@ import v2.std.algebra {
 }
 import v2.std.collection { Absent, List, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
 type FnArrowParam {
@@ -187,20 +189,9 @@ fn decls_matching_callee(
   )
 }
 
-// A path literal is never a callee: the fn-arrow skeleton marshals string-literal atoms
-// into the same atom channel as call identities, so the reachability walk must reject
-// them by shape or it will chase declarations named after a source path.
-fn is_path_like_lexeme(text: String) -> Bool {
-  string_contains(s: text, pattern: ".dag")
-    || starts_with(s: text, prefix: "src/")
-    || starts_with(s: text, prefix: "dag/")
-}
-
-// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
-// children — the fold_node it once ran recursed the whole subtree while its step discarded
-// every child's collected atoms, so the descent computed results nothing consumed
-// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
-// below is extensionally the same function at the cost of one probe per child.
+// Immediate atom identities remain the literal/reference reader used by the effect and live-read
+// lenses. Call reachability does not consume this channel: callees_from_node selects call nodes
+// structurally below.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
   let from_children = fold(node.children, init: empty_fn_arrow_symbol_list, f: fn(acc, e) {
     match node_atom_identity_optional(node: e.target) {
@@ -224,19 +215,35 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   }
 }
 
+fn callee_text_from_call(node: Node) -> String? {
+  if node_is_call(node: node) {
+    match call_callee_target(node: node) {
+      Accepted { value: callee, diagnostics: _ } =>
+        match node_atom_identity_optional(node: callee) {
+          Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
+          Absent => Absent
+        }
+      Rejected { diagnostics: _ } => Absent
+    }
+  } else {
+    Absent
+  }
+}
+
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
   fold_list(
-    xs: atom_identities_in_node(node: node),
+    xs: node_subtree_nodes(root: node),
     empty: empty_fn_arrow_string_list,
-    cons: fn(acc, sym) {
-      let text = symbol_lexeme(sym: sym)
-      if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
-        || is_path_like_lexeme(text: text) {
-        acc
-      } else if contains(xs: acc, item: text, eq: fn_index_string_eq) {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: text)
+    cons: fn(acc, subtree_node) {
+      match callee_text_from_call(node: subtree_node) {
+        Present { value: text } =>
+          if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
+            || contains(xs: acc, item: text, eq: fn_index_string_eq) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: text)
+          }
+        Absent => acc
       }
     }
   )
@@ -345,5 +352,3 @@ fn call_reachable_decls_from_root(
     reached: empty_fn_arrow_decl_list
   )
 }
-
-

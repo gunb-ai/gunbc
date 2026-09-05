@@ -9,7 +9,7 @@ import v2.lens.module_graph { module_declaration_facts_live }
 import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, callees_from_node, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -144,15 +144,11 @@ test fn the_live_subject_is_not_empty() -> Bool {
 // `cargo test -p v1-compiler --lib` lane -- deliberately there and not here, because both rows
 // below construct their nodes by hand and a hand-built node can attest a lens, never a marshal.
 //
-// WHAT IS NOW TRUE AND WHAT IS STILL NOT, kept apart on purpose. TRUE: a call in a fn-arrow body
-// skeleton is a call as this lens recognises one, so the live judgment's green is a statement about
-// the closure rather than about the representation. NOT ESTABLISHED: that a live RED is
-// constructible end-to-end today. `v2.std.fn_index` `atom_identities_in_node` reads callees at
-// DEPTH ONE from `decl.output` -- the root's own identity plus its immediate children -- so a call
-// sitting inside a block body is below the horizon `call_reachable_decls` seeds from, and the
-// reachability half of the live path may still be narrower than its subject. That is a DIFFERENT
-// defect from the shape gap, it is not repaired by #10282, and it is tracked at work item
-// adhoc-6af6a225-11d rather than asserted away here.
+// WHAT IS NOW TRUE. A call in a fn-arrow body skeleton is a call as this lens recognises one, and
+// `v2.std.fn_index.callees_from_node` reads that call channel across the whole output subtree. The
+// live judgment's green is therefore a statement about the closure rather than about either a
+// representation gap or a depth-one horizon. The fixture below nests the first edge under a body
+// root so its RED is also the regression control for that subtree read.
 //
 // THE PAIR DOES NOT RETIRE ON THE CLIMB (§4b(4)). The prediction written here when the stall was
 // filed -- that the blind arm would red when the capability landed -- was wrong, and stating why is
@@ -223,27 +219,15 @@ fn call_node(callee: String) -> Node {
   }
 }
 
-// THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO. call_reachable_decls reads callees
-// from `decl.output` at DEPTH ONE — atom_identities_in_node returns the node's own identity and
-// those of its IMMEDIATE children — so a reachable callee must be an atom child of the body root.
-// A first version of this fixture wrapped the callee atom one level deeper. Nothing was reachable,
-// and BOTH discrimination rows below agreed for that reason rather than for the reason they claim:
-// the leak-is-found row went red, and the leak-outside-the-graph row went green while proving
-// nothing at all. That is the empty-fixture failure in miniature — two rows in apparent agreement,
-// one shared wrong cause — so the shape is recorded here rather than silently corrected.
-//
-// THE SEED BODY IS NOW THE CALL CARRIER ITSELF and this is the second correction of the same
-// mistake in this fixture, in the opposite direction. It stood as a Conj root carrying a bare
-// callee atom — a shape NO marshal produced, because the marshal spelled a call `Conj` while
-// node_is_call demanded `ComputationNode { behavior: Transform }`, so nothing the corpus could hand
-// these lenses was ever a call. The marshal now emits the carrier
-// (v1.stage0.coproduct_reflection transform_record), which is what makes `call_node` below the
-// shape of a real `fn seed() -> X { reached_fn(..) }` body rather than a shape invented to make the
-// row pass. A LEAKING CALL two hops out is a call node nested under a body root, which
-// determinism_findings reaches because it folds the whole subtree.
+// A body root may contain its call below the root. Both reachability and determinism now fold the
+// whole subtree, while only the Transform carrier contributes an edge to the call graph.
 
 fn body_referencing(callee: String) -> Node {
-  call_node(callee: callee)
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: call_node(callee: callee) } ],
+    occurrence_id: OccurrenceSynthetic
+  }
 }
 
 fn body_invoking_primitive(primitive: String) -> Node {
@@ -277,6 +261,36 @@ fn primitive_decl(qualified_name: String, name: String, primitive: String) -> Fn
 // twin, so the pair discriminates the classification rather than merely the presence of a call.
 data leaking_callee: String = "map_keys"
 data deterministic_callee: String = "sorted_map_keys"
+data no_terminal_callees: List<String> = []
+
+test fn nested_call_is_read_from_the_call_channel() -> Bool {
+  contains(
+    xs: callees_from_node(
+      node: body_referencing(callee: "reached_fn"),
+      terminal_callee_symbols: no_terminal_callees
+    ),
+    item: "reached_fn",
+    eq: fn(a, b) { a == b }
+  )
+}
+
+test fn bare_atom_is_not_a_call_edge() -> Bool {
+  length(xs: callees_from_node(
+    node: shape_gap_conj_shaped_call(),
+    terminal_callee_symbols: no_terminal_callees
+  )) == 0
+}
+
+test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
+  contains(
+    xs: callees_from_node(
+      node: call_node(callee: "src/fixture.dag"),
+      terminal_callee_symbols: no_terminal_callees
+    ),
+    item: "src/fixture.dag",
+    eq: fn(a, b) { a == b }
+  )
+}
 
 // entry -> reached -> (leak). The leak is TWO HOPS from the entry and in a DIFFERENT module, which
 // is exactly the shape the per-tree door cannot see.
