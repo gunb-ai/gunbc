@@ -200,4 +200,5 @@ test fn operation_argv_RED_wrong_golden_argv_does_not_pass() -> Bool {
 // superseded by construction — a rest row's success flag is a modeled response block that
 // cannot be dropped, and a credential cannot be injected into an argv token that does not
 // exist. The argv-binding wall itself remains covered by the systemctl/git/cargo arms above.
-fn operation_argv_redfish_GetSystem_removed_from_shell_population_note() -> Bool { true }
+// The discriminating RED for undeclared-credential-injection is structurally impossible
+// for rest ops (DESIGN §5: construction makes it unwritable, not just detected).
