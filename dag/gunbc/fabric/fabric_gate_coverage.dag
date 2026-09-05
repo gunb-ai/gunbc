@@ -2,6 +2,15 @@ module gunbc.fabric_gate_coverage
 
 import std.types { List, NonEmptyStr, Bool }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+import v2.workflow.floor_terminal_ledger {
+  WitnessIdentity,
+  ClaimTerminalRow,
+  ClaimAttemptTerminal,
+  ClaimObservation,
+  ClaimExpectation,
+  LedgerBinding,
+}
+import std.materialization_provider { Fnv1a64Structural }
 
 // WHY THIS EXISTS, STATED AS THE FAILURE IT ANSWERS. gunbc.fabric_ci_program declares, per gate, the
 // mutations that discriminate its exit predicate. Nothing joined those declarations to the evidence
@@ -29,7 +38,7 @@ import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
 // observed something else, or is claimed by a second binding. Until that capability exists a DischargedByWitness row is an author's claim about a
 // symbol, and this module's honest rung is that it makes that claim ENUMERABLE AND TOTAL, not true.
 type MutationDischarge
-  = DischargedByWitness { witness: NonEmptyStr }
+  = DischargedByWitness { witness: WitnessIdentity }
   | Undischarged { reason: NonEmptyStr, restoration_trigger: NonEmptyStr }
 
 type MutationEnrolment {
@@ -224,8 +233,8 @@ fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
     MutationEnrolment { gate: "FCI-1", mutation: "reservation-release-destroys-cell-substrate", discharge: Undischarged { reason: "FCI-1 evidence has not been read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
     MutationEnrolment { gate: "FCI-1", mutation: "multiple-cells", discharge: Undischarged { reason: "FCI-1 evidence has not been read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
     MutationEnrolment { gate: "FCI-1", mutation: "unowned-cell", discharge: Undischarged { reason: "FCI-1 evidence has not been read by this lane; enrolled undischarged rather than assumed.", restoration_trigger: "The FCI-1 owner replaces this row with the witness that discriminates the mutation." } },
-    MutationEnrolment { gate: "FCI-2", mutation: "duplicate-grant", discharge: DischargedByWitness { witness: "test.claim.fabric_grant_issuance_witness.a_second_grant_for_one_attempt_is_refused" } },
-    MutationEnrolment { gate: "FCI-2", mutation: "work-mismatch", discharge: DischargedByWitness { witness: "test.claim.fabric_grant_issuance_witness.an_attempt_naming_another_work_is_refused" } },
+    MutationEnrolment { gate: "FCI-2", mutation: "duplicate-grant", discharge: DischargedByWitness { witness: WitnessIdentity { module_path: "test.claim.fabric_grant_issuance_witness", function: "a_second_grant_for_one_attempt_is_refused" } } },
+    MutationEnrolment { gate: "FCI-2", mutation: "work-mismatch", discharge: DischargedByWitness { witness: WitnessIdentity { module_path: "test.claim.fabric_grant_issuance_witness", function: "an_attempt_naming_another_work_is_refused" } } },
     MutationEnrolment { gate: "FCI-2", mutation: "expired-reservation", discharge: Undischarged { reason: "The issuance kernel has no expiry decision arm: a reservation carries no epoch that issuance reads, so no input distinguishes a live reservation from an expired one and the refusal is unauthorable. This row is the mutation whose absence was asserted as covered in a pull request description before this lens existed.", restoration_trigger: "A lifetime-held canonical reservation verdict exists that issuance must consume, sufficient for an expired reservation to be UNABLE TO AUTHORIZE -- an epoch merely being modeled and read is insufficient, because reading or copying an expired epoch still satisfies that sentence." } },
     MutationEnrolment { gate: "FCI-3", mutation: "grant-removed", discharge: Undischarged { reason: "FCI-3 is unbuilt: no executor re-reads a committed grant.", restoration_trigger: "Process start consumes a capability constructible only from a grant observed live at start, sufficient for absent, corrupt or expired input to yield ZERO target processes -- re-reading the grant is insufficient, since an executor may re-read and start anyway." } },
     MutationEnrolment { gate: "FCI-3", mutation: "grant-corrupt", discharge: Undischarged { reason: "FCI-3 is unbuilt: no executor re-reads a committed grant.", restoration_trigger: "Process start consumes a capability constructible only from a grant observed live at start, sufficient for absent, corrupt or expired input to yield ZERO target processes -- re-reading the grant is insufficient, since an executor may re-read and start anyway." } },
@@ -263,26 +272,10 @@ fn fabric_mutation_enrolments() -> List<MutationEnrolment> {
 // consumer's question -- the same shape as the FCI-5 counterexample where a receipt genuinely
 // admitted for another Work satisfied a trigger while the mutation survived. Relevance to the
 // obligation is a relation this module must establish and may not inherit.
-type TerminalObservation
-  = ObservedPassing {}
-  | ObservedRefusingAsExpected { refusal: NonEmptyStr }
-  | ObservedFailing {}
-  | ObservedNotExecuted {}
-
-type WitnessObservation {
-  witness: NonEmptyStr
-  subject_revision: NonEmptyStr
-  terminal: TerminalObservation
-}
-
-// EVERY NON-COVERED ARM IS A NAMED CAUSE, never a silent absence. An obligation with no evidence and
-// an obligation whose evidence ran at another revision are different facts with different repairs,
-// and collapsing them is how "not covered" degrades into "not yet looked at".
 type StandingCause
-  = NominationHasNoObservation { witness: NonEmptyStr }
-  | ObservedAtAnotherRevision { witness: NonEmptyStr, observed: NonEmptyStr, adjudicated: NonEmptyStr }
-  | ObservedWrongTerminal { witness: NonEmptyStr }
-  | SeveralObservationsForOneNomination { witness: NonEmptyStr }
+  = NominationHasNoObservation { witness: WitnessIdentity }
+  | ObservedWrongTerminal { witness: WitnessIdentity }
+  | SeveralObservationsForOneNomination { witness: WitnessIdentity }
   | NotNominated {}
 
 type ObligationStanding
@@ -294,17 +287,35 @@ type ObligationStanding
 type GateStandingVerdict
   = StandingDerived { covered: List<ObligationStanding>, uncovered: List<ObligationStanding> }
   | StandingRefusedUnwellFormedEnrolment { refusals: List<CoverageRefusal> }
+  | StandingRefusedLedgerIsOfAnotherSubject { observed: Fnv1a64Structural, adjudicated: Fnv1a64Structural }
 
-fn observations_naming(observations: List<WitnessObservation>, witness: NonEmptyStr) -> List<WitnessObservation> {
-  filter(observations, o => o.witness == witness)
+fn witness_identity_eq(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
+  a.module_path == b.module_path && a.function == b.function
 }
 
-fn terminal_is_adequate(t: TerminalObservation) -> Bool {
-  match t {
-    ObservedPassing {} => true,
-    ObservedRefusingAsExpected { refusal } => true,
-    ObservedFailing {} => false,
-    ObservedNotExecuted {} => false,
+fn rows_naming(rows: List<ClaimTerminalRow>, witness: WitnessIdentity) -> List<ClaimTerminalRow> {
+  filter(rows, r => witness_identity_eq(r.identity, witness))
+}
+
+// ADEQUACY IS THE CONJUNCTION OF WHAT THE ROSTER EXPECTED AND WHAT THE CLAIM OBSERVED, which is why
+// the ledger holds them as two fields. A witness that answered false is adequate evidence when it was
+// ExpectedRed and inadequate when it was ExpectedToHold, and no single field can express that pair.
+// An earlier draft of this module re-minted a flat ObservedRefusingAsExpected arm and collapsed them.
+fn terminal_is_adequate(expectation: ClaimExpectation, terminal: ClaimAttemptTerminal) -> Bool {
+  match terminal {
+    Returned { observation } => match observation {
+      ObservedVerdict { holds } => match expectation {
+        ExpectedToHold => holds,
+        ExpectedRed => !holds,
+      },
+      ObservationUnrepresentable { reason } => false,
+    },
+    RuntimeErrored { message } => false,
+    Panicked { payload } => false,
+    NotAttempted { halted_by } => false,
+    BudgetRefused { safety } => false,
+    HostToolUnresolved { name, probed } => false,
+    RouteGap { operation, ground } => false,
   }
 }
 
@@ -314,29 +325,18 @@ fn terminal_is_adequate(t: TerminalObservation) -> Bool {
 // counted as coverage.
 fn standing_for(
   e: MutationEnrolment,
-  observations: List<WitnessObservation>,
-  adjudicated_revision: NonEmptyStr,
+  rows: List<ClaimTerminalRow>,
 ) -> ObligationStanding {
   match e.discharge {
     Undischarged { reason, restoration_trigger } =>
       NotCovered { gate: e.gate, mutation: e.mutation, cause: NotNominated {} },
     DischargedByWitness { witness } => {
-      let seen = observations_naming(observations, witness)
+      let seen = rows_naming(rows, witness)
       if seen.length() == 0 {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: NominationHasNoObservation { witness: witness } }
       } else if seen.length() > 1 {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: SeveralObservationsForOneNomination { witness: witness } }
-      } else if !all(seen, o => o.subject_revision == adjudicated_revision) {
-        NotCovered {
-          gate: e.gate,
-          mutation: e.mutation,
-          cause: ObservedAtAnotherRevision {
-            witness: witness,
-            observed: fold(seen, init: "none", f: (acc, o) => o.subject_revision),
-            adjudicated: adjudicated_revision,
-          },
-        }
-      } else if !all(seen, o => terminal_is_adequate(o.terminal)) {
+      } else if !all(seen, r => terminal_is_adequate(r.expectation, r.terminal)) {
         NotCovered { gate: e.gate, mutation: e.mutation, cause: ObservedWrongTerminal { witness: witness } }
       } else {
         Covered { gate: e.gate, mutation: e.mutation, witness: witness }
@@ -352,23 +352,32 @@ fn is_covered(s: ObligationStanding) -> Bool {
   }
 }
 
+// WRONG SUBJECT IS A PROPERTY OF THE LEDGER, NOT OF A ROW. Every row in one ledger was produced by
+// one prepared subject, so "this evidence is about another tree" is asked once against the binding
+// rather than re-asked per row -- and it REFUSES the whole verdict rather than silently dropping the
+// rows, because a ledger of the wrong subject is not a ledger with no coverage.
 fn gate_standing(
   gates: List<FabricCiGate>,
   enrolments: List<MutationEnrolment>,
-  observations: List<WitnessObservation>,
-  adjudicated_revision: NonEmptyStr,
+  binding: LedgerBinding,
+  rows: List<ClaimTerminalRow>,
+  adjudicated_subject: Fnv1a64Structural,
 ) -> GateStandingVerdict {
-  match gate_coverage(gates, enrolments) {
-    CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
-    CoverageTotal { discharged, undischarged } => {
-      let all_standings = map(
-        concat(discharged, undischarged),
-        e => standing_for(e, observations, adjudicated_revision),
-      )
-      StandingDerived {
-        covered: filter(all_standings, s => is_covered(s)),
-        uncovered: filter(all_standings, s => !is_covered(s)),
-      }
-    },
+  if binding.prepared_subject.digest != adjudicated_subject.digest {
+    StandingRefusedLedgerIsOfAnotherSubject {
+      observed: binding.prepared_subject,
+      adjudicated: adjudicated_subject,
+    }
+  } else {
+    match gate_coverage(gates, enrolments) {
+      CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
+      CoverageTotal { discharged, undischarged } => {
+        let all_standings = map(concat(discharged, undischarged), e => standing_for(e, rows))
+        StandingDerived {
+          covered: filter(all_standings, s => is_covered(s)),
+          uncovered: filter(all_standings, s => !is_covered(s)),
+        }
+      },
+    }
   }
 }

@@ -2,6 +2,16 @@ module test.claim.fabric.fabric_gate_coverage_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+import v2.workflow.floor_terminal_ledger {
+  WitnessIdentity,
+  ClaimTerminalRow,
+  ClaimAttemptTerminal,
+  ClaimObservation,
+  ClaimExpectation,
+  LedgerBinding,
+  RepositorySnapshot,
+}
+import std.materialization_provider { Fnv1a64Structural }
 import gunbc.fabric_gate_coverage {
   MutationEnrolment,
   MutationDischarge,
@@ -10,8 +20,6 @@ import gunbc.fabric_gate_coverage {
   gate_coverage,
   fabric_mutation_enrolments,
   fabric_gate_coverage,
-  TerminalObservation,
-  WitnessObservation,
   StandingCause,
   ObligationStanding,
   GateStandingVerdict,
@@ -28,8 +36,12 @@ fn one_real_gate() -> List<FabricCiGate> {
   filter(fabric_ci_gates(), g => g.id == "FCI-2")
 }
 
+fn fixture_identity() -> WitnessIdentity {
+  WitnessIdentity { module_path: "fixture.module", function: "fixture_fn" }
+}
+
 fn discharged_row(gate: NonEmptyStr, mutation: NonEmptyStr) -> MutationEnrolment {
-  MutationEnrolment { gate: gate, mutation: mutation, discharge: DischargedByWitness { witness: "fixture" } }
+  MutationEnrolment { gate: gate, mutation: mutation, discharge: DischargedByWitness { witness: fixture_identity() } }
 }
 
 // EVERY LABEL CARRIES BOTH COORDINATES. An earlier revision encoded only one -- the mutation for
@@ -213,12 +225,12 @@ test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> B
 // changed arm BECAUSE its trigger fired: no previous roster and no transition evidence is in scope,
 // so trigger satisfaction and declaration existence remain MANUALLY adjudicated until the receipt
 // join exists.
-fn discharged_by(v: CoverageVerdict, gate: NonEmptyStr, mutation: NonEmptyStr, expected: NonEmptyStr) -> Bool {
+fn discharged_by(v: CoverageVerdict, gate: NonEmptyStr, mutation: NonEmptyStr, expected: WitnessIdentity) -> Bool {
   match v {
     CoverageRefused { refusals } => false,
     CoverageTotal { discharged, undischarged } =>
       any(discharged, e => e.gate == gate && e.mutation == mutation && match e.discharge {
-        DischargedByWitness { witness } => witness == expected,
+        DischargedByWitness { witness } => witness.module_path == expected.module_path && witness.function == expected.function,
         Undischarged { reason, restoration_trigger } => false,
       }),
   }
@@ -233,13 +245,13 @@ test fn the_discharged_rows_are_exactly_the_two_fci_2_obligations_bound_to_their
              fabric_gate_coverage(),
              "FCI-2",
              "duplicate-grant",
-             "test.claim.fabric_grant_issuance_witness.a_second_grant_for_one_attempt_is_refused",
+             WitnessIdentity { module_path: "test.claim.fabric_grant_issuance_witness", function: "a_second_grant_for_one_attempt_is_refused" },
            )
         && discharged_by(
              fabric_gate_coverage(),
              "FCI-2",
              "work-mismatch",
-             "test.claim.fabric_grant_issuance_witness.an_attempt_naming_another_work_is_refused",
+             WitnessIdentity { module_path: "test.claim.fabric_grant_issuance_witness", function: "an_attempt_naming_another_work_is_refused" },
            ),
   }
 }
@@ -278,23 +290,40 @@ fn one_gate_two_obligations() -> List<FabricCiGate> {
   [gate_with("FCI-X", ["m", "n"])]
 }
 
+fn nominated_identity() -> WitnessIdentity {
+  WitnessIdentity { module_path: "t", function: "w_m" }
+}
+
 fn nominated_rows() -> List<MutationEnrolment> {
   [
-    MutationEnrolment { gate: "FCI-X", mutation: "m", discharge: DischargedByWitness { witness: "t.w_m" } },
+    MutationEnrolment { gate: "FCI-X", mutation: "m", discharge: DischargedByWitness { witness: nominated_identity() } },
     MutationEnrolment { gate: "FCI-X", mutation: "n", discharge: Undischarged { reason: "unread", restoration_trigger: "owner supplies it" } },
   ]
 }
 
-fn passing_at(rev: NonEmptyStr) -> WitnessObservation {
-  WitnessObservation { witness: "t.w_m", subject_revision: rev, terminal: ObservedPassing {} }
+fn subject(hex: NonEmptyStr) -> Fnv1a64Structural {
+  Fnv1a64Structural { digest: hex }
 }
 
-// A REFUSAL IS NOT A COUNT. An earlier version of this helper returned -1 on the refusal arm, which
-// types a refusal as a number and lets a caller compare it like one -- the shape where a refusal
-// reaches a writer wearing the same type as an answer. The two questions are asked separately.
+fn ledger_of(hex: NonEmptyStr) -> LedgerBinding {
+  LedgerBinding {
+    repository_snapshot: UnpublishedWorkingTree,
+    prepared_subject: subject(hex),
+  }
+}
+
+fn row_of(expectation: ClaimExpectation, terminal: ClaimAttemptTerminal) -> ClaimTerminalRow {
+  ClaimTerminalRow { identity: nominated_identity(), expectation: expectation, terminal: terminal }
+}
+
+fn passing_row() -> ClaimTerminalRow {
+  row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: true } })
+}
+
 fn standing_is_refused(v: GateStandingVerdict) -> Bool {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => true,
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => true,
     StandingDerived { covered, uncovered } => false,
   }
 }
@@ -302,18 +331,19 @@ fn standing_is_refused(v: GateStandingVerdict) -> Bool {
 fn covered_count(v: GateStandingVerdict) -> Int {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => 0,
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => 0,
     StandingDerived { covered, uncovered } => covered.length(),
   }
 }
 
 fn cause_labels(v: GateStandingVerdict) -> List<NonEmptyStr> {
   match v {
-    StandingRefusedUnwellFormedEnrolment { refusals } => ["standing-refused"],
+    StandingRefusedUnwellFormedEnrolment { refusals } => ["standing-refused-unwell-formed"],
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => ["standing-refused-other-subject"],
     StandingDerived { covered, uncovered } => map(uncovered, s => match s {
       Covered { gate, mutation, witness } => "covered",
       NotCovered { gate, mutation, cause } => match cause {
         NominationHasNoObservation { witness } => located("no-observation", gate, mutation),
-        ObservedAtAnotherRevision { witness, observed, adjudicated } => located("other-revision", gate, mutation),
         ObservedWrongTerminal { witness } => located("wrong-terminal", gate, mutation),
         SeveralObservationsForOneNomination { witness } => located("several-observations", gate, mutation),
         NotNominated {} => located("not-nominated", gate, mutation),
@@ -328,65 +358,73 @@ test fn the_fixture_enrolment_is_well_formed_regardless_of_evidence() -> Bool {
   refusal_labels(gate_coverage(one_gate_two_obligations(), nominated_rows())).length() == 0
 }
 
-// EVIDENCE PRESENT AND MATCHING -> the nominated obligation is covered; the unnominated one is not.
 test fn a_nomination_with_matching_evidence_earns_standing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-1")], "rev-1")
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 1 && any(cause_labels(v), l => l == "not-nominated|FCI-X|n")
 }
 
 // EVIDENCE REMOVED -> standing collapses while well-formedness is untouched. This is the exact
 // discrimination the authored-only contract could not make, and the reason it was rejected.
 test fn removing_the_evidence_collapses_standing_without_touching_well_formedness() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [], "rev-1")
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0
     && any(cause_labels(v), l => l == "no-observation|FCI-X|m")
     && refusal_labels(gate_coverage(one_gate_two_obligations(), nominated_rows())).length() == 0
 }
 
-// WRONG-SUBJECT EVIDENCE -> a real observation of the right declaration at another revision earns
-// nothing. Correct evidence for its own subject is not relevance to this obligation.
-test fn evidence_observed_at_another_revision_earns_nothing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-0")], "rev-1")
-  covered_count(v) == 0 && any(cause_labels(v), l => l == "other-revision|FCI-X|m")
+// WRONG-SUBJECT EVIDENCE. A ledger of another prepared subject REFUSES rather than deriving zero:
+// evidence about another tree is not evidence of no coverage.
+test fn a_ledger_of_another_subject_refuses_rather_than_deriving_zero() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("bbbbbbbbbbbbbbbb"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-other-subject")
 }
 
-test fn evidence_that_ran_and_failed_earns_nothing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
-    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedFailing {} }], "rev-1")
+test fn evidence_that_errored_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedToHold, RuntimeErrored { message: "boom" })], subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
-test fn evidence_that_did_not_execute_earns_nothing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
-    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedNotExecuted {} }], "rev-1")
+test fn evidence_that_was_never_attempted_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedToHold, NotAttempted { halted_by: "halt" })], subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
-// A witness that discriminates by REFUSING is adequate evidence; only failing and not-executed are
-// inadequate. Without this the join would demand every witness be a positive control.
-test fn evidence_that_refused_as_expected_earns_standing() -> Bool {
-  covered_count(gate_standing(one_gate_two_obligations(), nominated_rows(),
-    [WitnessObservation { witness: "t.w_m", subject_revision: "rev-1", terminal: ObservedRefusingAsExpected { refusal: "some-refusal" } }],
-    "rev-1")) == 1
+// THE EXPECTATION IS HALF THE ADEQUACY JUDGEMENT. The same observed verdict earns standing under one
+// expectation and nothing under the other, which is why the ledger holds them as two fields and why
+// an earlier draft of this module -- which re-minted a single flat "refused as expected" arm -- could
+// not express it.
+test fn a_false_verdict_earns_standing_when_expected_red_and_nothing_when_expected_to_hold() -> Bool {
+  let red = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
+  let hold = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
+  covered_count(red) == 1 && covered_count(hold) == 0
+}
+
+test fn an_unrepresentable_observation_earns_nothing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
+    [row_of(ExpectedToHold, Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } })], subject("aaaaaaaaaaaaaaaa"))
+  covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
 test fn two_observations_for_one_nomination_earn_nothing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [passing_at("rev-1"), passing_at("rev-1")], "rev-1")
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row(), passing_row()], subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "several-observations|FCI-X|m")
 }
 
-// A REFUSAL STAYS A REFUSAL. An unwell-formed enrolment must not yield an empty successful standing
-// population -- that is the absorbing-fallback shape, and it would report "nothing covered" in the
-// same value a caller reads as "nothing to worry about".
+// A REFUSAL STAYS A REFUSAL: an unwell-formed enrolment refuses rather than deriving an empty
+// successful population -- the absorbing-fallback shape, where "nothing covered" arrives in the same
+// value a caller reads as "nothing to worry about".
 test fn an_unwell_formed_enrolment_refuses_standing_rather_than_deriving_an_empty_one() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), [], [passing_at("rev-1")], "rev-1")
-  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused")
+  let v = gate_standing(one_gate_two_obligations(), [], ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-unwell-formed")
 }
 
-// The paired positive control: a WELL-FORMED enrolment with no evidence is NOT refused -- it derives
-// zero coverage. Without this, the refusal witness above is satisfied by a construction that refuses
-// everything, and "refuses when unwell-formed" would be indistinguishable from "always refuses".
+// The paired positive control, without which "refuses when unwell-formed" is indistinguishable from
+// "always refuses": a well-formed enrolment with no evidence DERIVES zero rather than refusing.
 test fn a_well_formed_enrolment_with_no_evidence_derives_rather_than_refuses() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), [], "rev-1")
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], subject("aaaaaaaaaaaaaaaa"))
   !standing_is_refused(v) && covered_count(v) == 0
 }
