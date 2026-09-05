@@ -274,6 +274,76 @@ fn scm_env_commit_count(outcome: RepositoryDecodeOutcome) -> Int {
 
 // ------------------------------------------------------------------------------------------------
 
+// THE MINT RECORDS THE PARENT IT WAS GIVEN, AND MINTING DOES NOT MOVE THE SELECTION.
+//
+// These are two decisions by two producers and the specimen is built to separate them. There are
+// three candidate answers a wrong implementation could substitute for the supplied parent -- the
+// SELECTED commit, the LAST existing commit, or the supplied one -- and a linear fixture where all
+// three coincide cannot tell them apart. So this one makes them three DIFFERENT commits: the
+// selection is A, the last existing commit is C, and the parent handed to the mint is B.
+//
+// MUTATIONS IT IS AIMED AT: deriving the parent from `repository.checked_out` (the commit would
+// descend from A), taking the newest commit (it would descend from C), or minting a root when a
+// parent was supplied. And separately: the mint moving `checked_out` to the new commit, which is a
+// selection decision belonging to whichever verb publishes the commit, not to the mint.
+//
+// THE INSPECTED COMMIT IS THE ONE THE MINT'S OWN RETURNED REFERENCE NAMES, not the last row of the
+// list -- reading by position would assert the same thing the fixture chose rather than the thing
+// the producer returned.
+test fn scm_env_the_mint_records_the_supplied_parent_and_leaves_the_selection() -> Bool {
+  let a = scm_env_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let b = scm_env_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
+  let c = scm_env_snapshot(store: b.store, path: "c.dag" as NonEmptyStr, text: "module c")
+  let d = scm_env_snapshot(store: c.store, path: "d.dag" as NonEmptyStr, text: "module d")
+  let with_a = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: d.store),
+    root: a.identity,
+    message: "a",
+    parent: none,
+  )
+  let with_b = scm_env_minted_or(
+    repo: with_a,
+    root: b.identity,
+    message: "b",
+    parent: Present { value: scm_env_ref(ordinal: 0) },
+  )
+  let with_c = scm_env_minted_or(
+    repo: with_b,
+    root: c.identity,
+    message: "c",
+    parent: Present { value: scm_env_ref(ordinal: 1) },
+  )
+  let selected_a = RepositoryEnvelope {
+    store: with_c.store,
+    commits: with_c.commits,
+    commit_allocator: with_c.commit_allocator,
+    checked_out: Present { value: scm_env_ref(ordinal: 0) },
+    staged: none,
+  }
+  count(selected_a.commits) == 3
+    && match mint_repository_commit(
+      repository: selected_a,
+      root: d.identity,
+      message: "d",
+      parent: Present { value: scm_env_ref(ordinal: 1) },
+    ) {
+      RepositoryCommitMinted { repository: minted, reference: reference } =>
+        match commit_at_reference(commits: minted.commits, reference: reference) {
+          Absent => false
+          Present { value: fresh } =>
+            match fresh.ancestry {
+              RootCommit => false
+              DescendsFrom { parent: parent } => parent.identity.ordinal == 1
+            }
+        }
+          && match minted.checked_out {
+            Absent => false
+            Present { value: still } => still.identity.ordinal == 0
+          }
+      _ => false
+    }
+}
+
 // AN EMPTY REPOSITORY IS A LEGITIMATE STATE, NOT AN ERROR. This is the claim that keeps `init` from
 // having to invent a phantom commit merely because a carrier demands a root.
 test fn scm_env_an_empty_repository_round_trips() -> Bool {
