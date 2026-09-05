@@ -35,6 +35,8 @@ The producer must establish unavailability, not report that a trace happened to 
 4. Bind an enforceable memory cgroup for the launched process and its descendants and read the effective limit back before execution. A declared planning number is insufficient. The executor may be BuildBuddy or a CI runner; the capability, source pin and artifact provenance decide admission, not the venue. A sized BuildBuddy runner with a writable delegated child cgroup is an available realization to investigate, so no new required CI job is implied.
 5. Exercise the boundary with deliberate attempts to execute a seed path, open a seed artifact, resolve a seed Cargo dependency, and invoke a fallback. Require the expected located denial from each attempt beside a permitted native/toolchain control. A failing process without the denial observation is unavailable evidence, not proof that exclusion worked.
 
+The correctly hashed rebuilt-seed specimen is filed in `gunbc.recurring_failure_mode.authority_substitution`. Its distinguishing control is a candidate wrapper whose self-launch succeeds while its build still links the retired compiler; replacement admission must refuse that wrapper. This control complements the external-access denials, since an in-process seed makes no external call to deny.
+
 The general host isolation and launch operations must be modeled at their owning `std`/`extdeps` layer before implementing a transport. L4 must not put an unmodeled sandbox into hand-Rust and then bless it with a Bool.
 
 ## Binding evidence to the launched artifact
