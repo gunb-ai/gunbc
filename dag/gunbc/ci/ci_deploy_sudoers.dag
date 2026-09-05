@@ -6,6 +6,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { fold_list, any }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.ci_deploy_access {
   DeployAccess,
   gunbc_deploy_sudoers_dropin,
@@ -103,15 +104,24 @@ fn deploy_sudoers_dropin_content(access: DeployAccess) -> String {
   concat(deploy_sudoers_dropin_header(), deploy_sudoers_dropin_body(access: access))
 }
 
+// THE THREE ELEVATION PREFIXES ARE READ FROM extdeps.sudo.elevation, not typed here. This body is
+// still hand-authored shell -- it is the census's own residual row, not something this change
+// dissolves -- but the two tokens that cross the privilege boundary have one authority in the
+// repository, and spelling them here made this the last place in the emitted deploy script that
+// disagreed with every other privileged line about which binary sudo is.
+fn deploy_sudo_prefix() -> String {
+  concat(join(sudo_elevate_argv(command: []), " "), " ")
+}
+
 fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
   join([
     "cat > \"$_gunbc_stage/gunbc-deploy.sudoers\" <<'GUNBC_SUDOERS_EOF'\n",
     deploy_sudoers_dropin_content(access: access),
     "GUNBC_SUDOERS_EOF\n",
-    "sudo -n ", fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
-    "sudo -n install -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
+    deploy_sudo_prefix(), fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
+    deploy_sudo_prefix(), "install -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
     gunbc_deploy_sudoers_dropin as String,
     "\n",
-    "sudo -n ", fleet_visudo_binary_path as String, " -cf ", gunbc_deploy_sudoers_dropin as String,
+    deploy_sudo_prefix(), fleet_visudo_binary_path as String, " -cf ", gunbc_deploy_sudoers_dropin as String,
   ], "")
 }

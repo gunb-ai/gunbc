@@ -44,10 +44,12 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.std.node { Node }
 import gunbc.live_deploy.operations { deploy_stage_path_word }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
   shell_command_intent,
   shell_literal_words,
   shell_privileged_command_intent,
+
   shell_command_text_of_stmts,
 }
 
@@ -301,7 +303,7 @@ fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node
       path: deploy_stage_path_word(stage_name: stage_name),
     ),
     bash_build_command_with_words(words: concat(
-      shell_literal_words(words: ["sudo", "-n", "install", "-m", "0644"]),
+      shell_literal_words(words: sudo_elevate_argv(command: ["install", "-m", "0644"])),
       [
         deploy_stage_path_word(stage_name: stage_name),
         bash_build_word_lit(text: m.dropin_path as String),
