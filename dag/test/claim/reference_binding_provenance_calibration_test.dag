@@ -37,7 +37,19 @@ import v2.std.optional { Present, Absent }
 // THE CONTROLS. A measurement instrument whose output cannot vary carries no information, so these
 // establish that both distinguishability arms are reachable on the real consumer and that the
 // denominator is the declared vocabulary rather than the traversal lists.
+//
+// TWO OF THE FIVE ASSERT THE DEFECT RATHER THAN THE INVARIANT, and each carries that fact on its own
+// declaration rather than only here -- see the note on each. A defect-asserting control whose
+// disposition is documented somewhere else is a trap, because the reader meets it as a red line in a
+// log and not as a paragraph in a file.
 
+// THE LITERALS HERE ARE GROUNDED AND THE ONE REMOVED FROM the_instrument_reaches_its_refusal_path
+// WAS NOT, which is worth stating because a reader who saw that fix will see == 28 again here and
+// assume one was missed. 4 and 7 are the ARITIES OF TWO STD TYPES -- an external authority this
+// module does not own -- and 28 is their product; the exhaustive arm_of_resolution and
+// kind_of_observation matches make an upstream change fail compilation, so these cannot silently
+// drift out of agreement with what they cite. The literal that was removed was this run's own
+// measurement of how much is currently broken, compared against itself.
 test fn the_denominator_is_the_declared_vocabulary_not_the_traversal_list() -> Bool {
   fold(calibration_resolution_arms, init: true, f: fn(ok, arm) {
     ok && resolution_arm_label(a: arm_of_resolution(
@@ -57,6 +69,7 @@ test fn the_denominator_is_the_declared_vocabulary_not_the_traversal_list() -> B
     && list_length(items: calibration_cells()) == 28
 }
 
+
 test fn the_resolved_arm_is_provenance_distinguished() -> Bool {
   match cell_distinguishability(kind: SameFileNeighbourKind, arm: ResolvedArm) {
     ProvenanceDistinguished { admission: _ } => true
@@ -64,11 +77,28 @@ test fn the_resolved_arm_is_provenance_distinguished() -> Bool {
   }
 }
 
+// THIS CONTROL ASSERTS THE DEFECT. GOING RED MEANS THE DEFECT WAS REPAIRED, WHICH IS SUCCESS --
+// DELETE THIS ROW, DO NOT RESTORE THE BEHAVIOUR.
+//
+// The label is here rather than only in the module's prose because nobody arrives at this function
+// by reading the file top to bottom. They arrive at a red test name in a CI log, where
+// "is_not_distinguished" reads like a broken invariant, and the obvious repair is to make the two
+// renders differ -- which is what a fix would already have done. Same class as the count oracle one
+// level up: a true signal the reader misclassifies.
+//
+// It goes green today because a typed index-build refusal and a resolved-but-non-matching binding
+// produce the same admission at the consumer.
 test fn a_typed_index_refusal_is_not_distinguished_from_a_structural_non_match() -> Bool {
   cell_render(kind: SameFileNeighbourKind, arm: IndexTransportRefusedArm)
     == non_matching_render(kind: SameFileNeighbourKind)
 }
 
+// THIS CONTROL ASSERTS THE DEFECT. GOING RED MEANS THE DEFECT WAS REPAIRED, WHICH IS SUCCESS --
+// DELETE THIS ROW, DO NOT RESTORE THE BEHAVIOUR.
+//
+// A partial repair makes it red too, and that is correct: it says the six arms are no longer ALL
+// indistinguishable, which is progress and not a regression. Read the matrix to see which arms
+// separated, then delete or narrow this row to the arms that still collapse.
 test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
   let t = cell_render(kind: DistinctHomonymKind, arm: IndexTransportRefusedArm)
   cell_render(kind: DistinctHomonymKind, arm: IndexModulePathRefusedArm) == t
