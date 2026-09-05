@@ -1,7 +1,8 @@
 module v2.test.claim.spark_observation_scope
 
 import std.types { Bool, List }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
   spark_hosts_with_role_in,
@@ -59,25 +60,34 @@ test fn w_scoping_observation_by_desired_state_loses_the_training_cell() -> Bool
   !w_covered(expected: spark_serving_observation_scope(), observed: w_fixture_serving())
 }
 
-test fn w_the_observation_scope_carries_both_spark_units() -> Bool {
-  let scope = spark_serving_observation_scope()
-  length(scope) == 2
-    && w_covered(expected: scope, observed: [operator_host_srv5, operator_host_srv6])
+fn w_scope_holds(host: HostIdentity) -> Bool {
+  length(filter(spark_serving_observation_scope(), h => host_identity_eq(a: h, b: host))) == 1
 }
 
-// THE SCOPE IS WIDER THAN EITHER ROLE ROSTER, WHICH IS THE PARTITION THE RETIREMENT NEEDS.
+// The scope is the physical unit roster (every reserved Spark, identity-joined), not a count: the
+// two-unit literal this replaced went red the day SPARK-BATCH-3 enrolled five more units, with
+// the behaviour unchanged.
+test fn w_the_observation_scope_carries_both_spark_units() -> Bool {
+  w_covered(expected: spark_serving_observation_scope(), observed: dgx_spark_reserved_identities())
+    && w_scope_holds(host: operator_host_srv5)
+    && w_scope_holds(host: operator_host_srv6)
+}
+
 test fn w_the_scope_is_not_the_serving_roster() -> Bool {
   length(w_fixture_serving()) == 1
-    && length(spark_serving_observation_scope()) == 2
+    && length(spark_serving_observation_scope()) > length(w_fixture_serving())
+    && !w_covered(expected: spark_serving_observation_scope(), observed: w_fixture_serving())
 }
 
 test fn w_the_scope_covers_the_training_cell_the_serving_roster_omits() -> Bool {
   let training = w_fixture_training()
   length(training) == 1
-    && w_covered(expected: spark_serving_observation_scope(), observed: concat(w_fixture_serving(), training))
+    && match spark_observation_coverage(expected: spark_serving_observation_scope(), observed: concat(w_fixture_serving(), training)) {
+      SparkObservationCovered => false
+      SparkObservationIncomplete { missing: _, foreign: f, duplicated: d } => length(f) == 0 && length(d) == 0
+    }
 }
 
-// COVERAGE CONTROLS: each defect is a distinct arm, so each gets its own red.
 test fn w_a_missing_host_refuses_rather_than_reporting_a_clean_fleet() -> Bool {
   match spark_observation_coverage(
     expected: [operator_host_srv5, operator_host_srv6],
