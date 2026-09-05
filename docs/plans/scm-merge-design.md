@@ -454,38 +454,63 @@ So merge does not get to invent a second presentation path. Whatever merge expos
 through that shape, or it becomes a parallel authority for "how this repository is presented to a
 foreign realization" — the §3 fork, in the one place the operator explicitly asked for a projection.
 
-## 8. Author and timestamp: an ADMISSION ruling, not a missing capability
+## 8. Author and timestamp: a bounded metadata contract, neither absent nor nearly finished
 
-**An earlier revision of this section said this repository has no modelled clock and no modelled
-process identity to observe author and timestamp with, and pointed the lane at acquiring them. That is
-false, and it is the fourth time in this lane's reporting that absence was claimed without looking.**
+This section has now been wrong in **both** directions, and both errors are recorded because the pair
+is more instructive than either.
 
-Both capabilities exist on `main`:
+**First error — claimed absence.** It said this repository has no modelled clock and no modelled
+process identity, and pointed the lane at acquiring them. False: `extdeps.clock` declares `Clock.Now`,
+`gunbc.clock_read` `clock_now_probed_at` consumes it, and `gunbc.worker_lifecycle`
+`ProcessIdentityEvidence = ProcessIdentityObserved { pid, started_at, owner } | ProcessIdentityUnobserved
+{ reason }` carries the other half. Directing work at re-inventing an available capability is the §2
+re-invention this project exists to prevent.
 
-- `extdeps.clock` declares `Clock.Now`, cited to the POSIX `date` utility. `gunbc.clock_read`
-  `clock_now_probed_at` already consumes it and returns an **optional**, and `probed_at_word` renders
-  the absent arm as a loud word rather than a plausible-looking one — precisely the observe-type-admit-
-  or-refuse discipline this section was asking to have built.
-- `gunbc.worker_lifecycle` `ProcessIdentityEvidence = ProcessIdentityObserved { pid, started_at, owner }
-  | ProcessIdentityUnobserved { reason }` carries the other half, with the same split.
+**Second error — claimed the observation side was solved.** That was the same defect one level up.
+Finding an evidence type is not a solved observation capability, and the specific trap is visible in
+the helper: `probed_at_word` returns a `NonEmptyStr` on **both** arms, rendering absence as the word
+`clock-unreadable`. So **accepting a rendered nonempty value would not establish that an instant was
+observed.** That is not a defect in the helper — it is a display renderer doing its job — but it means
+display text is not admission input, and a clock read is not automatically a timestamp bound to this
+commit.
 
-`gunbc.scm.ancestry` carries the same stale claim in its own note; this document relayed it instead of
-checking it, and both are corrected in this change rather than left to be relayed again. Directing
-future work at acquiring an available capability is the §2 re-invention this project exists to prevent.
+### The bounded statement this section actually supports
 
-**What is actually undecided is narrower, and it is an ADMISSION question about this subject:**
+> Existing clock operations and adapters are reusable, and a process-identity evidence vocabulary
+> already exists. Commit metadata still requires **an applicable observation producer**, **binding to
+> the commit and its declared attribution role**, **a defined timestamp event**, and **an admission
+> policy for unavailable evidence**. This document does not establish that the complete
+> commit-attribution observation path exists, and does not direct the creation of another generic
+> clock or identity schema.
 
-> Does a `RepositoryCommit` admit an unreadable clock or an unobserved process identity, and what does
-> such a commit MEAN?
+`gunbc.scm.ancestry` carries the first error in its own note; this document relayed it rather than
+checking it, and both are corrected together. That annotation's retained conclusion — that modelling
+these fields here would mean *inventing two facts to fill fields* — is also corrected: an unavailable
+or unverified binding is a reason not to fabricate a value, and is not proof that modelling the fields
+over existing observation carriers inherently fabricates anything.
 
-The observation side is solved. The open half is whether a commit whose timestamp is absent is
-committable at all, or refused; and if committable, that the absence is carried as absence and never
-rendered into a field that reads as an instant — the failure `probed_at_word` exists because of.
+### What the four open pieces mean, and their order
 
-A merge commit sharpens the question rather than changing it: an integration receipt with no author
-and no time is a weak receipt, so merge is a strong argument for refusing rather than admitting. This
-document does not settle it and fabricates neither field. **What it corrects is the prerequisite: the
-binding and the admission rule are what merge waits on, not a clock.**
+Each is a real question, and **they are ordered**: the admission policy comes last because it cannot
+be decided before the field's subject and applicable evidence are.
+
+1. **Producer** — which operation observes the fact this commit's field claims, invoked where.
+2. **Binding** — that the observation attaches to *this* commit and to a declared attribution role.
+   Reusing an observation means retaining the operation's failure contract, not its rendered output.
+3. **Timestamp subject** — *which event* the field describes. Authoring, integration and publication
+   are different instants, and a commit that does not say which one it names is not carrying a fact.
+4. **Admission** — whether a commit is publishable with the evidence unavailable.
+
+On (4), this document withdraws its earlier lean. "A merge receipt with no author is weak" does not
+determine the policy: the existing source / base / target / result relationship already expresses a
+meaningful integration fact, and attribution and time support *additional* claims. A contract requiring
+an identified integrating actor should refuse when that actor cannot be established; a different
+contract could admit an explicitly absent attribution. **Neither may render absence as observed
+evidence** — that is the constraint, and it is the one `probed_at_word`'s two arms illustrate.
+
+One composition obligation with §D5: a missing-metadata check must run where it can refuse *before* a
+write, because a missing observation discovered after a write does not turn an applied publication into
+one established never to have applied.
 
 ## 9. The evidence this design owes when it is built
 

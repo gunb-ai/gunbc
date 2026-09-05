@@ -126,13 +126,20 @@ type CommitAncestry
 //   the other half. So both capabilities exist, with the admit-or-refuse discipline this note asks
 //   for already built into them.
 //
-//   WHAT IS ACTUALLY UNDECIDED IS NARROWER: whether a commit ADMITS an unreadable clock or an
-//   unobserved identity, and what a commit means when it does. That is an admission ruling about
-//   this subject, not a capability to acquire, and it is the only thing blocking these two fields.
+//   WHAT IS ACTUALLY UNDECIDED IS NARROWER THAN ACQUISITION AND WIDER THAN ADMISSION ALONE. Commit
+//   metadata still needs an applicable observation PRODUCER, a BINDING to this commit and to a
+//   declared attribution role, a defined TIMESTAMP EVENT (authoring, integration and publication are
+//   different instants), and only then an ADMISSION policy for unavailable evidence. Reusing an
+//   existing observation means retaining its FAILURE CONTRACT, not its rendered output:
+//   `probed_at_word` returns a NonEmptyStr on both arms, so a rendered nonempty value does not
+//   establish that an instant was observed.
 //
-// So modelling them here would mean inventing two facts to fill fields, which is the fabricated-
-// plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
-// blocked on a ruling; parent was not. Recording that difference is the point of this note.
+// So modelling them here, WITH NO PRODUCER AND NO BINDING ESTABLISHED, would mean inventing two facts
+// to fill fields -- the fabricated-plausible-output failure at the exact boundary a commit is supposed
+// to be trustworthy. THE QUALIFIER IS LOAD-BEARING AND WAS MISSING: an unavailable or unverified
+// binding is a reason not to fabricate a VALUE, and is not proof that modelling these fields over
+// existing observation carriers inherently fabricates anything. They are blocked on that contract;
+// parent was not. Recording that difference is the point of this note.
 
 
 // The history this walk may traverse, supplied as the commit identities the repository holds. It is
