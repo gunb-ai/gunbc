@@ -62,8 +62,16 @@ type CoverageRefusal
 // THE VERDICT DOES NOT CARRY A BOOLEAN "COVERED". A total join whose undischarged list is nonempty is
 // a correct and useful answer -- it is the honest state of FCI-2 today -- and collapsing it to a
 // boolean would force every consumer to choose between refusing on a truthfully declared gap and
-// ignoring the gap entirely. Consumers that require full coverage test the undischarged list; the
-// gate program itself only requires that the join be TOTAL.
+// ignoring the gap entirely. The gate program itself only requires that the join be TOTAL.
+//
+// A CONSUMER THAT REQUIRES COVERAGE MUST NOT TEST THIS LIST. An earlier version of this sentence
+// told consumers to do exactly that, which was wrong in the direction that matters: an empty
+// UNDISCHARGED list means every obligation carries an authored NOMINATION, and a nomination is a
+// sentence somebody wrote. It is not execution evidence, and a roster whose every row was optimistically
+// discharged would satisfy that test while nothing had ever run. Coverage is answered by
+// gate_standing over observed evidence at an adjudicated revision; this verdict answers only whether
+// the enrolment is WELL-FORMED. The two questions are separate functions precisely so that one
+// cannot be read as the other.
 type CoverageVerdict
   = CoverageTotal {
       discharged: List<MutationEnrolment>,
