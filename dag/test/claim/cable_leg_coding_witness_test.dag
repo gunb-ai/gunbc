@@ -1,0 +1,178 @@
+module test.claim.cable_leg_coding_witness
+
+import std.types { Bool }
+import std.measure { bandwidth_count, symbol_rate_count }
+import extdeps.ethernet.link_mode {
+  LinkMode, Nrz, Pam4, Lanes2, Lanes4,
+  link_mode_eq, link_mode_aggregate, link_mode_lane_encoded_rate,
+  modulation_bits_per_symbol, lane_count_value,
+  hundred_gig_aggregate_collision,
+  ieee_25gbase_cr, ieee_50gbase_cr2, ieee_100gbase_cr4, ieee_100gbase_cr2,
+}
+import extdeps.transceiver.sff_8636 {
+  Sff8636LegCoding, Sff8636CodingFinding,
+  CodingConsistentWithRequest, CodingInsufficientForRequestedMode,
+  CodingContradictsEncoding, CodingNotUnderstood,
+  ExtendedCompliance, Qsfp28, EncodingPam4, Encoding64b66b, EncodingUnspecified,
+  NominalRateEscaped, NominalRateDirect,
+  ext_compliance_0x0b,
+  sff8636_assess_leg_coding, sff8636_nominal_rate_from_byte140,
+  transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE CABLE-CODING SUBJECT, and the reason it exists rather than being
+// implied by a typecheck: DESIGN section 5 says a typecheck is not a consumer. Without this module
+// `hundred_gig_aggregate_collision` and `sff8636_assess_leg_coding` are functions nothing calls --
+// specification without execution, which is the shape that looks finished and proves nothing.
+//
+// THE DISCRIMINATING SUBJECT IS A REAL DELIVERED PART. The negative case below is the actual EEPROM
+// reading from FS order FS260902769849 (part QDD-400G-4QPC015, leg SN S2630771509-4), captured with
+// `ethtool -m` on a ConnectX-7. It is authorable as a fixture precisely because the bytes were
+// observed, and it goes red if the assessment ever starts admitting this coding for 100GBASE-CR2 --
+// which is the defect that cost this fleet half its fabric.
+//
+// The positive control beside it is a leg coded the way the part was PURCHASED to be coded. It is
+// SYNTHETIC and says so: it validates the decoder, and it establishes nothing about whether any
+// physical cable works. Those are different claims and this module never lets one stand for the
+// other.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------- the link-mode decomposition ----------------
+
+// THE COLLISION THAT JUSTIFIES THE WHOLE MODULE SHAPE. If this ever went false, carrying lanes and
+// modulation separately would have lost its reason, and a single aggregate would be sufficient.
+test fn one_hundred_gig_names_two_different_modes() -> Bool {
+  hundred_gig_aggregate_collision()
+}
+
+// AND THE SAME COLLISION ONE RUNG DOWN, which is why lane count is carried rather than inferred from
+// an aggregate and a modulation.
+test fn fifty_gig_also_collides_across_lane_counts() -> Bool {
+  bandwidth_count(b: link_mode_aggregate(m: ieee_50gbase_cr2))
+    == bandwidth_count(b: link_mode_aggregate(m: ieee_25gbase_cr)) * 2
+}
+
+// THE UNITS SEPARATION, ASSERTED RATHER THAN TRUSTED. A 50G PAM4 lane is 26.5625 GBd carrying
+// 53.125 Gb/s encoded -- three numbers that a single field would have collapsed. This test is the
+// executing form of the correction that produced SymbolRate: if the fields are ever re-fused, or a
+// baud figure is ever assigned to a bits/s carrier, the arithmetic here stops holding.
+test fn a_pam4_lane_carries_two_bits_per_symbol() -> Bool {
+  modulation_bits_per_symbol(m: Pam4) == 2
+    && modulation_bits_per_symbol(m: Nrz) == 1
+    && symbol_rate_count(r: ieee_100gbase_cr2.per_lane_symbol_rate) == 26562500000
+    && bandwidth_count(b: link_mode_lane_encoded_rate(m: ieee_100gbase_cr2)) == 53125000000
+    && bandwidth_count(b: ieee_100gbase_cr2.per_lane_service_rate) == 50000000000
+}
+
+// The aggregate is derived, so it must equal lanes times the service rate for every named mode.
+test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool {
+  bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
+      == lane_count_value(l: Lanes2) * bandwidth_count(b: ieee_100gbase_cr2.per_lane_service_rate)
+    && bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
+      == lane_count_value(l: Lanes4) * bandwidth_count(b: ieee_100gbase_cr4.per_lane_service_rate)
+}
+
+// ---------------- the delivered cable: the discriminating RED ----------------
+
+// The bytes as read from the delivered leg. Identifier 0x11, extended compliance 0x0B, encoding 0x08
+// (PAM4). The nominal-rate byte is carried as the ESCAPE it appears to be rather than as the
+// 25.5 figure ethtool renders -- see the module's own note on why that distinction is not cosmetic.
+data delivered_fs_leg: Sff8636LegCoding = Sff8636LegCoding {
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance: ext_compliance_0x0b,
+  secondary_compliance: none,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+}
+
+fn is_insufficient(f: Sff8636CodingFinding) -> Bool {
+  match f {
+    CodingInsufficientForRequestedMode { requested: r, coding: c } => true
+    CodingConsistentWithRequest { coding: c } => false
+    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
+    CodingNotUnderstood { encoding: e } => false
+  }
+}
+
+fn is_consistent(f: Sff8636CodingFinding) -> Bool {
+  match f {
+    CodingConsistentWithRequest { coding: c } => true
+    CodingInsufficientForRequestedMode { requested: r, coding: c } => false
+    CodingContradictsEncoding { encoding_modulation: m, attested_mode: a } => false
+    CodingNotUnderstood { encoding: e } => false
+  }
+}
+
+// THE CENTRAL ASSERTION OF THIS PR. The delivered leg does not attest 100GBASE-CR2, so a fleet that
+// needs 100G_2X must not be told this part supplies it. This reds if the assessment ever admits the
+// coding -- the failure that shipped a half-rate fabric that links, pings clean and tests green.
+test fn the_delivered_leg_does_not_attest_the_purchased_mode() -> Bool {
+  is_insufficient(f: sff8636_assess_leg_coding(
+    coding: delivered_fs_leg, requested: ieee_100gbase_cr2))
+}
+
+// AND THE SAME LEG IS FINE FOR WHAT IT ACTUALLY ATTESTS. Without this arm the test above would pass
+// for a decoder that refuses everything, which is a wall that carries no information.
+test fn the_delivered_leg_does_attest_the_mode_it_is_coded_for() -> Bool {
+  is_consistent(f: sff8636_assess_leg_coding(
+    coding: delivered_fs_leg, requested: ieee_100gbase_cr4))
+}
+
+// The escape is not a measurement. This is the executing form of the byte-140 correction.
+test fn the_escape_value_is_not_recorded_as_a_rate() -> Bool {
+  match sff8636_nominal_rate_from_byte140(code: 255) {
+    NominalRateEscaped => true
+    NominalRateDirect { rate: r } => false
+  }
+}
+
+test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
+  match sff8636_nominal_rate_from_byte140(code: 255 - 1) {
+    NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
+    NominalRateEscaped => false
+  }
+}
+
+// ---------------- the positive control ----------------
+
+// A SYNTHETIC leg coded for what the part was bought to do. Its compliance code is NOT the real
+// SFF-8024 assignment for 100GBASE-CR2 -- this lane has not read that table, and inventing the byte
+// would be the fabricated citation the whole subject exists to catch. What this row proves is that
+// the ASSESSMENT admits a leg whose attested modes include the requested one; it deliberately proves
+// nothing about which byte value carries that attestation in the real world.
+data synthetic_cr2_compliance: ExtendedCompliance = ExtendedCompliance {
+  code: 0,
+  attested_modes: [ieee_100gbase_cr2],
+}
+
+data synthetic_correctly_coded_leg: Sff8636LegCoding = Sff8636LegCoding {
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance: synthetic_cr2_compliance,
+  secondary_compliance: none,
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+}
+
+// THE POSITIVE CONTROL. A decoder that said "insufficient" to everything would satisfy every
+// negative assertion above; this is what makes those assertions discriminating rather than vacuous.
+test fn a_correctly_coded_leg_is_admitted_for_the_requested_mode() -> Bool {
+  is_consistent(f: sff8636_assess_leg_coding(
+    coding: synthetic_correctly_coded_leg, requested: ieee_100gbase_cr2))
+}
+
+// AND THE SECONDARY CODE IS ACTUALLY READ. Byte 116 was added because reading only byte 192 is
+// unsound over a multi-application module; this reds if the union ever collapses back to the
+// primary, which is the exact regression the review caught by inspection.
+data secondary_coded_leg: Sff8636LegCoding = Sff8636LegCoding {
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance: ext_compliance_0x0b,
+  secondary_compliance: Present { value: synthetic_cr2_compliance },
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+}
+
+test fn a_mode_attested_only_by_the_secondary_code_is_still_attested() -> Bool {
+  is_consistent(f: sff8636_assess_leg_coding(
+    coding: secondary_coded_leg, requested: ieee_100gbase_cr2))
+}
