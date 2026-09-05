@@ -56,6 +56,8 @@ import gunbc.roadmap_acceptance_history_observation {
   acceptance_history_integrity_verdict_from_prior_observation,
 }
 import gunbc.roadmap_execution_contract {
+  GunbcClaimValidation,
+  ExecutionContract,
   ExecutionContractUnspecified,
   contract_has_closing_validation,
   closing_contract_authoring_contract,
@@ -1822,10 +1824,19 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No change to how liveness is observed (the process evidence stays as the belt reports it); no live re-render.",
         handback: "The field, the fold, the page flag, the fixtures updated, and the witness green."
       )
-    ), e: gunbc_claim_execution_contract(
-      entry: "dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag" as FilePath,
-      function: "the_pulse_follows_the_worker_process" as NonEmptyStr,
-    )),
+    ), e: ExecutionContract {
+      validations: [
+        GunbcClaimValidation {
+          entry: "dag/test/claim/roadmap/roadmap_worker_alive_witness_test.dag" as FilePath,
+          function: "the_pulse_follows_the_worker_process" as NonEmptyStr,
+        },
+        GunbcClaimValidation {
+          entry: "dag/test/claim/roadmap/roadmap_sandbox_render_witness_test.dag" as FilePath,
+          function: "the_sandbox_page_renders_with_its_strip_lab" as NonEmptyStr,
+        },
+      ],
+      extra_capabilities: [],
+    }),
 
     with_execution(active_small(
       identity: "rn_9PZ4WQ6CTNH2LMK7VXB3SRD8FG",

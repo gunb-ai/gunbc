@@ -1,0 +1,18 @@
+module test.claim.roadmap.roadmap_sandbox_render_witness_test
+
+import std.types { Bool, String }
+import std.markup { Fragment }
+import gunbc.roadmap_sandbox { sandbox_page }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+
+// THE SANDBOX RENDER IS THE CLOSURE CHECK FOR DASHBOARD PRESENTATION WORK. A node whose oracle
+// names only the function it adds can pass while the page that consumes it no longer resolves
+// (attempt 5 of the pulse node, 2026-09-05: worker_alive_from_process green, sandbox_page unresolvable
+// on one missing argument). This witness renders the whole sandbox page, which imports the page,
+// presentation, style and component modules, so a change that breaks any of them is red here.
+test fn the_sandbox_page_renders_with_its_strip_lab() -> Bool {
+  match try_serialize_html_source(node: sandbox_page()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html } => string_contains(s: html, pattern: "strip-lab-row") && string_contains(s: html, pattern: "activity-round-strip")
+  }
+}
