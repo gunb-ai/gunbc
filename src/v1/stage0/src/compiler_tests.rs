@@ -547,11 +547,22 @@ mod compiler_tests {
     /// path, reds in the right file and passes for the text-boundary subject it is not.
     ///
     /// #[ignore] AND WHY, STATED RATHER THAN LEFT TO BE DISCOVERED: this arm spawns cargo and
-    /// compiles two emitted crates, which is minutes rather than milliseconds, and
-    /// `repo_self_test_command` runs the whole --lib suite on every push and pull request. It
-    /// is therefore ENROLLED AND OPT-IN: `cargo test --release -p v1-compiler --lib
-    /// fixture_closure_rustc_discrimination -- --ignored`. An #[ignore] is a cost decision and
-    /// NOT a rung: nothing here may be cited as coverage that executes on the merge path.
+    /// compiles two emitted crates, which is minutes rather than milliseconds.
+    ///
+    /// THE JUSTIFICATION THAT STOOD HERE NAMED A DELETED JOB. It said `repo_self_test_command`
+    /// runs the whole --lib suite on every push and pull request, and concluded "it is THEREFORE
+    /// ENROLLED AND OPT-IN". The 2026-09-04 runner-capacity ruling deleted that job --
+    /// `witnesses.yml` has ZERO occurrences of `cargo test` -- so the premise that "therefore"
+    /// rested on is gone. The loss is a declared drop, `gunbc.rung_drop`
+    /// `rust_unit_tests_off_the_merge_path`.
+    ///
+    /// WHAT IS TRUE: this arm is compiled into the seed lib and RUNNABLE ON DEMAND via
+    /// `cargo test --release -p v1-compiler --lib fixture_closure_rustc_discrimination --
+    /// --ignored`. NO CI path invokes it. The `#[ignore]` is a cost decision, but it is not what
+    /// decides standing -- an ignored test is still compiled, and a non-ignored test in a suite
+    /// nothing invokes is equally off the path. What decides is the invocation and the result
+    /// CONSUMER, and there is no consumer. Nothing here may be cited as coverage that executes on
+    /// the merge path.
     #[test]
     #[ignore]
     fn fixture_closure_rustc_discrimination() {
@@ -588,9 +599,12 @@ mod compiler_tests {
     ///
     /// #[ignore] AND WHY: this arm builds the compiler three times, runs two regeneration
     /// generations and starts a server, which is tens of minutes rather than milliseconds,
-    /// while repo_self_test_command runs the whole --lib suite on every push. It is ENROLLED
-    /// AND OPT-IN: `cargo test --release -p v1-compiler --lib
-    /// evaluation_budget_consequence_falsifier -- --ignored`. An #[ignore] is a cost decision
+    /// and it is RUNNABLE ON DEMAND, on no CI path: `cargo test --release -p v1-compiler --lib
+    /// evaluation_budget_consequence_falsifier -- --ignored`. The sentence that stood here said
+    /// repo_self_test_command runs the whole --lib suite on every push and concluded this arm is
+    /// ENROLLED AND OPT-IN; the 2026-09-04 runner-capacity ruling deleted that job, so the
+    /// premise is gone (`witnesses.yml` has ZERO `cargo test`; declared drop `gunbc.rung_drop`
+    /// `rust_unit_tests_off_the_merge_path`). An #[ignore] is a cost decision
     /// and NOT a rung: nothing here may be cited as coverage that executes on the merge path.
     #[test]
     #[ignore]

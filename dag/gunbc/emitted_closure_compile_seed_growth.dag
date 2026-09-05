@@ -101,10 +101,13 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // WHAT IS TRUE, AT THE GRAIN THE DISTINCTION ACTUALLY HAS, because the corrected sentence is
 // weaker than it first looks and the weakness is the point. The fixture discriminator
 // (`fixture_closure_rustc_discrimination`, authored in `v1.compiler.compiler_tests_rust` and
-// emitted into `compiler_tests.rs`) is ENROLLED AND AVAILABLE in `rust-unit-tests` via
+// emitted into `compiler_tests.rs`) is RUNNABLE ON DEMAND via
 // `cargo test --release -p v1-compiler --lib fixture_closure_rustc_discrimination -- --ignored`.
-// It DOES NOT EXECUTE BY DEFAULT on push or pull request: it is `#[ignore]`d because it spawns
-// cargo and compiles two emitted crates, which is minutes inside a suite that runs on every push.
+// IT EXECUTES ON NO CI PATH -- read `gunbc.witness_floor_workflow` `witness_floor_lane_jobs` for
+// which jobs exist and `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path` for what the
+// deletion cost, exactly as this file instructs above rather than restating the shape here. It is
+// additionally `#[ignore]`d, because it spawns cargo and compiles two emitted crates, which is
+// minutes; that is a COST decision and is not what puts it off the path.
 // THE EVIDENCE IS THEREFORE CANDIDATE EVIDENCE -- reviewable on demand, no wall -- and an
 // `#[ignore]` is a COST DECISION AND NOT A RUNG. THAT RESTS ON THE `#[ignore]` ALONE. A second
 // clause stood here until gunbc#10078 and is REMOVED rather than softened: it said
@@ -194,7 +197,8 @@ import gunbc.seed_growth { SeedGrowthJustification }
 //
 // THE MEASUREMENT, one BuildBuddy runner, one run, warm target directory, so the two figures are
 // comparable: the discriminator alone is 184.65s (`test result: ok`, pair PASSED); the default
-// `--lib` suite that runs on every push and pull request is 456.28s. Un-ignoring it is therefore
+// `--lib` suite -- which ran on every push and pull request when this was measured, and runs on
+// no CI path now -- is 456.28s. Un-ignoring it is therefore
 // roughly +40% on that suite, fleet-wide, per push. NOT MEASURED COLD, and stated rather than
 // estimated: a cold runner pays the dependency graph first. WHAT THE 185s IS, so nobody prices a
 // black box: two emitted-crate cargo builds -- the control's closure is 6 files, the red's is 17,

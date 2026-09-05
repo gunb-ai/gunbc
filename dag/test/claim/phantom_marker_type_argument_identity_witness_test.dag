@@ -201,12 +201,50 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
   = SourceToEmittedTextHonestyOnly
   | EmittedCrateMeaningDiscriminator
 
-// THE ROUTE OWNER IS REPOINTED BECAUSE THE ONE NAMED HERE WAS CLOSED, WHICH MADE
-// THE TRIGGER UNRETIRABLE. node://adhoc-da8c65c0-b3b reached status DONE on
-// 2026-09-01 without the capability it owed existing, so this row named a next-rung
-// trigger nobody was accountable for -- the untracked stall DESIGN 4b(2) forbids,
-// wearing the shape of a tracked one. A trigger is retired BY ITS TRIGGER AND BY
-// NOTHING ELSE, and a trigger whose owner cannot act is retired by nothing at all.
+// THE OWNER MUST OUTLIVE EVERY SESSION, AND A NODE IDENTITY CANNOT. This row first
+// named node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the
+// capability it owed existing -- a next-rung trigger nobody was accountable for, the
+// untracked stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was
+// then repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A
+// LONGER FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the
+// repair, so it closes when that lane finishes -- possibly the same morning. Both
+// pointed at a referent with a LIFECYCLE, and a citation whose referent has a
+// lifecycle dies silently when that lifecycle ends, with nothing in this file
+// changing at the moment it becomes false.
+//
+// THE TEST THIS FIELD MUST PASS, stated so the next repoint is decidable rather than
+// a matter of who is awake: if every session running today archived tonight, would
+// this trigger still have an accountable owner tomorrow? A lane session fails that
+// test by construction, and so does the manager session above it -- both are
+// sessions. Checking that a candidate node is currently in_progress answers the
+// STATUS question and never the LIFETIME one; the first repoint was ratified on
+// exactly that check.
+//
+// SO THE OWNER IS A STANDING AUTHORITY THAT NAMES THE CAPABILITY, NOT A NODE.
+// `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
+// route this trigger is waiting on -- it enumerates that host's declarations and
+// owns their growth obligations -- so it is accountable for the route's extension
+// for as long as the route exists, which is the property a next-rung trigger needs
+// and a work item cannot have. A trigger is retired BY ITS TRIGGER AND BY NOTHING
+// ELSE, and a trigger whose owner has ceased to exist is retired by nothing at all.
+//
+// THE SYMBOL IS CITED RATHER THAN THE MODULE, per DESIGN section 3. A module
+// citation is durable against closure but not against the module being split or its
+// obligations restructured, so this field names
+// `emitted_closure_compile_seed_growth_justification` -- the single declaration in
+// that module, and the one carrying the growth obligation for this route's host. If
+// that module is ever split, the citation follows the obligation rather than the
+// filename.
+//
+// AND THE OWNER'S PROSE INSTABILITY IS NOT AN OWNERSHIP OBJECTION, said out loud
+// because a reader who knows that file will otherwise wonder. That module's
+// CI-shape paragraph has turned over four times in five days, which is why this
+// change repairs a stale sentence in it rather than adding a fifth turnover note.
+// That is instability of an EXPLANATION about a CI job. Ownership of the route is a
+// different property, and it has not moved: the module names the fixture-closure
+// route throughout and carries its growth obligations. An unstable explanation
+// inside an authority does not make the authority the wrong owner; it makes that
+// paragraph a failure-mode instance, which is where it is now filed.
 type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
 
 type PhantomMarkerMeaningDiscriminatorCeiling {
@@ -220,5 +258,5 @@ data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscr
   standing: MeaningDiscriminatorExecutedNotEnrolled,
   enrolled_boundary: SourceToEmittedTextHonestyOnly,
   next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
-  route_owner: "node://adhoc-f044ad97-222" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+  route_owner: "gunbc.emitted_closure_compile_seed_growth emitted_closure_compile_seed_growth_justification" as PhantomMarkerMeaningDiscriminatorRouteOwner,
 }
