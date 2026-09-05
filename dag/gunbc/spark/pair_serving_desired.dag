@@ -23,6 +23,8 @@ import gunbc.spark.fabric_link_desired {
   spark_fabric_endpoint, FabricEndpointFound, FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
 }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
+import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve }
+import gunbc.fleet_intent_network { operator_host_srv7 }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A PAIR, NOT A HOST. DeepSeek V4 Flash does
 // not fit one Spark's unified pool, so the desired serving state is one vLLM engine spanning two
@@ -35,15 +37,16 @@ import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarge
 //
 // What this module decides, and refuses to decide:
 //   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
-//     262144 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
+//     1048576 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
 //   - max-num-seqs is BY MEASURED POOL, and until that measurement is a row the unit refuses --
 //     a fabricated count would be exactly the plausible output §5 forbids;
 //   - which two hosts form a pair is the fabric's fact (gunbc.spark.fabric_link_desired), and each
 //     rank's host address is resolved through the link, never spelled here;
 //   - a pair whose host still holds an undischarged llama.cpp RPC peer reservation is refused, the
 //     same wall test.claim.spark_llama_cpp_rpc_witness holds over the cell-role roster;
-//   - the head rank is the first host of the pair as the fabric authority lists it; this is an
-//     arbitrary choice written down as attributable, like the router-slot allocation.
+//   - the head rank is an observed fact per pair (which host carries the serve process and the
+//     Ray node address), recorded in spark_pair_serving_head with its basis, never derived from
+//     list order.
 
 type SparkPairServingRole = PairHead | PairWorker
 
@@ -59,9 +62,14 @@ type SparkPairServingSeqCapacity
   = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// The pool has not been measured under the pair tuple by an executed observation yet; the unit
-// refuses until this row is replaced by a SeqCapacityMeasured carrying that observation's basis.
-data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityUnmeasured
+// Measured on 2026-09-05 from the engine's own startup line (gunbc.spark.pair_serving_observed
+// first_pair_kv_pool): 4,632,182 tokens of KV, 4.42x concurrency at the 1M context. 32 is the
+// value the launch script settled on and records its reason for: at 16 the 24-stream aggregate
+// is never reached however much pool is free. The pool is not the limiter; max-num-seqs is.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
+  max_num_seqs: first_pair_vllm_serve.max_num_seqs,
+  basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String], "") as NonEmptyStr,
+}
 
 // "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
 // resource isolation off, which extdeps.ray.threshold_memory_monitor resolves to no enforcing
@@ -76,11 +84,22 @@ data spark_pair_serving_rail: SparkFabricRail = Rail0
 // on their fabric pair being observed and enrolled in fabric_link_desired; srv10 is the RMA unit.
 data spark_pair_serving_pairs: List<SparkFabricPair> = [Srv5Srv6]
 
+// WHICH HOST IS THE HEAD IS OBSERVED, NOT DERIVED FROM LIST ORDER. For the first pair the serve
+// process, the head unit and the Ray node address are all on srv6 (pair_serving_observed); for
+// srv7/srv8 the front door observed on 2026-09-02 is srv7. A derivation from the fabric row's
+// endpoint order would have named srv5, which is the worker.
+fn spark_pair_serving_head(pair: SparkFabricPair) -> HostIdentity {
+  match pair {
+    Srv5Srv6 => first_pair_observed_head
+    Srv7Srv8 => operator_host_srv7
+  }
+}
+
 fn spark_pair_serving_engine_args(max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
     tensor_parallel_size: 2,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
-    max_model_len: token_count(count: 262144),
+    max_model_len: token_count(count: 1048576),
     max_num_seqs: max_num_seqs,
     kv_cache_dtype: KvFp8DsMla,
     distributed_executor_backend: ExecutorRay,
@@ -167,8 +186,8 @@ fn spark_pair_serving_unit_with(pair: SparkFabricPair, capacity: SparkPairServin
           EnforcerRefused { cause: c } =>
             SparkPairServingUnitRefused { pair: pair, cause: join(["memory enforcer law refuses the tuple: ", enforcer_refusal_wire(cause: c)], "") as NonEmptyStr }
           EnforcerAdmitted { enforcer: _ } =>
-            match first(hosts) {
-              Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists no hosts" as NonEmptyStr }
+            match first(filter(hosts, h => host_identity_eq(a: h, b: spark_pair_serving_head(pair: pair)))) {
+              Absent => SparkPairServingUnitRefused { pair: pair, cause: "the observed head is not a host of its own fabric pair" as NonEmptyStr }
               Present { value: head_host } =>
                 match first(filter(hosts, h => !host_identity_eq(a: h, b: head_host))) {
                   Absent => SparkPairServingUnitRefused { pair: pair, cause: "the fabric pair lists one host twice" as NonEmptyStr }

@@ -7,6 +7,8 @@ import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import extdeps.vllm.engine_args { KvFp8DsMla, ExecutorRay, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
+import gunbc.fleet_intent_network { operator_host_srv6, operator_host_srv5 }
+import gunbc.spark.pair_serving_observed { first_pair_ray_head, first_pair_kv_pool }
 import gunbc.spark.fabric_link_desired {
   Srv5Srv6, Srv7Srv8, Rail0, fabric_link_identity, spark_fabric_endpoint, FabricEndpointFound,
   FabricEndpointHostNotOnLink, FabricEndpointLinkUnresolved,
@@ -20,13 +22,13 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_wire,
 }
 
-// THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW. TP=2, 82% of the unified pool, 262144 context,
+// THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW. TP=2, 82% of the unified pool, 1048576 context,
 // the DeepSeek MLA fp8 KV layout, Ray as the executor; nothing here is re-derived.
 test fn the_pair_engine_tuple_is_the_observed_safe_tuple() -> Bool {
   let a = spark_pair_serving_engine_args(max_num_seqs: 32)
   a.tensor_parallel_size == 2
     && percent_count(p: a.gpu_memory_utilization.fraction) == 82
-    && token_count_value(t: a.max_model_len) == 262144
+    && token_count_value(t: a.max_model_len) == 1048576
     && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
     && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
 }
@@ -95,4 +97,27 @@ test fn the_wire_names_the_pair_and_both_ranks_or_the_cause() -> Bool {
   let refused = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(pair: Srv7Srv8))
   string_contains(s: ready, pattern: " head=") && string_contains(s: ready, pattern: " worker=")
     && string_contains(s: refused, pattern: " refused: ")
+}
+
+// THE HEAD IS THE HOST THAT CARRIES THE RAY NODE ADDRESS. srv6 is the observed head; a derivation
+// from the fabric row's endpoint order would have made srv5 the head, and srv5 runs only the worker.
+test fn the_first_pair_head_is_srv6_at_the_ray_node_address_and_srv5_is_the_worker() -> Bool {
+  match spark_pair_serving_unit(pair: Srv5Srv6) {
+    SparkPairServingUnitRefused { pair: _, cause: _ } => false
+    SparkPairServingUnitReady { pair: _, engine: _, head: h, worker: w } =>
+      host_identity_eq(a: h.host, b: operator_host_srv6)
+        && host_identity_eq(a: w.host, b: operator_host_srv5)
+        && ipv4_address_eq(a: h.host_ip, b: first_pair_ray_head.node_ip)
+  }
+}
+
+// THE MEASURED POOL MAKES THE FIRST PAIR READY, AND THE COUNT IS THE OBSERVED ONE. The production
+// capacity row now carries the 2026-09-05 measurement; the unit's max-num-seqs is the launch's 32.
+test fn the_measured_pool_makes_the_first_pair_ready_with_the_launched_seq_count() -> Bool {
+  first_pair_kv_pool.pool_tokens == 4632182
+    && (match spark_pair_serving_unit(pair: Srv5Srv6) {
+          SparkPairServingUnitRefused { pair: _, cause: _ } => false
+          SparkPairServingUnitReady { pair: _, engine: e, head: _, worker: _ } =>
+            match e { VllmServing { args: a } => a.max_num_seqs == 32  OllamaServing { profile: _ } => false }
+        })
 }
