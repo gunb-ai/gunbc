@@ -176,7 +176,16 @@ fn floor_route_gap_chunk_00() -> List<String> {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_names_a_row_that_went_dark_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_reconciles_with_both_rosters_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_duplicated_identity_by_real_execution",
+      tail: Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_substituted_identity_by_real_execution",
       tail: Empty {}
+    }
+    }
+    }
     }
     }
     }

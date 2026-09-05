@@ -80,5 +80,7 @@ data printed_remedy_is_mangled_by_the_medium_that_prints_it: RecurringFailureMod
     DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_recipe", decl_name: "heal_recipe_names_only_the_variable_the_driver_defines", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "driver_printed_step_two_carries_the_row_extractor_by_real_execution", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "row_extractor_reconciles_with_both_rosters_by_real_execution", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "row_extractor_refuses_a_substituted_identity_by_real_execution", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "row_extractor_refuses_a_duplicated_identity_by_real_execution", field: WholeDeclaration },
   ],
 }
