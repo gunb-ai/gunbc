@@ -42,6 +42,9 @@ import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
 import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re_enumerates_its_own_rows_stall }
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
+import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
+import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
+import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -104,14 +107,30 @@ import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_h
 // alternative today is still this authored roster or no consumer, but
 // declaration enumeration is no longer the blocker.
 // TRIGGER: fail-closed typed data-value reflection enumerates exactly every top-level data
-// declaration under the gunbc.guarantee_stall module tree whose declared type is GuaranteeStall,
-// and no declaration outside it, and projects each fully evaluated value in deterministic roster
-// order,
+// declaration whose declared type is GuaranteeStall, WHEREVER IT IS DECLARED, and projects each
+// fully evaluated value in deterministic roster order,
 // SUFFICIENT FOR reconstructing every field of every GuaranteeStall row and refusing any initializer
 // form or field value it cannot project rather than substituting NotVariantValue. At that point this
 // list is DERIVED and an unenrolled row has no spelling. A declaration-identity,
 // initializer-shape, or corpus-wide GuaranteeStall surface alone does not satisfy the trigger.
+//
+// THE TRIGGER'S SCOPE WAS NARROWED TO THIS DIRECTORY AND IS CORRECTED HERE, because the narrow form
+// would have been satisfied while the defect stood. It read "every declaration under the
+// gunbc.guarantee_stall module tree, and no declaration outside it" -- and five valid rows were
+// declared outside that tree, so a derivation meeting that trigger exactly would have reproduced
+// today's list and dropped all five. A trigger naming less than the capability it restores is the
+// DESIGN section 4b(3) failure, and this is that failure in its containment-scope form.
 
+// THE FIVE ROWS AT THE END ARRIVED LATE AND WERE FOUND BY THE JOIN, not by a reading of this file.
+// They are declared beside the subject they are about -- two in gunbc.namespace_wave_admission,
+// two in gunbc.runner_service_activation, one in gunbc.declaration_index_seed_growth -- rather
+// than as row modules under this directory, so the file-versus-list set difference that made a
+// missing row obvious after the per-row split could never see them. They were declared, typed,
+// valid, and absent from every projection this roster feeds, which is the exact defect
+// roster_re_enumerates_its_own_rows_stall names, standing unnoticed inside its own carrier. They are
+// rostered here rather than moved: a row's prose is about the module it sits in, and relocating five
+// rows to make a set difference work would be the tidiness the section 3 citation rule refuses.
+// Their absence is what the declared-versus-rostered join first refused; nothing else had reported it.
 data all_guarantee_stalls: List<GuaranteeStall> = [
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
@@ -143,6 +162,11 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   operation_argv_binding_wall_stall,
   roster_re_enumerates_its_own_rows_stall,
   self_host_wet_route_receipt_lifetime_stall,
+  namespace_wave_admission_occurrence_grain_stall,
+  namespace_wave_admission_board_grain_stall,
+  runner_activation_reachability_stall,
+  runner_activation_safety_stall,
+  declaration_index_fixture_exemption_classification_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
@@ -156,10 +180,16 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
 // WHAT THIS CHECK COVERS AND WHAT IT DOES NOT, stated because a check that does not state its own
 // denominator cannot be distinguished from a complete one. It covers exactly these four subjects:
 // if any is dropped from the roster again, the fold refuses. It does NOT detect a NEW stall
-// declared and left unrostered -- that requires a corpus-wide census of GuaranteeStall
-// declarations joined against the roster, which is a separate obligation and is gated on whether
-// its RED is authorable at all (a stall declared in a module the roster cannot import may not be
-// expressible in any fixture, and a check whose RED has nowhere to live is a decoration).
+// declared and left unrostered -- that is a corpus-wide census of GuaranteeStall declarations
+// joined against this roster, and it now EXISTS: gunbc.rostered_row_join enrols this roster, and
+// v1_compiler.cli_run.rostered_row_join executes the join inside the required-CI parse phase on
+// every push and pull request. The open question this paragraph recorded -- whether such a check's
+// RED is authorable at all -- was answered by execution rather than by argument: the red is
+// authored as a FIXTURE ROSTER (test.fixture.rostered_row_join.omitted_control) whose declared row
+// is deliberately left out, so the refusal has a home that does not require planting a false stall
+// in this carrier. The four rows below therefore stop being the only coverage; they remain enrolled
+// because a presence-exactly-once fold also refuses a DOUBLE entry, which an identity join treating
+// membership as a set does not see.
 //
 // PRESENCE-EXACTLY-ONCE, NOT SET EQUALITY, and the asymmetry is deliberate: a new stall row must
 // be admitted without editing this list, while a lost one must refuse. Exactly-once also refuses
