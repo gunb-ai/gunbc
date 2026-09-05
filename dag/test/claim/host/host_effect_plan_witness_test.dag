@@ -2,6 +2,7 @@ module test.claim.host_effect_plan_witness
 
 import std.logic { Bool }
 import gunbc.host_effect {
+  HostEffect,
   NodeControlPlane, HostOs,
   host_effect_identity_evidence,
   LocalShell,
@@ -78,14 +79,31 @@ test fn witness_control_flow_step_refuses_without_fabricated_effect() -> Bool {
   }
 }
 
+fn witness_two_do_plan(first: HostEffect, last: HostEffect) -> HostEffectPlan {
+  EffectPlan {
+    steps: [Do { effect: first }, Do { effect: last }],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_unsupported_then_do_plan() -> HostEffectPlan {
+  EffectPlan {
+    steps: [
+      If {
+        cond: ExitZero { run: Run { command: "true", env: Empty, redirect: Absent, capture: Absent } },
+        then_: witness_empty_plan(), else_: Absent,
+      },
+      Do { effect: Srv3ReceiptEmit { lines: ["must-not-run"] } },
+    ],
+    on_failure: FailFast,
+  }
+}
+
 // Distinct receipt subjects distinguish the last attempted leaf from the first.
 test fn witness_do_retains_actual_intent() -> Bool {
   let effect = Srv3ReceiptEmit { lines: ["last-effect"] }
   match host_effect_plan_apply(
-    plan: EffectPlan {
-      steps: [Do { effect: Srv3ReceiptEmit { lines: ["first-effect"] } }, Do { effect: effect }],
-      on_failure: FailFast,
-    },
+    plan: witness_two_do_plan(first: Srv3ReceiptEmit { lines: ["first-effect"] }, last: effect),
     ctx: witness_plan_ctx(),
   ) {
     Converged { evidence: _, applied: Present { value: intent } } => intent.effect == effect
@@ -96,10 +114,7 @@ test fn witness_do_retains_actual_intent() -> Bool {
 test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool {
   let effect = gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem }
   match host_effect_plan_apply(
-    plan: EffectPlan {
-      steps: [Do { effect: effect }, Do { effect: Srv3ReceiptEmit { lines: ["must-not-run"] } }],
-      on_failure: FailFast,
-    },
+    plan: witness_two_do_plan(first: effect, last: Srv3ReceiptEmit { lines: ["must-not-run"] }),
     ctx: witness_plan_ctx(),
   ) {
     NotConverged { reason: _, applied: Present { value: intent } } => intent.effect == effect
@@ -109,16 +124,7 @@ test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool
 
 test fn witness_unsupported_step_stops_before_next_effect() -> Bool {
   match host_effect_plan_apply(
-    plan: EffectPlan {
-      steps: [
-        If {
-          cond: ExitZero { run: Run { command: "true", env: Empty, redirect: Absent, capture: Absent } },
-          then_: witness_empty_plan(), else_: Absent,
-        },
-        Do { effect: Srv3ReceiptEmit { lines: ["must-not-run"] } },
-      ],
-      on_failure: FailFast,
-    },
+    plan: witness_unsupported_then_do_plan(),
     ctx: witness_plan_ctx(),
   ) {
     NotConverged { reason: _, applied: Absent } => true

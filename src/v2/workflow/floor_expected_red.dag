@@ -341,8 +341,17 @@ fn floor_expected_red_chunk_02() -> List<String> {
   Cons { head: "test.claim.exact_witness_admission_witness.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: Cons { head: "test.claim.exact_witness_admission_witness.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: Empty {} } }
 }
 
+// ShellCommand dissolution moved these controls onto typed principal reads. Measured
+// 2026-09-05: all five pass wet and answer false hermetically, rather than route-gap.
+// The local read mock refuses observation; the SSH mock reports unconditional success.
+// Keep both distinct from wet evidence. The mock deficit is recorded in
+// gunbc.recurring_failure_mode.transport_mock_success_independent_of_request.
 fn floor_expected_red_chunk_03() -> List<String> {
-  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Empty {} }
+  Cons { head: "test.claim.host_effect_apply_witness.witness_converged_is_settled", tail:
+  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail:
+  Cons { head: "test.claim.host_effect_apply_witness.witness_typed_read_on_host_success_converges", tail:
+  Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution", tail:
+  Cons { head: "test.claim.host_effect_plan_real_execution.host_effect_plan_typed_read_witness_holds_by_real_execution", tail: Empty {} } } } } }
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {

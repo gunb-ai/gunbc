@@ -2,6 +2,10 @@ module test.claim.srv3_host_effect_apply_witness
 
 import std.dissolution { dissolution_description }
 import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_response_path }
+import gunbc.srv3_host_effect_apply {
+  srv3_shell_stdout_from_apply,
+  srv3_typed_receipt_from_lines,
+}
 import gunbc.host_effect_realize {
   bmcweb_token_extract_jq_args,
   bmcweb_token_extraction_verdict,
