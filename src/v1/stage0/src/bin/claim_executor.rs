@@ -1153,10 +1153,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             source_roots.clone()
         };
         // THE DEFAULT IS AN INDEPENDENT READ OF THE CHECKED-OUT TREE, NOT A DEFAULT AT ALL IN THE
-        // SENSE section 5 forbids. The ledger's header carries what the floor was TOLD it was
-        // running at, which on CI is GITHUB_SHA; this reads what the working tree IS. Two
-        // instruments, so the comparison can fail. Taking the value from the ledger, or from the
-        // same environment variable the floor read, would make it agree with itself.
+        // SENSE section 5 forbids. It must not be read from the ledger, nor from the same
+        // GITHUB_SHA the floor stamped, or the artifact would answer a question about its own
+        // freshness.
+        //
+        // This used to claim the two are "two instruments, so the comparison can fail". Within one
+        // CI run they are not: checkout puts the worktree at exactly GITHUB_SHA on both trigger
+        // classes, so they agree by construction. The comparison discriminates ACROSS runs -- a
+        // ledger left behind by an earlier one carries that run's revision -- which is the stale
+        // evidence class it exists for. See head_commit_of_worktree for the full statement.
         let commit = match fabric_gate_standing_commit {
             Some(commit) => commit,
             None => match v1_compiler::cli_run::fabric_gate_standing::head_commit_of_worktree() {

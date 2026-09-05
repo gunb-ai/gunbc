@@ -140,9 +140,26 @@ pub fn adjudicate_published_ledger(
 
 /// THE REVISION THE TREE IS STANDING AT, READ FROM GIT RATHER THAN FROM THE ENVIRONMENT.
 ///
-/// `GITHUB_SHA` is what the floor stamps into the ledger header, so reading it here would compare
-/// one variable to itself. `git rev-parse HEAD` asks the checked-out worktree instead, which is a
-/// different instrument and can therefore disagree — which is the whole content of the guard.
+/// WHAT THIS GUARD ACTUALLY FALSIFIES, stated narrowly because a previous version of this note
+/// overclaimed it. It said `git rev-parse HEAD` is "a different instrument" from the `GITHUB_SHA`
+/// the floor stamps, and can therefore disagree. On a single CI run it CANNOT: `actions/checkout`
+/// checks out exactly `GITHUB_SHA` on a push, and the merge commit whose SHA is `GITHUB_SHA` on a
+/// pull_request, so the two agree BY CONSTRUCTION on both trigger classes. Read as a cross-check
+/// of one run, this comparison has no authorable red and would be a decoration.
+///
+/// Its red is authorable across RUNS, not within one. The header records the revision the floor
+/// was running at WHEN IT PUBLISHED; this reads the revision the tree is at WHEN IT ADJUDICATES.
+/// A ledger left in `target/` by an earlier run carries that earlier run's revision, so a stale
+/// artifact adjudicated against the current tree disagrees and refuses. That staleness — evidence
+/// surviving the run that produced it — is the class this guard exists for, and it is the only
+/// class it discriminates.
+///
+/// So the honest reason not to read `GITHUB_SHA` here is not instrument diversity: it is that
+/// taking the revision from the same variable the producer stamped, or from the ledger itself,
+/// would make the artifact answer a question about its own freshness. The value must come from
+/// outside the artifact for the comparison to mean anything, and the worktree is the referent
+/// available at adjudication time.
+///
 /// Every failure is a refusal: a tree whose revision cannot be read cannot adjudicate a ledger
 /// bound to one.
 pub fn head_commit_of_worktree() -> Result<String, String> {
