@@ -1358,6 +1358,19 @@ pub struct TransitionAdmission {
 /// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
 /// branches short rather than to defer the payment.
 ///
+/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10300). Both `param_names_of` rows -- the
+/// `effect_reach` and `live_read_classification` consumers -- are deleted here. The entry above
+/// predicted exactly this: once #10300 merged, the base binds the spelling to `v2.std.fn_index` in
+/// both modules and the deltas stop being producible. The required phase reported them by identity
+/// as `CONSUMED ADMISSION`, 2 of 2, on this branch's own head, and refused the change until they
+/// were removed -- so the deletion is adjudicated by a run rather than by this sentence, which is
+/// the standard the entry above sets for itself.
+///
+/// THE TOLL IS REAL AND IS NOT AN ARGUMENT AGAINST THE RULE. This is the second cohort this branch
+/// has paid for work it has nothing to do with, and the observation the #10300 entry leaves stands
+/// unchanged: a long-lived branch pays proportionally to how long it stays open, and the honest
+/// remedy is shorter branches rather than deferred payment.
+///
 /// PARSED ITEM KIND VOCABULARY MOVE (2026-09-05, gunbc#10459). No ordinal is claimed here: the
 /// entries above number themselves against a sequence that other lanes are appending to
 /// concurrently, so a number chosen on this branch would be wrong by the time it merged.
@@ -1400,26 +1413,6 @@ const PARSED_ITEM_KIND_VOCABULARY_LABEL: &str =
     "parsed module item kind vocabulary move gunbc#10459 2026-09-05";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (effect_reach)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.effect_reach",
-            in_declaration: "flows_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10300 param_names_of grounding: the last duplicated fn-arrow helper joins v2.std.fn_index (live_read_classification)",
-        subject: AdmissionSubject::Binding {
-            module: "v2.lens.live_read_classification",
-            in_declaration: "carriers_from_reachable_decls",
-            spelling: "param_names_of",
-            target: "v2.std.fn_index",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: PARSED_ITEM_KIND_VOCABULARY_LABEL,
         subject: AdmissionSubject::Binding {
