@@ -1,6 +1,7 @@
 module extdeps.cadquery.cadquery
 
 import std.types { String, NonEmptyStr, List }
+import std.measure { Micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -58,19 +59,33 @@ fn cadquery_run_program_command(script_path: String) -> ArgvCommand {
 // safety of a particular setting is established downstream by MEASURING the chord error it produces,
 // in a unit this substrate does have. Retyping it would have looked more principled and would have
 // asserted an exactness that does not exist.
+// THE TWO KNOBS ARE NOT THE SAME KIND OF THING, and an earlier revision typed them alike as text,
+// which read as consistency and was a modelling loss on one of them. The ANGULAR knob is genuinely
+// an opaque upstream number for the reason above. The LINEAR knob is a LENGTH -- upstream documents
+// it in millimetres -- and this substrate carries lengths. Spelling a length as a string merges the
+// quantity with its textual realization, which DESIGN section 3 separates: the interface here is a
+// length, and the Python spelling is one realization of it.
 type StlExportKnobs sole_constructor {
-  linear_tolerance_text: NonEmptyStr
+  linear_tolerance: Micrometer
   angular_tolerance_text: NonEmptyStr
 }
 
-fn stl_export_knobs(linear_tolerance_text: NonEmptyStr, angular_tolerance_text: NonEmptyStr) -> StlExportKnobs {
-  StlExportKnobs { linear_tolerance_text: linear_tolerance_text, angular_tolerance_text: angular_tolerance_text }
+fn stl_export_knobs(linear_tolerance: Micrometer, angular_tolerance_text: NonEmptyStr) -> StlExportKnobs {
+  StlExportKnobs { linear_tolerance: linear_tolerance, angular_tolerance_text: angular_tolerance_text }
+}
+
+// RENDERED IN EXPONENT FORM RATHER THAN AS A DECIMAL FRACTION, because a micrometre is exactly one
+// thousandth of the millimetre upstream expects, so `<count>e-3` is an EXACT restatement of the
+// modelled integer. Emitting "0.001" instead would require zero-padding a fractional field, and a
+// padding bug there produces a silently different tolerance rather than a syntax error.
+fn render_millimetre_tolerance(t: Micrometer) -> String {
+  concat(to_string(micrometer_count(m: t)), "e-3")
 }
 
 fn stl_export_call(destination: String, knobs: StlExportKnobs) -> String {
   join([
     "cq.exporters.export(result, \"", destination, "\"",
-    ", tolerance=", knobs.linear_tolerance_text as String,
+    ", tolerance=", render_millimetre_tolerance(t: knobs.linear_tolerance),
     ", angularTolerance=", knobs.angular_tolerance_text as String,
     ")\n",
   ], "")

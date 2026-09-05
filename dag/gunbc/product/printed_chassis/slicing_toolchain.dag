@@ -1,0 +1,111 @@
+module product.printed_chassis.slicing_toolchain
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.gnu.libc {
+  GlibcVersion, glibc_version, render_glibc_version, glibc_version_at_least,
+}
+import extdeps.printing.orca_slicer {
+  orca_slicer_version, orca_slicer_linux_aarch64_appimage,
+  orca_slicer_linux_aarch64_appimage_sha256, orca_slicer_required_glibc,
+  orca_slice_to_project_command,
+}
+
+// WHERE THE MESH-TO-MACHINE ROUTE STOPS TODAY, DECLARED RATHER THAN DISCOVERED AT RUN TIME.
+//
+// product.printed_chassis.export_profile ends at an STL. A Bambu Lab A1 mini in LAN Mode consumes a
+// sliced project, so exactly one step stands between a verified mesh and a printable artifact, and
+// this module is that step.
+//
+// IT CURRENTLY REFUSES, AND THE REFUSAL IS THE POINT. The slicer upstream publishes an aarch64
+// binary whose measured floor is glibc 2.38; this container is Debian 12 and provides 2.36. That is
+// not a modelling gap and no amount of further modelling moves it -- it is an external fact about
+// the execution environment, which DESIGN section 4b keeps OFF the guarantee ladder and requires be
+// observed and refused at a declared boundary rather than fabricated around.
+//
+// THE ROUTE AROUND IT IS NAMED HERE SO IT IS NOT REDISCOVERED AS A GOOD IDEA. Unpacking the
+// AppImage and supplying the newer symbols from somewhere else is the same move that was already
+// made once in this product's history, against the CAD kernel, and rejected: it produces a
+// toolchain no declaration accounts for and whose compatibility is decided by wherever the objects
+// came from. The difference between that and the conda-forge route which SUCCEEDED there is not
+// effort or cleverness -- it is that a dependency manager resolved a complete environment, and a
+// hand-assembled library path did not.
+
+// WHAT THE HOST PROVIDES, AS AN OBSERVATION WITH ITS OWN UNMEASURED ARM. An unobserved host is not
+// a satisfied host and is not a failing one either; the two have different remedies and only the
+// second is a statement about compatibility.
+type HostRuntimeObservation
+  = HostGlibcObserved { version: GlibcVersion, instrument: NonEmptyStr }
+  | HostGlibcUnobserved
+
+// THE MEASUREMENT THIS CONTAINER ACTUALLY REPORTED. The instrument is named rather than its output
+// being presented as self-evident: ldd prints the library's own version as the trailing field of
+// its first line, which is why it is read positionally instead of by matching Debian's phrasing.
+data observed_container_glibc: HostRuntimeObservation = HostGlibcObserved {
+  version: glibc_version(major: 2, minor: 36),
+  instrument: "ldd --version, first line, trailing field",
+}
+
+type SlicerStanding
+  = SlicerRunnable { program: NonEmptyStr }
+  | SlicerAbiFloorUnmet { provided: GlibcVersion, required: GlibcVersion }
+  | SlicerHostUnobserved
+
+// THE JUDGEMENT. Note which way the unobserved arm falls: an unmeasured host REFUSES rather than
+// being optimistically admitted, because the failure it would otherwise buy is a dynamic-linker
+// error at the moment of use, long after the decision that should have caught it.
+fn judge_slicer(observation: HostRuntimeObservation, program: NonEmptyStr) -> SlicerStanding {
+  match observation {
+    HostGlibcUnobserved => SlicerHostUnobserved
+    HostGlibcObserved { version: v, instrument: _ } =>
+      if glibc_version_at_least(provided: v, required: orca_slicer_required_glibc) {
+        SlicerRunnable { program: program }
+      } else {
+        SlicerAbiFloorUnmet { provided: v, required: orca_slicer_required_glibc }
+      }
+  }
+}
+
+// THE PLAN IS MINTED ONLY ON THE RUNNABLE ARM, so holding one is holding proof the host was judged
+// against the artifact's measured floor rather than assumed to fit it.
+type SlicePlan sole_constructor { command: ArgvCommand }
+
+fn slice_plan_command(p: SlicePlan) -> ArgvCommand { p.command }
+
+type SliceAdmission
+  = SliceAdmitted { plan: SlicePlan }
+  | SliceRefused { standing: SlicerStanding }
+
+fn admit_slice(
+  standing: SlicerStanding,
+  input_model: String,
+  output_project: String,
+  printer_profile: String,
+  filament_profile: String,
+  process_profile: String,
+) -> SliceAdmission {
+  match standing {
+    SlicerHostUnobserved => SliceRefused { standing: SlicerHostUnobserved }
+    SlicerAbiFloorUnmet { provided: p, required: r } =>
+      SliceRefused { standing: SlicerAbiFloorUnmet { provided: p, required: r } }
+    SlicerRunnable { program: prog } =>
+      SliceAdmitted {
+        plan: SlicePlan {
+          command: orca_slice_to_project_command(
+            program: prog,
+            input_model: input_model,
+            output_project: output_project,
+            printer_profile: printer_profile,
+            filament_profile: filament_profile,
+            process_profile: process_profile,
+          ),
+        },
+      }
+  }
+}
+
+// WHAT WOULD RETIRE THE REFUSAL, stated as the CAPABILITY and not as an artifact that would
+// contribute to one. A host whose glibc meets the measured floor is the whole trigger; downloading
+// a different asset, or authoring more of this module, satisfies nothing.
+data slicing_next_rung_trigger: NonEmptyStr = "an execution environment providing glibc at or above the floor measured from the pinned OrcaSlicer artifact"

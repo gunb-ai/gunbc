@@ -79,11 +79,39 @@ fn requirement_subject(r: ChordRequirement) -> ChordSubject {
   }
 }
 
+// THE FACTOR IS A POLICY BUDGET WITH AN EXTERNAL REFERENT, not a number chosen because it looked
+// safe. An earlier revision carried a bare 20 governing which observations refuse, which is the
+// ungrounded literal DESIGN section 5 refuses in a merge-blocking position: nothing beside it said
+// what would make it wrong.
+//
+// THE REFERENT IS THE GAUGEMAKER'S RULE, the metrology convention that a measuring instrument
+// should resolve about ten times finer than the tolerance it is used to judge. Under that rule the
+// mesh is the instrument and the ladder rung is the tolerance, so the rule alone would set this at
+// ten.
+//
+// WHY THIS REPOSITORY DOUBLES IT. The rule is stated for RANDOM instrument error, which partially
+// cancels across repeated readings. Tessellation error is not random: an inscribed polygon lies
+// inside the circle every time, so the deviation is SYSTEMATIC and one-directional and averages
+// away to nothing. A bias does not earn the cancellation the rule assumes, so the budget is set at
+// twice the conventional ratio. That is the whole justification, and it is falsifiable: establish a
+// bound showing the bias is compensated elsewhere in the chain and the doubling should go.
+type ChordBudgetPolicy sole_constructor {
+  ratio: Nat
+  convention: NonEmptyStr
+  why_stricter: NonEmptyStr
+}
+
+data chord_error_budget: ChordBudgetPolicy = ChordBudgetPolicy {
+  ratio: 20,
+  convention: "gaugemaker's rule: an instrument resolves ten times finer than the tolerance it judges",
+  why_stricter: "the rule assumes random error that partially cancels; an inscribed polygon undersizes every time, so this bias never averages out and is budgeted at twice the ratio",
+}
+
 // THE COMPARISON IS A MULTIPLICATION, NOT A SUBTRACTION, and that is load-bearing rather than
 // stylistic. Nat subtraction in this substrate yields a NEGATIVE value: it neither saturates nor
 // refuses, so `smallest - undersize > 0` would silently read as satisfied for exactly the
 // observations that blow the budget. Scaling the observation up has no such arm.
-data chord_error_safety_factor: Nat = 20
+data chord_error_safety_factor: Nat = chord_error_budget.ratio
 
 // ADJUDICATION JOINS THE TWO BY SUBJECT. A pair whose subjects disagree is not a weak verdict, it is
 // a mis-join, and it takes its own arm rather than being folded into a refusal that would read as a
@@ -155,7 +183,7 @@ fn admit_export_profile(knobs: StlExportKnobs, standings: List<ChordStanding>) -
 // five times -- the facet count sat unchanged and read as evidence that the knob did nothing. The
 // control only flips when the shape is rebuilt per setting.
 data exercised_stl_knobs: StlExportKnobs = stl_export_knobs(
-  linear_tolerance_text: "0.001",
+  linear_tolerance: micrometer(count: 1),
   angular_tolerance_text: "0.1",
 )
 

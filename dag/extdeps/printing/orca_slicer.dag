@@ -1,0 +1,87 @@
+module extdeps.printing.orca_slicer
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.gnu.libc { GlibcVersion, glibc_version }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/SoftFever/OrcaSlicer/releases/tag/v2.4.2"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.orca_slicer",
+      decl_name: "orca_slicer_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// WHY THIS SLICER AND NOT A DEBIAN-PACKAGED ONE, which is a real choice with a real loser.
+//
+// Debian bookworm main carries prusa-slicer, cura-engine, slic3r and slic3r-prusa for arm64. Any of
+// them installs in one apt transaction. None of them can drive the machines this repository
+// actually owns: extdeps.printing.bambu_lab_a1_mini is a Bambu Lab printer, gunbc.fleet_printer_access
+// models it in LAN Mode with an MQTT control channel and an FTPS file channel, and that firmware
+// consumes a sliced Bambu project file. A generic slicer's g-code is not that artifact. Choosing the
+// easy install would have produced a toolchain that runs end to end and emits something the printer
+// does not accept -- the fabricated plausible output DESIGN section 5 forbids, arrived at by picking
+// the dependency that was convenient rather than the one that closes the loop.
+//
+// OrcaSlicer is a PrusaSlicer derivative that carries first-party Bambu machine profiles and can
+// export the project format, which is why it is the modelled dependency despite being the harder
+// one to obtain.
+
+data orca_slicer_version: NonEmptyStr = "2.4.2"
+
+// THE PUBLISHED ARTIFACT FOR THIS ARCHITECTURE, read first-party from the release API rather than
+// relayed. aarch64 Linux appears at v2.4.0 and every aarch64 asset upstream publishes is built on
+// Ubuntu 24.04; there is no aarch64 asset built against an older toolchain to fall back to.
+data orca_slicer_linux_aarch64_appimage: NonEmptyStr = "OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage"
+
+// THE CONTENT DIGEST OF THE ARTIFACT THAT WAS ACTUALLY FETCHED AND EXAMINED. A version alone does
+// not identify bytes: a release asset can be replaced in place, and every measurement recorded in
+// this module was made against THIS content and is a claim about nothing else.
+data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba"
+
+// THE ABI FLOOR, MEASURED FROM THE ARTIFACT AND NOT INFERRED FROM ITS FILENAME.
+//
+// The AppImage was extracted and its slicer binary's symbol versions read directly: the highest
+// versioned reference is GLIBC_2.38. The Ubuntu 24.04 in the asset name would have SUGGESTED a floor
+// of 2.39, and that guess would have been WRONG IN THE DIRECTION THAT REFUSES A WORKING HOST -- a
+// build host's glibc is an upper bound on what a binary may reference, never the floor it actually
+// requires. extdeps.gnu.libc exists because a target triple does not carry this fact; a distribution
+// codename in a filename does not carry it either.
+data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 38)
+
+// THE CLI, WHICH IS THE ONLY INTERFACE THIS REPOSITORY USES. The desktop application is the same
+// binary; nothing here launches it, and nothing here needs a display.
+fn orca_slice_to_project_command(
+  program: NonEmptyStr,
+  input_model: String,
+  output_project: String,
+  printer_profile: String,
+  filament_profile: String,
+  process_profile: String,
+) -> ArgvCommand {
+  argv_command(
+    program: program,
+    arguments: [
+      "--slice", "0",
+      "--load-settings", concat(concat(printer_profile, ";"), process_profile),
+      "--load-filaments", filament_profile,
+      "--export-3mf", output_project,
+      input_model,
+    ],
+  )
+}

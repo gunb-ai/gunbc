@@ -1,0 +1,94 @@
+module test.claim.printed_chassis_slicing_toolchain_witness_test
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.gnu.libc { GlibcVersion, glibc_version, glibc_version_at_least }
+import extdeps.printing.orca_slicer { orca_slicer_required_glibc }
+import product.printed_chassis.slicing_toolchain {
+  HostRuntimeObservation, HostGlibcObserved, HostGlibcUnobserved,
+  SlicerStanding, SlicerRunnable, SlicerAbiFloorUnmet, SlicerHostUnobserved,
+  SliceAdmission, SliceAdmitted, SliceRefused,
+  judge_slicer, admit_slice, observed_container_glibc,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REFUSAL IS THE BEHAVIOUR UNDER TEST, so these witnesses are written to fail if it ever quietly
+// becomes an admission -- and paired, so they cannot be satisfied by a judgement that refuses
+// everything.
+
+fn standing_name(s: SlicerStanding) -> String {
+  match s {
+    SlicerRunnable { program: _ } => "runnable"
+    SlicerAbiFloorUnmet { provided: _, required: _ } => "abi-floor-unmet"
+    SlicerHostUnobserved => "host-unobserved"
+  }
+}
+
+fn admission_name(a: SliceAdmission) -> String {
+  match a {
+    SliceAdmitted { plan: _ } => "admitted"
+    SliceRefused { standing: _ } => "refused"
+  }
+}
+
+fn judged(v: GlibcVersion) -> String {
+  standing_name(s: judge_slicer(
+    observation: HostGlibcObserved { version: v, instrument: "fixture" },
+    program: "orca-slicer",
+  ))
+}
+
+// THE BOUNDARY, BOTH SIDES. 2.37 must refuse and 2.38 must run: a comparison that answered one way
+// for every input would satisfy either witness alone, and neither alone would notice an off-by-one
+// in the wrong direction -- which is the error that would refuse a host that actually works.
+test fn w_the_abi_floor_refuses_below_and_admits_at_the_measured_version() -> Bool {
+  judged(v: glibc_version(major: 2, minor: 37)) == "abi-floor-unmet"
+  && judged(v: glibc_version(major: 2, minor: 38)) == "runnable"
+  && judged(v: glibc_version(major: 2, minor: 39)) == "runnable"
+}
+
+// A MAJOR VERSION AHEAD WITH A SMALLER MINOR MUST STILL SATISFY. Comparing the minor alone, or
+// packing the pair into one number, both pass the witness above and fail this one.
+test fn w_a_higher_major_with_a_lower_minor_still_satisfies() -> Bool {
+  judged(v: glibc_version(major: 3, minor: 0)) == "runnable"
+  && judged(v: glibc_version(major: 1, minor: 99)) == "abi-floor-unmet"
+}
+
+// AN UNMEASURED HOST IS NOT A PASSING HOST. The arm exists so the dynamic linker is never the thing
+// that discovers a decision nobody made.
+test fn w_an_unobserved_host_refuses_rather_than_being_assumed_compatible() -> Bool {
+  standing_name(s: judge_slicer(observation: HostGlibcUnobserved, program: "orca-slicer"))
+    == "host-unobserved"
+}
+
+// THIS CONTAINER, AS MEASURED. If the execution environment is ever changed to one that meets the
+// floor, this witness goes RED -- which is correct: it is the declared refusal's own regression
+// control, and its flip is the signal to retire the refusal rather than to edit the expectation.
+test fn w_this_container_does_not_meet_the_slicers_measured_floor() -> Bool {
+  standing_name(s: judge_slicer(observation: observed_container_glibc, program: "orca-slicer"))
+    == "abi-floor-unmet"
+}
+
+// AND THE PLAN IS NOT MINTED. A refusal that still handed back a runnable command would be the
+// escape hatch DESIGN section 5 forbids; the paired admission proves the function can mint at all.
+test fn w_no_slice_plan_is_minted_while_the_floor_is_unmet_and_one_is_when_it_is_met() -> Bool {
+  let refused = admit_slice(
+    standing: judge_slicer(observation: observed_container_glibc, program: "orca-slicer"),
+    input_model: "fan_mount.stl",
+    output_project: "fan_mount.3mf",
+    printer_profile: "a1-mini",
+    filament_profile: "petg",
+    process_profile: "0.20mm",
+  )
+  let admitted = admit_slice(
+    standing: judge_slicer(
+      observation: HostGlibcObserved { version: glibc_version(major: 2, minor: 39), instrument: "fixture" },
+      program: "orca-slicer",
+    ),
+    input_model: "fan_mount.stl",
+    output_project: "fan_mount.3mf",
+    printer_profile: "a1-mini",
+    filament_profile: "petg",
+    process_profile: "0.20mm",
+  )
+  admission_name(a: refused) == "refused" && admission_name(a: admitted) == "admitted"
+}
