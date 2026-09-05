@@ -57,69 +57,63 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // drop's previous/temporary/reason fields have no answer here. The two rows are also different
 // facts: the drop states the standing unavailability, this states that one named restoration
 // conjunct is unreachable BY MEASUREMENT and what would reach it.
-// THE CONVERSION BELOW IS A CARRIER REPAIR, NOT A CORRECTION TO THIS ROW'S CONTENT. Read this
-// before drawing a conclusion about this row's author from the diff that added `climbs_when`.
+// THE CONVERSION BELOW IS A CARRIER REPAIR, NOT A CORRECTION TO THIS ROW'S CONTENT. It makes NO
+// CLAIM ABOUT ANYONE'S CONDUCT: commit order establishes neither fault nor its absence without
+// branch and review context, and this repair needs no attribution investigation to be correct.
 //
-// THE ORDER, MEASURED IN BOTH DIRECTIONS BECAUSE AN EARLIER DRAFT OF THIS COMMENT HAD IT
-// BACKWARDS. The carrier landed FIRST: 86be37f355 (gunbc#10582) at 17:21:02 already declared
+// WHAT IT IS, ACCURATELY. A REPRESENTATION AND TYPE-CORRECTNESS REPAIR PRESERVING THIS ROW'S
+// SUBSTANTIVE CAPABILITY REQUIREMENT. It is NOT a no-semantic-change edit: an incompatible
+// `String` initializer becoming a product construction is compiler-observable, and that is the
+// entire point of making it.
+//
+// THE ORDER, MEASURED IN BOTH DIRECTIONS BECAUSE AN EARLIER DRAFT HAD IT BACKWARDS. The carrier
+// landed FIRST: 86be37f355 (gunbc#10582) at 17:21:02 already declared
 // `next_rung_trigger: NextRungTrigger` and supplied `climbs_when`. This row landed at 18:35:47,
 // SEVENTY-FOUR MINUTES LATER, in 45074b4e9c (gunbc#10281), spelling the field as a bare `String`.
-// `git merge-base --is-ancestor` answers YES in the carrier-before-row direction and NO in the
-// other. So this is NOT a migration that forgot a caller, and gunbc#10582 stranded nothing: AN
-// OLD-FORMAT DECLARATION LANDED ONTO A CARRIER THAT HAD ALREADY CHANGED.
+// `git merge-base --is-ancestor` answers YES carrier-before-row and NO the other way. So gunbc#10582
+// DID NOT STRAND THIS ROW, WHICH LANDED LATER -- and that is all the ordering establishes; it says
+// nothing about whether every OTHER constructor was migrated correctly.
 //
 // THE MEASURED CONSEQUENCE. 31 of the 33 rows in this directory use the constructor; this one did
 // not, and the closure enumerating them refuses with `type mismatch: expected
 // 'Product(NextRungTrigger)', got 'Primitive(String)'`. A branch merging main could not resolve
 // that closure until this conversion was made.
 //
+// THE INCIDENT, AT ITS MEASURED GRAIN AND NO WIDER. After the product carrier landed, this
+// old-format declaration was added to main. The examined required run succeeded for its selected
+// work while all eleven roster-consuming witnesses were explicitly declined before preparation and
+// not executed. THAT SUCCESS DID NOT ESTABLISH THAT THIS DECLARATION SATISFIED THE CURRENT
+// CARRIER. This conversion repairs the initializer, not admission.
+//
 // THE MECHANISM, IN ONE LINE: DISCOVERING AN IDENTITY SO IT CAN RECEIVE A DISPOSITION IS NOT THE
-// SAME OPERATION AS PREPARING AND EXECUTING ITS DEPENDENCY CLOSURE. The witness DEPENDS ON the
-// roster -- live folds reaching the trigger, not a dead import. The required run ADMITS that
-// witness module into PREPARATION -- it does not. The first does not establish the second.
-//
-// THE INCIDENT, READ FROM THE ARTIFACT RATHER THAN INFERRED. The required-floor-disposition TSV
-// (artifact 9975676354, run 33986383584 at 2f8819b891, checked against its published SHA-256)
-// carries all ELEVEN identities of `test.claim.guarantee_stall_witness_test` as
-// `disposition = declined_outside_gate_closure`, `outcome = not_executed` -- including
-// `every_live_stall_names_a_next_rung_trigger` and `every_live_stall_trigger_is_admitted`.
-//
-// SO THE FLOOR DID NOT LIE, AND SAYING IT DID WOULD BE BOTH WRONG AND WEAKER. Every per-identity
-// disposition is exactly right: the run reported, honestly and per identity, that these witnesses
-// DID NOT RUN. What is wrong is that an AGGREGATE reported SUCCESS over a population that had
-// already excluded them. A defender can rebut "the floor lied about eleven witnesses"; nobody can
-// rebut "the floor said not_executed and the aggregate said success".
-//
-// THAT IS DENOMINATOR LOSS -- an aggregate verdict computed over an already-narrowed population,
-// so success never establishes that the ADMITTED set survived. The same shape is carried as an
-// open P0 finding at the install boundary; two boundaries exhibiting one shape is the fact worth
-// recording, not two incidents. The narrowing itself is
+// SAME OPERATION AS PREPARING AND EXECUTING ITS DEPENDENCY CLOSURE. Read from the artifact rather
+// than inferred: the required-floor-disposition TSV (artifact 9975676354, run 33986383584 at
+// 2f8819b891, checked against its published SHA-256) carries all ELEVEN identities of
+// `test.claim.guarantee_stall_witness_test` as `declined_outside_gate_closure` / `not_executed`.
+// The narrowing itself is
 // `gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector`, which
-// is the authority for it; this comment mints no second wording.
+// is the authority for that shape; this comment mints no second wording for it.
 //
-// WHAT THIS DOES NOT LICENSE, stated so nobody reaches for it: it is not an argument for compiling
-// everything whenever the selector is uncertain. That is the absorbing fallback -- denominated in
-// the corpus rather than the change, growing until the budget breaks instead of the build. A
-// widening must be explicit, bounded, and credited only for the population it actually restores.
+// ONE EXPLANATION IS WITHDRAWN AND ONE DEMONSTRATED FACT IS NOT, and an earlier draft of this
+// paragraph collapsed them. WITHDRAWN: "the roster is enumerated somewhere the floor does not
+// compile" -- inadequate, because the witnesses exist and consume the roster through live folds.
+// NOT WITHDRAWN, because it is measured: those witnesses were EXCLUDED FROM PREPARATION and did
+// not execute. The witnesses existing does not refute their exclusion; it refutes only the claim
+// that nothing reaches the roster.
 //
-// TWO EXPLANATIONS WERE OFFERED FOR THE GREEN AND BOTH ARE WITHDRAWN, recorded because an
-// unmeasured mechanism in a permanent comment is worse than no mechanism. The first was that the
-// migration missed a caller -- refuted by the ordering above. The second was that the roster is
-// enumerated somewhere the required floor does not compile -- refuted by the witnesses existing,
-// consuming it through live folds, and being reported per identity. What is measured is that they
-// were DISCOVERED and DECLINED, never prepared.
+// THE BUILD LANE DOES NOT ESTABLISH THIS EITHER, which is why no CI green is cited above as
+// evidence. Main's required-witnesses-build at 2f8819b891 reported SUCCESS with this exact type
+// error present. Compiling the DECLARATION of `NextRungTrigger` does not establish that an
+// INITIALIZER using it was checked, and the run's own identity census makes that distinction.
 //
-// THE QUESTION THIS OPENS is sharper than either withdrawn explanation, and no census at the
-// carrier's own PR could have answered it: DOES ADMISSION VALIDATE AN INCOMING DECLARATION AGAINST
-// THE CARRIER CURRENT AT PLACEMENT? A clean merge and an active author do not establish
-// compatibility with an intervening authority change. The discriminating evidence for that work is
-// an incoming old-format constructor under the new carrier, REFUSED BY AN EXECUTING REQUIRED
-// CONSUMER, with the valid `climbs_when` construction still accepted; a roster-membership check
-// establishes neither half.
+// WHAT THIS DOES NOT LICENSE: it is not an argument for compiling everything whenever the selector
+// is uncertain. That is the absorbing fallback -- denominated in the corpus rather than the change,
+// growing until the budget breaks instead of the build. A widening must be explicit, bounded, and
+// credited only for the population it actually restores.
 //
 // THE CONVERSION IS MECHANICAL AND VERIFIED AS SUCH: the capability text is byte-identical at 321
-// characters, and `awaiting: []` discards nothing -- the original trigger carried no referent
-// provenance to lose. It restores resolution; IT CLOSES NOTHING about admission.
+// characters, and `awaiting: []` discards nothing -- the original trigger carried no
+// delivering-lane provenance to lose. It restores resolution; IT CLOSES NOTHING about admission.
 
 data floor_cost_basis_boundedness_stall: GuaranteeStall = GuaranteeStall {
   subject: "the BOUNDEDNESS-BY-CONSTRUCTION arm of conjunct (ii) of gunbc.rung_drop.floor_cost_claim_qualification_unavailable's restoration trigger: repeated execution measurement cannot establish it, because every observed maximum is a LOWER bound on the smallest valid bound rather than an upper bound over the admitted envelope",
