@@ -69,6 +69,7 @@ fn scm_sv_unrepresentable_repository() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: Present { value: RepositoryCommitRef { identity: MintedId { ordinal: 1 } } },
+    staged: none,
   }
 }
 

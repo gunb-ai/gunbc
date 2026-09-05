@@ -873,6 +873,35 @@ fn canonical_manifest_entries(entries: List<CorpusManifestEntry>) -> List<Corpus
   sort_by(entries, fn(e) { e.path as String })
 }
 
+// BINDING A PATH REPLACES, AND THE REPLACEMENT IS THE TYPE'S LAW RATHER THAN A CALLER'S HABIT.
+//
+// A manifest denotes a FUNCTION from path to authored source, so binding a path that is already
+// bound must displace the old binding. A caller that appended instead would hand
+// store_corpus_manifest two entries under one path, and that refuses -- correctly, for a malformed
+// manifest, and WRONGLY as the answer to staging one file twice, which is an ordinary edit rather
+// than an error. The two are indistinguishable at that refusal, so the distinction has to be made
+// before it is reached.
+//
+// IT LIVES HERE AND NOT IN THE STAGING CALLER because it is a fact about what a manifest IS, and
+// the module declaring the type is the one authority for that (DESIGN section 3). Homed in the
+// caller it would be one staging verb's private convention, and a second verb binding a path --
+// a move, a delete, a merge result -- would each have to rediscover it, with nothing to notice
+// when one did not.
+//
+// THE APPEND IS AT THE TAIL AND THAT IS NOT AN ORDER CHOICE. canonical_manifest_entries sorts by
+// path before any identity is derived, so position here is not observable in the stored manifest
+// or its locator. Appending is simply the cheapest way to say "and this one".
+fn manifest_entries_binding(
+  entries: List<CorpusManifestEntry>,
+  path: NonEmptyStr,
+  source: AuthoredSourceTarget,
+) -> List<CorpusManifestEntry> {
+  concat(
+    filter(entries, fn(e) { (e.path as String) != (path as String) }),
+    [CorpusManifestEntry { path: path, source: source }],
+  )
+}
+
 // A DUPLICATE PATH IS FOUND ON THE CANONICAL ORDER, so the comparison is against the immediately
 // preceding entry rather than against every earlier one -- the quadratic scan a set membership test
 // would need is bought by the sort that has already happened.

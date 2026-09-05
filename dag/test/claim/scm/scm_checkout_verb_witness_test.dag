@@ -128,6 +128,7 @@ fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -253,6 +254,7 @@ fn scm_ck_lost_object_repository() -> RepositoryEnvelope {
     commits: minted.commits,
     commit_allocator: minted.commit_allocator,
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -352,6 +354,7 @@ fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
         commits: [child_commit],
         commit_allocator: with_child.commit_allocator,
         checked_out: none,
+        staged: none,
       }
   }
 }
@@ -623,6 +626,7 @@ test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives(
         commits: decoded.commits,
         commit_allocator: decoded.commit_allocator,
         checked_out: decoded.checked_out,
+        staged: none,
       }
       match checkout_repository_at(repo: decoded, reference: scm_ck_ref(ordinal: 0)) {
         CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>

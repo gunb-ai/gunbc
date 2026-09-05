@@ -103,7 +103,7 @@ type RepositoryLoadRefusal
 // shape has now been removed three times (`checkout_succeeded`, `gunbc.scm.ancestry` under review
 // 56207, and here). Consumers match the arms.
 type RepositoryLoad
-  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
+  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope, document: String }
   | RepositoryLoadRefused { cause: RepositoryLoadRefusal }
 
 // THE ONLY HOST EFFECT IN THE READ PATH, AND IT IS FOLDED BEFORE IT IS READ. The scalar transport
@@ -118,6 +118,18 @@ type RepositoryLoad
 // only the success channel separates them. Deciding on content alone would fuse a legitimate empty
 // document with a missing one -- so consuming the raw projections here while the header above
 // argues against conflating channels would have been incoherent, not merely untidy.
+// THE SUCCESS ARM CARRIES THE BYTES IT DECODED, AND THAT IS FOR THE WRITER RATHER THAN THE READER.
+//
+// A publication that must not clobber a concurrent one has to say what it expected to find, and the
+// only honest expectation is the document this load actually observed. Re-deriving it later by
+// re-encoding the envelope would not be that: it would be what THIS build would write for that value,
+// which agrees with the file only by assumption, and an assumption is exactly what a conditional
+// write exists to stop relying on. Recovering it by a second read would be a different observation at
+// a different time, which is the race rather than a witness to it.
+//
+// THE READ VERBS IGNORE IT AND THAT COSTS THEM NOTHING. They bind it to `_`, and a reader that
+// never publishes never has to think about it -- whereas a writer that cannot reach it has no
+// conditional to write.
 fn load_repository(path: String) -> RepositoryLoad {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -130,7 +142,7 @@ fn load_repository(path: String) -> RepositoryLoad {
         JsonDocumentParsed { value: v } =>
           match decode_repository(v: v) {
             RepositoryDecoded { envelope: envelope } =>
-              RepositoryLoaded { path: path, envelope: envelope }
+              RepositoryLoaded { path: path, envelope: envelope, document: content }
             RepositoryDecodeRefused { cause: cause } =>
               RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
           }

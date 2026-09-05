@@ -21,10 +21,23 @@ module gunbc.scm.status
 // FACTS rather than parse prose back out of a terminal rendering, which would be a second authority
 // for one answer.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
-import gunbc.scm.object_store { CorpusManifestObjectRef }
+import gunbc.scm.object_store { CorpusManifestObjectRef, CorpusManifestEntry }
+import gunbc.scm.staging {
+  StagingRefusal,
+  StageStanding,
+  StageMatchesCheckout,
+  StageDiffersFromCheckout,
+  StageWithNoCheckout,
+  StageCheckoutUnresolved,
+  NoStageEstablished,
+  StagedEntries,
+  StagedEntriesRefused,
+  staged_entries,
+  stage_standing,
+}
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.proposal {
   Requirement,
@@ -92,10 +105,26 @@ type StagedRole
 // THE PENDING PROPOSAL IS IN STATUS RATHER THAN BEHIND ITS OWN VERB, because "what have I staged
 // that is not committed" is the primary question status exists to answer -- and given how little
 // else the envelope carries, status without it would be a near-empty surface.
+// THE AUTHORED-SOURCE STAGE IS A SEPARATE FIELD FROM THE ROLE PROPOSAL, AND FUSING THEM WAS THE
+// TEMPTING ERROR. Both answer "what have I staged", which is what makes the fusion look like
+// deduplication -- but a role requirement binds a ROLE and a corpus entry binds a PATH, and they are
+// staged by different verbs into different carriers with different laws. Translating a path into a
+// StagedRole to reuse the renderer below would put a filesystem path where a Symbol belongs and make
+// the two indistinguishable in the one surface whose job is to tell them apart.
+//
+// UNREADABLE IS NOT EMPTY, which is the whole reason this is a coproduct rather than a list. A stage
+// whose manifest the store does not hold is a fault; rendering it as "nothing staged" would tell an
+// author their work is not staged when in fact it is staged and lost, and they would stage it again
+// over a repository that is already broken.
+type CorpusStage
+  = CorpusStageReadable { standing: StageStanding, paths: List<NonEmptyStr> }
+  | CorpusStageUnreadable { cause: StagingRefusal }
+
 type RepositoryStatus {
   checkout: StatusCheckout
   commit_count: Int
   staged: List<StagedRole>
+  corpus: CorpusStage
 }
 
 // THE SELECTION RESOLVES BY REFERENCE, NOT BY ROOT (review 56230). Resolving by root returned the
@@ -127,11 +156,29 @@ fn staged_role_of(requirement: Requirement) -> StagedRole {
 // STATUS TAKES THE PENDING PROPOSAL EXPLICITLY rather than reaching for an ambient one, for the same
 // reason the repository root is an explicit argument at this stage: an implicit "current proposal"
 // is a second policy -- WHICH proposal is this invocation's -- that nothing here has to decide yet.
+// THE CORPUS STAGE IS READ FROM THE ENVELOPE, NOT PASSED IN, and that asymmetry with `pending` is the
+// carriers' rather than an inconsistency. A role proposal has no home in the repository document, so
+// status cannot reach one and takes it as an argument. The corpus stage DOES have a home -- it is a
+// locator in the envelope this function already holds -- so requiring it as a second argument would
+// invite a caller to supply a stage other than the repository's own, which is a state no document can
+// express and nothing here could detect.
+fn corpus_stage_of(envelope: RepositoryEnvelope) -> CorpusStage {
+  match staged_entries(repository: envelope) {
+    StagedEntriesRefused { cause: c } => CorpusStageUnreadable { cause: c }
+    StagedEntries { entries: entries } =>
+      CorpusStageReadable {
+        standing: stage_standing(repository: envelope),
+        paths: map(entries, e => e.path),
+      }
+  }
+}
+
 fn repository_status(envelope: RepositoryEnvelope, pending: Proposal) -> RepositoryStatus {
   RepositoryStatus {
     checkout: status_checkout_of(envelope: envelope),
     commit_count: count(envelope.commits),
     staged: map(pending.requirements, r => staged_role_of(requirement: r)),
+    corpus: corpus_stage_of(envelope: envelope),
   }
 }
 
@@ -205,13 +252,61 @@ fn render_staged(staged: List<StagedRole>) -> List<String> {
   }
 }
 
+// THE STANDING IS RENDERED BEFORE THE PATHS BECAUSE IT IS THE ANSWER AND THEY ARE THE DETAIL. An
+// author asks status whether their work is committed; the list of staged paths is what to do about
+// the answer, not the answer itself.
+//
+// NO ARM SAYS "clean" OR "up to date". Every line below names the observed relation between two
+// locators, because "clean" is a summary that has already thrown away which of the states produced
+// it -- and one of those states, an unresolvable checkout, is a fault that a reassuring word would
+// bury.
+fn render_stage_standing(standing: StageStanding) -> String {
+  match standing {
+    NoStageEstablished => "no corpus staged"
+    StageWithNoCheckout { staged: _ } => "corpus staged, not yet committed"
+    StageMatchesCheckout { staged: _ } => "corpus staged matches the checked-out commit"
+    StageDiffersFromCheckout { staged: _, committed: _ } =>
+      "corpus staged differs from the checked-out commit"
+    StageCheckoutUnresolved { staged: _, reference: reference } =>
+      concat(
+        "corpus staged, but the checked-out selection names commit ",
+        concat(
+          to_string(value: minted_id_ordinal(id: reference.identity)),
+          ", which this repository does not contain, so nothing can be compared against it",
+        ),
+      )
+  }
+}
+
+// THE PATHS ARE LISTED, AND AN EMPTY LIST UNDER A READABLE STAGE IS RENDERED AS ITSELF rather than as
+// silence, for the reason render_staged states one function above: "nothing bound" and "this surface
+// did not report bindings" are different facts.
+fn render_corpus_stage(corpus: CorpusStage) -> List<String> {
+  match corpus {
+    CorpusStageUnreadable { cause: _ } =>
+      ["the staged corpus cannot be read from this repository's object store"]
+    CorpusStageReadable { standing: standing, paths: paths } =>
+      concat(
+        [render_stage_standing(standing: standing)],
+        if count(paths) == 0 {
+          []
+        } else {
+          map(paths, p => concat("  path:    ", p as String))
+        },
+      )
+  }
+}
+
 fn render_repository_status(status: RepositoryStatus) -> String {
   join(
     concat(
-      [
-        render_status_checkout(checkout: status.checkout),
-        render_commit_count(commit_count: status.commit_count),
-      ],
+      concat(
+        [
+          render_status_checkout(checkout: status.checkout),
+          render_commit_count(commit_count: status.commit_count),
+        ],
+        render_corpus_stage(corpus: status.corpus),
+      ),
       render_staged(staged: status.staged),
     ),
     "\n",

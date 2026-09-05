@@ -97,6 +97,7 @@ fn status_witness_empty_repository() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -107,6 +108,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
   match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
     RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
@@ -114,6 +116,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
       commits: minted.commits,
       commit_allocator: minted.commit_allocator,
       checked_out: Present { value: reference },
+      staged: none,
     }
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
     RepositoryCommitMintRootMissing { root: _ } => base
@@ -133,6 +136,7 @@ fn status_witness_repository_dangling_at(ordinal: Int) -> RepositoryEnvelope {
     commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: ordinal + 1 },
     checked_out: Present { value: status_witness_ref(ordinal: ordinal) },
+    staged: none,
   }
 }
 
@@ -143,6 +147,7 @@ fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
     commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 2 },
     checked_out: Present { value: status_witness_ref(ordinal: 1) },
+    staged: none,
   }
 }
 

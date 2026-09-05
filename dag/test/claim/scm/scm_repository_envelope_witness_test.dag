@@ -208,6 +208,7 @@ fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -242,6 +243,7 @@ fn scm_env_two_commit_repository() -> RepositoryEnvelope {
     commits: second_commit.commits,
     commit_allocator: second_commit.commit_allocator,
     checked_out: Present { value: scm_env_ref(ordinal: 1) },
+    staged: none,
   }
 }
 
@@ -319,6 +321,7 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
     commits: reverse(original.commits),
     commit_allocator: original.commit_allocator,
     checked_out: original.checked_out,
+    staged: none,
   }
   scm_env_root_signature(commits: reversed.commits) != scm_env_root_signature(commits: original.commits)
 }
@@ -762,6 +765,7 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
     commits: minted.commits,
     commit_allocator: minted.commit_allocator,
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -825,6 +829,7 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
     commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 2 },
     checked_out: Present { value: scm_env_ref(ordinal: 1) },
+    staged: none,
   }
 }
 
@@ -861,6 +866,7 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
     ).commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 1 },
     checked_out: none,
+    staged: none,
   }
   let outcome = encode_repository_checked(repo: repo)
   (scm_env_encode_cause_tag(outcome: outcome) == "uncontained_target")
@@ -1375,6 +1381,7 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
   match mint_repository_commit(
     repository: base,
@@ -1457,6 +1464,7 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     commits: filter(repo.commits, c => c.reference == scm_env_ref(ordinal: 0)),
     commit_allocator: repo.commit_allocator,
     checked_out: none,
+    staged: none,
   }
   let second_root = scm_env_snapshot(store: first_only.store, path: "two.dag" as NonEmptyStr, text: "module two").identity
   match mint_repository_commit(
@@ -1483,6 +1491,7 @@ test fn scm_env_reordering_does_not_silently_retarget_a_parent() -> Bool {
     commits: reverse(repo.commits),
     commit_allocator: repo.commit_allocator,
     checked_out: repo.checked_out,
+    staged: none,
   }
   scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: reordered)) == "commit_parent"
 }
@@ -1601,6 +1610,7 @@ test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() ->
           commits: [],
           commit_allocator: MintedIdAllocator { next_ordinal: 0 },
           checked_out: none,
+          staged: none,
         }
       )
     ) == "target_is_authored_source")
@@ -1656,6 +1666,7 @@ fn scm_env_repository_with_an_unreached_source() -> ScmEnvSourceFixture {
           commits: base.commits,
           commit_allocator: base.commit_allocator,
           checked_out: base.checked_out,
+          staged: none,
         },
         source: source.locator,
         ok: true,

@@ -10,6 +10,16 @@ import gunbc.scm.repository_envelope {
   commit_at_reference,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.staging {
+  StagingRefusal,
+  StageStanding,
+  StageMatchesBase,
+  StageDiffersFromBase,
+  StageWithNoBase,
+  NoCandidateAndNoBase,
+  StageStandingRefused,
+  stage_standing,
+}
 
 import gunbc.scm.object_store {
   ObjectId,
@@ -322,6 +332,17 @@ type RepositoryCheckout
   | CheckoutSnapshotIsAuthoredSource { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutSnapshotIsSemanticNode { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusRecoveryRefusal }
+// `committed` IS OPTIONAL BECAUSE THE COMPARISON MAY HAVE NO RIGHT-HAND SIDE. A candidate staged in a
+// repository with nothing checked out is entirely uncommitted -- there is no base manifest, so an arm
+// requiring one would have to name a manifest that does not exist. The first writing of this arm
+// passed the candidate itself into that field, which reports "your candidate differs from itself" and
+// is a fabricated payload rather than a missing one.
+  | CheckoutWouldDiscardStagedWork {
+      reference: RepositoryCommitRef,
+      candidate: CorpusManifestObjectRef,
+      committed: CorpusManifestObjectRef?
+    }
+  | CheckoutCandidateUnreadable { reference: RepositoryCommitRef, cause: StagingRefusal }
 
 // THIS WRITES NOTHING. It answers a NEW envelope with the selection moved, leaving its argument
 // untouched, so the verb stays a pure transform over facts the repository already holds. Persisting
@@ -330,7 +351,52 @@ type RepositoryCheckout
 // The reference is the same intrinsic commit identity `log` renders and `status`
 // resolves -- so the three verbs name commits the one way, and resolution goes through
 // commit_at_reference rather than a second lookup that could drift from it.
+// MOVING THE SELECTION MUST DECIDE WHAT HAPPENS TO THE CANDIDATE, AND THE FIRST WRITING OF THIS
+// FUNCTION DECIDED IT SILENTLY.
+//
+// The staged candidate is staged AGAINST A BASE -- a manifest carries content and not the identity of
+// the commit it was prepared over, so the pairing with `checked_out` is the only thing that says what
+// it is a change TO. Moving the base without deciding about the candidate breaks that pairing, and
+// both ways of breaking it lose work:
+//
+//   carry the candidate across   commit C1 with candidate S1; check out C2; commit again. The second
+//                                commit freezes S1 ON TOP OF C2, reverting every difference between
+//                                them, and the author made no staging decision to cause it.
+//   clear the candidate across   an author with real uncommitted work checks out another commit and
+//                                the work is gone, with no refusal and no report.
+//
+// This function did the second, unconditionally, in the line that read `staged: none`.
+//
+// SO THE DECISION IS SPLIT ON WHETHER THERE IS ANYTHING TO LOSE. A candidate that matches its base is
+// carrying no work: dropping the explicit override there is a NORMALIZATION, because with no override
+// the candidate is derived from the selected base, and the value dropped denoted exactly the base it
+// was dropped from. A candidate that DIFFERS is uncommitted work, and this verb refuses rather than
+// choosing which of the two losses above to inflict.
+//
+// THE REFUSAL NAMES BOTH MANIFESTS, because "you have staged changes" without saying what they are
+// leaves the author unable to tell whether the refusal is about work they care about.
 fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
+  match stage_standing(repository: repo) {
+    StageStandingRefused { cause: c } =>
+      CheckoutCandidateUnreadable { reference: reference, cause: c }
+    StageDiffersFromBase { candidate: candidate, committed: committed } =>
+      CheckoutWouldDiscardStagedWork {
+        reference: reference,
+        candidate: candidate,
+        committed: Present { value: committed },
+      }
+    StageWithNoBase { candidate: candidate } =>
+      CheckoutWouldDiscardStagedWork {
+        reference: reference,
+        candidate: candidate,
+        committed: none,
+      }
+    StageMatchesBase { candidate: _ } => checkout_admitted(repo: repo, reference: reference)
+    NoCandidateAndNoBase => checkout_admitted(repo: repo, reference: reference)
+  }
+}
+
+fn checkout_admitted(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
   match commit_at_reference(commits: repo.commits, reference: reference) {
     Absent => CheckoutReferenceUnresolved { reference: reference }
     Present { value: selected } =>
@@ -352,6 +418,7 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitR
                   commits: repo.commits,
                   commit_allocator: repo.commit_allocator,
                   checked_out: Present { value: reference },
+                  staged: none,
                 },
                 corpus: files,
               }
