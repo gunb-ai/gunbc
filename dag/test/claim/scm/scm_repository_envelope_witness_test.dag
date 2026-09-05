@@ -2133,3 +2133,74 @@ test fn scm_env_a_child_at_a_manifest_emitted_after_it_still_refuses() -> Bool {
 }
 
 
+
+// E1: THE MISSING REQUIREMENT MUST SURVIVE REPRESENTATION, WHICH THE CONTROL ABOVE DOES NOT ESTABLISH.
+//
+// `scm_env_a_manifest_source_this_store_lacks_is_not_a_refusal` checks that encoding SUCCEEDS and then
+// inspects the manifest in the INPUT store. The reviewer of gunbc#10560 traced the gap: an encoder that
+// reported success while dropping the uncontained source entry would satisfy that control unchanged,
+// because the input still carries the entry regardless of what was emitted. An encoding-success flag
+// establishes neither preservation nor recoverability.
+//
+// So this drives the whole boundary on ONE partial snapshot. A commit names manifest M; M names a held
+// source and a source this store lacks; encoding succeeds; DECODING THE EMITTED VALUE still carries
+// the commit, M, both paths, and the missing source's EXACT LOCATOR. That is the half the old control
+// could not see, and "right path, wrong missing object" would be a misleading diagnostic that a
+// path-only claim admits.
+fn scm_env_partial_snapshot_repository() -> RepositoryEnvelope {
+  let absent_program = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let missing = node_target_locator(target: absent_program.identity)
+  match store_authored_source(store: empty_store(), text: "module held") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => scm_env_repository_with_store(store: empty_store())
+    SourceStored { store: with_held, source: held } =>
+      match store_corpus_manifest(store: with_held, entries: [
+        CorpusManifestEntry { path: "held.dag" as NonEmptyStr, source: authored_source_target_of(reference: held) },
+        CorpusManifestEntry { path: "gone.dag" as NonEmptyStr, source: AuthoredSourceTarget { locator: missing } },
+      ]) {
+        CorpusManifestDuplicatePath { path: _ } => scm_env_repository_with_store(store: with_held)
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => scm_env_repository_with_store(store: with_held)
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          scm_env_minted_or(
+            repo: scm_env_repository_with_store(store: next),
+            root: CorpusManifestTarget { locator: manifest.locator },
+            message: "partial",
+            parent: none,
+          )
+      }
+  }
+}
+
+fn scm_env_absent_source_locator() -> ObjectId {
+  node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_two()).identity)
+}
+
+fn scm_env_decoded_manifest_entries(envelope: RepositoryEnvelope) -> List<CorpusManifestEntry> {
+  fold(envelope.commits, init: [], f: fn(acc, c) {
+    match find_corpus_manifest_record(store: envelope.store, identity: c.root.locator) {
+      CorpusManifestFound(record) => record.entries
+      _ => acc
+    }
+  })
+}
+
+test fn scm_env_a_partial_snapshot_survives_encoding_with_its_missing_locator_intact() -> Bool {
+  let repo = scm_env_partial_snapshot_repository()
+  (scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: repo)) == "encoded")
+    && match decode_repository(v: encode_repository(repo: repo)) {
+         RepositoryDecodeRefused { cause: _ } => false
+         RepositoryDecoded { envelope: e } =>
+           count(e.commits) == 1
+             && match scm_env_decoded_manifest_entries(envelope: e) {
+                  entries =>
+                    map(entries, x => x.path as String) == ["gone.dag", "held.dag"]
+                      && fold(entries, init: false, f: fn(seen, entry) {
+                           seen
+                             || ((entry.path as String) == "gone.dag"
+                               && object_id_eq(
+                                 left: authored_source_target_locator(target: entry.source),
+                                 right: scm_env_absent_source_locator(),
+                               ))
+                         })
+                }
+       }
+}

@@ -31,6 +31,10 @@ import gunbc.scm.object_store {
   store_authored_source,
   authored_source_target_of,
   authored_source_target_locator,
+  object_id_eq,
+  AuthoredSourceContent,
+  AuthoredSourceEmpty,
+  AuthoredSourceText,
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -81,6 +85,7 @@ import gunbc.scm.checkout {
   CorpusEntrySourceMissing,
   CorpusEntrySourceIsSemanticNode,
   CorpusEntrySourceIsCorpusManifest,
+  RecoveredSourceFile,
   CheckoutReferenceUnresolved,
   checkout_repository_at,
 }
@@ -264,6 +269,15 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
 // above does not fire -- while the source that manifest names was never stored. Reporting this as a
 // missing snapshot would send the operator to repair the commit rather than fetch the source, and
 // reporting it as a successful checkout would hand back a corpus with a file silently absent.
+// The absent source's locator, derived the same way the manifest entry derives it, so the claim below
+// can assert WHICH object is missing rather than only that something was.
+fn scm_ck_absent_source_locator() -> ObjectId {
+  match store_authored_source(store: empty_store(), text: "module never_stored") {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } => i
+    SourceStored { store: _, source: source } => source.locator
+  }
+}
+
 fn scm_ck_unrecoverable_source_repository() -> RepositoryEnvelope {
   let orphan = store_authored_source(store: empty_store(), text: "module never_stored")
   match orphan {
@@ -290,7 +304,9 @@ test fn scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missin
     CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>
       r == scm_ck_ref(ordinal: 0)
         && match cause {
-             CorpusEntrySourceMissing { path: p, source: _ } => (p as String) == "never_stored.dag"
+             CorpusEntrySourceMissing { path: p, source: missing } =>
+               (p as String) == "never_stored.dag"
+                 && object_id_eq(left: missing, right: scm_ck_absent_source_locator())
              CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
              CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
            }
@@ -435,4 +451,155 @@ test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own
     CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
     CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
   }
+}
+
+// A MULTI-FILE SNAPSHOT, INCLUDING SOURCE THIS BUILD CANNOT INGEST AND A GENUINELY EMPTY FILE.
+// The malformed entry is the point: recovery must not require successful semantic ingestion, which is
+// the whole reason a commit freezes authored bytes rather than a semantic root. The empty file is
+// here so "an empty source" and "an empty corpus" cannot be confused -- E2's mutation returns the
+// latter and would otherwise look like the former.
+fn scm_ck_mixed_snapshot() -> ScmCkSnapshot {
+  match store_authored_source(store: empty_store(), text: "module ok") {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmCkSnapshot { store: empty_store(), identity: CorpusManifestTarget { locator: i } }
+    SourceStored { store: s1, source: ok } =>
+      match store_authored_source(store: s1, text: "module { ) unparseable <<<") {
+        SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+          ScmCkSnapshot { store: s1, identity: CorpusManifestTarget { locator: i } }
+        SourceStored { store: s2, source: broken } =>
+          match store_authored_source(store: s2, text: "") {
+            SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+              ScmCkSnapshot { store: s2, identity: CorpusManifestTarget { locator: i } }
+            SourceStored { store: s3, source: blank } =>
+              match store_corpus_manifest(store: s3, entries: [
+                CorpusManifestEntry { path: "ok.dag" as NonEmptyStr, source: authored_source_target_of(reference: ok) },
+                CorpusManifestEntry { path: "broken.dag" as NonEmptyStr, source: authored_source_target_of(reference: broken) },
+                CorpusManifestEntry { path: "blank.dag" as NonEmptyStr, source: authored_source_target_of(reference: blank) },
+              ]) {
+                CorpusManifestStored { store: next, manifest: manifest } =>
+                  ScmCkSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+                CorpusManifestDuplicatePath { path: _ } =>
+                  ScmCkSnapshot { store: s3, identity: CorpusManifestTarget { locator: 0 as ObjectId } }
+                CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+                  ScmCkSnapshot { store: s3, identity: CorpusManifestTarget { locator: i } }
+              }
+          }
+      }
+  }
+}
+
+fn scm_ck_mixed_repository() -> RepositoryEnvelope {
+  let snapshot = scm_ck_mixed_snapshot()
+  scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: snapshot.store),
+    root: snapshot.identity,
+    message: "mixed",
+    parent: none,
+  )
+}
+
+fn scm_ck_recovered_text(f: RecoveredSourceFile) -> String {
+  match f.content {
+    AuthoredSourceEmpty => ""
+    AuthoredSourceText(t) => t as String
+  }
+}
+
+// THE SUCCESSFUL CORPUS IS ASSERTED BY CONTENT, WHICH EVERY CONTROL ABOVE DISCARDED.
+//
+// This exists because of a source-traced counterexample the reviewer of gunbc#10560 supplied: every
+// other successful match in this file binds `corpus: _`, so changing ONLY the success arm to return
+// `corpus: []` -- leaving every recovery decision and every refusal branch intact -- would leave the
+// whole suite green while every checkout returned nothing. Selection was asserted, refusals were
+// asserted, and the value the verb exists to produce was not.
+//
+// So this asserts the complete population, the paths, AND the contents. It includes source this build
+// cannot ingest, because recovery must not require successful semantic ingestion -- if it did, a
+// repository holding one malformed file would become uncheckoutable, which is precisely what freezing
+// authored bytes exists to prevent. And it includes an empty file so that an EMPTY SOURCE and an
+// EMPTY CORPUS cannot be read as the same observation.
+test fn scm_ck_a_successful_checkout_recovers_every_authored_file_by_content() -> Bool {
+  match checkout_repository_at(repo: scm_ck_mixed_repository(), reference: scm_ck_ref(ordinal: 0)) {
+    RepositoryCheckedOut { repository: _, corpus: corpus } =>
+      map(corpus, f => f.path as String) == ["blank.dag", "broken.dag", "ok.dag"]
+        && map(corpus, f => scm_ck_recovered_text(f: f))
+          == ["", "module { ) unparseable <<<", "module ok"]
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutSnapshotMissingFromStore { reference: _, root: _ } => false
+    CheckoutSnapshotIsAuthoredSource { reference: _, root: _ } => false
+    CheckoutSnapshotIsSemanticNode { reference: _, root: _ } => false
+    CheckoutCorpusUnrecoverable { reference: _, cause: _ } => false
+  }
+}
+
+// E1, THE OTHER HALF: THE MISSING REQUIREMENT IS RECOVERABLE ONCE SUPPLIED, AND THE SNAPSHOT DOES NOT
+// MOVE WHEN IT IS. One partial snapshot, driven through both consumers, because the two answers only
+// mean something together: the codec admitting a partial corpus is honest ONLY IF the deficit is still
+// reported where it is observed, and reporting the deficit is useful ONLY IF supplying the source
+// repairs it without minting a different commit.
+//
+// The snapshot designation is asserted to be UNCHANGED across the repair -- same manifest locator,
+// same commit -- which is what distinguishes "the source arrived" from "a new snapshot was frozen".
+fn scm_ck_partial_snapshot() -> ScmCkSnapshot {
+  match store_authored_source(store: empty_store(), text: "module held") {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmCkSnapshot { store: empty_store(), identity: CorpusManifestTarget { locator: i } }
+    SourceStored { store: with_held, source: held } =>
+      match store_corpus_manifest(store: with_held, entries: [
+        CorpusManifestEntry { path: "held.dag" as NonEmptyStr, source: authored_source_target_of(reference: held) },
+        CorpusManifestEntry {
+          path: "gone.dag" as NonEmptyStr,
+          source: AuthoredSourceTarget { locator: scm_ck_absent_source_locator() },
+        },
+      ]) {
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          ScmCkSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+        CorpusManifestDuplicatePath { path: _ } =>
+          ScmCkSnapshot { store: with_held, identity: CorpusManifestTarget { locator: 0 as ObjectId } }
+        CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+          ScmCkSnapshot { store: with_held, identity: CorpusManifestTarget { locator: i } }
+      }
+  }
+}
+
+fn scm_ck_partial_repository(store: ObjectStore, root: CorpusManifestTarget) -> RepositoryEnvelope {
+  scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: store),
+    root: root,
+    message: "partial",
+    parent: none,
+  )
+}
+
+test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives() -> Bool {
+  let snapshot = scm_ck_partial_snapshot()
+  let before = checkout_repository_at(
+    repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity),
+    reference: scm_ck_ref(ordinal: 0),
+  )
+  let supplied = match store_authored_source(store: snapshot.store, text: "module never_stored") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => snapshot.store
+    SourceStored { store: s, source: _ } => s
+  }
+  let after = checkout_repository_at(
+    repo: scm_ck_partial_repository(store: supplied, root: snapshot.identity),
+    reference: scm_ck_ref(ordinal: 0),
+  )
+  match before {
+    CheckoutCorpusUnrecoverable { reference: _, cause: cause } =>
+      match cause {
+        CorpusEntrySourceMissing { path: p, source: missing } =>
+          (p as String) == "gone.dag"
+            && object_id_eq(left: missing, right: scm_ck_absent_source_locator())
+        CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+        CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+      }
+    _ => false
+  }
+    && match after {
+         RepositoryCheckedOut { repository: _, corpus: corpus } =>
+           map(corpus, f => f.path as String) == ["gone.dag", "held.dag"]
+             && map(corpus, f => scm_ck_recovered_text(f: f)) == ["module never_stored", "module held"]
+         _ => false
+       }
 }
