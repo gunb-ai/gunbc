@@ -14,7 +14,7 @@ import extdeps.ray.threshold_memory_monitor {
   RayMonitorLogLine, ThresholdExceeded, NodeMemoryAboveThreshold, UserSliceMemoryAboveThreshold,
   NodeMemoryUncapturable, ray_monitor_log_format, ray_monitor_line_reports_measurement,
   RayBuiltMonitor, ThresholdMonitorBuilt, NoopMonitorBuilt, EventMonitorBuilt,
-  ray_built_monitors, ray_built_monitor_enforces,
+  ray_linux_built_monitors, ray_built_monitor_enforces,
   ThresholdMonitorDisabled, UserSliceSnapshotFailed,
   ray_line_explains_absent_threshold_alarm,
   RayMinMemoryFree, MinMemoryFreeDisabled, MinMemoryFreeFloor
@@ -111,7 +111,7 @@ test fn w_the_node_and_user_slice_lines_are_distinguishable() -> Bool {
 // called the zero interval "the monitor disabled" would tell a caller the host is unenforced when it
 // is not, which is an overstatement in the one direction a refusal must never make.
 test fn w_a_zero_interval_with_isolation_on_still_enforces() -> Bool {
-  let built = ray_built_monitors(resource_isolation_enabled: true, refresh: millisecond(count: 0))
+  let built = ray_linux_built_monitors(resource_isolation_enabled: true, refresh: millisecond(count: 0))
   (length(built) == 2)
     && any(built, m => ray_built_monitor_enforces(m: m))
     && any(built, m => !ray_built_monitor_enforces(m: m))
@@ -121,14 +121,14 @@ test fn w_a_zero_interval_with_isolation_on_still_enforces() -> Bool {
 // above must not be allowed to swallow: the two configurations differ, and a single "disabled"
 // answer for both is what the old shape gave.
 test fn w_a_zero_interval_with_isolation_off_enforces_nothing() -> Bool {
-  let built = ray_built_monitors(resource_isolation_enabled: false, refresh: millisecond(count: 0))
+  let built = ray_linux_built_monitors(resource_isolation_enabled: false, refresh: millisecond(count: 0))
   (length(built) == 1) && !any(built, m => ray_built_monitor_enforces(m: m))
 }
 
 // CONTROL. The pinned default interval builds the threshold monitor and it enforces, so the two rows
 // above are not satisfied by answering "nothing enforces" everywhere.
 test fn w_the_default_interval_builds_an_enforcing_threshold_monitor() -> Bool {
-  let built = ray_built_monitors(
+  let built = ray_linux_built_monitors(
     resource_isolation_enabled: false,
     refresh: ray_threshold_monitor_defaults.memory_monitor_refresh)
   (length(built) == 1) && any(built, m => ray_built_monitor_enforces(m: m))

@@ -83,7 +83,7 @@ data ray_built_monitors_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.ray.threshold_memory_monitor",
-      decl_name: "ray_built_monitors",
+      decl_name: "ray_linux_built_monitors",
       field: WholeDeclaration
     }
   },
@@ -246,7 +246,7 @@ data ray_threshold_monitor_defaults: RayThresholdMonitorDefaults = RayThresholdM
 //
 // The argv is computed from the same row the default comes from rather than authored beside it, so a
 // rename of the config field moves both at once. The FUNCTION is named for the threshold monitor
-// rather than for "the memory monitor" because that is all it disables -- see `ray_built_monitors`.
+// rather than for "the memory monitor" because that is all it disables -- see `ray_linux_built_monitors`.
 fn ray_threshold_monitor_disable_env() -> NonEmptyStr {
   concat(ray_config_env_spelling(c: MemoryMonitorRefreshMs) as String, "=0") as NonEmptyStr
 }
@@ -330,10 +330,13 @@ fn ray_line_explains_absent_threshold_alarm(line: RayMonitorLogLine) -> Bool {
 // -- the 2.58.0 body read for this module has no platform branch, so asserting one would have been a
 // citation to a revision it was not read at, the same failure the absence row above records.
 //
-// BUT DELETING THE ARM LEFT THE SCOPE UNSTATED, WHICH IS ITS OWN DEFECT. A reader of
-// `ray_built_monitors` would take it for the whole story on every platform. It is the Linux story.
-// What the factory does elsewhere is UNREAD, not known-to-be-the-same, and that distinction is the
-// difference between a citation and a guess.
+// BUT DELETING THE ARM LEFT THE SCOPE UNSTATED, WHICH IS ITS OWN DEFECT, AND THE FIRST REPAIR PUT
+// THE SCOPE IN THIS PARAGRAPH RATHER THAN IN THE NAME. A total name reading `ray_built_monitors` over
+// a body read only from the Linux factory invites exactly the use the paragraph forbids, and a
+// comment cannot forbid a use the name invites -- so the declaration is `ray_linux_built_monitors`
+// and the scope is carried by the thing every consumer must spell. What the factory does on other
+// platforms is UNREAD, not known-to-be-the-same, and that distinction is the difference between a
+// citation and a guess.
 //
 // NO PROVENANCE FOR `resource_isolation_enabled` EITHER. It is an argument to `Create`, so where it
 // comes from is the caller's fact rather than this citation's.
@@ -374,7 +377,7 @@ type RayBuiltMonitor = ThresholdMonitorBuilt | NoopMonitorBuilt | EventMonitorBu
 // arm. An earlier draft of this module called that argv "disable the monitor", which overstates in
 // exactly the direction a refusal must not overstate: a caller reading it would conclude a host is
 // unenforced when a cgroup-driven monitor is still killing workers on it.
-fn ray_built_monitors(
+fn ray_linux_built_monitors(
   resource_isolation_enabled: Bool,
   refresh: Millisecond,
 ) -> List<RayBuiltMonitor> {
