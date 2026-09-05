@@ -21,15 +21,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn item_kind_dissolves_shape_predicates_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "EXECUTING-ON-DEMAND evidence that the emit-side item predicates read the CARRIED ITEM KIND and no longer answer from the absence of fields.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY. THIS WITNESS IS NOT DISCOVERED BY CI, for the same reason its two neighbours in this directory state: gunbc.ci_layer_roots witness_discovery_scan_dirs does not include src/v1/tests/claim, and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's `import v1.compiler.emit_core_support` even if it were discovered. The rows below were run directly during authoring. Direct execution is evidence the assertions HOLD; it is never evidence that CI runs them, and conflating those two is rung inflation. NEXT-RUNG TRIGGER, shared with the whole directory: a discovery scope that admits src/v1 witnesses under a source-root envelope reaching src/v1.\n\nTHE STATE UNDER TEST IS AUTHORABLE, WHICH IS WHY THIS FILE CAN EXIST AT ALL. v1.std.core Node is one carrier for items and expressions, so every conjunct of the old shape test -- NoConnective, no body, no params, no children, no transport -- can be satisfied by a node whose item kind is ModuleItemResource. That is not hypothetical: `resource Network` and `resource AuthContext` in std.resources declare no capabilities, satisfy exactly that shape, and were claimed by the old is_bare_leaf_item, which examined connective, body, params, children and transport and never looked at properties. Both reached the type arms of all three emitters ahead of any resource arm.\n\nTHE DISCRIMINATING ROW IS resource_shaped_like_a_leaf_type_is_not_one. Against the predicate as it stood -- connective == NoConnective and body == none and params == 0 and transport == none and children == 0 -- it answers TRUE and this row is RED. It answers false only because the predicate now requires the item to CARRY ModuleItemTypeDeclaration. Restoring the shape-only definition turns this row red and nothing else in the corpus would notice, which is the property that makes it a regression control rather than a decoration.\n\nTHE POSITIVE CONTROL IS leaf_type_declaration_is_still_a_leaf_type, and it is what stops the discriminating row from being satisfied by a predicate that answers false for everything. Same node, same five shape conjuncts, one field different.\n\nPER DESIGN section 4b(4) BOTH ROWS STAY ENROLLED after the machinery they falsified is deleted. The climb removed the shape-derived kind predicates; it does not retire the evidence that the higher rung is real.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
