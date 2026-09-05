@@ -251,6 +251,7 @@ jobs:
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: "FCI: adjudicate the published ledger against the fabric gate roster"
         run: |
+          # dissolve-on: fabric_gate_standing_step -- hand-shell `run:` carrier for the one claim_executor --fabric-gate-standing invocation; the argv is modeled by gunbc.fabric_witness_run fabric_gate_standing_command, the step body is a foreign-executor shell line carrying a ROOT assignment and a cd. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this command -- the same capability rust_clippy_all_targets_shell_emit_dissolution_trigger and ci_pin_rustup_default_script wait on, at which point this row and the concat below delete together.
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
           'target/release/claim_executor' '--fabric-gate-standing' '--source-root' 'dag' '--source-root' 'src/v2'
