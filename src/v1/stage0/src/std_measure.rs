@@ -3,6 +3,7 @@
 
 use self::ClockBasis::*;
 use self::ClockDomain::*;
+use self::FiniteByteSizeBuild::*;
 use self::InstantOrder::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
@@ -642,6 +643,44 @@ pub fn positive_shard_count_value(shards: Rc<PositiveShardCount>) -> i64 {
     match (*shards.clone()).clone() {
         PositiveShardCount::PositiveShardCountValue { count: count, .. } => {
             positive_measure_count_value(count.clone())
+        }
+    }
+}
+
+pub type FiniteByteSize = Rc<Measure<Memory, One, Rc<PositiveMeasureCount>>>;
+
+pub fn finite_byte_size(count: Rc<PositiveMeasureCount>) -> FiniteByteSize {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn finite_byte_size_count(size: FiniteByteSize) -> i64 {
+    positive_measure_count_value(size.count.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FiniteByteSizeBuild {
+    FiniteByteSizeBuilt { size: FiniteByteSize },
+    FiniteByteSizeNonPositive { observed: i64 },
+}
+
+pub fn finite_byte_size_from_byte_size(size: ByteSize) -> Rc<FiniteByteSizeBuild> {
+    {
+        let observed = byte_size_count(size.clone());
+        match (*positive_measure_count_from_int(observed.clone())).clone() {
+            PositiveMeasureCountBuild::PositiveMeasureCountBuilt {
+                count: positive, ..
+            } => Rc::new(FiniteByteSizeBuild::FiniteByteSizeBuilt {
+                size: finite_byte_size(positive.clone()),
+            }),
+            PositiveMeasureCountBuild::PositiveMeasureCountRefused { cause: _, .. } => {
+                Rc::new(FiniteByteSizeBuild::FiniteByteSizeNonPositive {
+                    observed: observed.clone(),
+                })
+            }
         }
     }
 }

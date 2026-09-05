@@ -1,0 +1,215 @@
+module test.claim.repo_ruleset_world_converge_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import gunbc.world_converge { WorldUnobservable, WorldActuationRefused }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.rulesets {
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
+  RulesetActive,
+  BranchTarget,
+  MergeQueueRule,
+  ThisReaderCannotBypass,
+  NoRequiredStatusChecksRule,
+  NoMergeQueueRule,
+  BypassActorRosterObservation,
+}
+import gunbc.repo_ruleset {
+  RulesetObservation,
+  RulesetObserved,
+  RulesetUnreadable,
+  RulesetReadTransportRefused,
+  RepositoryRulesetConvergenceSubject,
+  RepositoryRulesetActuationRefused,
+  RepositoryRulesetObservationRefused,
+  RepositoryRulesetBypassRosterUnobservable,
+  RepositoryRulesetObservedLiveBypassActors,
+  RepositoryRulesetActuationRealizationUnbound,
+  RepositoryRulesetUnexpectedLiveRule,
+  RepositoryRulesetSignedPolicyProjectionUnrepresentable,
+  RepositoryRulesetDriftUnrepaired,
+  RulesetNameDrift,
+  repo_ruleset_drift_actuation,
+  repo_ruleset_actuation_admission,
+  repo_ruleset_observed_actuation_admission,
+  desired_ruleset_rule_types,
+  world_repo_ruleset_observation,
+}
+
+fn fixture_subject() -> RepositoryRulesetConvergenceSubject {
+  RepositoryRulesetConvergenceSubject { repository: gunbc_repository, ruleset_id: 4242 }
+}
+
+// The observation is fixed on every field the admission does NOT decide, so the bypass roster is
+// the only varied input across the three claims below and no verdict can be borrowed from another
+// arm. rule_types are the declared ones, so the unexpected-rule arm cannot fire either.
+fn fixture_observed(roster: BypassActorRosterObservation) -> RulesetObservation {
+  RulesetObserved {
+    name: "fixture",
+    enforcement: RulesetActive,
+    target: BranchTarget,
+    bypass: ThisReaderCannotBypass,
+    include: [],
+    exclude: [],
+    rule_types: desired_ruleset_rule_types(),
+    standing: NoRequiredStatusChecksRule,
+    merge_queue: NoMergeQueueRule,
+    bypass_roster: roster,
+  }
+}
+
+test fn unreadable_ruleset_maps_to_world_unobservable() -> Bool {
+  match world_repo_ruleset_observation(observed: RulesetUnreadable {
+    cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
+  }) {
+    WorldUnobservable { cause: RepositoryRulesetObservationRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+
+// THE CLAIMS BELOW CROSS THE REPLACEMENT JOIN. The refusal prose lives in helpers this branch no
+// longer routes production through, so a claim calling those helpers proves THEIR text and says
+// nothing about what repo_ruleset_actuation_admission emits. These call the admission itself.
+
+// DISCRIMINATING RED FOR THE INVERSION, and it is the LIVE path: under the credential this
+// repository has, a ruleset GET omits bypass_actors on every read. An earlier shape reported that a
+// live bypass actor EXISTS for exactly this input. Ignorance is not an observation.
+test fn an_unobservable_bypass_roster_is_not_reported_as_an_observed_actor() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterUnavailable {
+      reader: "fixture-credential" as NonEmptyStr,
+      cause: "bypass_actors omitted by the live read" as NonEmptyStr,
+    }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetBypassRosterUnobservable { ruleset_id: _, reader: reader, detail: _ },
+    } => reader as String == "fixture-credential"
+    _ => false
+  }
+}
+
+// THE OTHER SIDE OF THAT DISCRIMINATION: an actually observed grant is a different fact and must
+// reach a different cause, carrying the actor so the operator knows which grant to look at.
+test fn an_observed_live_bypass_actor_reaches_its_own_cause_and_names_the_actor() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
+    }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "Team/7")
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. With an empty roster, the declared rule list and no signed policy, nothing is
+// HELD and the refusal is the honest terminal one: this tree binds no write realization. Without
+// this, every claim above is satisfied by an admission that refuses everything identically.
+test fn an_empty_roster_reaches_the_unbound_realization_cause() -> Bool {
+  match repo_ruleset_actuation_admission(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved { actors: [] }),
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id },
+    } => id == 4242
+    _ => false
+  }
+}
+
+
+// THE REMAINING TWO CAUSES, REACHED THROUGH THE SAME MAPPING PRODUCTION USES. The three claims above
+// vary the bypass roster, which is enough to discriminate the roster arms but leaves the rule and
+// signed-policy arms untouched: the fixture pins rule_types to the declared list, and the signed
+// arm is decided by a nullary read of module globals no observation can vary. Counting claims that
+// cross the join answers a cardinality question; these two answer the coverage one.
+//
+// They call `repo_ruleset_observed_actuation_admission`, which IS the mapping -- the production
+// admission holds no copy and delegates every observed case to it. The only thing supplied here
+// that production computes is the signed refusal, which is exactly the value the globals pin.
+
+// A live merge_queue rule is not in this repository's desired projection, and converge sends the
+// WHOLE ruleset, so actuating would DELETE it. The cause must name the rule, because an operator
+// reading "unexpected rule" without knowing WHICH one cannot tell a destructive write from a typo.
+test fn an_undeclared_live_rule_reaches_its_own_cause_and_names_the_rule() -> Bool {
+  match repo_ruleset_observed_actuation_admission(
+    ruleset_id: 4242,
+    bypass_roster: BypassRosterObserved { actors: [] },
+    rule_types: append(desired_ruleset_rule_types(), items: [MergeQueueRule]),
+    signed_projection_refusal: none,
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetUnexpectedLiveRule { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "merge_queue")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE SECOND INVERSION, and the arm that was wrong precisely while it was
+// unreachable: a signed-but-unprojectable policy was reported as NOT SIGNED, sending an operator to
+// sign what was already signed. The signed refusal is Present here -- the only state in which that
+// arm fires -- and the assertion is that the cause carries the projection deficit rather than a
+// sign-off demand. Its control is the empty-roster claim above, identical but for this value
+// reaching the terminal unbound cause instead, so an admission answering this arm unconditionally
+// fails there.
+test fn a_signed_but_unprojectable_policy_is_not_reported_as_unsigned() -> Bool {
+  match repo_ruleset_observed_actuation_admission(
+    ruleset_id: 4242,
+    bypass_roster: BypassRosterObserved { actors: [] },
+    rule_types: desired_ruleset_rule_types(),
+    signed_projection_refusal: Present {
+      value: "fixture projection deficit: the signed queue policy is not carried by the projected rules" as NonEmptyStr,
+    },
+  ) {
+    RepositoryRulesetActuationRefused {
+      cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: _, detail: detail },
+    } => string_contains(s: detail as String, pattern: "projection deficit")
+    _ => false
+  }
+}
+
+// DRIFT IS NAMED, NOT REPORTED AS A MISSING WRITER. The difference step is the only caller of the
+// actuation kernel and it runs only when divergences exist, so every refusal this kernel returns is
+// returned WITH a computed divergence list in hand. An earlier revision discarded that list and
+// answered RepositoryRulesetActuationRealizationUnbound, so a name, enforcement or target drift read
+// as "no admitted actuation realization" -- the failure status survived and the located cause did
+// not. Review 60298 caught it against the former verifier, which rendered the concrete divergences.
+//
+// THE CONTROL IS INSIDE THE CLAIM. Asserting only that drift is named would be satisfied by a kernel
+// that answered DriftUnrepaired unconditionally -- including when a bypass hold should have won. So
+// both halves are asserted together: the SAME differences under an empty roster must name the drift,
+// and under an observed live bypass actor must NOT, reaching the hold instead. A realization that
+// ignored admission and always reported drift fails the second half.
+test fn drift_is_named_and_a_hold_still_wins_over_it() -> Bool {
+  let drifted = [RulesetNameDrift { observed: "drifted-name" }]
+  let admitted = repo_ruleset_drift_actuation(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved { actors: [] }),
+    differences: drifted,
+  )
+  let names_the_drift = match admitted {
+    WorldActuationRefused {
+      cause: RepositoryRulesetDriftUnrepaired { ruleset_id: id, drift: d },
+    } => id == 4242 && string_contains(s: d as String, pattern: "ruleset name is drifted-name")
+    _ => false
+  }
+  let held = repo_ruleset_drift_actuation(
+    subject: fixture_subject(),
+    observed: fixture_observed(roster: BypassRosterObserved {
+      actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
+    }),
+    differences: drifted,
+  )
+  let hold_wins = match held {
+    WorldActuationRefused {
+      cause: RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: _ },
+    } => true
+    _ => false
+  }
+  names_the_drift && hold_wins
+}

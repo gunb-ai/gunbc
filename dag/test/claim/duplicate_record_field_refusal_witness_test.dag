@@ -1,0 +1,78 @@
+module test.claim.duplicate_record_field_refusal_witness
+
+import std.types { String, Int, Bool }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A RECORD LITERAL THAT ASSIGNS ONE FIELD TWICE MUST REFUSE, AND THE SAME LITERAL ASSIGNING EACH
+// FIELD ONCE MUST BE ACCEPTED.
+//
+// THIS RED FAILS TODAY AND THAT IS ITS POINT. Measured at main 4b7371d1f64: the duplicate is
+// ACCEPTED and the LAST assignment wins -- `{ a: 1, a: 2, b: 3 }` answers 2 -- so the wall this
+// witness asserts does not exist yet. The identity is enrolled in `v2.workflow.floor_expected_red`
+// and that enrolment is retired by the wall landing, not by anyone editing this file. The class is
+// `gunbc.recurring_failure_mode.duplicate_record_literal_field_silently_last_wins`.
+//
+// WHY THE SUBJECT IS A SOURCE STRING RATHER THAN AN INLINE LITERAL, which is the only shape that
+// works. Writing `{ a: 1, a: 2 }` directly in this module would compile and pass TODAY, and on the
+// day the wall lands this FILE WOULD STOP PARSING -- so the probe would not flip red, it would break
+// the corpus, and the wall would be unlandable over its own regression control. DESIGN section 4b
+// answers this exactly: a state unrepresentable in the ACCEPTED corpus is still representable as
+// SOURCE HANDED TO THE COMPILER BY A FIXTURE, and a compiler is precisely a thing whose regression
+// probes are invalid programs. So the duplicate lives in a string, the corpus never contains it, and
+// the assertion flips on the wall alone.
+//
+// THAT FAILURE MODE IS NOT HYPOTHETICAL AND MAIN IS SHOWING IT RIGHT NOW. At 4b7371d1f64 the FLOOR
+// LANE REFUSES -- the whole phase, not one witness -- because
+// `dag/test/claim/fleet/fleet_converge_launch_scope_non_interference_test.dag` writes
+// `__launch_excess_field_probe` INLINE into a `LaunchEnvironmentConverge` literal. That probe was
+// authored when the compiler ADMITTED an excess field. The field-set check has since reached it, and
+// the probe did not flip red: it took the lane down, and it would have made its own wall unlandable.
+// This file is the same probe written the other way.
+//
+// WHAT THE PAIR DISCRIMINATES. Both sources go through the real acceptance path and differ in
+// EXACTLY one character position -- whether field `a` is named once or twice. Asserting
+// `blocking >= 1` alone would be satisfied by any malformed source, so the red carries no
+// information without the control: the control is what says a refusal is ABOUT THE REPEATED KEY and
+// not about the fixture being unparseable for some unrelated reason. That is not hypothetical here.
+// The first measurement of this class ran both arms and got IDENTICAL failures from a workspace-root
+// path panic, which is the same observation a passing wall produces; the control is the only reason
+// the verdict was ACCEPTED rather than a confident and wrong REFUSED.
+//
+// THE OTHER TWO DIRECTIONS ALREADY REFUSE, which is why this is a gap in a standing wall rather than
+// a missing one. A field set can be wrong three ways: too few keys, an unknown key, the same key
+// twice. `MissPair { a: 1 }` on a two-field type refuses with `missing required field 'b'`, located.
+// An unknown key refuses too -- that is what main's floor lane is refusing on above. The duplicate is
+// the only one of the three that is silent, and the code that must refuse it is already holding the
+// field list when the repeated key arrives.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and answering 0 would
+// let a broken harness satisfy the control while making the red unsatisfiable -- the
+// empty-observation narrow. 0 - 1 is neither verdict, so a harness that stops working fails in BOTH
+// directions instead of passing by silence.
+fn blocking_parse_error_count(source: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: "ParseError") {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+data red_duplicate_field_source: String = "module probe_duplicate_record_field\ntype DupPair {\n  a: Int\n  b: Int\n}\nfn answers() -> Int {\n  let p = DupPair { a: 1, a: 2, b: 3 }\n  p.a\n}\n"
+
+data green_each_field_once_source: String = "module probe_single_record_field\ntype DupPair {\n  a: Int\n  b: Int\n}\nfn answers() -> Int {\n  let p = DupPair { a: 1, b: 3 }\n  p.a\n}\n"
+
+test fn a_record_literal_assigning_one_field_twice_refuses() -> Bool {
+  blocking_parse_error_count(source: red_duplicate_field_source) >= 1
+}
+
+test fn the_same_literal_assigning_each_field_once_is_accepted() -> Bool {
+  blocking_parse_error_count(source: green_each_field_once_source) == 0
+}

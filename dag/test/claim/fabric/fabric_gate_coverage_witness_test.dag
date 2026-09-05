@@ -177,11 +177,13 @@ test fn the_shipped_enrolment_is_total_over_every_gate() -> Bool {
 // THE ROSTER IS HONEST RATHER THAN FLATTERING: it reports real remaining work, and specifically it
 // reports the mutation whose coverage was once claimed in prose. A roster that discharged everything
 // would satisfy the totality witness above and mean nothing, so this pins the opposite direction.
-// THE PARTITION IS NOW DISCRIMINATED AGAINST THE SHIPPED ROSTER, not only against fixtures. While
-// the FCI-2 witnesses were in flight every shipped row was undischarged, and a witness asserting a
-// partition over a uniform population asserts nothing -- so this pinned only the undischarged side.
-// Their trigger has since fired, so the roster now has rows on BOTH sides and the assertion can
-// carry its real content: expired-reservation is still undischarged AND duplicate-grant is not.
+// THE PARTITION IS NOW DISCRIMINATED ON BOTH SIDES OF THE SHIPPED ROSTER. A correction to an earlier
+// version of this comment: the undischarged-membership requirement below ALREADY refused an
+// all-discharged roster, because it demands (FCI-2, expired-reservation) be present. A uniform
+// positive population did not make it vacuous, and claiming this mixed check as the first shipped
+// protection against a flattering roster was wrong. What the discharged-side conjuncts add is that
+// the two promoted obligations are absent from undischarged -- which is what caught a promotion
+// applied to the wrong gate.
 test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> Bool {
   let undischarged = total_undischarged(fabric_gate_coverage())
   undischarged.length() > 0
@@ -190,23 +192,49 @@ test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> B
     && !any(undischarged, e => e.gate == "FCI-2" && e.mutation == "work-mismatch")
 }
 
-// A ROW MAY CHANGE ARM ONLY BECAUSE ITS TRIGGER FIRED. These two read Undischarged while their
-// witnesses were in flight and now name them, so the shipped roster carries both constructors and
-// the discharged side is no longer empty. Without this the roster could drift to all-discharged and
-// the totality witness would still pass, which is the flattering-roster failure. The constructor is
-// what is asserted, plus WHICH mutations discharged -- not that the witness string is non-empty,
-// which NonEmptyStr already owns and which would be a check restating the type.
-test fn the_two_fci_2_rows_whose_trigger_fired_now_name_their_witnesses() -> Bool {
+// THE DISCHARGED SIDE IS PINNED AT FULL (gate, mutation, witness) IDENTITY. An earlier revision
+// asserted only cardinality, gate, mutation membership and the constructor, so swapping the two
+// witness strings -- or substituting any other symbol -- left it unchanged. NonEmptyStr establishes
+// that a witness string is non-empty; it establishes nothing about WHICH declaration it names, and
+// the binding is the entire content of a discharge.
+//
+// The obligation identity is the PAIR. An earlier revision of the roster promoted (FCI-1,
+// work-mismatch) instead of (FCI-2, work-mismatch) because the edit keyed on the mutation SPELLING,
+// which both gates declare -- FCI-1 for cell realization, FCI-2 for issuance -- and discharged a
+// cell-realization obligation with an issuance witness. These assertions are what exposed it.
+//
+// This witness checks the PARTITION AND THE BINDING at one head. It cannot establish that a row
+// changed arm BECAUSE its trigger fired: no previous roster and no transition evidence is in scope,
+// so trigger satisfaction and declaration existence remain MANUALLY adjudicated until the receipt
+// join exists.
+fn discharged_by(v: CoverageVerdict, gate: NonEmptyStr, mutation: NonEmptyStr, expected: NonEmptyStr) -> Bool {
+  match v {
+    CoverageRefused { refusals } => false,
+    CoverageTotal { discharged, undischarged } =>
+      any(discharged, e => e.gate == gate && e.mutation == mutation && match e.discharge {
+        DischargedByWitness { witness } => witness == expected,
+        Undischarged { reason, restoration_trigger } => false,
+      }),
+  }
+}
+
+test fn the_discharged_rows_are_exactly_the_two_fci_2_obligations_bound_to_their_named_witnesses() -> Bool {
   match fabric_gate_coverage() {
     CoverageRefused { refusals } => false,
     CoverageTotal { discharged, undischarged } =>
       discharged.length() == 2
-        && all(discharged, e => e.gate == "FCI-2" && match e.discharge {
-          DischargedByWitness { witness } => true,
-          Undischarged { reason, restoration_trigger } => false,
-        })
-        && any(discharged, e => e.mutation == "duplicate-grant")
-        && any(discharged, e => e.mutation == "work-mismatch"),
+        && discharged_by(
+             fabric_gate_coverage(),
+             "FCI-2",
+             "duplicate-grant",
+             "test.claim.fabric_grant_issuance_witness.a_second_grant_for_one_attempt_is_refused",
+           )
+        && discharged_by(
+             fabric_gate_coverage(),
+             "FCI-2",
+             "work-mismatch",
+             "test.claim.fabric_grant_issuance_witness.an_attempt_naming_another_work_is_refused",
+           ),
   }
 }
 

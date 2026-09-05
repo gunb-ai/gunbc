@@ -18,6 +18,7 @@ import gunbc.live_deploy.revision {
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
+  DivergedHistories,
   RelationUnverifiable,
 }
 import gunbc.fleet_revision_acceptance {
@@ -364,7 +365,7 @@ test fn one_merge_base_decides_both_directions() -> Bool {
             Present { value: third } =>
               relation_from_merge_base_oid(current: cur, accepted: acc, base: cur) == DeployedIsAncestor
                 && relation_from_merge_base_oid(current: cur, accepted: acc, base: acc) == CandidateIsAncestor
-                && relation_from_merge_base_oid(current: cur, accepted: acc, base: third) == UnrelatedHistories
+                && relation_from_merge_base_oid(current: cur, accepted: acc, base: third) == DivergedHistories
             _ => false
           }
         _ => false
