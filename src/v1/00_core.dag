@@ -9,7 +9,6 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
@@ -849,12 +848,23 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 // so satisfying the shared name here would have retired the predicate row while every string
 // classifier it names still stood.
 //
-// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below
-// and was mirrored verbatim into the stage0 seed, which DESIGN 4c names as misplaced or dead data:
-// a dissolution condition belongs in a typed carrier and rationale belongs in an annotation. Moving
-// it here removes it from the emitted seed entirely -- annotations are captured on a lexical channel
-// disjoint from semantic occurrence allocation, so they reach no target bytes.
-data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
+// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below,
+// which is mirrored verbatim into the stage0 seed, so the rename roughly DOUBLED a commentary row
+// that ships in the compiler. DESIGN 4c names that shape exactly: rationale belongs in an annotation,
+// and 4c's own history is the receipt -- making `//` a parse error did not make commentary
+// unwritable, it made the corpus hoist comments into `data ...: String` rows, and the first cleanup
+// swept 215 of them. This was very nearly the 216th. Moving it here removes it from the emitted seed
+// entirely, because annotations are captured on a lexical channel disjoint from semantic occurrence
+// allocation and reach no target bytes.
+//
+// THE ROW BELOW IS STILL A STRING AND THAT IS STILL A 4c DEFECT, stated rather than left for a
+// reader to notice. Its dissolve-on is a dissolution condition and 4c says those belong in a typed
+// carrier; the terminal is gunbc.rung_drop, whose whole job is restoration triggers. That migration
+// is NOT done here for two reasons: the violation pre-dates this change and is not this change's to
+// carry, and putting the fact in some OTHER typed carrier first would author an intermediate
+// representation destined to be discarded -- the replacement-migration cost DESIGN 3 prices, with
+// the discarded form standing as an attractor meanwhile. Filed as a follow-up against rung_drop.
+data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-deferral-reason-authority."
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
