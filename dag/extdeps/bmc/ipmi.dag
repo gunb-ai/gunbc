@@ -11,6 +11,35 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE WRITE HALF OF THE IPMI CHASSIS INTERFACE was added 2026-09-05 beside the three readonly
+// operations this service already carried (IPMI v2.0 rev1.1 §28, Chassis Device Commands: Set
+// System Boot Options and Chassis Control). ChassisBootDev, ChassisPowerControl and UserSetPassword
+// are not `readonly`; the rest are. They exist because a converge arm that drives a host with NO
+// OPERATING SYSTEM has no other way in — every other transport in this repository reaches a machine
+// THROUGH the thing being installed.
+//
+// CREDENTIALS NEVER REACH ARGV. ipmitool's -f takes a file holding the password, which keeps the
+// secret out of the process table on a shared host; the caller materializes that file and passes its
+// path. A -P arm is deliberately NOT modeled: it is the shorter spelling and it publishes the
+// credential to every `ps` on the box. NOTE THE ASYMMETRY, because it is a real gap rather than a
+// style difference — the three original readonly operations carry no credential at all and so
+// cannot authenticate to a controller that requires one, which is why the Mt. Collins intake pass
+// could not use them.
+//
+// DEVICE AND ACTION ARE PARAMETERS, NOT LITERALS. Which boot device a workflow selects, and whether
+// it cycles or resets, is business policy and belongs to the workflow layer (DESIGN §3); an argv
+// carrying a baked "pxe" here would be the policy leak that section names, and would need a second
+// near-identical operation the first time anything wanted `cdrom`.
+//
+// ChassisBootParamGet IS WHAT MAKES ChassisBootDev OBSERVABLE. A set command's own exit status says
+// the controller ACCEPTED the request; boot parameter 5 says what it now holds, and only the second
+// distinguishes a controller that applied the override from one that ignored it. Measured on the
+// Mt. Collins unit 2026-09-05: before "No override", after "Force PXE", "Options apply to only next
+// boot".
+//
+// THIS PROSE SITS ABOVE THE SERVICE AND NOT BESIDE EACH OPERATION because §4c admits annotations at
+// module-item grain only; a `//` block inside a declaration body is a hard error, which is how the
+// first draft of these operations was caught.
 service diagnostic.ipmi.Tool {
   operation SensorList {
     input { bmc_host: NonEmptyStr }
@@ -42,6 +71,80 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool sel failed"
+    }
+  }
+
+  operation ChassisBootDev {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis bootdev failed"
+    }
+  }
+
+  operation ChassisBootParamGet {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis bootparam get failed"
+    }
+  }
+
+  operation ChassisPowerControl {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, action: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "power", "{action}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis power failed"
+    }
+  }
+
+  operation ChassisStatus {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis status failed"
+    }
+  }
+
+  operation FruPrint {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "fru", "print", "{fru_id}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool fru print failed"
+    }
+  }
+
+  operation McInfo {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool mc info failed"
+    }
+  }
+
+  operation UserSetPassword {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, user_id: NonEmptyStr, new_password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "user", "set", "password", "{user_id}", "-f", "{new_password_file}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool user set password failed"
     }
   }
 }
