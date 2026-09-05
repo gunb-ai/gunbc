@@ -1,6 +1,7 @@
 module gunbc.machine_intake_oob_boot_handoff
 
 import std.types { Bool, NonEmptyStr, String }
+import extdeps.bmc.ipmi
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
