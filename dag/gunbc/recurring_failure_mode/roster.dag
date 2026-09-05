@@ -141,6 +141,8 @@ import gunbc.recurring_failure_mode.corroboration_without_an_independent_derivat
 import gunbc.recurring_failure_mode.detector_promoted_to_an_actuator_predicate { detector_promoted_to_an_actuator_predicate }
 import gunbc.recurring_failure_mode.a_deconfliction_plan_does_not_enumerate_its_writers { a_deconfliction_plan_does_not_enumerate_its_writers }
 import gunbc.recurring_failure_mode.a_branch_property_falsified_by_a_derived_push { a_branch_property_falsified_by_a_derived_push }
+import gunbc.recurring_failure_mode.roster_is_its_own_denominator { roster_is_its_own_denominator }
+import gunbc.recurring_failure_mode.instrument_answers_outside_its_domain { instrument_answers_outside_its_domain }
 import gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares { comparison_keyed_on_part_of_the_identity_it_compares }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -274,5 +276,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   detector_promoted_to_an_actuator_predicate,
   a_deconfliction_plan_does_not_enumerate_its_writers,
   a_branch_property_falsified_by_a_derived_push,
+  roster_is_its_own_denominator,
+  instrument_answers_outside_its_domain,
   comparison_keyed_on_part_of_the_identity_it_compares,
 ]
