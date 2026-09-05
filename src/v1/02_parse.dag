@@ -2519,7 +2519,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
     let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span)
     let minted = mint_parsed_node_identity(ctx: sole.ctx)
-    let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+    let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
@@ -2529,7 +2529,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
       EatUnchanged { tokens: __eu } =>
         let type_mint = mint_parsed_node_identity(ctx: ctx)
         let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
-        let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+        let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }
     }
   }

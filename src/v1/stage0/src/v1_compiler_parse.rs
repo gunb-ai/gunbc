@@ -4807,7 +4807,7 @@ pub fn parse_type_after_kw(
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4859,7 +4859,7 @@ pub fn parse_type_after_kw(
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
-                            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                            module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
