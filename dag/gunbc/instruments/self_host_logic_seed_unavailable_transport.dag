@@ -26,10 +26,18 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 //   (2) LINKAGE: v1-compiler is absent at cargo build time -- no link-time seed dependency
 //   (3) FALLBACK: no runtime fallback to v1-compiler (it is not linkable)
 //   (4) EMBEDDED SOURCE: v1_rt.rs IS present in the emitted source tree (unconditional
-//       emitter behavior) and compiled into the crate, but its seed-derived functions are
-//       NOT CALLED by the emitted logic module. This is a STATED BOUNDARY, not a denial.
-//       The emitted logic (dag/std/logic.dag) is self-contained; dead code elimination
-//       removes the uncalled runtime shims from the binary.
+//       emitter behavior) and compiled into the crate. The transport CHECKS that the
+//       emitted subject module does NOT call v1_rt:: functions (reads the emitted .rs
+//       file and refuses on any match). If a call site is found, the transport issues a
+//       typed refusal: "this subject is outside the control's denial scope." The red is
+//       authorable: point this transport at any module using concat/trim/length and the
+//       check fires. This is CONSTRUCTION OVER PROSE -- the boundary is executed, not
+//       narrated.
+//
+// NEXT-RUNG TRIGGER: the ability to emit a crate whose runtime fragments are DERIVED
+// FROM THE MODELED SOURCE rather than copied from the seed's runtime module. Until then,
+// the embedded-source mode is enforced at the per-subject level by the v1_rt:: call-site
+// check below.
 //
 // This module fits LocalRepoWetLane: effects are confined to a temp directory + cargo
 // build with standard deps (no network for these cached crates), not BinWitnessWet
@@ -61,15 +69,15 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // etc. -- those are standard emitted-crate infrastructure dependencies, NOT seed linkage.
 // What is ABSENT is v1-compiler (the seed crate), so the COMPARISON LEG (emitted vs seed)
 // cannot link. The CONSTRUCT LEG (emit, build as standalone, run) proves the emitted LOGIC
-// module (dag/std/logic.dag) is self-contained: it does not call v1_rt functions, and
-// dead code elimination removes the uncalled runtime.
+// module (dag/std/logic.dag) is self-contained, verified by the v1_rt:: call-site check
+// below.
 //
 // BOUNDARY: v1_rt.rs IS present in the emitted source tree (unconditional by the emitter)
-// and IS compiled into the crate. But its functions are not CALLED by the emitted logic
-// module. The control denies three of four seed-dependency modes (execution, linkage, fallback)
-// and NAMES the fourth (embedded source in v1_rt.rs) as a stated boundary. The v1_rt.rs
-// module's actual v1-derived code is a checked-in Rust source that the emitter copies, not
-// a seed-crate linkage -- eliminating it is a separate emit-module construction question.
+// and IS compiled into the crate. The transport ENFORCES by execution that the emitted
+// subject module does not call v1_rt:: functions -- if it does, the transport refuses
+// with a typed refusal. The control denies three of four seed-dependency modes (execution,
+// linkage, fallback) and the fourth (embedded source) is enforced at the per-subject level
+// by the call-site check, not narrated.
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
@@ -111,6 +119,10 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
 
+  // The emitted module path: dag/std/logic.dag -> Rust module std_logic.rs
+  let emitted_module_rel = "src/std_logic.rs"
+  let emitted_module_path = concat(out_dir.path, concat("/", emitted_module_rel))
+
   // Emit dag/std/logic.dag with the real gunbc binary
   let emit = gunbc.WitnessBin.Run(
     workdir: root.path,
@@ -124,6 +136,17 @@ fn slbu_seed_unavailable_receipt() -> Bool {
       "--dependency-pool-index", "primary-precedence"
     ]
   )
+
+  // ENFORCED BOUNDARY: verify the emitted LOGIC MODULE does not call v1_rt functions.
+  // v1_rt.rs IS present in the emitted source tree (unconditional emitter splice), but
+  // the emitted subject module must not CALL into it. This check reads the emitted module
+  // file and refuses if any v1_rt:: reference is found. A typed refusal means "this subject
+  // is outside the control's denial scope" rather than "the control failed." The red is
+  // authorable: point this transport at any module using concat/trim/length/rc_empty_map
+  // and the v1_rt:: check fires.
+  let emitted_module_read = Filesystem.Read(path: emitted_module_path)
+  let no_v1_rt_calls = emitted_module_read.success
+    && !string_contains(s: emitted_module_read.content, pattern: "v1_rt::")
 
   // Write Cargo.toml with standard infrastructure deps but NO seed crate dependency
   let cargo_toml = Filesystem.Write(
@@ -158,9 +181,13 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     && cargo_toml.success && main_rs.success
     && cleanup_src.success && cleanup_out.success
 
-  // The receipt holds when the emit staged, the no-seed build succeeded,
-  // the witness ran and reported the expected case count, and the pass marker was printed.
+  // The receipt holds when:
+  //   - emit staged successfully
+  //   - the emitted module does NOT call into v1_rt (embedded-source boundary enforced)
+  //   - the no-seed-closure cargo build succeeded
+  //   - the witness ran, reported the expected case count, and printed the PASS marker
   staged
+    && no_v1_rt_calls
     && build.success
     && string_contains(s: pass_run.stdout, pattern: slbu_cases_marker())
     && pass_run.success

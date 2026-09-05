@@ -251,10 +251,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // CONTROL (b) -- seed-unavailable behavioral receipt for dag/std/logic.dag.
     // Proves the emitted candidate STILL EXECUTES SUCCESSFULLY without the seed crate
     // (v1-compiler absent at build time). Standard infrastructure deps (im, serde etc.)
-    // are present for v1_rt.rs which the emitter includes unconditionally. The emitted
-    // LOGIC module is self-contained; v1_rt.rs functions are not called by it.
-    // Denies three of four seed-dependency modes (execution, linkage, fallback);
-    // states the boundary on the fourth (embedded source in v1_rt.rs).
+    // are present for v1_rt.rs which the emitter includes unconditionally. The transport
+    // ENFORCES by execution that the emitted subject module does not call v1_rt::
+    // functions (reads the emitted .rs file, refuses on match).
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_witness", function: "self_host_logic_seed_unavailable_receipt_holds" },
       entry: "dag/test/claim/self_host_logic_seed_unavailable_witness_test.dag",
