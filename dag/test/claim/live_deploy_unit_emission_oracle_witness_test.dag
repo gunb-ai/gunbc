@@ -30,6 +30,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh }
 import extdeps.http.server { HttpServerListenConfig }
+import v2.std.algebra { fold_list }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -743,13 +744,17 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
 test fn serve_unit_execstart_goes_red_under_different_port() -> Bool {
   let baseline = serve_service_directives_of(spec: live_spec())
   let mutated = serve_service_directives_of(spec: spec_with_port(wrong_port: divergent_port()))
-  any(xs: baseline, pred: d => match d {
-    ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
-    _ => false
-  })
-    && any(xs: mutated, pred: d => match d {
-      ExecStart { command: _ } => true
+  any(xs: baseline, pred: fn(d: SystemdServiceDirective) -> Bool {
+    match d {
+      ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
       _ => false
+    }
+  })
+    && any(xs: mutated, pred: fn(d: SystemdServiceDirective) -> Bool {
+      match d {
+        ExecStart { command: _ } => true
+        _ => false
+      }
     })
 }
 
@@ -771,9 +776,11 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
 test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
   let baseline = tree_sync_service_directives_of(spec: live_spec())
   let mutated = tree_sync_service_directives_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root()))
-  any(xs: baseline, pred: d => match d {
-    ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
-    _ => false
+  any(xs: baseline, pred: fn(d: SystemdServiceDirective) -> Bool {
+    match d {
+      ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
+      _ => false
+    }
   })
 }
 
@@ -781,18 +788,17 @@ test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
 // HELPER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-fn all(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
-  match xs {
-    [] => true
-    [first, ..rest] => pred(first) && all(xs: rest, pred: pred)
-  }
+// BY FOLD, NOT BY LIST PATTERN. A `[first, ..rest]` match arm is not admitted by this parser --
+// src/v2/lens/fn_index_depth_agreement records the same refusal, and the first cut of this file
+// carried the list form and produced 194 parse errors before it ran anywhere. fold_list is the
+// idiom the accepted corpus uses.
+
+fn all<T>(xs: List<T>, pred: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: true, cons: fn(acc: Bool, x: T) -> Bool { acc && pred(x) })
 }
 
-fn any(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
-  match xs {
-    [] => false
-    [first, ..rest] => if pred(first) { true } else { any(xs: rest, pred: pred) }
-  }
+fn any<T>(xs: List<T>, pred: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc: Bool, x: T) -> Bool { acc || pred(x) })
 }
 
 fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
