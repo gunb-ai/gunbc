@@ -2,6 +2,8 @@ module test.claim.fabric.fabric_gate_coverage_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+import extdeps.git.object_store { GitObjectId }
+import std.content_hash { Sha1Digest }
 import v2.workflow.floor_terminal_ledger {
   WitnessIdentity,
   ClaimTerminalRow,
@@ -305,11 +307,20 @@ fn subject(hex: NonEmptyStr) -> Fnv1a64Structural {
   Fnv1a64Structural { digest: hex }
 }
 
+fn commit_a() -> RepositorySnapshot {
+  PublishedCommit { commit: GitSha1ObjectId { digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } } }
+}
+
+fn commit_b() -> RepositorySnapshot {
+  PublishedCommit { commit: GitSha1ObjectId { digest: Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } } }
+}
+
+fn ledger_at(rev: RepositorySnapshot, hex: NonEmptyStr) -> LedgerBinding {
+  LedgerBinding { repository_snapshot: rev, prepared_subject: subject(hex) }
+}
+
 fn ledger_of(hex: NonEmptyStr) -> LedgerBinding {
-  LedgerBinding {
-    repository_snapshot: UnpublishedWorkingTree,
-    prepared_subject: subject(hex),
-  }
+  ledger_at(commit_a(), hex)
 }
 
 fn row_of(expectation: ClaimExpectation, terminal: ClaimAttemptTerminal) -> ClaimTerminalRow {
@@ -324,6 +335,8 @@ fn standing_is_refused(v: GateStandingVerdict) -> Bool {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => true,
     StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => true,
+    StandingRefusedLedgerIsOfAnotherRevision {} => true,
+    StandingRefusedLedgerIsNotCandidateBound {} => true,
     StandingDerived { covered, uncovered } => false,
   }
 }
@@ -332,6 +345,8 @@ fn covered_count(v: GateStandingVerdict) -> Int {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => 0,
     StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => 0,
+    StandingRefusedLedgerIsOfAnotherRevision {} => 0,
+    StandingRefusedLedgerIsNotCandidateBound {} => 0,
     StandingDerived { covered, uncovered } => covered.length(),
   }
 }
@@ -340,6 +355,8 @@ fn cause_labels(v: GateStandingVerdict) -> List<NonEmptyStr> {
   match v {
     StandingRefusedUnwellFormedEnrolment { refusals } => ["standing-refused-unwell-formed"],
     StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => ["standing-refused-other-subject"],
+    StandingRefusedLedgerIsOfAnotherRevision {} => ["standing-refused-other-revision"],
+    StandingRefusedLedgerIsNotCandidateBound {} => ["standing-refused-not-candidate-bound"],
     StandingDerived { covered, uncovered } => map(uncovered, s => match s {
       Covered { gate, mutation, witness } => "covered",
       NotCovered { gate, mutation, cause } => match cause {
@@ -360,14 +377,14 @@ test fn the_fixture_enrolment_is_well_formed_regardless_of_evidence() -> Bool {
 }
 
 test fn a_nomination_with_matching_evidence_earns_standing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 1 && any(cause_labels(v), l => l == "not-nominated|FCI-X|n")
 }
 
 // EVIDENCE REMOVED -> standing collapses while well-formedness is untouched. This is the exact
 // discrimination the authored-only contract could not make, and the reason it was rejected.
 test fn removing_the_evidence_collapses_standing_without_touching_well_formedness() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0
     && any(cause_labels(v), l => l == "no-observation|FCI-X|m")
     && refusal_labels(gate_coverage(one_gate_two_obligations(), nominated_rows())).length() == 0
@@ -376,19 +393,19 @@ test fn removing_the_evidence_collapses_standing_without_touching_well_formednes
 // WRONG-SUBJECT EVIDENCE. A ledger of another prepared subject REFUSES rather than deriving zero:
 // evidence about another tree is not evidence of no coverage.
 test fn a_ledger_of_another_subject_refuses_rather_than_deriving_zero() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("bbbbbbbbbbbbbbbb"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("bbbbbbbbbbbbbbbb"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-other-subject")
 }
 
 test fn evidence_that_errored_earns_nothing() -> Bool {
   let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedToHold, RuntimeErrored { message: "boom" })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedToHold, RuntimeErrored { message: "boom" })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
 test fn evidence_that_was_never_attempted_earns_nothing() -> Bool {
   let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedToHold, NotAttempted { halted_by: "halt" })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedToHold, NotAttempted { halted_by: "halt" })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
@@ -400,9 +417,9 @@ test fn evidence_that_was_never_attempted_earns_nothing() -> Bool {
 // A gate obligation is discharged only by a witness that RETURNED AND HELD.
 test fn a_nomination_the_roster_holds_as_a_known_red_earns_nothing() -> Bool {
   let red_false = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: false } })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   let red_true = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: true } })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedRed, Returned { observation: ObservedVerdict { holds: true } })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(red_false) == 0
     && covered_count(red_true) == 0
     && any(cause_labels(red_false), l => l == "held-known-red|FCI-X|m")
@@ -413,23 +430,23 @@ test fn a_nomination_the_roster_holds_as_a_known_red_earns_nothing() -> Bool {
 // the witness above discriminates the EXPECTATION rather than reporting that nothing ever covers.
 test fn the_same_held_verdict_earns_standing_when_the_roster_expects_it_to_hold() -> Bool {
   covered_count(gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: true } })], subject("aaaaaaaaaaaaaaaa"))) == 1
+    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: true } })], commit_a(), subject("aaaaaaaaaaaaaaaa"))) == 1
 }
 
 test fn a_false_verdict_under_expected_to_hold_earns_nothing() -> Bool {
   let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: false } })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedToHold, Returned { observation: ObservedVerdict { holds: false } })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
 test fn an_unrepresentable_observation_earns_nothing() -> Bool {
   let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"),
-    [row_of(ExpectedToHold, Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } })], subject("aaaaaaaaaaaaaaaa"))
+    [row_of(ExpectedToHold, Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } })], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "wrong-terminal|FCI-X|m")
 }
 
 test fn two_observations_for_one_nomination_earn_nothing() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row(), passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [passing_row(), passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   covered_count(v) == 0 && any(cause_labels(v), l => l == "several-observations|FCI-X|m")
 }
 
@@ -437,13 +454,70 @@ test fn two_observations_for_one_nomination_earn_nothing() -> Bool {
 // successful population -- the absorbing-fallback shape, where "nothing covered" arrives in the same
 // value a caller reads as "nothing to worry about".
 test fn an_unwell_formed_enrolment_refuses_standing_rather_than_deriving_an_empty_one() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), [], ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), [], ledger_of("aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-unwell-formed")
 }
 
 // The paired positive control, without which "refuses when unwell-formed" is indistinguishable from
 // "always refuses": a well-formed enrolment with no evidence DERIVES zero rather than refusing.
 test fn a_well_formed_enrolment_with_no_evidence_derives_rather_than_refuses() -> Bool {
-  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], subject("aaaaaaaaaaaaaaaa"))
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(), ledger_of("aaaaaaaaaaaaaaaa"), [], commit_a(), subject("aaaaaaaaaaaaaaaa"))
   !standing_is_refused(v) && covered_count(v) == 0
+}
+
+// ============================================================================
+// REVISION-BOUND ADMISSION. The adjudication subject is TWO facts, and these controls hold the
+// PREPARED DIGEST FIXED while varying only the revision -- which is the counterexample that needs no
+// hash collision: two commits can share a prepared inventory whenever their difference lies outside
+// the prepared population. An earlier revision of this module compared only the digest, so every
+// assertion below except the first was satisfiable without reading the revision at all.
+test fn a_matching_published_revision_and_digest_earns_standing() -> Bool {
+  covered_count(gate_standing(one_gate_two_obligations(), nominated_rows(),
+    ledger_at(commit_a(), "aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))) == 1
+}
+
+// SAME DIGEST, DIFFERENT COMMIT -> refuses. This is the assertion the digest-only comparison could
+// not make, and its failure mode was silent: evidence from another revision presented as earned.
+test fn the_same_prepared_digest_at_another_revision_refuses() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
+    ledger_at(commit_b(), "aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-other-revision")
+}
+
+// AN UNPUBLISHED WORKING TREE NAMES NO COMMIT, so no evidence can be bound to it. The module's own
+// positive fixture used to be exactly this and earned coverage.
+test fn an_unpublished_working_tree_cannot_earn_candidate_bound_standing() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
+    ledger_at(UnpublishedWorkingTree, "aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa"))
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-not-candidate-bound")
+}
+
+test fn an_unpublished_adjudication_subject_cannot_be_adjudicated_against() -> Bool {
+  let v = gate_standing(one_gate_two_obligations(), nominated_rows(),
+    ledger_at(commit_a(), "aaaaaaaaaaaaaaaa"), [passing_row()], UnpublishedWorkingTree, subject("aaaaaaaaaaaaaaaa"))
+  standing_is_refused(v) && any(cause_labels(v), l => l == "standing-refused-not-candidate-bound")
+}
+
+// THE SUCCESSFUL RESULT MUST PRESERVE THE WHOLE ASSOCIATION. Counting covered rows cannot establish
+// that Covered carries the identity it was nominated with -- a construction that flattened the
+// module and function into one string, or swapped them, would count identically. This reads gate,
+// mutation, module_path AND function off the successful arm.
+fn covered_association(v: GateStandingVerdict) -> List<NonEmptyStr> {
+  match v {
+    StandingRefusedUnwellFormedEnrolment { refusals } => [],
+    StandingRefusedLedgerIsOfAnotherSubject { observed, adjudicated } => [],
+    StandingRefusedLedgerIsOfAnotherRevision {} => [],
+    StandingRefusedLedgerIsNotCandidateBound {} => [],
+    StandingDerived { covered, uncovered } => map(covered, s => match s {
+      NotCovered { gate, mutation, cause } => "not-covered",
+      Covered { gate, mutation, witness } =>
+        concat(concat(gate, concat("|", mutation)), concat("|", concat(witness.module_path, concat("|", witness.function)))) as NonEmptyStr,
+    }),
+  }
+}
+
+test fn the_successful_result_carries_the_gate_mutation_module_and_function_it_was_nominated_with() -> Bool {
+  let assoc = covered_association(gate_standing(one_gate_two_obligations(), nominated_rows(),
+    ledger_at(commit_a(), "aaaaaaaaaaaaaaaa"), [passing_row()], commit_a(), subject("aaaaaaaaaaaaaaaa")))
+  assoc.length() == 1 && any(assoc, a => a == "FCI-X|m|t|w_m")
 }

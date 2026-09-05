@@ -2,8 +2,10 @@ module gunbc.fabric_gate_coverage
 
 import std.types { List, NonEmptyStr, Bool }
 import gunbc.fabric_ci_program { FabricCiGate, fabric_ci_gates }
+import extdeps.git.object_store { GitObjectId }
 import v2.workflow.floor_terminal_ledger {
   WitnessIdentity,
+  RepositorySnapshot,
   ClaimTerminalRow,
   ClaimAttemptTerminal,
   ClaimObservation,
@@ -299,6 +301,8 @@ type GateStandingVerdict
   = StandingDerived { covered: List<ObligationStanding>, uncovered: List<ObligationStanding> }
   | StandingRefusedUnwellFormedEnrolment { refusals: List<CoverageRefusal> }
   | StandingRefusedLedgerIsOfAnotherSubject { observed: Fnv1a64Structural, adjudicated: Fnv1a64Structural }
+  | StandingRefusedLedgerIsOfAnotherRevision {}
+  | StandingRefusedLedgerIsNotCandidateBound {}
 
 fn witness_identity_eq(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
   a.module_path == b.module_path && a.function == b.function
@@ -378,32 +382,63 @@ fn is_covered(s: ObligationStanding) -> Bool {
   }
 }
 
-// WRONG SUBJECT IS A PROPERTY OF THE LEDGER, NOT OF A ROW. Every row in one ledger was produced by
-// one prepared subject, so "this evidence is about another tree" is asked once against the binding
-// rather than re-asked per row -- and it REFUSES the whole verdict rather than silently dropping the
-// rows, because a ledger of the wrong subject is not a ledger with no coverage.
+fn git_object_id_eq(a: GitObjectId, b: GitObjectId) -> Bool {
+  match a {
+    GitSha1ObjectId { digest } => match b {
+      GitSha1ObjectId { digest: other } => digest.hex == other.hex,
+      GitSha256ObjectId { digest: other } => false,
+    },
+    GitSha256ObjectId { digest } => match b {
+      GitSha256ObjectId { digest: other } => digest.hex == other.hex,
+      GitSha1ObjectId { digest: other } => false,
+    },
+  }
+}
+
+// THE ADJUDICATION SUBJECT IS TWO FACTS, AND AN EARLIER REVISION READ ONLY ONE. It compared the
+// prepared-subject digest and never read repository_snapshot at all, so standing could not change
+// when the revision did: two commits can share a prepared inventory whenever their difference lies
+// outside the prepared population, and the module's own positive fixture -- which always built
+// UnpublishedWorkingTree -- earned coverage. That is a local prepared-subject calculation wearing
+// the name of revision-bound admission. The ledger authority says as much in its own header: the ref
+// says WHICH commit a human opens, the digest says WHAT was admitted, and they diverge on every run.
+//
+// AN UNPUBLISHED WORKING TREE CANNOT EARN CANDIDATE-BOUND STANDING AT ALL. It names no commit, so
+// there is no revision for the evidence to be bound to, and admitting it would let standing be
+// earned for a tree nobody can name. Both refusals are wholesale rather than per-row, because a
+// ledger of the wrong revision is not a ledger with no coverage.
 fn gate_standing(
   gates: List<FabricCiGate>,
   enrolments: List<MutationEnrolment>,
   binding: LedgerBinding,
   rows: List<ClaimTerminalRow>,
+  adjudicated_revision: RepositorySnapshot,
   adjudicated_subject: Fnv1a64Structural,
 ) -> GateStandingVerdict {
-  if binding.prepared_subject.digest != adjudicated_subject.digest {
-    StandingRefusedLedgerIsOfAnotherSubject {
-      observed: binding.prepared_subject,
-      adjudicated: adjudicated_subject,
-    }
-  } else {
-    match gate_coverage(gates, enrolments) {
-      CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
-      CoverageTotal { discharged, undischarged } => {
-        let all_standings = map(concat(discharged, undischarged), e => standing_for(e, rows))
-        StandingDerived {
-          covered: filter(all_standings, s => is_covered(s)),
-          uncovered: filter(all_standings, s => !is_covered(s)),
-        }
-      },
-    }
+  match binding.repository_snapshot {
+    UnpublishedWorkingTree => StandingRefusedLedgerIsNotCandidateBound {},
+    PublishedCommit { commit } => match adjudicated_revision {
+      UnpublishedWorkingTree => StandingRefusedLedgerIsNotCandidateBound {},
+      PublishedCommit { commit: wanted } =>
+        if !git_object_id_eq(commit, wanted) {
+          StandingRefusedLedgerIsOfAnotherRevision {}
+        } else if binding.prepared_subject.digest != adjudicated_subject.digest {
+          StandingRefusedLedgerIsOfAnotherSubject {
+            observed: binding.prepared_subject,
+            adjudicated: adjudicated_subject,
+          }
+        } else {
+          match gate_coverage(gates, enrolments) {
+            CoverageRefused { refusals } => StandingRefusedUnwellFormedEnrolment { refusals: refusals },
+            CoverageTotal { discharged, undischarged } => {
+              let all_standings = map(concat(discharged, undischarged), e => standing_for(e, rows))
+              StandingDerived {
+                covered: filter(all_standings, s => is_covered(s)),
+                uncovered: filter(all_standings, s => !is_covered(s)),
+              }
+            },
+          }
+        },
+    },
   }
 }
