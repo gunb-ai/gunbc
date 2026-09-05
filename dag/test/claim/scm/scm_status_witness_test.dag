@@ -250,7 +250,7 @@ test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool {
     pending: empty_proposal(),
   )
   render_repository_status(status: s)
-    == "nothing checked out\n0 commits\nno corpus staged\n  nothing staged"
+    == "nothing checked out\n0 commits\nno corpus staged\n  no roles staged"
 }
 
 // The store population is deliberately not reported: it is a fact about REPRESENTATION rather than
@@ -262,7 +262,7 @@ test fn status_does_not_report_store_representation() -> Bool {
     pending: empty_proposal(),
   )
   render_repository_status(status: s)
-    == "on commit: first\n1 commit\nno changes staged relative to the checked-out commit\n  corpus: 1 path\n  nothing staged"
+    == "on commit: first\n1 commit\nno changes staged relative to the checked-out commit\n  candidate corpus: 1 path\n  no roles staged"
 }
 
 // THE REFUSAL NAMES THE COMMIT IT REFUSES ON. Before this claim the arm rendered "the checked-out
@@ -285,7 +285,7 @@ test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool {
     pending: empty_proposal(),
   )
   render_repository_status(status: one)
-      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  nothing staged"
+      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  no roles staged"
     && render_repository_status(status: seven)
-      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  nothing staged"
+      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  no roles staged"
 }

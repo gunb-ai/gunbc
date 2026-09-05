@@ -195,8 +195,8 @@ fn status_checkout_is_resolvable(status: RepositoryStatus) -> Bool {
 
 fn render_staged_role(staged: StagedRole) -> String {
   match staged {
-    StagedBinding { role: role } => concat("  staged:  ", role as String)
-    StagedAbsence { role: role } => concat("  removed: ", role as String)
+    StagedBinding { role: role } => concat("  role staged:  ", role as String)
+    StagedAbsence { role: role } => concat("  role removed: ", role as String)
   }
 }
 
@@ -244,9 +244,19 @@ fn render_commit_count(commit_count: Int) -> String {
 // THE EMPTY STAGED LIST IS RENDERED EXPLICITLY, not left as blank space. "nothing staged" and "this
 // surface did not report staging" are different facts, and a surface that renders the first as
 // silence makes them identical to the reader -- the empty-observation narrow, carried to a human.
+//
+// AND IT NAMES ITS SUBJECT, BECAUSE THERE ARE NOW TWO THINGS A READER CALLS "STAGED". This line said
+// the unqualified "nothing staged" while it reports only the ROLE PROPOSAL, which is a different
+// subject from the corpus candidate rendered above it. The combined surface could therefore print
+// "changes staged relative to the checked-out commit" and "nothing staged" together, which is not
+// merely confusing -- it is two contradictory answers to what the reader takes to be one question.
+// The role lines carry the same qualification for the same reason.
+//
+// The wording is the cheap half of the repair; the load-bearing half is that these two subjects were
+// never fused into one list, which is what makes qualifying them possible at all.
 fn render_staged(staged: List<StagedRole>) -> List<String> {
   if count(staged) == 0 {
-    ["  nothing staged"]
+    ["  no roles staged"]
   } else {
     map(staged, s => render_staged_role(staged: s))
   }
@@ -294,11 +304,17 @@ fn render_stage_standing(standing: StageStanding) -> String {
 //
 // A COUNT IS REPORTED INSTEAD, because it is a fact about the candidate and does not pretend to be a
 // fact about the difference. The standing line above already carries the difference, as a yes or no.
+// THE LABEL SAYS CANDIDATE CORPUS SIZE, NOT A CHANGED-FILE COUNT, and the distinction is the whole
+// reason this line is a count at all. It reports how many paths the candidate BINDS; it says nothing
+// about how many differ from the base, which this surface has not computed. A reader who saw
+// "2 paths" beneath a line announcing staged changes would reasonably take it for the number of
+// changed files, so the label has to refuse that reading rather than rely on the reader not making
+// it.
 fn render_corpus_size(paths: List<NonEmptyStr>) -> String {
   if count(paths) == 1 {
-    "  corpus: 1 path"
+    "  candidate corpus: 1 path"
   } else {
-    concat("  corpus: ", concat(to_string(value: count(paths)), " paths"))
+    concat("  candidate corpus: ", concat(to_string(value: count(paths)), " paths"))
   }
 }
 

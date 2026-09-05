@@ -145,7 +145,7 @@ test fn status_document_does_not_fork_the_verb_modules_text() -> Bool {
 // event as a read that produced no output, and a reader cannot tell them apart if the second is how
 // the first looks.
 test fn an_empty_repository_status_renders_its_lines() -> Bool {
-  serialized_status() == "nothing checked out\n0 commits\nno corpus staged\n  nothing staged"
+  serialized_status() == "nothing checked out\n0 commits\nno corpus staged\n  no roles staged"
 }
 
 // NO COMMITS IS AN ANSWER. Same distinction, on the log verb.
@@ -315,7 +315,7 @@ test fn the_same_answered_read_without_a_control_byte_prints_and_succeeds() -> B
   match control_byte_response(message: "release") {
     CliWireUnprintable { cause: _ } => false
     CliWirePrintable { bytes: b, exit: e } =>
-      b == "on commit: release\n1 commit\nno corpus staged\n  nothing staged\n"
+      b == "on commit: release\n1 commit\nno corpus staged\n  no roles staged\n"
         && match e {
              ExitSuccess => true
              ExitFailure { code: _, reason: _ } => false
