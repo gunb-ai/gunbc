@@ -176,12 +176,13 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    callable_candidate_labels, callable_identity_label, flatten_parent_envs,
-    func_sig_for_derivation, resolve_func_sigs,
+    callable_candidate_labels, callable_identity_label, callable_owner_index_from_envs,
+    callable_owner_index_from_own_env, empty_callable_owner_index, flatten_parent_envs,
+    func_sig_for_derivation, reference_derived_parent_envs, resolve_func_sigs,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    CallableCandidate, CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason,
-    ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
+    CallableCandidate, CallableIdentity, CallableOwnerIndex, DerivedCalleeSig, FuncSigLookup,
+    NoDerivableSigReason, ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -24075,47 +24076,6 @@ pub fn build_imported_variants(
         })
 }
 
-pub fn selective_func_env_view(
-    env: Rc<ResolvedFuncEnv>,
-    names: Rc<Vec<String>>,
-) -> Rc<ResolvedFuncEnv> {
-    {
-        let selected = names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            |acc: _, name: String| match v1_rt::map_get(&env.local.clone(), name.clone()) {
-                Some(sig) => v1_rt::rc_map_insert(acc.clone(), name.clone(), sig.clone()),
-                std::option::Option::None => acc.clone(),
-            },
-        );
-        Rc::new(ResolvedFuncEnv {
-            name: env.name.clone(),
-            local: selected.clone(),
-            parents: Rc::new(vec![]),
-        })
-    }
-}
-
-pub fn func_env_views_for_import(
-    parent: Rc<ResolvedFuncEnv>,
-    is_all: bool,
-    specific_names: Rc<Vec<String>>,
-) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
-    if is_all.clone() {
-        Rc::new(vec![parent.clone()])
-    } else {
-        Rc::new({
-            let mut __result = Vec::new();
-            for env in v1_rt::concat(Rc::new(vec![parent.clone()]), parent.parents.clone())
-                .iter()
-                .cloned()
-            {
-                __result.push(selective_func_env_view(env.clone(), specific_names.clone()));
-            }
-            __result
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEnvViewMerge {
     pub by_owner: Rc<HashMap<String, Rc<ResolvedFuncEnv>>>,
@@ -24229,6 +24189,7 @@ Rc::new(ResolvedFormal {
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    callable_owner_index: Rc<CallableOwnerIndex>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
@@ -24337,24 +24298,14 @@ pub fn build_module_context(
             ),
             v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
         );
-        let parent_envs = merge_func_env_views_by_owner(Rc::new({
-            let mut __result = Vec::new();
-            for imp in resolved_imports.iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => func_env_views_for_import(
-                            typed_parent.func_env.clone(),
-                            imp.is_all.clone(),
-                            imp.specific_names.clone(),
-                        ),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        }));
+        let parent_envs = merge_func_env_views_by_owner(
+            crate::v1_compiler_infer_sigs::reference_derived_parent_envs(
+                local.resolved_items.clone(),
+                callable_owner_index.clone(),
+                module_name.clone(),
+                env.source_indices.clone(),
+            ),
+        );
         let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
             local.func_sigs.clone(),
             parent_envs.clone(),
@@ -24409,6 +24360,7 @@ pub struct TypecheckModuleResult {
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    callable_owner_index: Rc<CallableOwnerIndex>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
@@ -24488,6 +24440,7 @@ pub fn typecheck_module(
         let ctx = build_module_context(
             contributions.clone(),
             parent_index.clone(),
+            callable_owner_index.clone(),
             variant_surfaces.clone(),
             resolved.resolved_imports.clone(),
             env.clone(),
@@ -24657,6 +24610,13 @@ pub fn typecheck_module_isolated(
     typecheck_module(
         resolved.clone(),
         parent_index.clone(),
+        crate::v1_compiler_infer_sigs::callable_owner_index_from_envs(Rc::new({
+            let mut __result = Vec::new();
+            for tm in Rc::new(v1_rt::map_values(&parent_index)).iter().cloned() {
+                __result.push(tm.func_env.clone());
+            }
+            __result
+        })),
         v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
         source_indices.clone(),
         intern_table.clone(),
@@ -25221,6 +25181,7 @@ pub struct RealizeState {
     pub variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diags_by_name: Rc<HashMap<String, Rc<Vec<Rc<ErrorNode>>>>>,
+    pub callable_owner_index: Rc<CallableOwnerIndex>,
 }
 
 pub fn typecheck(
@@ -25270,6 +25231,7 @@ pub fn typecheck_with_census_extra(
                 variant_surfaces: v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
                 item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                 diags_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ErrorNode>>>>(),
+                callable_owner_index: crate::v1_compiler_infer_sigs::empty_callable_owner_index(),
             }),
             |st: _, rm: _| {
                 realize_module(
@@ -25377,6 +25339,7 @@ pub fn realize_module(
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
+                        dep_state.callable_owner_index.clone(),
                         dep_state.variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
@@ -25415,6 +25378,11 @@ pub fn realize_module(
                                 tc_result.diagnostics.clone(),
                             ),
                         ),
+                        callable_owner_index:
+                            crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
+                                dep_state.callable_owner_index.clone(),
+                                typed.func_env.clone(),
+                            ),
                     })
                 }
             },
@@ -26156,48 +26124,25 @@ pub fn rewire_func_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
-        let index = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: _, m: _| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
-                    m.clone(),
-                )
-            },
-        );
+        let owner_index = crate::v1_compiler_infer_sigs::callable_owner_index_from_envs(Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.push(m.func_env.clone());
+            }
+            __result
+        }));
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
                 __result.push({
-                    let parents = merge_func_env_views_by_owner(Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in crate::v1_std_core::module_imports(m.module.clone())
-                            .iter()
-                            .cloned()
-                        {
-                            __result.extend(
-                                (*{
-                                    let path =
-                                        import_module_path_at(imp.clone(), source_indices.clone());
-                                    match v1_rt::map_get(&index, path.clone()) {
-                                        Some(parent) => func_env_views_for_import(
-                                            parent.func_env.clone(),
-                                            crate::v1_std_core::import_is_all(imp.clone()),
-                                            crate::v1_std_core::import_specific_names_at(
-                                                imp.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                        ),
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    }
-                                })
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    }));
+                    let parents = merge_func_env_views_by_owner(
+                        crate::v1_compiler_infer_sigs::reference_derived_parent_envs(
+                            m.items.clone(),
+                            owner_index.clone(),
+                            m.func_env.clone().name.clone(),
+                            source_indices.clone(),
+                        ),
+                    );
                     Rc::new(TypedModule {
                         progress: m.progress.clone(),
                         module: m.module.clone(),

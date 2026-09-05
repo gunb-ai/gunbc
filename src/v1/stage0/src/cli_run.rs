@@ -15835,6 +15835,12 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
+    // Carried beside `module_index` for the same reason `RealizeState` carries it: the callable
+    // parent supply is asked once per module against the containment index, and rebuilding that
+    // index per module over the whole realized population is the quadratic fold DESIGN §6 rules
+    // out. Extended at the one site that inserts into `module_index`.
+    let mut callable_owner_index: Rc<crate::v1_compiler_infer_sigs::CallableOwnerIndex> =
+        crate::v1_compiler_infer_sigs::empty_callable_owner_index();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
@@ -16070,6 +16076,7 @@ fn reconcile_with_typed_cache(
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),
+                                    callable_owner_index.clone(),
                                     variant_surfaces.clone(),
                                     source_indices.clone(),
                                     intern_table.clone(),
@@ -16128,6 +16135,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                callable_owner_index =
+                    crate::v1_compiler_infer_sigs::callable_owner_index_from_own_env(
+                        callable_owner_index.clone(),
+                        typed.func_env.clone(),
+                    );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {

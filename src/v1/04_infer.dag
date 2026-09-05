@@ -168,6 +168,8 @@ import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
   resolve_func_sigs, flatten_parent_envs,
+  CallableOwnerIndex, empty_callable_owner_index, callable_owner_index_from_envs,
+  callable_owner_index_from_own_env, reference_derived_parent_envs,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   callable_identity_label, callable_candidate_labels,
@@ -12876,50 +12878,18 @@ fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index:
   )
 }
 
-// IMPORT-AWARE PARENT ENVIRONMENTS.
+// PARENT ENVIRONMENT MERGE, one owner one env.
 //
-// WHY THIS IS HERE RATHER THAN IN ITS OWN LANE, stated plainly because it is a corpus-wide
-// resolver narrowing and a reader is entitled to know why it rides along with an emission
-// change: the emission change does not build without it. Once a call's target is the exact
-// declaration resolution chose, a WRONGLY chosen declaration reaches rustc instead of being
-// re-looked-up by leaf spelling and accidentally corrected. Three such bindings existed on main
-// and every one is a name its own module never imported:
+// The views this merges no longer come from import lists. They are produced by
+// `v1.compiler.infer_sigs` `reference_derived_parent_envs` from the module's own reference nodes,
+// resolved by containment; the merge below is unchanged because it was never a fact about
+// imports -- it is the rule that one owner contributes ONE env, whatever supplied the views.
 //
-//   v1.compiler.dag_collect_support  to_string  -- imports only escape_json_string from
-//                                                 v1.compiler.emit_core_support, and the
-//                                                 declaration it received takes Int while the
-//                                                 call passes Bool
-//   v1.compiler.infer                map_has    -- imports only ModuleGraph/ResolvedModule/
-//                                                 ResolvedImport from v1.compiler.resolve, twice,
-//                                                 against a declaration whose map value type is Bool
-//
-// A parent env used to be admitted whole: `[typed_parent.func_env]`, whose own `.parents` chain
-// is the FLATTENED TRANSITIVE CLOSURE, so importing one module admitted every declaration
-// reachable from it. That is bare-pool coincidence acting as a binding source, and it is a
-// second positional naming scheme for declarations whose namespace identity the author already
-// wrote explicitly. A module's own declarations plus the names its import lists actually name
-// are what it may bind; nothing else is narrowed here, and the own-module level is untouched.
-fn selective_func_env_view(env: ResolvedFuncEnv, names: List<String>) -> ResolvedFuncEnv {
-  let selected = fold(names, init: empty_map(), f: (acc, name) =>
-    match map_get(env.local, name) {
-      Present { value: sig } => map_insert(acc, name, sig)
-      Absent => acc
-    }
-  )
-  ResolvedFuncEnv { name: env.name, local: selected, parents: [] }
-}
-
-// An `import ... { .. }` all-import admits the parent whole, exactly as before. A SELECTIVE
-// import admits only the named locals -- and it must look through the parent's own flattened
-// closure as well, because the name it lists may be RE-EXPORTED rather than declared there.
-fn func_env_views_for_import(parent: ResolvedFuncEnv, is_all: Bool, specific_names: List<String>) -> List<ResolvedFuncEnv> {
-  if is_all { [parent] }
-  else {
-    concat([parent], parent.parents)
-      |> map(env => selective_func_env_view(env: env, names: specific_names))
-  }
-}
-
+// The narrowing this merge was introduced with still holds and is worth keeping stated: once a
+// call's target is the exact declaration resolution chose, a wrongly chosen declaration reaches
+// rustc instead of being re-looked-up by leaf spelling and accidentally corrected. Under the
+// reference supply the admissible population is what the author actually referenced, so a
+// declaration no reference names is not a candidate at all.
 type FuncEnvViewMerge {
   by_owner: Map<String, ResolvedFuncEnv>
   owner_order: List<String>
@@ -12999,8 +12969,13 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
   ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
 }
 
+// THE PRIMARY CALLABLE PARENT SUPPLY IS ASSEMBLED HERE, and it is derived from this module's own
+// reference nodes resolved against the containment index -- not from `resolved_imports`. See
+// `v1.compiler.infer_sigs` `reference_derived_parent_envs` for the rule, and why the 0/1/many
+// decision downstream is deliberately untouched by it.
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
+    callable_owner_index: CallableOwnerIndex,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
@@ -13065,12 +13040,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
     svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
   )
-  let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
-    match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } =>
-        func_env_views_for_import(parent: typed_parent.func_env, is_all: imp.is_all, specific_names: imp.specific_names)
-      Absent => []
-    }
+  let parent_envs = merge_func_env_views_by_owner(reference_derived_parent_envs(
+    items: local.resolved_items,
+    index: callable_owner_index,
+    module_name: module_name,
+    source_indices: env.source_indices
   ))
   let resolve_result = resolve_func_sigs(
     declared_sigs: local.func_sigs,
@@ -13099,7 +13073,7 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, callable_owner_index: CallableOwnerIndex, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -13138,6 +13112,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let ctx = build_module_context(
     contributions: contributions,
     parent_index: parent_index,
+    callable_owner_index: callable_owner_index,
     variant_surfaces: variant_surfaces,
     resolved_imports: resolved.resolved_imports,
     env: env,
@@ -13227,7 +13202,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
+  typecheck_module(resolved: resolved, parent_index: parent_index, callable_owner_index: callable_owner_index_from_envs(envs: parent_index |> map_values |> map(tm => tm.func_env)), variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
 }
 
 type EnvResolveResult {
@@ -13448,11 +13423,15 @@ fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
+// The callable owner index is carried here rather than rebuilt per module: the supply is asked
+// once per module and a per-module rebuild over the whole realized population is the quadratic
+// fold DESIGN section 6 rules out regardless of the realized n.
 type RealizeState {
   module_index: Map<String, TypedModule>
   variant_surfaces: Map<String, VariantExportSurface>
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
+  callable_owner_index: CallableOwnerIndex
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
@@ -13473,7 +13452,8 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
-    diags_by_name: empty_map()
+    diags_by_name: empty_map(),
+    callable_owner_index: empty_callable_owner_index()
   }, f: (st, rm) =>
     realize_module(
       name: authored_name_at(source_indices: source_indices, node: rm.module),
@@ -13528,7 +13508,7 @@ fn realize_module(
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, callable_owner_index: dep_state.callable_owner_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
@@ -13539,7 +13519,8 @@ fn realize_module(
               build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
-            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
+            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics)),
+            callable_owner_index: callable_owner_index_from_own_env(index: dep_state.callable_owner_index, env: typed.func_env)
           }
       }
   }
@@ -13910,21 +13891,21 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   )
 }
 
+// THE RECONSTRUCTION PATH, on the same supply as the primary one.
+//
+// This pass runs post-fold and on cache decode, so it is a SECOND, independent construction of
+// the callable parent population: a repoint covering only the typecheck-time assembly would
+// leave this one serving import-derived links to every decoded graph. It now builds the same
+// containment index over every module's own declarations and asks the same reference-derived
+// supply, so the two assembly points cannot disagree about what a module may call.
 fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
-  )
+  let owner_index = callable_owner_index_from_envs(envs: modules |> map(m => m.func_env))
   map(modules, m =>
-    let parents = merge_func_env_views_by_owner(flat_map(module_imports(n: m.module), imp =>
-      let path = import_module_path_at(imp: imp, source_indices: source_indices)
-      match map_get(index, path) {
-        Present { value: parent } => func_env_views_for_import(
-          parent: parent.func_env,
-          is_all: import_is_all(n: imp),
-          specific_names: import_specific_names_at(n: imp, source_indices: source_indices)
-        )
-        Absent => []
-      }
+    let parents = merge_func_env_views_by_owner(reference_derived_parent_envs(
+      items: m.items,
+      index: owner_index,
+      module_name: m.func_env.name,
+      source_indices: source_indices
     ))
     TypedModule {
       progress: m.progress,

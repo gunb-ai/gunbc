@@ -2,7 +2,8 @@ module v1.compiler.infer_sigs
 
 import v1.std.core {
   Node,
-  ExprData, ExprCall, expr_call_func_at,
+  ExprData, ExprCall, ExprVar, ExprMethodCall, expr_call_func_at,
+  qualified_last_segment,
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
   DeclaredFuncSig,
@@ -372,6 +373,194 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
   )
   let result = concat(this_edges, child_edges)
   result
+}
+
+// THE CALLABLE PARENT SUPPLY, DERIVED FROM REFERENCES AND RESOLVED BY CONTAINMENT.
+//
+// What a module may call used to be derived from its IMPORT LIST: `func_env_views_for_import`
+// admitted a parent env whole for an all-import and a leaf-keyed selection for a listed one, at
+// two independent assembly points (typecheck-time in `v1.compiler.infer`, and again post-fold in
+// `rewire_func_env_parent_links`, which also serves a decoded cache). Both are replaced here by
+// ONE supply with a single authority: the module's own REFERENCE NODES name what it reaches, and
+// the containment tree decides which declaration a reference names.
+//
+// The decision downstream is unchanged and must stay unchanged: this function supplies
+// CANDIDATES, never an answer. `decide_callable_candidates` still reads the population 0/1/many
+// and returns FuncSigUnresolved / FuncSigResolved / FuncSigAmbiguous, so a name reached by two
+// admissible declarations refuses here exactly as it refused under imports. Supplying a wider or
+// narrower candidate set is the only thing that changes, and it changes as a function of what the
+// author actually wrote rather than of a second positional naming scheme they also had to write.
+//
+// PARSED REFERENCE NODES, NOT TEXT. The names come from `ExprCall`, `ExprVar` and
+// `ExprMethodCall` nodes walked out of the module's own item trees -- the three node kinds whose
+// spelling reaches `lookup_func_sig` -- never from a dotted-identifier scan over source bytes,
+// which cannot tell a reference from prose.
+type CallableOwnerRow {
+  owner_module_path: String
+  sig: ResolvedFuncSig
+}
+
+// One index over every declaring module, keyed by the DECLARED leaf name. It is built once and
+// extended per realized module rather than rebuilt per consumer: the supply is asked once per
+// module, and a per-module rebuild over the whole population would be the quadratic fold DESIGN
+// section 6 rules out regardless of the realized n.
+type CallableOwnerIndex {
+  by_name: Map<String, List<CallableOwnerRow>>
+}
+
+fn empty_callable_owner_index() -> CallableOwnerIndex {
+  CallableOwnerIndex { by_name: empty_map() }
+}
+
+// The rows come from a module's OWN local map only. A module's `parents` are its former import
+// closure; reading them here would re-admit the import universe through the replacement and make
+// re-export position, rather than declaration, the owner of a name.
+fn extend_callable_owner_index(index: CallableOwnerIndex, env: ResolvedFuncEnv) -> CallableOwnerIndex {
+  CallableOwnerIndex {
+    by_name: fold(map_keys(env.local), init: index.by_name, f: (acc, name) =>
+      match map_get(env.local, name) {
+        Present { value: sig } =>
+          let row = CallableOwnerRow { owner_module_path: env.name, sig: sig }
+          match map_get(acc, name) {
+            Present { value: rows } => map_insert(acc, name, list_push(rows, row))
+            Absent => map_insert(acc, name, [row])
+          }
+        Absent => acc
+      }
+    )
+  }
+}
+
+fn callable_owner_index_from_envs(envs: List<ResolvedFuncEnv>) -> CallableOwnerIndex {
+  fold(envs, init: empty_callable_owner_index(), f: (acc, env) => extend_callable_owner_index(index: acc, env: env))
+}
+
+fn callable_owner_index_from_own_env(index: CallableOwnerIndex, env: ResolvedFuncEnv) -> CallableOwnerIndex {
+  extend_callable_owner_index(index: index, env: ResolvedFuncEnv { name: env.name, local: env.local, parents: [] })
+}
+
+// CONTAINMENT, STATED ONCE, AND IT IS THE UNIQUE-ON-CHAIN RULE THE v2 RESOLVER ALREADY STATES.
+//
+// A reference spelled `a.b.f` names the declaration `f` inside the containment path `a.b`, and a
+// containment path is matched as a SUFFIX of the owner's module path -- `v1.std.core` is reached
+// by `core`, `std.core` and its whole path alike. That is the downward projection half.
+//
+// A BARE `f` IS NOT UNCONSTRAINED, and getting this wrong is the pool-coincidence failure the cut
+// exists to remove: it resolves against the ANCESTOR CHAIN of the referencing position, so an
+// owner is admissible only when its module path is that position's module or one of its
+// containment ancestors. Admitting every declaring module instead would make a bare name bind by
+// corpus population -- measured, it re-bound 39 `contains` call sites onto an unrelated
+// three-parameter declaration in a module the caller does not contain and is not contained by.
+// Where the chain answers nothing, the name is not resolved HERE; the reference falls to the
+// arms that already own it, which is a smaller claim than pretending the chain answered.
+fn reference_containment_qualifier(name: String) -> String {
+  let leaf = qualified_last_segment(name: name)
+  let name_len = string_length(s: name)
+  let leaf_len = string_length(s: leaf)
+  if name_len > leaf_len { substring(s: name, start: 0, end: name_len - leaf_len - 1) } else { "" }
+}
+
+fn containment_chain_admits_owner(owner_module_path: String, referencing_module_path: String) -> Bool {
+  let owner_len = string_length(s: owner_module_path)
+  let referencing_len = string_length(s: referencing_module_path)
+  if owner_len == referencing_len { owner_module_path == referencing_module_path }
+  else if referencing_len > owner_len {
+    substring(s: referencing_module_path, start: 0, end: owner_len + 1) == concat(owner_module_path, ".")
+  }
+  else { false }
+}
+
+fn containment_admits_owner(owner_module_path: String, qualifier: String) -> Bool {
+  let owner_len = string_length(s: owner_module_path)
+  let qualifier_len = string_length(s: qualifier)
+  if qualifier_len == 0 { true }
+  else if owner_len == qualifier_len { owner_module_path == qualifier }
+  else if owner_len > qualifier_len {
+    substring(s: owner_module_path, start: owner_len - qualifier_len - 1, end: owner_len) == concat(".", qualifier)
+  }
+  else { false }
+}
+
+fn callable_reference_names_in_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let here = match n.expr_data {
+    ExprCall => [authored_name_at(source_indices: source_indices, node: n)]
+    ExprVar { binding_kind: _ } => [authored_name_at(source_indices: source_indices, node: n)]
+    ExprMethodCall { method_semantics: _ } => [authored_name_at(source_indices: source_indices, node: n)]
+    _ => []
+  }
+  let body_names = match n.body {
+    Present { value: b } => callable_reference_names_in_node(n: b, source_indices: source_indices)
+    Absent => []
+  }
+  let child_names = n.children |> flat_map(c => callable_reference_names_in_node(n: c, source_indices: source_indices))
+  concat(concat(here, body_names), child_names)
+}
+
+type ReferenceNameAccum {
+  seen: Map<String, Bool>
+  out: List<String>
+}
+
+fn callable_reference_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let all = flat_map(items, item => callable_reference_names_in_node(n: item, source_indices: source_indices))
+  let dedup = fold(all, init: ReferenceNameAccum { seen: empty_map(), out: [] }, f: (acc, name) =>
+    if emit_map_has(m: acc.seen, key: name) { acc }
+    else { ReferenceNameAccum { seen: map_insert(acc.seen, name, true), out: list_push(acc.out, name) } }
+  )
+  dedup.out
+}
+
+// The env's local map is keyed by the SPELLING the reference used, because that is the key
+// `callable_lookup_over_candidates` asks with. A bare reference therefore keys by its leaf,
+// exactly as the import-derived selective view did; a qualified reference keys by its full
+// spelling, which is the projection the containment rule exists to answer.
+type ParentEnvSupplyAccum {
+  by_owner: Map<String, Map<String, ResolvedFuncSig>>
+  owner_order: List<String>
+}
+
+fn supply_admit_row(acc: ParentEnvSupplyAccum, owner: String, key: String, sig: ResolvedFuncSig) -> ParentEnvSupplyAccum {
+  match map_get(acc.by_owner, owner) {
+    Present { value: locals } =>
+      ParentEnvSupplyAccum { by_owner: map_insert(acc.by_owner, owner, map_insert(locals, key, sig)), owner_order: acc.owner_order }
+    Absent =>
+      ParentEnvSupplyAccum {
+        by_owner: map_insert(acc.by_owner, owner, map_insert(empty_map(), key, sig)),
+        owner_order: list_push(acc.owner_order, owner)
+      }
+  }
+}
+
+fn reference_derived_parent_envs(
+  items: List<Node>,
+  index: CallableOwnerIndex,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> List<ResolvedFuncEnv> {
+  let names = callable_reference_names(items: items, source_indices: source_indices)
+  let supply = fold(names, init: ParentEnvSupplyAccum { by_owner: empty_map(), owner_order: [] }, f: (acc, name) =>
+    let leaf = qualified_last_segment(name: name)
+    let qualifier = reference_containment_qualifier(name: name)
+    match map_get(index.by_name, leaf) {
+      Present { value: rows } =>
+        fold(rows, init: acc, f: (inner, row) =>
+          if (if string_length(s: qualifier) == 0 {
+                containment_chain_admits_owner(owner_module_path: row.owner_module_path, referencing_module_path: module_name)
+              } else {
+                containment_admits_owner(owner_module_path: row.owner_module_path, qualifier: qualifier)
+              }) {
+            supply_admit_row(acc: inner, owner: row.owner_module_path, key: name, sig: row.sig)
+          } else { inner }
+        )
+      Absent => acc
+    }
+  )
+  supply.owner_order |> flat_map(owner =>
+    match map_get(supply.by_owner, owner) {
+      Present { value: locals } => [ResolvedFuncEnv { name: owner, local: locals, parents: [] }]
+      Absent => []
+    }
+  )
 }
 
 fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {

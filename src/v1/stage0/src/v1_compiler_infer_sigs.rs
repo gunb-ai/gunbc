@@ -15,8 +15,10 @@ pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
-use crate::v1_std_core::ExprData::ExprCall;
-pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
+use crate::v1_std_core::ExprData::{ExprCall, ExprMethodCall, ExprVar};
+pub use crate::v1_std_core::{
+    authored_name_at, expr_call_func_at, make_error_node, no_span, qualified_last_segment,
+};
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
     NewlineIndex, Node, ResolvedFormal,
@@ -496,6 +498,327 @@ pub fn collect_calls_in_expr(
         let result = v1_rt::concat(this_edges.clone(), child_edges.clone());
         result
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallableOwnerRow {
+    pub owner_module_path: String,
+    pub sig: Rc<ResolvedFuncSig>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CallableOwnerIndex {
+    pub by_name: Rc<HashMap<String, Rc<Vec<Rc<CallableOwnerRow>>>>>,
+}
+
+pub fn empty_callable_owner_index() -> Rc<CallableOwnerIndex> {
+    Rc::new(CallableOwnerIndex {
+        by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<CallableOwnerRow>>>>(),
+    })
+}
+
+pub fn extend_callable_owner_index(
+    index: Rc<CallableOwnerIndex>,
+    env: Rc<ResolvedFuncEnv>,
+) -> Rc<CallableOwnerIndex> {
+    Rc::new(CallableOwnerIndex {
+        by_name: Rc::new(v1_rt::map_keys(&env.local.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                index.by_name.clone(),
+                |acc: _, name: String| match v1_rt::map_get(&env.local.clone(), name.clone()) {
+                    Some(sig) => {
+                        let row = Rc::new(CallableOwnerRow {
+                            owner_module_path: env.name.clone(),
+                            sig: sig.clone(),
+                        });
+                        match v1_rt::map_get(&acc, name.clone()) {
+                            Some(rows) => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                name.clone(),
+                                v1_rt::rc_list_push(rows.clone(), row.clone()),
+                            ),
+                            std::option::Option::None => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                name.clone(),
+                                Rc::new(vec![row.clone()]),
+                            ),
+                        }
+                    }
+                    std::option::Option::None => acc.clone(),
+                },
+            ),
+    })
+}
+
+pub fn callable_owner_index_from_envs(
+    envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+) -> Rc<CallableOwnerIndex> {
+    envs.iter().cloned().fold(
+        empty_callable_owner_index(),
+        |acc: _, env: Rc<ResolvedFuncEnv>| extend_callable_owner_index(acc, env.clone()),
+    )
+}
+
+pub fn callable_owner_index_from_own_env(
+    index: Rc<CallableOwnerIndex>,
+    env: Rc<ResolvedFuncEnv>,
+) -> Rc<CallableOwnerIndex> {
+    extend_callable_owner_index(
+        index.clone(),
+        Rc::new(ResolvedFuncEnv {
+            name: env.name.clone(),
+            local: env.local.clone(),
+            parents: Rc::new(vec![]),
+        }),
+    )
+}
+
+pub fn reference_containment_qualifier(name: String) -> String {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+        let name_len = v1_rt::string_length(&name);
+        let leaf_len = v1_rt::string_length(&leaf);
+        if (name_len.clone() > leaf_len.clone()) {
+            v1_rt::substring(&name, 0, ((name_len.clone() - leaf_len.clone()) - 1))
+        } else {
+            "".to_string()
+        }
+    }
+}
+
+pub fn containment_chain_admits_owner(
+    owner_module_path: String,
+    referencing_module_path: String,
+) -> bool {
+    {
+        let owner_len = v1_rt::string_length(&owner_module_path);
+        let referencing_len = v1_rt::string_length(&referencing_module_path);
+        if (owner_len.clone() == referencing_len.clone()) {
+            (owner_module_path.clone() == referencing_module_path.clone())
+        } else {
+            if (referencing_len.clone() > owner_len.clone()) {
+                (v1_rt::substring(&referencing_module_path, 0, (owner_len.clone() + 1))
+                    == v1_rt::concat(owner_module_path.clone(), ".".to_string()))
+            } else {
+                false
+            }
+        }
+    }
+}
+
+pub fn containment_admits_owner(owner_module_path: String, qualifier: String) -> bool {
+    {
+        let owner_len = v1_rt::string_length(&owner_module_path);
+        let qualifier_len = v1_rt::string_length(&qualifier);
+        if (qualifier_len.clone() == 0) {
+            true
+        } else {
+            if (owner_len.clone() == qualifier_len.clone()) {
+                (owner_module_path.clone() == qualifier.clone())
+            } else {
+                if (owner_len.clone() > qualifier_len.clone()) {
+                    (v1_rt::substring(
+                        &owner_module_path,
+                        ((owner_len.clone() - qualifier_len.clone()) - 1),
+                        owner_len.clone(),
+                    ) == v1_rt::concat(".".to_string(), qualifier.clone()))
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+pub fn callable_reference_names_in_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => Rc::new(vec![crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                n.clone(),
+            )]),
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => Rc::new(vec![crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                n.clone(),
+            )]),
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => Rc::new(vec![crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                n.clone(),
+            )]),
+            _ => Rc::new(vec![]),
+        };
+        let body_names = match n.body.clone() {
+            Some(b) => callable_reference_names_in_node(b.clone(), source_indices.clone()),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let child_names = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*callable_reference_names_in_node(c.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(here.clone(), body_names.clone()),
+            child_names.clone(),
+        )
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceNameAccum {
+    pub seen: Rc<HashMap<String, bool>>,
+    pub out: Rc<Vec<String>>,
+}
+
+pub fn callable_reference_names(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let all = Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*callable_reference_names_in_node(item.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let dedup = all.iter().cloned().fold(
+            Rc::new(ReferenceNameAccum {
+                seen: v1_rt::rc_empty_map::<String, bool>(),
+                out: Rc::new(vec![]),
+            }),
+            |acc: _, name: String| {
+                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), name.clone()) {
+                    acc.clone()
+                } else {
+                    Rc::new(ReferenceNameAccum {
+                        seen: v1_rt::rc_map_insert(acc.seen.clone(), name.clone(), true),
+                        out: v1_rt::rc_list_push(acc.out.clone(), name.clone()),
+                    })
+                }
+            },
+        );
+        dedup.out.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParentEnvSupplyAccum {
+    pub by_owner: Rc<HashMap<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>>,
+    pub owner_order: Rc<Vec<String>>,
+}
+
+pub fn supply_admit_row(
+    acc: Rc<ParentEnvSupplyAccum>,
+    owner: String,
+    key: String,
+    sig: Rc<ResolvedFuncSig>,
+) -> Rc<ParentEnvSupplyAccum> {
+    match v1_rt::map_get(&acc.by_owner.clone(), owner.clone()) {
+        Some(locals) => Rc::new(ParentEnvSupplyAccum {
+            by_owner: v1_rt::rc_map_insert(
+                acc.by_owner.clone(),
+                owner.clone(),
+                v1_rt::rc_map_insert(locals.clone(), key.clone(), sig.clone()),
+            ),
+            owner_order: acc.owner_order.clone(),
+        }),
+        std::option::Option::None => Rc::new(ParentEnvSupplyAccum {
+            by_owner: v1_rt::rc_map_insert(
+                acc.by_owner.clone(),
+                owner.clone(),
+                v1_rt::rc_map_insert(
+                    v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                    key.clone(),
+                    sig.clone(),
+                ),
+            ),
+            owner_order: v1_rt::rc_list_push(acc.owner_order.clone(), owner.clone()),
+        }),
+    }
+}
+
+pub fn reference_derived_parent_envs(
+    items: Rc<Vec<Rc<Node>>>,
+    index: Rc<CallableOwnerIndex>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    {
+        let names = callable_reference_names(items.clone(), source_indices.clone());
+        let supply = names.iter().cloned().fold(
+            Rc::new(ParentEnvSupplyAccum {
+                by_owner: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<ResolvedFuncSig>>>>(),
+                owner_order: Rc::new(vec![]),
+            }),
+            |acc: _, name: String| {
+                let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                let qualifier = reference_containment_qualifier(name.clone());
+                match v1_rt::map_get(&index.by_name.clone(), leaf.clone()) {
+                    Some(rows) => rows.iter().cloned().fold(acc.clone(), |inner: _, row: _| {
+                        if if (v1_rt::string_length(&qualifier) == 0) {
+                            containment_chain_admits_owner(
+                                row.owner_module_path.clone(),
+                                module_name.clone(),
+                            )
+                        } else {
+                            containment_admits_owner(
+                                row.owner_module_path.clone(),
+                                qualifier.clone(),
+                            )
+                        } {
+                            supply_admit_row(
+                                inner.clone(),
+                                row.owner_module_path.clone(),
+                                name.clone(),
+                                row.sig.clone(),
+                            )
+                        } else {
+                            inner.clone()
+                        }
+                    }),
+                    std::option::Option::None => acc.clone(),
+                }
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for owner in supply.owner_order.clone().iter().cloned() {
+                __result.extend(
+                    (*match v1_rt::map_get(&supply.by_owner.clone(), owner.clone()) {
+                        Some(locals) => Rc::new(vec![Rc::new(ResolvedFuncEnv {
+                            name: owner.clone(),
+                            local: locals.clone(),
+                            parents: Rc::new(vec![]),
+                        })]),
+                        std::option::Option::None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 pub fn func_reaches_self(
