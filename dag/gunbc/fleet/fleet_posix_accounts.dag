@@ -242,6 +242,7 @@ type CiRunnerSudoBinary
   | SudoSystemctl
   | SudoTailscale
   | SudoRm
+  | SudoUseradd
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -251,6 +252,7 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoSystemctl => fleet_systemctl_binary_path
     SudoTailscale => fleet_tailscale_binary_path
     SudoRm => fleet_rm_binary_path
+    SudoUseradd => fleet_useradd_binary_path
   }
 }
 
@@ -262,10 +264,24 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoSystemctl => NopasswdExecuteCheck { check_argv: "--version" }
     SudoTailscale => NopasswdGrantListCheck
     SudoRm => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoUseradd => NopasswdExecuteCheck { check_argv: "-D" }
   }
 }
 
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm]
+// useradd JOINED THE ROSTER 2026-09-04 WITH THE PUBLICATION HELPER'S REALIZATION. The helper runs
+// under its own principal (bb0451bbc87) and the deploy installs its spool directories owned by that
+// principal, so the account has to exist before the first install -o names it; the first deploy
+// through `gunbc converge --mode deploy` on srv1 refused `install: invalid user 'gunbc-publication'`
+// at exactly that step. The grant is the whole binary, like its six siblings, probed with -D
+// (print defaults, exit 0). What it may create is decided by the one operation that renders it,
+// gunbc.executor_privileged_operation EnsureSystemAccount: a --system account with the nologin
+// shell and no home, never a login user.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd]
+
+data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
+
+data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
+
 
 data gunbc_deploy_privileged_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
 
@@ -802,6 +818,22 @@ type ServicePrincipalRealizationStanding
 
 fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
   ServicePrincipalRealizationUnselected
+}
+
+// THE PUBLICATION HELPER'S REALIZATION IS SELECTED: A PERSISTENT SYSTEM ACCOUNT (operator ruling,
+// 2026-09-04, choosing it over a supervisor-managed dynamic identity). The member already installs
+// its spool directories owned by the principal with `install -o`, which a dynamic identity cannot
+// satisfy without rewriting the member around systemd-managed ownership. The name is the modeled
+// one; the uid is host-assigned by useradd --system at first deploy, so the allocation standing is
+// AccountUnallocated until the six-state grounding observes what the host chose -- the account is
+// persistent by policy and its number is a fact the host owns, exactly as for every other observed
+// principal here.
+fn publication_helper_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  PersistentServiceAccount {
+    allocation: AccountUnallocated {
+      occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountPublicationHelper },
+    },
+  }
 }
 
 // TOTAL PER-ACCOUNT ACCESSORS for the principals whose accounts WERE observed, so the question

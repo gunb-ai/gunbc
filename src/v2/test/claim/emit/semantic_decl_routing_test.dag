@@ -2,7 +2,7 @@ module v2.test.emit.semantic_decl_routing
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -43,7 +43,7 @@ fn semantic_bool_emit_text() -> Outcome<String> {
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),
-    target: rust_target_model()
+    target: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -78,7 +78,7 @@ fn semantic_record_emit_text() -> Outcome<String> {
     name: ^OccurrenceIdAllocator,
     params: Empty,
     node: semantic_record_type(),
-    target: rust_target_model()
+    target: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -115,7 +115,7 @@ fn semantic_arrow_refuses() -> Bool {
     name: ^Bogus,
     params: Empty,
     node: semantic_arrow_type(),
-    target: rust_target_model()
+    target: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

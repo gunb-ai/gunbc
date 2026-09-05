@@ -2574,6 +2574,107 @@ fn where_refinement_value_under_cast(value_expr: Node) -> Node {
 // 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink
 // is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.
 
+// BRAND IDENTITY IS THE DECLARATION, NOT THE LITERAL. where_refinement_predicates_equivalent
+// dispatches Brand to where_predicate_literal_string_args_match, so two independently declared types
+// sharing a spelling compared EQUAL and the cast between them was not merely unenforced -- it was
+// not a cast at all. That is DESIGN section 3's meaning fork: one name silently merging two
+// concepts. The collision was authored here once already (gunbc.fleet fleet_site_locale records a
+// second HostIdentity minted beside product.placement_supply's, and states that it did not surface
+// as a duplicate-declaration diagnostic), so this is an incident, not a hypothetical.
+
+fn where_refinement_has_brand_predicate(
+  preds: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  preds |> any(p =>
+    where_predicate_canonical_name(
+      pred_name: where_predicate_name_at(pred: p, source_indices: source_indices)
+    ) == "Brand"
+  )
+}
+
+// THE KEY IS THE DECLARING IDENT SPAN AND DELIBERATELY NOT THE OCCURRENCE. Node.occurrence_identity
+// would make the collision refuse and would ALSO make a type stop being itself when reached from a
+// second use site -- silent in the opposite direction -- and occurrence identity is itself the live
+// subject of the namespace/type-occurrence cutover. The declaring ident span is stable across
+// occurrences by construction: one declaration has one, and two declarations never share one.
+
+// A DECLARATION SITE, NOT A SENTINEL. This returned "" for a type with no declaring span, and the
+// consumer read "" as "skip" -- so a cast whose brand identity could not be determined was ADMITTED.
+// That arm is reachable: `fn f(a: String where brand("x"))` is an inline brand-carrying type with no
+// declaration, and the same violation that refuses when both sides are declared was accepted through
+// it. The Optional makes the undeterminable case unrepresentable as a key, so the consumer must
+// decide it rather than inherit it from a magic value.
+fn where_refinement_brand_declaration_site(
+  ty: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> String? {
+  match ty.ident_span {
+    Present { value: span } =>
+      Present {
+        value: concat(
+          concat(span.file, "#"),
+          authored_name_at(source_indices: source_indices, node: ty)
+        )
+      }
+    Absent => Absent
+  }
+}
+
+type BrandNominalVerdict =
+  BrandNominalIrrelevant
+  | BrandNominalSameDeclaration
+  | BrandNominalDistinctDeclarations
+  | BrandNominalSiteUndeterminable
+
+// THE ACTUAL SIDE IS READ UNPEELED, AND THAT IS THE WHOLE CORRECTNESS OF THIS CHECK.
+// where_refinement_value_under_cast recurses through EVERY cast, which is right for a literal
+// predicate -- `"abc" as NonEmptyStr` needs the literal under the cast -- and WRONG for a nominal
+// brand. `x as String as ChB` is a DELIBERATE BRAND STRIP: the author casts down to the base type
+// precisely to shed the brand, then re-brands. Peeling walks straight past that intent to `x` and
+// sees a branded-to-branded mismatch that the source does not contain. The first version of this
+// check did exactly that and refused four spice_passive_projection sites the corpus relies on --
+// a wall that refuses an idiom the corpus depends on has its subject drawn wrong, and those four
+// lines are its discriminating RED, authored by the corpus rather than by a fixture.
+
+// REFUSE ONLY WHEN BOTH SIDES CARRY A BRAND AND THE DECLARATIONS ARE PROVABLY DIFFERENT. When the
+// actual side carries NO brand the value is being constructed from its base -- `s as UserId` -- which
+// is what `as` exists to express and what no brand check can verify; blocking that would refuse
+// every legitimate construction site in the corpus while distinguishing none of them from a
+// violation. That arm keeps its existing deferred advisory and is asserted green by the CONSTRUCT
+// control in test.claim.brand_nominal_identity_witness_test.
+
+// THE UNDETERMINABLE CASE IS A VERDICT, NOT A GAP. Returning Bool forced every non-mismatch to
+// share one answer, so "these are different declarations" and "I cannot tell which declarations
+// these are" both rendered as false -- and false admits. Naming the four outcomes makes the
+// consumer handle the third explicitly; there is no value it can fall through on.
+fn where_refinement_brand_nominal_verdict(
+  formal_resolved: Node,
+  actual_resolved: Node,
+  formal_preds: List<Node>,
+  actual_preds: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> BrandNominalVerdict {
+  if where_refinement_has_brand_predicate(preds: formal_preds, source_indices: source_indices)
+    && where_refinement_has_brand_predicate(preds: actual_preds, source_indices: source_indices) {
+    match where_refinement_brand_declaration_site(ty: formal_resolved, source_indices: source_indices) {
+      Present { value: formal_site } =>
+        match where_refinement_brand_declaration_site(ty: actual_resolved, source_indices: source_indices) {
+          Present { value: actual_site } =>
+            if formal_site == actual_site {
+              BrandNominalSameDeclaration
+            } else {
+              BrandNominalDistinctDeclarations
+            }
+          Absent => BrandNominalSiteUndeterminable
+        }
+      Absent => BrandNominalSiteUndeterminable
+    }
+  } else {
+    BrandNominalIrrelevant
+  }
+}
+
 fn where_refinement_mismatch_diags(
   formal: Node,
   value_expr: Node,
@@ -2597,7 +2698,35 @@ fn where_refinement_mismatch_diags(
       Absent => actual_raw
     }
     let actual_preds = type_where_refinement_predicates_transitive(ty: actual_resolved, type_env: type_env)
-    if where_refinement_predicates_covered(
+    let actual_unpeeled_raw = resolved_type(n: value_expr)
+    let actual_unpeeled = match lookup_type_for(env: type_env, node: actual_unpeeled_raw) {
+      Present { value: resolved } => resolved
+      Absent => actual_unpeeled_raw
+    }
+    let actual_unpeeled_preds = type_where_refinement_predicates_transitive(
+      ty: actual_unpeeled, type_env: type_env
+    )
+    let brand_verdict = where_refinement_brand_nominal_verdict(
+      formal_resolved: formal_resolved,
+      actual_resolved: actual_unpeeled,
+      formal_preds: preds,
+      actual_preds: actual_unpeeled_preds,
+      source_indices: source_indices
+    )
+    if brand_verdict == BrandNominalDistinctDeclarations {
+      [type_mismatch_error(
+        expected: node_type_shape(n: formal_resolved, source_indices: source_indices),
+        got: node_type_shape(n: actual_unpeeled, source_indices: source_indices),
+        span: span,
+        module_name: module_name
+      )]
+    } else if brand_verdict == BrandNominalSiteUndeterminable {
+      [inference_error(
+        message: "brand identity undeterminable: a brand-carrying type in this cast has no declaring site, so the two brands cannot be told apart -- declare the branded type rather than writing the refinement inline",
+        span: span,
+        module_name: module_name
+      )]
+    } else if where_refinement_predicates_covered(
       formal_preds: preds,
       actual_preds: actual_preds,
       source_indices: source_indices
