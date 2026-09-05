@@ -1,7 +1,7 @@
 module test.claim.runner_microvm_boot_probe_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import extdeps.virtualization.firecracker {
@@ -13,7 +13,7 @@ import gunbc.runner_microvm {
 }
 import gunbc.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
-  BootConsoleLacksRunnerVersion, BootNotAttempted, BootExceededHostDeadline,
+  BootConsoleLacksRunnerVersion, BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
   boot_probe_verdict, boot_probe_admitted,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
@@ -22,10 +22,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn console_carrying_version() -> ProcessOutcome {
-  ProcessOutputPresent {
-    text: concat("[    0.412] systemd[1]: Reached target multi-user.target\n2.", "336.0\n"),
-  }
+fn console_carrying_version() -> ProcessObservation {
+  process_observation(
+    exit_code: 0,
+    stdout: concat("[    0.412] systemd[1]: Reached target multi-user.target\n2.", "336.0\n"),
+    stderr: "",
+  )
 }
 
 // THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, AND THIS IS THE PAIR THAT SAYS SO. A console
@@ -33,10 +35,10 @@ fn console_carrying_version() -> ProcessOutcome {
 // missing its runner produces -- the guest boots beautifully and is useless -- so the negative arm
 // is a console that boots and lacks the version, not an empty one.
 test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
-  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: console_carrying_version())
+  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
   let booted_but_empty = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
-    console: ProcessOutputPresent { text: "[    0.412] systemd[1]: Reached target multi-user.target\n" },
+    observed: process_observation(exit_code: 0, stdout: "[    0.412] systemd[1]: Reached target multi-user.target\n", stderr: ""),
   )
   boot_probe_admitted(v: good)
     && !boot_probe_admitted(v: booted_but_empty)
@@ -50,23 +52,27 @@ test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
 // The first is a host or configuration fact and its remedy is on the host; the second is an image
 // fact. Collapsing them into one cause would send a reader to the wrong module, and the exit code
 // and stderr are carried because they are the only thing that distinguishes them in practice.
-test fn a_refused_vmm_and_a_silent_guest_are_distinguishable_refusals() -> Bool {
-  let refused = boot_probe_verdict(
+test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_console() -> Bool {
+  let failed = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
-    console: ProcessRefused { exit_code: 1, stderr: "Error: cannot open /dev/kvm" },
+    observed: process_observation(
+      exit_code: 1,
+      stdout: "[    0.9] Kernel panic - not syncing: VFS: Unable to mount root fs",
+      stderr: "Error: cannot open /dev/kvm",
+    ),
   )
-  let silent = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: ProcessOutputAbsent)
-  !boot_probe_admitted(v: refused)
+  let silent = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 0, stdout: "", stderr: ""),
+  )
+  !boot_probe_admitted(v: failed)
     && !boot_probe_admitted(v: silent)
-    && (match refused {
-      BootProducedNoConsole { cause: c } =>
-        string_contains(s: c, pattern: "/dev/kvm") && string_contains(s: c, pattern: "exit 1")
+    && (match failed {
+      BootVmmFailed { exit_code: x, console: c, detail: e } =>
+        x == 1 && string_contains(s: c, pattern: "Kernel panic") && string_contains(s: e, pattern: "/dev/kvm")
       _ => false
     })
-    && (match silent {
-      BootProducedNoConsole { cause: c } => !string_contains(s: c, pattern: "exit ")
-      _ => false
-    })
+    && (match silent { BootProducedNoConsole { cause: _ } => true  _ => false })
 }
 
 // THE PROBE NEVER BOOTS THE BUILT ARTIFACT. A root drive is attached read-write, so booting the
@@ -80,6 +86,14 @@ test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool {
 // THE CONFIG DOCUMENT IS UPSTREAM'S SPELLING, hyphenated at the top level and underscored inside.
 // A model that tidied that asymmetry would produce a document Firecracker does not parse, and the
 // failure would arrive as a boot error rather than as a modeling one.
+//
+// THIS WITNESS ASSERTS KEY SPELLINGS AND NOTHING ELSE ABOUT THE TEXT, which is a narrowing after it
+// went red in CI for the wrong reason. It had asserted `"network-interfaces":[]`; the emitter writes
+// `": "` with a space, so the assertion failed while every key it exists to check was correct. A
+// witness that fails on formatting it does not own is a change detector wearing a check's clothes,
+// and the emptiness it was trying to catch is already covered structurally by
+// a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does, which counts the interfaces
+// rather than matching serialized bytes.
 test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
   let doc = firecracker_vm_config_document(
     config: runner_microvm_vm_config(
@@ -93,7 +107,7 @@ test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
   )
   string_contains(s: doc, pattern: "\"boot-source\"")
     && string_contains(s: doc, pattern: "\"machine-config\"")
-    && string_contains(s: doc, pattern: "\"network-interfaces\":[]")
+    && string_contains(s: doc, pattern: "\"network-interfaces\"")
     && string_contains(s: doc, pattern: "\"kernel_image_path\"")
     && string_contains(s: doc, pattern: "\"mem_size_mib\"")
 }
@@ -114,18 +128,28 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
 // of which the VMM holds a guest forever. So the VMM runs under a host deadline that escalates to
 // KILL, and exit 124 is `timeout`'s own answer that the deadline FIRED, which is a different event
 // from a VMM that ran and failed. Collapsing them would report a hung guest as a broken one.
-test fn a_hung_guest_is_killed_by_the_host_and_reported_as_a_deadline_rather_than_a_failure() -> Bool {
+// A GUEST THAT PANICS AND IS THEN KILLED BY ITS DEADLINE PRINTS ITS PANIC TO STDOUT, and this is the
+// arm that proves the console survives. The earlier implementation routed the VMM through a capture
+// that DISCARDS stdout on a non-admitted exit and then labelled the surviving stderr "the console" --
+// a fabricated label over missing evidence. The red here is any regression back to that: the panic
+// text must reach the verdict.
+test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -> Bool {
   let expired = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
-    console: ProcessRefused { exit_code: coreutils_timeout_expired_exit_code, stderr: "[    0.9] Kernel panic" },
-  )
-  let ordinary = boot_probe_verdict(
-    runner: actions_runner_release_2_336_0,
-    console: ProcessRefused { exit_code: 1, stderr: "Error: cannot open /dev/kvm" },
+    observed: process_observation(
+      exit_code: coreutils_timeout_expired_exit_code,
+      stdout: "[    0.9] Kernel panic - not syncing: no init found",
+      stderr: "timeout: sending signal KILL",
+    ),
   )
   !boot_probe_admitted(v: expired)
-    && (match expired { BootExceededHostDeadline { deadline: _, console: _ } => true  _ => false })
-    && (match ordinary { BootProducedNoConsole { cause: _ } => true  _ => false })
+    && (match expired {
+      BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
+        string_contains(s: c, pattern: "Kernel panic")
+          && string_contains(s: d, pattern: "180")
+          && string_contains(s: e, pattern: "KILL")
+      _ => false
+    })
 }
 
 // THE DEADLINE ESCALATES TO KILL. A bare `timeout` sends TERM and then waits, so a wedged VMM

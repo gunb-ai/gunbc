@@ -1,6 +1,6 @@
 module gunbc.runner_microvm_boot_probe
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -31,8 +31,7 @@ import gunbc.runner_microvm_host_ready {
   observe_firecracker_host_standing_wet,
 }
 import gunbc.command_runner {
-  ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  run_shell_command_capture, run_shell_commands, LocalExec,
+  ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
 }
 
 data runner_microvm_boot_probe_disposition: Disposition = SingleAuthority
@@ -144,54 +143,53 @@ fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String
 // version of the runner that extdeps.github.actions_runner pins, so the assertion consumes that row
 // rather than a literal: a runner bump moves what this probe demands in the same edit that moves
 // what the image contains, and the two cannot drift apart.
+// EVERY FAILING ARM CARRIES THE CONSOLE, because on this subject the console IS the evidence and the
+// failure is when you most need it. An earlier revision routed the VMM through the capture that
+// discards stdout on a non-admitted exit, then labelled the surviving STDERR as "the console" -- a
+// fabricated label over missing evidence. A guest that panics and is then killed by its deadline
+// prints its panic to stdout, so that arm without stdout is the one arm that had to keep it.
 type BootProbeVerdict
   = BootPrintedRunnerVersion { version: String }
   | BootProducedNoConsole { cause: String }
   | BootConsoleLacksRunnerVersion { expected: String, console: String }
   | BootNotAttempted { cause: String }
-  | BootExceededHostDeadline { deadline: String, console: String }
+  | BootExceededHostDeadline { deadline: String, console: String, detail: String }
+  | BootVmmFailed { exit_code: Int, console: String, detail: String }
 
-fn boot_probe_verdict(runner: ActionsRunnerRelease, console: ProcessOutcome) -> BootProbeVerdict {
-  match console {
-    ProcessRefused { exit_code: code, stderr: err } =>
-      if code == coreutils_timeout_expired_exit_code {
-        BootExceededHostDeadline {
-          deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
-          console: err,
-        }
-      } else {
-        BootProducedNoConsole {
-          cause: join([
-            "the VMM exited non-zero, so the guest did not run to a clean power-off (exit ",
-            to_string(code), "): ", err,
-          ], ""),
-        }
-      }
-    ProcessOutputAbsent =>
-      BootProducedNoConsole {
-        cause: "the VMM ran and produced no console output at all, so the guest did not reach a serial console",
-      }
-    ProcessOutputPresent { text: t } =>
-      if string_contains(s: t, pattern: runner.version as String) {
-        BootPrintedRunnerVersion { version: runner.version as String }
-      } else {
-        BootConsoleLacksRunnerVersion { expected: runner.version as String, console: t }
-      }
+fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
+  if observed.exit_code == coreutils_timeout_expired_exit_code {
+    BootExceededHostDeadline {
+      deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
+      console: observed.stdout,
+      detail: observed.stderr,
+    }
+  } else if observed.exit_code != 0 {
+    BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
+  } else if observed.stdout == "" {
+    BootProducedNoConsole {
+      cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
+    }
+  } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
+    BootPrintedRunnerVersion { version: runner.version as String }
+  } else {
+    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
   }
 }
 
 fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
   match v {
-    BootPrintedRunnerVersion { version: x } =>
-      join(["boot=printed-runner-version ", x], "")
+    BootPrintedRunnerVersion { version: x } => join(["boot=printed-runner-version ", x], "")
     BootProducedNoConsole { cause: c } => join(["boot=no-console (", c, ")"], "")
     BootConsoleLacksRunnerVersion { expected: e, console: c } =>
       join(["boot=console-without-runner-version expected=", e, "\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
-    BootExceededHostDeadline { deadline: d, console: c } =>
+    BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
       join(["boot=host-deadline-expired after ", d,
-            " -- the guest did not power itself off and the host killed the VMM\n--- console ---\n", c,
-            "\n--- end console ---"], "")
+            " -- the guest did not power itself off and the host killed the VMM\nvmm-stderr: ", e,
+            "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootVmmFailed { exit_code: x, console: c, detail: e } =>
+      join(["boot=vmm-failed exit=", to_string(x), "\nvmm-stderr: ", e,
+            "\n--- console ---\n", c, "\n--- end console ---"], "")
   }
 }
 
@@ -201,7 +199,8 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootProducedNoConsole { cause: _ } => false
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
     BootNotAttempted { cause: _ } => false
-    BootExceededHostDeadline { deadline: _, console: _ } => false
+    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
+    BootVmmFailed { exit_code: _, console: _, detail: _ } => false
   }
 }
 
@@ -261,7 +260,7 @@ func runner_microvm_boot_probe_wet() -> ProcessExit
                   runner_microvm_boot_probe_receipt_wet(
                     verdict: boot_probe_verdict(
                       runner: image.runner,
-                      console: run_shell_command_capture(
+                      observed: run_shell_command_observe(
                         command: runner_microvm_boot_probe_bounded_command(
                           binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
                           config_path: runner_microvm_boot_probe_config_path(root: root),
