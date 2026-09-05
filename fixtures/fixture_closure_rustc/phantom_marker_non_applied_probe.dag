@@ -1,0 +1,43 @@
+module fixture.closure.rustc_phantom_marker_non_applied_probe
+
+// THE MEANING-LEVEL RED ARM. It is the specimen `gunbc.recurring_failure_mode`
+// `accepted_source_emits_uncompilable_target` files as its FIRST instance -- a coproduct's UNIT
+// VARIANT standing in a NON-APPLIED type position -- committed here as a runnable file, which is
+// the thing that row records it never had (its own specimen was produced by a lane whose fixture
+// was never committed to this repository).
+//
+// gunbc ACCEPTS this source with zero blocking diagnostics. `Time` is an arm of `Quantity`, not a
+// type, so the emitted field annotation names a variant where rustc requires a type and the only
+// wall that fires belongs to the target's compiler. DESIGN section 7 makes that the seed's floor
+// and not the target's problem, and DESIGN section 5 makes it silent wrongness on the
+// source-to-target path -- below the ladder, not a rung on it.
+//
+// WHY IT IS NOT IN THE RULED POSITION, WHICH IS THE DISCRIMINATION. `Time` here is a field type,
+// never an argument of an applied type node, so `rust_type_arg_identity_spelling` correctly
+// declines it and no zero-sized marker is minted for it. That is what makes the pair informative:
+// the green arm beside it uses the SAME variant of the SAME coproduct in the ruled position and
+// compiles. The single variable across the two arms is the POSITION the identity stands in.
+//
+// THE ERROR CLASS IS PART OF THE CLAIM, AND IT IS MEASURED. Run through the fixture-closure route
+// against the emitter that ships today, rustc refuses the emitted module with E0308 at the parent
+// boundary -- `expected Quantity, found Time` on the `-> Quantity` return -- because the emitted
+// module carries BOTH a `Time` type and a `Quantity::Time` variant, and the field annotation binds
+// the first while the declared return wants the second. The E0573 that the phantom-marker witness
+// attributes to the positional classifier -- expected type, found variant -- was PREDICTED for this
+// fixture and NOT observed; one construction does not settle whether that sentence is stale or
+// describes a construction this file does not reach, and it is recorded rather than quietly
+// dropped. The adjudicated expectation lives in
+// `v1_compiler.emitted_closure_compile_host` FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE.
+//
+// WHEN THE WALL CLIMBS -- type-position resolution consulting the TYPE namespace alone and
+// refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE
+// KEPT (DESIGN 4b(4)). What changes then is this pair's expectation, not the fixture's existence.
+type Quantity = Time | Memory
+
+type NonApplied {
+  value: Time
+}
+
+fn non_applied_field_as_quantity(subject: NonApplied) -> Quantity {
+  subject.value
+}

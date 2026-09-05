@@ -1400,6 +1400,84 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
     }
 }
 
+/// THE PHANTOM-MARKER MEANING DISCRIMINATOR, POSED THROUGH THE ROUTE ABOVE (node
+/// adhoc-f044ad97-222).
+///
+/// THE SUBJECT IS ONE EMITTER DECISION: `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`,
+/// which decides a type argument's Rust identity from the declaration visible in the module rather
+/// than from the syntactic position that happened to render it. `test.claim`
+/// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of that
+/// decision, across every outer renderer, and stays enrolled — this pair is the half that witness
+/// declares it cannot reach, because `compile_dag_rust_emit_check` stops at emitted TEXT and never
+/// invokes rustc.
+///
+/// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the same
+/// coproduct `Quantity = Time | Memory`. The green arm puts `Time` and `Memory` in the RULED
+/// POSITION — arguments of an applied type node — where they become distinct zero-sized markers
+/// and the emitted crate compiles. The red arm puts `Time` in a NON-APPLIED position, a record
+/// field, where it is a constructor standing where rustc requires a type. So a green here is not
+/// "some crate compiled" and the red is not "something in the tree is broken": the only variable
+/// is the position.
+///
+/// WHY THE RED IS A KNOWN HOLE AND NOT A WALL WORKING. It is
+/// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at its own filed
+/// first instance: gunbc accepts the source with zero blocking diagnostics and emits a crate rustc
+/// refuses. That row records that its specimen's fixture was never committed to this repository;
+/// this arm commits it as a runnable file. Per DESIGN §4b(4), when that class climbs the arm flips
+/// to `SourceRefused` and is KEPT as the regression control on the direction it established.
+#[cfg(test)]
+const FIXTURE_PHANTOM_MARKER_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/phantom_marker_applied_probe.dag";
+
+/// The non-applied arm. See `FIXTURE_PHANTOM_MARKER_GREEN_PATH` for what the pair discriminates.
+#[cfg(test)]
+const FIXTURE_PHANTOM_MARKER_RED_PATH: &str =
+    "fixtures/fixture_closure_rustc/phantom_marker_non_applied_probe.dag";
+
+/// THE ERROR CLASS THIS PAIR'S RED CARRIES, MEASURED RATHER THAN PREDICTED, AND THE PREDICTION
+/// THAT MISSED IS RECORDED BESIDE IT BECAUSE IT IS A FINDING.
+///
+/// `test.claim` `phantom_marker_type_argument_identity_witness` describes this subject's two-arm
+/// meaning discriminator as separating a BROAD classifier, which substitutes a marker struct and
+/// earns `E0308` at the parent boundary, from the POSITIONAL classifier that ships today, which
+/// "exposes the unsupported non-applied projection" and earns `E0573` — expected type, found
+/// variant. This pair was authored expecting `E0573` and RAN. What rustc actually said about the
+/// shipped emitter's output, in the red arm's own emitted module, was:
+///
+/// ```text
+/// error[E0308]: mismatched types
+///   --> src/fixture_closure_rustc_phantom_marker_non_applied_probe.rs:25:5
+/// 24 | pub fn non_applied_field_as_quantity(subject: Rc<NonApplied>) -> Quantity {
+///    |                                                                  -------- expected `Quantity` because of return type
+/// 25 |     subject.value.clone()
+///    |     ^^^^^^^^^^^^^^^^^^^^^ expected `Quantity`, found `Time`
+/// ```
+///
+/// So the emitted module carries BOTH a `Time` TYPE and a `Quantity::Time` VARIANT: the field
+/// annotation binds the former, the declared return wants the latter, and the refusal lands at the
+/// parent boundary as `E0308`. `E0573` — the code you get when the spelling names nothing that is
+/// a type at all — was NOT reproduced by this construction. That is why the expectation here is
+/// the route's own `FIXTURE_RED_EXPECTED_RUSTC_CODE` rather than a second constant: the class this
+/// arm carries is the one that constant already names, and inventing a parallel spelling of it to
+/// match a prediction the run falsified would be authoring the answer instead of reading it.
+///
+/// WHAT IS NOT CLAIMED. This measures ONE construction — a single-module coproduct whose unit
+/// variant stands in a record field. It does not establish that no construction in this class
+/// earns `E0573`, and it does not adjudicate whether the witness's E0573 sentence is stale or
+/// describes a construction this fixture does not reach. That question is recorded against the
+/// witness's ceiling carrier rather than settled here.
+/// The phantom-marker pair, assembled from the SAME arm runner the route's own pair uses — a
+/// fourth discrimination, not a fourth harness.
+#[cfg(test)]
+pub(crate) fn run_phantom_marker_identity_discrimination(
+    probe_root: &Path,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_PHANTOM_MARKER_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_PHANTOM_MARKER_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///

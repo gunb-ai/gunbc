@@ -737,6 +737,71 @@ mod compiler_tests {
         );
     }
 
+    /// THE PHANTOM-MARKER IDENTITY DECISION, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`: a type argument's
+    /// Rust identity is decided from the declaration visible in the module, never from the
+    /// syntactic position that happened to render it. `test.claim`
+    /// `phantom_marker_type_argument_identity_witness` already adjudicates the SPELLING half of
+    /// that decision across every outer renderer and STAYS ENROLLED (DESIGN 4b(4): a climb deletes
+    /// lower-rung production machinery, never the evidence). This arm is the half that witness
+    /// declares it cannot reach -- `compile_dag_rust_emit_check` stops at emitted TEXT and never
+    /// invokes rustc, which is what pinned that class at SourceToEmittedTextHonestyOnly.
+    ///
+    /// THE TWO ARMS DIFFER IN ONE THING: THE POSITION THE IDENTITY STANDS IN. Both declare the
+    /// same coproduct `Quantity = Time | Memory`. The control puts `Time` and `Memory` in the
+    /// RULED POSITION -- arguments of an applied type node -- where they become distinct
+    /// zero-sized markers, and its emitted crate COMPILES. The red puts `Time` in a NON-APPLIED
+    /// position, a record field, and its emitted crate is REFUSED. So a green here is not "some
+    /// crate compiled" and the red is not "something in the tree is broken": the only variable
+    /// across the pair is the position the identity stands in.
+    ///
+    /// THE RED IS A KNOWN HOLE, NOT A WALL WORKING, and it is named as one so nobody reads its red
+    /// as coverage. It is `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`
+    /// at that row's own filed FIRST instance, which the row records was never committed to this
+    /// repository as a runnable file. It is committed here as one. When the wall climbs -- type
+    /// position resolution consulting the TYPE namespace alone -- the arm flips to SourceRefused
+    /// and is KEPT; what changes is this pair's expectation, not the fixture's existence.
+    ///
+    /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH
+    /// a `Time` type and a `Quantity::Time` variant: the field annotation binds the former, the
+    /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,
+    /// `expected Quantity, found Time`. The witness's ceiling prose attributes E0573 to the
+    /// positional classifier; this construction did NOT reproduce it, so the expectation here is
+    /// the route's own adjudicated class rather than a prediction. See
+    /// `FIXTURE_PHANTOM_MARKER_RED_EXPECTED_RUSTC_CODE` for the full diagnostic and for what is
+    /// deliberately not claimed from one construction.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the three pairs beside it: this arm spawns cargo
+    /// and compiles two emitted crates, which is minutes rather than milliseconds. It is ENROLLED
+    /// AND OPT-IN -- `cargo test --release -p v1-compiler --lib
+    /// phantom_marker_identity_fixture_closure_discrimination -- --ignored`. An #[ignore] is a
+    /// cost decision and NOT a rung: nothing here may be cited as coverage that executes on the
+    /// merge path, and the phantom-marker ceiling carrier may not be flipped to
+    /// MeaningDiscriminatorEnrolled on the strength of it.
+    #[test]
+    #[ignore]
+    fn phantom_marker_identity_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_phantom_marker_identity_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("phantom-marker-identity {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the applied-position control must COMPILE and the NON-APPLIED arm must be refused by rustc in its own emitted module carrying the class this pair claims; a red failing that is a pair that stopped discriminating position from projection; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask

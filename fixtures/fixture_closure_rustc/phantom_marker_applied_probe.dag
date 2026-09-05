@@ -1,0 +1,31 @@
+module fixture.closure.rustc_phantom_marker_applied_probe
+
+// THE POSITIVE CONTROL FOR THE PHANTOM-MARKER MEANING DISCRIMINATOR, and it is a control about
+// this subject rather than a second copy of the route's own green. Its two fields are the RULED
+// POSITION -- unit variants standing as arguments of an APPLIED type node -- which is where
+// `v1.compiler.emit_rust` `rust_type_arg_identity_spelling` decides identity from the declaration
+// visible in this module. Both arguments become distinct zero-sized Rust markers, so
+// `Measure<Time>` and `Measure<Memory>` are two Rust types, and the accessor below returns from
+// one of them.
+//
+// WHAT IT PROVES AND WHAT IT DOES NOT. It proves the emitted crate for this construction compiles:
+// the markers are declared, the applied heads carry them, and the field reads type-check. It does
+// NOT by itself prove the two arguments render DIFFERENTLY -- an emitter that collapsed both to
+// `()` would also compile here, which is precisely why the spelling half of this class stays
+// enrolled at `test.claim.phantom_marker_type_argument_identity_witness` (DESIGN 4b(4): a climb
+// deletes lower-rung production machinery, never the evidence). This arm is the half a substring
+// oracle cannot answer: whether what the emitter wrote is a crate rustc accepts.
+type Quantity = Time | Memory
+
+type Measure<Q> {
+  count: Int
+}
+
+type DistinctMeasures {
+  time: Measure<Time>
+  memory: Measure<Memory>
+}
+
+fn applied_marker_field_reads(subject: DistinctMeasures) -> Int {
+  subject.time.count
+}

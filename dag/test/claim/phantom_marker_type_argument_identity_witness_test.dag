@@ -148,22 +148,48 @@ test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> 
 // CEILING, NOT A RUNG DROP. The meaning-level two-arm discriminator is authorable
 // and has been executed: the broad classifier substitutes a marker struct and
 // rustc reports E0308 at the parent boundary; the positional classifier exposes
-// the unsupported non-applied projection and rustc reports E0573. It is not
-// enrollable today. compile_dag_rust_emit_check and compile_dag_multi_module_fixture
-// stop at emitted text, while emitted_closure_compile_host is wired to the live
-// required-entry roster and offers no fixture-callable operation.
+// the unsupported non-applied projection and rustc reports E0573.
+// compile_dag_rust_emit_check and compile_dag_multi_module_fixture stop at emitted
+// text, which is what pins this class at SourceToEmittedTextHonestyOnly.
+//
+// WHAT CHANGED, AND WHAT DID NOT. The sentence that stood here saying
+// emitted_closure_compile_host offers no fixture-callable operation is retired
+// because it became false: fixture_closure_rustc_verdict takes a fixture source,
+// emits its closure and hands it to rustc, and three pairs already ride it. The two
+// arms named above are now committed runnable files beside those --
+// fixtures/fixture_closure_rustc/phantom_marker_applied_probe.dag in the ruled
+// applied-argument position and phantom_marker_non_applied_probe.dag in the
+// non-applied one -- adjudicated by that route's own predicate against the error
+// class each arm claims, so the discriminator is no longer a scratch artifact
+// somebody once ran.
+//
+// IT IS STILL NOT ENROLLED, AND THE TRIGGER BELOW IS UNCHANGED BECAUSE OF IT. The
+// test carrying the pair is #[ignore], and repo_self_test_command is off the merge
+// path under gunbc.rung_drop rust_unit_tests_off_the_merge_path, so nothing about
+// these arms executes on an acceptance path. The trigger already refuses exactly
+// this state in its own words -- a callable route or ignored test alone does not
+// fire it -- and putting the pair on an acceptance path means widening the required
+// floor or adding a job, which is operator authority and not this lane's.
 //
 // The carrier below makes the enrollment standing, currently enrolled boundary,
 // trigger, and routed owner separately readable facts. In particular, an executed
-// scratch discriminator cannot be mistaken for enrolled coverage.
+// scratch discriminator cannot be mistaken for enrolled coverage, and a COMMITTED
+// opt-in pair cannot be mistaken for either.
 type PhantomMarkerMeaningDiscriminatorEnrollmentStanding
   = MeaningDiscriminatorExecutedNotEnrolled
+  | MeaningDiscriminatorCommittedOptIn
   | MeaningDiscriminatorEnrolled
 
 type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
   = SourceToEmittedTextHonestyOnly
   | EmittedCrateMeaningDiscriminator
 
+// THE ROUTE OWNER IS REPOINTED BECAUSE THE ONE NAMED HERE WAS CLOSED, WHICH MADE
+// THE TRIGGER UNRETIRABLE. node://adhoc-da8c65c0-b3b reached status DONE on
+// 2026-09-01 without the capability it owed existing, so this row named a next-rung
+// trigger nobody was accountable for -- the untracked stall DESIGN 4b(2) forbids,
+// wearing the shape of a tracked one. A trigger is retired BY ITS TRIGGER AND BY
+// NOTHING ELSE, and a trigger whose owner cannot act is retired by nothing at all.
 type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
 
 type PhantomMarkerMeaningDiscriminatorCeiling {
@@ -174,8 +200,8 @@ type PhantomMarkerMeaningDiscriminatorCeiling {
 }
 
 data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscriminatorCeiling = PhantomMarkerMeaningDiscriminatorCeiling {
-  standing: MeaningDiscriminatorExecutedNotEnrolled,
+  standing: MeaningDiscriminatorCommittedOptIn,
   enrolled_boundary: SourceToEmittedTextHonestyOnly,
   next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
-  route_owner: "node://adhoc-da8c65c0-b3b" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+  route_owner: "node://adhoc-f044ad97-222" as PhantomMarkerMeaningDiscriminatorRouteOwner,
 }
