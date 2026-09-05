@@ -88,8 +88,41 @@ type GcpIamOwnedCellUniverse {
   cells: List<GcpIamBindingCell>
 }
 
+// A POLICY READ AT VERSION 1 THAT CONTAINS CONDITIONS IS NOT A POLICY THIS MODEL MAY RECONCILE.
+//
+// Google renders a conditional binding to a version-1 requester by MANGLING THE ROLE NAME -- the
+// role comes back as `<role>_withcond_<hash>` and the condition object is simply absent. The binding
+// is still there; what is gone is any way to see what restricts it.
+//
+// That representation is load-bearing for the wrong reason. setIamPolicy is a whole-policy replace,
+// so a reconcile against a lossy read does not merely fail to see a condition: it computes that the
+// unconditional cell it wants is MISSING, adds it, and writes back a document in which the original
+// restriction has been replaced by unconditional access. Google documents that exact outcome for
+// tools that read at version 1 and write back. The etag does not help -- it defends against a
+// concurrent writer, not against information the reader never received.
+//
+// So the mangled role is a REFUSAL and never a repair. Stripping `_withcond_` to recover the role
+// name would reconstruct an unconditional binding from a conditional one, which is the data loss
+// itself performed deliberately. The remedy is upstream and structural: request representation
+// version 3 on the read, which extdeps.cloud.gcp.secret_manager GetSecretIamPolicy now does. This
+// arm exists so that a caller who somehow still obtains a version-1 conditional read stops, rather
+// than silently widening somebody's restricted access.
+data conditional_role_marker: String = "_withcond_"
+
+fn binding_role_is_condition_mangled(b: GcpBinding) -> Bool {
+  b.role.contains(conditional_role_marker)
+}
+
+fn condition_mangled_roles(p: GcpPolicy) -> List<String> {
+  fold(p.bindings, init: no_role_names, f: (acc, b) =>
+    if binding_role_is_condition_mangled(b: b) { acc |> list_push(b.role) } else { acc })
+}
+
+data no_role_names: List<String> = []
+
 type GcpPolicyReconciliation
-  = GcpPolicyAlreadyConverged { policy: GcpPolicy }
+  = GcpPolicyRepresentationLossy { conditional_roles: List<String> }
+  | GcpPolicyAlreadyConverged { policy: GcpPolicy }
   | GcpPolicyDeltaRequired {
       policy: GcpPolicy
       added: List<GcpIamBindingCell>
@@ -196,6 +229,23 @@ fn gcp_policy_version_for(final_cells: List<GcpIamBindingCell>, observed_version
 }
 
 fn reconcile_gcp_policy(
+  observed: GcpPolicy,
+  desired_owned: List<GcpIamBindingCell>,
+  owned_universe: GcpIamOwnedCellUniverse
+) -> GcpPolicyReconciliation {
+  let mangled = condition_mangled_roles(p: observed)
+  if count(mangled) > 0 {
+    GcpPolicyRepresentationLossy { conditional_roles: mangled }
+  } else {
+    reconcile_faithful_policy(
+      observed: observed,
+      desired_owned: desired_owned,
+      owned_universe: owned_universe
+    )
+  }
+}
+
+fn reconcile_faithful_policy(
   observed: GcpPolicy,
   desired_owned: List<GcpIamBindingCell>,
   owned_universe: GcpIamOwnedCellUniverse
