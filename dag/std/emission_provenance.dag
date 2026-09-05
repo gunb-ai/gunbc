@@ -1,0 +1,328 @@
+module std.emission_provenance
+
+import std.algebra { FreeMonoid, FreeSemigroup, Cons, Empty }
+import std.content_hash {
+  ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
+  compare_content_hash
+}
+import std.decl_ref { DeclarationRef }
+import std.occurrence_identity { NodeOccurrenceIdentity }
+import std.occurrence_binding { ContainmentPath }
+import std.types { FilePath, NonEmptyStr, String, Map, RunKey, Int }
+
+// Observations of one emission transaction. The observing instrument supplies its existing
+// subject; this substrate neither manufactures a second run identity nor classifies seed debt.
+// DeclarationRef is a correspondence ADDRESS, not a replacement for graph-local occurrence
+// identity. Across transactions, additions, departures and ambiguous addresses remain visible.
+// Content identities describe the bytes observed in that transaction, including declaration
+// bodies; equal module membership alone says nothing about declaration preservation.
+
+type EmissionDeclarationMember {
+  address: DeclarationRef
+  occurrence: NodeOccurrenceIdentity
+  content: ContentHash
+}
+
+type EmissionModuleMember {
+  module_name: NonEmptyStr
+  source_path: FilePath
+  source_content: ContentHash
+  declarations: FreeMonoid<EmissionDeclarationMember>
+}
+
+// A partial resolution retains the observed population. It cannot be read as a completed
+// empty roster. The cause locates the stage/producer whose observation did not complete.
+type EmissionResolutionCoverage
+  = EmissionResolutionComplete { modules: FreeMonoid<EmissionModuleMember> }
+  | EmissionResolutionPartial {
+      modules: FreeMonoid<EmissionModuleMember>
+      stopped_at: DeclarationRef
+      cause: NonEmptyStr
+    }
+  | EmissionResolutionUnreached { stopped_at: DeclarationRef, cause: NonEmptyStr }
+
+// Content is assembled FROM this tree, never reconstructed by searching emitted strings.
+// A composition retains its own contributor and all nested contributors. In particular a
+// runtime wrapper forwarding an upstream realization does not replace that realization's origin.
+// The boilerplate arm is an explicit producer claim, never the default for unknown content.
+type EmissionContribution
+  = EmissionSourceFragment { origin: DeclarationRef, source: String }
+  | EmissionSourceComposition {
+      origin: DeclarationRef
+      parts: FreeMonoid<EmissionContribution>
+    }
+  | EmissionGeneratedFragment { producer: DeclarationRef, source: String }
+  | EmissionUnobservedFragment {
+      producer: DeclarationRef
+      cause: NonEmptyStr
+      source: String
+    }
+
+// Coverage is derived from the tree: an unobserved descendant remains visible through every
+// enclosing composition. The observation retains exact output content identity separately from
+// source identity. A later formatter/build-input transformation owes its own derived observation;
+// this receipt cannot be rebound by replacing its digest while retaining the old contribution tree.
+type EmissionOutputMember {
+  path: FilePath
+  content: ContentHash
+  contribution: EmissionContribution
+}
+
+type EmissionOutputCoverage
+  = EmissionOutputsObserved { members: FreeMonoid<EmissionOutputMember> }
+  | EmissionOutputsPartial {
+      members: FreeMonoid<EmissionOutputMember>
+      stopped_at: DeclarationRef
+      cause: NonEmptyStr
+    }
+  | EmissionOutputsUnreached { stopped_at: DeclarationRef, cause: NonEmptyStr }
+
+// These axes are intentionally not summarized by a Bool or a single complete/refused verdict.
+// Observed output membership does not imply observed origins: consumers must inspect each tree.
+// The existing emission subject encloses this value when the instrument renders its receipt.
+type EmissionProvenance {
+  resolution: EmissionResolutionCoverage
+  outputs: EmissionOutputCoverage
+}
+
+// The observing product passes its existing subject unchanged. RunKey is the independent
+// execution axis: two executions can share a source/binary subject without being the same event.
+// Consumers compare against the run they requested; a foreign receipt cannot be rebound merely
+// because its source revision or output count happens to agree.
+type EmissionTransactionObservation<Subject> {
+  subject: Subject
+  run: RunKey
+  provenance: EmissionProvenance
+}
+
+// Positions identify CONTRIBUTION OCCURRENCES inside one observed output tree. They are not
+// source OccurrenceIds, do not replace those ids, and carry no cross-run identity claim. Repeated
+// uses of one DeclarationRef occupy distinct positions. The enclosing transaction scopes this
+// address, and the output's content identity binds it to the member actually observed.
+type EmissionContributionAddress {
+  output_path: FilePath
+  output_content: ContentHash
+  position: ContainmentPath<Int>
+}
+
+type EmissionDeclarationCorrespondence
+  = EmissionDeclarationPreserved { before: EmissionDeclarationMember, after: EmissionDeclarationMember }
+  | EmissionDeclarationChanged { before: EmissionDeclarationMember, after: EmissionDeclarationMember }
+  | EmissionDeclarationContentIncomparable { before: EmissionDeclarationMember, after: EmissionDeclarationMember }
+  | EmissionDeclarationRemoved { before: EmissionDeclarationMember }
+  | EmissionDeclarationAdded { after: EmissionDeclarationMember }
+  | EmissionDeclarationAddressAmbiguous {
+      address: DeclarationRef
+      before: FreeMonoid<EmissionDeclarationMember>
+      after: FreeMonoid<EmissionDeclarationMember>
+    }
+
+// Index by the existing citation address, retaining every occurrence in each bucket. No
+// deduplication can turn an ambiguous address into a unique declaration. This is an address
+// correspondence across observations, never equality between their graph-local occurrence ids.
+fn emission_members_by_address<K, V>(
+  members: FreeMonoid<V>,
+  address: fn(V) -> K
+) -> Map<K, FreeSemigroup<V>> {
+  members |> fold(init: empty_map(), f: fn(index, member) {
+    let key = address(member)
+    let prior = match map_get(index, key) {
+      Present { value: values } => concat([values.head], values.tail)
+      Absent => []
+    }
+    map_insert(index, key, FreeSemigroup { head: member, tail: prior })
+  })
+}
+
+fn emission_compare_declaration_pair(
+  before: EmissionDeclarationMember,
+  after: EmissionDeclarationMember
+) -> EmissionDeclarationCorrespondence {
+  match compare_content_hash(left: before.content, right: after.content) {
+    ContentHashEqual => EmissionDeclarationPreserved { before: before, after: after }
+    ContentHashDifferent => EmissionDeclarationChanged { before: before, after: after }
+    ContentHashCrossFamilyIncomparable => EmissionDeclarationContentIncomparable { before: before, after: after }
+  }
+}
+
+fn emission_declaration_correspondence(
+  before: FreeMonoid<EmissionDeclarationMember>,
+  after: FreeMonoid<EmissionDeclarationMember>
+) -> FreeMonoid<EmissionDeclarationCorrespondence> {
+  let left = emission_members_by_address(members: before, address: fn(member) { member.address })
+  let right = emission_members_by_address(members: after, address: fn(member) { member.address })
+  let left_rows = left |> map_values |> map(bucket => {
+    let address = bucket.head.address
+    let previous = concat([bucket.head], bucket.tail)
+    let following = match map_get(right, address) {
+      Present { value: values } => concat([values.head], values.tail)
+      Absent => []
+    }
+    match previous {
+      Cons { head: first, tail: Empty } =>
+        match following {
+          Empty => EmissionDeclarationRemoved { before: first }
+          Cons { head: next, tail: Empty } => emission_compare_declaration_pair(before: first, after: next)
+          _ => EmissionDeclarationAddressAmbiguous { address: address, before: previous, after: following }
+        }
+      _ => EmissionDeclarationAddressAmbiguous { address: address, before: previous, after: following }
+    }
+  })
+  let right_rows = right |> map_values |> flat_map(bucket =>
+    match map_get(left, bucket.head.address) {
+      Present { value: _ } => []
+      Absent =>
+        match bucket.tail {
+          Empty => [EmissionDeclarationAdded { after: bucket.head }]
+          _ => [EmissionDeclarationAddressAmbiguous { address: bucket.head.address, before: [], after: concat([bucket.head], bucket.tail) }]
+        }
+    }
+  )
+  concat(left_rows, right_rows)
+}
+
+type EmissionModuleCorrespondence
+  = EmissionModulePaired {
+      before: EmissionModuleMember
+      after: EmissionModuleMember
+      declarations: FreeMonoid<EmissionDeclarationCorrespondence>
+    }
+  | EmissionModuleRemoved { before: EmissionModuleMember }
+  | EmissionModuleAdded { after: EmissionModuleMember }
+  | EmissionModuleAddressAmbiguous {
+      module_name: NonEmptyStr
+      before: FreeMonoid<EmissionModuleMember>
+      after: FreeMonoid<EmissionModuleMember>
+    }
+
+type EmissionResolutionCorrespondence
+  = EmissionResolutionCompared { modules: FreeMonoid<EmissionModuleCorrespondence> }
+  | EmissionResolutionComparisonUnavailable {
+      before: EmissionResolutionCoverage
+      after: EmissionResolutionCoverage
+    }
+
+fn emission_module_correspondence(
+  before: FreeMonoid<EmissionModuleMember>,
+  after: FreeMonoid<EmissionModuleMember>
+) -> FreeMonoid<EmissionModuleCorrespondence> {
+  let left = emission_members_by_address(members: before, address: fn(member) { member.module_name })
+  let right = emission_members_by_address(members: after, address: fn(member) { member.module_name })
+  let left_rows = left |> map_values |> map(bucket => {
+    let address = bucket.head.module_name
+    let previous = concat([bucket.head], bucket.tail)
+    let following = match map_get(right, address) {
+      Present { value: values } => concat([values.head], values.tail)
+      Absent => []
+    }
+    match previous {
+      Cons { head: first, tail: Empty } =>
+        match following {
+          Empty => EmissionModuleRemoved { before: first }
+          Cons { head: next, tail: Empty } => EmissionModulePaired {
+            before: first,
+            after: next,
+            declarations: emission_declaration_correspondence(before: first.declarations, after: next.declarations)
+          }
+          _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
+        }
+      _ => EmissionModuleAddressAmbiguous { module_name: address, before: previous, after: following }
+    }
+  })
+  let right_rows = right |> map_values |> flat_map(bucket =>
+    match map_get(left, bucket.head.module_name) {
+      Present { value: _ } => []
+      Absent =>
+        match bucket.tail {
+          Empty => [EmissionModuleAdded { after: bucket.head }]
+          _ => [EmissionModuleAddressAmbiguous {
+            module_name: bucket.head.module_name, before: [], after: concat([bucket.head], bucket.tail)
+          }]
+        }
+    }
+  )
+  concat(left_rows, right_rows)
+}
+
+fn emission_resolution_correspondence(
+  before: EmissionResolutionCoverage,
+  after: EmissionResolutionCoverage
+) -> EmissionResolutionCorrespondence {
+  match before {
+    EmissionResolutionComplete { modules: previous } =>
+      match after {
+        EmissionResolutionComplete { modules: following } =>
+          EmissionResolutionCompared { modules: emission_module_correspondence(before: previous, after: following) }
+        _ => EmissionResolutionComparisonUnavailable { before: before, after: after }
+      }
+    _ => EmissionResolutionComparisonUnavailable { before: before, after: after }
+  }
+}
+
+fn emission_contribution_source(contribution: EmissionContribution) -> String {
+  match contribution {
+    EmissionSourceFragment { origin: _, source } => source
+    EmissionSourceComposition { origin: _, parts } =>
+      parts |> map(part => emission_contribution_source(contribution: part)) |> join(separator: "")
+    EmissionGeneratedFragment { producer: _, source } => source
+    EmissionUnobservedFragment { producer: _, cause: _, source } => source
+  }
+}
+
+fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
+  match contribution {
+    EmissionSourceFragment { origin: _, source: _ } => []
+    EmissionSourceComposition { origin: _, parts } =>
+      parts |> flat_map(part => emission_contribution_unobserved(contribution: part))
+    EmissionGeneratedFragment { producer: _, source: _ } => []
+    EmissionUnobservedFragment { producer, cause: _, source: _ } => [producer]
+  }
+}
+
+type EmissionOriginGap {
+  producer: DeclarationRef
+  cause: NonEmptyStr
+}
+
+type EmissionOriginRead
+  = EmissionOriginsObserved { origins: FreeMonoid<DeclarationRef> }
+  | EmissionOriginsIncomplete {
+      observed: FreeMonoid<DeclarationRef>
+      missing: FreeSemigroup<EmissionOriginGap>
+    }
+
+fn emission_origin_reads_combine(left: EmissionOriginRead, right: EmissionOriginRead) -> EmissionOriginRead {
+  match left {
+    EmissionOriginsObserved { origins: a } => match right {
+      EmissionOriginsObserved { origins: b } => EmissionOriginsObserved { origins: concat(a, b) }
+      EmissionOriginsIncomplete { observed: b, missing } =>
+        EmissionOriginsIncomplete { observed: concat(a, b), missing: missing }
+    }
+    EmissionOriginsIncomplete { observed: a, missing: ma } => match right {
+      EmissionOriginsObserved { origins: b } =>
+        EmissionOriginsIncomplete { observed: concat(a, b), missing: ma }
+      EmissionOriginsIncomplete { observed: b, missing: mb } =>
+        EmissionOriginsIncomplete {
+          observed: concat(a, b),
+          missing: FreeSemigroup { head: ma.head, tail: concat(ma.tail, [mb.head], mb.tail) }
+        }
+    }
+  }
+}
+
+// This convenience reading is deliberately a coproduct: callers cannot obtain a complete-looking
+// origin list by silently dropping the unobserved nodes. The tree itself remains the authority for
+// parent-child structure and distinct contribution occurrences. Multiplicity is retained here too.
+fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
+  match contribution {
+    EmissionSourceFragment { origin, source: _ } => EmissionOriginsObserved { origins: [origin] }
+    EmissionSourceComposition { origin, parts } =>
+      parts |> fold(init: EmissionOriginsObserved { origins: [origin] }, f: fn(acc, part) {
+        emission_origin_reads_combine(left: acc, right: emission_contribution_origins(contribution: part))
+      })
+    EmissionGeneratedFragment { producer, source: _ } => EmissionOriginsObserved { origins: [producer] }
+    EmissionUnobservedFragment { producer, cause, source: _ } => EmissionOriginsIncomplete {
+      observed: [], missing: FreeSemigroup { head: EmissionOriginGap { producer: producer, cause: cause }, tail: [] }
+    }
+  }
+}
