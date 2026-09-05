@@ -1,6 +1,7 @@
 module v1.compiler.compile
 
 import std.syntax { LiteralValue, BinOp }
+import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
@@ -93,6 +94,16 @@ type SourceFile {
   path: String
   content: String
 }
+
+// THIS MODULE IS THE COMPILER PIPELINE ENTRY, AND IT SAYS SO RATHER THAN BEING RECOGNISED BY
+// NAME. The emitter used to select its entry-point arm by comparing a module name against the
+// literal "v1.compiler.compile"; that literal discriminated seed generations rather than the
+// role, so it could never be true of a self-emitted compiler. The driver shape is declared
+// beside the role because it is a separate fact: this crate carries the retained host CLI
+// kernel (v1_compiler.cli_run), and only a crate that contains it may render that driver.
+
+data compiler_pipeline_entry: CompilerEntryDriver = RetainedHostCliKernel
+
 
 type PipelineResult {
   files: List<TextFile>

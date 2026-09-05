@@ -1,11 +1,16 @@
 module gunbc.roadmap_page
 
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text }
+import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
+  RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word, round_playback, RoundPlayback, round_remaining_flex, harness_round_budget_steps }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
-import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
@@ -27,6 +32,7 @@ import gunbc.roadmap_authority {
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
+import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   theme_toggle_label_prefix, theme_toggle_auto_value,
@@ -36,6 +42,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
 }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
@@ -68,6 +75,7 @@ import gunbc.roadmap_presentation {
   lifecycle_chip_renders,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
   WorkBandEntry, BandRow, BandFamily,
+  worker_alive_from_process,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
@@ -188,10 +196,24 @@ fn roadmap_header(page: String) -> Fragment {
     el_class("div", "header-inner", [
       el_class("span", "wordmark", [ txt("gunbc") ]),
       el("h1", [ txt(page) ]),
+      header_surface_link(label: "workspace", href: "/"),
+      header_surface_link(label: "fleet", href: "/fleet"),
       sound_toggle_control(),
       theme_toggle_control(),
     ]),
   ])
+}
+
+// The header carries one link per SERVED page a human navigates between, so splitting the fleet
+// panels off the workspace does not make them unreachable. The link set is authored here rather
+// than derived from gunbc.roadmap_serve's route table on purpose and the reason is a layering one:
+// that table is the transport's routing authority and includes assets, JSON reads and POST verbs
+// that are not navigation destinations, so deriving from it would need a second predicate saying
+// which rows a person navigates to -- a fact this page owns. If the pair ever disagrees the tell is
+// a 404 from a header link, which is why the link text and the route literal are the only two
+// spellings and both live one grep apart.
+fn header_surface_link(label: String, href: String) -> Fragment {
+  el_attrs("a", [ attr(name: "href", value: href ), attr(name: "class", value: "surface-link" ) ], [ txt(label) ])
 }
 
 // The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
@@ -610,15 +632,76 @@ fn activity_container(a: ActivityView, attention: String, children: List<Fragmen
     concat([ el_class("span", activity_summary_class, [ txt(activity_summary_line(a: a)) ]) ], children))
 }
 
-fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
+
+// THE ROUND STRIP: one span per segment, width by flex-grow so a long round is a wide segment. The
+// widths are the segments' millisecond intervals used directly as flex weights -- proportional by
+// construction, with no percentage arithmetic to round. The strip is absent, not empty, when the
+// ledger has fewer than two clocked rounds: a zero-width strip would read as "nothing happened".
+fn round_segment_class(k: RoundSegmentKind) -> String {
+  match k {
+    ReadRound => activity_round_read_class
+    WriteRound => activity_round_write_class
+    ReasonRound => activity_round_reason_class
+    UnmeasuredRound => activity_round_unmeasured_class
+  }
+}
+
+fn round_segment_node(play: RoundPlayback, pulsing: Bool) -> Fragment {
+  let seg = play.segment
+  let base_class = round_segment_class(k: seg.kind)
+  el_attrs("span", [
+    attr(name: "class", value: if pulsing { join([base_class, " ", activity_round_live_class], "") } else { base_class }),
+    attr(name: "style", value: join([
+      "flex-grow: ", to_string(value: if seg.duration_ms < 1 { 1 } else { seg.duration_ms }),
+      "; --", round_fill_delay_var, ": ", to_string(value: play.delay_ms), "ms",
+      "; --", round_fill_duration_var, ": ", to_string(value: play.duration_ms), "ms",
+    ], "")),
+    attr(name: "data-delay-ms", value: to_string(value: play.delay_ms)),
+    attr(name: "data-duration-ms", value: to_string(value: play.duration_ms)),
+    attr(name: "title", value: join([
+      "round ", to_string(value: seg.step), " · ", round_segment_kind_word(k: seg.kind), " · ",
+      to_string(value: seg.duration_ms / 1000), "s · ", to_string(value: seg.output_tokens), " tok",
+    ], "")),
+  ], [])
+}
+
+fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
+  let plays = round_playback(segs: round_segments(ledger: ledger), playback_ms: round_strip_playback_ms)
+  let total = list_length(items: plays)
+  if total == 0 {
+    []
+  } else {
+    let nodes = fold(plays, init: [], f: (acc, p) =>
+      concat(acc, [round_segment_node(play: p, pulsing: live && list_length(items: acc) + 1 == total)]))
+    let remaining = if live { round_remaining_flex(ledger: ledger, budget_steps: harness_round_budget_steps) } else { 0 }
+    let tail = if remaining > 0 {
+      [ el_attrs("span", [
+          attr(name: "class", value: activity_round_remaining_class),
+          attr(name: "style", value: join(["flex-grow: ", to_string(value: remaining)], "")),
+          attr(name: "title", value: "unspent round budget, projected at the pace so far"),
+        ], []) ]
+    } else { [] }
+    [ el_class("div", activity_round_strip_class, concat(nodes, tail)) ]
+  }
+}
+
+// THE LEDGER OPENS ONLY WHILE THE WORKER IS LIVE. A row at rest shows its summary sentence and the
+// round strip; the obligation ledger and evidence rows sit behind the disclosure. The previous rule
+// opened every anomalous row, and a board of eight spent attempts was eight open ledgers of identical
+// text (operator, 2026-09-05: "show the bar only, collapse the information, unless the worker is
+// working"). Anomaly still reads on the container's attention data and in the summary line; the
+// refused arm keeps its located reason open, because a refusal is the loud stop DESIGN section 5 asks
+// for and its reason is the one thing the reader must not have to click for.
+fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   match a {
     NoActiveWork => []
     ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
       let key = activity_attention_key(a: attention)
-      [ activity_container(a: a, attention: key, children: [
-          activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous"),
-        ]) ]
+      [ activity_container(a: a, attention: key, children: concat(
+          round_strip_nodes(ledger: rounds, live: live),
+          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: live) ],
+        )) ]
     }
     ActiveWorkRefused { summary: _, located_reason, evidence } =>
       [ activity_container(a: a, attention: "", children: [
@@ -643,6 +726,20 @@ fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
   }
 }
 
+// THE STANDING CHIP: the node's live standing from the event log, beside the lifecycle chip. Absent
+// when the log has nothing for this node; the standing's own key is the class so each state reads
+// through the palette's neutral roles (gunbc.roadmap_style standing_chip_rules).
+fn standing_chip_nodes(view: WorkRowView) -> List<Fragment> {
+  match view.standing {
+    Absent => []
+    Present { value: s } =>
+      [ el_attrs("span", [
+          attr(name: "class", value: join([standing_chip_class, " ", standing_chip_class, "-", roadmap_node_standing_key(s: s)], "")),
+          attr(name: "title", value: roadmap_node_standing_text(s: s)),
+        ], [ txt(roadmap_node_standing_text(s: s)) ]) ]
+  }
+}
+
 fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
   if lifecycle_chip_renders(l: view.lifecycle) {
     let status = work_lifecycle_key(l: view.lifecycle)
@@ -656,6 +753,7 @@ fn render_work_row_head(view: WorkRowView) -> Fragment {
   el_class("div", "node-head", concat(
     concat(
       status_chip_nodes(view: view),
+      standing_chip_nodes(view: view),
       [ el_class("span", node_mid_class, concat(
           concat(
             [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
@@ -668,7 +766,7 @@ fn render_work_row_head(view: WorkRowView) -> Fragment {
 fn render_work_row(view: WorkRowView) -> List<Fragment> {
   concat(
     [ render_work_row_head(view: view) ],
-    concat(activity_region_nodes(a: view.activity), view_detail_block(view: view)))
+    concat(activity_region_nodes(a: view.activity, rounds: view.rounds, live: view.worker_alive), view_detail_block(view: view)))
 }
 
 fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
@@ -680,7 +778,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 }
 
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, launch: launch)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch)
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -906,6 +1004,32 @@ fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptPro
   })
 }
 
+// THE STRIP'S LEDGER IS READ OFF THE SAME PROGRESS THE ACTIVITY VIEW IS, at the same seam, so the
+// two cannot describe different attempts. It is a sibling projection rather than a field on the view
+// for the reason given at rounds_of: the view is matched by name everywhere, the ledger is read in
+// one place.
+fn daily_row_rounds(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> HarnessRoundLedger {
+  match attempts_refused {
+    Present { value: _ } => RoundsUnobserved { reason: "attempts refused" as NonEmptyStr }
+    Absent =>
+      match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
+        Present { value: p } => p.rounds
+        Absent => RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }
+      }
+  }
+}
+
+fn daily_row_worker_alive(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Bool {
+  match attempts_refused {
+    Present { value: _ } => false
+    Absent =>
+      match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
+        Present { value: p } => worker_alive_from_process(process: p.process)
+        Absent => false
+      }
+  }
+}
+
 fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> ActivityView {
   match attempts_refused {
     Present { value: reason } => ActivityUnobservable { reason: reason }
@@ -942,6 +1066,7 @@ fn daily_workspace_view_of_for_accepted(
   accepted_ids: List<RoadmapNodeId>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
@@ -951,6 +1076,9 @@ fn daily_workspace_view_of_for_accepted(
   let rows = map(nodes, rn => work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    standing: standing_for_node(standings: standings, node_id: rn.node as String),
     launch: ctx))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
@@ -962,7 +1090,7 @@ fn daily_workspace_view_of_for_accepted(
     members: live_work_family_members_for_accepted(accepted: accepted_ids))
 }
 
-fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> DailyWorkspaceView {
+fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, standings: RoadmapStandings, launch: LaunchHostStanding) -> DailyWorkspaceView {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       daily_workspace_view_of_for_accepted(
@@ -970,7 +1098,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         merged: merged,
         accepted_ids: [],
         attempts: attempts,
-        attempts_refused: attempts_refused,
+        attempts_refused: attempts_refused, standings: standings,
         launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
@@ -979,7 +1107,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         merged: merged,
         accepted_ids: accepted_ids,
         attempts: attempts,
-        attempts_refused: attempts_refused,
+        attempts_refused: attempts_refused, standings: standings,
         launch: launch,
       )
   }
@@ -992,6 +1120,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   main_prefix: List<Fragment>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
@@ -999,7 +1128,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     merged: merged,
     accepted_ids: accepted_ids,
     attempts: attempts,
-    attempts_refused: attempts_refused,
+    attempts_refused: attempts_refused, standings: standings,
     launch: launch,
   )
   let program_strip = match ws.program {
@@ -1018,16 +1147,51 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat([fleet_hardware_standing_panel(), fleet_capacity_panel()], concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws)]))))),
+          [ workspace_markup(ws: ws)])))),
         dispatch_client_script(),
       ]),
     ],
   }
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
+// THE MACHINE-STANDING SURFACE IS ITS OWN PAGE, NOT A PREFIX ON THE WORK SURFACE.
+//
+// The two fleet panels answer a different question from every row below them: what the hardware is
+// doing, versus what work is dispatchable. Composed into the daily workspace they occupied the
+// first screen, so the surface the operator opens to decide WHAT TO LAUNCH led with facts that
+// change no launch decision. Splitting them costs nothing structurally -- both panels are pure
+// Fragment producers over their own authorities, so this page composes the SAME two calls the
+// workspace used to make, and the panels keep their single authority.
+//
+// The witness that proves a panel reaches a rendered page follows the panel to this page rather
+// than being deleted: the claim was never "the panel is on the daily workspace", it was "the panel
+// reaches the surface the operator actually sees", and that surface is now /fleet.
+fn roadmap_fleet_page() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt("gunbc — fleet") ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "fleet"),
+        el_class("main", "daily-workspace", [
+          fleet_hardware_standing_panel(),
+          fleet_capacity_panel(),
+        ]),
+      ]),
+    ],
+  }
+}
+
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
+  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -1037,6 +1201,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
@@ -1047,6 +1212,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
   }
@@ -1162,19 +1328,21 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch_host_unobserved_static_render())
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch)
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
-fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
+fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?,
+  standings: RoadmapStandings, launch: LaunchHostStanding) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: roadmap_authority_projection(),
     attempts: attempts,
     attempts_refused: attempts_refused,
+        standings: standings,
     launch: launch,
   )
 }
@@ -1183,6 +1351,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  standings: RoadmapStandings,
   launch: LaunchHostStanding,
 ) -> Fragment {
   match proj {
@@ -1196,6 +1365,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
@@ -1208,6 +1378,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        standings: standings,
         launch: launch,
       )
   }
@@ -1222,6 +1393,7 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection)
     proj: proj,
     attempts: [],
     attempts_refused: none,
+    standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
   )
 }

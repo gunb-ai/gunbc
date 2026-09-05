@@ -19389,7 +19389,10 @@ pub fn handle_serve(
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
                 ),
-                Ok((method, path, body)) => {
+                // Idle or cleanly-closed connection: no request was made, so the
+                // connection is dropped without a response.
+                Ok(None) => {}
+                Ok(Some((method, path, body))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
@@ -19515,9 +19518,18 @@ pub fn handle_serve(
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
+///
+/// `Ok(None)` means NO REQUEST WAS EVER MADE on this connection: the peer opened
+/// it and either sent nothing before the read timeout, or closed it cleanly at a
+/// request boundary. That is not a malformed request and must not be answered
+/// with 400. Browsers routinely open speculative preconnect sockets and send
+/// nothing on them, so answering those with an error surfaces a spurious "bad
+/// request: Resource temporarily unavailable (os error 11)" to the operator.
+/// "The client sent something malformed" and "the client has not spoken yet" are
+/// different facts with different remedies; only the first is a 400.
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<(String, String, String), String> {
+) -> Result<Option<(String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -19526,9 +19538,28 @@ fn serve_read_request(
         .map_err(|e| format!("set_read_timeout: {}", e))?;
     let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
     let mut request_line = String::new();
-    let mut head_bytes = reader
-        .read_line(&mut request_line)
-        .map_err(|e| format!("read request line: {}", e))?;
+    let mut head_bytes = match reader.read_line(&mut request_line) {
+        Ok(n) => n,
+        Err(e) => {
+            // A read timeout that yielded no bytes is an idle connection, not a
+            // malformed one. Anything else, or a timeout mid-request-line, is a
+            // real read failure and keeps its typed 400.
+            if request_line.is_empty()
+                && matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                )
+            {
+                return Ok(None);
+            }
+            return Err(format!("read request line: {}", e));
+        }
+    };
+    if head_bytes == 0 {
+        // Clean EOF before any request line: the peer closed at a request
+        // boundary. Nothing was asked, so there is nothing to answer.
+        return Ok(None);
+    }
     if head_bytes > MAX_HEAD {
         return Err(format!(
             "request line of {} bytes exceeds the {} byte serve head limit",
@@ -19590,7 +19621,7 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok((method, target, body))
+    Ok(Some((method, target, body)))
 }
 
 fn serve_write_response(

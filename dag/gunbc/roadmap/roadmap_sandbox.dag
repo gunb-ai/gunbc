@@ -1,9 +1,13 @@
 module gunbc.roadmap_sandbox
 
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress }
 import std.types { Int, String, Bool, List, NonEmptyStr }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
+import gunbc.harness.harness_throughput { RoundObservation, RoundsObserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul }
+import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
 import gunbc.roadmap_presentation {
   WorkRowView, ActivityView, NoDisclosure,
   OpenLifecycle, SchedulingReady,
@@ -32,6 +36,7 @@ import gunbc.design.scale {
   space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_3, border_1, measure_page,
 }
 import gunbc.design.component { ComponentState, component_terminal_states }
+import gunbc.roadmap_component { strip_lab_replay_class, strip_lab_slow_class, strip_lab_section_class }
 import gunbc.roadmap_component {
   dispatch_button_component, dispatch_button_terminal_states,
   dispatch_idle_state, dispatch_requested_state,
@@ -79,6 +84,15 @@ fn sandbox_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: RawSelector { text: ".sandbox section" }, decls: [
       decl(prop: MarginBottom, value: scale_var(t: space_24)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".sandbox-strip-lab .activity-round-strip" }, decls: [
+      decl(prop: Height, value: "18px"),
+      decl(prop: BorderRadius, value: "4px"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "strip-lab-label" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: MarginTop, value: scale_var(t: space_16)),
+      decl(prop: Opacity, value: "0.75"),
     ] },
     StaticRule { selector: ClassSelector { name: "swatch-row" }, decls: [
       decl(prop: Display, value: "flex"),
@@ -320,7 +334,68 @@ fn fixture_specimen_segments() -> List<WorkflowSegment> {
   ]
 }
 
-fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView {
+// A LEDGER WITH THE SHAPE THE STRIP EXISTS TO SHOW: two long read rounds and one short write, so the
+// specimen paints as most of a bar of dim time ending in a bright sliver. The numbers are a fixture,
+// not a transcription of any run; the shape is the one measured on 2026-09-04, where a worker spent
+// twenty-one rounds reading and wrote at round twenty-two.
+fn fixture_long_ledger() -> HarnessRoundLedger {
+  RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 2200, output_tokens: 157, epoch_ms: 1000000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 3500, output_tokens: 194, epoch_ms: 1009000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 4800, output_tokens: 231, epoch_ms: 1069000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 6100, output_tokens: 268, epoch_ms: 1189000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 5, input_tokens: 7400, output_tokens: 305, epoch_ms: 1234000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 6, input_tokens: 8700, output_tokens: 342, epoch_ms: 1249000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 7, input_tokens: 10000, output_tokens: 379, epoch_ms: 1429000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 8, input_tokens: 11300, output_tokens: 416, epoch_ms: 1459000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 9, input_tokens: 12600, output_tokens: 453, epoch_ms: 1549000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 10, input_tokens: 13900, output_tokens: 490, epoch_ms: 1569000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 11, input_tokens: 15200, output_tokens: 127, epoch_ms: 1809000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 12, input_tokens: 16500, output_tokens: 164, epoch_ms: 1844000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 13, input_tokens: 17800, output_tokens: 201, epoch_ms: 1904000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 14, input_tokens: 19100, output_tokens: 238, epoch_ms: 1916000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 15, input_tokens: 20400, output_tokens: 275, epoch_ms: 2066000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 16, input_tokens: 21700, output_tokens: 312, epoch_ms: 2091000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 17, input_tokens: 23000, output_tokens: 349, epoch_ms: 2131000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 18, input_tokens: 24300, output_tokens: 386, epoch_ms: 2149000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 19, input_tokens: 25600, output_tokens: 423, epoch_ms: 2219000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 20, input_tokens: 26900, output_tokens: 460, epoch_ms: 2269000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 21, input_tokens: 28200, output_tokens: 497, epoch_ms: 2291000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 22, input_tokens: 29500, output_tokens: 134, epoch_ms: 2386000, files_changed: Present { value: 2 }, tool_calls: none },
+    RoundObservation { step: 23, input_tokens: 30800, output_tokens: 171, epoch_ms: 2416000, files_changed: Present { value: 2 }, tool_calls: none },
+    RoundObservation { step: 24, input_tokens: 32100, output_tokens: 208, epoch_ms: 2431000, files_changed: Present { value: 2 }, tool_calls: none },
+  ] }
+}
+
+fn strip_lab_row(label: String, ledger: HarnessRoundLedger, live: Bool) -> Fragment {
+  el_class("div", "strip-lab-row", concat(
+    [ el_class("span", "strip-lab-label", [ txt(label) ]) ],
+    round_strip_nodes(ledger: ledger, live: live)))
+}
+
+fn round_strip_lab_section() -> Fragment {
+  el_class("section", strip_lab_section_class, [
+    el("h2", [ txt("round strip — percolator (the last segment pulses while the attempt is active)") ]),
+    el_class("div", "strip-lab-controls", [
+      el_attrs("button", [ attr(name: "type", value: "button"), attr(name: "class", value: strip_lab_replay_class) ], [ txt("replay") ]),
+      el_attrs("button", [ attr(name: "type", value: "button"), attr(name: "class", value: strip_lab_slow_class) ], [ txt("slow: off") ]),
+    ]),
+    strip_lab_row(label: "moseying · 4 rounds, wrote at round 4 · active", ledger: fixture_moseying_ledger(), live: true),
+    strip_lab_row(label: "long research then write · 24 rounds, wrote at 19 and 22 · active", ledger: fixture_long_ledger(), live: true),
+    strip_lab_row(label: "same 24 rounds · finished, no pulse", ledger: fixture_long_ledger(), live: false),
+  ])
+}
+
+fn fixture_moseying_ledger() -> HarnessRoundLedger {
+  RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 900, output_tokens: 120, epoch_ms: 1000000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 9000, output_tokens: 260, epoch_ms: 1120000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 3, input_tokens: 14000, output_tokens: 180, epoch_ms: 1210000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 16000, output_tokens: 2100, epoch_ms: 1225000, files_changed: Present { value: 1 }, tool_calls: none },
+  ] }
+}
+
+fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: HarnessRoundLedger, worker_alive: Bool, standing: RoadmapNodeStanding?) -> WorkRowView {
   WorkRowView {
     node_id: node_id,
     headline: "Record which generator actually produced each result",
@@ -332,26 +407,31 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView
     action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
+    rounds: rounds,
+    worker_alive: worker_alive,
+    standing: standing,
   }
 }
 
 fn fixture_active_view() -> WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-active", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-active", rounds: fixture_moseying_ledger(), activity: activity_view_from_parts(
     segments: fixture_specimen_segments(),
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
-    current_activity: "Worked for 6m 34s"))
+    throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: "session-a" as NonEmptyStr, last_note: "wiring the fold" as NonEmptyStr } })
 }
 
 fn fixture_refused_view() -> WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-refused", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-refused", rounds: RoundsUnobserved { reason: "refused specimen has no rounds" as NonEmptyStr }, activity: activity_view_from_parts(
     segments: [
       WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
       WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
     ],
     remaining: 6,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
-    current_activity: ""))
+    throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
+    current_activity: ""), worker_alive: false, standing: none)
 }
 
 fn fixture_row_li(view: WorkRowView) -> Fragment {
@@ -405,6 +485,9 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
+    standing: none,
   }
 }
 
@@ -493,6 +576,7 @@ fn sandbox_page() -> Fragment {
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
         el_class("main", "sandbox", [
+          round_strip_lab_section(),
           instrument_labs_section(),
           roles_section(),
           scales_section(),

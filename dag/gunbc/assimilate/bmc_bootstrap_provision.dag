@@ -6,7 +6,7 @@ module gunbc.assimilate.bmc_bootstrap_provision
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyReconciliation, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
-  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells
+  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells, GcpPolicyRepresentationLossy
 }
 
 data bmc_assimilate_service_deps: List<GcpService> = [
@@ -109,6 +109,21 @@ fn bmc_secret_iam_bindings_owned_cells() -> List<GcpIamBindingCell> {
     fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
 }
 
+// THE LOSSY ARM RETURNS THE OBSERVATION UNCHANGED, WHICH IS STRICTLY SAFER THAN THIS SITE'S PRIOR
+// BEHAVIOUR AND STILL NOT A REFUSAL. A version-1 read of a conditional policy comes back with
+// condition-mangled role names; before that arm existed this call site would have taken the delta
+// path, computed that its unconditional cell was missing, and written it -- replacing somebody's
+// restricted access with an unconditional grant. Returning the observation means this site proposes
+// no change at all when it cannot see what it is changing.
+//
+// It is NOT a refusal, and the difference is the bypass named below: a `node bind:` pattern cannot
+// skip its own effect, so the write still happens, now with the mangled document the read produced.
+// That is a policy GCP is unlikely to accept, but "the provider will probably reject it" is a
+// boundary hope and not a modeled guarantee, so it is recorded as the honest state rather than
+// counted as safety. The class and its dissolution are unchanged: it retires with the same EffectPlan
+// migration the paragraph below names, at which point the verdict selects whether the write step
+// exists and this arm becomes a real refusal.
+//
 // KNOWN BYPASS, named rather than hidden. Both arms below return the policy, so a CONVERGED
 // policy is still written: the GcpPolicyAlreadyConverged arm is computed and discarded here, which
 // means the no-op protection the reconcile authority provides does NOT reach this call site. That
@@ -127,6 +142,7 @@ fn bmc_secret_iam_bindings_reconciled_policy(observed: GcpPolicy) -> GcpPolicy {
     desired_owned: bmc_secret_iam_bindings_owned_cells(),
     owned_universe: GcpIamOwnedCellUniverse { cells: bmc_secret_iam_bindings_owned_cells() }
   ) {
+    GcpPolicyRepresentationLossy { conditional_roles: _ } => observed
     GcpPolicyAlreadyConverged { policy: p } => p
     GcpPolicyDeltaRequired { policy: p, added: _, removed: _, preserved: _ } => p
   }

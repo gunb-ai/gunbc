@@ -3,6 +3,12 @@ module gunbc.guarantee_stall
 import std.types { String, List, Bool, Int }
 import v2.std.algebra { fold_list }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_rung_index }
+import gunbc.lifecycle_bounded_referent {
+  DashboardWorkItemReferent,
+  dashboard_node_uri_scheme,
+  dashboard_work_item_referent_uri,
+  text_spells_a_dashboard_node_uri,
+}
 
 // THE CARRIER FOR A DESIGN section 4b(2) STALL, and it is a different fact from a section 4b(3)
 // DROP (gunbc.rung_drop) rather than a variant of it. A DROP is an event: something that held a
@@ -41,6 +47,14 @@ import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_run
 // writable as it was, and nothing detects one. That is a scope statement, not a climb, and stating
 // it here is what keeps a reader from counting this module as coverage it does not provide.
 //
+// THE SAME SCOPE STATEMENT APPLIES TO THE TRIGGER'S SECOND WALL BELOW, and it is narrower still.
+// `stall_trigger_admission` refuses a capability that spells the declared dashboard-node URI
+// scheme, which is decidable because that scheme has one owner; it says nothing about a trigger
+// that names a lane in words, and nothing about whether an obligation kept an accountable owner
+// after that lane ended. Those are the free-prose form and the responsibility-survival trigger of
+// `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`, and neither is climbed
+// here.
+//
 // THIS MODULE CARRIES THE SHAPE AND THE FOLDS; THE ROWS ARE ONE MODULE EACH under
 // gunbc.guarantee_stall.<row>, and gunbc.guarantee_stall.roster is the enumeration. The split is
 // the one gunbc#10206 made for gunbc.recurring_failure_mode and it is made here for the same
@@ -67,13 +81,48 @@ type StallPopulation
   = BoundedPopulation { members: List<String> }
   | UncountedNotEnumerable { reason: String }
 
+// THE TRIGGER IS TWO FACTS AND WAS ONE FIELD, which is the whole of this carrier's exposure to
+// `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`. `capability` is the
+// OPERATIVE half -- the condition section 4b(2) obliges the row to name, and the only half a later
+// reader can re-measure. `awaiting` is the PROVENANCE half: the lifecycle-bounded lanes that were
+// asked to deliver it, carried as modeled referents so that a lane closing is a fact a consumer
+// can join against rather than a word inside a sentence.
+//
+// SEPARATING THEM IS WHAT MAKES THE STALE READING UNAVAILABLE. While both halves shared one
+// `String`, "node://adhoc-a3b0e05f-374 lands: the wall materializes the operation" reads as a
+// trigger whose satisfaction condition is a NODE REACHING DONE -- and three such nodes reached
+// done with their conditions unmet, which `gunbc.guarantee_stall.roster` records with its dated
+// reading. A row split this way cannot be read that way: the capability stands alone, and the node
+// is beside it as who was asked and never as evidence that the climb happened.
+//
+// WHAT THIS DOES NOT CLAIM. Carrying the referent does not decide whether responsibility for the
+// obligation survived that lane's closure; that is the class row's own next trigger, whose subject
+// is responsibility survival through a modeled closure transition, and it is a different subject
+// from this one. This carrier decides only that the trigger's operative half is stated without
+// resting on a lifecycle-bounded referent, and that any referent it does rest on is modeled.
+type NextRungTrigger {
+  capability: String
+  awaiting: List<DashboardWorkItemReferent>
+}
+
+// TWO CONSTRUCTORS BECAUSE THE EMPTY LIST IS THE COMMON AND CORRECT CASE, and spelling `awaiting:
+// []` at every row would make the exceptional case indistinguishable from the ordinary one at a
+// glance. `climbs_when` is the row that waits on nobody; `climbs_when_awaiting` names the lanes.
+fn climbs_when(capability: String) -> NextRungTrigger {
+  NextRungTrigger { capability: capability, awaiting: [] }
+}
+
+fn climbs_when_awaiting(capability: String, awaiting: List<DashboardWorkItemReferent>) -> NextRungTrigger {
+  NextRungTrigger { capability: capability, awaiting: awaiting }
+}
+
 type GuaranteeStall {
   subject: String
   current: GuaranteeRung
   ceiling: GuaranteeRung
   blocker: ClimbBlocker
   population: StallPopulation
-  next_rung_trigger: String
+  next_rung_trigger: NextRungTrigger
 }
 // A STALL WHOSE CURRENT RUNG EQUALS ITS CEILING IS NOT A STALL. The type cannot forbid writing one
 // -- that would need a dependent pair over the two rungs -- so this is validation standing where
@@ -105,6 +154,18 @@ fn stall_population_render(p: StallPopulation) -> String {
   }
 }
 
+// THE AWAITED LANES ARE RENDERED FROM THE REFERENTS AND NEVER RE-SPELLED, so the report cannot
+// disagree with the field: the URI comes from the referent's own module, which owns the scheme.
+// They are rendered AFTER the capability and labelled as who was asked, so a reader is never
+// handed a sentence in which a lane's ending looks like the condition.
+fn next_rung_trigger_render(t: NextRungTrigger) -> String {
+  fold_list(
+    xs: t.awaiting,
+    empty: t.capability,
+    cons: fn(acc, r) { concat(acc, concat(" [asked: ", concat(dashboard_work_item_referent_uri(referent: r), "]"))) },
+  )
+}
+
 // ONE RENDERING, for the reason gunbc.rung_drop's renderer already gives: a consumer that spelled
 // its own message would be a second authority for the row's own fields and the two would drift.
 fn stall_report_message(s: GuaranteeStall) -> String {
@@ -114,7 +175,7 @@ fn stall_report_message(s: GuaranteeStall) -> String {
       concat(", ceiling ", concat(guarantee_rung_label(r: s.ceiling), concat(" (", climb_blocker_label(b: s.blocker)))),
       concat(
         concat("). Population: ", stall_population_render(p: s.population)),
-        concat(". Climbs when: ", concat(s.next_rung_trigger, "."))
+        concat(". Climbs when: ", concat(next_rung_trigger_render(t: s.next_rung_trigger), "."))
       )
     )
   )
@@ -130,6 +191,53 @@ fn every_stall_is_below_its_ceiling(ss: List<GuaranteeStall>) -> Bool {
   )
 }
 
+// THE SECOND WALL OVER THE SAME FIELD, AND IT IS A DIFFERENT SUBJECT FROM THE FIRST. 4b(2) asks
+// whether a trigger was NAMED; this asks whether what was named is a capability rather than a
+// lifecycle-bounded referent's ending. A row can satisfy the first and fail this one, which is the
+// state every migrated row here was in.
+type TriggerAdmission
+  = TriggerAdmitted
+  | TriggerCapabilityEmpty { subject: String }
+  | TriggerCapabilitySpellsAReferent { subject: String, scheme: String }
+
+fn stall_trigger_admission(s: GuaranteeStall) -> TriggerAdmission {
+  if s.next_rung_trigger.capability == "" {
+    TriggerCapabilityEmpty { subject: s.subject }
+  } else {
+    if text_spells_a_dashboard_node_uri(text: s.next_rung_trigger.capability) {
+      TriggerCapabilitySpellsAReferent { subject: s.subject, scheme: dashboard_node_uri_scheme }
+    } else {
+      TriggerAdmitted
+    }
+  }
+}
+
+fn trigger_admission_label(a: TriggerAdmission) -> String {
+  match a {
+    TriggerAdmitted => "admitted"
+    TriggerCapabilityEmpty { subject: subj } => concat("untracked stall, no trigger named: ", subj)
+    TriggerCapabilitySpellsAReferent { subject: subj, scheme: sch } =>
+      concat(
+        concat("trigger rests on a lifecycle-bounded referent spelled into its capability (", sch),
+        concat("): ", subj),
+      )
+  }
+}
+
+fn every_stall_trigger_is_admitted(ss: List<GuaranteeStall>) -> Bool {
+  fold_list(
+    xs: ss,
+    empty: true,
+    cons: fn(acc, s) {
+      acc && match stall_trigger_admission(s: s) {
+        TriggerAdmitted => true
+        TriggerCapabilityEmpty { subject: _ } => false
+        TriggerCapabilitySpellsAReferent { subject: _, scheme: _ } => false
+      }
+    },
+  )
+}
+
 // SECTION 4b(2) IS WHAT THIS ENFORCES: a class below its ceiling must NAME its next-rung trigger,
 // so "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
 // stall that clause forbids, and it becomes decidable here rather than left to review diligence.
@@ -137,9 +245,16 @@ fn every_stall_names_a_trigger(ss: List<GuaranteeStall>) -> Bool {
   fold_list(
     xs: ss,
     empty: true,
-    cons: fn(acc, s) { acc && s.next_rung_trigger != "" },
+    cons: fn(acc, s) {
+      acc && match stall_trigger_admission(s: s) {
+        TriggerCapabilityEmpty { subject: _ } => false
+        TriggerCapabilitySpellsAReferent { subject: _, scheme: _ } => true
+        TriggerAdmitted => true
+      }
+    },
   )
 }
+
 
 // THE QUANTIFIER'S DOMAIN, EXPOSED SO IT CAN BE ASSERTED. Both folds above are universally
 // quantified and therefore TRUE on an empty roster, so without this a roster that lost its rows

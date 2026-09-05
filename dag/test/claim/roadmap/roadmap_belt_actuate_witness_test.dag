@@ -1,5 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model {
   RoadmapNodeId,
@@ -52,12 +53,13 @@ import gunbc.roadmap_dispatch_actuator {
   host_exec_argv,
   DispatchLiveSession,
   CodexDispatchProvider,
-  dispatch_provider_instance_for,
+  dispatch_provider_instance_for_kind,
   filter_dispatch_tmux_sessions,
 }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema }
 import gunbc.roadmap_belt_actuate {
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
@@ -137,7 +139,7 @@ import gunbc.roadmap_belt_actuate {
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
-  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -146,7 +148,7 @@ import gunbc.roadmap_launch_admission {
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision,
   launch_identity_exemplar,
-  LaunchRevisionDrift, LaunchNodeUnknown, LaunchExecutionContractMissing, LaunchDependenciesBlocked,
+  LaunchNodeUnknown, LaunchExecutionContractMissing, LaunchDependenciesBlocked,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
@@ -164,7 +166,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
-  RevisionConverged, RevisionDrifted, RevisionUnobserved,
+  LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -202,7 +204,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     windows: 1,
     lease_verdict: verdict,
     worker: worker_observation_without_provider_probe(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
     ),
   }
 }
@@ -217,7 +219,7 @@ fn live_session_with_process(
     windows: 1,
     lease_verdict: Converged,
     worker: worker_observation_without_provider_probe_for_process(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
       process: process,
     ),
   }
@@ -699,7 +701,7 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 23
+  belt_dispatch_label_band_rows().length() == 22
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
@@ -710,7 +712,6 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "cause_not_permitted_by_mode") == "fail"
     && band_key_for_label(label: "gate_not_evaluated") == "loud"
     && band_key_for_label(label: "session_liveness_unobserved") == "loud"
-    && band_key_for_label(label: "deployed_revision_drifted") == "loud"
     && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
     && band_key_for_label(label: "session_multiplicity_conflict") == "loud"
     && band_key_for_label(label: "deployment_transition_inhibited") == "loud"
@@ -758,7 +759,6 @@ fn d4_wire_contract_labels() -> List<String> {
     "disabled",
     "deployment_transition_inhibited",
     "deployed_revision_unobserved",
-    "deployed_revision_drifted",
     "authority_refused",
     "node_not_found",
     "node_superseded",
@@ -1092,6 +1092,8 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
       },
     },
     publication_source: ReceiptSourceAbsent,
+    review: [],
+    goal_audit: [],
   })
 }
 
@@ -1175,6 +1177,8 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
         },
       },
       publication_source: ReceiptSourceAbsent,
+      review: [],
+      goal_audit: [],
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -1256,6 +1260,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyRecorded {
         node_id: "v2-emitter-producer-provenance",
@@ -1264,6 +1269,8 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
+    audit_outcomes: [],
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1287,6 +1294,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    commit_outcomes: [],
     verify_outcomes: [
       VerifyDeferred {
         node_id: "node-a",
@@ -1294,6 +1302,8 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
       },
     ],
     publish_outcomes: [],
+    review_outcomes: [],
+    audit_outcomes: [],
   }
   match belt_tick_receipt_from_result(
     result: result,
@@ -1337,6 +1347,8 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [
         VerifyRecorded {
           node_id: "v2-emitter-producer-provenance",
@@ -1345,6 +1357,8 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
         },
       ],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1364,6 +1378,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1381,6 +1396,7 @@ test fn verification_presentation_verify_failed_is_failed() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassFailed { reason: "validation verdict failed" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
   }
@@ -1401,10 +1417,11 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   let raw = join([
-    "{\"schema\":\"roadmap-belt-tick-receipt/v3\",",
+    "{\"schema\":\"", belt_tick_receipt_schema, "\",",
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"commit_pass\":{\"outcome\":\"recorded\"},",
     "\"verify_pass\":{\"outcome\":\"refused\"},",
     "\"publish_pass\":{\"outcome\":\"recorded\"}}",
   ], "")
@@ -1837,6 +1854,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
     head: worktree_head_observation_of(
       outcome: ExecFailed {
         program: "git",
@@ -1849,6 +1867,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
     head: worktree_head_observation_of(
       outcome: ExecOk { stdout: (belt_pub_head as String) },
     ),
@@ -1922,38 +1941,20 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
 }
 
 // ---------------------------------------------------------------------------
-// PRESS-0 step 1 — the deployed-revision gate, at the grain it is actually proven.
-//
-// SCOPE FIRST, because the honest rung is the point: these witness the PROJECTION of the two new
-// arms, not the live gate. `fleet_revision_standing` reads a real git tree, so whether the gate
-// FIRES on a drifted srv1 is a wet fact owed a wet receipt — not established here. What IS
-// established by execution: neither arm can reach the ok band, both carry a loud band, the drifted
-// receipt names BOTH revisions, and the unobserved receipt names its cause.
-//
-// The `desired`/`local` assertion is the discriminating one. A refusal that dropped one side would
-// still refuse, label correctly and be loud — and be useless to the operator deciding whether to
-// catch the host up or roll it back. The membership-diff `from` ruling is exactly this: a receipt
-// must name what it observed, not merely that it disagreed. Projection-grain only; the live gate
-// is owed a wet srv1 receipt.
+// The deployed-revision gate, at the grain it is actually proven. These witness the PROJECTION of
+// the unobserved arm: it cannot reach the ok band, carries a loud band, and its receipt names its
+// cause. The drift arm this block once covered is DELETED (operator ruling 2026-09-05,
+// launch_revision_outcome): a readable-but-drifted tree is admitted, so there is no drift receipt
+// to assert. Whether the gate fires on a host with an unreadable HEAD is a wet fact owed a wet
+// receipt -- not established here.
 
-test fn witness_revision_refusals_are_never_ok() -> Bool {
-  !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" }))
-    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
+test fn witness_revision_refusal_is_never_ok() -> Bool {
+  !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
-test fn witness_revision_refusal_labels_pin_wire_contract() -> Bool {
-  belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" })) == "deployed_revision_drifted"
-    && belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" })) == "deployed_revision_unobserved"
-    && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" }))
+test fn witness_revision_refusal_label_pins_wire_contract() -> Bool {
+  belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" })) == "deployed_revision_unobserved"
     && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
-}
-
-test fn witness_drift_receipt_names_both_revisions() -> Bool {
-  let wire = serialize_json(v: belt_spawn_outcome_json(
-    o: not_admitted(r: LaunchRevisionDrift { desired: "deadbeef", local: "cafebabe" })))
-  string_contains(s: wire, pattern: "desired=deadbeef")
-    && string_contains(s: wire, pattern: "local=cafebabe")
-    && string_contains(s: wire, pattern: "\"status\": \"deployed_revision_drifted\"")
 }
 
 test fn witness_unobserved_receipt_names_its_cause() -> Bool {
@@ -2007,33 +2008,22 @@ fn witness_oid_or_refuse(hex: String) -> GitObjectId? {
 }
 
 data witness_desired_hex: String = "1111111111111111111111111111111111111111"
-data witness_local_hex: String = "2222222222222222222222222222222222222222"
-
-// The gate itself, not its output arms: deleting the fleet_revision_standing match
-// would leave every constructed-arm witness green, so drive the fold directly.
-test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
+// The gate itself, not its output arms: deleting the local_tree_revision match would leave every
+// constructed-arm witness green, so drive the fold directly. DISCRIMINATING against the deleted
+// drift arm: an observed revision passes whatever the fleet ref says, because the fold never sees
+// the fleet ref at all.
+test fn witness_revision_admission_fold_drives_both_arms() -> Bool {
   let unobserved = launch_gate_revision(
-    revision: RevisionUnobserved { cause: "HEAD undecodable" })
+    revision: LocalTreeRevisionUnobserved { cause: "HEAD undecodable" })
   match witness_oid_or_refuse(hex: witness_desired_hex) {
-    Present { value: d_oid } =>
-      match witness_oid_or_refuse(hex: witness_local_hex) {
-        Present { value: l_oid } => {
-          let converged = launch_gate_revision(
-            revision: RevisionConverged { revision: d_oid })
-          let drifted = launch_gate_revision(
-            revision: RevisionDrifted { desired: d_oid, local: l_oid })
-          (match converged { GatePassed => true _ => false })
-            && (match drifted {
-              GateRefused { refusal } => match refusal { LaunchRevisionDrift { desired: d, local: l } => d != l _ => false }
-              _ => false
-            })
-            && (match unobserved {
-              GateRefused { refusal } => match refusal { LaunchRevisionUnobserved { cause: c } => c == "HEAD undecodable" _ => false }
-              _ => false
-            })
-        }
-        Absent => false
-      }
+    Present { value: d_oid } => {
+      let observed = launch_gate_revision(revision: LocalTreeRevisionObserved { revision: d_oid })
+      (match observed { GatePassed => true _ => false })
+        && (match unobserved {
+          GateRefused { refusal } => match refusal { LaunchRevisionUnobserved { cause: c } => c == "HEAD undecodable" _ => false }
+          _ => false
+        })
+    }
     Absent => false
   }
 }
@@ -2219,8 +2209,12 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2232,17 +2226,21 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,
-      host_refusal: Present { value: LaunchRevisionDrift { desired: "1111", local: "2222" } },
+      host_refusal: Present { value: LaunchRevisionUnobserved { cause: "HEAD undecodable" } },
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      commit_outcomes: [],
+    commit_outcomes: [],
       verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
       publish_outcomes: [],
+      review_outcomes: [],
+      audit_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
-  (match receipt.spawn_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "not the admitted fleet revision") _ => false })
+  (match receipt.spawn_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "deployed revision could not be observed") _ => false })
     && (match receipt.teardown_pass { BeltPassRefused { reason: _ } => true _ => false })
     && (match receipt.verify_pass { BeltPassRecorded => true _ => false })
     && (match receipt.publish_pass { BeltPassRecorded => true _ => false })

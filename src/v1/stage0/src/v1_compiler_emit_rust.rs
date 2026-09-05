@@ -6443,20 +6443,7 @@ pub fn emit_rust_selected(
             __result
         });
         let has_services = crate::v1_compiler_emit::has_service_items(typed.clone());
-        let has_pipeline = {
-            let mut __found = false;
-            for m in typed.modules.clone().iter().cloned() {
-                if (crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
-                    m.module.clone(),
-                ) == "v1.compiler.compile".to_string())
-                {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
+        let has_pipeline = compiler_pipeline_entry_is_retained_host(typed.modules.clone());
         let crate_name = if has_pipeline.clone() {
             "v1_compiler".to_string()
         } else {
@@ -37720,6 +37707,160 @@ pub fn emit_gunbc_cli_dispatch_generated_for_rows(
 }
 }
 
+pub fn compiler_entry_driver_type_name() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "CompilerEntryDriver".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn compiler_entry_retained_host_driver() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "RetainedHostCliKernel".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CompilerPipelineEntryDecl {
+    pub module_name: String,
+    pub driver: String,
+}
+
+pub fn module_compiler_pipeline_entry_decls(
+    tm: Rc<TypedModule>,
+) -> Rc<Vec<Rc<CompilerPipelineEntryDecl>>> {
+    {
+        let si = tm.type_env.clone().source_indices.clone();
+        let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in tm.items.clone().iter().cloned() {
+                    if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let type_name = match item.type_annotation.clone() {
+                            Some(ta) => {
+                                crate::v1_std_core::authored_name_at(si.clone(), ta.clone())
+                            }
+                            std::option::Option::None => "".to_string(),
+                        };
+                        if (type_name.clone() != compiler_entry_driver_type_name()) {
+                            Rc::new(vec![])
+                        } else {
+                            {
+                                let driver = match item.body.clone() {
+                                    Some(b) => {
+                                        crate::v1_std_core::authored_name_at(si.clone(), b.clone())
+                                    }
+                                    std::option::Option::None => "".to_string(),
+                                };
+                                Rc::new(vec![Rc::new(CompilerPipelineEntryDecl {
+                                    module_name: module_name.clone(),
+                                    driver: driver.clone(),
+                                })])
+                            }
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn compiler_pipeline_entry_decls(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<Vec<Rc<CompilerPipelineEntryDecl>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for tm in modules.iter().cloned() {
+            __result.extend(
+                (*module_compiler_pipeline_entry_decls(tm.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn compiler_pipeline_entry_decl(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Option<Rc<CompilerPipelineEntryDecl>> {
+    {
+        let decls = compiler_pipeline_entry_decls(modules.clone());
+        if ((decls.clone().len() as i64) == 1) {
+            decls.clone().first().cloned()
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn corpus_has_compiler_pipeline(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn compiler_pipeline_entry_module_name(modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => d.module_name.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn compiler_pipeline_entry_is_retained_host(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => (d.driver.clone() == compiler_entry_retained_host_driver()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn compiler_pipeline_entry_is_ambiguous(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    ((compiler_pipeline_entry_decls(modules.clone()).len() as i64) > 1)
+}
+
+pub fn compiler_pipeline_entry_module_names(modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for d in compiler_pipeline_entry_decls(modules.clone())
+            .iter()
+            .cloned()
+        {
+            __result.push(d.module_name.clone());
+        }
+        __result
+    })
+    .join(&", ".to_string())
+}
+
+pub fn emit_ambiguous_compiler_pipeline_main_rs(module_names: String) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "compile_error!(\"REFUSED: the corpus declares more than one compiler pipeline entry (".to_string()), module_names.clone()), ") -- one emitted crate has one entry point, so no main can be emitted without choosing among them\");\n".to_string()),
+})
+}
+
 pub fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> Rc<TextFile> {
     emit_gunbc_cli_dispatch_generated_for_rows(
         crate_name.clone(),
@@ -37735,20 +37876,8 @@ pub fn emit_main_rs(
     svc_module_map: Rc<HashMap<String, String>>,
 ) -> Rc<TextFile> {
     {
-        let has_pipeline = {
-            let mut __found = false;
-            for m in modules.iter().cloned() {
-                if (crate::v1_std_core::authored_name_at(
-                    m.type_env.clone().source_indices.clone(),
-                    m.module.clone(),
-                ) == "v1.compiler.compile".to_string())
-                {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
+        let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
+        let pipeline_module = compiler_pipeline_entry_module_name(modules.clone());
         let resource_type_names = Rc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.iter().cloned() {
@@ -37888,30 +38017,43 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
-        if (((workflow_funcs.clone().len() as i64) == 0) && (has_pipeline.clone() == false)) {
+        if compiler_pipeline_entry_is_ambiguous(modules.clone()) {
+            return emit_ambiguous_compiler_pipeline_main_rs(compiler_pipeline_entry_module_names(
+                modules.clone(),
+            ));
+        }
+        if (corpus_has_compiler_pipeline(modules.clone())
+            && (retained_host_pipeline.clone() == false))
+        {
+            return emit_direct_ingest_driver_main_rs(crate_name.clone(), pipeline_module.clone());
+        }
+        if (((workflow_funcs.clone().len() as i64) == 0)
+            && (retained_host_pipeline.clone() == false))
+        {
             return emit_entry_point_absent_main_rs(crate_name.clone());
         }
         let mod_uses = emit_main_mod_uses(
             workflow_funcs.clone(),
-            has_pipeline.clone(),
+            retained_host_pipeline.clone(),
             crate_name.clone(),
+            pipeline_module.clone(),
         );
-        let binary_name = if has_pipeline.clone() {
+        let binary_name = if retained_host_pipeline.clone() {
             "gunbc".to_string()
         } else {
             crate_name.clone()
         };
-        let cli_about = if has_pipeline.clone() {
+        let cli_about = if retained_host_pipeline.clone() {
             "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
         } else {
             "".to_string()
         };
-        let cli_version_attr = if has_pipeline.clone() {
+        let cli_version_attr = if retained_host_pipeline.clone() {
             ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
         } else {
             "".to_string()
         };
-        let cli_struct = if has_pipeline.clone() {
+        let cli_struct = if retained_host_pipeline.clone() {
             "".to_string()
         } else {
             emit_cli_struct(
@@ -37921,20 +38063,20 @@ pub fn emit_main_rs(
                 cli_version_attr.clone(),
             )
         };
-        let subcommand_enum = if has_pipeline.clone() {
+        let subcommand_enum = if retained_host_pipeline.clone() {
             "".to_string()
         } else {
-            emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone())
+            emit_subcommand_enum(workflow_funcs.clone(), retained_host_pipeline.clone())
         };
-        let pipeline_fns = if has_pipeline.clone() {
+        let pipeline_fns = if retained_host_pipeline.clone() {
             v1_rt::concat(
-                emit_main_pipeline_fns(crate_name.clone()),
+                emit_main_pipeline_fns(crate_name.clone(), pipeline_module.clone()),
                 emit_candidate_cli_host(crate_name.clone()),
             )
         } else {
             "".to_string()
         };
-        let main_fn = if has_pipeline.clone() {
+        let main_fn = if retained_host_pipeline.clone() {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -37965,11 +38107,11 @@ pub fn emit_main_rs(
             emit_main_fn(
                 workflow_funcs.clone(),
                 has_services.clone(),
-                has_pipeline.clone(),
+                retained_host_pipeline.clone(),
                 crate_name.clone(),
             )
         };
-        let diagnostic_fns = if has_pipeline.clone() {
+        let diagnostic_fns = if retained_host_pipeline.clone() {
             emit_main_diagnostic_fns(crate_name.clone())
         } else {
             "".to_string()
@@ -38024,6 +38166,20 @@ pub fn emit_main_rs(
     }
 }
 
+pub fn emit_direct_ingest_driver_main_rs(
+    crate_name: String,
+    pipeline_module: String,
+) -> Rc<TextFile> {
+    {
+        let pipeline_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
+        Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), "fn main() {\n".to_string()), "    let source_path = match std::env::args().nth(1) {\n".to_string()), "        Some(path) => path,\n".to_string()), "        None => { eprintln!(\"REFUSED: no source path given -- usage: ".to_string()), crate_name.clone()), " <source.dag>\"); std::process::exit(2); }\n".to_string()), "    };\n".to_string()), "    let source_text = match std::fs::read_to_string(&source_path) {\n".to_string()), "        Ok(text) => text,\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: could not read {}: {}\", source_path, cause); std::process::exit(2); }\n".to_string()), "    };\n".to_string()), "    match &*".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::compile_dag_source_to_target_text(source_text) {\n".to_string()), "        ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome::Accepted { value, .. } => {\n".to_string()), "            print!(\"{}\", value.carried);\n".to_string()), "            std::process::exit(0);\n".to_string()), "        }\n".to_string()), "        ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome::Rejected { diagnostics } => {\n".to_string()), "            eprintln!(\"REFUSED: {} did not compile\", source_path);\n".to_string()), "            eprintln!(\"{:#?}\", diagnostics);\n".to_string()), "            std::process::exit(1);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string()),
+})
+    }
+}
+
 pub fn emit_entry_point_absent_main_rs(crate_name: String) -> Rc<TextFile> {
     Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
@@ -38043,6 +38199,7 @@ pub fn emit_main_mod_uses(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_pipeline: bool,
     crate_name: String,
+    pipeline_module: String,
 ) -> String {
     {
         let mod_names = Rc::new({
@@ -38075,7 +38232,7 @@ pub fn emit_main_mod_uses(
         if has_pipeline.clone() {
             {
                 let pipeline_mod = crate::v1_compiler_emit_core_support::module_to_filename(
-                    "v1.compiler.compile".to_string(),
+                    pipeline_module.clone(),
                 );
                 let core_mod = crate::v1_compiler_emit_core_support::module_to_filename(
                     "v1.std.core".to_string(),
@@ -38713,11 +38870,10 @@ pub fn emit_bootstrap_dag_operation_match_arm(
     }
 }
 
-pub fn emit_main_pipeline_fns(crate_name: String) -> String {
+pub fn emit_main_pipeline_fns(crate_name: String, pipeline_module: String) -> String {
     {
-        let pipeline_mod = crate::v1_compiler_emit_core_support::module_to_filename(
-            "v1.compiler.compile".to_string(),
-        );
+        let pipeline_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
         let artifact_mod = crate::v1_compiler_emit_core_support::module_to_filename(
             "v1.compiler.artifact".to_string(),
         );
