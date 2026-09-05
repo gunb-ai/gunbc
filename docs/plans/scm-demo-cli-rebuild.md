@@ -216,8 +216,11 @@ survive between invocations; it need not live in the repository document.
 
 Two constraints that paragraph got right and one it got wrong. Right: immediate object-store
 insertion is not by itself the `add` model, and `ScmWriteOutcome` is still the right shape for the
-verb's result. Wrong: `add` is not blocked — what it lacked was a place to persist a *path-grain*
-selection, and `status.dag`'s `StagedRole` is role-grain, so it is not that place.
+verb's result. Wrong: `add` is not blocked ON THE MANIFEST OBJECT, which is the specific dependency this
+paragraph asserted and which no longer exists. It remains blocked on real work — host acquisition of
+file bytes, path admission, a durable selection to persist into, and conditional update of that
+selection — and `status.dag`'s `StagedRole` is role-grain, so it is not that place. A removed
+dependency is not a finished verb.
 
 **`status` moves with this cut rather than being an unchanged downstream reader.** Today
 `scm_status` passes `empty_proposal()` and renders "nothing staged". Once source staging exists,
@@ -238,14 +241,14 @@ unavailable or unreadable stage; and staged-versus-unstaged reporting needs a se
 observation, because comparing the stage to its base says nothing about whether the working files
 changed again.
 
-### The design step, stated so it is not improvised
+### The design step — SUPERSEDED as a recipe; one principle survives
 
-`add` composes `store_node` (`Stored | LocatorCollision`) with `save_repository` (4 arms);
-`commit` composes `mint_repository_commit` (4 arms) with the same save. A renderer taking two
-outcome values is the wrong shape — it would have to encode "which one failed" positionally, and
-the arms multiply.
+**The composition below is no longer the instruction for the next increment, and the sketch under it
+is unsound. Both are kept visible rather than deleted, because the sketch is the more instructive
+half.**
 
-What is wanted is one modeled write-verb outcome, something like:
+It said `add` composes `store_node` with `save_repository`, and `commit` composes
+`mint_repository_commit` with the same save, over one outcome coproduct:
 
     type ScmWriteOutcome
       = ScmWriteRepositoryUnavailable { cause: RepositoryLoadRefusal }
@@ -253,17 +256,46 @@ What is wanted is one modeled write-verb outcome, something like:
       | ScmWriteRefusedByMint { refusal: RepositoryCommitMint }
       | ScmWritePersisted { save: RepositorySave }
 
-with one renderer per verb over it. That coproduct is the increment's real content; the wiring
-after it is mechanical. It is deliberately NOT sketched into `cli.dag` here, because a write-verb
-outcome invented at a call site is the anemic modeling this repository keeps paying for.
+**Why the sketch is wrong: the outer classification and the inner payload can disagree.**
+`RepositorySave = RepositorySaved | RepositorySaveRefusedByCodec | RepositoryFileUnwritable |
+RepositoryWriteByteCountUnrepresentable`, so `ScmWritePersisted { save: RepositoryFileUnwritable {
+path: "repo.json", error: "permission denied" } }` is constructible — a renderer selecting on the
+outer `Persisted` arm announces persistence while its own payload says the file was unwritable. The
+inverse is equally expressible: `ScmWriteRefusedByMint` accepts the successful `RepositoryCommitMinted`
+arm. This is a fabricated-plausible-output shape, which makes it validation-where-construction-was-
+available rather than a modelling nicety.
 
-### `add` has no staging authority, and that is not a wiring gap
+**The governing requirement instead:**
 
-`repository_status` takes `pending: Proposal` as a PARAMETER because what is staged is not a fact
-the repository document carries. So a literal `git add` — stage now, commit later — has nowhere to
-persist to. Either `add` writes an object into the store immediately (content-addressed, no
-staging), or a staging authority has to exist first. The first is what the object store supports
-today and is the honest reading of `add` for this substrate.
+> A success outcome carries established success evidence for that exact operation. A refusal carries
+> an actual refusal cause. Where publication cannot be established, that uncertainty remains an
+> explicit outcome rather than being resolved into either.
+
+**What survives** is only the original motivation: compose operation outcomes without positional
+ambiguity, so a renderer never encodes "which one failed" by argument position. **What does not
+survive** is this coproduct, and also the composition itself — `store_node` does not preserve
+authored source as authored source, and `save_repository`'s write is unconditional, so neither
+supplies the staging contract stated above. Narrowing the payload to a successful save would not fix
+that: an ordinary save and a *conditional* stage update are different guarantees.
+
+The shared result type is left undesigned here deliberately. A write-verb outcome invented at a call
+site is the anemic modelling this repository keeps paying for, and so is one certified in a plan
+before its operations have contracts.
+
+### `add` has no staging authority — SUPERSEDED, and its conclusion was the wrong branch
+
+This section's PREMISE stands and its CONCLUSION is withdrawn. The premise: `repository_status` takes
+`pending: Proposal` as a parameter because what is staged is not a fact the repository document
+carries, so a literal stage-now-commit-later has nowhere to persist to. That remains true, and it is
+why `status` moves as part of this cut.
+
+The conclusion — that `add` therefore writes an object into the store immediately, with no staging,
+and that this is "the honest reading of `add` for this substrate" — is **withdrawn**. It picked the
+branch that was cheapest to build rather than the one that answers the question, and immediate
+insertion is not staging: it cannot say which paths are selected for the next commit, and it cannot
+be revised or cleared. The other branch was the right one — a staging authority has to exist first —
+and it is workspace-scoped, not necessarily a repository-document member, so the premise never
+implied its absence.
 
 ## Constraints learned the hard way
 
