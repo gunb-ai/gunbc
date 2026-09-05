@@ -44,16 +44,25 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // one-directional check over a table you also author is satisfied by narrowing the table, and a
 // count equality is satisfied by any two sets of the same size.
 //
-// THE OBSERVABLE IS BINARY, AND SAYING SO IS PART OF THE RUNG. The census surface projects a
-// diagnostic's CLASS and SUBJECT NAME, never its REASON. "predicate deferred at compile time" and
-// "predicate not enforced at compile time" are therefore indistinguishable through it -- both are
-// one advisory WhereRefinementUnenforced row keyed to the predicate. So what executes here is the
-// TWO-way partition {refuses a violating literal} vs {never refuses}, not the roster's four-way
-// class. The roster's split of the never-refuses bucket into DeferredAtCompileTime and
-// UnenrolledNoTableRow is author-vouched and this file does not pretend otherwise. Next-rung
-// trigger for that half, named as the capability: the census surface projecting the diagnostic
-// reason alongside class and subject name, SUFFICIENT FOR a probe to distinguish a deliberate
-// deferral from an unrecognised spelling without reading the compiler's tables.
+// THE OBSERVABLE WAS BINARY AND IS NOW THE ROSTER'S FOUR-WAY CLASS. This paragraph used to record
+// the opposite, and the trigger it named has been discharged rather than deleted, because what it
+// asked for is exactly what landed. The census surface projected a diagnostic's CLASS and SUBJECT
+// NAME and never its REASON, so "predicate deferred at compile time" and "predicate not enforced at
+// compile time" arrived as byte-identical advisory rows keyed to the predicate. What executed here
+// was therefore the TWO-way partition {refuses a violating literal} vs {never refuses}, and the
+// roster's split of the never-refuses bucket into DeferredAtCompileTime and UnenrolledNoTableRow
+// was author-vouched.
+//
+// The subject half of the histogram key now carries the deferral reason beside the predicate, which
+// is the capability that trigger named and to the sufficiency it demanded: a probe distinguishes a
+// deliberate deferral from an unrecognised spelling without reading the compiler's tables. The two
+// assertions at the end of this file execute that distinction, so all four roster classes are now
+// observed rather than three observed and one vouched.
+//
+// WHAT REMAINS AUTHOR-VOUCHED, stated so the discharge is not read as wider than it is: the
+// MEMBERSHIP half. No substrate reader projects where-clause predicates, so nothing joins this
+// roster against the corpus, and a spelling used in production that never reaches this file is
+// still invisible here. This change moved the CLASSIFICATION half only.
 //
 // THIS WITNESS IS CHANGE-TRIGGERED, NOT CONTINUOUSLY EXECUTING, and the roster records the
 // measurement: its seven identities ran as planned_as_changed_witness because these files changed,
@@ -355,4 +364,92 @@ test fn w_unenrolled_predicates_admit_a_violating_literal() -> Bool {
            || p.spelling == "oci_tag_syntax"
            || p.spelling == "c_translation_unit_basename_safe")
     |> all(p => probe_blocking_count(p: p) == 0 && probe_where_advisory_count(p: p) >= 1)
+}
+
+// THE FOUR-WAY CLASS IS NOW OBSERVABLE, AND THIS IS THE DISCHARGE OF THE TRIGGER STATED ABOVE.
+// That trigger named the capability as the census surface projecting the diagnostic reason
+// alongside class and subject name, SUFFICIENT FOR a probe to distinguish a deliberate deferral
+// from an unrecognised spelling without reading the compiler's tables. The histogram key's subject
+// half now carries the deferral reason beside the predicate, so the two assertions below execute
+// exactly that distinction and the roster's split of the never-refuses bucket stops being
+// author-vouched.
+//
+// WHY THE REASON WAS THE ONLY CHANNEL THAT COULD CARRY IT. subject_name echoed the predicate
+// spelling, which is the probe's OWN INPUT -- so it reported back what this file already knew and
+// carried no information about how the compiler classified it. A deliberate deferral and an
+// unrecognised spelling produced byte-identical rows. That is why the two-way partition was the
+// honest reading before this change, and why widening the roster join alone could never have fixed
+// it: the observable, not the join, was the limit.
+//
+// THESE ASSERTIONS RED IF THE KEY STOPS CARRYING THE REASON. Both scope a count to class AND
+// subject_name -- the exact form gunbc.compile_diagnostic_census names -- against a subject_name
+// that only exists when the reason is in the key. Drop the reason and every scoped count falls to
+// zero while the class-scoped counts stay healthy, so the failure is loud rather than silent.
+
+data deferred_at_compile_time_reason: String = ": predicate deferred at compile time"
+data unenrolled_no_table_row_reason: String = ": predicate not enforced at compile time"
+
+// THE ASSERTION IS SCOPED TO THE REASON AND DELIBERATELY NOT TO THE SPELLING, and the distinction
+// is a finding this witness produced rather than a convenience. A first cut reconstructed the whole
+// expected subject_name as roster-spelling + reason and went RED on the deferred side: the roster
+// spells the predicate `brand`, and the compiler reports it as `Brand`. Measured, one probe per
+// deferred spelling -- `unicode_scalar` and `is_text_readable` report their authored spelling and
+// so does the unenrolled `oci_tag_syntax`, so `brand` is the ONLY divergence, and
+// where_refinement_is_deferred_predicate accepts BOTH `brand` and `Brand`, which is one concept
+// under two names.
+//
+// THAT IS A SECOND DEFECT AND IT IS NOT THIS CHANGE'S TO FIX. Asserting spelling identity here
+// would fuse two independent claims -- that the reason is observable, which is what landed, and
+// that the roster spelling equals the reported predicate name, which is a separate question about
+// where the capitalisation is introduced. Fusing them would make this witness red for a reason it
+// does not name. So these assertions test the reason SUFFIX, which is exactly the capability the
+// discharged trigger asked for, and the spelling divergence is reported separately.
+//
+// Next-rung trigger for the spelling half, named as the capability rather than as an artifact: the
+// reported predicate name and the rostered spelling drawn from ONE authority, SUFFICIENT FOR this
+// witness to assert the full subject_name identity rather than its reason suffix -- at which point
+// the suffix form below is replaced by the identity form, not added to.
+
+fn probe_advisory_count_for_reason(p: WherePredicateProbe, reason: String) -> Int {
+  match compile_dag_diagnostic_census(probe_source(p: p)) {
+    CensusObserved { rows: rows } =>
+      census_total_count(
+        rows: census_advisory_rows(
+          rows: census_rows_of_class(rows: rows, wanted: "WhereRefinementUnenforced")
+        ) |> filter(r => ends_with(s: r.subject_name, suffix: reason))
+      )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn roster_spellings_of_enforcement(wanted: WherePredicateEnforcement) -> List<String> {
+  where_predicate_rows_of_enforcement(
+    rows: where_refinement_predicate_vocabulary,
+    wanted: wanted
+  ) |> map(r => r.spelling)
+}
+
+fn probes_of_enforcement(wanted: WherePredicateEnforcement) -> List<WherePredicateProbe> {
+  let spellings = roster_spellings_of_enforcement(wanted: wanted)
+  where_predicate_probes |> filter(p => count_occurrences(xs: spellings, wanted: p.spelling) == 1)
+}
+
+// Each side asserts BOTH directions: its own reason present AND the sibling reason absent. The
+// second half is what makes it a distinction rather than a presence check -- a key that emitted one
+// reason for everything would satisfy the first half alone.
+
+test fn w_deliberate_deferrals_are_observable_as_deferrals() -> Bool {
+  let deferred = probes_of_enforcement(wanted: DeferredAtCompileTime)
+  count(deferred) >= 1
+    && (deferred |> all(p =>
+         probe_advisory_count_for_reason(p: p, reason: deferred_at_compile_time_reason) >= 1
+           && probe_advisory_count_for_reason(p: p, reason: unenrolled_no_table_row_reason) == 0))
+}
+
+test fn w_unenrolled_spellings_are_observable_as_unenrolled() -> Bool {
+  let unenrolled = probes_of_enforcement(wanted: UnenrolledNoTableRow)
+  count(unenrolled) >= 1
+    && (unenrolled |> all(p =>
+         probe_advisory_count_for_reason(p: p, reason: unenrolled_no_table_row_reason) >= 1
+           && probe_advisory_count_for_reason(p: p, reason: deferred_at_compile_time_reason) == 0))
 }
