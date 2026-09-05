@@ -1400,8 +1400,15 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
     }
 }
 
-/// THE PHANTOM-MARKER MEANING DISCRIMINATOR, POSED THROUGH THE ROUTE ABOVE (node
-/// adhoc-f044ad97-222).
+/// THE PHANTOM-MARKER POSITION PAIR, POSED THROUGH THE ROUTE ABOVE (node adhoc-f044ad97-222).
+///
+/// IT IS NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR, AND SAYING SO IS THE POINT.
+/// `test.claim` `phantom_marker_type_argument_identity_witness` carries a ceiling row whose two
+/// arms are two COMPILER behaviours over ONE source. No pair of fixture FILES can be those arms:
+/// files vary the source and hold the compiler fixed, which is the opposite axis. This pair
+/// therefore does not discharge that row, and the row stays at
+/// `MeaningDiscriminatorExecutedNotEnrolled`. What follows is separate coverage of the POSITION
+/// question, cited as that and nothing wider (codex review 60742).
 ///
 /// THE SUBJECT IS ONE EMITTER DECISION: `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`,
 /// which decides a type argument's Rust identity from the declaration visible in the module rather
@@ -1437,12 +1444,11 @@ const FIXTURE_PHANTOM_MARKER_RED_PATH: &str =
 /// THE ERROR CLASS THIS PAIR'S RED CARRIES, MEASURED RATHER THAN PREDICTED, AND THE PREDICTION
 /// THAT MISSED IS RECORDED BESIDE IT BECAUSE IT IS A FINDING.
 ///
-/// `test.claim` `phantom_marker_type_argument_identity_witness` describes this subject's two-arm
-/// meaning discriminator as separating a BROAD classifier, which substitutes a marker struct and
-/// earns `E0308` at the parent boundary, from the POSITIONAL classifier that ships today, which
-/// "exposes the unsupported non-applied projection" and earns `E0573` — expected type, found
-/// variant. This pair was authored expecting `E0573` and RAN. What rustc actually said about the
-/// shipped emitter's output, in the red arm's own emitted module, was:
+/// The witness's ceiling row describes a BROAD classifier that substitutes a marker struct and
+/// earns `E0308` at the parent boundary, against a POSITIONAL classifier that "exposes the
+/// unsupported non-applied projection" and earns `E0573`. This pair was authored expecting
+/// `E0573` on that reading and RAN. What rustc actually said about the shipped emitter's output,
+/// in the red arm's own emitted module, was:
 ///
 /// ```text
 /// error[E0308]: mismatched types
@@ -1456,16 +1462,23 @@ const FIXTURE_PHANTOM_MARKER_RED_PATH: &str =
 /// So the emitted module carries BOTH an `Alpha` TYPE and a `Marker::Alpha` VARIANT: the field
 /// annotation binds the former, the declared return wants the latter, and the refusal lands at the
 /// parent boundary as `E0308`. `E0573` — the code you get when the spelling names nothing that is
-/// a type at all — was NOT reproduced by this construction. That is why the expectation here is
-/// the route's own `FIXTURE_RED_EXPECTED_RUSTC_CODE` rather than a second constant: the class this
-/// arm carries is the one that constant already names, and inventing a parallel spelling of it to
-/// match a prediction the run falsified would be authoring the answer instead of reading it.
+/// a type at all — was NOT reproduced. That is why the expectation here is the route's own
+/// `FIXTURE_RED_EXPECTED_RUSTC_CODE` rather than a second constant: the class this arm carries is
+/// the one that constant already names, and inventing a parallel spelling of it to match a
+/// prediction the run falsified would be authoring the answer instead of reading it.
+///
+/// WHY IT WAS NEVER GOING TO REPRODUCE, WHICH IS A FACT ABOUT THE FIXTURE AND NOT ABOUT THE
+/// EMITTER. The `E0573` arm belongs to a classifier this source cannot select. Both arms here
+/// declare their markers LOCALLY, so neither exercises the imported-marker construction
+/// `emit_specific_import_block` decides — which is where those two classifiers diverge. The
+/// prediction was mis-scoped from the start; the run is what exposed it.
 ///
 /// WHAT IS NOT CLAIMED. This measures ONE construction — a single-module coproduct whose unit
-/// variant stands in a record field. It does not establish that no construction in this class
-/// earns `E0573`, and it does not adjudicate whether the witness's E0573 sentence is stale or
-/// describes a construction this fixture does not reach. That question is recorded against the
-/// witness's ceiling carrier rather than settled here.
+/// variant stands in a record field, with no import in the path. It does not establish that no
+/// construction in this class earns `E0573`, does not adjudicate the witness's `E0573` sentence,
+/// and — although the `E0308`-with-a-substituted-marker shape it measured resembles the signature
+/// that row attributes to the BROAD arm — is NOT evidence about which classifier ships, because it
+/// is not that row's construction.
 /// The phantom-marker pair, assembled from the SAME arm runner the route's own pair uses — a
 /// fourth discrimination, not a fourth harness.
 #[cfg(test)]

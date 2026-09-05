@@ -393,7 +393,12 @@ fn ct_nested_refinement_cast_fixture_closure_discrimination_test() -> String {
 
 fn ct_phantom_marker_identity_fixture_closure_discrimination_test() -> String {
   concat(
-    "    /// THE PHANTOM-MARKER IDENTITY DECISION, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.\n",
+    "    /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.\n",
+    "    ///\n",
+    "    /// NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR. That one's arms are two\n",
+    "    /// COMPILER behaviours over ONE source, and no pair of fixture FILES can be those arms --\n",
+    "    /// files vary the source and hold the compiler fixed. This does not discharge that ceiling\n",
+    "    /// row, which stays at MeaningDiscriminatorExecutedNotEnrolled (codex review 60742).\n",
     "    ///\n",
     "    /// The subject is `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`: a type argument's\n",
     "    /// Rust identity is decided from the declaration visible in the module, never from the\n",
@@ -422,9 +427,10 @@ fn ct_phantom_marker_identity_fixture_closure_discrimination_test() -> String {
     "    /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH\n",
     "    /// an `Alpha` type and a `Marker::Alpha` variant: the field annotation binds the former, the\n",
     "    /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,\n",
-    "    /// `expected Marker, found Alpha`. The witness's ceiling prose attributes E0573 to the\n",
-    "    /// positional classifier; this construction did NOT reproduce it, so the expectation here is\n",
-    "    /// the route's own adjudicated class rather than a prediction. See\n",
+    "    /// `expected Marker, found Alpha`. E0573 was predicted from the ceiling row and did NOT\n",
+    "    /// reproduce -- both arms declare their markers LOCALLY, so neither exercises the\n",
+    "    /// imported-marker construction where those classifiers diverge, and the prediction was\n",
+    "    /// mis-scoped from the start. The expectation is the route's adjudicated class. See\n",
     "    /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is\n",
     "    /// deliberately not claimed from one construction.\n",
     "    ///\n",

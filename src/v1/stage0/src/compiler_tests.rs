@@ -737,7 +737,12 @@ mod compiler_tests {
         );
     }
 
-    /// THE PHANTOM-MARKER IDENTITY DECISION, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
+    ///
+    /// NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR. That one's arms are two
+    /// COMPILER behaviours over ONE source, and no pair of fixture FILES can be those arms --
+    /// files vary the source and hold the compiler fixed. This does not discharge that ceiling
+    /// row, which stays at MeaningDiscriminatorExecutedNotEnrolled (codex review 60742).
     ///
     /// The subject is `v1.compiler.emit_rust` `rust_type_arg_identity_spelling`: a type argument's
     /// Rust identity is decided from the declaration visible in the module, never from the
@@ -766,9 +771,10 @@ mod compiler_tests {
     /// WHAT RUSTC ACTUALLY SAID, AND WHY IT IS RECORDED HERE. The emitted red module carries BOTH
     /// an `Alpha` type and a `Marker::Alpha` variant: the field annotation binds the former, the
     /// declared return wants the latter, and the refusal lands at the parent boundary as E0308,
-    /// `expected Marker, found Alpha`. The witness's ceiling prose attributes E0573 to the
-    /// positional classifier; this construction did NOT reproduce it, so the expectation here is
-    /// the route's own adjudicated class rather than a prediction. See
+    /// `expected Marker, found Alpha`. E0573 was predicted from the ceiling row and did NOT
+    /// reproduce -- both arms declare their markers LOCALLY, so neither exercises the
+    /// imported-marker construction where those classifiers diverge, and the prediction was
+    /// mis-scoped from the start. The expectation is the route's adjudicated class. See
     /// `run_phantom_marker_identity_discrimination` for the full diagnostic and for what is
     /// deliberately not claimed from one construction.
     ///
