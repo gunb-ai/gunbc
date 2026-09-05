@@ -2543,15 +2543,9 @@ fn activity_paint_stmts() -> List<TsStmt> {
       callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
       args: [ts_lit_str(value: join(["details.", activity_detail_class], ""))])),
     ts_const(name: "anom", value: ts_binop(
-      left: ts_binop(
-        left: ts_member(object: ts_ident(name: "av"), property: "arm"),
-        op: "===",
-        right: ts_lit_str(value: "refused")),
-      op: "||",
-      right: ts_binop(
-        left: ts_member(object: ts_ident(name: "av"), property: "attention"),
-        op: "===",
-        right: ts_lit_str(value: "anomalous")))),
+      left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+      op: "===",
+      right: ts_lit_str(value: "refused"))),
     ts_if(
       cond: ts_binop(
         left: ts_binop(

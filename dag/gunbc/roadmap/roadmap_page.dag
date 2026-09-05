@@ -683,6 +683,13 @@ fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   }
 }
 
+// THE LEDGER OPENS ONLY WHILE THE WORKER IS LIVE. A row at rest shows its summary sentence and the
+// round strip; the obligation ledger and evidence rows sit behind the disclosure. The previous rule
+// opened every anomalous row, and a board of eight spent attempts was eight open ledgers of identical
+// text (operator, 2026-09-05: "show the bar only, collapse the information, unless the worker is
+// working"). Anomaly still reads on the container's attention data and in the summary line; the
+// refused arm keeps its located reason open, because a refusal is the loud stop DESIGN section 5 asks
+// for and its reason is the one thing the reader must not have to click for.
 fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   match a {
     NoActiveWork => []
@@ -691,7 +698,7 @@ fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool
       let key = activity_attention_key(a: attention)
       [ activity_container(a: a, attention: key, children: concat(
           round_strip_nodes(ledger: rounds, live: live),
-          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous") ],
+          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: live) ],
         )) ]
     }
     ActiveWorkRefused { summary: _, located_reason, evidence } =>
