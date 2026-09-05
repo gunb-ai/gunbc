@@ -20,7 +20,7 @@ import gunbc.design.scale {
 import gunbc.design.theme {
   Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
   CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FocusRole, BoundaryRole,
+  FigureRole, FigureHaloRole, FocusRole, BoundaryRole,
 }
 import gunbc.site.moodboard { figure_rules }
 import gunbc.roadmap_interaction {
@@ -50,7 +50,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class,
-  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
   activity_located_reason_class, session_facts_class,
   dashboard_instance_class,
 }
@@ -314,7 +314,10 @@ fn band_root_css() -> String {
 
 // The round strip: a flex row of time-weighted segments. Read rounds take the dim text material so
 // they recede; a write round takes the figure material so it reads at a glance as the event it is;
-// an unmeasured round is outlined rather than filled, so "not observed" never paints as either.
+// a reasoning round (no tool call) takes the figure halo, the palette's softest figure member, so
+// thinking sits between reading and writing in weight and stays on the palette (operator, 2026-09-05:
+// pleasant, neutral, nothing alarming); an unmeasured round is outlined rather than filled, so "not
+// observed" never paints as either.
 data round_fill_cycle: MotionCycle = MotionCycle { name: "round-fill", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Transform, value: "scaleX(0)")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Transform, value: "scaleX(1)")] }] }
 data round_fill_timing: TimingToken = TimingToken { name: "round-fill", duration_ms: 800, easing: "ease-out" }
 data round_pulse_cycle: MotionCycle = MotionCycle { name: "round-pulse", frames: [Keyframe { offset_percent: 0, decls: [decl(prop: Opacity, value: "1")] }, Keyframe { offset_percent: 50, decls: [decl(prop: Opacity, value: "0.55")] }, Keyframe { offset_percent: 100, decls: [decl(prop: Opacity, value: "1")] }] }
@@ -342,6 +345,12 @@ fn activity_round_strip_rules() -> List<BuildRule> {
       decl(prop: TransformOrigin, value: "left center"),
       role_decl(prop: Background, r: FigureRole),
     ] },
+    StaticRule { selector: ClassSelector { name: activity_round_reason_class }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: TransformOrigin, value: "left center"),
+      role_decl(prop: Background, r: FigureHaloRole),
+      decl(prop: Opacity, value: "0.7"),
+    ] },
     StaticRule { selector: ClassSelector { name: activity_round_remaining_class }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Background, value: "transparent"),
@@ -358,6 +367,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
     AmbientRule { selector: ClassSelector { name: activity_round_read_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
     AmbientRule { selector: ClassSelector { name: activity_round_write_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
     AmbientRule { selector: ClassSelector { name: activity_round_unmeasured_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
+    AmbientRule { selector: ClassSelector { name: activity_round_reason_class }, cycle: round_fill_cycle, timing: round_fill_timing, repeat: RunOnce },
     AmbientRule { selector: ClassSelector { name: activity_round_live_class }, cycle: round_pulse_cycle, timing: round_pulse_timing, repeat: RunForever },
   ]
 }

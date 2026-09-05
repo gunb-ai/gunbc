@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_belt_commit
 
 import std.types { String, NonEmptyStr }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderEventsRefused }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
 
 type BeltCommitDecision
   = CommitNeeded { message: NonEmptyStr }
@@ -24,6 +24,13 @@ fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attem
       }
     }
     ProviderFailed { activity: _, detail: _ } => {
+      if entries_nul == "" {
+        CommitNotNeeded { reason: "worktree clean" }
+      } else {
+        CommitNeeded { message: belt_commit_message(node_id: node_id, attempt_key: attempt_key) }
+      }
+    }
+    ProviderBudgetSpent { activity: _, detail: _ } => {
       if entries_nul == "" {
         CommitNotNeeded { reason: "worktree clean" }
       } else {

@@ -28,7 +28,7 @@ import gunbc.roadmap_provider_events {
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
-  WorkflowSegmentFailed, WorkflowSegmentRefused,
+  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
   VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
@@ -608,6 +608,7 @@ fn first_non_complete(segments: List<WorkflowSegment>) -> WorkflowSegment? {
     Present { value: v } => Present { value: v }
     Absent => match s.state {
       WorkflowSegmentComplete => none
+      WorkflowSegmentStopped => none
       WorkflowSegmentPending => Present { value: s }
       WorkflowSegmentActive => Present { value: s }
       WorkflowSegmentFailed => Present { value: s }
@@ -623,6 +624,7 @@ fn first_refused(segments: List<WorkflowSegment>) -> WorkflowSegment? {
       WorkflowSegmentRefused => Present { value: s }
       WorkflowSegmentFailed => none
       WorkflowSegmentComplete => none
+      WorkflowSegmentStopped => none
       WorkflowSegmentPending => none
       WorkflowSegmentActive => none
     }
@@ -636,6 +638,7 @@ fn first_failed(segments: List<WorkflowSegment>) -> WorkflowSegment? {
       WorkflowSegmentFailed => Present { value: s }
       WorkflowSegmentRefused => none
       WorkflowSegmentComplete => none
+      WorkflowSegmentStopped => none
       WorkflowSegmentPending => none
       WorkflowSegmentActive => none
     }
@@ -730,6 +733,18 @@ fn activity_summary(segments: List<WorkflowSegment>, remaining: Int, process: Wo
           join([
             agent_completion_claim(process: process),
             " · ",
+            workflow_segment_kind_label(kind: next.kind),
+            " next · ",
+            to_string(remaining),
+            " remaining",
+          ], "")
+      }
+    WorkflowSegmentStopped =>
+      match first_non_complete(segments: segments) {
+        Absent => "Agent stopped at its round budget · all obligations complete"
+        Present { value: next } =>
+          join([
+            "Agent stopped at its round budget · ",
             workflow_segment_kind_label(kind: next.kind),
             " next · ",
             to_string(remaining),

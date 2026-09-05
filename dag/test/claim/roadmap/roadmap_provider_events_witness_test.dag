@@ -8,6 +8,7 @@ import gunbc.roadmap_provider_events {
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
+  ProviderBudgetSpent,
   ProviderEventsRefused,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
@@ -74,6 +75,20 @@ test fn codex_turn_failed_preserves_raw_provider_evidence() -> Bool {
     ProviderFailed { activity, detail } =>
       activity == "agent turn failed"
         && string_contains(s: detail, pattern: "usage exhausted")
+    _ => false
+  }
+}
+
+// DISCRIMINATING: the spent budget is its own terminal. The same stream through turn.failed lands in
+// ProviderFailed (the witness above), so a fold that collapsed the two would answer "failed" here.
+test fn a_spent_step_budget_is_budget_spent_not_failed() -> Bool {
+  let text = "{\"type\":\"turn.started\"}\n{\"type\":\"turn.budget_exhausted\",\"steps_taken\":40}\n"
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: text))
+  match state {
+    ProviderBudgetSpent { activity, detail } =>
+      activity == "Agent stopped at its round budget"
+        && string_contains(s: detail, pattern: "\"steps_taken\":40")
+        && provider_execution_state_label(state: state) == "budget_spent"
     _ => false
   }
 }

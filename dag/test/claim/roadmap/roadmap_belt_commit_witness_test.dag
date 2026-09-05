@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_belt_commit_witness_test
 
 import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderEventsRefused }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
 
 test fn commit_is_needed_for_a_completed_dirty_worktree() -> Bool {
   match belt_commit_decision(
@@ -25,6 +25,18 @@ test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool {
   ) {
     CommitNotNeeded { reason: _ } => true
     CommitNeeded { message: _ } => false
+  }
+}
+
+test fn commit_is_needed_for_a_budget_spent_dirty_worktree() -> Bool {
+  match belt_commit_decision(
+    provider: ProviderBudgetSpent { activity: "stopped", detail: "" },
+    node_id: "n1",
+    attempt_key: "abc",
+    entries_nul: " M a.dag\0",
+  ) {
+    CommitNeeded { message } => message == "dispatch: n1 aabc"
+    CommitNotNeeded { reason: _ } => false
   }
 }
 

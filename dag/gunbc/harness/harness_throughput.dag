@@ -35,6 +35,7 @@ type RoundObservation {
   output_tokens: Int
   epoch_ms: Int
   files_changed: Int?
+  tool_calls: Int?
 }
 
 type HarnessRoundLedger
@@ -156,6 +157,7 @@ fn round_observation_of(doc: JsonValue) -> RoundObservation? {
         output_tokens: match throughput_member_int(doc: doc, key: "output_tokens") { Present { value: n } => n  Absent => 0 },
         epoch_ms: ms,
         files_changed: throughput_member_int(doc: doc, key: "files_changed"),
+        tool_calls: throughput_member_int(doc: doc, key: "tool_calls"),
       } }
   }
 }
@@ -231,7 +233,12 @@ fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughp
 // KIND IS A DELTA, NOT A LEVEL. files_changed is the worktree's cumulative changed-path count when
 // the round's tools finished, so a round WROTE when that count rose over the previous measured
 // value. A level test would paint every round after the first write as a write.
-type RoundSegmentKind = ReadRound | WriteRound | UnmeasuredRound
+//
+// A ROUND WITH NO TOOL CALL IS ITS OWN KIND. The harness counts the model's tool_use blocks per round
+// (tool_calls); zero means the round was spent on reasoning or prose alone, which is neither a read
+// nor a write of the tree. Older ledgers carry no count, and a round without one is classified by
+// its file delta as before -- the absent count widens nothing, it only withholds the finer kind.
+type RoundSegmentKind = ReadRound | WriteRound | ReasonRound | UnmeasuredRound
 
 type RoundSegment {
   step: Int
@@ -246,14 +253,21 @@ type SegmentFold {
   segments: List<RoundSegment>
 }
 
-fn round_segment_kind(now: Int?, last_measured: Int?) -> RoundSegmentKind {
+fn round_segment_kind(now: Int?, last_measured: Int?, tool_calls: Int?) -> RoundSegmentKind {
   match now {
     Absent => UnmeasuredRound
     Present { value: n } =>
       match last_measured {
-        Absent => if n > 0 { WriteRound } else { ReadRound }
-        Present { value: m } => if n > m { WriteRound } else { ReadRound }
+        Absent => if n > 0 { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
+        Present { value: m } => if n > m { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
       }
+  }
+}
+
+fn round_segment_kind_unwritten(tool_calls: Int?) -> RoundSegmentKind {
+  match tool_calls {
+    Absent => ReadRound
+    Present { value: n } => if n == 0 { ReasonRound } else { ReadRound }
   }
 }
 
@@ -269,7 +283,7 @@ fn segment_fold_step(acc: SegmentFold, r: RoundObservation) -> SegmentFold {
           step: r.step,
           duration_ms: r.epoch_ms - p.epoch_ms,
           output_tokens: r.output_tokens,
-          kind: round_segment_kind(now: r.files_changed, last_measured: acc.last_measured),
+          kind: round_segment_kind(now: r.files_changed, last_measured: acc.last_measured, tool_calls: r.tool_calls),
         }]),
       }
   }
@@ -345,6 +359,7 @@ fn round_segment_kind_word(k: RoundSegmentKind) -> String {
   match k {
     ReadRound => "read"
     WriteRound => "write"
+    ReasonRound => "reasoning"
     UnmeasuredRound => "unmeasured"
   }
 }

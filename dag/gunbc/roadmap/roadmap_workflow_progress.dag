@@ -24,6 +24,7 @@ import gunbc.roadmap_provider_events {
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
+  ProviderBudgetSpent,
   ProviderEventsRefused,
   provider_execution_state,
   provider_execution_state_label,
@@ -46,6 +47,7 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentComplete,
   WorkflowSegmentFailed,
   WorkflowSegmentRefused,
+  WorkflowSegmentStopped,
   WorkflowSegment,
   roadmap_attempt_workflow_segment_kinds,
   workflow_segment_kind_key,
@@ -232,6 +234,7 @@ fn provider_execution_reconcile_process(
 ) -> ProviderExecutionState {
   match provider {
     ProviderFailed { activity: _, detail: _ } => provider
+    ProviderBudgetSpent { activity: _, detail: _ } => provider
     ProviderEventsRefused { activity: _, detail: _ } => provider
     ProviderCompleted { activity } =>
       match process {
@@ -378,6 +381,12 @@ fn provider_workflow_segment(
       WorkflowSegment {
         kind: AgentWorkflowSegment,
         state: WorkflowSegmentFailed,
+        detail: join([activity, ": ", detail], ""),
+      }
+    ProviderBudgetSpent { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentStopped,
         detail: join([activity, ": ", detail], ""),
       }
     ProviderEventsRefused { activity, detail } =>
@@ -800,6 +809,7 @@ fn workflow_fact_state_from_segment_state(
     WorkflowSegmentComplete => WorkflowFactSatisfied
     WorkflowSegmentFailed => WorkflowFactFailed
     WorkflowSegmentRefused => WorkflowFactRefused
+    WorkflowSegmentStopped => WorkflowFactSatisfied
   }
 }
 

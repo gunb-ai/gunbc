@@ -6,7 +6,7 @@ import gunbc.harness.harness_throughput {
   harness_throughput_from_events, throughput_centi_tokens_per_second,
   throughput_rate_text, throughput_band, throughput_band_word, throughput_cell_text,
   harness_round_ledger_from_events, round_segments, round_segment_kind_word, RoundSegment,
-  round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound,
+  round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound, ReasonRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
 
@@ -147,11 +147,24 @@ test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool {
   }
 }
 
+// DISCRIMINATING: a round that carried no tool call is a reasoning round; the same round with one
+// call and no file delta is a read, and a round from an older stream with no count stays a read.
+test fn a_round_with_zero_tool_calls_is_reasoning_and_one_call_is_a_read() -> Bool {
+  let body = join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":1000,\"files_changed\":0,\"tool_calls\":1}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":2000,\"files_changed\":0,\"tool_calls\":0}",
+    "{\"type\":\"round.usage\",\"step\":3,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":3000,\"files_changed\":0,\"tool_calls\":1}",
+    "{\"type\":\"round.usage\",\"step\":4,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":4000,\"files_changed\":0}",
+  ], "\n")
+  let words = map(round_segments(ledger: harness_round_ledger_from_events(body: body)), s => round_segment_kind_word(k: s.kind))
+  join(words, ",") == "reasoning,read,read"
+}
+
 test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool {
   let ledger = RoundsObserved { rounds: [
-    RoundObservation { step: 1, input_tokens: 1, output_tokens: 1, epoch_ms: 0, files_changed: Present { value: 0 } },
-    RoundObservation { step: 2, input_tokens: 1, output_tokens: 1, epoch_ms: 1000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 3, input_tokens: 1, output_tokens: 1, epoch_ms: 4000, files_changed: Present { value: 0 } },
+    RoundObservation { step: 1, input_tokens: 1, output_tokens: 1, epoch_ms: 0, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 1, output_tokens: 1, epoch_ms: 1000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 3, input_tokens: 1, output_tokens: 1, epoch_ms: 4000, files_changed: Present { value: 0 }, tool_calls: none },
   ] }
   round_remaining_flex(ledger: ledger, budget_steps: 5) == 4000
     && round_remaining_flex(ledger: ledger, budget_steps: 3) == 0

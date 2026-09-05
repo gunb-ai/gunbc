@@ -339,30 +339,30 @@ fn fixture_specimen_segments() -> List<WorkflowSegment> {
 // twenty-one rounds reading and wrote at round twenty-two.
 fn fixture_long_ledger() -> HarnessRoundLedger {
   RoundsObserved { rounds: [
-    RoundObservation { step: 1, input_tokens: 2200, output_tokens: 157, epoch_ms: 1000000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 2, input_tokens: 3500, output_tokens: 194, epoch_ms: 1009000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 3, input_tokens: 4800, output_tokens: 231, epoch_ms: 1069000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 4, input_tokens: 6100, output_tokens: 268, epoch_ms: 1189000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 5, input_tokens: 7400, output_tokens: 305, epoch_ms: 1234000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 6, input_tokens: 8700, output_tokens: 342, epoch_ms: 1249000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 7, input_tokens: 10000, output_tokens: 379, epoch_ms: 1429000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 8, input_tokens: 11300, output_tokens: 416, epoch_ms: 1459000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 9, input_tokens: 12600, output_tokens: 453, epoch_ms: 1549000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 10, input_tokens: 13900, output_tokens: 490, epoch_ms: 1569000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 11, input_tokens: 15200, output_tokens: 127, epoch_ms: 1809000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 12, input_tokens: 16500, output_tokens: 164, epoch_ms: 1844000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 13, input_tokens: 17800, output_tokens: 201, epoch_ms: 1904000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 14, input_tokens: 19100, output_tokens: 238, epoch_ms: 1916000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 15, input_tokens: 20400, output_tokens: 275, epoch_ms: 2066000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 16, input_tokens: 21700, output_tokens: 312, epoch_ms: 2091000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 17, input_tokens: 23000, output_tokens: 349, epoch_ms: 2131000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 18, input_tokens: 24300, output_tokens: 386, epoch_ms: 2149000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 19, input_tokens: 25600, output_tokens: 423, epoch_ms: 2219000, files_changed: Present { value: 1 } },
-    RoundObservation { step: 20, input_tokens: 26900, output_tokens: 460, epoch_ms: 2269000, files_changed: Present { value: 1 } },
-    RoundObservation { step: 21, input_tokens: 28200, output_tokens: 497, epoch_ms: 2291000, files_changed: Present { value: 1 } },
-    RoundObservation { step: 22, input_tokens: 29500, output_tokens: 134, epoch_ms: 2386000, files_changed: Present { value: 2 } },
-    RoundObservation { step: 23, input_tokens: 30800, output_tokens: 171, epoch_ms: 2416000, files_changed: Present { value: 2 } },
-    RoundObservation { step: 24, input_tokens: 32100, output_tokens: 208, epoch_ms: 2431000, files_changed: Present { value: 2 } },
+    RoundObservation { step: 1, input_tokens: 2200, output_tokens: 157, epoch_ms: 1000000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 3500, output_tokens: 194, epoch_ms: 1009000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 4800, output_tokens: 231, epoch_ms: 1069000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 6100, output_tokens: 268, epoch_ms: 1189000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 5, input_tokens: 7400, output_tokens: 305, epoch_ms: 1234000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 6, input_tokens: 8700, output_tokens: 342, epoch_ms: 1249000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 7, input_tokens: 10000, output_tokens: 379, epoch_ms: 1429000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 8, input_tokens: 11300, output_tokens: 416, epoch_ms: 1459000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 9, input_tokens: 12600, output_tokens: 453, epoch_ms: 1549000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 10, input_tokens: 13900, output_tokens: 490, epoch_ms: 1569000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 11, input_tokens: 15200, output_tokens: 127, epoch_ms: 1809000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 12, input_tokens: 16500, output_tokens: 164, epoch_ms: 1844000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 13, input_tokens: 17800, output_tokens: 201, epoch_ms: 1904000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 14, input_tokens: 19100, output_tokens: 238, epoch_ms: 1916000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 15, input_tokens: 20400, output_tokens: 275, epoch_ms: 2066000, files_changed: Present { value: 0 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 16, input_tokens: 21700, output_tokens: 312, epoch_ms: 2091000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 17, input_tokens: 23000, output_tokens: 349, epoch_ms: 2131000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 18, input_tokens: 24300, output_tokens: 386, epoch_ms: 2149000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 19, input_tokens: 25600, output_tokens: 423, epoch_ms: 2219000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 20, input_tokens: 26900, output_tokens: 460, epoch_ms: 2269000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 21, input_tokens: 28200, output_tokens: 497, epoch_ms: 2291000, files_changed: Present { value: 1 }, tool_calls: none },
+    RoundObservation { step: 22, input_tokens: 29500, output_tokens: 134, epoch_ms: 2386000, files_changed: Present { value: 2 }, tool_calls: none },
+    RoundObservation { step: 23, input_tokens: 30800, output_tokens: 171, epoch_ms: 2416000, files_changed: Present { value: 2 }, tool_calls: none },
+    RoundObservation { step: 24, input_tokens: 32100, output_tokens: 208, epoch_ms: 2431000, files_changed: Present { value: 2 }, tool_calls: none },
   ] }
 }
 
@@ -387,10 +387,10 @@ fn round_strip_lab_section() -> Fragment {
 
 fn fixture_moseying_ledger() -> HarnessRoundLedger {
   RoundsObserved { rounds: [
-    RoundObservation { step: 1, input_tokens: 900, output_tokens: 120, epoch_ms: 1000000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 2, input_tokens: 9000, output_tokens: 260, epoch_ms: 1120000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 3, input_tokens: 14000, output_tokens: 180, epoch_ms: 1210000, files_changed: Present { value: 0 } },
-    RoundObservation { step: 4, input_tokens: 16000, output_tokens: 2100, epoch_ms: 1225000, files_changed: Present { value: 1 } },
+    RoundObservation { step: 1, input_tokens: 900, output_tokens: 120, epoch_ms: 1000000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 9000, output_tokens: 260, epoch_ms: 1120000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 3, input_tokens: 14000, output_tokens: 180, epoch_ms: 1210000, files_changed: Present { value: 0 }, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 16000, output_tokens: 2100, epoch_ms: 1225000, files_changed: Present { value: 1 }, tool_calls: none },
   ] }
 }
 

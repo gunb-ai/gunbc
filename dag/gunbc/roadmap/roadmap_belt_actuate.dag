@@ -355,7 +355,7 @@ import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_n
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CommitNeeded, CommitNotNeeded, belt_commit_decision }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
-import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
+import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -379,6 +379,7 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentComplete,
   WorkflowSegmentFailed,
   WorkflowSegmentRefused,
+  WorkflowSegmentStopped,
   VerificationWorkflowSegment,
 }
 import gunbc.roadmap_presentation {
@@ -4818,8 +4819,9 @@ fn belt_verify_attempt_for_instance(
   }
 }
 
-// A TERMINAL WORKER IS VERIFIED WHETHER IT FINISHED OR FAILED. Two belt-dispatched attempts exhausted
-// their round budget with partial work in the worktree, reported as turn.failed; gating verification
+// A TERMINAL WORKER IS VERIFIED WHETHER IT FINISHED, FAILED, OR SPENT ITS BUDGET. Two belt-dispatched
+// attempts exhausted their round budget with partial work in the worktree (then reported as
+// turn.failed, now as turn.budget_exhausted); gating verification
 // on ProviderCompleted alone left that work unjudged. The verdict is the judge of partial work, and
 // publication is gated on the verdict, so verifying a failed provider's head is strictly more honest
 // than skipping it. Only a running or not-yet-started worker has nothing to verify.
@@ -4830,6 +4832,7 @@ fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
     ProviderRunning { activity: _ } => false
     ProviderCompleted { activity: _ } => true
     ProviderFailed { activity: _, detail: _ } => true
+    ProviderBudgetSpent { activity: _, detail: _ } => true
     ProviderEventsRefused { activity: _, detail: _ } => false
   }
 }
@@ -6605,6 +6608,8 @@ fn belt_verification_presentation_detail(
           join(["Verification failed · ", segment.detail], "")
         WorkflowSegmentRefused =>
           join(["Verification refused · ", segment.detail], "")
+        WorkflowSegmentStopped =>
+          join(["Verification stopped · ", segment.detail], "")
         WorkflowSegmentActive =>
           join(["Verification running · ", progress.validation_summary], "")
         WorkflowSegmentPending =>

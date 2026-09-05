@@ -40,7 +40,7 @@ import gunbc.roadmap_component {
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
-  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class,
+  activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
 }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
@@ -639,6 +639,7 @@ fn round_segment_class(k: RoundSegmentKind) -> String {
   match k {
     ReadRound => activity_round_read_class
     WriteRound => activity_round_write_class
+    ReasonRound => activity_round_reason_class
     UnmeasuredRound => activity_round_unmeasured_class
   }
 }
