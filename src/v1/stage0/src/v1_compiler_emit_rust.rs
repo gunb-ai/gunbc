@@ -5045,21 +5045,42 @@ pub fn lookup_item_for_value_ref(
     resolved_name: String,
     self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> Option<Rc<ItemInfo>> {
     {
         let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
         let leaf = value_ref_qualified_leaf(resolved_name.clone());
-        crate::v1_compiler_emit::lookup_item_by_identity(
-            registry.clone(),
-            Rc::new(DeclaredCallableIdentity {
-                owner_module_path: if (qualifier.clone() == "".to_string()) {
-                    self_module.clone()
-                } else {
-                    qualifier.clone()
-                },
-                decl_name: leaf.clone(),
-            }),
-        )
+        if (qualifier.clone() != "".to_string()) {
+            crate::v1_compiler_emit::lookup_item_by_identity(
+                registry.clone(),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: qualifier.clone(),
+                    decl_name: leaf.clone(),
+                }),
+            )
+        } else {
+            match crate::v1_compiler_emit::lookup_item_by_identity(
+                registry.clone(),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: self_module.clone(),
+                    decl_name: leaf.clone(),
+                }),
+            ) {
+                Some(info) => Some(info.clone()),
+                std::option::Option::None => {
+                    match v1_rt::map_get(&emit_info.item_leaf_owner_modules.clone(), leaf.clone()) {
+                        Some(owner) => crate::v1_compiler_emit::lookup_item_by_identity(
+                            registry.clone(),
+                            Rc::new(DeclaredCallableIdentity {
+                                owner_module_path: owner.clone(),
+                                decl_name: leaf.clone(),
+                            }),
+                        ),
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -6056,6 +6077,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 merged_module_source_indices(typed.modules.clone()),
             );
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -6156,7 +6178,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         let test_projections =
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
-        let module_index = build_module_index(typed.modules.clone(), registry.clone());
+        let module_index = build_module_index(
+            typed.modules.clone(),
+            emit_info.item_leaf_owner_modules.clone(),
+        );
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         Rc::new(EmitRustContext {
             emit_info: emit_info.clone(),
@@ -7114,6 +7139,7 @@ pub fn emit_module(
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             );
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -7137,8 +7163,10 @@ pub fn emit_module(
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index =
-            build_module_index(Rc::new(vec![typed_module.clone()]), registry.clone());
+        let module_index = build_module_index(
+            Rc::new(vec![typed_module.clone()]),
+            emit_info.item_leaf_owner_modules.clone(),
+        );
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
@@ -9918,6 +9946,7 @@ pub fn emit_module_full(
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
             type_summaries: emit_info.type_summaries.clone(),
             type_decl_items: emit_info.type_decl_items.clone(),
             fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -10430,12 +10459,12 @@ pub fn item_defining_module_filename(
     module_index: Rc<ModuleIndex>,
     fallback: String,
 ) -> String {
-    match v1_rt::map_get(&module_index.leaf_owners.clone(), name.clone()) {
-        Some(info) => {
-            if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
+    match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
+        Some(owner) => {
+            if (owner.clone() == "".to_string()) {
                 fallback
             } else {
-                crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+                crate::v1_compiler_emit_core_support::module_to_filename(owner.clone())
             }
         }
         std::option::Option::None => fallback,
@@ -10446,39 +10475,12 @@ pub fn item_defining_module_filename(
 pub struct ModuleIndex {
     pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
-    pub leaf_owners: Rc<HashMap<String, Rc<ItemInfo>>>,
-}
-
-pub fn build_leaf_owner_index(
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        |acc: _, key: String| match v1_rt::map_get(&registry, key.clone()) {
-            Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
-                Some(prior) => {
-                    if (prior.module_name.clone() == info.module_name.clone()) {
-                        acc.clone()
-                    } else {
-                        v1_rt::rc_map_insert(
-                            acc.clone(),
-                            info.name.clone(),
-                            duplicate_item_identity_marker(info.name.clone()),
-                        )
-                    }
-                }
-                std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), info.name.clone(), info.clone())
-                }
-            },
-            std::option::Option::None => acc.clone(),
-        },
-    )
+    pub leaf_owner_modules: Rc<HashMap<String, String>>,
 }
 
 pub fn build_module_index(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    leaf_owner_modules: Rc<HashMap<String, String>>,
 ) -> Rc<ModuleIndex> {
     {
         let by_name = modules.iter().cloned().fold(
@@ -10520,7 +10522,7 @@ pub fn build_module_index(
         Rc::new(ModuleIndex {
             by_name: by_name.clone(),
             by_filename: by_filename.clone(),
-            leaf_owners: build_leaf_owner_index(registry.clone()),
+            leaf_owner_modules: leaf_owner_modules.clone(),
         })
     }
 }
@@ -11675,7 +11677,18 @@ pub fn alias_rhs_base_module_filename(
     {
         let local_mod =
             crate::v1_compiler_emit_core_support::module_to_filename(alias_module.clone());
-        match v1_rt::map_get(&module_index.leaf_owners.clone(), name.clone()) {
+        let owner_info =
+            match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
+                Some(owner) => crate::v1_compiler_emit::lookup_item_by_identity(
+                    registry.clone(),
+                    Rc::new(DeclaredCallableIdentity {
+                        owner_module_path: owner.clone(),
+                        decl_name: name.clone(),
+                    }),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            };
+        match owner_info.clone() {
             Some(info) => {
                 if (((info.module_name.clone() == alias_module.clone())
                     && ((info.kind.clone() == ItemKind::TypeItem)
@@ -14815,6 +14828,7 @@ pub fn emit_typed_item(
                         }
                     };
                     let fn_emit_info = Rc::new(EmitGraphInfo {
+                        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                         type_summaries: emit_info.type_summaries.clone(),
                         type_decl_items: emit_info.type_decl_items.clone(),
                         fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -21213,7 +21227,7 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone()) {
+                match lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone(), emit_info.clone()) {
     Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
     std::option::Option::None => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
 }
@@ -21326,6 +21340,7 @@ pub fn emit_var_ref(
                             resolved_name.clone(),
                             module_name.clone(),
                             registry.clone(),
+                            emit_info.clone(),
                         ) {
                             Some(info) => {
                                 if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(
@@ -21475,7 +21490,7 @@ pub fn emit_typed_expr_base(
                                     n.clone(),
                                     scope.module_name.clone(),
                                 );
-                                match lookup_item_for_value_ref(resolved_name.clone(), scope.module_name.clone(), registry.clone()) {
+                                match lookup_item_for_value_ref(resolved_name.clone(), scope.module_name.clone(), registry.clone(), emit_info.clone()) {
     Some(info) => if crate::v1_compiler_infer_items::is_duplicate_item_identity_marker(info.clone()) {
                             value_ref_item_info_refusal(info.clone())
                         } else {
@@ -25354,6 +25369,7 @@ pub fn emit_rust_fold_method_call(
                     );
                     match ps.clone().first().cloned() {
                         Some(acc_name) => Rc::new(EmitGraphInfo {
+                            item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                             type_summaries: emit_info.type_summaries.clone(),
                             type_decl_items: emit_info.type_decl_items.clone(),
                             fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -25399,6 +25415,7 @@ pub fn emit_rust_fold_method_call(
                         );
                         match ps.clone().first().cloned() {
                             Some(acc_name) => Rc::new(EmitGraphInfo {
+                                item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
                                 fn_decl_items: emit_info.fn_decl_items.clone(),

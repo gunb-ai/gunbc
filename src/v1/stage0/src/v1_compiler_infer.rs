@@ -25180,6 +25180,46 @@ pub fn build_enum_variant_shape_sets(
     )
 }
 
+pub fn build_item_leaf_owner_modules(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, String>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, tm: _| {
+            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
+                .iter()
+                .cloned()
+                .fold(
+                    acc,
+                    |acc2: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(
+                        &tm.item_registry.clone(),
+                        key.clone(),
+                    ) {
+                        Some(info) => match v1_rt::map_get(&acc2, info.name.clone()) {
+                            Some(prior) => {
+                                if (prior.clone() == info.module_name.clone()) {
+                                    acc2.clone()
+                                } else {
+                                    v1_rt::rc_map_insert(
+                                        acc2.clone(),
+                                        info.name.clone(),
+                                        "".to_string(),
+                                    )
+                                }
+                            }
+                            std::option::Option::None => v1_rt::rc_map_insert(
+                                acc2.clone(),
+                                info.name.clone(),
+                                info.module_name.clone(),
+                            ),
+                        },
+                        std::option::Option::None => acc2.clone(),
+                    },
+                )
+        },
+    )
+}
+
 pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -25241,6 +25281,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             built.type_summaries.clone(),
         );
         Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: build_item_leaf_owner_modules(modules.clone()),
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             fn_decl_items: built.fn_decl_items.clone(),

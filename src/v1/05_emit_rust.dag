@@ -2583,6 +2583,22 @@ fn value_ref_registry_lookup_key(resolved_name: String) -> String {
 // ambiguous entries are the refusal sentinel. Keying a bare reference on self_module alone was
 // wrong and was caught by the seed failing to build: an imported `data` value stopped resolving,
 // so the emitted Rust named the initializer function instead of calling it.
+// THE ONE WAY TO ASK THE REGISTRY FOR A LEAF.
+// The registry is keyed on identity, so a bare leaf is not a key. Emission still has to ask -- an
+// import line, a use-line plan, a service roster, the is_data call-suffix decision all hold a
+// spelling and nothing else. This completes the leaf to an identity through the shared owner index
+// and then reads the one registry, so the answer is a real row for a real declaration or it is
+// Absent. A leaf two modules declare maps to the empty owner, which is not a legal module path, so
+// it lands in Absent and the caller takes its own refusal path -- never a row from the wrong module,
+// which is exactly what the old leaf-keyed map returned.
+fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemInfo? {
+  match map_get(emit_info.item_leaf_owner_modules, leaf) {
+    Present { value: owner } =>
+      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: leaf })
+    Absent => Absent
+  }
+}
+
 fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemInfo? {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
   let leaf = value_ref_qualified_leaf(name: resolved_name)
@@ -2601,11 +2617,11 @@ fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registr
   }
 }
 
-fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>) -> String {
+fn emit_qualified_value_ref_crate_ident(leaf: String, info: ItemInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   if is_duplicate_item_identity_marker(info: info) {
     emit_error_expr(message: "duplicate item identity — two declarations of this leaf in one module", target: Rust)
   } else {
-    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(n: leaf, registry: registry))
+    concat("crate::", module_to_filename(name: info.module_name), "::", emit_import_name(emit_info: emit_info, n: leaf, registry: registry))
   }
 }
 
@@ -4570,7 +4586,7 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
+fn reference_derived_candidate_disposition(emit_info: emit_info, name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
   if is_known_variant(type_summaries: type_summaries, name: name) && !in_type_position {
     match map_get(variant_to_enum, name) {
       Present { value: parent } =>
@@ -4579,7 +4595,7 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       Absent => CandidateVariantParentUnresolved
     }
   } else {
-  match map_get(registry, name) {
+  match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
     Present { value: info } =>
       if info.module_name == this_module_name {
         CandidateOwnModule
@@ -4840,7 +4856,7 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(emit_info: emit_info, items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -4891,7 +4907,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         [ReferenceDerivedCandidateRow {
           module_name: this_module_name,
           name: name,
-          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, in_type_position: emit_map_has(m: type_position_set, key: name))
+          disposition: reference_derived_candidate_disposition(emit_info: emit_info, name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, in_type_position: emit_map_has(m: type_position_set, key: name))
         }]
       }
     )
@@ -4899,7 +4915,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       |> filter(r => reference_derived_candidate_survived(disposition: r.disposition))
       |> map(r => r.name)
     let providers = unique_strings(items: unlisted |> flat_map(name =>
-      match map_get(registry, name) {
+      match lookup_item_by_leaf(leaf: name, registry: registry, emit_info: emit_info) {
         Present { value: info } => [info.module_name]
         Absent => []
       }
@@ -4922,7 +4938,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(emit_info: emit_info, n: nm, registry: registry), ";")))))]
         } else {
           []
         }
@@ -4930,8 +4946,8 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
+    let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_lines = qualified_type_reference_use_lines(emit_info: emit_info, rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
 }
@@ -4958,7 +4974,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
 // the named qualifier before any line is synthesized; every other qualified name is the value
 // route's, and this route says nothing about it. Each decision this route does take is a census row
 // beside the bare-name rows -- the qualified spelling is the row's name, so the two never collide.
-fn qualified_type_reference_rows(names: List<String>, this_module_name: String, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
+fn qualified_type_reference_rows(emit_info: emit_info, names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
   let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   names |> flat_map(name =>
     if !string_contains(s: name, pattern: ".") { [] } else {
@@ -4968,7 +4984,7 @@ fn qualified_type_reference_rows(names: List<String>, this_module_name: String, 
       if qualifier == this_module_name || emit_map_has(m: already, key: leaf) || emit_map_has(m: leaves_done, key: leaf) || is_kernel_type(name: leaf) {
         []
       } else {
-        match map_get(registry, leaf) {
+        match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
           Absent => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
           Present { value: info } =>
             if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
@@ -4989,11 +5005,11 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
   if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
 }
 
-fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
+fn qualified_type_reference_use_lines(emit_info: emit_info, rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> List<String> {
   unique_strings(items: rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
-        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(n: qualified_last_segment(name: r.name), registry: registry), ";")]
+        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(emit_info: emit_info, n: qualified_last_segment(name: r.name), registry: registry), ";")]
       _ => []
     }
   ))
@@ -5129,7 +5145,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
-    match map_get(registry, authored_name(env: scope.type_env, node: item)) {
+    match lookup_item_by_leaf(leaf: authored_name(env: scope.type_env, node: item), registry: registry, emit_info: emit_info) {
       Present { value: info } => info.service_names
       Absent => []
     }
@@ -5172,8 +5188,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
-  let is_data = match map_get(registry, n) {
+fn emit_import_name(emit_info: emit_info, n: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+  let is_data = match lookup_item_by_leaf(leaf: n, registry: registry, emit_info: emit_info) {
     Present { value: info } => info.kind == DataItem
     Absent => false
   }
@@ -6112,14 +6128,14 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
       if group |> count > 0 {
         let names_str = group |> map(n =>
-          emit_import_name(n: n, registry: registry)
+          emit_import_name(emit_info: emit_info, n: n, registry: registry)
         ) |> join(separator: ", ")
         concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
       } else { "" }
     )
     let other_direct_line = if other_direct_names |> count > 0 {
       let names_str = other_direct_names |> map(n =>
-        emit_import_name(n: n, registry: registry)
+        emit_import_name(emit_info: emit_info, n: n, registry: registry)
       ) |> join(separator: ", ")
       concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
     } else { "" }
@@ -9727,14 +9743,14 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
     if qualifier != "" {
       match lookup_item_for_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
         Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
         Absent =>
           emit_error_expr(message: "qualified value reference missing exact registry row — refuse authored qualifier", target: Rust)
       }
     } else {
-      match map_get(registry, leaf) {
+      match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
         Present { value: info } =>
-          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry)
+          emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
         Absent =>
           if freemonoid_empty_from_emit_info(leaf_name: leaf, emit_info: emit_info) { emit_freemonoid_empty_rc_value() }
           else { emit_ident(name: leaf, target: Rust) }
