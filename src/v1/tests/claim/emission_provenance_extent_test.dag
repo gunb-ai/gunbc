@@ -1,4 +1,11 @@
-module test.claim.emission_provenance_extent_test
+module v1.tests.claim.emission_provenance_extent_test
+
+// This parser-dependent control requires dag, src/v1 and src/v2 source roots. The required
+// floor discovers dag and src/v2 only, so these assertions execute on direct invocation,
+// not on a required CI run. Authority: gunbc.ci_layer_roots
+// v1_claim_scoped_witness_batch_deleted_note. Relocation preserves both assertions; it does
+// not discharge the missing executing CI consumer. The next-rung capability is the shared
+// prepared subject spanning those roots named by that authority.
 
 import std.types { String, NonEmptyStr }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, content_hash_of_value, compare_content_hash }
