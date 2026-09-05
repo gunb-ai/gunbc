@@ -22049,21 +22049,33 @@ mod the_emitted_listing_producer_refuses_too {
             .arg(&src)
             .output()
             .expect("rustc runs");
+        // CLEAN UP BEFORE ASSERTING, NOT AFTER. A cleanup that trails the asserts runs only on the
+        // path where nothing went wrong, so every FAILING probe -- the run a maintainer repeats --
+        // leaks a scratch tree under the system temp dir, and the leak accumulates precisely while
+        // someone is iterating on the failure. Both outcomes are captured first, the tree is removed
+        // once, and the diagnostics are asserted from the captured values.
+        let run = if compiled.status.success() {
+            Some(
+                std::process::Command::new(&bin)
+                    .arg(&subject)
+                    .output()
+                    .expect("the probe runs"),
+            )
+        } else {
+            None
+        };
+        std::fs::remove_dir_all(&work).ok();
         assert!(
             compiled.status.success(),
             "the emitted listing expression must be well-formed Rust: {}",
             String::from_utf8_lossy(&compiled.stderr)
         );
-        let run = std::process::Command::new(&bin)
-            .arg(&subject)
-            .output()
-            .expect("the probe runs");
+        let run = run.expect("a compiled probe was run");
         assert!(
             run.status.success(),
             "the emitted producer did not answer what this specimen requires: {}",
             String::from_utf8_lossy(&run.stderr)
         );
-        std::fs::remove_dir_all(&work).ok();
     }
 
     /// THE CONTROL, AND IT ASSERTS THE POPULATION RATHER THAN THE ARM. Checking only `success`
