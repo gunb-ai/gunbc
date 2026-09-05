@@ -158,6 +158,63 @@ per-path — and that fallback would change the manifest's shape, which is the o
 is meant to prevent. So the honest sequencing is: settle the subject now, and prove the structural
 merge is tractable *before* the manifest hardens, not after.
 
+## 5a. Tractability, answered where §5 left it open: the edge label already partitions it
+
+§5 recorded "I have not demonstrated a three-way structural merge is tractable here" as an open
+risk. It is now answerable from the model rather than by guess, and the answer is neither yes nor no.
+
+`v2.std.node` gives:
+
+```
+Node      { kind, children: List<Edge>, occurrence_id }
+Edge      { label: EdgeLabel, target: Node }
+EdgeLabel = Named { name: Symbol } | Positional
+```
+
+**That coproduct is the partition.** A three-way merge descends from the root comparing digests, and
+what it can do at each node depends entirely on which arm its children carry.
+
+**`Named` edges: tractable, and by a known algorithm.** Children align by name, exactly as a tree
+merge aligns directory entries by filename. At each aligned child the three digests decide it with no
+heuristic: `ours == theirs` take either; `ours == base` take theirs; `theirs == base` take ours; all
+three differ, recurse. The recursion terminates because the substrate is bounded and forward. This is
+where the differentiating claim of §5 actually lives — two changes to differently-named children do
+not conflict, whatever file they were written in.
+
+**`Positional` edges: NOT tractable today, and the reason is structural rather than unfinished.**
+Position is the only identity such a child has, so concurrent insertions on both sides cannot be
+aligned: there is no fact in the model saying which of *ours[2]* and *theirs[2]* are "the same child
+moved". Two escapes exist and both are closed:
+
+- **Occurrence identity is deliberately not available.** `occurrence_id` is outside content identity
+  by design — `gunbc.scm.checkout` records that two parses minting different occurrence ids store and
+  reconstruct identically, and that asserting on provenance would assert the one property the model
+  says must not matter. So it cannot be used to track a moved positional child.
+- **A sequence-alignment heuristic is not admissible.** Guessing the correspondence is exactly what
+  §4 rules out — in a closed, grounded system a heuristic is never necessary, and reaching for one
+  *locates* the anemic modeling rather than solving it. A diff3-style alignment would be a confidence
+  threshold selecting an arm, which §5 names as a smuggled heuristic.
+
+**So the ruling is a refusal, not a fallback.** A merge that reaches a node whose positional children
+diverged on both sides **refuses**, typed and located, naming the node. It does not align, does not
+take a side, and does not degrade to per-path merging for that subtree — a failure arm must refuse,
+never widen. `MergeConflict` is therefore not one arm: a *named* conflict is a real content conflict
+an author can resolve, while a *positional* one is the model declining to guess, and collapsing them
+would report a modeling limit as an authoring problem.
+
+**What this does to §5's risk.** The risk was that structural merge proves intractable and the
+fallback is per-path, changing the manifest's shape. That risk is now bounded rather than open: the
+named case carries the merge, the positional case refuses, and **neither outcome requires the manifest
+to be the merge subject**. §5's ruling therefore stands on a narrower and firmer base than when it was
+written, and the manifest may proceed as an emission projection.
+
+**What remains genuinely open, and is now the smaller question:** how much of a real corpus sits under
+`Positional` edges. If most of a program's interesting structure is positional, a merge that refuses
+on all of it is honest but useless, and the lane would need a *modeled* child identity — a separate
+capability with its own ruling, not a heuristic. **That measurement is the next concrete step, and it
+is a measurement rather than a design argument:** count `Named` versus `Positional` edges over the
+live corpus, at the grain a merge would descend. It is deliberately not estimated here.
+
 ## 6. What merge produces, and what it must refuse
 
 A merge is a **candidate then a commit**, not one step: the candidate carries the derived base, the
@@ -209,7 +266,7 @@ specification-without-execution):
 
 ## 10. What this document does not claim
 
-It does not claim a structural merge algorithm exists. It does not settle the ref model (§3 open), the
+It does not claim a structural merge algorithm is BUILT, and §5a's tractability finding is derived from the node model rather than demonstrated by a running merge. It does not settle the ref model (§3 open), the
 fast-forward presentation (§4 open), object retention for absorbed lines (§2 open), or author and
 timestamp (§8). It does not authorize `CorpusManifestObject` to be built — it settles what that
 object's role must be, which is a precondition for building it and not a substitute.
