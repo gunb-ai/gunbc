@@ -1,9 +1,14 @@
 module gunbc.spark.pxe_rescue_observation
 
-import std.types { NonEmptyStr, Int }
+import std.types { NonEmptyStr, Nat }
+import std.measure { Second, second }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
+}
+import extdeps.os.ubuntu_kernel_nic_coverage {
+  PciVendorId,
+  PciDeviceId,
 }
 
 // SPARK-PXE-RESCUE-0 (2026-09-05). WHAT THIS REPOSITORY ACTUALLY DID TO PUT ONE PHYSICAL
@@ -23,7 +28,7 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
 // below is scoped to that. A second unit, a firmware revision, or a different regional image
 // may present different behaviour; this module claims nothing about them.
 //
-// SIX INDEPENDENT RECEIPTS ARE BELOW, each carrying its own observation context.
+// SEVEN INDEPENDENT RECEIPTS ARE BELOW, each carrying its own observation context.
 
 // --------------------------------------------------------------------------
 // RECEIPT 1: NIC identity 10ec:8127 / r8169
@@ -45,14 +50,15 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
 data pxe_rescue_observation_timestamp: Rfc3339Timestamp =
   "2026-09-05T14:30:00Z" as Rfc3339Timestamp
 
-data spark_2196_pci_vendor: NonEmptyStr = "10ec" as NonEmptyStr
+data spark_2196_pci_vendor: PciVendorId = "10ec" as PciVendorId
 
-data spark_2196_pci_device: NonEmptyStr = "8127" as NonEmptyStr
+data spark_2196_pci_device: PciDeviceId = "8127" as PciDeviceId
 
 data spark_2196_nic_kernel_module: NonEmptyStr = "r8169" as NonEmptyStr
 
-data spark_2196_nic_unclaimed_in_kernel_6_8: NonEmptyStr =
-  "Ubuntu 6.8 does not claim 10ec:8127; 6.17 and later do." as NonEmptyStr
+// Annotation: Ubuntu 6.8 does not claim 10ec:8127; 6.17 and later do.
+// The kernel coverage fact is modelled in extdeps.os.ubuntu_kernel_nic_coverage
+// and consumed by dgx_pxe_boot.dag via r8169_claims_pci_device.
 
 // --------------------------------------------------------------------------
 // RECEIPT 2: Stock arm64 Linux resets the GB10 after ~90s
@@ -62,17 +68,20 @@ data spark_2196_nic_unclaimed_in_kernel_6_8: NonEmptyStr =
 // seconds after boot. The exact trigger is not isolated, but the observation is reliable:
 // three attempts, all reset at ~90s.
 //
-// This means SparkPxeBootImageKind (FastOsRecoveryTarball | DgxOsIsoImage) is not simply
-// a catalogue choice — it is a SAFETY CONSTRAINT. A generic-distro image booted via PXE
-// on this hardware produces a non-viable system, and the model should REFUSE such an
-// image rather than admit it silently.
+// THE ROOT CAUSE OF THIS RESET IS NOT THE IMAGE KIND ITSELF. The generic-distro kernel
+// tested (Ubuntu 6.8 GA) lacks the r8169 alias for 10ec:8127 (see Receipt 1), and the
+// reset may be a systemd/journalled timeout or a GPU watchdog reacting to an unnetworked
+// system — neither was isolated. SparkPxeBootImageKind is a closed sum over the two
+// NVIDIA-provided constructors (FastOsRecoveryTarball | DgxOsIsoImage), so no value can
+// inhabit a "generic-distro" arm and the model refuses images via the existing NIC
+// coverage check (UnattendedPxeBootKernelDoesNotClaimNic) rather than by image-kind
+// discrimination. See dag/gunbc/spark/dgx_pxe_boot.dag lines 406-416 for the check.
 
-data spark_2196_generic_distro_reset_observation_count: Int = 3
+data spark_2196_generic_distro_reset_observation_count: Nat = 3
 
-data spark_2196_generic_distro_reset_seconds_to_reset: Int = 90
+data spark_2196_generic_distro_reset_duration: Second = second(count: 90)
 
-data spark_2196_generic_distro_reset_note: NonEmptyStr =
-  "Three trials, all GB10 reset at approximately 90s post-boot. Root cause not isolated." as NonEmptyStr
+// Annotation: Three trials, all GB10 reset at approximately 90s post-boot. Root cause not isolated.
 
 // --------------------------------------------------------------------------
 // RECEIPT 3: Secure Boot need not be disabled — BootloaderEnrolledForPxe suffices,
@@ -95,21 +104,20 @@ data spark_2196_generic_distro_reset_note: NonEmptyStr =
 // Reconciliation belongs in the dgx_pxe_boot model, not here. This observation
 // module only records what filename was observed working.
 
+// Observed bootloader filename. The documented value spark_pxe_bootloader_filename
+// is "grubnetaa64.efi.signed"; the observed working value on spark-2196 was "bootaa64.efi".
+// A DHCP server offering only the documented filename will fail to netboot this unit.
+
 data spark_2196_pxe_bootloader_filename_observed: NonEmptyStr =
   "bootaa64.efi" as NonEmptyStr
 
 data spark_2196_pxe_bootloader_filename_documented: NonEmptyStr =
   spark_pxe_bootloader_filename
 
-data spark_2196_bootloader_filename_mismatch_description: NonEmptyStr =
-  "documented=grubnetaa64.efi.signed, observed=bootaa64.efi" as NonEmptyStr
-
-// The existing BootloaderEnrolledForPxe variant carries a bootloader: NonEmptyStr field.
-// That variant is correct in shape. The gap is that the model's only concrete bootloader
-// value (spark_pxe_bootloader_filename) names "grubnetaa64.efi.signed" while the observed
-// working value is "bootaa64.efi". A consumer that uses spark_pxe_bootloader_filename as
-// the DHCP bootfile will fail to netboot spark-2196 unless the TFTP server also serves
-// "bootaa64.efi".
+// The existing BootloaderEnrolledForPxe variant has a bootloader: NonEmptyStr field.
+// The gap is that the model's only concrete bootloader value (spark_pxe_bootloader_filename)
+// names "grubnetaa64.efi.signed" while the observed working value is "bootaa64.efi".
+// The bootloader enrolled in Secure Boot must match the bootloader served via TFTP.
 
 // --------------------------------------------------------------------------
 // RECEIPT 4: Boot order is NOT a fleet invariant.
@@ -132,9 +140,9 @@ data spark_2196_bootloader_filename_mismatch_description: NonEmptyStr =
 
 data spark_2196_boot_order: NonEmptyStr = "UbuntuFirst" as NonEmptyStr
 
-data fleet_boot_order_pxe_first_count: Int = 4
+data fleet_boot_order_pxe_first_count: Nat = 4
 
-data fleet_boot_order_ubuntu_first_count: Int = 1
+data fleet_boot_order_ubuntu_first_count: Nat = 1
 
 // --------------------------------------------------------------------------
 // RECEIPT 5: Chainloading local GRUB is defeated by timeout=0.
@@ -187,8 +195,46 @@ data spark_2196_local_boot_rescue_construction: NonEmptyStr =
 data spark_2196_pxe_isolation: NonEmptyStr =
   "IsolatedProvisioningSegment" as NonEmptyStr
 
-data spark_2196_pxe_dhcp_direction: NonEmptyStr =
+data spark_2196_pxe_dhcp_direction_fact: NonEmptyStr =
   "NativeDhcp" as NonEmptyStr
+
+// --------------------------------------------------------------------------
+// RECEIPT 7: The actual fault mode that bricked spark-2196.
+//
+// spark-2196 was found bricked because an INTERRUPTED SETUP left two coupled
+// symptoms:
+//
+//   (a) Kernel 6.17.0-1032-nvidia was installed with NO initramfs built. The
+//       grub-install step succeeded (updating BootOrder — see symptom b) but
+//       the initramfs-tools hook did not run before the setup process was
+//       interrupted. The default boot entry therefore kernel-panics with
+//       'VFS: Unable to mount root fs on unknown-block(0,0)'.
+//
+//   (b) grub-install rewrites UEFI BootOrder, promoting ubuntu ahead of PXE.
+//       The five-unit efibootmgr survey (Receipt 4) shows spark-2196 is the
+//       only unit with UbuntuFirst boot order, confirming that grub-install
+//       writes BootOrder on install and later setup steps do not revert it.
+//
+// RECOVERY PATH: boot the OLDER kernel whose initramfs is intact. spark-2196
+// had 6.11.0-1014-nvidia still present with a complete initramfs. Selecting
+// it via the PXE GRUB rescue entry (see Receipt 5 construction) restored the
+// system without reinstalling.
+//
+// LOAD-BEARING: a unit whose ONLY kernel is missing its initramfs is not
+// recoverable this way and MUST go through the unattended install path. The
+// kernel image and initramfs version must be discovered at PXE-GRUB-config-
+// authoring time, making the rescue entry site-specific.
+
+data spark_2196_broken_kernel_label: NonEmptyStr =
+  "6.17.0-1032-nvidia" as NonEmptyStr
+
+data spark_2196_recovery_kernel_label: NonEmptyStr =
+  "6.11.0-1014-nvidia" as NonEmptyStr
+
+// Annotation: 6.17.0-1032-nvidia was installed without initramfs; grub-install
+// succeeded before the setup process was interrupted.
+// Annotation: 6.11.0-1014-nvidia has complete initramfs built during an earlier
+// setup phase.
 
 // --------------------------------------------------------------------------
 // SEPARATE, NOT PXE: OOBE radio constraint.
@@ -225,17 +271,24 @@ data spark_2196_pxe_dhcp_direction: NonEmptyStr =
 //     (a host associated with the unit's own AP), not re-established by independent
 //     measurement during this session.
 //
-// (d) The generic-distro reset mechanism (Receipt 2) trigger is unisolated. The
-//     observation is three trials producing the same symptom; the root cause (GPU
-//     watchdog, thermal, power-state handshake, or other) has not been identified.
+// (d) The reset mechanism (Receipt 2) trigger is unisolated. The observation is
+//     three trials producing the same symptom; the root cause (GPU watchdog, thermal,
+//     power-state handshake, kernel-NIC-mismatch timeout, or other) has not been
+//     identified. The generic-distro reset is not modelled as a refusable image-kind
+//     arm (SparkPxeBootImageKind is a closed sum over NVIDIA constructors); the
+//     existing NIC coverage check (UnattendedPxeBootKernelDoesNotClaimNic) is the
+//     modelled refusal path.
 
 // --------------------------------------------------------------------------
 // CONSUMERS: who references these receipts.
 //
-// - dgx_pxe_boot.dag should cite spark_2196_bootloader_filename_mismatch_description
-//   when reconciling spark_pxe_bootloader_filename against the observed working file.
-// - dgx_pxe_boot.dag should add a SparkPxeBootImageKind refusal arm for
-//   generic-distro images, citing spark_2196_nic_identity and the reset
-//   observation as the evidence.
+// - dgx_pxe_boot.dag cites spark_2196_pxe_bootloader_filename_observed (Receipt 3)
+//   in spark_pxe_firmware_enablement_intervention() instruction text and in the
+//   bootloader-name-equality-removal comment at spark_pxe_firmware_gaps.
+// - dgx_pxe_boot.dag cites spark_2196_pci_vendor and spark_2196_pci_device (Receipt 1)
+//   in the NIC coverage check at admit_spark_unattended_pxe_boot and in the
+//   UnattendedPxeBootKernelDoesNotClaimNic refusal reason comment.
+// - dgx_pxe_boot.dag cites Receipt 2 in the UnattendedPxeBootKernelDoesNotClaimNic
+//   refusal reason comment.
 // - oobe_execution_placement.dag already owns the radio-constraint composition;
 //   no citation needed here.

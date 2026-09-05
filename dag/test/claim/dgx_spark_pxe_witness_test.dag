@@ -47,6 +47,7 @@ import gunbc.spark.dgx_pxe_boot {
   SparkUnattendedPxeBootRefused,
   NetworkObservationAbsent,
   FirmwareConfigurationAbsent,
+  TargetNicIdentityAbsent,
   UnattendedPxeBootNetworkStandingIncomplete,
   UnattendedPxeBootFirmwareHumanInterventionRequired,
   SecureBootBlocksPxe,
@@ -110,6 +111,7 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     isolation: ProxyDhcpPxeOnly,
+    enrolled_bootloader: none,
   ).network_chain.boot_mode {
     UefiPxe { tftp_root: _ } => true
     _ => false
@@ -127,7 +129,9 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
       match b.network_chain.dhcp_direction {
@@ -146,7 +150,9 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
       http_endpoint: Present { value: witness_http_endpoint },
       isolation: Present { value: IsolatedProvisioningSegment },
       firmware_config: Present { value: synthetic_ready_firmware_config() },
-      target_nic: none,
+      target_nic: Present {
+        value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+      },
     ) {
       SparkUnattendedPxeBootAdmitted { boot: b } =>
         match b.network_chain.dhcp_direction {
@@ -189,6 +195,11 @@ fn synthetic_ready_firmware_config() -> SparkUefiPxeConfiguration {
     nic_pxe_boot_enabled: true,
   }
 }
+
+// A NIC identity that the FastOsRecoveryTarball kernel (Noble2404GaLinux68) DOES claim.
+// Used in tests that exercise admission paths unrelated to NIC coverage.
+data witness_claimed_pci_vendor: PciVendorId = "10ec" as PciVendorId
+data witness_claimed_pci_device: PciDeviceId = "8125" as PciDeviceId
 
 test fn w_network_standing_ready_when_all_observations_and_isolation_present() -> Bool {
   match evaluate_pxe_network_standing(
@@ -243,7 +254,7 @@ test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool 
         s: i.instruction,
         pattern: "pxe_rescue_observation.dag" as String,
       ) && i.frequency == DeviceOnce
-    SparkPxeFirmwareReady => false
+    SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
   }
 }
 
@@ -259,8 +270,10 @@ test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
       nic_pxe_boot_enabled: true,
     },
   ) {
-    SparkPxeFirmwareReady => true
+    SparkPxeFirmwareReady { enrolled_bootloader: Present { value: b } } =>
+      b == "bootaa64.efi"
     SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
+    SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
   }
     && match evaluate_spark_pxe_firmware_standing(
       config: SparkUefiPxeConfiguration {
@@ -270,8 +283,10 @@ test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
         nic_pxe_boot_enabled: true,
       },
     ) {
-      SparkPxeFirmwareReady => true
+      SparkPxeFirmwareReady { enrolled_bootloader: Present { value: b } } =>
+        b == spark_pxe_bootloader_filename
       SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
+      SparkPxeFirmwareReady { enrolled_bootloader: _ } => false
     }
 }
 
@@ -286,7 +301,9 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     http_endpoint: none,
     isolation: none,
     firmware_config: none,
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootRefused { reason: NetworkObservationAbsent } => true
     SparkUnattendedPxeBootRefused { reason: _ } => false
@@ -305,7 +322,9 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: none,
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootRefused { reason: FirmwareConfigurationAbsent } => true
     SparkUnattendedPxeBootRefused { reason: _ } => false
@@ -324,7 +343,9 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
       b.image_kind == FastOsRecoveryTarball
@@ -356,7 +377,9 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootRefused { reason: UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
       list_length(items: gs) == 1
@@ -383,7 +406,9 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
         nic_pxe_boot_enabled: true,
       }
     },
-    target_nic: none,
+    target_nic: Present {
+      value: (witness_claimed_pci_vendor, witness_claimed_pci_device)
+    },
   ) {
     SparkUnattendedPxeBootRefused {
       reason: UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
