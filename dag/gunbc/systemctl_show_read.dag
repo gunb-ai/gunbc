@@ -13,6 +13,7 @@ import gunbc.host_operation_exec {
   host_operation_exec,
   host_operation_materialize_argv,
   SystemctlShowProperty,
+  SystemctlShowUserProperty,
   SystemctlShowLoadState,
 }
 
@@ -49,6 +50,25 @@ fn systemctl_show_property_read(
   match host_operation_exec(
     transport: transport,
     operation: SystemctlShowProperty { unit: unit, property: property },
+  ) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      systemctl_show_property_value_from_stdout(success: ok, stdout: out)
+    HostOperationRefused { operation: _, reason: why } =>
+      SystemdPropertyCaptureRefused { reason: why }
+  }
+}
+
+// The user manager's read, routed through the same capture fold as the system one. Only the
+// operation differs: the two managers are different authorities over different unit sets, so a
+// caller names which one it is asking rather than passing a scope flag into one read.
+fn systemctl_show_user_property_read(
+  transport: HostEffectTransport,
+  unit: NonEmptyStr,
+  property: SystemdUnitProperty,
+) -> SystemdPropertyCapture {
+  match host_operation_exec(
+    transport: transport,
+    operation: SystemctlShowUserProperty { unit: unit, property: property },
   ) {
     HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
       systemctl_show_property_value_from_stdout(success: ok, stdout: out)

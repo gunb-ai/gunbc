@@ -1,6 +1,8 @@
 module test.claim.long.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import std.markup { Fragment, Element, FragmentText, attr }
@@ -572,6 +574,7 @@ fn parity_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
     segments: parity_specimen_segments(),
     remaining: 4,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "Worked for 6m 34s")
 }
 
@@ -589,6 +592,8 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
       admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "parity-specimen", cause: Operator, mode: ManualReady) }),
     supporting_facts: [],
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
   }
 }
 
@@ -650,6 +655,7 @@ test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
     ],
     remaining: 6,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "")
   match parity_row_html(activity: refused) {
     EmitRejected { reason: _ } => false
