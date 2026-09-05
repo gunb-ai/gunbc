@@ -152,6 +152,7 @@ import gunbc.recurring_failure_mode.one_disposition_defined_jointly_by_independe
 import gunbc.recurring_failure_mode.wait_keyed_on_a_resource_whose_arrivals_outpace_its_service { wait_keyed_on_a_resource_whose_arrivals_outpace_its_service }
 import gunbc.recurring_failure_mode.emitter_residual_renders_inert_text { emitter_residual_renders_inert_text }
 import gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional { kind_carried_but_its_fields_stay_optional }
+import gunbc.recurring_failure_mode.population_selector_that_cannot_admit_a_counterexample { population_selector_that_cannot_admit_a_counterexample }
 import gunbc.recurring_failure_mode.dissolution_trigger_cites_a_mechanism_that_is_later_deleted { dissolution_trigger_cites_a_mechanism_that_is_later_deleted }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
@@ -296,5 +297,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   wait_keyed_on_a_resource_whose_arrivals_outpace_its_service,
   emitter_residual_renders_inert_text,
   kind_carried_but_its_fields_stay_optional,
+  population_selector_that_cannot_admit_a_counterexample,
   dissolution_trigger_cites_a_mechanism_that_is_later_deleted,
 ]

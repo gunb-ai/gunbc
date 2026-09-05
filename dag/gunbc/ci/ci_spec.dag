@@ -2,6 +2,7 @@ module gunbc.ci_spec
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
   github_app_jwt_backdate_seconds,
@@ -1414,9 +1415,12 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
     Do {
       run: ci_retry_body_run(
         command: join([
-          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"OrgAdminAppKeyUnreadable: Secret Manager answered HTTP $SM_CODE for ",
-          secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-          " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists. Minting NO token.\" >&2; exit 1; fi"
+          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
+          org_admin_app_key_unreadable_message(
+            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+            http_status: "$SM_CODE"
+          ),
+          "\" >&2; exit 1; fi"
         ], "")
       )
     },
@@ -1454,7 +1458,14 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
     Do {
       run: ci_retry_body_run(
-        command: "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"OrgAdminInstallationTokenRefused: GitHub answered $(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r') for the gunbai-ci installation; a revoked key, a removed installation, or a missing Self-hosted-runners permission each look like this -- inspect the App's installation on the organization\" >&2; exit 1; fi"
+        command: join([
+          "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
+          org_admin_installation_token_refused_message(
+            installation: "gunbai-ci",
+            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+          ),
+          "\" >&2; exit 1; fi"
+        ], "")
       )
     },
     Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
