@@ -37,7 +37,6 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data cat_program: NonEmptyStr = "cat"
 data cp_program: NonEmptyStr = "cp"
-data rm_program: NonEmptyStr = "rm"
 data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
@@ -68,7 +67,21 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
 // directory refuses instead of destroying its contents. The recursive form is a different operation
 // and needs its own name and its own call site, not a flags parameter here.
 fn rm_force_command(path: String) -> ArgvCommand {
-  argv_command(program: rm_program, arguments: ["-f", path])
+  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_flag as String, path])
+}
+
+// THE SIBLING THE ANNOTATION ABOVE PROMISED, MINTED ONLY WHEN A CALLER ACTUALLY NEEDED IT AND
+// MEASURED RATHER THAN ASSUMED. gunbc.runner_guest_image's tree staging called rm_force_command on
+// a DIRECTORY it rebuilds each run; -f refused, exactly as the row above says it must, and the
+// build failed on the second run on any host (srv2, fleet-converge run 33993440148: "rm: cannot
+// remove '.../tree/ubuntu-24.04-aarch64-runner-2.336.0': Is a directory"). The first run on a
+// never-built host succeeded, so the defect was invisible until a host was used twice.
+//
+// The refusal was the substrate working. What was wrong was the CALLER, whose own annotation
+// claimed it issued `rm -rf` while it issued `rm -f` -- a §4c annotation asserting the very
+// property that failed, which no Accepted program could contradict.
+fn rm_recursive_force_command(path: String) -> ArgvCommand {
+  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, path])
 }
 
 // The format string is the first operand and the values follow it, exactly as printf(1) takes them.

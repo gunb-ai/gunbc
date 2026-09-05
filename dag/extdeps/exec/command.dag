@@ -87,6 +87,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "true_command"),

@@ -13,7 +13,7 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
 import extdeps.tools.e2fsprogs { Ext2FilesystemType, Ext4, mke2fs_populate_command }
 import extdeps.tools.sha256sum {
@@ -366,9 +366,20 @@ fn runner_guest_runner_tarball_path(root: String, artifact: ActionsRunnerBinaryA
 // standing wherever the new one does not overwrite them, and the resulting image would carry bytes
 // no row in this repository names. The removal is `rm -rf` on a path DERIVED from the image
 // identity, never a path a caller hands in.
+//
+// THIS PARAGRAPH DESCRIBED A `rm -rf` THE CODE DID NOT ISSUE, for as long as it existed. The call
+// was rm_force_command -- `rm -f`, whose own row in extdeps.tools.gnu_coreutils says in terms that
+// it never recurses and REFUSES a directory precisely so a mistaken call cannot destroy a tree. So
+// the substrate was correct and this caller was wrong, while the annotation asserted the property
+// that was missing. No Accepted program reads an annotation, so nothing could ever contradict it.
+//
+// It could not fail on a host that had never built before, because there was no directory to
+// remove; the first build on srv2 passed and the SECOND failed (fleet-converge run 33993440148).
+// An idempotence defect that is invisible on exactly one run per host is the shape to expect from
+// staging that is only ever exercised on fresh state.
 fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: ActionsRunnerBinaryArtifact) -> List<ArgvCommand> {
   [
-    rm_force_command(path: runner_guest_tree_dir(root: root, image: image)),
+    rm_recursive_force_command(path: runner_guest_tree_dir(root: root, image: image)),
     mkdir_parents_command(path: runner_guest_tree_dir(root: root, image: image)),
     unsquashfs_extract_command(
       archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
