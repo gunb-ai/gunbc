@@ -1,6 +1,7 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import std.measure { ByteSize }
 import std.layout { render }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
@@ -9,10 +10,37 @@ import gunbc.live_deploy.emit {
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   emit_tree_sync_unit_doc,
+  live_deploy_belt_service_unit_file,
+  live_deploy_serve_unit_file,
+  live_deploy_tree_sync_unit_file,
+  live_deploy_slice_unit_file,
+  live_deploy_belt_timer_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
+  user_manager_environment_directives,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentServiceConfig,
+  deployment_spec_srv1,
+  deployment_slice_unit_name,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import extdeps.systemd { MemoryMax, MemoryHigh }
+import extdeps.http.server { HttpServerListenConfig }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  SystemdInstallSection, NotInstallable, Installable,
+  SystemdUnitDirective, Description, After, Wants,
+  SystemdServiceDirective,
+  ServiceType, ExecStart, Restart, Environment, EnvironmentFile,
+  WorkingDirectory, ServiceUser, ServiceGroup, ServiceSlice,
+  SystemdTimerDirective, TimerUnit, OnBootSec, OnUnitInactiveSec, AccuracySec,
+  SystemdInstallDirective, WantedBy,
+  SystemdSliceDirective, DirectiveByteCount,
+}
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -171,4 +199,55 @@ test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widenin
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
   emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+}
+
+
+// ── EXECUTED RED: mutate the spec, emit, show the positive claim fail ─────────────────────────
+//
+// §4b: where the refusal is authorable in a fixture, declining to author it is specification-
+// without-execution. Each RED below builds a DeploymentSpec with ONE field changed, emits from
+// it, and asserts the POSITIVE claim FAILS — not that a fabricated value is absent.
+
+fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
+  any(xs: dirs, pred: fn(d: SystemdServiceDirective) -> Bool { d == target })
+}
+
+fn any(xs: List<a>, pred: fn(a) -> Bool) -> Bool {
+  match xs {
+    [] => false
+    [first, ..rest] => if pred(first) { true } else { any(xs: rest, pred: pred) }
+  }
+}
+
+fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
+  let base = live_spec()
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
+          instance_root: ir, repo_root: rr, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          DeploymentSpec {
+            target: t, steps: s, names: n,
+            service: DeploymentServiceConfig {
+              unit_name: u, serve_binary: b, serve_function: f,
+              instance_root: ir, repo_root: rr,
+              service_user: wrong_user,
+              service_uid: uid, listen: l,
+              serve_cpu_limit: cpu, serve_wall_limit: wall,
+            }
+          }
+      }
+  }
+}
+
+// RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
+test fn belt_service_user_goes_red_under_different_principal() -> Bool {
+  let wrong_user = join(["not-", live_spec().service.service_user as String], "") as NonEmptyStr
+  let wrong_spec = spec_with_principal(wrong_user: wrong_user)
+  !has_directive(
+    dirs: match live_deploy_belt_service_unit_file(spec: wrong_spec) {
+      ServiceUnitFile { service: s, .. } => s
+    },
+    target: ServiceUser { name: live_spec().service.service_user })
 }
