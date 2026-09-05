@@ -4,7 +4,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
 import gunbc.fleet_converge_workflow {
-  fleet_converge_spark_bootstrap_step_if,
+  fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
@@ -96,17 +96,8 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == 10
-                          && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "allocation_store_plan"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "org_actions_observe"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "spark_reboot"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "spark_grants"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "spark_durability"  _ => false })
-                          && any(opts, o => match o { YamlString { value } => value == "dashboard_deploy"  _ => false })
+                        length(opts) == length(fleet_converge_mode_options)
+                          && all(fleet_converge_mode_options, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false

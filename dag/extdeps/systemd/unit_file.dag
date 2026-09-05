@@ -187,7 +187,10 @@ type SystemdOutputStream
   | OutputConsole
   | OutputJournalAndConsole
   | OutputNull
+  | OutputAppendFile { path: NonEmptyStr }
 
+// `append:PATH` (systemd.exec(5), StandardOutput=): open PATH in append mode, so a restart continues
+// the same log rather than truncating it. The path is the one open field systemd defines here.
 fn systemd_output_stream_wire(stream: SystemdOutputStream) -> String {
   match stream {
     OutputInherit => "inherit"
@@ -195,6 +198,7 @@ fn systemd_output_stream_wire(stream: SystemdOutputStream) -> String {
     OutputConsole => "console"
     OutputJournalAndConsole => "journal+console"
     OutputNull => "null"
+    OutputAppendFile { path: p } => join(["append:", p as String], "")
   }
 }
 
