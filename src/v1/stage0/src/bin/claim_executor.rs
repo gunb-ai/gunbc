@@ -1157,11 +1157,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         // GITHUB_SHA the floor stamped, or the artifact would answer a question about its own
         // freshness.
         //
-        // This used to claim the two are "two instruments, so the comparison can fail". Within one
-        // CI run they are not: checkout puts the worktree at exactly GITHUB_SHA on both trigger
-        // classes, so they agree by construction. The comparison discriminates ACROSS runs -- a
-        // ledger left behind by an earlier one carries that run's revision -- which is the stale
-        // evidence class it exists for. See head_commit_of_worktree for the full statement.
+        // Two earlier notes here were wrong in opposite directions. This does not compare HEAD
+        // against GITHUB_SHA -- within one run checkout makes those equal, so rev-parse is not
+        // uniquely capable. Nor is the comparison thereby vacuous: it weighs a CURRENT revision
+        // against the one the LEDGER carries, and a header naming another revision is rejected by
+        // either source. See head_commit_of_worktree for the full statement, including the case
+        // neither source catches.
         let commit = match fabric_gate_standing_commit {
             Some(commit) => commit,
             None => match v1_compiler::cli_run::fabric_gate_standing::head_commit_of_worktree() {

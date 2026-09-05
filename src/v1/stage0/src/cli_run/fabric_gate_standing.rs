@@ -140,25 +140,32 @@ pub fn adjudicate_published_ledger(
 
 /// THE REVISION THE TREE IS STANDING AT, READ FROM GIT RATHER THAN FROM THE ENVIRONMENT.
 ///
-/// WHAT THIS GUARD ACTUALLY FALSIFIES, stated narrowly because a previous version of this note
-/// overclaimed it. It said `git rev-parse HEAD` is "a different instrument" from the `GITHUB_SHA`
-/// the floor stamps, and can therefore disagree. On a single CI run it CANNOT: `actions/checkout`
-/// checks out exactly `GITHUB_SHA` on a push, and the merge commit whose SHA is `GITHUB_SHA` on a
-/// pull_request, so the two agree BY CONSTRUCTION on both trigger classes. Read as a cross-check
-/// of one run, this comparison has no authorable red and would be a decoration.
+/// WHAT THIS COMPARISON IS, after two wrong descriptions of it. It does NOT compare
+/// `git rev-parse HEAD` against `GITHUB_SHA`. It compares a CURRENT revision, from whichever
+/// source supplies it, against the revision the LEDGER carries in its header. Those are different
+/// operands, and keeping that straight is what settles the question.
 ///
-/// Its red is authorable across RUNS, not within one. The header records the revision the floor
-/// was running at WHEN IT PUBLISHED; this reads the revision the tree is at WHEN IT ADJUDICATES.
-/// A ledger left in `target/` by an earlier run carries that earlier run's revision, so a stale
-/// artifact adjudicated against the current tree disagrees and refuses. That staleness — evidence
-/// surviving the run that produced it — is the class this guard exists for, and it is the only
-/// class it discriminates.
+/// The first description said rev-parse is "a different instrument" from `GITHUB_SHA` and can
+/// therefore disagree. Within one correctly checked-out run it cannot: `actions/checkout` puts the
+/// worktree at exactly `GITHUB_SHA` on a push and at the merge commit whose SHA is `GITHUB_SHA` on
+/// a pull_request. So rev-parse is NOT uniquely capable here, and independence between the two
+/// sources is not the reason to prefer it.
 ///
-/// So the honest reason not to read `GITHUB_SHA` here is not instrument diversity: it is that
-/// taking the revision from the same variable the producer stamped, or from the ledger itself,
-/// would make the artifact answer a question about its own freshness. The value must come from
-/// outside the artifact for the comparison to mean anything, and the worktree is the referent
-/// available at adjudication time.
+/// The second description then overcorrected, calling the comparison a decoration on that basis.
+/// It is not. Agreement between two sources of the CURRENT revision says nothing about whether
+/// either agrees with a SUPPLIED ARTIFACT: a ledger whose header names another revision — left by
+/// an earlier run, or substituted — is rejected by both equally. The red is authorable, and the
+/// only genuinely vacuous construction would be taking the expected value out of the ledger and
+/// comparing the ledger to itself.
+///
+/// WHAT NEITHER SOURCE CATCHES, which is why this is not R2's answer: an earlier invocation at B,
+/// a current invocation also at B, and a stale ledger still naming B. Revision equality holds and
+/// the artifact is still the wrong one. Distinguishing that needs an INVOCATION binding, not a
+/// revision comparison, and it stays open.
+///
+/// So the value is read from the tree because it must come from outside the artifact under
+/// adjudication, and the worktree is the referent available at that moment — not because it is a
+/// second opinion about the same run.
 ///
 /// Every failure is a refusal: a tree whose revision cannot be read cannot adjudicate a ledger
 /// bound to one.
