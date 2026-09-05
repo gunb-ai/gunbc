@@ -197,7 +197,7 @@ fn synthetic_ready_firmware_config() -> SparkUefiPxeConfiguration {
   }
 }
 
-data witness_claimed_pci_vendor: PciVendorId = "10ec" as PciVendorId // FastOsRecoveryTarball kernel (Noble2404GaLinux68) claims this NIC
+data witness_claimed_pci_vendor: PciVendorId = "10ec" as PciVendorId
 data witness_claimed_pci_device: PciDeviceId = "8125" as PciDeviceId
 
 test fn w_network_standing_ready_when_all_observations_and_isolation_present() -> Bool {
@@ -255,6 +255,7 @@ test fn w_firmware_intervention_instruction_cites_observation_receipt() -> Bool 
 }
 
 test fn w_firmware_standing_accepts_any_enrolled_bootloader() -> Bool {
+  match evaluate_spark_pxe_firmware_standing(
     config: SparkUefiPxeConfiguration {
       secure_boot: BootloaderEnrolledForPxe { bootloader: "bootaa64.efi" },
       network_stack_enabled: true,
