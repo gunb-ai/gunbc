@@ -655,6 +655,70 @@ fn run() -> Result<ExitCode, ExitCode> {
                             roster_findings.len()
                         ));
                     }
+
+                    // THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN RIDES THE SAME INGESTION, for
+                    // the same reason the two joins above do: the roster half is a membership
+                    // fact readable only from the parse this phase has already performed, and a
+                    // corpus-wide job per question is what DESIGN §6 refuses. The declared half
+                    // is read through the `data_decl_type_facts` producer — the same walk the
+                    // `v2.std.decl_index` builtin marshals, not a second derivation of it.
+                    //
+                    // IT LIVES IN THE `build` LANE BECAUSE THE PARSE DOES. No job is added; the
+                    // roster of required jobs is closed to growth, and this check belongs to a
+                    // phase that already exists.
+                    match v1_compiler::cli_run::rostered_row_join::run_rostered_row_join(
+                        &sweep.index,
+                    ) {
+                        Ok(report) => {
+                            // A GREEN NAMES ITS DENOMINATORS, per row type: declared, rostered
+                            // and CHECKED, so a subject that narrowed is legible from the log
+                            // rather than only from the verdict.
+                            eprintln!(
+                                "required-ci: rostered-row-join sources_accounted={} controls_fired={}",
+                                report.sources_accounted,
+                                report.control_findings.len()
+                            );
+                            for counts in &report.counts {
+                                eprintln!(
+                                    "required-ci: rostered-row-join {} population_of_type={} excluded_other_carrier={} declared={} rostered_names={} checked={} fixture_home={}",
+                                    counts.row_type,
+                                    counts.population_of_type,
+                                    counts.excluded_other_carrier,
+                                    counts.declared,
+                                    counts.rostered,
+                                    counts.checked,
+                                    counts.fixture_home,
+                                );
+                            }
+                            for finding in &report.control_findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join CONTROL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            for finding in &report.findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join FAIL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            if !report.findings.is_empty() {
+                                phase_failures.push(format!(
+                                    "rostered-row-join ({} finding(s))",
+                                    report.findings.len()
+                                ));
+                            }
+                        }
+                        // NO VERDICT IS NOT A GREEN. The declared population being unobtainable
+                        // stops the line under its own name rather than being reported as a
+                        // clean join over nothing.
+                        Err(e) => {
+                            eprintln!("required-ci: rostered-row-join NOT EVALUATED — {e}");
+                            phase_failures.push(
+                                "rostered-row-join (declared population unobtainable)".to_string(),
+                            );
+                        }
+                    }
                 }
                 Err(errors) => {
                     for e in &errors {
