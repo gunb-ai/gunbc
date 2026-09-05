@@ -48,6 +48,12 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   mint_repository_commit,
+  encode_repository_checked,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  decode_repository,
+  RepositoryDecoded,
+  RepositoryDecodeRefused,
 }
 import gunbc.scm.proposal { Proposal }
 import gunbc.scm.status {
@@ -479,7 +485,7 @@ fn scm_ck_mixed_snapshot() -> ScmCkSnapshot {
                 CorpusManifestStored { store: next, manifest: manifest } =>
                   ScmCkSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
                 CorpusManifestDuplicatePath { path: _ } =>
-                  ScmCkSnapshot { store: s3, identity: CorpusManifestTarget { locator: 0 as ObjectId } }
+                  ScmCkSnapshot { store: s3, identity: CorpusManifestTarget { locator: ok.locator } }
                 CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
                   ScmCkSnapshot { store: s3, identity: CorpusManifestTarget { locator: i } }
               }
@@ -555,7 +561,7 @@ fn scm_ck_partial_snapshot() -> ScmCkSnapshot {
         CorpusManifestStored { store: next, manifest: manifest } =>
           ScmCkSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
         CorpusManifestDuplicatePath { path: _ } =>
-          ScmCkSnapshot { store: with_held, identity: CorpusManifestTarget { locator: 0 as ObjectId } }
+          ScmCkSnapshot { store: with_held, identity: CorpusManifestTarget { locator: held.locator } }
         CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
           ScmCkSnapshot { store: with_held, identity: CorpusManifestTarget { locator: i } }
       }
@@ -571,35 +577,80 @@ fn scm_ck_partial_repository(store: ObjectStore, root: CorpusManifestTarget) -> 
   )
 }
 
+// THE SUBJECT IS THE DECODED IMAGE, NOT A SECOND FIXTURE, and an earlier cut of this claim got that
+// wrong. It built its own partial snapshot, refused, supplied a source and recovered -- all useful,
+// and all about a repository that had never been through the codec. The story only means something
+// joined up: the codec admitting a partial corpus is honest ONLY IF the deficit is still reported
+// where it is observed, on the representation that was actually written and read back.
+//
+// So this encodes, decodes, and checks out THE DECODED ENVELOPE. Its missing object is the same
+// authored source test.claim.scm_repository_envelope_witness omits from its document, so both halves
+// name one subject rather than two absences that merely rhyme.
+//
+// The snapshot designation is asserted UNCHANGED across the repair -- same commit, same manifest
+// locator -- which is what separates "the source arrived" from "a different snapshot was frozen".
+fn scm_ck_decoded(repo: RepositoryEnvelope) -> RepositoryEnvelope? {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: _ } => none
+    RepositoryEncoded { value: wire } =>
+      match decode_repository(v: wire) {
+        RepositoryDecodeRefused { cause: _ } => none
+        RepositoryDecoded { envelope: e } => Present { value: e }
+      }
+  }
+}
+
 test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives() -> Bool {
   let snapshot = scm_ck_partial_snapshot()
-  let before = checkout_repository_at(
-    repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity),
-    reference: scm_ck_ref(ordinal: 0),
-  )
-  let supplied = match store_authored_source(store: snapshot.store, text: "module never_stored") {
-    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => snapshot.store
-    SourceStored { store: s, source: _ } => s
-  }
-  let after = checkout_repository_at(
-    repo: scm_ck_partial_repository(store: supplied, root: snapshot.identity),
-    reference: scm_ck_ref(ordinal: 0),
-  )
-  match before {
-    CheckoutCorpusUnrecoverable { reference: _, cause: cause } =>
-      match cause {
-        CorpusEntrySourceMissing { path: p, source: missing } =>
-          (p as String) == "gone.dag"
-            && object_id_eq(left: missing, right: scm_ck_absent_source_locator())
-        CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
-        CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+  match scm_ck_decoded(repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity)) {
+    Absent => false
+    Present { value: decoded } =>
+      let supplied = match store_authored_source(store: decoded.store, text: "module never_stored") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => decoded.store
+        SourceStored { store: s, source: _ } => s
       }
-    _ => false
+      let repaired = RepositoryEnvelope {
+        store: supplied,
+        commits: decoded.commits,
+        commit_allocator: decoded.commit_allocator,
+        checked_out: decoded.checked_out,
+      }
+      match checkout_repository_at(repo: decoded, reference: scm_ck_ref(ordinal: 0)) {
+        CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>
+          r == scm_ck_ref(ordinal: 0)
+            && match cause {
+                 CorpusEntrySourceMissing { path: p, source: missing } =>
+                   (p as String) == "gone.dag"
+                     && object_id_eq(left: missing, right: scm_ck_absent_source_locator())
+                 CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+                 CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+               }
+        _ => false
+      }
+        && match checkout_repository_at(repo: repaired, reference: scm_ck_ref(ordinal: 0)) {
+             RepositoryCheckedOut { repository: _, corpus: corpus } =>
+               map(corpus, f => f.path as String) == ["gone.dag", "held.dag"]
+                 && map(corpus, f => scm_ck_recovered_text(f: f)) == ["module never_stored", "module held"]
+                 && scm_ck_same_root(a: repaired, b: decoded)
+             _ => false
+           }
   }
-    && match after {
-         RepositoryCheckedOut { repository: _, corpus: corpus } =>
-           map(corpus, f => f.path as String) == ["gone.dag", "held.dag"]
-             && map(corpus, f => scm_ck_recovered_text(f: f)) == ["module never_stored", "module held"]
-         _ => false
-       }
+}
+
+// The snapshot designation, read as an OPTIONAL rather than defaulted: a repository with no commits
+// has no root, and inventing a locator to stand for that would be the fabricated value this file
+// spends its length refusing.
+fn scm_ck_root_locator_of(repo: RepositoryEnvelope) -> ObjectId? {
+  fold(repo.commits, init: none, f: fn(acc, c) { Present { value: c.root.locator } })
+}
+
+fn scm_ck_same_root(a: RepositoryEnvelope, b: RepositoryEnvelope) -> Bool {
+  match scm_ck_root_locator_of(repo: a) {
+    Absent => false
+    Present { value: left } =>
+      match scm_ck_root_locator_of(repo: b) {
+        Absent => false
+        Present { value: right } => object_id_eq(left: left, right: right)
+      }
+  }
 }

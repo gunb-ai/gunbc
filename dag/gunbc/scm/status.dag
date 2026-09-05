@@ -24,7 +24,7 @@ module gunbc.scm.status
 import std.types { Bool, Int, List, String }
 import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
-import gunbc.scm.object_store { SemanticNodeObjectRef }
+import gunbc.scm.object_store { CorpusManifestObjectRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.proposal {
   Requirement,
@@ -44,9 +44,20 @@ import gunbc.scm.proposal {
 // refuses on RepositoryCheckoutNotInCommits, so "the selection names a commit this repository does
 // not have" is DECIDABLE here; reporting the selection as an ordinary checkout without deciding it
 // would state a commit exists when it may not.
+// THE ROOT FIELD CARRIES THE SNAPSHOT THE SELECTED COMMIT FREEZES, and it is a
+// CorpusManifestObjectRef because RepositoryCommit.root is. It was left declared as
+// SemanticNodeObjectRef when the commit root changed subject, and its producer went on constructing
+// from `c.root` -- so the declaration and the value it advertised named different kinds.
+//
+// NOTHING REFUSED. Both are `sole_constructor` single-field records over ObjectId, and no diagnostic
+// was produced on the route that resolves this module; the mismatch was found by review reading the
+// source, not by the build. That is a rung-honesty fact about the brand rather than about this field:
+// `sole_constructor` demonstrably walls off CONSTRUCTION from other modules -- it broke three fixture
+// call sites in gunbc#9891 -- while two such brands remained mutually assignable here. Recorded where the
+// defect was, not claimed as a full account of the checker's rule, which I have not established.
 type StatusCheckout
   = NothingCheckedOut
-  | CheckedOutCommit { root: SemanticNodeObjectRef, message: String }
+  | CheckedOutCommit { root: CorpusManifestObjectRef, message: String }
   | CheckedOutCommitMissing { reference: RepositoryCommitRef }
 
 // THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that

@@ -9,7 +9,7 @@ import gunbc.scm.object_store {
   SemanticNodeTarget,
   CorpusManifestTarget, CorpusManifestEntry,
   CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
-  store_corpus_manifest,
+  store_corpus_manifest, corpus_manifest_target_locator, object_id_eq,
   SourceStored, SourceLocatorCollision, store_authored_source,
   authored_source_target_of, authored_source_target_locator,
 }
@@ -190,7 +190,9 @@ test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
   status_checkout_is_resolvable(status: s)
     && s.commit_count == 1
     && match s.checkout {
-      CheckedOutCommit { root: _, message: message } => message == "first"
+      CheckedOutCommit { root: root, message: message } =>
+      message == "first"
+        && object_id_eq(left: root.locator, right: corpus_manifest_target_locator(target: status_witness_snapshot(path: "r1.dag" as NonEmptyStr, text: "module r1").identity))
       CheckedOutCommitMissing { reference: _ } => false
       NothingCheckedOut => false
     }

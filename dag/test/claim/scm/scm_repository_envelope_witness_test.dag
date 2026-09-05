@@ -2148,8 +2148,7 @@ test fn scm_env_a_child_at_a_manifest_emitted_after_it_still_refuses() -> Bool {
 // could not see, and "right path, wrong missing object" would be a misleading diagnostic that a
 // path-only claim admits.
 fn scm_env_partial_snapshot_repository() -> RepositoryEnvelope {
-  let absent_program = scm_env_put(store: empty_store(), n: scm_env_program_two())
-  let missing = node_target_locator(target: absent_program.identity)
+  let missing = scm_env_absent_source_locator()
   match store_authored_source(store: empty_store(), text: "module held") {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } => scm_env_repository_with_store(store: empty_store())
     SourceStored { store: with_held, source: held } =>
@@ -2170,8 +2169,17 @@ fn scm_env_partial_snapshot_repository() -> RepositoryEnvelope {
   }
 }
 
+// THE MISSING OBJECT IS AN AUTHORED SOURCE, NOT A SEMANTIC NODE, and that is the point rather than a
+// detail. This specimen is the encoder half of one story whose other half lives in
+// test.claim.scm_checkout_verb_witness: the same snapshot, decoded from THIS document, refusing for
+// THIS source, and recovering when THIS text is supplied. An absent semantic node would have been a
+// legitimate absent requirement and the wrong subject -- the two halves would have described
+// different missing objects and the chain would not have joined.
 fn scm_env_absent_source_locator() -> ObjectId {
-  node_target_locator(target: scm_env_put(store: empty_store(), n: scm_env_program_two()).identity)
+  match store_authored_source(store: empty_store(), text: "module never_stored") {
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } => i
+    SourceStored { store: _, source: source } => source.locator
+  }
 }
 
 fn scm_env_decoded_manifest_entries(envelope: RepositoryEnvelope) -> List<CorpusManifestEntry> {
@@ -2183,10 +2191,18 @@ fn scm_env_decoded_manifest_entries(envelope: RepositoryEnvelope) -> List<Corpus
   })
 }
 
+// THE PAYLOAD THE CHECKED ENCODER RETURNED IS THE SUBJECT, and an earlier cut of this claim missed
+// that. It compared the checked encoder's TAG and then decoded a SEPARATE, unchecked encoding, so
+// changing only the checked encoder's successful payload -- to an empty or different repository,
+// leaving its RepositoryEncoded tag alone -- would still have seen "encoded" and then examined the
+// good image. Sharing lower-level implementation between the two encoders does not make a test
+// observe the payload it discarded. It now decodes `wire`, the value this call actually produced.
 test fn scm_env_a_partial_snapshot_survives_encoding_with_its_missing_locator_intact() -> Bool {
   let repo = scm_env_partial_snapshot_repository()
-  (scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: repo)) == "encoded")
-    && match decode_repository(v: encode_repository(repo: repo)) {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: _ } => false
+    RepositoryEncoded { value: wire } =>
+    match decode_repository(v: wire) {
          RepositoryDecodeRefused { cause: _ } => false
          RepositoryDecoded { envelope: e } =>
            count(e.commits) == 1
@@ -2203,4 +2219,5 @@ test fn scm_env_a_partial_snapshot_survives_encoding_with_its_missing_locator_in
                          })
                 }
        }
+  }
 }
