@@ -27,7 +27,7 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -61,9 +61,9 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_instance_id, launch_fixture_desired_hex,
   launch_fixture_standing, launch_fixture_standing_clear,
   launch_fixture_standing_observe_only, launch_fixture_standing_transition_inhibited,
-  launch_fixture_revision_converged, launch_fixture_revision_drifted,
+  launch_fixture_revision_observed, launch_fixture_revision_unobserved,
   launch_fixture_session,
-  launch_fixture_standing_halt_transition, launch_fixture_standing_halt_drift, launch_fixture_standing_sessions_unobserved,
+  launch_fixture_standing_halt_transition, launch_fixture_standing_halt_unobserved, launch_fixture_standing_sessions_unobserved,
   launch_fixture_standing_pending,
   launch_fixture_identity,
 }
@@ -273,13 +273,14 @@ fn action_of(a: LaunchAdmission) -> WorkAction? {
   dispatch_action(lifecycle: OpenLifecycle, admission: a).first()
 }
 
-// (d) Drift refuses the UI availability and the backend actuation with ONE label and ONE reason.
-test fn witness_drift_refuses_ui_and_backend_with_one_reason() -> Bool {
-  let drifted = launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_drifted(), live: [], max_concurrent: 3)
+// (d) An unreadable revision refuses the UI availability and the backend actuation with ONE label
+// and ONE reason. (Drift no longer refuses at all -- operator ruling 2026-09-05, launch_revision_outcome.)
+test fn witness_unobserved_revision_refuses_ui_and_backend_with_one_reason() -> Bool {
+  let drifted = launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3)
   let ui = decide(cause: Operator, standing: drifted, g: graph(), node_id: parent_id())
   let backend = belt_tick_admit_and_spawn(
     candidates: [ DesiredMember { node_id: parent_id(), node: canary_parent(signoff: Unsigned) } ],
-    standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_drifted(), live: [], max_concurrent: 3),
+    standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3),
     graph: graph(),
     merged: [],
     workdir: "/nonexistent/launch-admission-witness",
@@ -288,7 +289,7 @@ test fn witness_drift_refuses_ui_and_backend_with_one_reason() -> Bool {
     Absent => false
     Present { value: action } =>
       (match action.availability { ActionUnavailable => true ActionAvailable => false })
-        && action.label == "deployed_revision_drifted"
+        && action.label == "deployed_revision_unobserved"
         && (match backend.first() {
           Absent => false
           Present { value: o } =>
@@ -297,7 +298,7 @@ test fn witness_drift_refuses_ui_and_backend_with_one_reason() -> Bool {
                 SpawnNotAdmitted { node_id: _, refusal } =>
                   launch_refusal_reason(r: refusal) == action.detail
                     && (match refusal {
-                      LaunchRevisionDrift { desired, local } => desired != local
+                      LaunchRevisionUnobserved { cause } => cause != ""
                       _ => false
                     })
                 _ => false
@@ -327,7 +328,7 @@ test fn witness_second_operator_admission_is_already_live() -> Bool {
   let running = launch_fixture_session(node_id: parent_id(), process: WorkerProcessRunning { command: "codex" as NonEmptyStr })
   let second = decide(
     cause: Operator,
-    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [running], max_concurrent: 3),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [running], max_concurrent: 3),
     g: graph(),
     node_id: parent_id(),
   )
@@ -351,7 +352,7 @@ test fn witness_retained_dead_pane_refuses_stale_not_live() -> Bool {
   refused_as(
     a: decide(
       cause: Operator,
-      standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [dead], max_concurrent: 3),
+      standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [dead], max_concurrent: 3),
       g: graph(),
       node_id: parent_id(),
     ),
@@ -362,8 +363,8 @@ test fn witness_retained_dead_pane_refuses_stale_not_live() -> Bool {
 test fn witness_two_sessions_for_one_node_refuse_multiplicity() -> Bool {
   let a = launch_fixture_session(node_id: parent_id(), process: WorkerProcessRunning { command: "codex" as NonEmptyStr })
   let b = launch_fixture_session(node_id: parent_id(), process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
-  let forward = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [a, b], max_concurrent: 3), g: graph(), node_id: parent_id())
-  let reverse = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [b, a], max_concurrent: 3), g: graph(), node_id: parent_id())
+  let forward = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [a, b], max_concurrent: 3), g: graph(), node_id: parent_id())
+  let reverse = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [b, a], max_concurrent: 3), g: graph(), node_id: parent_id())
   refused_as(a: forward, label: "session_multiplicity_conflict")
     && refused_as(a: reverse, label: "session_multiplicity_conflict")
 }
@@ -377,8 +378,8 @@ test fn witness_capacity_refuses_operator_too() -> Bool {
     launch_fixture_session(node_id: "other-1", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
     launch_fixture_session(node_id: "other-2", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
   ]
-  let full = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: occupied, max_concurrent: 2), g: graph(), node_id: parent_id())
-  let room = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: occupied, max_concurrent: 3), g: graph(), node_id: parent_id())
+  let full = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: occupied, max_concurrent: 2), g: graph(), node_id: parent_id())
+  let room = decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: occupied, max_concurrent: 3), g: graph(), node_id: parent_id())
   (match full {
     LaunchRefused { refusal } => match refusal { LaunchNoCapacity { occupied: n, max_concurrent: m } => n == 2 && m == 2 _ => false }
     LaunchAdmitted { identity: _ } => false
@@ -419,8 +420,8 @@ test fn witness_transition_gate_precedes_dependencies() -> Bool {
 
 test fn witness_revision_gate_precedes_node_gates() -> Bool {
   refused_as(
-    a: decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_drifted(), live: [], max_concurrent: 3), g: graph(), node_id: "no-such-node"),
-    label: "deployed_revision_drifted",
+    a: decide(cause: Operator, standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3), g: graph(), node_id: "no-such-node"),
+    label: "deployed_revision_unobserved",
   )
 }
 
@@ -470,7 +471,7 @@ fn labels_distinct(labels: List<String>) -> Bool {
 
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 21 && labels_distinct(labels: labels)
+  count(labels) == 20 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
@@ -540,7 +541,7 @@ fn nth(ds: List<BeltLaunchDecision>, n: Int) -> BeltLaunchDecision? {
 test fn witness_three_candidates_one_slot_all_reach_admission() -> Bool {
   let ds = belt_tick_admit(
     candidates: rlm_three_candidates(),
-    standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_converged(), live: [], max_concurrent: 1),
+    standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_observed(), live: [], max_concurrent: 1),
     graph: rlm_three_graph(),
     merged: [],
   )
@@ -562,7 +563,7 @@ test fn witness_three_candidates_one_slot_all_reach_admission() -> Bool {
 test fn witness_three_candidates_manual_ready_all_reach_cause_gate() -> Bool {
   let ds = belt_tick_admit(
     candidates: rlm_three_candidates(),
-    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [], max_concurrent: 1),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [], max_concurrent: 1),
     graph: rlm_three_graph(),
     merged: [],
   )
@@ -615,12 +616,12 @@ test fn witness_timer_pass_transition_halt_refuses_every_desired_node() -> Bool 
     && page_label_and_reason_match(standing: standing, label: "deployment_transition_inhibited", pass: pass)
 }
 
-// (2) Revision drift staged by the observer's own producer, before any session observation.
-test fn witness_timer_pass_revision_drift_refuses_before_sessions() -> Bool {
-  let standing = launch_fixture_standing_halt_drift()
+// (2) An unreadable revision staged by the observer's own producer, before any session observation.
+test fn witness_timer_pass_revision_unobserved_refuses_before_sessions() -> Bool {
+  let standing = launch_fixture_standing_halt_unobserved()
   let pass = timer_pass_over_canary(standing: standing)
-  pass_withholds_every_desired_as(pass: pass, label: "deployed_revision_drifted")
-    && page_label_and_reason_match(standing: standing, label: "deployed_revision_drifted", pass: pass)
+  pass_withholds_every_desired_as(pass: pass, label: "deployed_revision_unobserved")
+    && page_label_and_reason_match(standing: standing, label: "deployed_revision_unobserved", pass: pass)
     && (match standing { LaunchHostHalted { instance_id: _, gate: HostRevisionGate, refusal: _ } => true _ => false })
 }
 
@@ -662,7 +663,7 @@ test fn witness_unobserved_process_occupies_a_slot() -> Bool {
   let unknown = launch_fixture_session(node_id: "some-other-node", process: WorkerProcessUnobserved { reason: "pane unreadable" as NonEmptyStr })
   match decide(
     cause: Operator,
-    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [unknown], max_concurrent: 1),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: [unknown], max_concurrent: 1),
     g: graph(),
     node_id: parent_id(),
   ) {
@@ -681,7 +682,7 @@ test fn witness_exited_or_absent_process_frees_its_slot() -> Bool {
 fn one_slot_admits_parent_beside(live: List<DispatchLiveSession>) -> Bool {
   match decide(
     cause: Operator,
-    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: live, max_concurrent: 1),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_observed(), live: live, max_concurrent: 1),
     g: graph(),
     node_id: parent_id(),
   ) {
@@ -761,6 +762,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     launches: [id],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
   }
@@ -874,7 +876,7 @@ test fn witness_identity_duplicated_member_names_the_duplication() -> Bool {
 test fn witness_withheld_identity_carries_the_withholding_gates_refusal() -> Bool {
   let drifted = launch_decision_facts(
     cause: Operator,
-    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_drifted(), live: [], max_concurrent: 3),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3),
     graph: graph(), merged: [], node_id: parent_id(), reserved: 0,
   )
   let unknown = launch_decision_facts(
@@ -887,8 +889,8 @@ test fn witness_withheld_identity_carries_the_withholding_gates_refusal() -> Boo
   )
   (match drifted.identity {
     LaunchIdentityWithheld { refusal } =>
-      launch_refusal_label(r: refusal) == "deployed_revision_drifted"
-        && (match drifted.ledger.revision { GateRefused { refusal: r } => launch_refusal_label(r: r) == "deployed_revision_drifted" _ => false })
+      launch_refusal_label(r: refusal) == "deployed_revision_unobserved"
+        && (match drifted.ledger.revision { GateRefused { refusal: r } => launch_refusal_label(r: r) == "deployed_revision_unobserved" _ => false })
     LaunchIdentityBound { identity: _ } => false
   })
     && (match unknown.identity {

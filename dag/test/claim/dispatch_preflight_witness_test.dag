@@ -8,10 +8,9 @@ import gunbc.roadmap_execution_contract {
 }
 import gunbc.roadmap_dispatch_environment { CapabilityEnsureReceipt }
 import gunbc.fleet_desired_observe {
-  FleetRevisionStanding,
-  RevisionConverged,
-  RevisionDrifted,
-  RevisionUnobserved,
+  LocalTreeRevision,
+  LocalTreeRevisionObserved,
+  LocalTreeRevisionUnobserved,
 }
 import gunbc.dispatch_preflight {
   PreflightAxisVerdict,
@@ -80,7 +79,7 @@ fn ungrounded_receipt() -> CapabilityEnsureReceipt {
 // its receipts even deliberately.
 fn report_of(
   receipts: List<CapabilityEnsureReceipt>,
-  revision: FleetRevisionStanding,
+  revision: LocalTreeRevision,
 ) -> DispatchPreflightReport {
   DispatchPreflightReport {
     instance_id: "srv1-live",
@@ -90,22 +89,15 @@ fn report_of(
   }
 }
 
-fn converged_revision() -> FleetRevisionStanding {
+fn observed_revision() -> LocalTreeRevision {
   match git_object_id_from_untagged_hex(hex: desired_hex) {
-    Present { value: oid } => RevisionConverged { revision: oid }
-    Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
+    Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
+    Absent => LocalTreeRevisionUnobserved { cause: "witness fixture hex did not decode" }
   }
 }
 
-fn drifted_revision() -> FleetRevisionStanding {
-  match git_object_id_from_untagged_hex(hex: desired_hex) {
-    Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
-    Present { value: desired } =>
-      match git_object_id_from_untagged_hex(hex: local_hex) {
-        Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
-        Present { value: local } => RevisionDrifted { desired: desired, local: local }
-      }
-  }
+fn unobserved_revision() -> LocalTreeRevision {
+  LocalTreeRevisionUnobserved { cause: "HEAD does not decode" }
 }
 
 test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool {
@@ -127,49 +119,31 @@ test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool {
        }
 }
 
-test fn preflight_revision_axis_names_both_sides_of_the_drift() -> Bool {
-  return match git_object_id_from_untagged_hex(hex: desired_hex) {
-    Absent => false
-    Present { value: desired } =>
-      match git_object_id_from_untagged_hex(hex: local_hex) {
-        Absent => false
-        Present { value: local } => {
-          let drifted = revision_axis_verdict(
-            standing: RevisionDrifted { desired: desired, local: local },
-          )
-          let converged = revision_axis_verdict(
-            standing: RevisionConverged { revision: desired },
-          )
-          let unobserved = revision_axis_verdict(
-            standing: RevisionUnobserved { cause: "HEAD does not decode" },
-          )
-          axis_verdict_is_refused(verdict: drifted)
-            && !axis_verdict_is_refused(verdict: converged)
-            && axis_verdict_is_refused(verdict: unobserved)
-            && match drifted {
-                 AxisGrounded { axis_label: _, evidence: _ } => false
-                 AxisRefused { axis_label: _, reason } =>
-                   string_contains(s: reason, pattern: desired_hex)
-                     && string_contains(s: reason, pattern: local_hex)
-               }
-            && match unobserved {
-                 AxisGrounded { axis_label: _, evidence: _ } => false
-                 AxisRefused { axis_label: _, reason } =>
-                   string_contains(s: reason, pattern: "HEAD does not decode")
-               }
-        }
-      }
-  }
+// The revision axis names the code the host would dispatch from and refuses only when it cannot be
+// read; a drifted-but-readable tree is NOT an axis refusal (operator ruling 2026-09-05).
+test fn preflight_revision_axis_names_the_deployed_revision_and_refuses_only_unreadable() -> Bool {
+  let observed = revision_axis_verdict(standing: observed_revision())
+  let unobserved = revision_axis_verdict(standing: unobserved_revision())
+  return !axis_verdict_is_refused(verdict: observed)
+    && axis_verdict_is_refused(verdict: unobserved)
+    && match observed {
+         AxisGrounded { axis_label: _, evidence } => string_contains(s: evidence, pattern: desired_hex)
+         AxisRefused { axis_label: _, reason: _ } => false
+       }
+    && match unobserved {
+         AxisGrounded { axis_label: _, evidence: _ } => false
+         AxisRefused { axis_label: _, reason } => string_contains(s: reason, pattern: "HEAD does not decode")
+       }
 }
 
 test fn preflight_counts_every_refusal_not_the_first() -> Bool {
   let two_bad = preflight_verdict_for_report(report: report_of(
     receipts: [ungrounded_receipt(), grounded_receipt()],
-    revision: drifted_revision(),
+    revision: unobserved_revision(),
   ))
   let all_good = preflight_verdict_for_report(report: report_of(
     receipts: [grounded_receipt()],
-    revision: converged_revision(),
+    revision: observed_revision(),
   ))
   return match two_bad {
     PreflightAdmitted { report: _ } => false
@@ -185,13 +159,13 @@ test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
   let refused = serialize_json(v: dispatch_preflight_json_value(
     preflight: preflight_verdict_for_report(report: report_of(
       receipts: [],
-      revision: drifted_revision(),
+      revision: unobserved_revision(),
     )),
   ))
   let admitted = serialize_json(v: dispatch_preflight_json_value(
     preflight: preflight_verdict_for_report(report: report_of(
       receipts: [],
-      revision: converged_revision(),
+      revision: observed_revision(),
     )),
   ))
   return string_contains(s: refused, pattern: "\"status\": \"refused\"")
@@ -220,11 +194,11 @@ test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool {
 test fn preflight_axes_are_derived_from_the_observations() -> Bool {
   let mixed = preflight_axes(report: report_of(
     receipts: [grounded_receipt(), ungrounded_receipt()],
-    revision: converged_revision(),
+    revision: observed_revision(),
   ))
   let bare = preflight_axes(report: report_of(
     receipts: [],
-    revision: drifted_revision(),
+    revision: unobserved_revision(),
   ))
   return count(mixed) == 3
     && count(filter(mixed, a => axis_verdict_is_refused(verdict: a))) == 1

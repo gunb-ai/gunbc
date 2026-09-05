@@ -30,3 +30,12 @@ test fn segments_carry_the_fill_schedule_as_custom_properties_not_inline_longhan
         && !string_contains(s: html, pattern: "ms; animation-duration: ")
   }
 }
+
+// DISCRIMINATING: the active specimen carries a live standing from the event log and its row renders
+// the standing chip with the state as its class suffix; a specimen without one renders no chip.
+test fn the_standing_chip_renders_the_event_log_standing() -> Bool {
+  match try_serialize_html_source(node: sandbox_page()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html } => string_contains(s: html, pattern: "standing-in_progress") && string_contains(s: html, pattern: "wiring the fold")
+  }
+}

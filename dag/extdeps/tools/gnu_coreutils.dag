@@ -1,6 +1,7 @@
 module extdeps.tools.gnu_coreutils
 
-import std.types { NonEmptyStr, FilePath, String, List }
+import std.types { NonEmptyStr, FilePath, String, List, Int }
+import std.measure { Second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -36,7 +37,6 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data cat_program: NonEmptyStr = "cat"
 data cp_program: NonEmptyStr = "cp"
-data rm_program: NonEmptyStr = "rm"
 data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
 data whoami_program: NonEmptyStr = "whoami"
@@ -67,7 +67,21 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
 // directory refuses instead of destroying its contents. The recursive form is a different operation
 // and needs its own name and its own call site, not a flags parameter here.
 fn rm_force_command(path: String) -> ArgvCommand {
-  argv_command(program: rm_program, arguments: ["-f", path])
+  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_flag as String, path])
+}
+
+// THE SIBLING THE ANNOTATION ABOVE PROMISED, MINTED ONLY WHEN A CALLER ACTUALLY NEEDED IT AND
+// MEASURED RATHER THAN ASSUMED. gunbc.runner_guest_image's tree staging called rm_force_command on
+// a DIRECTORY it rebuilds each run; -f refused, exactly as the row above says it must, and the
+// build failed on the second run on any host (srv2, fleet-converge run 33993440148: "rm: cannot
+// remove '.../tree/ubuntu-24.04-aarch64-runner-2.336.0': Is a directory"). The first run on a
+// never-built host succeeded, so the defect was invisible until a host was used twice.
+//
+// The refusal was the substrate working. What was wrong was the CALLER, whose own annotation
+// claimed it issued `rm -rf` while it issued `rm -f` -- a §4c annotation asserting the very
+// property that failed, which no Accepted program could contradict.
+fn rm_recursive_force_command(path: String) -> ArgvCommand {
+  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, path])
 }
 
 // The format string is the first operand and the values follow it, exactly as printf(1) takes them.
@@ -186,3 +200,48 @@ fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
     path,
   ]
 }
+
+// `timeout` RUNS A COMMAND UNDER A DEADLINE THE COMMAND ITSELF CANNOT EXTEND, which is the only
+// reason it is here. Coreutils documents it as running COMMAND with a time limit, sending a signal
+// when the limit is reached and exiting 124 if it fired.
+data coreutils_timeout_binary_name: NonEmptyStr = "timeout"
+
+// `--kill-after` IS PART OF THE OPERATION, NOT A REFINEMENT OF IT. Plain `timeout` sends TERM and
+// then WAITS: a process that ignores TERM, or one wedged in the kernel, outlives the deadline it was
+// supposed to be bounded by -- so a deadline without a follow-up KILL is not a deadline, it is a
+// request. The grace period is a parameter because how long a subject deserves to shut down cleanly
+// is the caller's fact, and the escalation is unconditional because a bounded lifetime that the
+// subject can decline is exactly the escape hatch DESIGN section 5 refuses.
+//
+// THE WRAPPED COMMAND IS AN ArgvCommand AND ITS PROGRAM IS NOT RE-SPELLED. This takes the built
+// command rather than a program and a word list, so the deadline composes over any command that
+// already came through an admitted builder and cannot be used to smuggle an unbuilt argv into a
+// process -- the seal extdeps.exec.command holds is not weakened by wrapping.
+// THE OPERANDS ARE MAGNITUDES AND THE SUFFIX IS RENDERED HERE, which is the same boundary move
+// mke2fs_populate_command makes for its fs-size. coreutils reads an unsuffixed DURATION as seconds,
+// so a bare number happens to mean the right thing today and stops meaning it the moment a caller
+// intends minutes -- the unit would live in a call site's head rather than in the value. Carrying
+// std.measure's Second and emitting `s` here is what makes the operand mean one thing everywhere,
+// and it consumes the existing time authority rather than re-minting a duration vocabulary.
+fn coreutils_duration_operand(d: Second) -> String {
+  concat(to_string(second_count(s: d)), "s")
+}
+
+fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: coreutils_timeout_binary_name,
+    arguments: concat(
+      [
+        "--kill-after", coreutils_duration_operand(d: kill_after),
+        coreutils_duration_operand(d: duration),
+        command.program as String,
+      ],
+      command.arguments,
+    ),
+  )
+}
+
+// EXIT 124 IS `timeout`'s OWN ANSWER, and reading it as an ordinary failure would conflate two very
+// different events: a subject that ran and failed, and a subject that was still running when its
+// deadline arrived. Only the second says the bound did work.
+data coreutils_timeout_expired_exit_code: Int = 124

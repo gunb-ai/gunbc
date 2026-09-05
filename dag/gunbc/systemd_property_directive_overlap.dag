@@ -121,6 +121,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ExecStartProperty => SettableDirective
     User => SettableDirective
     WorkingDirectoryProperty => SettableDirective
+    RuntimeDirectoryProperty => SettableDirective
     Unit => SettableDirective
     NextElapseUSecMonotonic => ObservationOnly
     AccuracyUSec => ObservationOnly
@@ -159,7 +160,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
-  User, WorkingDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
+  User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
 ]
 
 fn settable_property_wires() -> List<String> {

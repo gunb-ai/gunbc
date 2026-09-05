@@ -27,6 +27,9 @@ import v2.extdeps.languages.rust_test {
   rust_pick_source_text,
   rust_pick_translation_rules_node
 }
+import v2.extdeps.languages.rust_translate_underived_test {
+  rust_minimal_underived_refusal_target
+}
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   TargetModel,
@@ -315,7 +318,7 @@ fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) 
 }
 
 fn translate_refuses_underived_root(root: Node) -> Bool {
-  translate_refuses_underived_root_for_target(root: root, target: rust_target_model())
+  translate_refuses_underived_root_for_target(root: root, target: rust_minimal_underived_refusal_target)
 }
 
 fn translate_refuses_underived_bodied_arrow() -> Bool {
@@ -329,7 +332,7 @@ fn translate_refuses_underived_bodied_arrow() -> Bool {
 fn translate_refuses_mixed_derived_root_underived_child() -> Bool {
   match translate(
     tree: translate_mixed_derived_root_underived_child_tree,
-    target: rust_target_model()
+    target: rust_minimal_underived_refusal_target
   ) {
     Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
@@ -340,7 +343,7 @@ fn translate_refuses_mixed_derived_root_underived_child() -> Bool {
 fn translate_refuses_absent_parent_underived_child() -> Bool {
   match translate(
     tree: translate_absent_parent_underived_child_tree,
-    target: rust_target_model()
+    target: rust_minimal_underived_refusal_target
   ) {
     Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)

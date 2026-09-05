@@ -1,0 +1,298 @@
+module gunbc.runner_microvm_boot_probe
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
+import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig, firecracker_release_aarch64,
+  firecracker_vm_config_document, firecracker_run_config_command,
+}
+import extdeps.github.actions_runner { ActionsRunnerRelease }
+import gunbc.runner_microvm {
+  RunnerGuestImage, gunbc_runner_guest_image,
+  RunnerMicroVmNetworking, GuestNetworkAbsent,
+  RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
+  gunbc_runner_microvm_vm_config,
+}
+import gunbc.runner_guest_image {
+  runner_guest_image_root, runner_guest_image_path,
+  runner_guest_base_artifact_path, runner_guest_kernel_artifact,
+}
+import gunbc.runner_microvm_host_ready {
+  FirecrackerHostStanding, firecracker_host_ready, firecracker_installed_binary,
+  firecracker_install_root, firecracker_host_standing_text,
+  observe_firecracker_host_standing_wet,
+}
+import gunbc.command_runner {
+  ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
+}
+
+data runner_microvm_boot_probe_disposition: Disposition = SingleAuthority
+
+// THE BOOT IS THE MEASUREMENT THE GUEST IMAGE MODULE PROMISED, AND IT IS THE ONLY THING THAT CAN
+// SETTLE IT. gunbc.runner_guest_image builds a root filesystem WITHOUT ROOT, and states in full what
+// that costs: an unprivileged extraction restores no ownership, no setuid bits and no device nodes.
+// It argues all three are survivable in this guest and says plainly that survivable is not proven.
+//
+// This is the proof obligation discharged. A guest that boots and prints the version of the runner
+// baked into it has demonstrated that the kernel found a root filesystem, that init came up, that
+// systemd reached its default target, and that the runner's own binary is executable there -- which
+// is exactly the set of facts an ownership or device-node loss would have broken. A guest that does
+// NOT boot fails loudly on a console this probe captures, and that failure is the evidence that
+// would justify buying the privileged build.
+//
+// IT IS A PROBE AND NOT A PROVISIONER, and the difference is load-bearing rather than modest.
+// gunbc.runner_microvm's admission still refuses every production configuration, because the VMM's
+// own memory reserve is uncited and the guest cannot be judged against the bounded cell without it.
+// Nothing here overrides that: this boots ONE VM outside any cell to observe whether the image
+// works, and it measures the reserve that admission is waiting on. Reading this probe's success as
+// permission to provision would be reading a smoke test as a capacity decision.
+
+// THE GUEST HAS NO NETWORK, DECLARED RATHER THAN OMITTED. The per-slot tap is a later slice, so this
+// guest cannot reach GitHub and therefore cannot register a runner -- it is not a degraded runner,
+// it is a different kind of VM, and gunbc.runner_microvm's networking coproduct is where that is
+// said. Naming a tap device that does not exist would have made Firecracker fail at device setup and
+// the failure would have read as an image defect.
+fn runner_microvm_boot_probe_networking() -> RunnerMicroVmNetworking {
+  GuestNetworkAbsent {
+    cause: "the boot probe runs before the per-slot network slice, so this guest has no tap and no egress; it can boot and print, and it cannot register with GitHub",
+  }
+}
+
+// THE PROBE BOOTS A COPY, NEVER THE BUILT IMAGE ITSELF. A Firecracker root drive is attached
+// READ-WRITE -- the guest's init writes to it -- so booting the built artifact would mutate the
+// thing whose digest gunbc.runner_guest_image just recorded, and the next observe would report a
+// digest that disagrees with the build receipt for no reason anybody could reconstruct. The copy is
+// removed first so a probe never boots a previous probe's dirtied filesystem and reports it as this
+// image's behaviour.
+fn runner_microvm_boot_probe_dir(root: String) -> String {
+  join([root, "/probe"], "")
+}
+
+fn runner_microvm_boot_probe_rootfs(root: String) -> String {
+  join([runner_microvm_boot_probe_dir(root: root), "/probe-rootfs.ext4"], "")
+}
+
+fn runner_microvm_boot_probe_config_path(root: String) -> String {
+  join([runner_microvm_boot_probe_dir(root: root), "/probe-vm-config.json"], "")
+}
+
+fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImage) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: runner_microvm_boot_probe_dir(root: root)),
+    rm_force_command(path: runner_microvm_boot_probe_rootfs(root: root)),
+    cp_command(
+      source: runner_guest_image_path(root: root, image: image),
+      destination: runner_microvm_boot_probe_rootfs(root: root),
+    ),
+  ]
+}
+
+// THE JIT DRIVE IS THE ROOT DRIVE'S OWN PATH TODAY, AND THAT IS A GAP RATHER THAN A DESIGN.
+// gunbc.runner_microvm's configuration builder attaches a second, read-only drive carrying the
+// registration credential, because that carrier is the whole reason a microVM closes the shared-
+// credential class. No credential is minted yet -- that is the JIT slice -- so there is nothing to
+// put on it. A drive pointing at a file that does not exist makes Firecracker refuse at device
+// setup, which would render as an image defect; pointing it at the rootfs copy attaches a real file
+// the guest ignores. The moment a credential exists this argument is the credential's path and this
+// paragraph deletes.
+// NO IMAGE IDENTITY IS TAKEN HERE, AND THAT IS THE POINT: the probe boots a FIXED path, and the
+// identity is spent upstream by runner_microvm_boot_probe_stage_commands, which copies
+// runner_guest_image_path(root, image) onto it. Taking an identity this function could not honour
+// would claim a binding it does not perform -- the copy is what binds the bytes, and the caller
+// refuses on a failed copy rather than booting whatever the previous run left behind.
+fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResolution {
+  gunbc_runner_microvm_vm_config(
+    rootfs_path: runner_microvm_boot_probe_rootfs(root: root),
+    jit_config_path: runner_microvm_boot_probe_rootfs(root: root),
+    kernel_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact),
+    net: runner_microvm_boot_probe_networking(),
+  )
+}
+
+// THE DEADLINE IS THE HOST'S, AND IT MUST NOT DEPEND ON THE GUEST AGREEING TO IT.
+//
+// The guest agent powers the machine off on ExecStopPost=, which runs on both arms of the job -- and
+// that only ever covers the case where the agent STARTED. It does not cover an agent systemd never
+// pulled in (the exact defect this module's sibling just carried), a kernel that panics before
+// userspace, an init that hangs, or a guest that never reaches its target at all. In every one of
+// those the VMM sits there holding a guest forever, and the earlier reassurance that this probe
+// "boots one VM that powers itself off" was true only of the arm that works.
+//
+// So the bound is imposed from OUTSIDE the guest by the host, on the VMM process, where no guest
+// behaviour can extend it. A step timeout is not a substitute: it kills the step and can leave the
+// VMM it spawned running, which is precisely the uncontrolled VM this probe must not create.
+//
+// THE KILL ESCALATION IS NOT OPTIONAL. A TERM that a wedged VMM declines leaves the same orphan the
+// deadline existed to prevent, so the deadline escalates to KILL unconditionally.
+data runner_microvm_boot_probe_deadline: Second = second(count: 180)
+
+data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
+
+fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
+  timeout_command(
+    duration: runner_microvm_boot_probe_deadline,
+    kill_after: runner_microvm_boot_probe_kill_grace,
+    command: firecracker_run_config_command(binary: binary, config_path: config_path),
+  )
+}
+
+// THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, NOT A GREETING. The console must carry the
+// version of the runner that extdeps.github.actions_runner pins, so the assertion consumes that row
+// rather than a literal: a runner bump moves what this probe demands in the same edit that moves
+// what the image contains, and the two cannot drift apart.
+// EVERY FAILING ARM CARRIES THE CONSOLE, because on this subject the console IS the evidence and the
+// failure is when you most need it. An earlier revision routed the VMM through the capture that
+// discards stdout on a non-admitted exit, then labelled the surviving STDERR as "the console" -- a
+// fabricated label over missing evidence. A guest that panics and is then killed by its deadline
+// prints its panic to stdout, so that arm without stdout is the one arm that had to keep it.
+type BootProbeVerdict
+  = BootPrintedRunnerVersion { version: String }
+  | BootProducedNoConsole { cause: String }
+  | BootConsoleLacksRunnerVersion { expected: String, console: String }
+  | BootNotAttempted { cause: String }
+  | BootExceededHostDeadline { deadline: String, console: String, detail: String }
+  | BootVmmFailed { exit_code: Int, console: String, detail: String }
+
+fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
+  if observed.exit_code == coreutils_timeout_expired_exit_code {
+    BootExceededHostDeadline {
+      deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
+      console: observed.stdout,
+      detail: observed.stderr,
+    }
+  } else if observed.exit_code != 0 {
+    BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
+  } else if observed.stdout == "" {
+    BootProducedNoConsole {
+      cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
+    }
+  } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
+    BootPrintedRunnerVersion { version: runner.version as String }
+  } else {
+    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
+  }
+}
+
+fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
+  match v {
+    BootPrintedRunnerVersion { version: x } => join(["boot=printed-runner-version ", x], "")
+    BootProducedNoConsole { cause: c } => join(["boot=no-console (", c, ")"], "")
+    BootConsoleLacksRunnerVersion { expected: e, console: c } =>
+      join(["boot=console-without-runner-version expected=", e, "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
+    BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
+      join(["boot=host-deadline-expired after ", d,
+            " -- the guest did not power itself off and the host killed the VMM\nvmm-stderr: ", e,
+            "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootVmmFailed { exit_code: x, console: c, detail: e } =>
+      join(["boot=vmm-failed exit=", to_string(x), "\nvmm-stderr: ", e,
+            "\n--- console ---\n", c, "\n--- end console ---"], "")
+  }
+}
+
+fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
+  match v {
+    BootPrintedRunnerVersion { version: _ } => true
+    BootProducedNoConsole { cause: _ } => false
+    BootConsoleLacksRunnerVersion { expected: _, console: _ } => false
+    BootNotAttempted { cause: _ } => false
+    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
+    BootVmmFailed { exit_code: _, console: _, detail: _ } => false
+  }
+}
+
+data runner_microvm_boot_probe_receipt_dir: String = "target"
+
+data runner_microvm_boot_probe_receipt_path: String = "target/runner-microvm-boot-probe.txt"
+
+func executor_home_wet() -> String? {
+  match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => none
+    Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
+  }
+}
+
+// THE HOST STANDING IS CHECKED FIRST AND ITS REFUSAL IS CARRIED FORWARD WHOLE. A host with no
+// writable /dev/kvm or no Firecracker cannot boot anything, and a probe that discovered that by
+// failing to produce a console would report an IMAGE verdict for a HOST fact -- sending a reader to
+// the wrong module, which is the state-space conflation this repository refuses elsewhere.
+func runner_microvm_boot_probe_wet() -> ProcessExit
+  uses net: Network
+{
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "runner_microvm_boot_probe: HOME is unset, so neither the image root nor the Firecracker install root can be named")
+    Present { value: home } => {
+      let fc_root = firecracker_install_root(executor_home: home)
+      let standing = observe_firecracker_host_standing_wet(root: fc_root)
+      if !firecracker_host_ready(standing: standing) {
+        runner_microvm_boot_probe_receipt_wet(
+          verdict: BootNotAttempted {
+            cause: join(["the host cannot run a micro-VM at all, so no image verdict is available --\n", firecracker_host_standing_text(s: standing)], ""),
+          },
+        )
+      } else {
+        let root = runner_guest_image_root(executor_home: home)
+        let image = gunbc_runner_guest_image
+        match runner_microvm_boot_probe_config(root: root) {
+          MicroVmConfigUnresolved { cause: c } =>
+            runner_microvm_boot_probe_receipt_wet(
+              verdict: BootNotAttempted {
+                cause: join(["no admissible VM configuration is derivable, so nothing was booted: ", c], ""),
+              },
+            )
+          MicroVmConfigResolved { config: cfg } =>
+            match run_shell_commands(commands: runner_microvm_boot_probe_stage_commands(root: root, image: image), transport: LocalExec) {
+              ExitSuccess => {
+                let w = Filesystem.Write(
+                  path: runner_microvm_boot_probe_config_path(root: root),
+                  content: firecracker_vm_config_document(config: cfg),
+                )
+                if !w.success {
+                  runner_microvm_boot_probe_receipt_wet(
+                    verdict: BootNotAttempted {
+                      cause: join(["the VM configuration document could not be written: ", w.error], ""),
+                    },
+                  )
+                } else {
+                  runner_microvm_boot_probe_receipt_wet(
+                    verdict: boot_probe_verdict(
+                      runner: image.runner,
+                      observed: run_shell_command_observe(
+                        command: runner_microvm_boot_probe_bounded_command(
+                          binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
+                          config_path: runner_microvm_boot_probe_config_path(root: root),
+                        ),
+                        transport: LocalExec,
+                      ),
+                    ),
+                  )
+                }
+              }
+              other => other
+            }
+        }
+      }
+    }
+  }
+}
+
+func runner_microvm_boot_probe_receipt_wet(verdict: BootProbeVerdict) -> ProcessExit {
+  let text = boot_probe_verdict_text(v: verdict)
+  let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_microvm_boot_probe_receipt_dir)], transport: LocalExec)
+  let w = Filesystem.Write(path: runner_microvm_boot_probe_receipt_path, content: concat(text, "\n"))
+  if !w.success {
+    exit_failure(reason: join(["runner_microvm_boot_probe: receipt write refused: ", w.error], ""))
+  } else if boot_probe_admitted(v: verdict) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["runner_microvm_boot_probe: the guest image did not demonstrate a boot --\n", text], ""))
+  }
+}
