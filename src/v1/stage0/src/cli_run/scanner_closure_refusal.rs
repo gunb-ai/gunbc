@@ -326,4 +326,160 @@ mod tests {
         eprintln!("SCANNER_AUDIT compared_modules={} refused_entries={} entries_without_scanner_additions={}",
             entries.len(), refused_entries, entries.len() - refused_entries);
     }
+
+    #[test]
+    #[ignore = "paired source-compilation audit; requires SCANNER_COMPILE_AUDIT_REPORT"]
+    fn real_corpus_withholding_scanner_additions_compiles_both_subjects() {
+        use std::io::Write;
+        let report_path = std::env::var("SCANNER_COMPILE_AUDIT_REPORT").expect("audit output path");
+        let mut report = std::fs::File::create(report_path).unwrap();
+        let roots = ["dag", "src/v2"]
+            .map(|root| workspace_root().join(root).to_string_lossy().into_owned());
+        let index = build_multi_entry_index_primary_precedence(&roots);
+        let edges = both_closure_edge_index(&index).expect("scanner observations");
+        let lookup = path_to_source_lookup(&index.source_files);
+        let mut entries: Vec<_> = index.source_files.values().cloned().collect();
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        assert!(!entries.is_empty(), "empty comparison");
+        assert!(
+            v1_compiler_compile::default_compile_pipeline_options()
+                .census_only_sources
+                .is_empty(),
+            "an external census would mask withheld sources"
+        );
+        writeln!(report, "{}", serde_json::json!({
+            "state": "Started", "indexed_modules": entries.len(),
+            "boundary": "source compile_to_resolved through resolve/type/ownership/complexity; graph present and no is_interpreter_blocking_diagnostic; no external census; NOT emitted-Rust cargo acceptance",
+            "diagnostic_identity": "serialized ErrorNode: full CompilerDiagnostic variant/payload and module_name",
+        })).unwrap();
+
+        // Entries can demand the same complete program (in particular through
+        // scanner cycles). Within this immutable source index those are one
+        // compilation, even though each entry retains its own comparison row.
+        let mut programs =
+            std::collections::HashMap::<Vec<String>, (bool, BTreeSet<String>)>::new();
+        let mut compile = |sources: Vec<Rc<SourceFile>>| {
+            let key: Vec<_> = sources.iter().map(|source| source.path.clone()).collect();
+            if let Some(observed) = programs.get(&key) {
+                return observed.clone();
+            }
+            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            let passes = result.graph.is_some()
+                && !result.diagnostics.iter().any(|d| {
+                    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+                });
+            let diagnostics: BTreeSet<_> = result
+                .diagnostics
+                .iter()
+                .map(|d| serde_json::to_string(d).expect("typed diagnostic serialization"))
+                .collect();
+            let observed = (passes, diagnostics);
+            programs.insert(key, observed.clone());
+            observed
+        };
+        let mut pairs = 0;
+        let mut partitions = std::collections::BTreeMap::<&str, usize>::new();
+        for entry in &entries {
+            let mut imports = resolve_transitively(
+                vec![entry.clone()],
+                &index.source_files,
+                &index.module_graph_facts,
+            )
+            .expect("import closure provenance");
+            imports.sort_by(|a, b| a.path.cmp(&b.path));
+            let dotted = refuse_scanner_extension(
+                imports.clone(),
+                &edges.ref_out,
+                None,
+                HostClosureScanner::DottedModulePathScanner,
+            );
+            let bare = refuse_scanner_extension(
+                imports.clone(),
+                &edges.bare_out,
+                Some(&edges.bare_scan_eligible),
+                HostClosureScanner::BareReferenceScanner,
+            );
+            if dotted.is_ok() && bare.is_ok() {
+                continue;
+            }
+
+            // OFFLINE HISTORICAL ORACLE ONLY. This reproduces the removed entry
+            // loader's union/fixpoint over its original scanner edge maps. It is
+            // never returned to a production loader, and the withholding arm
+            // below receives only the import-derived sources.
+            let mut old_paths: HashSet<String> = imports
+                .iter()
+                .map(|s| workspace_relative_repo_path(&s.path))
+                .collect();
+            let mut queue: VecDeque<_> = old_paths.iter().cloned().collect();
+            while let Some(path) = queue.pop_front() {
+                let bare_targets = if edges.bare_scan_eligible.contains(&path) {
+                    edges.bare_out.get(&path)
+                } else {
+                    None
+                };
+                for target in edges
+                    .ref_out
+                    .get(&path)
+                    .into_iter()
+                    .chain(bare_targets)
+                    .flatten()
+                {
+                    if old_paths.insert(target.clone()) {
+                        queue.push_back(target.clone());
+                    }
+                }
+            }
+            let mut old_sources: Vec<_> = old_paths
+                .iter()
+                .map(|path| {
+                    lookup
+                        .get(path)
+                        .expect("historical scanner source provenance")
+                        .clone()
+                })
+                .collect();
+            old_sources.sort_by(|a, b| a.path.cmp(&b.path));
+            let old_count = old_sources.len();
+            let import_count = imports.len();
+            let (withheld_passes, withheld_diagnostics) = compile(imports);
+            let (historical_passes, historical_diagnostics) = compile(old_sources);
+            let partition = match (historical_passes, withheld_passes) {
+                (true, false) => "FailureExposedByWithholding",
+                (true, true) => "BothPass",
+                (false, false) if historical_diagnostics == withheld_diagnostics => {
+                    "BothFailIdentically"
+                }
+                (false, false) => "BothFailDifferently",
+                (false, true) => "HistoricalScannerClosureOnlyFails",
+            };
+            pairs += 1;
+            *partitions.entry(partition).or_default() += 1;
+            writeln!(report, "{}", serde_json::json!({
+                "entry": workspace_relative_repo_path(&entry.path), "partition": partition,
+                "import_closure_modules": import_count, "historical_scanner_closure_modules": old_count,
+                "withheld_diagnostic_identities": withheld_diagnostics, "historical_diagnostic_identities": historical_diagnostics,
+                "new_when_withheld": withheld_diagnostics.difference(&historical_diagnostics).collect::<Vec<_>>(),
+                "removed_when_withheld": historical_diagnostics.difference(&withheld_diagnostics).collect::<Vec<_>>(),
+            })).unwrap();
+            report.flush().unwrap();
+            if pairs % 25 == 0 {
+                eprintln!(
+                    "SCANNER_COMPILE_AUDIT completed_pairs={pairs} partitions={partitions:?}"
+                );
+            }
+        }
+        assert!(pairs > 0, "no scanner-addition candidate was compiled");
+        assert_eq!(partitions.values().sum::<usize>(), pairs);
+        writeln!(
+            report,
+            "{}",
+            serde_json::json!({
+            "state": "Completed", "indexed_modules": entries.len(),
+            "compared_entry_pairs": pairs, "compiled_distinct_programs": programs.len(), "partitions": partitions,
+            })
+        )
+        .unwrap();
+        eprintln!("SCANNER_COMPILE_AUDIT indexed_modules={} compared_entry_pairs={pairs} partitions={partitions:?}", entries.len());
+    }
 }
