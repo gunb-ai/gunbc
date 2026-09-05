@@ -1452,13 +1452,23 @@ fn same_declaration(a: Node, b: Node) -> Bool {
 // ambiguity out of one coproduct and refuse a position that has exactly one honest answer, which
 // is the accusing failure this authority exists to remove.
 //
-// THE EXAMPLE THAT USED TO STAND HERE WAS FALSE AND IS RECORDED AS FALSE RATHER THAN QUIETLY
-// REPLACED. It claimed a `List<T>` position reaches FreeMonoid as BOTH its alias target and its
-// whole expected type. Instrumented, that position yields exactly ONE candidate -- the element
-// type, reached as the element type of the expected collection. No FreeMonoid candidate is
-// produced by any route. So the dedup this comment describes has no observed instance, and
-// whether more than one route ever contributes at one position is an open question about this
-// carrier, not a settled fact it may cite. The FIRST route to reach an owner is the one
+// THE EXAMPLE THAT USED TO STAND HERE WAS HALF RIGHT, AND BOTH ITS ERROR AND MY CORRECTION OF IT
+// ARE RECORDED RATHER THAN QUIETLY REPLACED. It claimed a `List<T>` position reaches FreeMonoid as
+// BOTH its alias target and its whole expected type, and I then replaced it with the flat claim
+// that no route produces a FreeMonoid candidate at all. That replacement was WRONG, and wrong in
+// the more dangerous direction: deleting the AliasTarget push and recompiling the corpus declines
+// NINE production positions that compile today, all of the form `Cons { head: ..., tail: ... }` at
+// a List<X> whose element type does not carry Cons. AliasTarget is the unique supplier there.
+//
+// I measured the flat claim on a probe whose element type DID carry the constructor, where the
+// element route supplies a match and AliasTarget is never needed -- so the candidate list showed
+// one entry and I read a property of that position as a property of the routes.
+//
+// What remains genuinely unmeasured is the ORIGINAL claim's other half: whether two routes ever
+// reach one owner at a single position, which is what this dedup exists to collapse. Nine sites
+// prove AliasTarget supplies an owner ALONE; none of them shows a second route reaching the same
+// one. So the dedup is not known to be exercised, and that is a smaller and more honest gap than
+// either sentence that stood here before. The FIRST route to reach an owner is the one
 // recorded, so the enumeration order below decides only which route is REPORTED for a shared
 // owner, never which owner wins -- there is no winning, because a second owner is a refusal.
 //
