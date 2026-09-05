@@ -177,13 +177,37 @@ test fn the_shipped_enrolment_is_total_over_every_gate() -> Bool {
 // THE ROSTER IS HONEST RATHER THAN FLATTERING: it reports real remaining work, and specifically it
 // reports the mutation whose coverage was once claimed in prose. A roster that discharged everything
 // would satisfy the totality witness above and mean nothing, so this pins the opposite direction.
-// The discharged/undischarged DISTINCTION is discriminated on fixtures in the positive control above
-// rather than here, because in this tree every shipped row is undischarged -- the FCI-2 witnesses are
-// still in flight -- and a witness asserting a partition over a uniform population asserts nothing.
+// THE PARTITION IS NOW DISCRIMINATED AGAINST THE SHIPPED ROSTER, not only against fixtures. While
+// the FCI-2 witnesses were in flight every shipped row was undischarged, and a witness asserting a
+// partition over a uniform population asserts nothing -- so this pinned only the undischarged side.
+// Their trigger has since fired, so the roster now has rows on BOTH sides and the assertion can
+// carry its real content: expired-reservation is still undischarged AND duplicate-grant is not.
 test fn the_shipped_enrolment_reports_expired_reservation_as_undischarged() -> Bool {
   let undischarged = total_undischarged(fabric_gate_coverage())
   undischarged.length() > 0
     && any(undischarged, e => e.gate == "FCI-2" && e.mutation == "expired-reservation")
+    && !any(undischarged, e => e.gate == "FCI-2" && e.mutation == "duplicate-grant")
+    && !any(undischarged, e => e.gate == "FCI-2" && e.mutation == "work-mismatch")
+}
+
+// A ROW MAY CHANGE ARM ONLY BECAUSE ITS TRIGGER FIRED. These two read Undischarged while their
+// witnesses were in flight and now name them, so the shipped roster carries both constructors and
+// the discharged side is no longer empty. Without this the roster could drift to all-discharged and
+// the totality witness would still pass, which is the flattering-roster failure. The constructor is
+// what is asserted, plus WHICH mutations discharged -- not that the witness string is non-empty,
+// which NonEmptyStr already owns and which would be a check restating the type.
+test fn the_two_fci_2_rows_whose_trigger_fired_now_name_their_witnesses() -> Bool {
+  match fabric_gate_coverage() {
+    CoverageRefused { refusals } => false,
+    CoverageTotal { discharged, undischarged } =>
+      discharged.length() == 2
+        && all(discharged, e => e.gate == "FCI-2" && match e.discharge {
+          DischargedByWitness { witness } => true,
+          Undischarged { reason, restoration_trigger } => false,
+        })
+        && any(discharged, e => e.mutation == "duplicate-grant")
+        && any(discharged, e => e.mutation == "work-mismatch"),
+  }
 }
 
 // Undischarged is never a bare admission: every such row is an Undischarged CONSTRUCTOR, which is
