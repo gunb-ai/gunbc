@@ -407,7 +407,7 @@ test fn spark_target_absent_while_executing_refuses_rather_than_widening() -> Bo
 
 test fn spark_target_unrecognized_refuses_even_when_only_observing() -> Bool {
   match spark_converge_target_selection_of(
-    raw: Present { value: "srv7" as NonEmptyStr },
+    raw: Present { value: "srv1" as NonEmptyStr },
     execute_apply: false,
   ) {
     SparkConvergeTargetRefused { reason: _ } => true
