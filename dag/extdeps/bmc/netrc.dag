@@ -68,7 +68,7 @@ fn netrc_tokenize_quoted(source: String, pos: Int, acc: List<String>, current: S
   } else {
     let ch = char_at(s: source, i: pos)
     if ch == quote {
-      netrc_tokenize_loop(source: source, pos: pos + 1, acc: acc, current: "")
+      netrc_tokenize_loop(source: source, pos: pos + 1, acc: list_push(xs: acc, x: current), current: "")
     } else {
       netrc_tokenize_quoted(source: source, pos: pos + 1, acc: acc, current: concat(current, ch), quote: quote)
     }

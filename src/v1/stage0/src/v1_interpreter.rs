@@ -14048,13 +14048,13 @@ impl rustls::client::danger::ServerCertVerifier for RestAcceptAnyVerifier {
     }
 }
 
-/// The ureq agent that realizes `InsecureAcceptAnyCert` — one accept-any rustls client
-/// config, built once per dispatching op (dispatch_rest builds it on the arm that selects
-/// the posture; the agent is cheap to construct and never reused across requests).
-///
-/// WON'T PANIC: uses `builder_with_provider` with an explicit provider from the ring crate
-/// rather than relying on a process-default crypto provider, which is not guaranteed to be
-/// installed (DESIGN §5: every path must refuse with a typed diagnostic, never panic).
+/// Build the accept-any ureq agent for `InsecureAcceptAnyCert` rest transport rows.
+/// Uses `builder_with_provider` with an explicit ring provider (avoids the process-default
+/// crypto-provider ambiguity that would panic on this machine). The `with_protocol_versions`
+/// call returns a `Result`; in practice ring always supports TLS 1.2 and 1.3, so this path
+/// never returns an error — but the `.expect()` is a genuine panic if the invariant holds,
+/// and DESIGN §5 asks for a typed refusal. A future lane should turn this into `Result` and
+/// propagate the error through `dispatch_rest`'s return type.
 fn rest_accept_any_agent() -> ureq::Agent {
     let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
     let config = rustls::client::ClientConfig::builder_with_provider(provider)
