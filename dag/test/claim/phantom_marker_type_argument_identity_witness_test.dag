@@ -201,16 +201,26 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
   = SourceToEmittedTextHonestyOnly
   | EmittedCrateMeaningDiscriminator
 
-// THE OWNER MUST OUTLIVE EVERY SESSION, AND A NODE IDENTITY CANNOT. This row first
-// named node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the
-// capability it owed existing -- a next-rung trigger nobody was accountable for, the
-// untracked stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was
-// then repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A
-// LONGER FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the
-// repair, so it closes when that lane finishes -- possibly the same morning. Both
-// pointed at a referent with a LIFECYCLE, and a citation whose referent has a
-// lifecycle dies silently when that lifecycle ends, with nothing in this file
-// changing at the moment it becomes false.
+// RESPONSIBILITY FOR AN OUTSTANDING OBLIGATION MUST SURVIVE CLOSURE OF ITS CURRENT
+// OWNER, THROUGH DISCHARGE OR VALID TRANSFER. This row first named
+// node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the capability
+// it owed existing -- a next-rung trigger nobody was accountable for, the untracked
+// stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was then
+// repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A LONGER
+// FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the repair, so
+// it closes when that lane finishes -- possibly the same morning. The defect in both
+// was allowing ACTIVE RESPONSIBILITY to end while the obligation remained
+// undischarged and untransferred, with nothing in this file changing at the moment it
+// became false; the closed owner can remain a perfectly valid HISTORICAL reference.
+//
+// AN EARLIER REVISION OPENED "THE OWNER MUST OUTLIVE EVERY SESSION, AND A NODE
+// IDENTITY CANNOT", and concluded that a citation whose referent has a lifecycle dies
+// when that lifecycle ends. Both are withdrawn on the same ground as the paragraph
+// below: outliving is not the requirement, surviving responsibility is, and an owner
+// that discharges or transfers before closing satisfies it. They are named because
+// this repair had already corrected the test below while leaving the RULE that
+// introduced it standing -- a framing sentence is precisely what the search terms of
+// a fix cannot contain.
 //
 // THE TEST THIS FIELD MUST PASS, stated so the next repoint is decidable rather than
 // a matter of who is awake: AFTER THE LIFECYCLE TRANSITION, DOES EVERY STILL-
@@ -231,7 +241,8 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
 // `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
 // route this trigger is waiting on -- it enumerates that host's declarations and
 // owns their growth obligations. A trigger is retired BY ITS TRIGGER AND BY NOTHING
-// ELSE, and a trigger whose owner has ceased to exist is retired by nothing at all.
+// ELSE, and a trigger whose owner has ceased to exist WITHOUT DISCHARGING OR
+// TRANSFERRING IT is retired by nothing at all.
 //
 // AND THAT SYMBOL HAS ITS OWN RETIREMENT CONDITION, WHICH IS WHY NAMING IT WAS NOT
 // BY ITSELF ENOUGH. An earlier revision of this block said the owner is accountable
