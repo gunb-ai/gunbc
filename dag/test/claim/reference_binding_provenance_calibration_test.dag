@@ -1,0 +1,83 @@
+module test.claim.reference_binding_provenance_calibration
+
+import std.types { Bool, List, list_length }
+import gunbc.tools.reference_binding_provenance_calibration {
+  CalibrationObservationKind,
+  CalibrationResolutionArm,
+  CellDistinguishability,
+  ProvenanceDistinguished,
+  ProvenanceCollapsed,
+  SameFileNeighbourKind,
+  SiblingBranchKind,
+  LaterDeclarationKind,
+  DistinctHomonymKind,
+  ResolvedArm,
+  IndexTransportRefusedArm,
+  IndexModulePathRefusedArm,
+  IndexExposureRefusedArm,
+  IndexAuthoredOrderRefusedArm,
+  IndexDeclarationBucketRefusedArm,
+  ProductionRefusedArm,
+  calibration_observation_kinds,
+  calibration_resolution_arms,
+  calibration_cells,
+  cell_distinguishability,
+  cell_render,
+  non_matching_render,
+  unsound_cells,
+  arm_of_resolution,
+  kind_of_observation,
+  observation_kind_label,
+  resolution_arm_label,
+  resolution_for_arm,
+  observation_for,
+}
+import v2.std.optional { Present, Absent }
+
+// THE CONTROLS. A measurement instrument whose output cannot vary carries no information, so these
+// establish that both distinguishability arms are reachable on the real consumer and that the
+// denominator is the declared vocabulary rather than the traversal lists.
+
+test fn the_denominator_is_the_declared_vocabulary_not_the_traversal_list() -> Bool {
+  fold(calibration_resolution_arms, init: true, f: fn(ok, arm) {
+    ok && resolution_arm_label(a: arm_of_resolution(
+      r: resolution_for_arm(kind: SameFileNeighbourKind, arm: arm),
+    )) == resolution_arm_label(a: arm)
+  })
+    && fold(calibration_observation_kinds, init: true, f: fn(ok, kind) {
+      ok && match kind_of_observation(
+        o: observation_for(kind: kind, resolution: resolution_for_arm(kind: kind, arm: ResolvedArm)),
+      ) {
+        Present { value: k } => observation_kind_label(k: k) == observation_kind_label(k: kind)
+        Absent => false
+      }
+    })
+    && list_length(items: calibration_observation_kinds) == 4
+    && list_length(items: calibration_resolution_arms) == 7
+    && list_length(items: calibration_cells()) == 28
+}
+
+test fn the_resolved_arm_is_provenance_distinguished() -> Bool {
+  match cell_distinguishability(kind: SameFileNeighbourKind, arm: ResolvedArm) {
+    ProvenanceDistinguished { admission: _ } => true
+    ProvenanceCollapsed { collapses_with: _, mechanism: _ } => false
+  }
+}
+
+test fn a_typed_index_refusal_is_not_distinguished_from_a_structural_non_match() -> Bool {
+  cell_render(kind: SameFileNeighbourKind, arm: IndexTransportRefusedArm)
+    == non_matching_render(kind: SameFileNeighbourKind)
+}
+
+test fn all_six_non_resolved_arms_render_identically_to_each_other() -> Bool {
+  let t = cell_render(kind: DistinctHomonymKind, arm: IndexTransportRefusedArm)
+  cell_render(kind: DistinctHomonymKind, arm: IndexModulePathRefusedArm) == t
+    && cell_render(kind: DistinctHomonymKind, arm: IndexExposureRefusedArm) == t
+    && cell_render(kind: DistinctHomonymKind, arm: IndexAuthoredOrderRefusedArm) == t
+    && cell_render(kind: DistinctHomonymKind, arm: IndexDeclarationBucketRefusedArm) == t
+    && cell_render(kind: DistinctHomonymKind, arm: ProductionRefusedArm) == t
+}
+
+test fn no_cell_is_sound_and_the_instrument_refuses() -> Bool {
+  list_length(items: unsound_cells(cells: calibration_cells())) == 28
+}

@@ -1,0 +1,669 @@
+module gunbc.tools.reference_binding_provenance_calibration
+
+import std.types { Bool, Int, List, SourceSpan, String, list_length }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  LexicalValueOccurrence,
+  MissingAuthoredOccurrenceIdentity,
+}
+import std.occurrence_binding_candidates {
+  MissingOccurrenceModulePathRow,
+  MissingDeclarationExposure,
+  MissingAuthoredOrderRow,
+}
+import std.occurrence_binding_resolve {
+  OccurrenceReferenceBindingOutcome,
+  resolve_reference_occurrence_binding,
+}
+import std.reference_binding_observation {
+  ReferenceBindingObservation,
+  StructuralBindingResolution,
+  StructuralBindingResolved,
+  StructuralBindingIndexTransportRefused,
+  StructuralBindingIndexModulePathRefused,
+  StructuralBindingIndexExposureRefused,
+  StructuralBindingIndexAuthoredOrderRefused,
+  StructuralBindingIndexDeclarationBucketRefused,
+  StructuralBindingProductionRefused,
+  ReferenceBindingNamedReferenceAbsent,
+  SameFileNeighbourObservation,
+  SiblingBranchObservation,
+  LaterDeclarationObservation,
+  DistinctHomonymObservation,
+}
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
+  ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureUnavailable,
+  ReferenceDerivedClosureCapability,
+  ReferenceDerivedClosureScenarioFailure,
+  ReferenceDerivedClosureTrigger,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+  SameFileNeighbourMissing,
+  SiblingBranchLeaked,
+  LaterDeclarationLeaked,
+  DistinctDeclarationCollapsed,
+  RepeatedMentionDuplicatedDependency,
+  UnrelatedLoadedFileDependencyLeaked,
+  P2aStructuralCandidateProducer7515,
+  P2aReferenceDependencyProjection7515,
+  P2aPoolIndependentDependencyProjection7515,
+  assess_reference_binding_observation,
+}
+
+// STEP 0 CALIBRATION FOR REFERENCE-OCCURRENCE BINDING PROVENANCE, run BEFORE the namespace cut's
+// corpus run rather than after it.
+//
+// WHY IT RUNS FIRST, which is the whole justification: A CELL THAT NEVER FIRES IS INDISTINGUISHABLE
+// FROM A CELL THAT FIRES AND FINDS NOTHING. A corpus run over thousands of sources that reports no
+// index-refusal provenances is reporting one of two utterly different facts -- the corpus is clean,
+// or the instrument cannot express that answer -- and nothing in the output separates them. This
+// module measures which cells the production path can actually produce, on controlled fixtures,
+// so the corpus run's zeros become readable.
+//
+// THE MATRIX IS FOUR BY SEVEN and deliberately not larger. The rows are the four observation KINDS
+// carried by ReferenceBindingObservation; the columns are the seven arms of
+// StructuralBindingResolution. ReferenceBindingProductionGap's three arms are a separate question
+// and are NOT a third axis: a third dimension turns a readable matrix into something nobody checks,
+// so where a gap arm is the only route to a cell that is recorded in the cell's own note.
+//
+// WHAT A CELL RECORDS IS DISTINGUISHABILITY, NOT A COUNT. The instrument under calibration answers
+// with a provenance, and the question is whether a consumer can TELL two provenances apart. So a
+// cell that fires but produces an answer byte-identical to another cell's is not a populated cell;
+// it is a collapsed one, and it is recorded as such with the mechanism named.
+
+type CalibrationObservationKind
+  = SameFileNeighbourKind
+  | SiblingBranchKind
+  | LaterDeclarationKind
+  | DistinctHomonymKind
+
+type CalibrationResolutionArm
+  = ResolvedArm
+  | IndexTransportRefusedArm
+  | IndexModulePathRefusedArm
+  | IndexExposureRefusedArm
+  | IndexAuthoredOrderRefusedArm
+  | IndexDeclarationBucketRefusedArm
+  | ProductionRefusedArm
+
+// CALIBRATION STANDING IS FOUR-VALUED, and the four are not degrees of the same thing.
+//
+// Failing to demonstrate a cell does not establish that the cell is impossible; it establishes that
+// the evidence was not obtained. Collapsing those two makes the matrix assert something it cannot
+// know -- the same error as reporting a blind spot as a clean result, pointed the other way.
+// Symmetrically, a demonstration shows a cell UNDER IDENTIFIED CONDITIONS and does not establish
+// universal capability over arbitrary inputs, which is why CalibrationDemonstrated carries its
+// conditions rather than standing alone.
+//
+// CalibrationRefusedOrIncomplete is the arm this instrument most needs and the easiest to omit: a
+// calibration run that dies halfway must not leave its cells looking empty, because empty reads as
+// a negative observation about the subject and it is nothing of the kind.
+type CalibrationStanding
+  = CalibrationDemonstrated {
+      conditions: String,
+    }
+  | CalibrationNotDemonstrated {
+      note: String,
+    }
+  | CalibrationUnsupportedByThisRoute {
+      missing_input: String,
+      reason: String,
+    }
+  | CalibrationRefusedOrIncomplete {
+      cause: String,
+    }
+
+// DISTINGUISHABILITY IS WHAT THE EVIDENCE SAYS; STANDING IS WHETHER THE EVIDENCE WAS OBTAINED.
+// They are carried separately because one word answering both would hide whichever was asked
+// second, and because a cell can be perfectly demonstrated and still be a collapse.
+type CellDistinguishability
+  = ProvenanceDistinguished {
+      admission: String,
+    }
+  | ProvenanceCollapsed {
+      collapses_with: String,
+      mechanism: String,
+    }
+
+// TWO SUBJECTS, TWO STANDINGS. "The consumer can tell this arm apart" and "the production path can
+// produce this arm" are different questions, and this route -- which supplies a constructed
+// resolution directly to the consumer -- can only testify about the first. Giving them one standing
+// field would let the consumer evidence be read as production evidence.
+type ProvenanceCell {
+  kind: CalibrationObservationKind
+  arm: CalibrationResolutionArm
+  consumer_standing: CalibrationStanding
+  distinguishability: CellDistinguishability
+  production_standing: CalibrationStanding
+}
+
+fn observation_kind_label(k: CalibrationObservationKind) -> String {
+  match k {
+    SameFileNeighbourKind => "SameFileNeighbour"
+    SiblingBranchKind => "SiblingBranch"
+    LaterDeclarationKind => "LaterDeclaration"
+    DistinctHomonymKind => "DistinctHomonym"
+  }
+}
+
+fn resolution_arm_label(a: CalibrationResolutionArm) -> String {
+  match a {
+    ResolvedArm => "StructuralBindingResolved"
+    IndexTransportRefusedArm => "StructuralBindingIndexTransportRefused"
+    IndexModulePathRefusedArm => "StructuralBindingIndexModulePathRefused"
+    IndexExposureRefusedArm => "StructuralBindingIndexExposureRefused"
+    IndexAuthoredOrderRefusedArm => "StructuralBindingIndexAuthoredOrderRefused"
+    IndexDeclarationBucketRefusedArm => "StructuralBindingIndexDeclarationBucketRefused"
+    ProductionRefusedArm => "StructuralBindingProductionRefused"
+  }
+}
+
+// THE DENOMINATOR IS BOUND TO THE DECLARED VOCABULARY BY EXHAUSTIVENESS, NOT BY THESE LISTS.
+//
+// If the matrix's axes came from the cases this instrument managed to produce, every cell would be
+// populated by construction and the instrument would report itself complete -- a denominator
+// computed from its own numerator. The two functions below are total matches over the types AS STD
+// DECLARES THEM, so an arm added to StructuralBindingResolution or a kind added to
+// ReferenceBindingObservation makes this module fail to compile rather than silently shrink the
+// denominator. The lists are then checked against those matches by an executing control; they are a
+// traversal order, not the authority for what exists.
+fn arm_of_resolution(r: StructuralBindingResolution) -> CalibrationResolutionArm {
+  match r {
+    StructuralBindingResolved { binding_outcome: _ } => ResolvedArm
+    StructuralBindingIndexTransportRefused { refusal: _ } => IndexTransportRefusedArm
+    StructuralBindingIndexModulePathRefused { refusal: _ } => IndexModulePathRefusedArm
+    StructuralBindingIndexExposureRefused { refusal: _ } => IndexExposureRefusedArm
+    StructuralBindingIndexAuthoredOrderRefused { refusal: _ } => IndexAuthoredOrderRefusedArm
+    StructuralBindingIndexDeclarationBucketRefused { occurrence: _ } => IndexDeclarationBucketRefusedArm
+    StructuralBindingProductionRefused { gap: _ } => ProductionRefusedArm
+  }
+}
+
+// The four kinds this census covers are the four that carry a StructuralBindingResolution. The two
+// remaining ReferenceBindingObservation arms (RepeatedMentionDependencyObservation,
+// UnrelatedLoadedFileObservation) carry no resolution at all, so they have no column in a
+// kind-by-arm matrix; they are named here rather than dropped silently, because a kind absent from
+// an exhaustive match is invisible and a kind mapped to Absent is a stated exclusion.
+fn kind_of_observation(o: ReferenceBindingObservation) -> CalibrationObservationKind? {
+  match o {
+    SameFileNeighbourObservation { neighbour: _, resolution: _ } => Present { value: SameFileNeighbourKind }
+    SameFileNeighbourProductionRefused { gap: _ } => Present { value: SameFileNeighbourKind }
+    SiblingBranchObservation { own_branch_declaration: _, sibling_branch_declaration: _, resolution: _ } => Present { value: SiblingBranchKind }
+    SiblingBranchProductionRefused { gap: _ } => Present { value: SiblingBranchKind }
+    LaterDeclarationObservation { later_declaration: _, resolution: _ } => Present { value: LaterDeclarationKind }
+    LaterDeclarationProductionRefused { gap: _ } => Present { value: LaterDeclarationKind }
+    DistinctHomonymObservation { first_declaration: _, second_declaration: _, resolution: _ } => Present { value: DistinctHomonymKind }
+    DistinctHomonymProductionRefused { gap: _ } => Present { value: DistinctHomonymKind }
+    RepeatedMentionDependencyObservation { provider_file: _, projected_dependencies: _ } => Absent
+    UnrelatedLoadedFileObservation { provider_file: _, unrelated_loaded_file: _, projected_dependencies: _ } => Absent
+  }
+}
+
+data calibration_observation_kinds: List<CalibrationObservationKind> = [
+  SameFileNeighbourKind,
+  SiblingBranchKind,
+  LaterDeclarationKind,
+  DistinctHomonymKind,
+]
+
+data calibration_resolution_arms: List<CalibrationResolutionArm> = [
+  ResolvedArm,
+  IndexTransportRefusedArm,
+  IndexModulePathRefusedArm,
+  IndexExposureRefusedArm,
+  IndexAuthoredOrderRefusedArm,
+  IndexDeclarationBucketRefusedArm,
+  ProductionRefusedArm,
+]
+
+// THE FIXTURE TRANSPORT IS THE CONTRACT TEST'S, REBUILT RATHER THAN IMPORTED, because a test module
+// is not an authority a production instrument may depend on -- the dependency would invert the
+// direction and make deleting a test break a census. Three declarations spelled "x" (oids 1, 2, 3)
+// and one reference (oid 10) give every kind a matching and a non-matching supply without a second
+// fixture shape.
+
+fn oid(value: Int) -> OccurrenceId { OccurrenceId { value: value } }
+
+fn fixture_span() -> SourceSpan {
+  SourceSpan { file: "provenance-calibration-fixture.dag", start: 1, end: 2 }
+}
+
+fn fixture_path(ancestor: OccurrenceId, terminal: OccurrenceId) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [ancestor], terminal: terminal }
+}
+
+fn fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  containment: OccurrenceContainmentPath,
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: fixture_span(),
+    },
+    containment: containment,
+  }
+}
+
+fn fixture_transport() -> OccurrenceTransport {
+  let first = oid(value: 1)
+  let second = oid(value: 2)
+  let later = oid(value: 3)
+  let reference = oid(value: 10)
+  let first_path = fixture_path(ancestor: oid(value: 20), terminal: first)
+  let second_path = fixture_path(ancestor: oid(value: 21), terminal: second)
+  let later_path = fixture_path(ancestor: oid(value: 22), terminal: later)
+  let reference_path = fixture_path(ancestor: oid(value: 23), terminal: reference)
+  OccurrenceTransport {
+    index: OccurrenceIndex { entries: [
+      fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
+      fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
+      fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
+      fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
+    ] },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: first,
+        containment: first_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+      DeclarationOccurrence {
+        occurrence: second,
+        containment: second_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+      DeclarationOccurrence {
+        occurrence: later,
+        containment: later_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
+      },
+    ],
+    references: [ReferenceOccurrence {
+      occurrence: reference,
+      containment: reference_path,
+      category: LexicalValueOccurrence,
+      diagnostic_span: fixture_span(),
+    }],
+  }
+}
+
+fn resolved(supplied_candidates: List<OccurrenceId>) -> StructuralBindingResolution {
+  StructuralBindingResolved {
+    binding_outcome: resolve_reference_occurrence_binding(
+      transport: fixture_transport(),
+      occurrence: oid(value: 10),
+      supplied_candidates: supplied_candidates,
+    ),
+  }
+}
+
+// The candidate supply that makes each kind's clause hold. Distinct per kind because the four
+// capabilities ask structurally different questions of the same reference: the neighbour clause
+// wants ONE bound declaration, the later-declaration clause wants the reference UNBOUND, and the
+// homonym clause wants exactly TWO ambiguous candidates.
+fn matching_supply(kind: CalibrationObservationKind) -> List<OccurrenceId> {
+  match kind {
+    SameFileNeighbourKind => [oid(value: 1)]
+    SiblingBranchKind => [oid(value: 2)]
+    LaterDeclarationKind => []
+    DistinctHomonymKind => [oid(value: 1), oid(value: 2)]
+  }
+}
+
+fn resolution_for_arm(
+  kind: CalibrationObservationKind,
+  arm: CalibrationResolutionArm,
+) -> StructuralBindingResolution {
+  match arm {
+    ResolvedArm => resolved(supplied_candidates: matching_supply(kind: kind))
+    IndexTransportRefusedArm =>
+      StructuralBindingIndexTransportRefused {
+        refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: fixture_span() },
+      }
+    IndexModulePathRefusedArm =>
+      StructuralBindingIndexModulePathRefused {
+        refusal: MissingOccurrenceModulePathRow { occurrence: oid(value: 10) },
+      }
+    IndexExposureRefusedArm =>
+      StructuralBindingIndexExposureRefused {
+        refusal: MissingDeclarationExposure { occurrence: oid(value: 10) },
+      }
+    IndexAuthoredOrderRefusedArm =>
+      StructuralBindingIndexAuthoredOrderRefused {
+        refusal: MissingAuthoredOrderRow { occurrence: oid(value: 10) },
+      }
+    IndexDeclarationBucketRefusedArm =>
+      StructuralBindingIndexDeclarationBucketRefused { occurrence: oid(value: 10) }
+    ProductionRefusedArm =>
+      StructuralBindingProductionRefused { gap: ReferenceBindingNamedReferenceAbsent }
+  }
+}
+
+fn observation_for(
+  kind: CalibrationObservationKind,
+  resolution: StructuralBindingResolution,
+) -> ReferenceBindingObservation {
+  match kind {
+    SameFileNeighbourKind =>
+      SameFileNeighbourObservation { neighbour: oid(value: 1), resolution: resolution }
+    SiblingBranchKind =>
+      SiblingBranchObservation {
+        own_branch_declaration: oid(value: 2),
+        sibling_branch_declaration: oid(value: 3),
+        resolution: resolution,
+      }
+    LaterDeclarationKind =>
+      LaterDeclarationObservation { later_declaration: oid(value: 3), resolution: resolution }
+    DistinctHomonymKind =>
+      DistinctHomonymObservation {
+        first_declaration: oid(value: 1),
+        second_declaration: oid(value: 2),
+        resolution: resolution,
+      }
+  }
+}
+
+// THE COMPARATOR IS NOT A COLUMN. A supply that resolves successfully and still fails the clause is
+// a genuine structural non-match, reached through the production resolver with no refusal anywhere.
+// It is what the six refusal arms are measured AGAINST -- if a typed refusal renders the same as
+// this, the consumer cannot tell "the index could not be built" from "the index was built and the
+// answer was no". Adding it as an eighth column would have been a denominator derived from what
+// this instrument produces rather than from what std declares.
+fn non_matching_supply(kind: CalibrationObservationKind) -> List<OccurrenceId> {
+  match kind {
+    SameFileNeighbourKind => [oid(value: 2)]
+    SiblingBranchKind => [oid(value: 3)]
+    LaterDeclarationKind => [oid(value: 1)]
+    DistinctHomonymKind => [oid(value: 1)]
+  }
+}
+
+// RENDERING IS THE MEASUREMENT INSTRUMENT, not decoration. Two cells are distinguishable exactly
+// when a consumer reading the admission can tell them apart, so the render carries EVERY field the
+// admission carries and nothing else -- adding the arm's own name here would fabricate a
+// distinction the consumer does not have, and the matrix would report the collapse as clean.
+fn capability_word(c: ReferenceDerivedClosureCapability) -> String {
+  match c {
+    SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible"
+    SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded"
+    LaterDeclarationExcluded => "LaterDeclarationExcluded"
+    DistinctSameSpelledDeclarationsPreserved => "DistinctSameSpelledDeclarationsPreserved"
+    RepeatedMentionsCollapseDependency => "RepeatedMentionsCollapseDependency"
+    UnrelatedLoadedFileExcluded => "UnrelatedLoadedFileExcluded"
+  }
+}
+
+fn failure_word(f: ReferenceDerivedClosureScenarioFailure) -> String {
+  match f {
+    SameFileNeighbourMissing => "SameFileNeighbourMissing"
+    SiblingBranchLeaked => "SiblingBranchLeaked"
+    LaterDeclarationLeaked => "LaterDeclarationLeaked"
+    DistinctDeclarationCollapsed => "DistinctDeclarationCollapsed"
+    RepeatedMentionDuplicatedDependency => "RepeatedMentionDuplicatedDependency"
+    UnrelatedLoadedFileDependencyLeaked => "UnrelatedLoadedFileDependencyLeaked"
+  }
+}
+
+fn trigger_word(t: ReferenceDerivedClosureTrigger) -> String {
+  match t {
+    P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515"
+    P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515"
+    P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515"
+  }
+}
+
+fn admission_render(a: ReferenceDerivedClosureAdmission) -> String {
+  match a {
+    ReferenceDerivedClosureEstablished { receipt } =>
+      concat("Established(", concat(capability_word(c: receipt.capability), ")"))
+    ReferenceDerivedClosureRefused { capability, failure } =>
+      concat("Refused(", concat(capability_word(c: capability),
+        concat(",", concat(failure_word(f: failure), ")"))))
+    ReferenceDerivedClosureUnavailable { capability, trigger } =>
+      concat("Unavailable(", concat(capability_word(c: capability),
+        concat(",", concat(trigger_word(t: trigger), ")"))))
+  }
+}
+
+fn cell_render(kind: CalibrationObservationKind, arm: CalibrationResolutionArm) -> String {
+  admission_render(a: assess_reference_binding_observation(
+    observation: observation_for(kind: kind, resolution: resolution_for_arm(kind: kind, arm: arm)),
+  ))
+}
+
+fn non_matching_render(kind: CalibrationObservationKind) -> String {
+  admission_render(a: assess_reference_binding_observation(
+    observation: observation_for(
+      kind: kind,
+      resolution: resolved(supplied_candidates: non_matching_supply(kind: kind)),
+    ),
+  ))
+}
+
+data non_matching_comparator_label: String = "resolved-but-structurally-non-matching (comparator, not a column)"
+
+// THE COLLISION SET IS COMPUTED, NOT DECLARED. Every other arm of the same kind is rendered and
+// compared, and so is the non-matching comparator. Nothing here encodes an expectation about which
+// arms collapse: a declared expectation is a prediction, and the reason this runs before the corpus
+// is that predictions about this instrument have been wrong.
+fn collisions_for(
+  kind: CalibrationObservationKind,
+  arm: CalibrationResolutionArm,
+) -> List<String> {
+  let mine = cell_render(kind: kind, arm: arm)
+  let my_label = resolution_arm_label(a: arm)
+  let against_arms = fold(calibration_resolution_arms, init: [], f: fn(acc, other) {
+    let other_label = resolution_arm_label(a: other)
+    if other_label != my_label && cell_render(kind: kind, arm: other) == mine {
+      concat(acc, [other_label])
+    } else {
+      acc
+    }
+  })
+  if non_matching_render(kind: kind) == mine {
+    concat(against_arms, [non_matching_comparator_label])
+  } else {
+    against_arms
+  }
+}
+
+fn join_labels(labels: List<String>) -> String {
+  fold(labels, init: "", f: fn(acc, l) {
+    if acc == "" { l } else { concat(acc, concat(" + ", l)) }
+  })
+}
+
+fn cell_distinguishability(
+  kind: CalibrationObservationKind,
+  arm: CalibrationResolutionArm,
+) -> CellDistinguishability {
+  let colliding = collisions_for(kind: kind, arm: arm)
+  if list_length(items: colliding) > 0 {
+    ProvenanceCollapsed {
+      collapses_with: join_labels(labels: colliding),
+      mechanism: "gunbc.namespace_reference_derived_closure_admission.binding_outcome_from_resolution maps every non-Resolved arm to Absent, and each consumer arm maps Absent to the same refused(capability, failure) as a structural non-match",
+    }
+  } else {
+    ProvenanceDistinguished { admission: cell_render(kind: kind, arm: arm) }
+  }
+}
+
+// THE CONSUMER STANDING IS DEMONSTRATED FOR EVERY CELL, and each of the three clauses is worth
+// stating because a case that never reached the judging stage and "passed" is not a demonstration:
+// the intended resolution arm is SUPPLIED by resolution_for_arm, it REACHES the judging stage --
+// assess_reference_binding_observation, the real consumer, not a copy of it -- and the attributed
+// result is the render that judging returns. The conditions are carried because a demonstration
+// establishes this cell under THESE inputs and does not establish universal capability over
+// arbitrary ones.
+fn consumer_standing(
+  kind: CalibrationObservationKind,
+  arm: CalibrationResolutionArm,
+) -> CalibrationStanding {
+  CalibrationDemonstrated {
+    conditions: concat(
+      "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); supplied resolution arm ",
+      concat(resolution_arm_label(a: arm),
+        concat("; judged by gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation as ",
+          observation_kind_label(k: kind)))),
+  }
+}
+
+// THE PRODUCTION STANDING IS A DIFFERENT SUBJECT AND THIS ROUTE CANNOT TESTIFY ABOUT IT.
+//
+// This census hands the consumer a CONSTRUCTED resolution. It therefore never calls
+// std.reference_binding_observation.structural_binding_resolution_from_candidates and never drives
+// std.occurrence_binding_candidates.occurrence_candidate_index_build, so it obtains no evidence
+// about whether the production path can reach a given arm. That is UNSUPPORTED BY THIS ROUTE, not
+// unreachable: the route lacks the input, and the missing input is named below because that name is
+// the next-rung trigger.
+//
+// ProductionRefusedArm carries an additional and separately sourced fact -- no module anywhere
+// constructs StructuralBindingProductionRefused -- which is a whole-tree namespace question this
+// module cannot answer from inside a fold over fixtures. It is re-derived by
+//   grep -rn "StructuralBindingProductionRefused" dag/ src/ --include=*.dag --include=*.rs
+// and is recorded as a note on a standing that stays UNSUPPORTED BY THIS ROUTE, because a grep is
+// not a demonstration either.
+fn production_standing(arm: CalibrationResolutionArm) -> CalibrationStanding {
+  match arm {
+    ResolvedArm =>
+      CalibrationUnsupportedByThisRoute {
+        missing_input: "a fixture that drives std.reference_binding_observation.structural_binding_resolution_from_candidates rather than supplying a StructuralBindingResolution directly",
+        reason: "the route constructs the resolution, so the production path that would select this arm is never executed",
+      }
+    ProductionRefusedArm =>
+      CalibrationUnsupportedByThisRoute {
+        missing_input: "a producer for StructuralBindingProductionRefused; a whole-tree symbol census finds no module that constructs it",
+        reason: "the route constructs the resolution, so it obtains no evidence about producibility; the arm is declared and fixture-constructible with no known production route to it",
+      }
+    _ =>
+      CalibrationUnsupportedByThisRoute {
+        missing_input: "a fixture that drives std.occurrence_binding_candidates.occurrence_candidate_index_build to this specific index-build refusal",
+        reason: "the route constructs the refusal payload directly, so the index build that would emit it is never executed",
+      }
+  }
+}
+
+fn provenance_cell(
+  kind: CalibrationObservationKind,
+  arm: CalibrationResolutionArm,
+) -> ProvenanceCell {
+  ProvenanceCell {
+    kind: kind,
+    arm: arm,
+    consumer_standing: consumer_standing(kind: kind, arm: arm),
+    distinguishability: cell_distinguishability(kind: kind, arm: arm),
+    production_standing: production_standing(arm: arm),
+  }
+}
+
+fn calibration_cells() -> List<ProvenanceCell> {
+  fold(calibration_observation_kinds, init: [], f: fn(acc, kind) {
+    fold(calibration_resolution_arms, init: acc, f: fn(inner, arm) {
+      concat(inner, [provenance_cell(kind: kind, arm: arm)])
+    })
+  })
+}
+
+fn standing_line(s: CalibrationStanding) -> String {
+  match s {
+    CalibrationDemonstrated { conditions } => concat("DEMONSTRATED  conditions=", conditions)
+    CalibrationNotDemonstrated { note } =>
+      concat("NOT DEMONSTRATED (evidence not obtained; says nothing about producibility)  ", note)
+    CalibrationUnsupportedByThisRoute { missing_input, reason } =>
+      concat("UNSUPPORTED BY THIS ROUTE  missing=", concat(missing_input, concat("  reason=", reason)))
+    CalibrationRefusedOrIncomplete { cause } =>
+      concat("REFUSED / INCOMPLETE (not a negative observation about the subject)  ", cause)
+  }
+}
+
+fn distinguishability_line(d: CellDistinguishability) -> String {
+  match d {
+    ProvenanceDistinguished { admission } => concat("DISTINGUISHED  admission=", admission)
+    ProvenanceCollapsed { collapses_with, mechanism } =>
+      concat("COLLAPSED  with=", concat(collapses_with, concat("  mechanism=", mechanism)))
+  }
+}
+
+fn cell_line(c: ProvenanceCell) -> String {
+  concat(observation_kind_label(k: c.kind),
+    concat("  x  ", concat(resolution_arm_label(a: c.arm),
+      concat("\n    consumer:        ", concat(standing_line(s: c.consumer_standing),
+        concat("\n    provenance:      ", concat(distinguishability_line(d: c.distinguishability),
+          concat("\n    production path: ", standing_line(s: c.production_standing)))))))))
+}
+
+fn calibration_body() -> String {
+  fold(calibration_cells(), init: concat(
+    "reference-occurrence binding provenance -- Step 0 calibration matrix\n",
+    concat("observation kind x resolution arm, on controlled fixtures, judged by the real consumer\n",
+      concat("gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation\n\n",
+        concat("The axes are the vocabulary std DECLARES, bound by the exhaustive matches\n",
+          concat("arm_of_resolution and kind_of_observation -- not the cases this run produced.\n",
+            "A count of populated cells is NOT reported and is not a completeness figure.\n\n"))))),
+    f: fn(acc, c) { concat(acc, concat(cell_line(c: c), "\n\n")) })
+}
+
+// THE INSTRUMENT REFUSES ON THE MEASURED MATRIX AND WRITES IT FIRST. Writing before refusing is the
+// stopped-line audit of DESIGN section 5: the operator gets every cell to analyse and the line still
+// stops. A green here would mean the provenance the carrier pays to preserve survives to a consumer,
+// and that every arm's production route is established -- which is exactly what the corpus run
+// would otherwise assume without having asked.
+fn cell_is_sound(c: ProvenanceCell) -> Bool {
+  match c.distinguishability {
+    ProvenanceDistinguished { admission: _ } =>
+      match c.production_standing {
+        CalibrationDemonstrated { conditions: _ } => true
+        CalibrationNotDemonstrated { note: _ } => false
+        CalibrationUnsupportedByThisRoute { missing_input: _, reason: _ } => false
+        CalibrationRefusedOrIncomplete { cause: _ } => false
+      }
+    ProvenanceCollapsed { collapses_with: _, mechanism: _ } => false
+  }
+}
+
+fn unsound_cells(cells: List<ProvenanceCell>) -> List<ProvenanceCell> {
+  fold(cells, init: [], f: fn(acc, c) {
+    if cell_is_sound(c: c) { acc } else { concat(acc, [c]) }
+  })
+}
+
+fn provenance_calibration_report(out: String) -> ProcessExit {
+  if out == "" {
+    exit_failure(reason: "provenance_calibration_report: --arg out=<path> is required -- the matrix is written, not printed")
+  } else {
+    let cells = calibration_cells()
+    if Filesystem.Write(path: out, content: calibration_body()).success {
+      if list_length(items: unsound_cells(cells: cells)) == 0 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat(
+          "provenance_calibration_report: refusing -- not every cell is both provenance-distinguished at the consumer and production-demonstrated, so a corpus run's silence about a resolution arm is not evidence that arm is clean. Full matrix written to ",
+          concat(out, " for analysis.")))
+      }
+    } else {
+      exit_failure(reason: concat("provenance_calibration_report: derived and could not be written to ", out))
+    }
+  }
+}
