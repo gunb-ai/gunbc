@@ -22,6 +22,7 @@ import v2.workflow.floor_terminal_ledger_wire {
   admit_repository_snapshot_wire,
   ledger_returned_true_tag,
   parse_ledger,
+  readback_digest_agrees,
 }
 
 // WHY THIS EXISTS, STATED AS THE FAILURE IT ANSWERS. gunbc.fabric_ci_program declares, per gate, the
@@ -752,14 +753,32 @@ fn render_standing_verdict(v: GateStandingVerdict) -> FabricStandingReport {
 // prepared-subject digest, SUFFICIENT FOR this adjudication to compare the ledger's header against
 // a digest it did not read out of the ledger. The guard itself stays live and covered by witnesses
 // through gate_standing, which every fixture exercises; what is dropped is its production caller.
+//
+// THE SEAL IS CONSUMED, NOT MERELY PARSED. An earlier revision destructured footer_digest and
+// ignored it, so a ledger whose ROWS had been edited while its footer was left alone parsed cleanly
+// and adjudicated as evidence. Structural readability is not integrity: the count says how many
+// rows, the digest says WHICH, and only the second survives a row being rewritten in place.
+// readback_digest_agrees recomputes it from the rows this reader parsed and compares it to the one
+// the file carries -- that is the wire authority's own check, so consuming it is not a second
+// opinion about integrity, it is the first consumer of the one that already existed.
+//
+// NOT CHECKED HERE, AND SAID SO: the footer ROW COUNT. Its authority's own note is explicit that
+// the referent must be the PLANNED count the caller already holds, never the rows the reader
+// parsed, because comparing the footer to the parsed rows is an identity that a truncation
+// rewriting both would satisfy. This consumer holds no planned count, so the honest move is to
+// leave that check to a caller that does rather than run it against itself.
 fn adjudicate_published_ledger(
   ledger_text: String,
   adjudicated_commit_hex: String,
 ) -> FabricStandingReport {
-  match parse_ledger(text: ledger_text) {
+  let readback = parse_ledger(text: ledger_text)
+  match readback {
     LedgerUnreadable { reason, at } =>
       standing_refused(concat("FCI-STANDING refused=ledger-unreadable reason=", reason as String)),
     LedgerRead { repository_snapshot, prepared_subject, roster_identity, rows, footer_row_count_wire, footer_digest } =>
+      if !readback_digest_agrees(readback: readback) {
+        standing_refused("FCI-STANDING refused=ledger-seal-disagrees-with-its-rows")
+      } else {
       match admit_repository_snapshot_wire(wire: repository_snapshot) {
         SnapshotWireUnrecognized { offending } =>
           standing_refused(concat("FCI-STANDING refused=ledger-snapshot-unrecognized offending=", offending)),
@@ -785,6 +804,7 @@ fn adjudicate_published_ledger(
                   )),
               },
           },
+      }
       },
   }
 }
