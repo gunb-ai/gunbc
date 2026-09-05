@@ -1,0 +1,37 @@
+module fixture.diagnostic_disposition_authority.independent_predicate
+
+// Expressibility probe only, independent of the pending v1 construction's final spelling.
+// The total classifier is sound; is_error_diagnostic reintroduces a second classification.
+type CompilerDiagnostic = ProbeAdvisory | ProbeBlocking
+type DiagnosticSeverity = Advisory | Error
+type DiagnosticGateDisposition = Continue | Block
+type DiagnosticDisposition {
+  severity: DiagnosticSeverity
+  gate: DiagnosticGateDisposition
+}
+
+fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
+  match d {
+    ProbeAdvisory => DiagnosticDisposition { severity: Advisory, gate: Continue }
+    ProbeBlocking => DiagnosticDisposition { severity: Error, gate: Block }
+  }
+}
+
+fn derived_is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match diagnostic_disposition(d: d).severity {
+    Advisory => false
+    Error => true
+  }
+}
+
+fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match d {
+    ProbeAdvisory => false
+    ProbeBlocking => true
+  }
+}
+
+fn main() -> Bool {
+  derived_is_error_diagnostic(d: ProbeBlocking)
+    && is_error_diagnostic(d: ProbeBlocking)
+}

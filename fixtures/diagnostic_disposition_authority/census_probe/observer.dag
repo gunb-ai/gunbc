@@ -1,0 +1,24 @@
+module fixture.diagnostic_disposition_authority.census_probe
+
+import v2.lens.fallback_arm_census { fallback_arm_census_facts_live }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Invocation-only probe of the existing census, not an enrolled policy or a new classifier.
+// The remote experiment places the two accepted subjects in the census's fixed source roots.
+fn census_distinguishes_fixture_patterns() -> Bool {
+  let facts = fallback_arm_census_facts_live()
+  let wildcard_count = fold(facts, init: 0, f: fn(acc, fact) {
+    if fact.rel_path == "src/v2/b3_census_probe/wildcard/subject.dag"
+      && fact.fn_name == "diagnostic_disposition" {
+      acc + 1
+    } else { acc }
+  })
+  let ordinary_count = fold(facts, init: 0, f: fn(acc, fact) {
+    if fact.rel_path == "src/v2/b3_census_probe/independent_predicate/subject.dag" {
+      acc + 1
+    } else { acc }
+  })
+  wildcard_count == 1 && ordinary_count == 0
+}

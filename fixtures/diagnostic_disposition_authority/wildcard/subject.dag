@@ -1,0 +1,25 @@
+module fixture.diagnostic_disposition_authority.wildcard
+
+// Expressibility probe only: these local types stand in for the pending v1 construction.
+// This source must compile; the future authority lens must reject the wildcard arm.
+type CompilerDiagnostic = ProbeAdvisory | ProbeBlocking
+type DiagnosticSeverity = Advisory | Error
+type DiagnosticGateDisposition = Continue | Block
+type DiagnosticDisposition {
+  severity: DiagnosticSeverity
+  gate: DiagnosticGateDisposition
+}
+
+fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
+  match d {
+    ProbeAdvisory => DiagnosticDisposition { severity: Advisory, gate: Continue }
+    _ => DiagnosticDisposition { severity: Error, gate: Block }
+  }
+}
+
+fn main() -> Bool {
+  match diagnostic_disposition(d: ProbeBlocking).gate {
+    Continue => false
+    Block => true
+  }
+}
