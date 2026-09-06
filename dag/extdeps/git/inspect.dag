@@ -201,6 +201,77 @@ service git.Inspect {
     }
   }
 
+  operation HeadCommitIn {
+    input { repository_path: String }
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { sha: "0000000000000000000000000000000000000000", success: true, stderr: "" } "hermetic git.Inspect.HeadCommitIn"
+    }
+  }
+
+  operation ReadTreeIntoIndex {
+    input { repository_path: String, revision_hex: String, index_path: String }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "read-tree", "--no-sparse-checkout", "{revision_hex}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic git.Inspect.ReadTreeIntoIndex"
+    }
+  }
+
+  operation StatusAgainstIndex {
+    input { repository_path: String, index_path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { entries_nul: "", success: true, stderr: "" } "hermetic git.Inspect.StatusAgainstIndex: clean"
+    }
+  }
+
+  operation IgnoredAgainstIndex {
+    input { repository_path: String, index_path: String }
+    output {
+      paths_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["env", "GIT_INDEX_FILE={index_path}", "git", "-C", "{repository_path}", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { paths_nul: "", success: true, stderr: "" } "hermetic git.Inspect.IgnoredAgainstIndex: none"
+    }
+  }
+
   operation IgnoredFiles {
     input {}
     output {

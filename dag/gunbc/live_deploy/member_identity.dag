@@ -1,0 +1,298 @@
+module gunbc.live_deploy.member_identity
+
+import std.types { String, Bool, List, NonEmptyStr, CommitSha }
+import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
+import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
+import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, systemd_unit_active_state_wire_label }
+
+// A DEPLOYMENT CONVERGES ON IDENTITIES, NOT ON PATHS. gunbc.live_deploy.emit deployment_apply_plan
+// reconciles the desired roster against `observed: []`, so every member is an add on every apply
+// and an already-converged host replays its whole installation -- measured 2026-09-06 at nineteen
+// minutes, of which the deploy's real mutations were seconds and the rest was five source-compiling
+// evaluators started in series by unconditional restarts. docs/plans/deploy-convergence-observed-side.md
+// refutes the obvious repair (feed the same path-keyed roster an observed side): a member whose value
+// is a function of its own key cannot be seen to be stale, so a non-degenerate diff over paths would
+// report CONVERGED over a stale host. The member therefore needs a real identity -- the smallest fact
+// whose equality means the host already holds what is desired -- and this module carries that for
+// the three members that consume the release: the published tree, the installed executable, and the
+// serve unit. Every other owned artifact stays on the apply-all path until it earns an identity here;
+// the roster below is the declared frontier, not an oversight.
+//
+// The executable form of the class, from the same record: every reconcile binding must have a
+// control that holds the KEY fixed, varies meaningful STATE, and expects a replacement. The
+// executable fixture in member_identity_witness_test is exactly that control.
+type ConvergedMember
+  = TreePublication
+  | Executable
+  | ServiceUnit
+
+fn converged_member_label(m: ConvergedMember) -> String {
+  match m {
+    TreePublication => "tree-publication"
+    Executable => "executable"
+    ServiceUnit => "service-unit"
+  }
+}
+
+// THE PUBLISHED TREE'S IDENTITY IS THE REVISION AND WHETHER THE TRACKED PROJECTION MATCHES IT. The
+// observed-side record found that revision alone is insufficient: a checkout can sit at the right
+// HEAD with a stale or dirty tracked projection, and that is the state the rsync-era sync produced.
+// So a tree is converged only when both hold; a clean projection at another revision is a Replace.
+type TreePublicationIdentity {
+  revision: CommitSha
+  tracked_projection_clean: Bool
+}
+
+// THE UNIT'S IDENTITY IS THE DOCUMENT SYSTEMD LOADED, not the one we would write: the content hash
+// of the installed unit file against the content hash of the rendered document. Both sides are text
+// this evaluator holds, so the substrate's own structural hash (std.content_hash) is the identity;
+// the executable, whose bytes we never hold, is identified by the host's sha256 instead. Active state
+// rides beside the document so a current file over a failed process is a Replace, never converged.
+type ServiceUnitIdentity {
+  unit: NonEmptyStr
+  document: Fnv1a64Structural
+  active: SystemdUnitActiveState
+}
+
+type MemberIdentity
+  = TreeIdentity { tree: TreePublicationIdentity }
+  | ExecutableIdentity { digest: Digest }
+  | UnitIdentity { unit: ServiceUnitIdentity }
+
+fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
+  match i {
+    TreeIdentity { tree: _ } => TreePublication
+    ExecutableIdentity { digest: _ } => Executable
+    UnitIdentity { unit: _ } => ServiceUnit
+  }
+}
+
+// WHAT THE HOST SAID ABOUT A MEMBER. Absent is an established absence (the observer listed the
+// parent and the entry was not there, extdeps.filesystem.filesystem_io's rule); unobservable is a
+// refused or indeterminate read and is NEVER folded into either of the other two -- a member we
+// could not observe is refused below, not created and not skipped.
+type ObservedMember
+  = MemberObserved { identity: MemberIdentity }
+  | MemberAbsentOnHost { member: ConvergedMember }
+  | MemberUnobservable { member: ConvergedMember, cause: String }
+
+fn observed_member_member(o: ObservedMember) -> ConvergedMember {
+  match o {
+    MemberObserved { identity } => member_identity_member(i: identity)
+    MemberAbsentOnHost { member } => member
+    MemberUnobservable { member, cause: _ } => member
+  }
+}
+
+type MemberDecision
+  = AlreadyConverged { member: ConvergedMember }
+  | Create { member: ConvergedMember, to: MemberIdentity }
+  | Replace { member: ConvergedMember, from: MemberIdentity, to: MemberIdentity }
+  | MemberRefused { member: ConvergedMember, cause: String }
+
+fn hash_algorithm_eq(a: HashAlgorithm, b: HashAlgorithm) -> Bool {
+  match a {
+    Sha256 => match b { Sha256 => true  Sha512 => false }
+    Sha512 => match b { Sha512 => true  Sha256 => false }
+  }
+}
+
+fn digest_eq(a: Digest, b: Digest) -> Bool {
+  hash_algorithm_eq(a: a.algorithm, b: b.algorithm) && (a.hex as String) == (b.hex as String)
+}
+
+fn active_state_eq(a: SystemdUnitActiveState, b: SystemdUnitActiveState) -> Bool {
+  systemd_unit_active_state_wire_label(s: a) == systemd_unit_active_state_wire_label(s: b)
+}
+
+fn converged_member_eq(a: ConvergedMember, b: ConvergedMember) -> Bool {
+  converged_member_label(m: a) == converged_member_label(m: b)
+}
+
+// IDENTITY EQUALITY IS PER MEMBER KIND AND TOTAL; a pair of different kinds is not "unequal", it is
+// a wiring defect and the caller refuses it before reaching here (decide_member).
+fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
+  match a {
+    TreeIdentity { tree: ta } => match b {
+      TreeIdentity { tree: tb } => (ta.revision as String) == (tb.revision as String) && ta.tracked_projection_clean && tb.tracked_projection_clean
+      _ => false
+    }
+    ExecutableIdentity { digest: da } => match b {
+      ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
+      _ => false
+    }
+    UnitIdentity { unit: ua } => match b {
+      UnitIdentity { unit: ub } => (ua.unit as String) == (ub.unit as String) && content_hash_eq_structural(left: ua.document, right: ub.document) && active_state_eq(a: ua.active, b: ub.active)
+      _ => false
+    }
+  }
+}
+
+// ONE MEMBER, ONE DECISION. Desired is what this release wants; observed is what the host holds.
+// The tree's desired identity is always clean by construction (a release is a revision, and the
+// projection we publish is its tracked set), so an observed dirty projection at the right revision
+// compares unequal and is a Replace -- the stale-projection case the rsync era hid.
+fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: ObservedMember) -> MemberDecision {
+  if !converged_member_eq(a: member, b: member_identity_member(i: desired)) {
+    MemberRefused { member: member, cause: join(["desired identity is for ", converged_member_label(m: member_identity_member(i: desired)), ", not ", converged_member_label(m: member)], "") }
+  } else if !converged_member_eq(a: member, b: observed_member_member(o: observed)) {
+    MemberRefused { member: member, cause: join(["observation is of ", converged_member_label(m: observed_member_member(o: observed)), ", not ", converged_member_label(m: member)], "") }
+  } else {
+    match observed {
+      MemberUnobservable { member: _, cause } => MemberRefused { member: member, cause: join(["could not observe the host: ", cause], "") }
+      MemberAbsentOnHost { member: _ } => Create { member: member, to: desired }
+      MemberObserved { identity } =>
+        if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
+        else { Replace { member: member, from: identity, to: desired } }
+    }
+  }
+}
+
+fn decision_is_converged(d: MemberDecision) -> Bool {
+  match d { AlreadyConverged { member: _ } => true  _ => false }
+}
+
+fn decision_changes(d: MemberDecision) -> Bool {
+  match d {
+    Create { member: _, to: _ } => true
+    Replace { member: _, from: _, to: _ } => true
+    _ => false
+  }
+}
+
+fn decision_member(d: MemberDecision) -> ConvergedMember {
+  match d {
+    AlreadyConverged { member } => member
+    Create { member, to: _ } => member
+    Replace { member, from: _, to: _ } => member
+    MemberRefused { member, cause: _ } => member
+  }
+}
+
+fn decision_label(d: MemberDecision) -> String {
+  match d {
+    AlreadyConverged { member } => join([converged_member_label(m: member), ": already converged"], "")
+    Create { member, to: _ } => join([converged_member_label(m: member), ": create"], "")
+    Replace { member, from: _, to: _ } => join([converged_member_label(m: member), ": replace"], "")
+    MemberRefused { member, cause } => join([converged_member_label(m: member), ": refused -- ", cause], "")
+  }
+}
+
+// THE EFFECTS A DEPLOYMENT MAY PERFORM, as a closed vocabulary the emitter renders and the witness
+// counts. Mutations are derived along the dependency edges the members actually have:
+//   tree changed        -> PublishTree, and the serve process consumes the tree so it restarts
+//   executable changed  -> InstallExecutable, and the process runs it so it restarts
+//   unit changed        -> WriteUnit, DaemonReload (once per transaction, iff any unit document
+//                          changed), and the unit's process restarts
+//   nothing changed     -> no mutation at all
+// The readiness readback is not a mutation and is not in this list: it is carried on the plan
+// beside the mutations, and it runs in EVERY plan including the empty one, because an earlier broken
+// deployment must not manufacture a future false green (the observed-side record's standing rule).
+type DeploymentEffect
+  = PublishTree { revision: CommitSha }
+  | InstallExecutable { digest: Digest }
+  | WriteUnit { unit: NonEmptyStr }
+  | DaemonReload
+  | RestartService { unit: NonEmptyStr }
+
+type ReadinessReadback =
+  | ReadbackReleaseIdentity
+
+type EffectPlan {
+  mutations: List<DeploymentEffect>
+  readback: ReadinessReadback
+}
+
+type EffectDerivation
+  = EffectsDerived { plan: EffectPlan }
+  | EffectsRefused { refusals: List<MemberDecision> }
+
+fn changed_decision_for(decisions: List<MemberDecision>, member: ConvergedMember) -> MemberDecision? {
+  (filter(decisions, d => decision_changes(d: d) && converged_member_eq(a: decision_member(d: d), b: member))).first()
+}
+
+fn decision_target(d: MemberDecision) -> MemberIdentity? {
+  match d {
+    Create { member: _, to } => Present { value: to }
+    Replace { member: _, from: _, to } => Present { value: to }
+    _ => none
+  }
+}
+
+fn tree_publish_effects(decisions: List<MemberDecision>) -> List<DeploymentEffect> {
+  match changed_decision_for(decisions: decisions, member: TreePublication) {
+    Absent => []
+    Present { value: d } => match decision_target(d: d) {
+      Present { value: TreeIdentity { tree } } => [PublishTree { revision: tree.revision }]
+      _ => []
+    }
+  }
+}
+
+fn executable_install_effects(decisions: List<MemberDecision>) -> List<DeploymentEffect> {
+  match changed_decision_for(decisions: decisions, member: Executable) {
+    Absent => []
+    Present { value: d } => match decision_target(d: d) {
+      Present { value: ExecutableIdentity { digest } } => [InstallExecutable { digest: digest }]
+      _ => []
+    }
+  }
+}
+
+fn unit_write_effects(decisions: List<MemberDecision>) -> List<DeploymentEffect> {
+  match changed_decision_for(decisions: decisions, member: ServiceUnit) {
+    Absent => []
+    Present { value: d } => match decision_target(d: d) {
+      Present { value: UnitIdentity { unit } } => [WriteUnit { unit: unit.unit }, DaemonReload]
+      _ => []
+    }
+  }
+}
+
+// THE SERVE PROCESS IS THE CONSUMER OF ALL THREE MEMBERS, so it restarts iff any of them changed.
+// The unit it restarts is the ServiceUnit's; a plan in which the unit did not change still names it,
+// read from the desired identity handed in beside the decisions. ORDER IS A DEPENDENCY, not a
+// preference: the tree is published by a oneshot that runs the ADMITTED EXECUTABLE, so the
+// executable installs first; the unit document is written before the manager reloads; the restart
+// closes the transaction.
+fn derive_effects(decisions: List<MemberDecision>, service_unit: NonEmptyStr) -> EffectDerivation {
+  let refused = filter(decisions, d => match d { MemberRefused { member: _, cause: _ } => true  _ => false })
+  if count(refused) > 0 {
+    EffectsRefused { refusals: refused }
+  } else {
+    let mutations = concat(concat(executable_install_effects(decisions: decisions), tree_publish_effects(decisions: decisions)), unit_write_effects(decisions: decisions))
+    let restart = if any(decisions, d => decision_changes(d: d)) { [RestartService { unit: service_unit }] } else { [] }
+    EffectsDerived { plan: EffectPlan { mutations: concat(mutations, restart), readback: ReadbackReleaseIdentity } }
+  }
+}
+
+fn effect_label(e: DeploymentEffect) -> String {
+  match e {
+    PublishTree { revision } => join(["publish-tree ", revision as String], "")
+    InstallExecutable { digest } => join(["install-executable sha256:", digest.hex as String], "")
+    WriteUnit { unit } => join(["write-unit ", unit as String], "")
+    DaemonReload => "daemon-reload"
+    RestartService { unit } => join(["restart ", unit as String], "")
+  }
+}
+
+fn effect_labels(plan: EffectPlan) -> List<String> {
+  map(plan.mutations, e => effect_label(e: e))
+}
+
+// THE FULL-INSTALL PLAN: every member created. It is what an apply against an empty host derives,
+// and it is the plan the emit witnesses hand the emitter so the rendered script they pin is the
+// complete installation. It is NOT a fallback for a plan that could not be derived -- a refused
+// observation refuses the deploy (deployment_effect_plan), it does not install everything.
+fn full_install_plan(revision: CommitSha, executable: Digest, unit: NonEmptyStr) -> EffectPlan {
+  EffectPlan {
+    mutations: [
+      InstallExecutable { digest: executable },
+      PublishTree { revision: revision },
+      WriteUnit { unit: unit },
+      DaemonReload,
+      RestartService { unit: unit },
+    ],
+    readback: ReadbackReleaseIdentity,
+  }
+}

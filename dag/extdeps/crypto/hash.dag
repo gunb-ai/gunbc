@@ -1,6 +1,7 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.algebra { trim }
 import std.content_hash {
   as_content_hash_cryptographic,
   as_content_hash_sha512,
@@ -79,4 +80,40 @@ fn sha512_digest_content_hash(digest: Digest) -> ContentHash? {
       }
     Sha256 => none
   }
+}
+
+// coreutils sha256sum over one file: `<hex>  <path>` on stdout, exit 0. The operation is the LOCAL
+// realization; sha256sum_argv is the same invocation spelled for a remote typed-argv transport, and
+// sha256sum_line_digest reads the one output line for both arms. The two spellings of the argv are
+// the extdeps op-plus-builder seam every shell-transported operation in this tree currently carries
+// (extdeps.systemd systemd_parse_label_derivation_debt records the same debt); they fold when the
+// transport row can be read from the operation itself.
+service crypto.Sha256Sum {
+  operation File {
+    input { path: String }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["sha256sum", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sha256sum failed"
+    }
+    mock_response {
+      0 => { line: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  {path}", success: true, stderr: "" } "hermetic crypto.Sha256Sum.File: the empty-input digest"
+    }
+  }
+}
+
+fn sha256sum_argv(path: String) -> List<String> {
+  ["sha256sum", "--", path]
+}
+
+// The first field of the output line, admitted only at the digest's exact length.
+fn sha256sum_line_digest(line: String) -> Digest? {
+  let field = fold(split(s: trim(s: line), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  if field.length() == 64 { Present { value: sha256_digest(hex: field as NonEmptyStr) } } else { none }
 }
