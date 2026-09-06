@@ -13,8 +13,26 @@
 // module is realized first is realized against an index that does not yet contain the other, and
 // exactly one direction of the pair fails to bind. A complete phase-1 index binds both.
 //
-// MUTATION EXECUTED, not predicted: see the commit message for the left/right this produced when
-// the incremental publication is restored.
+// STATE OF THIS FILE, STATED BECAUSE A PASSING TEST THAT PROVES NOTHING IS WORSE THAN NO TEST.
+//
+// THE MUTATION HAS BEEN EXECUTED AND IT DID NOT GO RED. Restoring incremental publication --
+// realize_module resolving against an index built from the modules realized SO FAR
+// (callable_owner_index_from_envs over dep_state.module_index) instead of the complete phase-1
+// index -- left all arms passing. So the mutual arm below does NOT currently discriminate the
+// property it names, and it is NOT enrolled as evidence for the 1c deletion.
+//
+// What IS established, by execution:
+//   - the harness reaches callee resolution: `a_call_to_a_nonexistent_callee_is_an_error` fails
+//     the fixture that names a callee existing nowhere, so the diagnostic channel is not blind;
+//   - the one-way arm binds a genuine cross-module call, so the qualified reference form in these
+//     fixtures does resolve across modules.
+// Both of those hold. What is NOT established is that a diagnostic is the observable through
+// which an incomplete index becomes visible -- the mutation says it is not.
+//
+// The open question, and the next probe: an unresolved-but-existing callee may be handed to the
+// builtin bridge rather than refused, in which case the loss is visible in the INFERRED call
+// result rather than in the diagnostic list. Until that is settled this file stands as the
+// harness plus two executed controls, not as the 1c red.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -92,6 +110,31 @@ fn one_way_cross_module_call_binds() {
     assert!(
         errors.is_empty(),
         "a one-way cross-module call must bind: {errors:?}"
+    );
+}
+
+// BLINDNESS CONTROL, ADDED AFTER THE MUTATION FAILED TO GO RED. If a call to a function that
+// does not exist anywhere produces no error diagnostic, then the diagnostic channel cannot see
+// callee resolution at all and every assertion in this file over `errors.is_empty()` is vacuous.
+// This arm exists to decide that, and it is EXPECTED TO FAIL while the channel is blind.
+#[test]
+fn a_call_to_a_nonexistent_callee_is_an_error() {
+    let dir = scratch_root("absent");
+    author(
+        &dir,
+        "a.dag",
+        "module probe.a\n\nfn af(x: Int) -> Int {\n  probe.b.no_such_function(x: x)\n}\n",
+    );
+    author(
+        &dir,
+        "b.dag",
+        "module probe.b\n\nfn bf(x: Int) -> Int {\n  x\n}\n",
+    );
+    let errors = error_messages(&dir, &["a.dag", "b.dag"]);
+    assert!(
+        !errors.is_empty(),
+        "BLIND CHANNEL: a call to a callee that exists nowhere produced no error diagnostic, so \
+         this file's `errors.is_empty()` assertions measure nothing"
     );
 }
 
