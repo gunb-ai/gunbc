@@ -19,6 +19,16 @@ import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
   complexity_optimality_boundary
 }
+import v2.lens.enforcement.contract {
+  lens_contract_grounding,
+  lens_contract_synthesis,
+  lens_contract_unit_modeling
+}
+import v2.lens.grounding { construction_justification as grounding_construction_justification }
+import v2.lens.grounding_ledger { construction_justification as grounding_ledger_construction_justification }
+import v2.lens.synthesis { construction_justification as synthesis_construction_justification }
+import v2.lens.testgen { construction_justification as testgen_construction_justification }
+import v2.lens.unit_modeling { construction_justification as unit_modeling_construction_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_in_list }
 
 fn cost_lens_ref() -> DeclarationRef {
@@ -78,4 +88,16 @@ test fn planted_wall_now_to_outside_modeled_guarantee_projection_red() -> Bool {
     upstream: cost_construction_justification.class,
     downstream: planted_outside_requiring_cost_lens()
   )
+}
+
+test fn live_outside_stamps_red_when_required_capability_enters_inventory() -> Bool {
+  construction_class_outside_boundary_still_outside(class: synthesis_construction_justification.class)
+    && construction_class_outside_boundary_still_outside(class: unit_modeling_construction_justification.class)
+    && construction_class_outside_boundary_still_outside(class: testgen_construction_justification.class)
+    && construction_class_outside_boundary_still_outside(class: grounding_construction_justification.class)
+    && construction_class_outside_boundary_still_outside(class: grounding_ledger_construction_justification.class)
+    && construction_class_outside_boundary_still_outside(class: complexity_optimality_boundary.class)
+    && construction_class_outside_boundary_still_outside(class: lens_contract_grounding.boundary.class)
+    && construction_class_outside_boundary_still_outside(class: lens_contract_synthesis.boundary.class)
+    && construction_class_outside_boundary_still_outside(class: lens_contract_unit_modeling.boundary.class)
 }
