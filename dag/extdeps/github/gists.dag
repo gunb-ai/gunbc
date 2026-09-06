@@ -37,8 +37,6 @@ service github.Gist {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-
-    rate_limit: { requests: 5000, per: hour, scope: core }
   }
 
   operation Create {
