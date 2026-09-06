@@ -3,9 +3,11 @@ module test.claim.cable_order_admission_witness
 import std.types { Bool, NonEmptyStr }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_100gbase_cr4 }
 import extdeps.transceiver.sff_8636 {
-  Sff8636LegCoding,
-  SecondaryNotObserved, sff8636_leg_coding, sff8636_nominal_rate_from_byte140,
+  sff8636_nominal_rate_from_byte140,
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+}
+import product.cable_leg_observation {
+  CableLegObservation, SecondaryNotObserved, cable_leg_observation,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -77,7 +79,7 @@ test fn a_claim_for_a_different_mode_refuses() -> Bool {
 // ---------------- gate 2: receipt reconciliation ----------------
 
 // The delivered leg, as read. Byte 116 unread, primary 0x0B, PAM4 encoding, escape rate byte.
-data delivered_leg: Sff8636LegCoding = sff8636_leg_coding(
+data delivered_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
@@ -128,7 +130,7 @@ test fn an_unread_delivery_does_not_reconcile_as_matching() -> Bool {
 // THE POSITIVE CONTROL. A leg coded for the required mode reconciles as honouring the claim and
 // needs no remedy -- without this arm every assertion above would pass for a gate that refused
 // everything, which is a wall carrying no information.
-data correctly_coded_leg: Sff8636LegCoding = sff8636_leg_coding(
+data correctly_coded_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
