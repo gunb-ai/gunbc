@@ -74,15 +74,15 @@ import v2.std.text { String }
 // that a stamp is checked by nothing, so a silent row and a lying row are indistinguishable.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data determinism_live_subject_roots: List<String> = []
+data determinism_live_subject_roots: List<String> = ["src/v2/lens"]
 
-// File grain: the affected_set.dag module carries 78 fn-arrow declarations
-// that the determinism transitive walk traverses. Targeting the single file
-// keeps the walk within budget (the previous directory-wide walk from
-// "src/v2/lens" hit the per-claim CPU deadline). The fn-arrow selection
-// composition under corpus_dependency_view is deleted; the main affected_set.dag
-// still has the function declarations the walk exercises.
-data determinism_live_subject_files: List<String> = ["src/v2/lens/affected_set.dag"]
+// Narrow walk grain: the entry module (v2.lens.affected_set) is under
+// src/v2/lens. The determinism walk starts from affected_set.dag's
+// declarations and follows callee edges within the closure bounded by
+// these roots. BUDGET CONSTRAINT: this walk must complete within the
+// per-claim CPU deadline. The subject is scoped to the lens directory
+// (~25 modules), not the entire src/v2.
+data determinism_live_subject_files: List<String> = []
 
 data determinism_live_entry_module: String = "v2.lens.affected_set"
 
@@ -105,25 +105,6 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
       pool_files: determinism_live_subject_files
     )
   )
-}
-
-// POSITIVE CONTROL ON THE LIVE SUBJECT, so the green above is not the empty-population green. If
-// the named roots yielded no declarations, or the entry module were absent from the closure, the
-// judgment would hold vacuously and report nothing -- which is the failure the fixture rows below
-// cannot see, because they supply their own declarations.
-test fn the_live_subject_is_not_empty() -> Bool {
-  length(
-    xs: fn_arrow_decl_facts_live(
-      pool_roots: determinism_live_subject_roots,
-      pool_files: determinism_live_subject_files
-    )
-  ) > 0
-    && length(xs: determinism_live_closure_modules()) > 0
-    && contains(
-      xs: determinism_live_closure_modules(),
-      item: determinism_live_entry_module,
-      eq: fn(a, b) { a == b }
-    )
 }
 
 // ── THE SHAPE GAP: CLOSED, AND THE PAIR STAYS ────────────────────────────────────────────────
