@@ -763,28 +763,6 @@ pub mod v1_test_non_ascii_perf_fixture;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_tests_claim_algebra_application_evidence_test;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_tests_claim_algebra_application_refusal_test;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_tests_claim_bare_variant_reference_occurrence_control_test;
 #[allow(
     unused_imports,
