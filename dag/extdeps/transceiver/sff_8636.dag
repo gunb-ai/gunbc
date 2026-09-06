@@ -216,18 +216,11 @@ fn sff8636_interpret_extended_compliance(code: Nat) -> ComplianceInterpretation 
   }
 }
 
-// ================= THE OBSERVED SECONDARY FIELD =================
-//
-// AN UNREAD FIELD IS NOT AN ABSENT ONE, and the distinction decides a verdict. Contradiction is a
-// claim about a COMPLETE profile: it says every application this module declares disagrees with its
-// encoding byte. That claim cannot be made while byte 116 has not been read, because the unread
-// field may carry the very application the encoding belongs to. The earlier head used `Absent` for
-// both and therefore proved contradiction from a gap in its own observation.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.transceiver.sff_8636",
-      decl_name: "Sff8636LegCoding",
+      decl_name: "ComplianceInterpretation",
       field: WholeDeclaration
     }
   },
