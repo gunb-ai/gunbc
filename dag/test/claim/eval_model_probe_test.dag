@@ -1,0 +1,50 @@
+module test.claim.eval_model_probe
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import std.logic { Bool }
+
+test fn let_is_eager_when_unused() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let marker_file = Filesystem.Write(path: concat(dir.path, "/marker.txt"), content: "probe")
+  let file_exists_before = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  let removed = shell.Remove.RecursiveForce(path: dir.path)
+  let file_exists_after = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  dir.success && marker_file.success
+    && file_exists_before.is_file
+    && !file_exists_after.is_file
+}
+
+test fn let_is_eager_when_consumed() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let marker_file = Filesystem.Write(path: concat(dir.path, "/marker.txt"), content: "probe")
+  let removed = shell.Remove.RecursiveForce(path: dir.path)
+  let file_exists = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  dir.success && marker_file.success && removed.success && !file_exists.is_file
+}
+
+test fn and_demands_right_even_when_left_false() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let marker_file = Filesystem.Write(path: concat(dir.path, "/marker.txt"), content: "probe")
+  let left_operand = false
+  let remove_result = shell.Remove.RecursiveForce(path: dir.path)
+  let combined = left_operand && remove_result.success
+  let file_exists = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  dir.success && marker_file.success && !file_exists.is_file
+}
+
+test fn and_short_circuit_direct_probe() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let marker_file = Filesystem.Write(path: concat(dir.path, "/marker.txt"), content: "probe")
+  let combined = false && shell.Remove.RecursiveForce(path: dir.path).success
+  let file_exists = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  dir.success && marker_file.success && !file_exists.is_file
+}
+
+test fn and_with_true_left_removes_file() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let marker_file = Filesystem.Write(path: concat(dir.path, "/marker.txt"), content: "probe")
+  let combined = true && shell.Remove.RecursiveForce(path: dir.path).success
+  let file_exists = shell.Test.IsFile(path: concat(dir.path, "/marker.txt"))
+  dir.success && marker_file.success && combined && !file_exists.is_file
+}
