@@ -1,0 +1,157 @@
+module test.claim.call_target_partition_witness_test
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS WITNESS DOES NOT PROVE, STATED FIRST BECAUSE IT IS THE THING A READER WILL ASSUME.
+//
+// THESE CASES DO NOT DISCRIMINATE THE CALL-TARGET PARTITION. Measured, not inferred: every case
+// below was executed against an UNREPAIRED main and returned exactly what it returns against the
+// repaired branch. The partition changes what is WRITABLE, not what this corpus computes, so a
+// green here is not evidence that the repair works and must never be cited as such.
+//
+// THE REASON THE DISCRIMINATING RED IS NOT AUTHORABLE HERE, which is the question DESIGN 4b says
+// to ask BEFORE writing a check: the fail-open arm gave affirmative formal authority to calls
+// whose signature was absent, and at this seam an absent signature LEGITIMATELY falls through to
+// the method bridge -- direct_call_shape_wall_note rules that this fallthrough closes with
+// resolution coverage, not with a wider check here. So the states that reached the defective arm
+// are exactly the states no fixture may refuse, and the one execution that did exercise it
+// required a resolver rule that is not on main. A probe asserting a behavioural difference would
+// be permanently green by construction, which 4b calls worse than absent.
+//
+// WHAT THEY ARE FOR, THEN: REGRESSION CONTROLS over properties the partition must not break.
+// An over-refusing repair passes every negative control and looks like success, so the builtin
+// and shadowing cases are the ones that would catch it -- they are the reason a repair that
+// merely removed the guards was rejected. They are enrolled as controls, not as receipts.
+//
+// WHAT THIS WITNESS PROVES, AND WHY ITS CASES ARE SHAPED THE WAY THEY ARE.
+//
+// The direct-call seam in `v1.compiler.infer_types` narrowed a three-constructor callable lookup
+// to an `Optional` and answered `Absent => true` for "formal authority available" with an empty
+// refusal reason. Absence of all authority was read as affirmative authority, so a call whose
+// signature could not be found was typed against an EMPTY formal list.
+//
+// THE DEFECT WAS CONJUNCTION-SHAPED, WHICH IS WHY IT SURVIVED REVIEW: both consumers of that
+// Boolean independently conjoined `sig != none`, so the permissive arm was unreachable and
+// repairing either half alone was a provably inert edit. A control that exercises the repaired
+// bundle proves the bundle works and proves NOTHING about which conjunct is load-bearing, so the
+// negative controls that establish that are recorded per-conjunct in the change's own receipt --
+// each restoring ONE defect while the others stay repaired, each required to go red.
+//
+// THE POSITIVE CONTROLS ARE NOT OPTIONAL EITHER. An over-refusing repair passes every negative
+// control and looks like success, so a legitimate builtin call and an ordinary declared call must
+// both still be ACCEPTED here. That pairing is the whole difference between closing a fail-open
+// and trading it for an over-refusal.
+data declared_peer: String = "module ctp.peer\nfn peer_two(a: Int, b: Int) -> Int { a }\n"
+
+data entry_declared_ok: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer() -> Int { peer_two(a: 1, b: 2) }\n"
+
+data entry_builtin_call: String = "module ctp.entry\nfn main_answer() -> String { concat(\"a\", \"b\") }\n"
+
+data entry_wrong_arity: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer() -> Int { peer_two(a: 1) }\n"
+
+data entry_local_shadow: String = "module ctp.entry\nimport ctp.peer { peer_two }\nfn main_answer(peer_two: String) -> String { peer_two }\n"
+
+fn peer_and_entry(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("ctp/peer.dag", declared_peer), fixture_source("ctp/entry.dag", entry)],
+    entry: "ctp/entry.dag"
+  })
+}
+
+fn entry_only(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("ctp/entry.dag", entry)],
+    entry: "ctp/entry.dag"
+  })
+}
+
+// Reads go through the coproduct on purpose. An accessor answering [] on the refused arm is the
+// fail-open this instrument's own note records having removed, and re-introducing one here would
+// let a refused compile render as a clean one.
+fn completed_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: ds, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: ds) |> count) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn instrument_formed_a_subject(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => true
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// CASE 1, POSITIVE. An ordinary declared call with formals matching the declaration is ACCEPTED.
+// This is the control that fails if the repair over-refuses, and it is stated against the DECLARED
+// arm specifically -- the only constructor that carries a declaration-bound formal count to check.
+test fn declared_call_with_matching_formals_is_accepted() -> Bool {
+  completed_clean(peer_and_entry(entry_declared_ok))
+}
+
+// CASE 2, POSITIVE, AND IT IS THE ONE THAT CATCHES AN OVER-REFUSING REPAIR. A builtin call carries
+// no declaration and no declaration-bound formals. Under the defect it reached the permissive arm
+// by accident; under the repair it must reach the BUILTIN constructor and still be accepted. A
+// repair that answers "no formal authority, therefore refuse" for absence fails here and nowhere
+// else, which is precisely why removing the guards without partitioning the carrier was rejected.
+test fn builtin_call_still_routes_to_the_builtin_path() -> Bool {
+  completed_clean(entry_only(entry_builtin_call))
+}
+
+// CASE 3, ROUTE-PRESERVATION RATHER THAN REFUSAL, AND THE SHAPE IS DELIBERATE.
+//
+// A body-local binding SHADOWS a same-named declared callable. The seam must take the
+// locally-bound arm rather than the declared one, and must not claim declaration-bound formal
+// authority for a name whose meaning is a local binding.
+//
+// STATED AS ACCEPTANCE RATHER THAN AS A REFUSAL BECAUSE A REFUSAL HERE WOULD BE THE WRONG WALL:
+// `v1.compiler.infer_types` direct_call_shape_wall_note rules that a callee resolving to nothing
+// at this seam "closes with RESOLUTION COVERAGE (the namespace lane), NOT with a wider label
+// check", and the sig-absent fallthrough routes real calls to the method bridge. Refusing here
+// would refuse method-dispatched calls whose callee legitimately resolves nowhere at this seam --
+// an over-refusal wearing a wall's clothes.
+test fn local_binding_shadowing_a_declared_callable_is_accepted() -> Bool {
+  completed_clean(peer_and_entry(entry_local_shadow))
+}
+
+// THE REFUSAL CASE, AND THE WITNESS IS WORTHLESS WITHOUT IT.
+//
+// Every other case here asserts ACCEPTANCE. A fail-open makes more programs acceptable, so a
+// witness built only from acceptance cases stays green when the defect is restored -- it cannot
+// discriminate, and the negative controls that establish which conjunct is load-bearing would
+// have nothing to turn red. This is the case they act on: a declared callable applied at the
+// wrong arity must REFUSE, and it refuses through the one arm that carries a declaration-bound
+// formal count.
+//
+// Discovered by asking what the negative controls would actually flip, after the acceptance
+// cases were already written and passing -- which is the order that hides this.
+test fn declared_call_with_mismatched_formals_refuses() -> Bool {
+  !completed_clean(peer_and_entry(entry_wrong_arity))
+    && instrument_formed_a_subject(peer_and_entry(entry_wrong_arity))
+}
+
+// CASE 4. The instrument must FORM A SUBJECT for every case above, so that a green in cases 1-3
+// cannot be a compile that never ran. Without this, an instrument refusal renders identically to
+// a clean compile in any assertion phrased as "no blocking rows".
+test fn every_case_formed_a_real_subject() -> Bool {
+  instrument_formed_a_subject(peer_and_entry(entry_declared_ok))
+    && instrument_formed_a_subject(entry_only(entry_builtin_call))
+    && instrument_formed_a_subject(peer_and_entry(entry_local_shadow))
+}
