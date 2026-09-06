@@ -6,10 +6,10 @@ import v2.lens.determinism {
   determinism_transitive_holds
 }
 import v2.lens.module_graph { module_declaration_facts_live }
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
-import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, fn_arrow_decl_facts_live }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_node, decl_belongs_to_module, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -106,15 +106,18 @@ test fn determinism_transitive_live_closure_holds() -> Bool {
 }
 
 // POSITIVE CONTROL: the live subject is non-empty, so Holds above is not a vacuous green.
-// The single file (src/v2/lens/affected_set.dag) carries 78 fn-arrow declarations.
-// Entries and closure below pool_files only are file-grain, not module-grain.
+// The single file (src/v2/lens/affected_set.dag) carries 78 fn-arrow declarations,
+// and at least one belongs to the entry module (proving the walk has seeds).
+// The old closure-membership check (length(closure_modules) > 0) is not available
+// at file grain; this decl_belongs_to_module check on the first decl is its
+// file-grain equivalent.
 test fn the_live_subject_is_not_empty() -> Bool {
-  length(
-    xs: fn_arrow_decl_facts_live(
-      pool_roots: determinism_live_subject_roots,
-      pool_files: determinism_live_subject_files
-    )
-  ) > 0
+  let decls = fn_arrow_decl_facts_live(
+    pool_roots: determinism_live_subject_roots,
+    pool_files: determinism_live_subject_files
+  )
+  length(xs: decls) > 0
+    && any(xs: decls, predicate: fn(d) { decl_belongs_to_module(decl: d, mod_path: determinism_live_entry_module) })
 }
 
 // ── THE SHAPE GAP: CLOSED, AND THE PAIR STAYS ────────────────────────────────────────────────
