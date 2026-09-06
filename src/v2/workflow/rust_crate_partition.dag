@@ -530,10 +530,17 @@ fn resolve_partition_outcome(
   }
 }
 
-data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match resolve_partition_outcome(
+// THE RESOLVE IS ONE FACT, SO IT IS ONE BINDING. Both the receipt below and
+// stage0_partition_r4_valid need the assignment this produces, and they are two demands with a
+// shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
+// caching opportunity, and says to carry the first value rather than let the second recompute it.
+// Binding it here is the same move this change makes for stage0_module_dag one declaration up.
+data stage0_resolve_partition_outcome: ResolvePartitionOutcome = resolve_partition_outcome(
   parameter: stage0_partition_parameter(),
   module_dag: stage0_module_dag
-) {
+)
+
+data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
   ResolvePartitionOk { assignment: assignment } =>
     match partition_fold_outcome(module_dag: stage0_module_dag, assignment: assignment) {
       PartitionFoldOk { units: units } =>
@@ -797,10 +804,7 @@ fn stage0_partition_row_lookups_resolved() -> Bool {
 fn stage0_partition_r4_valid() -> Bool {
   match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
-      match resolve_partition_outcome(
-        parameter: stage0_partition_parameter(),
-        module_dag: stage0_module_dag
-      ) {
+      match stage0_resolve_partition_outcome {
         ResolvePartitionOk { assignment: assignment } =>
           match validate_partition_r4(
             module_dag: stage0_module_dag,
