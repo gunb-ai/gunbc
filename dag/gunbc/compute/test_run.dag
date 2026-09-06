@@ -16,7 +16,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
-import gunbc.compute.work_request { WorkOperation, RunClaims }
+import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
 }
@@ -226,6 +226,56 @@ fn test_process_command(gunbc_program: String, repo_root: String, worktree: Stri
     " --arg pattern=", pattern,
     " --arg receipt_path=", test_process_receipt_path(worktree: worktree),
   ], "")
+}
+
+// COMPILING A CLOSURE IS THE SAME SHAPE: snapshot the worktree, ask the provider for CompileEntry of
+// the snapshot, hand back the outcome. The bar a worker reads from the receipt is the compiler's own:
+// zero blocking diagnostics (advisories are not the bar, and the count of them is not a score).
+data compile_process_function: String = "compile_entry_cli"
+data compile_process_receipt_name: String = ".gunbc-compile-receipt.json"
+data compile_process_entry_placeholder: String = "<entry .dag whose closure includes your change, e.g. dag/gunbc/roadmap/roadmap_serve.dag>"
+
+fn compile_process_receipt_path(worktree: String) -> String {
+  join([worktree, "/", compile_process_receipt_name], "")
+}
+
+fn compile_process_command(gunbc_program: String, repo_root: String, worktree: String, entry: String) -> String {
+  join([
+    gunbc_program, " run",
+    " --source-root ", repo_root, "/dag",
+    " --source-root ", repo_root, "/src/v2",
+    " --entry ", repo_root, "/", test_process_entry,
+    " --function ", compile_process_function,
+    " --arg repo_root=", repo_root,
+    " --arg worktree=", worktree,
+    " --arg entry=", entry,
+    " --arg receipt_path=", compile_process_receipt_path(worktree: worktree),
+  ], "")
+}
+
+fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["gunbc compile: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } =>
+      if entry == "" {
+        ExitFailure { code: 2, reason: "gunbc compile: entry must name a .dag file relative to the worktree" }
+      } else {
+        match snapshot_worktree(instance: instance, worktree: worktree) {
+          SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
+          SnapshotResolved { commit } => {
+            let result = compute_provide(instance: instance, commit: commit, op: CompileEntry { entry: entry as FilePath })
+            let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
+            if !receipt.success {
+              ExitFailure { code: 2, reason: join(["gunbc compile: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
+            } else if provide_result_succeeded(r: result) {
+              ExitSuccess
+            } else {
+              ExitFailure { code: 1, reason: join(["gunbc compile ", provide_result_ending(r: result), ": ", provide_result_document(r: result)], "") }
+            }
+          }
+        }
+      }
+  }
 }
 
 // THE CLI. `pattern` is a bazel target pattern over witness modules (`//dag/test/claim/roadmap/...`,

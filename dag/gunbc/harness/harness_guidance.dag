@@ -48,6 +48,7 @@ type HarnessPremise
   | EarlierRoundsDropped { rounds: Int }
   | WorktreeAt { path: String }
   | TestProcessIs { command: String, receipt_path: String }
+  | CompileProcessIs { command: String, receipt_path: String }
 
 // A premise the harness cannot point at is not a premise. The ref names the declaration the fact is
 // read from, so the roster below is auditable the same way any other citation in this corpus is.
@@ -131,6 +132,8 @@ fn harness_premise_text(p: HarnessPremise) -> String {
       join(["[harness] ", to_string(value: n), " earlier tool rounds were dropped."], "")
     WorktreeAt { path } =>
       join(["The attempt worktree is ", path, ". Every file you read or change is under it; paths outside it, including the tree that holds the gunbc binary, are not part of this task."], "")
+    CompileProcessIs { command, receipt_path } =>
+      join(["To typecheck a change before testing it, run `", command, "`, naming an entry whose import closure includes the module you changed. It compiles the snapshot with the compiler built from this same tree and exits 0 only at zero blocking diagnostics; advisories are not the bar. Its outcome is written to ", receipt_path, ", and the compiler's own diagnostics are in the log that outcome names."], "")
     TestProcessIs { command, receipt_path } =>
       join(["The canonical test process is one command: `", command, "`. Replace <package> with the directory under dag/test/claim that mirrors the modules you changed (the pattern is a bazel target pattern: //pkg/... for a subtree, //pkg:all for one package, //pkg:name for one module). It snapshots this worktree, builds it once, and runs the selected witness modules hermetically; it exits 0 only when every selected module ran green, and writes one row per module to ", receipt_path, "."], "")
   }
@@ -145,10 +148,12 @@ fn harness_premise_text(p: HarnessPremise) -> String {
 // target directory. The exact command is spelled by the process's own module (gunbc.compute.test_run
 // test_process_command) so the prompt and the CLI cannot drift apart, and the withheld capability
 // makes any other route a stated violation rather than an inference.
-fn harness_worker_guidance_at(worktree: String, test_command: String, test_receipt_path: String) -> List<HarnessGroundedPremise> {
+fn harness_worker_guidance_at(worktree: String, test_command: String, test_receipt_path: String, compile_command: String, compile_receipt_path: String) -> List<HarnessGroundedPremise> {
   concat(harness_worker_guidance(), [
     grounded(premise: WorktreeAt { path: worktree },
              module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "dispatch_worktree_path_for_instance"),
+    grounded(premise: CompileProcessIs { command: compile_command, receipt_path: compile_receipt_path },
+             module_path: "gunbc.compute.test_run", decl_name: "compile_entry_cli"),
     grounded(premise: TestProcessIs { command: test_command, receipt_path: test_receipt_path },
              module_path: "gunbc.compute.test_run", decl_name: "test_pattern_cli"),
     grounded(premise: CapabilityWithheld { capability: BuildOrTestOutsideTheProcess },

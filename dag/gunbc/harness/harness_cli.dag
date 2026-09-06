@@ -14,7 +14,10 @@ import gunbc.harness.harness_turn {
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
 import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
-import gunbc.compute.test_run { test_process_command, test_process_receipt_path, test_process_pattern_placeholder }
+import gunbc.compute.test_run {
+  test_process_command, test_process_receipt_path, test_process_pattern_placeholder,
+  compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
+}
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
@@ -284,6 +287,8 @@ fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_pr
     worktree: worktree,
     test_command: test_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, pattern: test_process_pattern_placeholder),
     test_receipt_path: test_process_receipt_path(worktree: worktree),
+    compile_command: compile_process_command(gunbc_program: gunbc_program, repo_root: repo_root, worktree: worktree, entry: compile_process_entry_placeholder),
+    compile_receipt_path: compile_process_receipt_path(worktree: worktree),
   ))
 }
 

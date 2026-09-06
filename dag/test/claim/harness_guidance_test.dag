@@ -1,7 +1,7 @@
 module test.claim.harness_guidance
 
 import std.types { Bool, String, Int, List }
-import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, TestWithTheProcess, CapabilityWithheld, BuildOrTestOutsideTheProcess,
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, TestWithTheProcess, CapabilityWithheld, BuildOrTestOutsideTheProcess,
   HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
   ActingAs, CodingWorkerInWorktree,
   ToolCanWriteBy, HeredocWrite,
@@ -252,7 +252,7 @@ test fn a_thinking_block_replays_as_a_thinking_block() -> Bool {
 }
 
 test fn the_worker_is_told_its_own_worktree_path() -> Bool {
-  let prose = harness_guidance_prose(rows: harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "gunbc-test-cmd", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json"))
+  let prose = harness_guidance_prose(rows: harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "gunbc-test-cmd", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json", compile_command: "gunbc-compile-cmd", compile_receipt_path: "/x/attempts/n-a1/.gunbc-compile-receipt.json"))
   prose.contains("The attempt worktree is /x/attempts/n-a1.")
     && prose.contains("paths outside it, including the tree that holds the gunbc binary, are not part of this task")
 }
@@ -262,13 +262,16 @@ test fn the_worker_is_told_its_own_worktree_path() -> Bool {
 // roster that mentions cargo as a way to check work, and against a process premise with no
 // acceptance term deriving the imperative on its own.
 test fn the_worker_is_told_the_one_test_command_and_nothing_else() -> Bool {
-  let rows = harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json")
+  let rows = harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json", compile_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>", compile_receipt_path: "/x/attempts/n-a1/.gunbc-compile-receipt.json")
   let prose = harness_guidance_prose(rows: rows)
   let conclusions = harness_conclusions(rows: rows)
   prose.contains("The canonical test process is one command: `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...`.")
     && prose.contains("So the acceptance command is `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...` and nothing else")
     && prose.contains("You may not build or test any other way: no cargo, no gunbc compile, no claim_batch by hand")
     && prose.contains("/x/attempts/n-a1/.gunbc-test-receipt.json")
+    && prose.contains("To typecheck a change before testing it, run `/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>`")
+    && prose.contains("zero blocking diagnostics; advisories are not the bar")
+    && prose.contains("/x/attempts/n-a1/.gunbc-compile-receipt.json")
     && any(conclusions, c => match c { TestWithTheProcess { command } => command.contains("test_run.dag")  _ => false })
     && !any(harness_conclusions(rows: [is_worker(), at(premise: TestProcessIs { command: "x", receipt_path: "r" })]), c => match c { TestWithTheProcess { command: _ } => true  _ => false })
 }
