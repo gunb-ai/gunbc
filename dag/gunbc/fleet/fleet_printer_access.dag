@@ -224,7 +224,8 @@ type PrinterCredentialResolution
 // no access code" on the strength of a permissions problem, and the remedy that follows -- provision
 // a new code -- would then mint a second version over a code that was there all along.
 //
-// THIS CLASSIFICATION IS A PURE FUNCTION OF THE OUTCOME, DELIBERATELY, so that its RED is authorable.
+// THIS CLASSIFICATION IS A PURE FUNCTION OF THE OUTCOME AND THE RECORD, DELIBERATELY, so that its
+// RED is authorable.
 // Written inline in the network func below, the one decision that must not go wrong -- 404 becomes
 // absence, 403 must not -- would sit where no witness could reach it, and the only way to exercise it
 // would be to make Secret Manager return a 403 on demand. Separated, a witness constructs
@@ -238,16 +239,21 @@ type PrinterCredentialResolution
 // remedy -- so it reaches PrinterCredentialVersionUnrecorded instead.
 //
 // AND THE MIRROR CASE, WHICH IS THE DANGEROUS ONE: A 404 DOES NOT MEAN "NEVER PROVISIONED" WHEN A
-// SUBJECT-MATCHED RECEIPT SAYS WE MADE IT. A receipt is evidence that a write happened and returned
-// an exact version. If the remote now says the container is gone, the structural fact is a
-// CONTRADICTION between a durable receipt and a current observation, and that is all this arm
-// asserts -- it deliberately does not enumerate a cause, because the join is at project+secret grain
-// and any explanation other than "the container was removed" would itself imply a defect in the
-// receipt or write machinery. The remedy is to investigate, never to provision. Returning
-// ProvisionRequired there would erase
-// the receipt from the answer and hand back the remedy "provision it" -- which would quietly recreate
-// a secret that something deleted, destroying the only signal that a deletion occurred, and doing it
-// on the credential path of a machine on the operator LAN.
+// SUBJECT-MATCHED RECORD SAYS WE MADE IT. The structural fact is a CONTRADICTION between a RECORDED
+// MATERIALIZATION and a current observation, and that is all this arm asserts. It deliberately does
+// not enumerate a cause, because the join is at project+secret grain and any explanation other than
+// "the container was removed" would itself imply a defect in the receipt or write machinery.
+//
+// THE WORD "DURABLE" WAS HERE AND WAS AN OVERCLAIM, which matters because this note is the thing a
+// reader consults to learn what the arm means. A record is not yet evidence that a write happened:
+// the roster is authored, the receipt carrier is unsealed, and its mint is a pure function -- the
+// standing frontier stated above the roster. Calling it durable asserted the very property this
+// module elsewhere admits it lacks, in the one comment describing the arm that acts on it.
+//
+// The remedy is to investigate, never to provision. Returning ProvisionRequired here would erase the
+// record from the answer and hand back the remedy "provision it" -- quietly recreating a secret that
+// something deleted, destroying the only signal that a deletion occurred, and doing it on the
+// credential path of a machine on the operator LAN.
 //
 // So the two 404s are different facts and get different arms. Without a receipt, absence is the
 // expected pre-onboarding state and ProvisionRequired is the correct remedy. With one, absence is an
@@ -396,6 +402,12 @@ fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> 
 // recorded_materialization_is_ambiguous that filtered and counted the same roster, and an inline
 // filter in the observer to build the match count. A claim of single authority is falsified by any
 // second reader, and it was falsified by two.
+//
+// SO THE CLAIM CARRIES ITS OWN CHECK: grep the tree for printer_access_code_provision_receipts. Two
+// hits are correct -- the declaration and this function. A third is a second reader and falsifies
+// this note. A sole-authority claim is a universal over the whole tree, and the previous one was
+// justified by a local reading instead; the grep is cited here so a reader can refuse the sentence
+// without taking the author's word for it.
 //
 // THIS IS THE SEAM WHERE B4 WILL LAND. What this function reads today is an ordinary authored list,
 // so RecordedMaterialization is currently only as trustworthy as the discipline described above the
