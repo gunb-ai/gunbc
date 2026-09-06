@@ -20,7 +20,6 @@ test fn clean_directory_passes_v1_rt_check() -> Bool {
     path: concat(dir.path, "/std_logic.rs"),
     content: "pub enum Foo { A, B }\npub fn do_thing(x: Foo) -> Foo { match x { Foo::A => Foo::B, Foo::B => Foo::A } }\n"
   )
-  // Also write v1_rt.rs (which should be excluded from the check)
   let rt_file = Filesystem.Write(
     path: concat(dir.path, "/v1_rt.rs"),
     content: "// Runtime shim\npub fn lookup(key: String) -> String { unimplemented!() }\n"

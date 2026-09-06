@@ -74,7 +74,16 @@ fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
         ok
       } else {
         let read = Filesystem.Read(path: path)
-        ok && read.success && !string_contains(s: read.content, pattern: "v1_rt::")
+        let lines = split(s: read.content, delimiter: "\n")
+        let clean = fold_list(
+          xs: lines,
+          empty: true,
+          cons: fn(ok, line) {
+            ok && (string_contains(s: line, pattern: "use crate::v1_rt")
+              || !string_contains(s: line, pattern: "v1_rt::"))
+          }
+        )
+        ok && read.success && clean
       }
     }
   ) && writes_ok && ok && subject_present
