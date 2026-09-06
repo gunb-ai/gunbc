@@ -2,7 +2,8 @@ module test.claim.mt_collins_1u_brief_witness
 
 import std.types { Bool, Int }
 import std.measure {
-  bandwidth_count, byte_size_count, hertz_count, millimeter_count, rack_unit_count, watt_count,
+  bandwidth_count, bit_width_count, byte_size_count, hertz_count, millimeter_count,
+  rack_unit_count, watt_count,
 }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications {
   OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot,
@@ -46,6 +47,7 @@ test fn w_processor_and_memory_match_the_brief() -> Bool {
     && mt_collins_1u_memory.channels_per_socket == 8
     && mt_collins_1u_memory.max_dimms_per_socket == 16
     && mt_collins_1u_memory.dimms_per_channel == 2
+    && bit_width_count(b: mt_collins_1u_memory.channel_width) == 72
     && byte_size_count(b: mt_collins_1u_memory.max_capacity) == 4398046511104
 }
 

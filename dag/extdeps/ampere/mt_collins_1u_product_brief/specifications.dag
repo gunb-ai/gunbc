@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
-  Bandwidth, ByteSize, Hertz, MegatransfersPerSecond, Millimeter, RackUnit, Watt,
-  bandwidth, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
+  Bandwidth, BitWidth, ByteSize, Hertz, MegatransfersPerSecond, Millimeter, RackUnit, Watt,
+  bandwidth, bit_width, byte_size, hertz, megatransfers_per_second, millimeter, rack_unit, watt,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.ampere.mt_collins_1u_product_brief.subject {
@@ -95,9 +95,15 @@ data mt_collins_1u_processors: MtCollins1UProcessorConfiguration = MtCollins1UPr
   max_core_clock: hertz(count: 3300000000),
 }
 
+// SEVENTY-TWO BITS IS SIXTY-FOUR PLUS EIGHT, and the carrier is what keeps that readable. The
+// brief states "8x 72-bit DDR4-3200 channels": a 72-bit channel is a 64-bit datapath plus 8 bits
+// of ECC, not a 72-bit datapath, so a consumer sizing bandwidth from this figure must divide by
+// 64 and not by 72. Carried as std.measure BitWidth rather than a bare Nat because a count of
+// bits is a unit-bearing quantity and the shared carrier already exists - minting a second
+// spelling for it at this field is the re-invention DESIGN section 2 forbids.
 type MtCollins1UMemoryConfiguration {
   channels_per_socket: Nat
-  channel_width_bits: Nat
+  channel_width: BitWidth
   max_data_rate: MegatransfersPerSecond
   max_dimms_per_socket: Nat
   dimms_per_channel: Nat
@@ -106,7 +112,7 @@ type MtCollins1UMemoryConfiguration {
 
 data mt_collins_1u_memory: MtCollins1UMemoryConfiguration = MtCollins1UMemoryConfiguration {
   channels_per_socket: 8,
-  channel_width_bits: 72,
+  channel_width: bit_width(count: 72),
   max_data_rate: megatransfers_per_second(count: 3200),
   max_dimms_per_socket: 16,
   dimms_per_channel: 2,
