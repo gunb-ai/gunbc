@@ -242,54 +242,113 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 //   - the belt tick entrypoint is belt_run_once_cli
 //   - the belt spawn workdir environment variable names the repo root
 
-fn belt_service_unit() -> ServiceUnitFile {
-  match live_deploy_belt_service_unit_file(spec: live_spec()) {
-    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
+fn belt_service_file() -> SystemdUnitFile {
+  live_deploy_belt_service_unit_file(spec: live_spec())
+}
+
+// THE SECTION ACCESSORS ARE PREDICATES OVER THE COPRODUCT, AND THE WRONG-VARIANT ARM IS `false`,
+// NOT AN EMPTY LIST. SystemdUnitFile is closed over three variants; every emitter here returns one
+// of them, so an extractor returning a section list needs an arm for the two it does not expect.
+// The tempting arm is `_ => []`, and it is the fabricated plausible output DESIGN section 5
+// forbids: every membership test over an empty list is false, so an ABSENCE assertion would pass
+// VACUOUSLY -- and three of the six REDs below assert absence. That one arm would green the
+// evidence while the emitter did anything at all.
+//
+// `false` in the same position is not a default but the correct answer: if the belt-service
+// emitter returned a TimerUnitFile, the claim that the belt unit runs as the service principal IS
+// false, and the witness should say so rather than extract nothing and shrug.
+//
+// unit_has carries no default arm, deliberately. Every variant has a `unit` section, so all three
+// arms are real and the match is exhaustive without one; a `_ => false` there would be a dead arm
+// asserting the accessor can fail in a way it cannot.
+
+fn service_has(file: SystemdUnitFile, target: SystemdServiceDirective) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: s, install: _ } => has_directive(dirs: s, target: target)
+    _ => false
   }
 }
 
-fn belt_service_directives() -> List<SystemdServiceDirective> {
-  match belt_service_unit() {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
+fn unit_has(file: SystemdUnitFile, target: SystemdUnitDirective) -> Bool {
+  match file {
+    ServiceUnitFile { unit: u, service: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    TimerUnitFile { unit: u, timer: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    SliceUnitFile { unit: u, slice: _, install: _ } => has_directive_unit(dirs: u, target: target)
   }
 }
 
-fn belt_unit_directives() -> List<SystemdUnitDirective> {
-  match belt_service_unit() {
-    ServiceUnitFile { unit: u, service: _, install: _ } => u
+fn timer_has(file: SystemdUnitFile, target: SystemdTimerDirective) -> Bool {
+  match file {
+    TimerUnitFile { unit: _, timer: t, install: _ } => has_directive_timer(dirs: t, target: target)
+    _ => false
+  }
+}
+
+fn slice_has_bytes(file: SystemdUnitFile, target: ByteSize, as_max: Bool) -> Bool {
+  match file {
+    SliceUnitFile { unit: _, slice: sl, install: _ } =>
+      has_slice_directive_val(dirs: sl, target: target, as_max: as_max)
+    _ => false
+  }
+}
+
+// THE EXEC-START COMPARISON REFUSES ON A VARIANT MISMATCH RATHER THAN COMPARING NOTHING. Both
+// sides must be service units and both must carry an ExecStart; a comparison that quietly held
+// because one side yielded no directives would be a RED that passes while testing nothing, which
+// is the failure this file exists to remove.
+fn exec_start_changed(baseline: SystemdUnitFile, mutated: SystemdUnitFile) -> Bool {
+  match baseline {
+    ServiceUnitFile { unit: _, service: b, install: _ } =>
+      match mutated {
+        ServiceUnitFile { unit: _, service: m, install: _ } =>
+          any(b, predicate: fn(d) {
+            match d {
+              ExecStart { command: c } => !has_directive(dirs: m, target: ExecStart { command: c })
+              _ => false
+            }
+          })
+            && any(m, predicate: fn(d) {
+              match d {
+                ExecStart { command: _ } => true
+                _ => false
+              }
+            })
+        _ => false
+      }
+    _ => false
   }
 }
 
 // DECISION: the belt runs as the deployment's service principal.
 test fn belt_service_runs_as_service_principal() -> Bool {
   let svc = live_spec().service
-  has_directive(dirs: belt_service_directives(), target: ServiceUser { name: svc.service_user })
-    && has_directive(dirs: belt_service_directives(), target: ServiceGroup { name: svc.service_user })
+  service_has(file: belt_service_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: belt_service_file(), target: ServiceGroup { name: svc.service_user })
 }
 
 // DECISION: the belt runs inside the deployment's cgroup slice.
 test fn belt_service_joins_deployment_slice() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: belt_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+  service_has(file: belt_service_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
 }
 
 // DECISION: the belt works in the deployment's repo tree.
 test fn belt_service_works_in_repo_tree() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: belt_service_directives(), target: WorkingDirectory { path: spec.service.repo_root })
+  service_has(file: belt_service_file(), target: WorkingDirectory { path: spec.service.repo_root })
 }
 
 // DECISION: the belt carries a user-manager bus environment for the principal's uid.
 test fn belt_service_carries_user_manager_environment() -> Bool {
   let svc = live_spec().service
   let envs = user_manager_environment_directives(uid: svc.service_uid)
-  for_all(envs, predicate: fn(e) { has_directive(dirs: belt_service_directives(), target: e) })
+  for_all(envs, predicate: fn(e) { service_has(file: belt_service_file(), target: e) })
 }
 
 // DECISION: the belt spawn workdir env var names the repo root.
 test fn belt_service_carries_spawn_workdir() -> Bool {
   let svc = live_spec().service
-  has_directive(dirs: belt_service_directives(), target: Environment {
+  service_has(file: belt_service_file(), target: Environment {
     assignment: join([belt_spawn_workdir_env_var as String, "=", svc.repo_root as String], "") as NonEmptyStr,
   })
 }
@@ -297,7 +356,7 @@ test fn belt_service_carries_spawn_workdir() -> Bool {
 // DECISION: the belt ticks via the declared belt-run-once CLI entrypoint.
 test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
   let svc = live_spec().service
-  has_directive(dirs: belt_service_directives(), target: ExecStart { command: join([
+  service_has(file: belt_service_file(), target: ExecStart { command: join([
     svc.serve_binary as String,
     " run --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
@@ -306,20 +365,20 @@ test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
 
 // DECISION: the belt unit is Type=oneshot (it runs once per tick and exits).
 test fn belt_service_type_is_oneshot() -> Bool {
-  has_directive(dirs: belt_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+  service_has(file: belt_service_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
 }
 
 // DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
 test fn belt_service_has_unit_directives() -> Bool {
-  let dirs = belt_unit_directives()
-  has_directive_unit(dirs: dirs, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
-    && has_directive_unit(dirs: dirs, target: After { target: "network-online.target" as NonEmptyStr })
-    && has_directive_unit(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+  let f = belt_service_file()
+  unit_has(file: f, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
+    && unit_has(file: f, target: After { target: "network-online.target" as NonEmptyStr })
+    && unit_has(file: f, target: Wants { target: "network-online.target" as NonEmptyStr })
 }
 
 // DECISION: the belt unit is NOT installable (no [Install] section).
 test fn belt_service_is_not_installable() -> Bool {
-  match belt_service_unit() {
+  match belt_service_file() {
     ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
     _ => false
   }
@@ -334,28 +393,14 @@ test fn belt_service_is_not_installable() -> Bool {
 //   - the timer cadence is the declared policy values (OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s)
 //   - the timer is installable as WantedBy=timers.target
 
-fn belt_timer_unit() -> TimerUnitFile {
-  match live_deploy_belt_timer_unit_file(spec: live_spec()) {
-    TimerUnitFile { unit: u, timer: t, install: i } => TimerUnitFile { unit: u, timer: t, install: i }
-  }
-}
-
-fn belt_timer_directives() -> List<SystemdTimerDirective> {
-  match belt_timer_unit() {
-    TimerUnitFile { unit: _, timer: t, install: _ } => t
-  }
-}
-
-fn belt_timer_unit_directives() -> List<SystemdUnitDirective> {
-  match belt_timer_unit() {
-    TimerUnitFile { unit: u, timer: _, install: _ } => u
-  }
+fn belt_timer_file() -> SystemdUnitFile {
+  live_deploy_belt_timer_unit_file(spec: live_spec())
 }
 
 // DECISION: the timer targets the belt service unit, consuming the canonical name.
 test fn belt_timer_targets_belt_service() -> Bool {
   let spec = live_spec()
-  has_directive_timer(dirs: belt_timer_directives(), target: TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) })
+  timer_has(file: belt_timer_file(), target: TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) })
 }
 
 // DECISION: the timer cadence is the declared policy values.
@@ -363,21 +408,21 @@ test fn belt_timer_targets_belt_service() -> Bool {
 // OnBootSec and AccuracySec are transcribed from the same source the emitter uses
 // and are additionally pinned by the_belt_timer_unit_matches_the_deployed_bytes below.
 test fn belt_timer_has_declared_cadence() -> Bool {
-  has_directive_timer(dirs: belt_timer_directives(), target: OnBootSec { duration: "2min" as NonEmptyStr })
-    && has_directive_timer(dirs: belt_timer_directives(), target: OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr })
-    && has_directive_timer(dirs: belt_timer_directives(), target: AccuracySec { duration: "5s" as NonEmptyStr })
+  timer_has(file: belt_timer_file(), target: OnBootSec { duration: "2min" as NonEmptyStr })
+    && timer_has(file: belt_timer_file(), target: OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr })
+    && timer_has(file: belt_timer_file(), target: AccuracySec { duration: "5s" as NonEmptyStr })
 }
 
 // DECISION: the timer has a Description.
 test fn belt_timer_has_description() -> Bool {
-  has_directive_unit(dirs: belt_timer_unit_directives(), target: Description {
+  unit_has(file: belt_timer_file(), target: Description {
     text: "gunbc roadmap belt tick cadence" as NonEmptyStr,
   })
 }
 
 // DECISION: the timer is installable as WantedBy=timers.target.
 test fn belt_timer_is_installable_as_timers_target() -> Bool {
-  match belt_timer_unit() {
+  match belt_timer_file() {
     TimerUnitFile { unit: _, timer: _, install: Installable { directives: ds } } =>
       has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
     _ => false
@@ -397,58 +442,44 @@ test fn belt_timer_is_installable_as_timers_target() -> Bool {
 //   - the serve unit restarts on failure
 //   - the serve unit is installable as WantedBy=multi-user.target
 
-fn serve_unit() -> ServiceUnitFile {
-  match live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision()) {
-    ServiceUnitFile { unit: u, service: s, install: i } => ServiceUnitFile { unit: u, service: s, install: i }
-  }
-}
-
-fn serve_service_directives() -> List<SystemdServiceDirective> {
-  match serve_unit() {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
-  }
-}
-
-fn serve_unit_directives() -> List<SystemdUnitDirective> {
-  match serve_unit() {
-    ServiceUnitFile { unit: u, service: _, install: _ } => u
-  }
+fn serve_file() -> SystemdUnitFile {
+  live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
 }
 
 // DECISION: the serve unit runs as the deployment's service principal.
 test fn serve_unit_runs_as_service_principal() -> Bool {
   let svc = live_spec().service
-  has_directive(dirs: serve_service_directives(), target: ServiceUser { name: svc.service_user })
-    && has_directive(dirs: serve_service_directives(), target: ServiceGroup { name: svc.service_user })
+  service_has(file: serve_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: serve_file(), target: ServiceGroup { name: svc.service_user })
 }
 
 // DECISION: the serve unit joins the deployment's cgroup slice.
 test fn serve_unit_joins_deployment_slice() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: serve_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+  service_has(file: serve_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
 }
 
 // DECISION: the serve unit works in the deployment's repo tree.
 test fn serve_unit_works_in_repo_tree() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: serve_service_directives(), target: WorkingDirectory { path: spec.service.repo_root })
+  service_has(file: serve_file(), target: WorkingDirectory { path: spec.service.repo_root })
 }
 
 // DECISION: the serve unit carries a user-manager bus environment for the principal's uid.
 test fn serve_unit_carries_user_manager_environment() -> Bool {
   let svc = live_spec().service
   let envs = user_manager_environment_directives(uid: svc.service_uid)
-  for_all(envs, predicate: fn(e) { has_directive(dirs: serve_service_directives(), target: e) })
+  for_all(envs, predicate: fn(e) { service_has(file: serve_file(), target: e) })
 }
 
 // DECISION: the serve unit is Type=simple (long-running process).
 test fn serve_unit_type_is_simple() -> Bool {
-  has_directive(dirs: serve_service_directives(), target: ServiceType { mode: "simple" as NonEmptyStr })
+  service_has(file: serve_file(), target: ServiceType { mode: "simple" as NonEmptyStr })
 }
 
 // DECISION: the serve unit restarts on failure.
 test fn serve_unit_restarts_on_failure() -> Bool {
-  has_directive(dirs: serve_service_directives(), target: Restart { policy: "on-failure" as NonEmptyStr })
+  service_has(file: serve_file(), target: Restart { policy: "on-failure" as NonEmptyStr })
 }
 
 // DECISION: the serve ExecStart carries the admitted entrypoint, host/port, and revision.
@@ -460,7 +491,7 @@ test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
     RevisionBoundAtEmission { revision: r } => r as String
     RevisionNotInstalled => ""
   }
-  has_directive(dirs: serve_service_directives(), target: ExecStart { command: join([
+  service_has(file: serve_file(), target: ExecStart { command: join([
     svc.serve_binary as String,
     " serve --source-root dag --source-root src/v2",
     " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
@@ -472,15 +503,15 @@ test fn serve_unit_execstart_carries_admitted_entrypoint() -> Bool {
 
 // DECISION: the serve unit has a Description, After=network-online.target tailscaled.service, Wants=network-online.target.
 test fn serve_unit_has_unit_directives() -> Bool {
-  let dirs = serve_unit_directives()
-  has_directive_unit(dirs: dirs, target: Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr })
-    && has_directive_unit(dirs: dirs, target: After { target: "network-online.target tailscaled.service" as NonEmptyStr })
-    && has_directive_unit(dirs: dirs, target: Wants { target: "network-online.target" as NonEmptyStr })
+  let f = serve_file()
+  unit_has(file: f, target: Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr })
+    && unit_has(file: f, target: After { target: "network-online.target tailscaled.service" as NonEmptyStr })
+    && unit_has(file: f, target: Wants { target: "network-online.target" as NonEmptyStr })
 }
 
 // DECISION: the serve unit is installable as WantedBy=multi-user.target.
 test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
-  match serve_unit() {
+  match serve_file() {
     ServiceUnitFile { unit: _, service: _, install: Installable { directives: ds } } =>
       has_directive_install(dirs: ds, target: WantedBy { target: "multi-user.target" as NonEmptyStr })
     _ => false
@@ -499,45 +530,33 @@ test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
 //   - the tree sync unit is Type=oneshot
 //   - the tree sync unit is NotInstallable (no [Install] section)
 
-fn tree_sync_unit() -> ServiceUnitFile {
+fn tree_sync_file() -> SystemdUnitFile {
   live_deploy_tree_sync_unit_file(spec: live_spec(), tree_path: live_spec().service.repo_root as String)
-}
-
-fn tree_sync_service_directives() -> List<SystemdServiceDirective> {
-  match tree_sync_unit() {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
-  }
-}
-
-fn tree_sync_unit_directives() -> List<SystemdUnitDirective> {
-  match tree_sync_unit() {
-    ServiceUnitFile { unit: u, service: _, install: _ } => u
-  }
 }
 
 // DECISION: the tree sync runs as the service principal.
 test fn tree_sync_runs_as_service_principal() -> Bool {
   let svc = live_spec().service
-  has_directive(dirs: tree_sync_service_directives(), target: ServiceUser { name: svc.service_user })
-    && has_directive(dirs: tree_sync_service_directives(), target: ServiceGroup { name: svc.service_user })
+  service_has(file: tree_sync_file(), target: ServiceUser { name: svc.service_user })
+    && service_has(file: tree_sync_file(), target: ServiceGroup { name: svc.service_user })
 }
 
 // DECISION: the tree sync joins the deployment's cgroup slice.
 test fn tree_sync_joins_deployment_slice() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: tree_sync_service_directives(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
+  service_has(file: tree_sync_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
 }
 
 // DECISION: the tree sync reads its environment from the deployment's tree-sync env path.
 test fn tree_sync_has_environment_file() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: tree_sync_service_directives(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
+  service_has(file: tree_sync_file(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
 }
 
 // DECISION: the tree sync ExecStart carries rsync with all deployed-tree excluded prefixes.
 test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
   let spec = live_spec()
-  has_directive(dirs: tree_sync_service_directives(), target: ExecStart { command: join([
+  service_has(file: tree_sync_file(), target: ExecStart { command: join([
     "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
     " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
   ], "") as NonEmptyStr })
@@ -545,12 +564,12 @@ test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
 
 // DECISION: the tree sync unit is Type=oneshot.
 test fn tree_sync_type_is_oneshot() -> Bool {
-  has_directive(dirs: tree_sync_service_directives(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
+  service_has(file: tree_sync_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
 }
 
 // DECISION: the tree sync unit is NotInstallable.
 test fn tree_sync_is_not_installable() -> Bool {
-  match tree_sync_unit() {
+  match tree_sync_file() {
     ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
     _ => false
   }
@@ -558,7 +577,7 @@ test fn tree_sync_is_not_installable() -> Bool {
 
 // DECISION: the tree sync has a Description.
 test fn tree_sync_has_description() -> Bool {
-  has_directive_unit(dirs: tree_sync_unit_directives(), target: Description {
+  unit_has(file: tree_sync_file(), target: Description {
     text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
   })
 }
@@ -571,22 +590,14 @@ test fn tree_sync_has_description() -> Bool {
 //   - the slice is derived from the deployment's unit name
 //   - the memory bounds come from gunbc_runner_slot_desired()
 
-fn slice_unit() -> SliceUnitFile {
-  match live_deploy_slice_unit_file(spec: live_spec()) {
-    SliceUnitFile { unit: u, slice: s, install: i } => SliceUnitFile { unit: u, slice: s, install: i }
-  }
-}
-
-fn slice_directives() -> List<SystemdSliceDirective> {
-  match slice_unit() {
-    SliceUnitFile { unit: _, slice: s, install: _ } => s
-  }
+fn slice_file() -> SystemdUnitFile {
+  live_deploy_slice_unit_file(spec: live_spec())
 }
 
 // DECISION: the slice's Description names the deployment's unit.
 test fn slice_description_names_the_unit() -> Bool {
   let spec = live_spec()
-  match slice_unit() {
+  match slice_file() {
     SliceUnitFile { unit: u, slice: _, install: _ } =>
       has_directive_unit(dirs: u, target: Description {
         text: join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "") as NonEmptyStr
@@ -598,13 +609,13 @@ test fn slice_description_names_the_unit() -> Bool {
 // DECISION: the slice's MemoryMax and MemoryHigh derive from gunbc_runner_slot_desired().
 test fn slice_memory_bounds_match_runner_slot() -> Bool {
   let slot = gunbc_runner_slot_desired()
-  has_slice_directive_val(dirs: slice_directives(), target: slot.memory_max, as_max: true)
-    && has_slice_directive_val(dirs: slice_directives(), target: slot.memory_high, as_max: false)
+  slice_has_bytes(file: slice_file(), target: slot.memory_max, as_max: true)
+    && slice_has_bytes(file: slice_file(), target: slot.memory_high, as_max: false)
 }
 
 // DECISION: the slice unit has NotInstallable (no [Install] section).
 test fn slice_unit_is_not_installable() -> Bool {
-  match slice_unit() {
+  match slice_file() {
     SliceUnitFile { unit: _, slice: _, install: NotInstallable } => true
     _ => false
   }
@@ -672,46 +683,40 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
   }
 }
 
-fn belt_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
-  match live_deploy_belt_service_unit_file(spec: spec) {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
-  }
+fn belt_service_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_service_unit_file(spec: spec)
 }
 
-fn serve_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
-  match live_deploy_serve_unit_file(spec: spec, revision: live_revision()) {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
-  }
+fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_serve_unit_file(spec: spec, revision: live_revision())
 }
 
-fn tree_sync_service_directives_of(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
-  match live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String) {
-    ServiceUnitFile { unit: _, service: s, install: _ } => s
-  }
+fn tree_sync_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String)
 }
 
 // RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
 test fn belt_service_user_goes_red_under_different_user() -> Bool {
   let wrong_user = divergent_principal()
-  let dirs = belt_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
-  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
-    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
+  let f = belt_service_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
 }
 
 // RED: a spec with a different service_user makes serve_unit_runs_as_service_principal go red.
 test fn serve_unit_user_goes_red_under_different_user() -> Bool {
   let wrong_user = divergent_principal()
-  let dirs = serve_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
-  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
-    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
+  let f = serve_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
 }
 
 // RED: a spec with a different service_user makes tree_sync_runs_as_service_principal go red.
 test fn tree_sync_user_goes_red_under_different_user() -> Bool {
   let wrong_user = divergent_principal()
-  let dirs = tree_sync_service_directives_of(spec: spec_with_principal(wrong_user: wrong_user))
-  !has_directive(dirs: dirs, target: ServiceUser { name: live_spec().service.service_user })
-    && has_directive(dirs: dirs, target: ServiceUser { name: wrong_user })
+  let f = tree_sync_file_of(spec: spec_with_principal(wrong_user: wrong_user))
+  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
+    && service_has(file: f, target: ServiceUser { name: wrong_user })
 }
 
 fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
@@ -744,29 +749,19 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
 // asserts exactly the property -- the port reaches ExecStart -- without asserting anything about
 // the other six.
 test fn serve_unit_execstart_goes_red_under_different_port() -> Bool {
-  let baseline = serve_service_directives_of(spec: live_spec())
-  let mutated = serve_service_directives_of(spec: spec_with_port(wrong_port: divergent_port()))
-  any(baseline, predicate: fn(d) {
-    match d {
-      ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
-      _ => false
-    }
-  })
-    && any(mutated, predicate: fn(d) {
-      match d {
-        ExecStart { command: _ } => true
-        _ => false
-      }
-    })
+  exec_start_changed(
+    baseline: serve_file_of(spec: live_spec()),
+    mutated: serve_file_of(spec: spec_with_port(wrong_port: divergent_port())),
+  )
 }
 
 // RED: a spec with a different repo_root makes belt_service_works_in_repo_tree go red. The
 // emitted WorkingDirectory must follow the spec field rather than a baked-in path.
 test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
   let wrong_root = divergent_repo_root()
-  let dirs = belt_service_directives_of(spec: spec_with_repo_root(wrong_root: wrong_root))
-  !has_directive(dirs: dirs, target: WorkingDirectory { path: live_spec().service.repo_root })
-    && has_directive(dirs: dirs, target: WorkingDirectory { path: wrong_root })
+  let f = belt_service_file_of(spec: spec_with_repo_root(wrong_root: wrong_root))
+  !service_has(file: f, target: WorkingDirectory { path: live_spec().service.repo_root })
+    && service_has(file: f, target: WorkingDirectory { path: wrong_root })
 }
 
 // RED: a spec with a different repo_root makes the tree-sync ExecStart go red.
@@ -776,14 +771,10 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
 // closed: once the exclusion list changed, the typed-out command would match nothing, the absence
 // assertion would hold vacuously, and the RED would pass while testing nothing.
 test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
-  let baseline = tree_sync_service_directives_of(spec: live_spec())
-  let mutated = tree_sync_service_directives_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root()))
-  any(baseline, predicate: fn(d) {
-    match d {
-      ExecStart { command: c } => !has_directive(dirs: mutated, target: ExecStart { command: c })
-      _ => false
-    }
-  })
+  exec_start_changed(
+    baseline: tree_sync_file_of(spec: live_spec()),
+    mutated: tree_sync_file_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root())),
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
