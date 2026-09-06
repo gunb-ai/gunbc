@@ -37,6 +37,8 @@ import gunbc.auth.access_token_source { AccessTokenSource }
 import product.network_topology {
   NetworkEndpoint, NetworkEndpointSubject, EndpointAsset, EndpointHost,
   EndpointSubjectUnregistered, NetworkTopology,
+  NetworkAttachmentRole, FabricationAppliance,
+  NetworkLocality, Lan,
 }
 import gunbc.fleet_intent_network { fleet_intent_network_topology }
 import gunbc.fleet_printer_access {
@@ -292,6 +294,20 @@ data printer_netrc_path: FilePath = "/tmp/gunbc_printer_netrc" as FilePath
 // arms, and the empty/non-empty stdout split that separates them says nothing about whether the file
 // arrived, which is why both map to one receipt.
 //
+// DELIVERY EXECUTES LOCALLY, AND THAT IS A CONSTRUCTION RATHER THAN A CHECK.
+//
+// An earlier draft took `transport: CommandTransport`, which admits SshExec -- and that arm is not a
+// deployment option here, it is a broken one. The payload realization and the netrc are materialized
+// on THIS filesystem; the SSH realization only wraps the argv for remote execution and copies
+// nothing. So a caller passing SshExec would run curl on another machine against paths that exist
+// only in this container: at best a confusing failure, at worst a read of whatever those paths happen
+// to name over there. The parameter is removed rather than validated, because a transport this
+// function cannot honour should not be spellable at its boundary.
+//
+// Hosting delivery on srv2 is a DIFFERENT realization, not this one with a flag changed: it would
+// fetch the credential on srv2, materialize the project on srv2, and execute there. That belongs in
+// its own module when it is wanted.
+//
 // THE ADDRESS COMES FROM THE PRINTER IDENTITY, NEVER FROM THE CALLER.
 //
 // An earlier draft took `host: NonEmptyStr` beside `printer: PhysicalAssetIdentity` and that was a
@@ -304,10 +320,15 @@ data printer_netrc_path: FilePath = "/tmp/gunbc_printer_netrc" as FilePath
 // already carries printer_01_lan_endpoint and printer_02_lan_endpoint, transcribed from the
 // operator's reservation table, because my branch base predates them and I searched my own branch
 // rather than the authority surface. That duplicate is deleted; this consumes the existing rows.
+// PrinterAddressWrongClass REFUSES SEPARATELY FROM PrinterAddressUnknown, because "no endpoint for
+// this asset" and "an endpoint that is not a LAN fabrication appliance" have different remedies: the
+// first is a missing row, the second is a row that would send an access code somewhere structurally
+// wrong -- a tailscale or BMC attachment that happens to name the same asset.
 type PrinterAddressLookup
   = PrinterAddressFound { address: NonEmptyStr }
   | PrinterAddressUnknown { printer: PhysicalAssetIdentity }
   | PrinterAddressAmbiguous { printer: PhysicalAssetIdentity }
+  | PrinterAddressWrongClass { printer: PhysicalAssetIdentity }
 
 fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) -> Bool {
   match e.subject {
@@ -317,13 +338,41 @@ fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) ->
   }
 }
 
+fn endpoint_is_lan_fabrication_appliance(e: NetworkEndpoint) -> Bool {
+  let role_ok = match e.role {
+    FabricationAppliance => true
+    HostOperatingSystem => false
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+  }
+  let locality_ok = match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  }
+  role_ok && locality_ok
+}
+
 fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLookup {
-  let matches = fleet_intent_network_topology().endpoints
+  let for_printer = fleet_intent_network_topology().endpoints
     |> filter(e => endpoint_names_printer(e: e, printer: printer))
-  match matches |> first {
-    Absent => PrinterAddressUnknown { printer: printer }
+  let admissible = for_printer |> filter(e => endpoint_is_lan_fabrication_appliance(e: e))
+  match admissible |> first {
+    Absent =>
+      if (for_printer |> length) == 0 {
+        PrinterAddressUnknown { printer: printer }
+      } else {
+        PrinterAddressWrongClass { printer: printer }
+      }
     Present { value: found } =>
-      if (matches |> length) == 1 {
+      if (admissible |> length) == 1 {
         PrinterAddressFound { address: found.address }
       } else {
         PrinterAddressAmbiguous { printer: printer }
@@ -331,7 +380,7 @@ fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLoo
   }
 }
 
-// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
+// ONE MINT, reached only// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
 // literal would be two places a receipt could be authored, and the point of sealing it is that there
 // is exactly one.
 fn delivered_receipt(
@@ -362,7 +411,6 @@ func deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,
-  transport: CommandTransport,
 ) -> ProjectDelivery
   uses net: Network
 {
@@ -375,7 +423,12 @@ func deliver_project_to_printer(
     PrinterAddressAmbiguous { printer: p } =>
       ProjectDeliveryUnattempted {
         printer: p,
-        cause: "more than one endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
+        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
+      }
+    PrinterAddressWrongClass { printer: p } =>
+      ProjectDeliveryUnattempted {
+        printer: p,
+        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it",
       }
     PrinterAddressFound { address: lan_address } =>
   match printer_access_code_locus(printer: printer) {
@@ -420,7 +473,7 @@ func deliver_project_to_printer(
                 payload: payload,
                 netrc_path: netrc_binding_path(binding: binding)
               ),
-              transport: transport
+              transport: LocalExec
             )
             let credential_shredded = shred_netrc_binding(binding: binding)
             let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
