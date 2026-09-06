@@ -1,0 +1,25 @@
+module test.claim.harness_seat_witness
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import std.measure { second_count }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import product.capacity.pool { Pool }
+import product.capacity.lease { QuiescenceRequired, FencedResource }
+import gunbc.harness.harness_seat { harness_seat_partition, harness_seat_root_pool }
+import gunbc.harness.harness_cli { harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds }
+
+// ONE PARTITION PER SERVING GROUP, AND THE ROOT POOL IS THE GROUP'S ADMISSION COUNT read off the
+// desired unit: both promoted groups carry thirty-two seats, and neither is typed a second time.
+test fn each_group_has_its_own_partition_and_its_admission_count_as_the_pool_ceiling() -> Bool {
+  (harness_seat_partition(group: FabricGroupA) as String) == "group-group-a-seats"
+    && (harness_seat_partition(group: FabricGroupB) as String) == "group-group-b-seats"
+    && (match harness_seat_root_pool(group: FabricGroupA) { Present { value: p } => p.ledger.appropriation.ceiling.count == 32  Absent => false })
+    && (match harness_seat_root_pool(group: FabricGroupB) { Present { value: p } => p.ledger.appropriation.ceiling.count == 32  Absent => false })
+}
+
+// THE SEAT DEADLINE IS THE DECLARED REQUEST DEADLINE PLUS THE RELEASE ALLOWANCE, and the release
+// law is quiescence-required, because the engine cannot fence a superseded holder.
+test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool {
+  harness_seat_policy.maximum_duration_seconds == second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds
+    && (match harness_seat_policy.release_law { QuiescenceRequired => true  FencedResource => false })
+}
