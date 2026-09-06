@@ -2,7 +2,8 @@ module test.claim.fleet.fleet_printer_access_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
-import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus,
@@ -16,8 +17,9 @@ import gunbc.fleet_printer_access {
   printer_access_code_locus_in,
   PrinterCredentialResolution, PrinterCredentialProvisioned, PrinterCredentialProvisionRequired,
   PrinterCredentialProvisionAmbiguous, PrinterCredentialObservationRefused,
-  PrinterCredentialVersionUnrecorded,
-  printer_access_code_desired_ref, printer_credential_resolution,
+  PrinterCredentialVersionUnrecorded, PrinterCredentialMaterializationVanished,
+  PrinterCredentialLocusUndeclared, PrinterCredentialLocusConflicted,
+  printer_access_code_desired_ref, resolution_against,
   classify_container_observation,
 }
 import extdeps.transports.rest {
@@ -42,14 +44,25 @@ test fn printer_access_code_locus_roster_is_the_exact_declared_population() -> B
     && length(filter(printer_access_code_loci, row => roster_row_is_declared(row: row))) == length(printer_access_code_loci)
 }
 
+// THE LOCUS IS COMPARED TO THE CANONICAL CONSTRUCTOR, NOT TO A COPIED LITERAL.
+//
+// This assertion previously read ref.version == "1" plus a rendered ".../versions/1" resource. That
+// was the false materialization claim production had already removed: fleet_secret_ref constructs
+// version "pending" precisely because nothing has been written yet, and the witness was asserting
+// that a DESIRED ref could be rendered as though it named an exact version. Repairing it by copying
+// "pending" instead of "1" would move the duplicate authority rather than remove it -- the witness
+// would still own a second opinion about what a desired version looks like.
+//
+// So it establishes the two things it can honestly establish: the locus names the chosen secret id,
+// and its ref IS what the canonical constructor produces for that id. If fleet_secret_ref's
+// desired-version standing ever changes, this witness follows it instead of contradicting it.
+// secret_ref_version_resource is deliberately NOT called here -- rendering a pending ref as a version
+// resource is the very confusion this row exists to refuse.
 fn secret_names(ref: SecretRef, name: NonEmptyStr) -> Bool {
-  ref.secret == name
-    && ref.version == "1"
-    && secret_ref_version_resource(ref: ref)
-      == join(["projects/gunbai-secrets/secrets/", name, "/versions/1"], "")
+  ref.secret == name && ref == fleet_secret_ref(secret_id: name)
 }
 
-test fn each_printer_locus_names_its_exact_secret_manager_version() -> Bool {
+test fn each_printer_locus_names_the_secret_its_canonical_constructor_produces() -> Bool {
   printer_01_access_code_locus.printer == printer_01
     && secret_names(
          ref: printer_01_access_code_locus.secret,
@@ -91,7 +104,10 @@ fn classify_for_printer_01(outcome: RestOutcome, container_name: String) -> Prin
     desired: printer_access_code_desired_ref(printer: printer_01),
     outcome: outcome,
     container_name: container_name,
-    from_roster: printer_credential_resolution(printer: printer_01),
+    from_roster: resolution_against(
+      desired: printer_access_code_desired_ref(printer: printer_01),
+      printer: printer_01,
+    ),
   )
 }
 
@@ -102,6 +118,9 @@ fn is_provision_required(r: PrinterCredentialResolution) -> Bool {
     PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
     PrinterCredentialObservationRefused { printer: _, cause: _ } => false
     PrinterCredentialVersionUnrecorded { printer: _, container: _ } => false
+    PrinterCredentialMaterializationVanished { printer: _, exact: _ } => false
+    PrinterCredentialLocusUndeclared { printer: _ } => false
+    PrinterCredentialLocusConflicted { printer: _, matches: _ } => false
   }
 }
 
@@ -112,6 +131,9 @@ fn is_observation_refused(r: PrinterCredentialResolution) -> Bool {
     PrinterCredentialProvisioned { exact: _ } => false
     PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
     PrinterCredentialVersionUnrecorded { printer: _, container: _ } => false
+    PrinterCredentialMaterializationVanished { printer: _, exact: _ } => false
+    PrinterCredentialLocusUndeclared { printer: _ } => false
+    PrinterCredentialLocusConflicted { printer: _, matches: _ } => false
   }
 }
 
@@ -156,16 +178,61 @@ test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool 
     PrinterCredentialProvisioned { exact: _ } => false
     PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
     PrinterCredentialObservationRefused { printer: _, cause: _ } => false
+    PrinterCredentialMaterializationVanished { printer: _, exact: _ } => false
+    PrinterCredentialLocusUndeclared { printer: _ } => false
+    PrinterCredentialLocusConflicted { printer: _, matches: _ } => false
+  }
+}
+
+fn classify_for_printer_01_with_roster(
+  outcome: RestOutcome,
+  container_name: String,
+  from_roster: PrinterCredentialResolution,
+) -> PrinterCredentialResolution {
+  classify_container_observation(
+    printer: printer_01,
+    desired: printer_access_code_desired_ref(printer: printer_01),
+    outcome: outcome,
+    container_name: container_name,
+    from_roster: from_roster,
+  )
+}
+
+// THE SECOND DISCRIMINATING RED, and the one a review found rather than the build. A 404 means
+// "never provisioned" ONLY when no receipt claims otherwise. When a subject-matched receipt records
+// an exact version and the remote then says the container is gone, our record and the remote
+// contradict each other -- something was destroyed, or the read is pointed at a different project
+// than the write was. Answering ProvisionRequired there would erase the receipt from the answer and
+// hand back the remedy "provision it", quietly recreating a secret something deleted and destroying
+// the only signal that a deletion happened.
+test fn a_404_over_an_existing_receipt_is_not_read_as_never_provisioned() -> Bool {
+  let provisioned = PrinterCredentialProvisioned {
+    exact: printer_access_code_desired_ref(printer: printer_01),
+  }
+  match classify_for_printer_01_with_roster(
+    outcome: RestStatusRefused { status: 404, body: "not found" },
+    container_name: "",
+    from_roster: provisioned,
+  ) {
+    PrinterCredentialMaterializationVanished { printer: p, exact: _ } => p == printer_01
+    PrinterCredentialProvisionRequired { printer: _, desired: _ } => false
+    PrinterCredentialProvisioned { exact: _ } => false
+    PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
+    PrinterCredentialObservationRefused { printer: _, cause: _ } => false
+    PrinterCredentialVersionUnrecorded { printer: _, container: _ } => false
+    PrinterCredentialLocusUndeclared { printer: _ } => false
+    PrinterCredentialLocusConflicted { printer: _, matches: _ } => false
   }
 }
 
 test fn fleet_printer_access_witnesses_hold() -> Bool {
   printer_access_code_locus_roster_is_the_exact_declared_population()
-    && each_printer_locus_names_its_exact_secret_manager_version()
+    && each_printer_locus_names_the_secret_its_canonical_constructor_produces()
     && an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus()
     && duplicate_printer_loci_refuse_instead_of_taking_the_last_row()
     && both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
     && a_404_is_read_as_the_container_being_absent()
     && a_status_that_is_not_404_never_becomes_absence()
     && a_present_container_with_no_receipt_is_not_reported_as_absent()
+    && a_404_over_an_existing_receipt_is_not_read_as_never_provisioned()
 }

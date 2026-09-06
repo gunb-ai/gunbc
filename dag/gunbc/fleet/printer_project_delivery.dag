@@ -2,7 +2,7 @@ module gunbc.fleet.printer_project_delivery
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.tools.sha256sum {
   Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
@@ -46,6 +46,8 @@ import gunbc.fleet_printer_access {
   PrinterCredentialResolution, PrinterCredentialProvisioned,
   PrinterCredentialProvisionRequired, PrinterCredentialProvisionAmbiguous,
   PrinterCredentialObservationRefused, PrinterCredentialVersionUnrecorded,
+  PrinterCredentialMaterializationVanished,
+  PrinterCredentialLocusUndeclared, PrinterCredentialLocusConflicted,
   observe_printer_secret_container,
 }
 
@@ -444,6 +446,15 @@ func deliver_project_to_printer(
   match observe_printer_secret_container(printer: printer, token_source: token_source) {
     PrinterCredentialObservationRefused { printer: p, cause: cause } =>
       refuse_and_drop(printer: p, payload: payload, cause: cause)
+    PrinterCredentialLocusUndeclared { printer: p } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "this printer has no access-code locus declared in gunbc.fleet_printer_access, so there is no secret to observe: delivery refuses rather than spelling a plausible secret name by convention and asking Secret Manager about a row nobody wrote")
+    PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and delivery refuses rather than taking one by list order")
+    PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
+      refuse_and_drop(printer: p, payload: payload,
+        cause: concat(concat("a provisioning receipt records this printer's access code at ", secret_ref_version_resource(ref: e)), ", but Secret Manager answers 404 for the container: the secret our record says we wrote is gone, so delivery refuses rather than treating a deletion as a printer that was never onboarded") as NonEmptyStr)
     PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
       refuse_and_drop(printer: p, payload: payload,
         cause: concat(concat("this printer's access code secret exists at ", c), " but no provisioning receipt records which version holds it, so delivery refuses rather than guessing a version or re-provisioning a code that is already there") as NonEmptyStr)

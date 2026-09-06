@@ -173,6 +173,9 @@ type PrinterCredentialResolution
   | PrinterCredentialProvisionAmbiguous { printer: PhysicalAssetIdentity, matches: Int }
   | PrinterCredentialObservationRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | PrinterCredentialVersionUnrecorded { printer: PhysicalAssetIdentity, container: String }
+  | PrinterCredentialMaterializationVanished { printer: PhysicalAssetIdentity, exact: SecretRef }
+  | PrinterCredentialLocusUndeclared { printer: PhysicalAssetIdentity }
+  | PrinterCredentialLocusConflicted { printer: PhysicalAssetIdentity, matches: Int }
 
 // A 404 IS THE ANSWER; EVERY OTHER NON-SUCCESS IS AN UNANSWERED QUESTION, AND THE TWO MAY NOT MERGE.
 //
@@ -195,6 +198,24 @@ type PrinterCredentialResolution
 // that case back through the receipt roster unmodified would answer ProvisionRequired for a secret
 // that demonstrably exists -- absence and unknown-version collapsed into one arm wearing the wrong
 // remedy -- so it reaches PrinterCredentialVersionUnrecorded instead.
+//
+// AND THE MIRROR CASE, WHICH IS THE DANGEROUS ONE: A 404 DOES NOT MEAN "NEVER PROVISIONED" WHEN A
+// SUBJECT-MATCHED RECEIPT SAYS WE MADE IT. A receipt is evidence that a write happened and returned
+// an exact version. If the remote now says the container is gone, the structural fact is a
+// CONTRADICTION between a durable receipt and a current observation, and that is all this arm
+// asserts -- it deliberately does not enumerate a cause, because the join is at project+secret grain
+// and any explanation other than "the container was removed" would itself imply a defect in the
+// receipt or write machinery. The remedy is to investigate, never to provision. Returning
+// ProvisionRequired there would erase
+// the receipt from the answer and hand back the remedy "provision it" -- which would quietly recreate
+// a secret that something deleted, destroying the only signal that a deletion occurred, and doing it
+// on the credential path of a machine on the operator LAN.
+//
+// So the two 404s are different facts and get different arms. Without a receipt, absence is the
+// expected pre-onboarding state and ProvisionRequired is the correct remedy. With one, absence is an
+// ANOMALY and the answer is a refusal that names the version we believe we wrote, so a person can
+// find out what happened to it. The classifier consults from_roster on BOTH branches now; consulting
+// it on only one was what made the collapse possible.
 fn classify_container_observation(
   printer: PhysicalAssetIdentity,
   desired: SecretRef,
@@ -214,10 +235,33 @@ fn classify_container_observation(
           PrinterCredentialObservationRefused { printer: p, cause: c }
         PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
           PrinterCredentialVersionUnrecorded { printer: p, container: c }
+        PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
+          PrinterCredentialMaterializationVanished { printer: p, exact: e }
+        PrinterCredentialLocusUndeclared { printer: p } =>
+          PrinterCredentialLocusUndeclared { printer: p }
+        PrinterCredentialLocusConflicted { printer: p, matches: m } =>
+          PrinterCredentialLocusConflicted { printer: p, matches: m }
       }
     RestStatusRefused { status: s, body: b } =>
       if s == 404 {
-        PrinterCredentialProvisionRequired { printer: printer, desired: desired }
+        match from_roster {
+          PrinterCredentialProvisioned { exact: e } =>
+            PrinterCredentialMaterializationVanished { printer: printer, exact: e }
+          PrinterCredentialProvisionRequired { printer: _, desired: _ } =>
+            PrinterCredentialProvisionRequired { printer: printer, desired: desired }
+          PrinterCredentialProvisionAmbiguous { printer: p, matches: m } =>
+            PrinterCredentialProvisionAmbiguous { printer: p, matches: m }
+          PrinterCredentialObservationRefused { printer: p, cause: c } =>
+            PrinterCredentialObservationRefused { printer: p, cause: c }
+          PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
+            PrinterCredentialVersionUnrecorded { printer: p, container: c }
+          PrinterCredentialMaterializationVanished { printer: p, exact: e } =>
+            PrinterCredentialMaterializationVanished { printer: p, exact: e }
+          PrinterCredentialLocusUndeclared { printer: p } =>
+            PrinterCredentialLocusUndeclared { printer: p }
+          PrinterCredentialLocusConflicted { printer: p, matches: m } =>
+            PrinterCredentialLocusConflicted { printer: p, matches: m }
+        }
       } else {
         PrinterCredentialObservationRefused {
           printer: printer,
@@ -245,14 +289,34 @@ fn classify_container_observation(
   }
 }
 
-// THE TRANSPORT HALF: resolve a token, perform the read, and hand the outcome to the classification
-// above. It decides nothing itself, which is why every arm that could have widened lives next door
-// under a witness.
+// THE TRANSPORT HALF: admit the printer against the declared roster, resolve a token, perform the
+// read, and hand the outcome to the classification above. It decides nothing itself, which is why
+// every arm that could have widened lives next door under a witness.
+//
+// THE ROSTER IS AN UNAVOIDABLE INPUT, NOT A FUNCTION SOMETHING ELSE COULD HAVE CALLED. An earlier
+// revision derived the desired ref straight from printer_access_code_desired_ref, which spells a
+// secret id by convention and therefore succeeds for ANY identity -- so a printer present in the
+// fabrication topology but absent from printer_access_code_loci had a plausible Secret Manager name
+// synthesized for it and queried. printer_access_code_locus_in refused that case correctly and
+// production walked around it: the refusal had a witness and no consumer, which is the failure that
+// makes a green test mean nothing. The desired ref now comes OUT of the admitted locus row, so the
+// roster cannot be bypassed by construction rather than by discipline.
+//
+// AN UNDECLARED OR CONFLICTED LOCUS IS NOT A FAILED OBSERVATION, and it gets its own arms rather
+// than PrinterCredentialObservationRefused. One says our declaration is missing or malformed and the
+// remedy is to fix this repository; the other says the remote did not answer and the remedy is out
+// there. Merging them would send an operator to debug Secret Manager for a row nobody wrote.
 func observe_printer_secret_container(
   printer: PhysicalAssetIdentity,
   token_source: AccessTokenSource,
 ) -> PrinterCredentialResolution uses net: Network {
-  let desired = printer_access_code_desired_ref(printer: printer)
+  match printer_access_code_locus(printer: printer) {
+    PrinterAccessCodeLocusUnknown { printer: p } =>
+      PrinterCredentialLocusUndeclared { printer: p }
+    PrinterAccessCodeLocusConflict { printer: p, matches: m } =>
+      PrinterCredentialLocusConflicted { printer: p, matches: m }
+    PrinterAccessCodeDesiredLocusFound { locus: locus } => {
+  let desired = locus.secret
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
       PrinterCredentialObservationRefused {
@@ -272,8 +336,10 @@ func observe_printer_secret_container(
         desired: desired,
         outcome: observed.outcome,
         container_name: observed.name,
-        from_roster: printer_credential_resolution(printer: printer),
+        from_roster: resolution_against(desired: desired, printer: printer),
       )
+    }
+  }
     }
   }
 }
@@ -293,8 +359,11 @@ fn receipt_names_secret(receipt: SecretProvisionReceipt, desired: SecretRef) -> 
   secret_ref_secret_resource(ref: receipt.identity) == secret_ref_secret_resource(ref: desired)
 }
 
-fn printer_credential_resolution(printer: PhysicalAssetIdentity) -> PrinterCredentialResolution {
-  let desired = printer_access_code_desired_ref(printer: printer)
+// RECEIPT RESOLUTION CONSUMES THE ADMITTED DESIRED IDENTITY, never a second derivation of it. The
+// observer passes the SecretRef it actually queried, so the receipt join and the remote read cannot
+// drift onto different subjects -- which is precisely what independently re-deriving the ref from
+// the printer identity in two places would allow.
+fn resolution_against(desired: SecretRef, printer: PhysicalAssetIdentity) -> PrinterCredentialResolution {
   let matches = printer_access_code_provision_receipts
     |> filter(r => receipt_names_secret(receipt: r, desired: desired))
   match matches |> first {
