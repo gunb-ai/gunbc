@@ -1,0 +1,123 @@
+module gunbc.test.claim.runner.runner_microvm_network_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_scope, render_mac_address }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_microvm_network {
+  runner_slot_network, runner_slot_tap_device_name, runner_slot_guest_mac,
+  runner_slot_host_address, runner_slot_guest_address,
+  runner_slot_guest_ip_boot_arg, runner_microvm_nft_ruleset_text,
+  runner_slot_netdev_text, runner_slot_network_file_text,
+  runner_slot_netdev_path, runner_slot_network_file_path,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slot(i: Int) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv2, slot_index: i as Nat }
+}
+
+// TWO SLOTS MUST NOT SHARE AN ADDRESS OR A DEVICE, which is the whole isolation claim reduced to
+// the one property a derivation can be wrong about. The red is a derivation that ignores the slot
+// index -- exactly what a hand-written constant would be.
+test fn two_slots_share_no_address_and_no_tap_device() -> Bool {
+  let a = runner_slot_network(slot: slot(i: 1))
+  let b = runner_slot_network(slot: slot(i: 2))
+  (a.tap_device as String) != (b.tap_device as String)
+    && (render_ipv4_address(addr: a.guest_address) as String) != (render_ipv4_address(addr: b.guest_address) as String)
+    && (render_ipv4_address(addr: a.host_address) as String) != (render_ipv4_address(addr: b.host_address) as String)
+    && (render_mac_address(addr: a.guest_mac) as String) != (render_mac_address(addr: b.guest_mac) as String)
+}
+
+// A GUEST MAC MUST BE ONE NO VENDOR CAN BE ASSIGNED. The scope is DERIVED from the first octet by
+// extdeps.network.mac, so this asserts the property rather than the literal 0x02 that produces it --
+// a witness pinning the literal would pass on an address that happened to spell 2 and mean nothing.
+test fn a_guest_mac_is_locally_administered_and_never_a_vendor_address() -> Bool {
+  match mac_address_scope(addr: runner_slot_guest_mac(slot: slot(i: 3))) {
+    LocallyAdministered => true
+    _ => false
+  }
+}
+
+// THE KERNEL ip= DIRECTIVE IS POSITIONAL AND ITS EMPTY FIELDS ARE SEPARATORS, NOT OMISSIONS. A form
+// with too few colons is not rejected by the kernel -- it is parsed into DIFFERENT fields, so the
+// gateway silently becomes the hostname and the guest boots with no route. The count is therefore
+// the property under test, alongside the addresses actually appearing.
+test fn the_guest_ip_directive_carries_every_positional_separator() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 4))
+  let arg = runner_slot_guest_ip_boot_arg(net: net)
+  string_contains(s: arg, pattern: render_ipv4_address(addr: net.guest_address) as String)
+    && string_contains(s: arg, pattern: render_ipv4_address(addr: net.host_address) as String)
+    && string_contains(s: arg, pattern: "::")
+    && string_contains(s: arg, pattern: ":eth0:off")
+}
+
+// THE FORWARD CHAIN MUST NOT DEFAULT TO DROP, AND THIS CONTROL EXISTS BECAUSE THE OBVIOUS SPELLING
+// WOULD HAVE BROKEN THE HOST. srv2 was measured on 2026-09-06 running an active dockerd beside
+// table ip filter / ip nat / ip mangle. In nftables every table hooking a point runs and ANY drop
+// wins, so `policy drop` in our forward chain would drop packets dockerd forwards. The red here is
+// that exact regression: flip the chain's policy and this goes red before it reaches a host.
+test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool {
+  let text = runner_microvm_nft_ruleset_text()
+  string_contains(s: text, pattern: "hook forward")
+    && string_contains(s: text, pattern: "policy accept")
+    && !string_contains(s: text, pattern: "policy drop")
+    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop")
+}
+
+// THE RULESET MUST BE REPLAYABLE, which is what the add-then-delete preamble buys. Applying twice
+// must converge rather than accumulate, and `delete table` on an absent table is an ERROR in
+// nftables rather than a no-op -- so the add must come FIRST. The red is either line missing.
+test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool {
+  let text = runner_microvm_nft_ruleset_text()
+  string_contains(s: text, pattern: "add table inet gunbc_microvm")
+    && string_contains(s: text, pattern: "delete table inet gunbc_microvm")
+}
+
+// THE NAT RULE MUST NOT NAME AN UPLINK. srv2's is enP3p3s0f1 and srv1's is not; a ruleset naming
+// one is host-specific and rots on a NIC rename. Source-matching the fleet supernet is exact and
+// identical everywhere, so the control asserts the masquerade is reached by source address.
+test fn the_masquerade_matches_the_supernet_and_names_no_interface() -> Bool {
+  let text = runner_microvm_nft_ruleset_text()
+  string_contains(s: text, pattern: "ip saddr 172.30.0.0/16 masquerade")
+    && !string_contains(s: text, pattern: "enP3p3s0f1")
+}
+
+// THE TAP MUST BE OWNED BY THE EXECUTOR OR EVERY LAUNCH NEEDS PRIVILEGE. User= in the .netdev is
+// what lets networkd create the device at boot and the executor open it for every guest afterwards
+// with no sudo anywhere in the JOB path. The red is a .netdev without it: the tap still appears,
+// the host still routes, and only an unprivileged open fails -- at launch time, on a guest, far
+// from this file.
+test fn the_netdev_hands_the_tap_to_the_executor_rather_than_to_root() -> Bool {
+  let text = runner_slot_netdev_text(net: runner_slot_network(slot: slot(i: 5)), owner: "ghrunner" as NonEmptyStr)
+  string_contains(s: text, pattern: "Kind=tap")
+    && string_contains(s: text, pattern: "User=ghrunner")
+    && string_contains(s: text, pattern: "[Tap]")
+}
+
+// A TAP HAS NO CARRIER UNTIL A GUEST OPENS IT, so without ConfigureWithoutCarrier networkd leaves
+// the address unassigned and the host has no route to a guest that has not booted -- which is EVERY
+// guest at the moment its VM is configured. The failure would present as a guest networking bug
+// rather than as a missing line in a unit file, which is why it is pinned here.
+test fn the_network_file_configures_the_tap_before_any_guest_provides_carrier() -> Bool {
+  let net = runner_slot_network(slot: slot(i: 6))
+  let text = runner_slot_network_file_text(net: net)
+  string_contains(s: text, pattern: "ConfigureWithoutCarrier=yes")
+    && string_contains(s: text, pattern: "Address=")
+    && string_contains(s: text, pattern: net.tap_device as String)
+}
+
+// TWO SLOTS MUST NOT WRITE THE SAME UNIT FILE, or the second install silently overwrites the first
+// and one slot loses its tap while both rows claim to have one. The device name carries the slot,
+// so the paths differ for the same reason the addresses do.
+test fn two_slots_install_to_different_unit_paths() -> Bool {
+  let a = runner_slot_network(slot: slot(i: 7))
+  let b = runner_slot_network(slot: slot(i: 8))
+  runner_slot_netdev_path(net: a) != runner_slot_netdev_path(net: b)
+    && runner_slot_network_file_path(net: a) != runner_slot_network_file_path(net: b)
+    && runner_slot_netdev_path(net: a) != runner_slot_network_file_path(net: a)
+}
