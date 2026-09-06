@@ -1,12 +1,12 @@
 module test.claim.fleet.fleet_printer_access_witness_test
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus,
-  PrinterAccessCodeLocusFound,
+  PrinterAccessCodeDesiredLocusFound,
   PrinterAccessCodeLocusUnknown,
   PrinterAccessCodeLocusConflict,
   printer_01_access_code_locus,
@@ -14,6 +14,14 @@ import gunbc.fleet_printer_access {
   printer_access_code_loci,
   printer_access_code_locus,
   printer_access_code_locus_in,
+  PrinterCredentialResolution, PrinterCredentialProvisioned, PrinterCredentialProvisionRequired,
+  PrinterCredentialProvisionAmbiguous, PrinterCredentialObservationRefused,
+  PrinterCredentialVersionUnrecorded,
+  printer_access_code_desired_ref, printer_credential_resolution,
+  classify_container_observation,
+}
+import extdeps.transports.rest {
+  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
 fn roster_has_printer(rows: List<PrinterAccessCodeLocus>, printer: PhysicalAssetIdentity) -> Bool {
@@ -56,7 +64,7 @@ test fn an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus() -> Bo
   let unknown = "printer-03" as PhysicalAssetIdentity
   match printer_access_code_locus(printer: unknown) {
     PrinterAccessCodeLocusUnknown { printer: p } => p == unknown
-    PrinterAccessCodeLocusFound { locus: _ } => false
+    PrinterAccessCodeDesiredLocusFound { locus: _ } => false
     PrinterAccessCodeLocusConflict { printer: _, matches: _ } => false
   }
 }
@@ -68,7 +76,7 @@ test fn duplicate_printer_loci_refuse_instead_of_taking_the_last_row() -> Bool {
   ) {
     PrinterAccessCodeLocusConflict { printer: p, matches: n } => p == printer_01 && n == 2
     PrinterAccessCodeLocusUnknown { printer: _ } => false
-    PrinterAccessCodeLocusFound { locus: _ } => false
+    PrinterAccessCodeDesiredLocusFound { locus: _ } => false
   }
 }
 
@@ -77,10 +85,87 @@ test fn both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
     && printer_02_access_code_locus.human_retrieval.locator == "drive.google.com/file/d/12m1vfJmdzSQ_3BxfnwEWaF-MuI0ujwFj/view"
 }
 
+fn classify_for_printer_01(outcome: RestOutcome, container_name: String) -> PrinterCredentialResolution {
+  classify_container_observation(
+    printer: printer_01,
+    desired: printer_access_code_desired_ref(printer: printer_01),
+    outcome: outcome,
+    container_name: container_name,
+    from_roster: printer_credential_resolution(printer: printer_01),
+  )
+}
+
+fn is_provision_required(r: PrinterCredentialResolution) -> Bool {
+  match r {
+    PrinterCredentialProvisionRequired { printer: _, desired: _ } => true
+    PrinterCredentialProvisioned { exact: _ } => false
+    PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
+    PrinterCredentialObservationRefused { printer: _, cause: _ } => false
+    PrinterCredentialVersionUnrecorded { printer: _, container: _ } => false
+  }
+}
+
+fn is_observation_refused(r: PrinterCredentialResolution) -> Bool {
+  match r {
+    PrinterCredentialObservationRefused { printer: _, cause: _ } => true
+    PrinterCredentialProvisionRequired { printer: _, desired: _ } => false
+    PrinterCredentialProvisioned { exact: _ } => false
+    PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
+    PrinterCredentialVersionUnrecorded { printer: _, container: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. 404 is the one status that means the container is not there, and if this
+// stops holding the observation has stopped being able to answer the question it exists to ask.
+test fn a_404_is_read_as_the_container_being_absent() -> Bool {
+  is_provision_required(r: classify_for_printer_01(
+    outcome: RestStatusRefused { status: 404, body: "{\"error\":{\"code\":404}}" },
+    container_name: "",
+  ))
+}
+
+// THE DISCRIMINATING RED, and the reason the classification was separated from the transport at all.
+// A 403 means the caller was not permitted to look. Reading it as absence would send onboarding to
+// provision a code over one that already exists. A 401 and a 429 are the same shape of mistake, and
+// a transport refusal is the strongest case: nothing was reached, so nothing is known.
+test fn a_status_that_is_not_404_never_becomes_absence() -> Bool {
+  is_observation_refused(r: classify_for_printer_01(
+      outcome: RestStatusRefused { status: 403, body: "permission denied" }, container_name: ""))
+    && is_observation_refused(r: classify_for_printer_01(
+      outcome: RestStatusRefused { status: 401, body: "unauthenticated" }, container_name: ""))
+    && is_observation_refused(r: classify_for_printer_01(
+      outcome: RestStatusRefused { status: 429, body: "rate limited" }, container_name: ""))
+    && is_observation_refused(r: classify_for_printer_01(
+      outcome: RestTransportRefused { cause: "connection refused" }, container_name: ""))
+    && is_observation_refused(r: classify_for_printer_01(
+      outcome: RestBodyUndecodable { status: 200, cause: "not json" }, container_name: ""))
+}
+
+// A PRESENT CONTAINER WITH NO RECEIPT IS NOT AN ABSENT ONE. The roster is empty today, so RestOk
+// must reach VersionUnrecorded and NOT ProvisionRequired -- re-provisioning a secret that exists
+// would mint a second version and leave the printer authenticating against whichever one a later
+// reader pinned.
+test fn a_present_container_with_no_receipt_is_not_reported_as_absent() -> Bool {
+  match classify_for_printer_01(
+    outcome: RestOk,
+    container_name: "projects/gunbai-secrets/secrets/printer-01-lan-access-code",
+  ) {
+    PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
+      p == printer_01 && c == "projects/gunbai-secrets/secrets/printer-01-lan-access-code"
+    PrinterCredentialProvisionRequired { printer: _, desired: _ } => false
+    PrinterCredentialProvisioned { exact: _ } => false
+    PrinterCredentialProvisionAmbiguous { printer: _, matches: _ } => false
+    PrinterCredentialObservationRefused { printer: _, cause: _ } => false
+  }
+}
+
 test fn fleet_printer_access_witnesses_hold() -> Bool {
   printer_access_code_locus_roster_is_the_exact_declared_population()
     && each_printer_locus_names_its_exact_secret_manager_version()
     && an_unknown_printer_refuses_instead_of_fabricating_a_secret_locus()
     && duplicate_printer_loci_refuse_instead_of_taking_the_last_row()
     && both_human_retrieval_loci_name_the_observed_auth_gated_drive_resources()
+    && a_404_is_read_as_the_container_being_absent()
+    && a_status_that_is_not_404_never_becomes_absence()
+    && a_present_container_with_no_receipt_is_not_reported_as_absent()
 }

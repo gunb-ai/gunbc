@@ -2,6 +2,7 @@ module gunbc.fleet.printer_project_delivery
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.tools.sha256sum {
   Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
@@ -22,7 +23,7 @@ import gunbc.auth.materialized_secret {
 }
 import gunbc.auth.netrc_binding {
   NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
-  place_netrc_binding, shred_netrc_binding, netrc_binding_path,
+  place_netrc_binding_privately, shred_netrc_binding, netrc_binding_path,
 }
 import extdeps.exec.command { CommandTransport }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -42,9 +43,10 @@ import product.network_topology {
 }
 import gunbc.fleet_intent_network { fleet_intent_network_topology }
 import gunbc.fleet_printer_access {
-  PrinterAccessCodeLocus, PrinterAccessCodeLocusLookup, PrinterAccessCodeLocusFound,
-  PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
-  printer_access_code_locus,
+  PrinterCredentialResolution, PrinterCredentialProvisioned,
+  PrinterCredentialProvisionRequired, PrinterCredentialProvisionAmbiguous,
+  PrinterCredentialObservationRefused, PrinterCredentialVersionUnrecorded,
+  observe_printer_secret_container,
 }
 
 // DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
@@ -203,6 +205,7 @@ type ProjectDelivery
   | ProjectDeliveryRefused { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectDeliveryUnattempted { printer: PhysicalAssetIdentity, cause: NonEmptyStr }
   | ProjectTransferredCleanupRefused { receipt: ProjectUploadReceipt, cause: NonEmptyStr }
+  | ProjectDeliveryProvisionRequired { printer: PhysicalAssetIdentity, desired: SecretRef }
 
 // THE ENDPOINT THE MACHINE ACTUALLY PRESENTS, recorded as an observation of THIS device rather than
 // a general claim about its model line. The A1 mini's LAN file channel is implicit FTPS on 990 with
@@ -268,7 +271,6 @@ fn project_upload_command(
   )
 }
 
-data printer_netrc_path: FilePath = "/tmp/gunbc_printer_netrc" as FilePath
 
 // THE DELIVERY EFFECT, WHICH OWNS THE WHOLE CHAIN FROM PRINTER IDENTITY TO RECEIPT.
 //
@@ -439,15 +441,21 @@ func deliver_project_to_printer(
       refuse_and_drop(printer: p, payload: payload,
         cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
     PrinterAddressFound { address: lan_address } =>
-  match printer_access_code_locus(printer: printer) {
-    PrinterAccessCodeLocusUnknown { printer: p } =>
+  match observe_printer_secret_container(printer: printer, token_source: token_source) {
+    PrinterCredentialObservationRefused { printer: p, cause: cause } =>
+      refuse_and_drop(printer: p, payload: payload, cause: cause)
+    PrinterCredentialVersionUnrecorded { printer: p, container: c } =>
       refuse_and_drop(printer: p, payload: payload,
-        cause: "no access-code locus is recorded for this printer in gunbc.fleet_printer_access")
-    PrinterAccessCodeLocusConflict { printer: p, matches: _ } =>
+        cause: concat(concat("this printer's access code secret exists at ", c), " but no provisioning receipt records which version holds it, so delivery refuses rather than guessing a version or re-provisioning a code that is already there") as NonEmptyStr)
+    PrinterCredentialProvisionRequired { printer: p, desired: d } => {
+      let _ = shell.Remove.FileForce(path: payload.realization.path)
+      ProjectDeliveryProvisionRequired { printer: p, desired: d }
+    }
+    PrinterCredentialProvisionAmbiguous { printer: p, matches: _ } =>
       refuse_and_drop(printer: p, payload: payload,
-        cause: "more than one access-code locus matches this printer; the roster is ambiguous and delivery refuses rather than picking one")
-    PrinterAccessCodeLocusFound { locus: locus } =>
-      match fetch_secret_ref_credential(secret_ref: locus.secret, token_source: token_source) {
+        cause: "more than one provisioning receipt names this printer's secret, so the exact version is ambiguous and delivery refuses rather than choosing one")
+    PrinterCredentialProvisioned { exact: exact_ref } =>
+      match fetch_secret_ref_credential(secret_ref: exact_ref, token_source: token_source) {
         SecretCredentialAccessUpsertRequired { plan: _ } =>
           refuse_and_drop(printer: printer, payload: payload, cause: "the access code could not be read: Secret Manager access has not been granted to this identity")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
@@ -456,8 +464,7 @@ func deliver_project_to_printer(
           refuse_and_drop(printer: printer, payload: payload, cause: reason)
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
           endpoint = bambu_lan_endpoint(host: lan_address)
-          match place_netrc_binding(
-            path: printer_netrc_path,
+          match place_netrc_binding_privately(
             machine: endpoint.host,
             login: bambu_lan_ftps_user,
             password: credential
