@@ -248,6 +248,7 @@ type WorkerFeedback {
   must_fix: List<FeedbackAtPath>
   could_not_judge: List<String>
   approved: List<String>
+  incomplete: List<String>
   overlap_count: Int
 }
 
@@ -273,7 +274,14 @@ fn feedback_path_criteria_count(g: FeedbackAtPath) -> Int {
 }
 
 fn review_feedback(evidence: List<CriterionReviewEvidence>) -> WorkerFeedback {
-  let standings = map(evidence, e => criterion_standing(e: e))
+  review_feedback_standings(standings: map(evidence, e => criterion_standing(e: e)))
+}
+
+// STREAMING, WITH THE INCOMPLETE SET STATED: feedback is emitted as soon as any criterion requests
+// changes, and it carries the calls that have not reached a terminal observation, so a worker cannot
+// mistake an early report for the complete one (review 5125854144: the first cut dropped running and
+// awaiting calls from the smoothed message).
+fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedback {
   let must_fix = fold(standings, init: [], f: (acc, s) => match s {
     CriterionChangesRequested { key, reasons } => fold(reasons, init: acc, f: (acc2, r) => feedback_add(acc: acc2, criterion: key, r: r))
     _ => acc
@@ -289,6 +297,11 @@ fn review_feedback(evidence: List<CriterionReviewEvidence>) -> WorkerFeedback {
       _ => []
     }),
     approved: flat_map(standings, s => match s { CriterionApproved { key, summary: _ } => [key]  _ => [] }),
+    incomplete: flat_map(standings, s => match s {
+      CriterionReviewerRunning { key } => [key]
+      CriterionAwaitingReviewer { key } => [key]
+      _ => []
+    }),
     overlap_count: count(filter(must_fix, g => feedback_path_criteria_count(g: g) > 1)),
   }
 }
@@ -306,17 +319,27 @@ fn review_feedback_text(f: WorkerFeedback) -> String {
       if count(f.must_fix) == 0 { [] } else { [join(["Fix, by file: ", join(map(f.must_fix, g => feedback_at_path_text(g: g)), " · ")], "")] },
       if f.overlap_count == 0 { [] } else { [join([to_string(value: f.overlap_count), " file(s) were named by more than one criterion; fix the file once, then re-read every reason on it."], "")] },
     ),
-    if count(f.could_not_judge) == 0 { [] } else { [join(["Not reviewed (fix before claiming done): ", join(f.could_not_judge, " · ")], "")] },
+    concat(
+      if count(f.could_not_judge) == 0 { [] } else { [join(["Not reviewed (fix before claiming done): ", join(f.could_not_judge, " · ")], "")] },
+      if count(f.incomplete) == 0 { [] } else { [join(["Still reviewing (", to_string(value: count(f.incomplete)), ", this report is not complete): ", join(f.incomplete, ", ")], "")] },
+    ),
   ), "\n")
 }
 
 fn review_reconcile(evidence: List<CriterionReviewEvidence>) -> ReviewReconciliation {
-  let standings = map(evidence, e => criterion_standing(e: e))
+  review_reconcile_standings(standings: map(evidence, e => criterion_standing(e: e)))
+}
+
+// THE FOLD OVER STANDINGS. The denominator is whatever standings the caller hands in; the plan-bound
+// join in gunbc.roadmap.roadmap_review_function is what makes that denominator exactly the plan's calls
+// (missing calls arrive here as CriterionAwaitingReviewer, never dropped), so production reaches this
+// fold only through that join. The evidence form above is kept for the goal audit's roster of one.
+fn review_reconcile_standings(standings: List<CriterionStanding>) -> ReviewReconciliation {
   let text = join(map(standings, s => criterion_standing_text(s: s)), " · ")
   if count(standings) == 0 {
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: "no review criteria are declared, so nothing can approve this head" }
   } else if any(standings, s => standing_is_changes(s: s)) {
-    ReviewReconciliation { state: WorkflowSegmentFailed, detail: review_feedback_text(f: review_feedback(evidence: evidence)) }
+    ReviewReconciliation { state: WorkflowSegmentFailed, detail: review_feedback_text(f: review_feedback_standings(standings: standings)) }
   } else if any(standings, s => standing_blocks(s: s)) {
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: join(map(filter(standings, s => standing_blocks(s: s)), s => criterion_standing_text(s: s)), " · ") }
   } else if all(standings, s => standing_is_approved(s: s)) {
@@ -347,7 +370,6 @@ fn review_brief(
   base_sha: String,
   head_sha: String,
   verification_detail: String,
-  verdict_path: String,
 ) -> String {
   join([
     "Review of node ", node_id, ", on one criterion.\n",
@@ -360,6 +382,11 @@ fn review_brief(
     "Change under review: git diff ", base_sha, "..", head_sha, " (the worktree is at ", head_sha, ")\n",
     "What the belt's own run of the acceptance command said about this head: ", verification_detail, "\n",
     "Answer the criterion and only the criterion: approve means the answer to its question is no; request_changes means yes, with each reason naming the path and the tell.\n",
-    "Write your verdict to ", verdict_path, " in the shape given in your instructions.\n",
   ], "")
+}
+
+// WHERE TO WRITE THE VERDICT IS THE ACTUATION'S FACT, appended by the realization that mints the path,
+// so the semantic call (gunbc.roadmap.roadmap_review_function ReviewCall) carries no path.
+fn review_verdict_instruction(verdict_path: String) -> String {
+  join(["Write your verdict to ", verdict_path, " in the shape given in your instructions.\n"], "")
 }

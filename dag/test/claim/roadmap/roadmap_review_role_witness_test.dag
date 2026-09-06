@@ -2,6 +2,7 @@ module test.claim.roadmap.roadmap_review_role_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_review_role {
+  review_verdict_instruction,
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
   ReviewVerdictDecode, ReviewVerdictDecoded, ReviewVerdictUndecodable,
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
@@ -80,15 +81,16 @@ test fn every_review_criterion_is_grounded_in_the_design_argument() -> Bool {
     && (match review_criterion_by_key(key: "single-authority") { Present { value: _ } => true  Absent => false })
 }
 
-test fn the_brief_carries_the_criterion_the_diff_range_the_check_and_the_verdict_path() -> Bool {
+test fn the_brief_carries_the_criterion_the_diff_range_and_the_check_and_the_verdict_instruction_is_separate() -> Bool {
   match review_criterion_by_key(key: "fail-closed") {
     Absent => false
     Present { value: c } => {
-      let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed", verdict_path: "/v.json")
+      let b = review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "gunbc run x", base_sha: "aaa", head_sha: "bbb", verification_detail: "passed")
       string_contains(s: b, pattern: "git diff aaa..bbb")
         && string_contains(s: b, pattern: "Criterion (fail-closed, grounded on DESIGN proposition s5.fail-closed)")
         && string_contains(s: b, pattern: "Acceptance command: gunbc run x")
-        && string_contains(s: b, pattern: "Write your verdict to /v.json")
+        && !string_contains(s: b, pattern: "Write your verdict")
+        && string_contains(s: review_verdict_instruction(verdict_path: "/v.json"), pattern: "Write your verdict to /v.json")
     }
   }
 }

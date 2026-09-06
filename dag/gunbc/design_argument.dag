@@ -10,13 +10,22 @@ module gunbc.design_argument
 // A proposition without a review reading (an axiom's consequence, or a program like self-hosting) is
 // still part of the argument and simply mints no reviewer.
 type PropositionReview {
+  part: String
   question: String
   tells: List<String>
 }
 
+// WHETHER A PROPOSITION IS REVIEWABLE ON ONE CHANGE IS ITSELF A MODELED FACT, with its reason when it
+// is not: an omitted reviewer is a decision, never an oversight (review 5125854144 on the first cut,
+// which had `review: PropositionReview?` and gave `none` no reason). A reviewable proposition may
+// decompose into several atomic parts, each its own reviewer; the part name is the criterion key.
+type PropositionReviewDisposition
+  = ReviewableOnChange { parts: List<PropositionReview> }
+  | NotReviewableOnChange { reason: String }
+
 type DesignRow {
   proposition: Proposition
-  review: PropositionReview?
+  review: PropositionReviewDisposition
 }
 
 data design_axioms: List<Axiom> = [
@@ -45,7 +54,7 @@ data design_section_1_rows: List<DesignRow> = [
       statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
       premises: ["A1", "A2"]
     },
-    review: none,
+    review: NotReviewableOnChange { reason: "a consequence of the axioms about what a good solution IS; the reviewable propositions below are that standard applied to a change, and a change is not decidable against the standard itself" },
   },
 
   DesignRow {
@@ -54,7 +63,8 @@ data design_section_1_rows: List<DesignRow> = [
       statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
       premises: ["A2", "A3"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "extdeps-placement",
       question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at that shared authority, or does it put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
       tells: [
         "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
@@ -62,7 +72,7 @@ data design_section_1_rows: List<DesignRow> = [
         "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
         "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -71,7 +81,7 @@ data design_section_1_rows: List<DesignRow> = [
       statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
       premises: ["A1", "A2", "s1.grounding-intersubjective"]
     },
-    review: none,
+    review: NotReviewableOnChange { reason: "the limit the whole argument aims at; no single change is decidable against a limit" },
   }
 ]
 
@@ -88,14 +98,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
       premises: ["s1.minimal-safe-efficient"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "minimize-redundancy",
       question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
       tells: [
         "a new type or function whose shape matches an existing one under another name",
         "a hand-written projection of something the model could generate",
         "a quadratic fold or a copied list where a single fold would do"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -104,7 +115,8 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
       premises: ["s2.minimize-redundancy"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "single-authority",
       question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
       tells: [
         "a new enum or record for a concept an extdeps or std module already owns",
@@ -112,7 +124,7 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "a file:line citation in prose or a row where a module and symbol could be named",
         "the same fact now answerable from two carriers with no relation stated between them"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -121,14 +133,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "closed-grounded-substrate",
       question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
       tells: [
         "a String field carrying structure a record could name",
         "a threshold or guess standing where the richer source exists",
         "a // annotation inside a fn or type body rather than above a module-scope declaration"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -137,7 +150,8 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
       premises: ["s1.minimal-safe-efficient"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "fail-closed",
       question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
       tells: [
         "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
@@ -145,7 +159,7 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "a toggle, env var or flag whose only effect is to skip a refusal",
         "a validator for a state the model could have made unwritable"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -154,14 +168,15 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
       premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
     },
-    review: Present { value: PropositionReview {
+    review: ReviewableOnChange { parts: [PropositionReview {
+      part: "how-to-work",
       question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
       tells: [
         "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
         "a second path beside an existing modeled route",
         "a change that routes around a substrate refusal instead of naming it"
       ],
-    } },
+    }] },
   },
 
   DesignRow {
@@ -170,7 +185,7 @@ data design_section_2_to_7_rows: List<DesignRow> = [
       statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
       premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
     },
-    review: none,
+    review: NotReviewableOnChange { reason: "a program over the compiler judged by execution of emitted modules, not a property one change carries" },
   }
 ]
 

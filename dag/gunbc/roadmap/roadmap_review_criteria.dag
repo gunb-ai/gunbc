@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_review_criteria
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, List }
 import std.syllogism { Proposition }
-import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -30,33 +30,18 @@ type ReviewCriterion {
   tells: List<String>
 }
 
-// THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per design row that carries a review reading
-// (gunbc.design_argument DesignRow.review), keyed by the proposition id with its section prefix
-// removed. There is no second list to keep in step with DESIGN: a criterion is added, changed or
-// retired by editing the proposition's own row in the design argument.
-fn review_criterion_key_of(proposition_id: String) -> String {
-  let parts = proposition_id.split(sep: ".")
-  if count(parts) < 2 {
-    proposition_id
-  } else {
-    join(fold(parts, init: KeyWalk { at: 0, kept: [] }, f: (acc, part) =>
-      KeyWalk { at: acc.at + 1, kept: if acc.at == 0 { acc.kept } else { concat(acc.kept, [part]) } }).kept, ".")
-  }
-}
-
-type KeyWalk {
-  at: Int
-  kept: List<String>
-}
-
+// THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per review PART of every design row that is
+// reviewable on a change (gunbc.design_argument DesignRow.review), keyed by the part's own name. There
+// is no second list to keep in step with DESIGN: a criterion is added, changed or retired by editing
+// the proposition's own row in the design argument, and a proposition that mints no reviewer says why.
 data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r.review {
-  Present { value: v } => [ReviewCriterion {
-    key: review_criterion_key_of(proposition_id: r.proposition.id),
+  ReviewableOnChange { parts } => map(parts, part => ReviewCriterion {
+    key: part.part,
     ground: GroundedOnDesignProposition { proposition_id: r.proposition.id },
-    question: v.question,
-    tells: v.tells,
-  }]
-  Absent => []
+    question: part.question,
+    tells: part.tells,
+  })
+  NotReviewableOnChange { reason: _ } => []
 })
 
 fn review_criterion_proposition_ids() -> List<String> {
@@ -72,14 +57,15 @@ fn review_criteria_grounded_in_the_argument() -> Bool {
   all(review_criterion_proposition_ids(), id => any(design_propositions, p => p.id == id))
 }
 
-// THE PARTS ARE EXCLUSIVE BY CONSTRUCTION OVER THE ARGUMENT: no two criteria share a key, and no two
-// are grounded on the same proposition, so a proposition is reviewed by exactly one function and a
-// verdict can always name the one concern it belongs to. The fold over them lives in
-// gunbc.roadmap.roadmap_review_function; this is the fact that makes that fold a sum.
-fn review_criteria_are_exclusive_parts() -> Bool {
+// IDENTITIES ARE UNIQUE; THAT IS ALL THIS PROVES. No two criteria share a key, so every verdict names
+// one criterion and the plan's calls are a set. It does NOT prove the questions are semantically
+// disjoint (review 5125854144: distinct ids are not a partition proof; several questions visibly
+// overlap on literals, duplicated types and parallel paths). Semantic exclusivity would need a closed
+// concern vocabulary each finding is tagged with; until then two criteria may legitimately report the
+// same defect from two perspectives, and the worker feedback groups by file for presentation only.
+fn review_criterion_identities_are_unique() -> Bool {
   let keys = review_criterion_keys()
-  let ids = review_criterion_proposition_ids()
-  count(keys) == count(distinct_strings(xs: keys)) && count(ids) == count(distinct_strings(xs: ids))
+  count(keys) == count(distinct_strings(xs: keys))
 }
 
 fn distinct_strings(xs: List<String>) -> List<String> {
