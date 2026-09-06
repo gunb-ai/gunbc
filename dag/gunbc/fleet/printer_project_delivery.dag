@@ -383,6 +383,20 @@ fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLoo
 // ONE MINT, reached only// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
 // literal would be two places a receipt could be authored, and the point of sealing it is that there
 // is exactly one.
+// EVERY EXIT PATH DROPS THE REALIZATION, and this is written as a helper rather than repeated so no
+// arm can be added later that forgets. The first wet run proved the need: the credential leg refused,
+// evaluation left by an arm that had no cleanup on it, and a 226915-byte copy stayed in /tmp -- one
+// per attempt, indefinitely. Cleanup that only runs after a transfer is attempted is cleanup that
+// does not run on the paths most likely to be taken.
+fn refuse_and_drop(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  cause: NonEmptyStr,
+) -> ProjectDelivery {
+  let _ = shell.Remove.FileForce(path: payload.realization.path)
+  ProjectDeliveryUnattempted { printer: printer, cause: cause }
+}
+
 fn delivered_receipt(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
@@ -416,46 +430,30 @@ func deliver_project_to_printer(
 {
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
-      ProjectDeliveryUnattempted {
-        printer: p,
-        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network",
-      }
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network")
     PrinterAddressAmbiguous { printer: p } =>
-      ProjectDeliveryUnattempted {
-        printer: p,
-        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
-      }
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order")
     PrinterAddressWrongClass { printer: p } =>
-      ProjectDeliveryUnattempted {
-        printer: p,
-        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it",
-      }
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
     PrinterAddressFound { address: lan_address } =>
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: p } =>
-      ProjectDeliveryUnattempted {
-        printer: p,
-        cause: "no access-code locus is recorded for this printer in gunbc.fleet.fleet_printer_access",
-      }
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "no access-code locus is recorded for this printer in gunbc.fleet_printer_access")
     PrinterAccessCodeLocusConflict { printer: p, matches: _ } =>
-      ProjectDeliveryUnattempted {
-        printer: p,
-        cause: "more than one access-code locus matches this printer; the roster is ambiguous and delivery refuses rather than picking one",
-      }
+      refuse_and_drop(printer: p, payload: payload,
+        cause: "more than one access-code locus matches this printer; the roster is ambiguous and delivery refuses rather than picking one")
     PrinterAccessCodeLocusFound { locus: locus } =>
       match fetch_secret_ref_credential(secret_ref: locus.secret, token_source: token_source) {
         SecretCredentialAccessUpsertRequired { plan: _ } =>
-          ProjectDeliveryUnattempted {
-            printer: printer,
-            cause: "the access code could not be read: Secret Manager access has not been granted to this identity",
-          }
+          refuse_and_drop(printer: printer, payload: payload, cause: "the access code could not be read: Secret Manager access has not been granted to this identity")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
-          ProjectDeliveryUnattempted {
-            printer: printer,
-            cause: "the Secret Manager response for the access code did not decode",
-          }
+          refuse_and_drop(printer: printer, payload: payload, cause: "the Secret Manager response for the access code did not decode")
         SecretCredentialFetchRefused { reason: reason } =>
-          ProjectDeliveryUnattempted { printer: printer, cause: reason }
+          refuse_and_drop(printer: printer, payload: payload, cause: reason)
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
           endpoint = bambu_lan_endpoint(host: lan_address)
           match place_netrc_binding(
@@ -465,7 +463,7 @@ func deliver_project_to_printer(
             password: credential
           ) {
             NetrcBindingRefused { cause: cause } =>
-              ProjectDeliveryUnattempted { printer: printer, cause: cause }
+              refuse_and_drop(printer: printer, payload: payload, cause: cause)
             NetrcBindingPlaced { binding: binding } => {
             outcome = run_shell_command_capture(
               command: project_upload_command(

@@ -977,41 +977,7 @@ pub struct TransitionAdmission {
 // them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
 // witness that reads cooler_srv3 through the same namespace.
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    // gunbc#10574: `netrc_content` moves from gunbc.tools.bmc_onboard to the shared credential
-    // authority gunbc.auth.netrc_binding. THE SPELLING IS IDENTICAL ON BOTH SIDES AND THE
-    // DECLARATION BEHIND IT MOVED, which is exactly the motion this roster adjudicates rather than
-    // auto-admits -- a leaf key is invariant under requalification, not under a declarer change.
-    //
-    // WHY THE MOVE. The printer FTPS channel needed the same 0600-at-creation O_EXCL netrc bracket
-    // that the Redfish lane already used, and a second copy would have given the mode, the creation
-    // flag and the shred order two homes -- so hardening one would silently leave the other behind.
-    // Two consumers is the point at which the shared authority is justified, so bmc_onboard's copy
-    // was DELETED rather than duplicated, and srv3_boot_once_cd -- a real dependent, which refused
-    // loudly when the deletion landed -- now reaches the one authority.
-    //
-    // ONE CHANGE CLASS, NOT TWO: nothing is requalified here. Every spelling is imported under the
-    // leaf it always had; only the declaring module differs.
-    //
-    // TRIGGER, WHICH IS THIS ROW'S OWN DEATH: it goes when gunbc#10574 merges. Main then declares
-    // netrc_content in gunbc.auth.netrc_binding, base and head bind the spelling identically, no run
-    // can produce this delta, and the row reports CONSUMED rather than stale -- coming due on this
-    // roster's next touch. Adjudicate that deletion by joining this row against main's tree on its
-    // own (module, in_declaration, spelling, target) tuple, because a trigger sentence is not
-    // evidence that the trigger fired.
-    TransitionAdmission {
-        label:
-            "gunbc#10574 credential-binding consolidation: the netrc bracket moves to the shared \
-                auth authority, from gunbc.tools.bmc_onboard to gunbc.auth.netrc_binding",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "netrc_content",
-            target: "gunbc.auth.netrc_binding",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

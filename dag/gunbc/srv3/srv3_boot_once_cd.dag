@@ -29,7 +29,7 @@ import gunbc.srv3_bmc_credential_resolve {
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.auth.netrc_binding {
-  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, place_netrc_binding, netrc_content,
+  NetrcBindingPlaced, NetrcBindingRefused, place_netrc_binding,
 }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
