@@ -30,7 +30,7 @@ import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh }
 import extdeps.http.server { HttpServerListenConfig }
-import v2.std.algebra { any }
+import v2.std.algebra { any, for_all }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -282,7 +282,7 @@ test fn belt_service_works_in_repo_tree() -> Bool {
 test fn belt_service_carries_user_manager_environment() -> Bool {
   let svc = live_spec().service
   let envs = user_manager_environment_directives(uid: svc.service_uid)
-  all(envs, e => has_directive(dirs: belt_service_directives(), target: e))
+  for_all(envs, predicate: fn(e) { has_directive(dirs: belt_service_directives(), target: e) })
 }
 
 // DECISION: the belt spawn workdir env var names the repo root.
@@ -438,7 +438,7 @@ test fn serve_unit_works_in_repo_tree() -> Bool {
 test fn serve_unit_carries_user_manager_environment() -> Bool {
   let svc = live_spec().service
   let envs = user_manager_environment_directives(uid: svc.service_uid)
-  all(envs, e => has_directive(dirs: serve_service_directives(), target: e))
+  for_all(envs, predicate: fn(e) { has_directive(dirs: serve_service_directives(), target: e) })
 }
 
 // DECISION: the serve unit is Type=simple (long-running process).
@@ -587,8 +587,10 @@ fn slice_directives() -> List<SystemdSliceDirective> {
 test fn slice_description_names_the_unit() -> Bool {
   let spec = live_spec()
   match slice_unit() {
-    SliceUnitFile { unit: [Description { text: d }], slice: _, install: _ } =>
-      d == join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "")
+    SliceUnitFile { unit: u, slice: _, install: _ } =>
+      has_directive_unit(dirs: u, target: Description {
+        text: join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "") as NonEmptyStr
+      })
     _ => false
   }
 }
@@ -792,8 +794,9 @@ test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
 // would be the re-invention DESIGN section 2 forbids -- net concepts must not grow. The first cut
 // of this file hand-rolled both `any` and `all` over a `[first, ..rest]` match arm, which this
 // parser does not admit (src/v2/lens/fn_index_depth_agreement records the same refusal) and which
-// produced 194 parse errors before the file ran anywhere. `all` is not defined at all: nothing in
-// this file needed it, and an unused helper is a row with no consumer.
+// produced 194 parse errors before the file ran anywhere. The universal is `for_all`, imported from the same module --
+// it is NOT called `all` there, which is how a live call site survived a claim that nothing used
+// it: a grep for `all(xs:` missed `all(envs, e => ...)` entirely.
 
 fn has_directive(dirs: List<SystemdServiceDirective>, target: SystemdServiceDirective) -> Bool {
   any(dirs, predicate: fn(d) { d == target })
