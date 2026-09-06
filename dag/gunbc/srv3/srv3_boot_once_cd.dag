@@ -243,15 +243,22 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
     login: account as NonEmptyStr,
     password: password as Secret
   )
-  let netrc_placed = match netrc_placement {
-    NetrcBindingRefused { cause: _ } => false
-    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
-    NetrcBindingPlaced { binding: _ } => true
-  }
-  if netrc_placed == false {
-    return exit_failure(
-      reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
-    )
+  // THE RESIDUE FACT IS NOT FLATTENED HERE EITHER. Both refusal arms used to answer `false` and the
+  // operator got one sentence for two situations with different next actions: a plain failure can be
+  // retried, a residue failure means a file that may hold this BMC's credential is still on disk and
+  // must be cleaned first. The locus stays sealed -- what crosses is the fact, not the path.
+  match netrc_placement {
+    NetrcBindingRefused { cause: _ } =>
+      return exit_failure(
+        reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
+      )
+    NetrcBindingRefusedResidueRemains { cause: cause } =>
+      return exit_failure(
+        reason: concat(
+          "boot-once-cd: netrc stage failed AND credential material may remain on disk, requiring cleanup before retry: ",
+          cause as String)
+      )
+    NetrcBindingPlaced { binding: _ } => Unit
   }
 
   match srv3_boot_cd_override_mode_refusal(mode: srv3_boot_cd_mode) {

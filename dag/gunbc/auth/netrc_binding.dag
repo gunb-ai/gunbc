@@ -48,10 +48,33 @@ fn netrc_binding_path(binding: NetrcBinding) -> FilePath { binding.path }
 // value could not support. The placement now removes the path on failure and, when removal also
 // fails, names the file so a reader has something to act on. The path is a per-call mktemp location,
 // not the credential; nothing here puts an access code in a diagnostic.
+// THE RESIDUE LOCATOR IS SEALED, BECAUSE A PATH THAT DEREFERENCES TO A CREDENTIAL IS A CREDENTIAL
+// LOCATOR AND THE RULE DOES NOT CARE THAT THE PATHNAME ITSELF IS NOT THE SECRET. The first version
+// of this arm carried the path as a printable NonEmptyStr, the delivery layer concatenated it into
+// a refusal cause as "(at <path>)", and the wet-run actuator prints delivery causes -- so precisely
+// on the arm where the shred FAILED, a diagnostic named the file still holding a printer access
+// code. The annotation beside it asserted that naming the path "leaks nothing", which is the same
+// shape of failure this branch keeps meeting: a justification supplied next to the thing it is
+// meant to justify, and never checked against the rule it claims to satisfy.
+//
+// THE FIRST REPAIR WAS A SEAL AND THE SEAL DID NOT HOLD. A sole_constructor CredentialResidueLocus
+// was introduced here on the theory that restricting construction also prevents rendering. It does
+// not: a control that cast the sealed value with `as String` and asked whether the result contained
+// the fixture path COMPILED AND ANSWERED TRUE. sole_constructor governs where a value can come
+// FROM, not what a holder may do with it -- the same distinction this file already records for
+// NetrcBinding, where the seal is a mint-time fact that does not bound the value's lifetime. Having
+// written that paragraph, I then relied on a seal for a property it does not provide.
+//
+// So the locator is not carried at all. A value that does not hold the path cannot be made to
+// render it, by any consumer, under any cast -- which is the structural version of the property the
+// seal only appeared to give. The refusal states that credential material may remain and requires
+// cleanup; the path stays inside this module, where the placement that created it already has it in
+// scope, and that is precisely the authority able to act on it.
+
 type NetrcPlacement
   = NetrcBindingPlaced { binding: NetrcBinding }
   | NetrcBindingRefused { cause: NonEmptyStr }
-  | NetrcBindingRefusedResidueRemains { path: NonEmptyStr, cause: NonEmptyStr }
+  | NetrcBindingRefusedResidueRemains { cause: NonEmptyStr }
 
 fn netrc_content(machine: NonEmptyStr, login: NonEmptyStr, password: Secret) -> String {
   concat(
@@ -73,8 +96,9 @@ fn netrc_content(machine: NonEmptyStr, login: NonEmptyStr, password: Secret) -> 
 // THE WRITE-FAILURE CLASSIFICATION IS PURE, for the same reason the delivery ones are: reaching its
 // residue arm through the effect would need a path that O_EXCL refuses AND rm -f cannot delete, and
 // a witness that manufactures one has to chmod a directory and can leave it behind in CI. The two
-// discriminating facts are Bools, so both arms are reachable from a fixture. The path is a per-call
-// mktemp location, never the credential, so naming it in a diagnostic leaks nothing.
+// discriminating facts are Bools, so both arms are reachable from a fixture. NO LOCATOR LEAVES THIS
+// MODULE -- see the note above NetrcPlacement for why the earlier "naming it leaks nothing" claim
+// was wrong, and why a seal was not sufficient to fix it either.
 fn netrc_write_refusal(
   path: FilePath,
   cleared_before_write: Bool,
@@ -86,13 +110,11 @@ fn netrc_write_refusal(
     }
   } else if cleared_before_write {
     NetrcBindingRefusedResidueRemains {
-      path: path as NonEmptyStr,
-      cause: "the owner-only netrc could not be created AND the partial file could not be removed, so credential material may remain at this path",
+      cause: "the owner-only netrc could not be created AND the partial file could not be removed, so credential material may remain and requires cleanup",
     }
   } else {
     NetrcBindingRefusedResidueRemains {
-      path: path as NonEmptyStr,
-      cause: "a pre-existing file at this path could not be removed, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains at this path",
+      cause: "a pre-existing file could not be removed, which is why the O_EXCL create refused, and it could not be removed afterwards either, so material of unknown origin remains and requires cleanup",
     }
   }
 }

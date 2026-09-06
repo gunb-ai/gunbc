@@ -123,16 +123,54 @@ fn mint_bmc_credential() -> Secret {
 // The binding is placed and immediately projected back to a path because the Redfish operations in
 // extdeps.bmc.http take `netrc_file` as a path; threading the sealed NetrcBinding through them is the
 // next step of the same climb, and is what would make the path unforgeable at those call sites too.
-fn write_netrc(host: String, account: String, password: String) -> Bool {
+// THE RESIDUE FACT SURVIVES THIS ADAPTER. A first version of this match sent both refusal arms to
+// `false`, which erased the distinction in the same change that introduced it: the caller learned
+// "the netrc was not written" and could not learn "credential material may still be on disk",
+// which is a different remedy -- retry versus go clean it up. Collapsing here would have been the
+// exact defect the new variant exists to prevent, committed one function away from the fix.
+//
+// The locus is deliberately NOT carried out: it is sealed, and a Bool-shaped adapter has nowhere
+// safe to put it. What crosses is the FACT, so a caller can refuse loudly instead of retrying over
+// a credential it did not clean.
+type NetrcWriteOutcome
+  = NetrcWritten
+  | NetrcNotWritten
+  | NetrcNotWrittenResidueRemains { cause: NonEmptyStr }
+
+fn write_netrc_outcome(host: String, account: String, password: String) -> NetrcWriteOutcome {
   match place_netrc_binding(
     path: bmc_onboard_netrc_path as FilePath,
     machine: host as NonEmptyStr,
     login: account as NonEmptyStr,
     password: password as Secret
   ) {
-    NetrcBindingRefused { cause: _ } => false
-    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
-    NetrcBindingPlaced { binding: _ } => true
+    NetrcBindingRefused { cause: _ } => NetrcNotWritten
+    NetrcBindingRefusedResidueRemains { cause: cause } =>
+      NetrcNotWrittenResidueRemains { cause: cause }
+    NetrcBindingPlaced { binding: _ } => NetrcWritten
+  }
+}
+
+fn netrc_write_succeeded(outcome: NetrcWriteOutcome) -> Bool {
+  match outcome {
+    NetrcWritten => true
+    NetrcNotWritten => false
+    NetrcNotWrittenResidueRemains { cause: _ } => false
+  }
+}
+
+// THE REFUSAL REASON IS WHERE THE FACT REACHES A HUMAN, so it is derived from the outcome rather
+// than written per call site. Five sites each had a literal "netrc write failed"; had the residue
+// distinction been threaded by hand it would have been preserved at some of them and dropped at the
+// rest, which is how a distinction dies quietly. One derivation, five sites, no site-local wording.
+fn netrc_failure_reason(outcome: NetrcWriteOutcome, stage: NonEmptyStr) -> String {
+  match outcome {
+    NetrcWritten => concat(stage as String, ": netrc write did not fail")
+    NetrcNotWritten => concat(stage as String, ": netrc write failed")
+    NetrcNotWrittenResidueRemains { cause: cause } =>
+      concat(
+        concat(stage as String, ": netrc write failed AND credential material may remain on disk, requiring cleanup before retry: "),
+        cause as String)
   }
 }
 
@@ -147,8 +185,9 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
-    return exit_failure(reason: "rotate: netrc write failed")
+  let rotate_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
+  if netrc_write_succeeded(outcome: rotate_w) == false {
+    return exit_failure(reason: netrc_failure_reason(outcome: rotate_w, stage: "rotate"))
   }
 
   let body = Filesystem.Write(
@@ -169,8 +208,9 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
     return exit_failure(reason: rot.body)
   }
 
-  if write_netrc(host: host, account: account, password: new_credential as String) == false {
-    return exit_failure(reason: "rotate: netrc write for post-rotation reauth failed")
+  let reauth_w = write_netrc_outcome(host: host, account: account, password: new_credential as String)
+  if netrc_write_succeeded(outcome: reauth_w) == false {
+    return exit_failure(reason: netrc_failure_reason(outcome: reauth_w, stage: "rotate post-rotation reauth"))
   }
   verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
   return if verify.success {
@@ -241,8 +281,9 @@ func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessToke
   if root_resp.success == false {
     return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
   }
-  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
-    return exit_failure(reason: "acquire: netrc write failed")
+  let acquire_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
+  if netrc_write_succeeded(outcome: acquire_w) == false {
+    return exit_failure(reason: netrc_failure_reason(outcome: acquire_w, stage: "acquire"))
   }
   acq = redfish.Http.GetSystem(
     bmc_host: host,
@@ -266,8 +307,9 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
-    return CredentialStateUnknown { reason: "netrc write for factory credential probe failed" }
+  let probe_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
+  if netrc_write_succeeded(outcome: probe_w) == false {
+    return CredentialStateUnknown { reason: netrc_failure_reason(outcome: probe_w, stage: "factory credential probe") }
   }
   factory_check = redfish.Http.GetSystem(
     bmc_host: host,
@@ -291,8 +333,9 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
       )
       match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
         SmAccessVersionSecretDecoded { credential: password } => {
-          if write_netrc(host: host, account: account, password: password as String) == false {
-            return CredentialStateUnknown { reason: "netrc write for stored credential probe failed" }
+          let stored_w = write_netrc_outcome(host: host, account: account, password: password as String)
+          if netrc_write_succeeded(outcome: stored_w) == false {
+            return CredentialStateUnknown { reason: netrc_failure_reason(outcome: stored_w, stage: "stored credential probe") }
           }
           rotated_verify = redfish.Http.GetSystem(
             bmc_host: host,

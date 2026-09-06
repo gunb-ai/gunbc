@@ -10,7 +10,7 @@ import extdeps.ietf.ftps {
   ftps_default_port, ftps_verifies_peer,
 }
 import gunbc.fleet.printer_project_delivery {
-  remote_name_for_digest, bambu_lan_endpoint, ftps_upload_url, upload_command_for,
+  remote_name_for_digest, bambu_lan_endpoint, ftps_upload_url, ftps_scheme,
   refused_delivery, ProjectDelivery, ProjectDeliveryRefused, ProjectDeliveryRefusedResidueRemains,
   ProjectDelivered, ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused,
   ProjectDeliveryProvisionRequired, ProjectDeliveryUnattemptedResidueRemains,
@@ -18,6 +18,7 @@ import gunbc.fleet.printer_project_delivery {
   PayloadIdentification, PayloadIdentified, PayloadIdentificationRefused,
   PayloadIdentificationRefusedResidueRemains, identification_refusal,
 }
+import extdeps.tools.curl { curl_ftps_upload_command }
 import gunbc.fleet_asset_identity { printer_01 }
 import gunbc.auth.netrc_binding {
   NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
@@ -99,12 +100,21 @@ test fn w_no_credential_is_ever_spelled_into_the_upload_argv() -> Bool {
 // THE LOCAL PATH IN THE FIXTURE IS DELIBERATELY MISLEADING: curl appends the local basename when a
 // URL ends in a slash, so a builder that failed to spell the remote name would name the remote file
 // after this, and the url witness would catch it.
+// THE WITNESS CAN NO LONGER FORGE THE BINDING, WHICH IS THE POINT. It used to call
+// upload_command_for with a fixture path it had never placed -- which was the live demonstration
+// that the seal did not hold at that boundary. upload_command_for now requires a NetrcBinding, and
+// NetrcBinding is sole_constructor, so this fixture cannot supply one. It therefore drops to the
+// curl syntax helper, which is FilePath-parametric on purpose and is NOT where the credential
+// guarantee lives. The argv shape assertions below are unchanged and still run against the same URL
+// builder; what is gone is a witness that could spell a state production can no longer reach.
 fn probe_command() -> ArgvCommand {
-  upload_command_for(
-    endpoint: bambu_lan_endpoint(host: "printer.invalid"),
+  curl_ftps_upload_command(
+    url: ftps_upload_url(
+      endpoint: bambu_lan_endpoint(host: "printer.invalid"),
+      remote_name: probe_name(hex: "aa11")),
     local_path: "/tmp/whatever-the-local-file-is-called.3mf",
-    remote_name: probe_name(hex: "aa11"),
     netrc_path: "/tmp/a-fixture-netrc-that-is-never-created" as FilePath,
+    skip_verification: true,
   )
 }
 
@@ -211,24 +221,30 @@ test fn an_identification_refusal_whose_workspace_survived_names_the_path() -> B
 // old refusal asserted "no credential was placed", a claim about the disk the return value could
 // not support. Three arms, because the two ways of leaving material behind have different stories:
 // a partial write we could not clean, and a pre-existing file we never owned.
+//
+// THE SECOND WITNESS ASSERTS THE ABSENCE OF THE PATH, not its value. It used to compare the
+// rendered locus against the fixture path -- which was the defect wearing the costume of coverage:
+// a green witness whose green MEANT a credential-bearing path had reached a printable string. The
+// locus is sealed now, so the property worth holding is that the cause carries the FACT and cannot
+// carry the location.
 test fn a_netrc_write_failure_that_cleaned_up_reports_no_credential_on_disk() -> Bool {
   match netrc_write_refusal(
     path: "/tmp/print-n-witness-netrc" as FilePath,
     cleared_before_write: true, removed_after_failure: true
   ) {
     NetrcBindingRefused { cause: _ } => true
-    NetrcBindingRefusedResidueRemains { path: _, cause: _ } => false
+    NetrcBindingRefusedResidueRemains { cause: _ } => false
     NetrcBindingPlaced { binding: _ } => false
   }
 }
 
-test fn a_netrc_partial_write_that_survived_removal_names_the_path() -> Bool {
+test fn a_netrc_partial_write_that_survived_removal_states_the_fact_without_the_path() -> Bool {
   match netrc_write_refusal(
     path: "/tmp/print-n-witness-netrc" as FilePath,
     cleared_before_write: true, removed_after_failure: false
   ) {
-    NetrcBindingRefusedResidueRemains { path: p, cause: _ } =>
-      (p as String) == "/tmp/print-n-witness-netrc"
+    NetrcBindingRefusedResidueRemains { cause: c } =>
+      (c as String).contains("may remain") && (c as String).contains("/tmp/") == false
     NetrcBindingRefused { cause: _ } => false
     NetrcBindingPlaced { binding: _ } => false
   }
@@ -239,9 +255,32 @@ test fn a_netrc_path_that_was_never_ours_is_not_reported_as_our_partial_write() 
     path: "/tmp/print-n-witness-netrc" as FilePath,
     cleared_before_write: false, removed_after_failure: false
   ) {
-    NetrcBindingRefusedResidueRemains { path: _, cause: c } =>
+    NetrcBindingRefusedResidueRemains { cause: c } =>
       (c as String).contains("unknown origin")
     NetrcBindingRefused { cause: _ } => false
     NetrcBindingPlaced { binding: _ } => false
   }
+}
+
+// THE SCHEME AND THE PORT MUST MOVE TOGETHER, and asserting either alone passes while the pair is
+// wrong. curl reads ftps:// as implicit TLS from the first byte and ftp:// + --ssl-reqd as an
+// explicit upgrade, so an explicit endpoint emitted as ftps://host:21 is implicit TLS aimed at the
+// explicit port -- a connection that hangs or resets with a diagnostic blaming neither. The port
+// half was already derived and the scheme half was hardcoded "ftps://", so this witness is the one
+// that would have been red the whole time.
+test fn the_ftps_scheme_follows_the_negotiation_in_both_directions() -> Bool {
+  ftps_scheme(negotiation: FtpsImplicit) == "ftps://"
+    && ftps_scheme(negotiation: FtpsExplicit) == "ftp://"
+    && ftps_scheme(negotiation: FtpsImplicit) != ftps_scheme(negotiation: FtpsExplicit)
+}
+
+test fn an_explicit_endpoint_is_never_emitted_as_an_implicit_url() -> Bool {
+  let explicit = FtpsEndpoint {
+    host: "printer.invalid",
+    port: ftps_default_port(negotiation: FtpsExplicit),
+    negotiation: FtpsExplicit,
+    verification: FtpsPeerVerificationDisabled { peer: DeviceCertificateSubjectIsSerialNotAddress },
+  }
+  let url = ftps_upload_url(endpoint: explicit, remote_name: probe_name(hex: "aa11"))
+  url.contains("ftp://printer.invalid:21/") && url.contains("ftps://") == false
 }

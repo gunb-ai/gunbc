@@ -285,9 +285,26 @@ fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {
   }
 }
 
+// THE SCHEME FOLLOWS THE NEGOTIATION, AND HARDCODING IT MADE THE TYPE A DECORATION. curl reads
+// ftps:// as IMPLICIT TLS from the first byte (conventionally 990) and ftp:// plus --ssl-reqd as
+// EXPLICIT upgrade (conventionally 21). This function derived the PORT from the negotiation and
+// then emitted "ftps://" unconditionally, so a modelled FtpsExplicit endpoint produced
+// ftps://host:21 -- implicit TLS aimed at the explicit port, which is exactly the mismatch the
+// FtpsNegotiation type's own commentary claims it makes unspellable. The Bambu path is implicit, so
+// the wet run never exercised it; the generic authority was false anyway, and a type that is only
+// right on the path someone happened to measure is not an authority.
+fn ftps_scheme(negotiation: FtpsNegotiation) -> String {
+  match negotiation {
+    FtpsImplicit => "ftps://"
+    FtpsExplicit => "ftp://"
+  }
+}
+
 fn ftps_upload_url(endpoint: FtpsEndpoint, remote_name: NonEmptyStr) -> String {
   concat(
-    concat(concat("ftps://", endpoint.host as String), concat(":", to_string(n: endpoint.port))),
+    concat(
+      concat(ftps_scheme(negotiation: endpoint.negotiation), endpoint.host as String),
+      concat(":", to_string(n: endpoint.port))),
     concat("/", remote_name as String),
   )
 }
@@ -305,16 +322,24 @@ fn ftps_upload_url(endpoint: FtpsEndpoint, remote_name: NonEmptyStr) -> String {
 //
 // So the secret never becomes an argument. The account name and the access code live together in a
 // netrc file, and what crosses into argv is a PATH.
+// THE PRODUCT-LEVEL BUILDER CONSUMES THE SEALED BINDING, NOT A PATH. Taking a bare FilePath here
+// meant the seal proved nothing at this boundary: a caller could hand over any path at all and the
+// emitted argv would be indistinguishable from the safe one -- and a witness in this very file did
+// exactly that, supplying a fixture path it had never placed. The PR body claimed this function
+// took a NetrcBinding while the signature said otherwise, which is the overclaim that made the gap
+// invisible. curl_ftps_upload_command stays FilePath-parametric on purpose: it is a syntax helper
+// for curl and is not where a credential guarantee can live. The boundary that represents an
+// AUTHENTICATED TRANSFER is this one, so this is where the binding must be required.
 fn upload_command_for(
   endpoint: FtpsEndpoint,
   local_path: NonEmptyStr,
   remote_name: NonEmptyStr,
-  netrc_path: FilePath,
+  binding: NetrcBinding,
 ) -> ArgvCommand {
   curl_ftps_upload_command(
     url: ftps_upload_url(endpoint: endpoint, remote_name: remote_name),
     local_path: local_path as String,
-    netrc_path: netrc_path,
+    netrc_path: netrc_binding_path(binding: binding),
     skip_verification: ftps_verifies_peer(v: endpoint.verification) == false,
   )
 }
@@ -322,13 +347,13 @@ fn upload_command_for(
 fn project_upload_command(
   endpoint: FtpsEndpoint,
   payload: IdentifiedProjectPayload,
-  netrc_path: FilePath,
+  binding: NetrcBinding,
 ) -> ArgvCommand {
   upload_command_for(
     endpoint: endpoint,
     local_path: payload.realization.path as NonEmptyStr,
     remote_name: project_remote_name(payload: payload),
-    netrc_path: netrc_path,
+    binding: binding,
   )
 }
 
@@ -448,7 +473,7 @@ fn printer_endpoint_address(printer: PhysicalAssetIdentity) -> PrinterAddressLoo
   }
 }
 
-// ONE MINT, reached only// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
+// ONE MINT, reached only from the admitted-exit arms of a real execution. Two inline copies of this
 // literal would be two places a receipt could be authored, and the point of sealing it is that there
 // is exactly one.
 // EVERY EXIT PATH DROPS THE REALIZATION, and this is written as a helper rather than repeated so no
@@ -607,15 +632,14 @@ func deliver_project_to_printer(
           ) {
             NetrcBindingRefused { cause: cause } =>
               refuse_and_drop(printer: printer, payload: payload, cause: cause)
-            NetrcBindingRefusedResidueRemains { path: netrc_path, cause: cause } =>
-              refuse_and_drop(printer: printer, payload: payload,
-                cause: concat(concat(cause as String, " (at "), concat(netrc_path as String, ")")) as NonEmptyStr)
+            NetrcBindingRefusedResidueRemains { cause: cause } =>
+              refuse_and_drop(printer: printer, payload: payload, cause: cause)
             NetrcBindingPlaced { binding: binding } => {
             outcome = run_shell_command_capture(
               command: project_upload_command(
                 endpoint: endpoint,
                 payload: payload,
-                netrc_path: netrc_binding_path(binding: binding)
+                binding: binding
               ),
               transport: LocalExec
             )
