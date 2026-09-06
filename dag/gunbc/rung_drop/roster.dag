@@ -41,7 +41,6 @@ import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
 import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
-import gunbc.rung_drop.self_host_spelling_search_check { self_host_spelling_search_check }
 import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
 import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
 import gunbc.rung_drop.spark_role_scoped_retirement_production_root { spark_role_scoped_retirement_production_root }
@@ -79,7 +78,6 @@ data rung_drop_roster: List<RungDrop> = [
   text_boundary_identity_wall,
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
-  self_host_spelling_search_check,
   emit_copy_qualification_without_a_consumer,
   floor_cost_high_cpu_withheld,
   spark_role_scoped_retirement_production_root,

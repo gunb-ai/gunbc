@@ -1,0 +1,27 @@
+module gunbc.guarantee_stall.self_host_spelling_search_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation }
+
+// DECLARED 2026-09-05. The seed-linkage check in
+// self_host_logic_seed_unavailable_transport uses a PER-SUBJECT SPELLING SEARCH
+// (string_contains for "v1_compiler::") rather than a construction wall.
+// The ceiling is structurally guaranteed: emit runtime fragments from the modeled
+// source rather than copying them from the seed — at which point the emitted module
+// has no reason to reference the seed crate namespace and the check becomes unnecessary
+// by construction.
+//
+// This is a STALL, not a DROP: the check was always a spelling search and never claimed
+// a higher rung (the earlier "ENFORCES by execution" in prose was corrected to the honest
+// description). Nothing fell; the climb to the ceiling is simply unbuilt.
+data self_host_spelling_search_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1_rt:: spelling search in the seed-unavailable transport",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "emitted crate runtime fragments DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module" },
+  population: BoundedPopulation { members: [
+    "dag/std/logic.dag — the subject module checked by the v1_compiler:: spelling search",
+    "dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag — the transport hosting the check",
+  ] },
+  next_rung_trigger: "The emitted crate's runtime fragments are DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module, SUFFICIENT FOR the emitted crate to have no reason to reference the seed crate namespace, at which point the substring check is a no-op and can be deleted rather than carried through subsequent refactors.",
+}

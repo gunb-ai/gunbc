@@ -47,11 +47,15 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // file contains a v1_compiler:: reference. Refuses on a failed find, an empty file list, or a
 // missing subject module.
 //
-// The check uses a CONTAINMENT TEST (string_contains) for the spelling `v1_compiler::`, which
-// is the crate prefix used by the v1-compiler seed. Same-crate infrastructure deps use
-// `crate::v1_rt` not `v1_compiler::`, so this pattern has no false positives on legitimate
-// runtime shim usage. The stronger half of the proof is the manifest: v1-compiler is absent
-// from Cargo.toml, making seed linkage structurally impossible at link time.
+// The check uses a CONTAINMENT TEST (string_contains) for the spelling `v1_compiler::`.
+// This catches call-site references to the v1-compiler crate. A spelling search cannot
+// detect trait-method calls (the trait name does not appear at the call site), so what it
+// delivers is a call-site heuristic, not self-containment.
+//
+// The STRUCTURAL half is the manifest: v1-compiler is absent from Cargo.toml, making seed
+// linkage structurally impossible at link time. The spelling search is a VALIDATOR that
+// flags violations of that manifest commitment — it is not a construction wall and does
+// not enforce self-containment.
 //
 // writes_ok enforces structural ORDERING, not an error signal. It is a conjunct in the final
 // return expression, making the scan impossible to evaluate before the writes have produced their
