@@ -12,6 +12,7 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
 }
 import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
+import v2.std.optional { Present, Absent }
 import gunbc.fabric_event_log_host { HostEventLogLayout, HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, HeadAt, ChainEvent }
