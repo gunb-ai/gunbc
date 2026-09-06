@@ -14,6 +14,10 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
+  gunbc_runner_declared_cores_per_slot,
+  gunbc_runner_cores_per_slot,
+  CoresPerSlotResolved,
+  CoresPerSlotUnresolved,
   gunbc_runner_slots_per_host,
   host_memory_admitted_width,
   host_memory_width_is_established,
@@ -38,7 +42,7 @@ import gunbc.runner_slot_allocation {
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -381,4 +385,35 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
     && host_github_slot_count(host: operator_host_srv3)
          == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+}
+
+
+// THE DECLARED SLOT QUOTA AND THE SURVEYED ONE ARE THE SAME NUMBER, AND THIS ROW IS THE ONLY THING
+// MAKING THAT TRUE. gunbc_runner_slot_desired cannot call gunbc_runner_cores_per_slot -- that
+// function reads the slot row's own memory_max, so the call is a cycle -- which leaves a declared
+// literal sitting beside a function that computes the same quantity. That is a single-authority
+// fork unless something refuses when they disagree, and nothing else does.
+//
+// IT FAILS IN THE DIRECTION THAT MATTERS. If the memory survey moves and cores-per-slot drops while
+// this row keeps its declared six, every cell is handed an absolute CPU ceiling wider than the slot
+// it is meant to fit, and the over-commitment is invisible because both halves still typecheck.
+test fn the_declared_slot_quota_equals_the_surveyed_cores_per_slot() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
+      hardware_thread_count_value(t: t)
+        == hardware_thread_count_value(t: gunbc_runner_declared_cores_per_slot)
+  }
+}
+
+// THE SLOT ROW CARRIES THE QUOTA IT DECLARES, which is what the cell effect and the boundary digest
+// both read. Without this the field could be dropped from the row and only the two consumers would
+// notice, each in its own way.
+test fn the_slot_row_carries_the_declared_quota() -> Bool {
+  match gunbc_runner_slot_desired().cpu_quota {
+    Absent => false
+    Present { value: q } =>
+      hardware_thread_count_value(t: q)
+        == hardware_thread_count_value(t: gunbc_runner_declared_cores_per_slot)
+  }
 }

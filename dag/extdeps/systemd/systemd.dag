@@ -205,12 +205,20 @@ fn systemd_duration_usec(text: String) -> Microsecond? {
 // time per second of wall time. The conversion below is that sentence and carries no tuning.
 data microseconds_per_second: Nat = 1000000
 
-// THE UNDECODABLE ARM IS NOT A FOURTH SPELLING OF ABSENCE, AND SEPARATING THEM IS THE WHOLE POINT.
-// An unset quota is a legitimate observed policy state -- the host says the cell has no ceiling. A
-// reading this module cannot decode is an OBSERVATION FAILURE: it does not say what the host's
-// state is, and folding it into absence would report a cell of unknown standing as a cell known to
-// be unbounded. That is the fail-open direction, so it gets its own arm and carries the text it
-// could not read.
+// THREE DIFFERENT FACTS, AND THE CENSUS IS WHAT SEPARATES THEM -- READ THE ARMS IN ITS TERMS.
+//
+// An UNSET quota does not read back empty. systemd reports `infinity` for a cell with no ceiling,
+// so CpuQuotaUnbounded is the legitimate observed policy state: the host affirmatively says this
+// cell is unbounded.
+//
+// CpuQuotaAbsent is therefore NOT `the quota is unset`. It is the property not being reported at
+// all -- an empty value, which is what an observer holds when the show surface returned nothing for
+// this key rather than a state for it.
+//
+// CpuQuotaUndecodable is an OBSERVATION FAILURE: something was reported and this module cannot read
+// it. It does not say what the host's state is. Folding it into either of the others would report a
+// cell of unknown standing as a cell known to be unbounded or known to be unreported, which is the
+// fail-open direction, so it carries the text it could not read.
 type SystemdCpuQuotaPerSec
   = CpuQuotaUnbounded
   | CpuQuotaPerSec { usec: Microsecond }

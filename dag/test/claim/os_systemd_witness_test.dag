@@ -117,9 +117,11 @@ test fn one_minute_and_sixty_seconds_are_the_same_quota() -> Bool {
   quota_reads_usec(raw: "1min", usec: 60000000) && quota_reads_usec(raw: "60s", usec: 60000000)
 }
 
-// AN UNSET QUOTA AND AN UNREADABLE ONE ARE DIFFERENT ANSWERS. This is the row that keeps the
-// fail-open direction closed: absence says the host has no ceiling, and an undecodable reading says
-// this module does not know what the host has.
+// THREE ANSWERS, NOT TWO, AND THE CENSUS DECIDES WHICH IS WHICH. An unset quota reads back
+// `infinity`, so unbounded -- not empty -- is the host affirmatively reporting no ceiling. Empty is
+// the property not being reported at all. Undecodable is a reading this module cannot interpret,
+// which says nothing about the host. This row keeps the fail-open direction closed by refusing to
+// let any of the three collapse into another.
 test fn absence_unbounded_and_undecodable_stay_three_answers() -> Bool {
   match parse_systemd_cpu_quota_per_sec_show(raw: "") {
     CpuQuotaAbsent => true

@@ -1,6 +1,7 @@
 module gunbc.fabric_cell_effect
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.measure { HardwareThreadCount }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdSliceDirective,
@@ -9,6 +10,7 @@ import extdeps.systemd.unit_file {
   slice_memory_swap_max,
   slice_tasks_max,
   slice_cpu_weight,
+  slice_cpu_quota,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -103,13 +105,26 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // representation of an artifact nothing constructs.
 fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
   let desired = gunbc_runner_slot_desired()
-  [
+  let base = [
     slice_memory_max(bytes: desired.memory_max),
     slice_memory_high(bytes: desired.memory_high),
     slice_memory_swap_max(bytes: desired.memory_swap_max),
     slice_tasks_max(count: desired.tasks_max),
     slice_cpu_weight(weight: desired.cpu_weight),
   ]
+  concat(base, fabric_cell_slice_quota_directives(quota: desired.cpu_quota))
+}
+
+// THE QUOTA DIRECTIVE IS EMITTED ONLY WHEN THE CELL DECLARES ONE, and the optional is matched here
+// rather than defaulted, so a cell carrying relative sharing on purpose emits five directives and a
+// cell with a ceiling emits six. Substituting a number for Absent would put a ceiling on a slice
+// whose policy is deliberately not to have one, and the sudoers grant -- which pins this exact argv,
+// value included -- would authorize it.
+fn fabric_cell_slice_quota_directives(quota: HardwareThreadCount?) -> List<SystemdSliceDirective> {
+  match quota {
+    Absent => [] as List<SystemdSliceDirective>
+    Present { value: q } => [slice_cpu_quota(threads: q)]
+  }
 }
 
 fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {
