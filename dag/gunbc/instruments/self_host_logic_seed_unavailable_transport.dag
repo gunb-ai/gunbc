@@ -71,6 +71,12 @@ fn slbu_check_no_v1_rt_calls(src_dir: String) -> Bool {
 // What is ABSENT is v1-compiler (the seed crate), so the COMPARISON LEG (emitted vs seed)
 // cannot link. The CONSTRUCT LEG (emit, build as standalone, run) proves the emitted LOGIC
 // module (dag/std/logic.dag) is self-contained, verified by the v1_rt:: call-site check.
+//
+// The v1_rt:: call-site check is a PER-SUBJECT SPELLING SEARCH, not a construction wall.
+// It reads each emitted .rs file (other than v1_rt.rs which defines the runtime functions)
+// and refuses if any `v1_rt::` token is found. This flags the symptom (a reference to the
+// seed runtime namespace from a non-v1_rt module) but does not make the violation structurally
+// unwritable -- a validator, not a wall. A failed read or a match both return false (fail-closed).
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
@@ -89,6 +95,14 @@ fn slbu_cargo_toml(root: String) -> String {
   )
 }
 
+// ORDERING IS LOAD-BEARING: The v1_rt:: call-site check (no_v1_rt_calls) must run AFTER
+// the Cargo.toml and main.rs writes that follow the emit step. This substrate evaluates
+// let bindings in BLOCK ORDER (eval_block iterates in declaration order, not by data
+// dependency), so the ordering guarantee is carried by LINE POSITION: placing the scan
+// textually after the writes means it evaluates after them. A future edit that moves the
+// scan above the writes reverts the ordering defect, even if no data dependency changes.
+// The check scans what cargo actually builds — the final src/ tree with the transport's
+// own main.rs in place — not an intermediate tree from the emit step alone.
 fn slbu_seed_unavailable_receipt() -> Bool {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
