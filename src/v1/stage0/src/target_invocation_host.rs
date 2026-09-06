@@ -18,7 +18,6 @@
 
 use crate::cli_run;
 use crate::v1_interpreter;
-use std::collections::HashSet;
 
 /// The label subset `extdeps.bazel.label` admits, and its refusal vocabulary, mirrored.
 ///
@@ -380,8 +379,21 @@ pub fn test_affected_select() -> InvocationOutcome {
     };
 
     let passed = summary.passed;
-    let failed = selected_rows.len() - passed - summary.skipped;
     let skipped = summary.skipped;
+    // Fail-closed accounting: if the runner's summary reports more passed+skipped than
+    // selected rows, the accounting is inconsistent — refuse with a typed diagnostic
+    // rather than computing a panicking unsigned underflow or a misleading negative.
+    let failed = if skipped > selected_rows.len() || passed + skipped > selected_rows.len() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "affected-select: REFUSED — witness runner accounting mismatch: \
+                 selected={selected_count} passed={passed} skipped={skipped} violates passed+skipped ≤ selected"
+            ),
+        };
+    } else {
+        selected_rows.len() - passed - skipped
+    };
 
     // Step 8: build the receipt message.
     let mut message = messages.join("\n");
@@ -393,7 +405,7 @@ pub fn test_affected_select() -> InvocationOutcome {
     }
     message.push_str(&format!(
         "\n{selected_count} selected, {} executed ({} passed, {failed} failed, {skipped} skipped)",
-        selected_count - skipped,
+        selected_count.saturating_sub(skipped),
         passed,
     ));
 
