@@ -80,8 +80,28 @@ fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginR
 // What an independent reader saw at the manifest slot afterwards, kept separate from what the write
 // call returned. A write that reported success and a read that confirms the intended bytes are two
 // observations, and only the second establishes the object is there to be recovered.
+// WHERE A CONFIRMING READ CAME FROM, because a read that did not reach the durable origin cannot
+// establish durability no matter how correct its bytes are.
+//
+// This closes the hole that would hollow out the milestone: the local cache and the durable origin
+// address the SAME immutable object by the SAME content key, so a cache hit and an origin read are
+// byte-identical and indistinguishable once the digest is in hand. Without a source, "we read H back
+// and it matched" is satisfied by reading the copy on the machine that is about to be lost -- and
+// the job publishes success for an output that exists nowhere else. Same content identity,
+// different AUTHORITY.
+//
+// HONEST RUNG: this is a declared boundary, not a construction. DurableOriginRead is freely
+// authorable here, exactly like the readback-provenance assertion std.materialization_provider
+// already records against itself, and for the same reason -- confinement of the constructor to the
+// modeled read is not available until a byte-owning origin exists. What changes is that the fact is
+// now STATABLE and REFUSABLE rather than absent: before this, there was nowhere to even record that
+// a confirmation came from a cache.
+type ReadSource
+  = DurableOriginRead
+  | DisposableCacheRead { provider: NonEmptyStr }
+
 type ManifestReadbackObservation
-  = ManifestRead { observed_digest: Sha256Digest }
+  = ManifestRead { observed_digest: Sha256Digest, source: ReadSource }
   | ManifestNotFound
   | ManifestReadUnavailable { cause: NonEmptyStr }
 
@@ -118,7 +138,12 @@ fn manifest_readback(attempt: AttemptId, transport: CommitTransportOutcome, obse
 
 fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
   match observed {
-    ManifestRead { observed_digest: d } => ReadbackConfirmed { observed_digest: d }
+    ManifestRead { observed_digest: d, source: src } =>
+      match src {
+        DurableOriginRead => ReadbackConfirmed { observed_digest: d }
+        DisposableCacheRead { provider: pr } =>
+          ReadbackUnknown { cause: "manifest read from disposable cache " + pr + ", not the durable origin; durability unestablished" }
+      }
     ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
     ManifestNotFound =>
       match transport {
