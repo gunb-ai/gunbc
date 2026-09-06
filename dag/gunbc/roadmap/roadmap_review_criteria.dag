@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_review_criteria
 
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
-import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange }
+import std.decl_ref { DeclarationRef }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -28,6 +29,8 @@ type ReviewCriterion {
   ground: ReviewCriterionGround
   question: String
   tells: List<String>
+  answer: ReviewAnswerAlgebra
+  homes: List<DeclarationRef>
 }
 
 // THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per review PART of every design row that is
@@ -40,6 +43,8 @@ data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r
     ground: GroundedOnDesignProposition { proposition_id: r.proposition.id },
     question: part.question,
     tells: part.tells,
+    answer: part.answer,
+    homes: part.homes,
   })
   NotReviewableOnChange { reason: _ } => []
 })
@@ -87,11 +92,41 @@ fn review_criterion_ground_text(g: ReviewCriterionGround) -> String {
   }
 }
 
+fn review_home_text(h: DeclarationRef) -> String {
+  join([h.module_path as String, " ", h.decl_name as String], "")
+}
+
+// A CONFORMANCE CRITERION NAMES WHAT TO CONFORM TO. The reviewer is handed the home declarations of
+// its domain (DESIGN section 3b) so it reads one diff against one named interface, not the corpus.
+fn review_criterion_homes_text(c: ReviewCriterion) -> String {
+  if count(c.homes) == 0 { "" } else {
+    join(["Home authorities the change must inhabit or name its departure from: ", join(map(c.homes, h => review_home_text(h: h)), "; "), "\n"], "")
+  }
+}
+
+fn review_criterion_tells_heading(a: ReviewAnswerAlgebra) -> String {
+  match a {
+    YesIsADefect => "Tells that the answer is yes:\n"
+    ConformanceThreeValued => "Tells that the change diverges:\n"
+  }
+}
+
 fn review_criterion_brief_text(c: ReviewCriterion) -> String {
   join([
     "Criterion (", c.key, ", grounded on ", review_criterion_ground_text(g: c.ground), "): ", c.question, "\n",
-    "Tells that the answer is yes:\n",
+    review_criterion_homes_text(c: c),
+    review_criterion_tells_heading(a: c.answer),
     join(map(c.tells, t => join(["  - ", t], "")), "\n"),
     "\n",
   ], "")
+}
+
+// EVERY CONFORMANCE CRITERION NAMES AT LEAST ONE HOME, AND NO YES/NO CRITERION NAMES ANY: a home is
+// what a three-valued answer is measured against, so a conformance row without one has nothing to
+// conform to, and a yes/no row with one would be a conformance question wearing the wrong algebra.
+fn review_criteria_homes_match_their_algebra() -> Bool {
+  all(review_criteria, c => match c.answer {
+    YesIsADefect => count(c.homes) == 0
+    ConformanceThreeValued => count(c.homes) > 0
+  })
 }
