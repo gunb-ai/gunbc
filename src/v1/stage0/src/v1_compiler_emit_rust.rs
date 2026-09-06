@@ -6350,21 +6350,30 @@ pub fn emit_rust_selected(
             }
             __result
         });
-        let module_files = Rc::new({
+        let published_module_emissions = Rc::new({
             let mut __result = Vec::new();
             for e in module_emissions.iter().cloned() {
-                let error_refusals = Rc::new({
-                    let mut __errs = Vec::new();
-                    for r in e.import_refusals.iter().cloned() {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for r in e.import_refusals.clone().iter().cloned() {
                         if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
-                            __errs.push(r);
+                            __result.push(r);
                         }
                     }
-                    __errs
-                });
-                if (error_refusals.len() as i64) == 0 {
-                    __result.push(e.file.clone());
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(e);
                 }
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for e in published_module_emissions.iter().cloned() {
+                __result.push(e.file.clone());
             }
             __result
         });
@@ -10434,7 +10443,7 @@ pub fn collect_unprojectable_construct_refusals(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = match (*n.expr_data.clone()).clone() {
-            ExprIf => collect_filter_in_guard_refusals(
+            ExprData::ExprIf => collect_filter_in_guard_refusals(
                 crate::v1_std_core::if_condition(n.clone()),
                 module_name.clone(),
                 source_indices.clone(),
@@ -10464,7 +10473,10 @@ pub fn collect_unprojectable_construct_refusals(
             ),
             std::option::Option::None => Rc::new(vec![]),
         };
-        v1_rt::concat(v1_rt::concat(here, from_children), from_body)
+        v1_rt::concat(
+            v1_rt::concat(here.clone(), from_children.clone()),
+            from_body.clone(),
+        )
     })
 }
 
@@ -10480,7 +10492,7 @@ pub fn collect_filter_in_guard_refusals(
             .cloned()
         {
             __result.push(crate::v1_std_core::make_error_node(
-                Rc::new(EmissionConstructUnprojectable {
+                Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
                     construct: "filter in branch condition".to_string(),
                     span: call.span.clone(),
                 }),
@@ -10497,9 +10509,12 @@ pub fn collect_filter_method_calls(
 ) -> Rc<Vec<Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_hit = match (*n.expr_data.clone()).clone() {
-            ExprMethodCall { .. } => {
-                if crate::v1_std_core::expr_method_name_at(n.clone(), source_indices.clone())
-                    == "filter".to_string()
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
+                if (crate::v1_std_core::expr_method_name_at(n.clone(), source_indices.clone())
+                    == "filter".to_string())
                 {
                     Rc::new(vec![n.clone()])
                 } else {
@@ -10523,7 +10538,10 @@ pub fn collect_filter_method_calls(
             Some(b) => collect_filter_method_calls(b.clone(), source_indices.clone()),
             std::option::Option::None => Rc::new(vec![]),
         };
-        v1_rt::concat(v1_rt::concat(self_hit, from_children), from_body)
+        v1_rt::concat(
+            v1_rt::concat(self_hit.clone(), from_children.clone()),
+            from_body.clone(),
+        )
     })
 }
 
