@@ -47,7 +47,8 @@ test fn directory_with_v1_rt_call_fails_check() -> Bool {
 }
 
 // GREEN: v1_rt.rs containing v1_rt:: references is permitted (it defines
-// the runtime functions; the check excludes it by exact path match).
+// the runtime functions; the check excludes it by containment test:
+// string_contains(path, "/v1_rt.rs") || path == "v1_rt.rs").
 test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
   let dir = shell.Mktemp.Dir()
   let rt_file = Filesystem.Write(

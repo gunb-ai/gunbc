@@ -42,10 +42,17 @@ fn slbu_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
 }
 
-// Check all emitted .rs files for v1_rt:: call sites, EXCLUDING the file named
-// v1_rt.rs (which defines the runtime functions -- its v1_rt:: tokens are definitions
+// Check all emitted .rs files for v1_rt:: call sites, EXCLUDING v1_rt.rs
+// (which defines the runtime functions -- its v1_rt:: tokens are definitions
 // rather than call sites). Returns true when NO non-v1_rt.rs file contains a v1_rt::
 // reference. Refuses on a failed find, an empty file list, or a missing subject module.
+//
+// The exclusion uses a CONTAINMENT TEST (string_contains) rather than a suffix test,
+// because ends_with is not available in the resolver's method surface for String on
+// this substrate (a declared known gap at v1_compiler_infer.rs:7428). The containment
+// test matches "/v1_rt.rs" at any path depth OR the bare filename "v1_rt.rs" at the
+// enumeration root -- no wider than necessary given the available primitives, and a
+// suffix test would be a tighter rung if the registration arrives.
 //
 // writes_ok enforces structural ordering: the check must run AFTER the Cargo.toml and
 // main.rs writes, because what it scans must be the tree that cargo builds (not an
