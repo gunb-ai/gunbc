@@ -29,8 +29,8 @@ type AccessRequestJustification {
 // digit in a notification a person approves while walking. So the ceiling refuses before the
 // notification is ever composed -- the operator is never shown a choice the policy would not have
 // permitted them to make.
-data default_access_lifetime_seconds: Seconds = 86400 as Seconds
-data maximum_access_lifetime_seconds: Seconds = 2592000 as Seconds
+data default_access_lifetime_seconds: Seconds = 86400
+data maximum_access_lifetime_seconds: Seconds = 2592000
 
 data lifetime_ceiling_note: NonEmptyStr = "24 hours default, 30 days maximum, per the brief. The ceiling is enforced when the request is built rather than when the operator reads it, because a refusal the operator has to notice is not a wall -- it is a request that a tired person spot a wrong number in a push notification."
 
@@ -63,9 +63,9 @@ fn admit_lifetime(requested: AccessLifetime, standing_requested: Bool) -> Lifeti
         LifetimeStandingNotJustified
       }
     LifetimeSeconds { seconds: s } =>
-      if (s as Int) <= 0 {
+      if s <= 0 {
         LifetimeNotPositive { requested: s }
-      } else if (s as Int) > (maximum_access_lifetime_seconds as Int) {
+      } else if s > maximum_access_lifetime_seconds {
         LifetimeExceedsCeiling { requested: s, ceiling: maximum_access_lifetime_seconds }
       } else {
         LifetimeAdmitted { lifetime: LifetimeSeconds { seconds: s } }
@@ -77,9 +77,9 @@ fn lifetime_admission_reason(a: LifetimeAdmission) -> String {
   match a {
     LifetimeAdmitted { lifetime: _ } => "access lifetime admitted"
     LifetimeExceedsCeiling { requested: r, ceiling: c } =>
-      concat("requested access lifetime ", concat(to_string(n: r as Int), concat("s exceeds the ceiling of ", concat(to_string(n: c as Int), "s"))))
+      concat("requested access lifetime ", concat(to_string(r), concat("s exceeds the ceiling of ", concat(to_string(c), "s"))))
     LifetimeNotPositive { requested: r } =>
-      concat("requested access lifetime must be positive, got ", to_string(n: r as Int))
+      concat("requested access lifetime must be positive, got ", to_string(r))
     LifetimeStandingNotJustified =>
       "a standing (never-expiring) grant must be requested explicitly; it is not what a bounded request degrades to"
   }

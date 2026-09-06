@@ -63,7 +63,7 @@ fn access_lifetime_sentence(l: AccessLifetime) -> String {
     LifetimeStanding =>
       "ONGOING service access -- this does not expire on its own"
     LifetimeSeconds { seconds: s } =>
-      concat("access for ", concat(to_string(n: s as Int), " seconds, enforced by an expiring condition on the binding"))
+      concat("access for ", concat(to_string(s), " seconds, enforced by an expiring condition on the binding"))
   }
 }
 

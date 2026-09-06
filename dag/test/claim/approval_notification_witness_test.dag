@@ -27,7 +27,7 @@ test fn a_standing_grant_says_ongoing_rather_than_naming_a_deadline() -> Bool {
 // THE OTHER SIDE, so the renderer cannot be saying ONGOING for everything: a bounded grant names
 // its own duration and says the provider enforces it, rather than implying someone will revoke it.
 test fn a_bounded_grant_names_its_own_duration_and_its_enforcement() -> Bool {
-  let s = access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 as Seconds })
+  let s = access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 })
   string_contains(s: s, pattern: "86400")
     && string_contains(s: s, pattern: "expiring condition")
     && !string_contains(s: s, pattern: "ONGOING")
@@ -37,7 +37,7 @@ test fn a_bounded_grant_names_its_own_duration_and_its_enforcement() -> Bool {
 // would pass each test above on its own, and would be the exact confusion this separation exists
 // to prevent.
 test fn a_bounded_and_a_standing_grant_do_not_read_the_same() -> Bool {
-  access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 as Seconds })
+  access_lifetime_sentence(l: LifetimeSeconds { seconds: 86400 })
     != access_lifetime_sentence(l: LifetimeStanding)
 }
 
