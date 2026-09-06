@@ -16,7 +16,7 @@ import v1.std.core {
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
-  is_error_diagnostic,
+  is_interpreter_blocking_diagnostic,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   FieldAccessStyle, OptionalUnwrap,
@@ -997,7 +997,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
     let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.diagnostics |> filter(d => is_error_diagnostic(d)) |> count == 0 && enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+    if enriched.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d)) |> count == 0 && enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
