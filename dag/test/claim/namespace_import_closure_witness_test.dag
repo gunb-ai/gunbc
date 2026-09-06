@@ -7,8 +7,11 @@ import tools.namespace_import_closure_behavioral_transport { nic_behavioral_rece
 // references a sibling cross-module, via the real gunbc binary, and cargo-builds the emitted crate.
 // Green arm must compile; the red arm — same layout, same chain, provider defining unrelated names
 // — must refuse, so the receipt is an A/B on cross-module name availability rather than a lone
-// green (DESIGN section 5). Live host effects (real emit, cargo build), so it runs in the nightly
-// falsifier Wet follow-on batch (falsifier_self_host_wet_entries), not per-PR hermetic discovery.
+// green (DESIGN section 5). Live host effects (real emit, cargo build), so it is CLASSIFIED onto
+// the required floor's local-repo wet lane (LocalRepoWetLane) rather than per-PR hermetic
+// discovery — rehomed from the dead FalsifierSelfHostWet cadence (falsifier.yml deleted
+// 611fd02770/#8283, 2026-08-15) by dashboard node adhoc-cf84ab88-8dc (2026-09-06). Enrolled in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; measured wet before scheduling.
 
 test fn namespace_import_closure_receipt_holds() -> Bool {
   nic_behavioral_receipt_holds()

@@ -628,14 +628,14 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
-    classification: FalsifierSelfHostWet,
-    reason: "REHOME fulfilled 2026-08-06 (Lane D), and the cadence flag it cited is since deleted (2026-08-26, dashboard node adhoc-a660c665-d46; wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note -- it was a second, disagreeing authority for scheduled-route existence, not a fact that merely went stale): dag/test/claim/namespace_import_closure_witness_test.dag::namespace_import_closure_receipt_holds enrolled on falsifier_self_host_wet_template_entries; path policy keeps the wet receipt out of per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
-    dissolution: excl_behavioral_receipt_dissolve},
+    classification: LocalRepoWetLane,
+    reason: "REHOME from FalsifierSelfHostWet (dashboard node adhoc-cf84ab88-8dc; 2026-09-06): namespace_import_closure_witness_test.dag::namespace_import_closure_receipt_holds rehomed from the dead falsifier wet cadence (falsifier.yml deleted 611fd02770/#8283, 2026-08-15) to the live local-repo wet lane (v2.workflow.local_repo_wet_terminal). Measured wet before scheduling: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/namespace_import_closure_witness_test.dag --functions namespace_import_closure_receipt_holds. Real host effects (real gunbc emit, cargo build, git operations) confined to a temporary local repository — matches excl_local_repo_wet_reason's throwaway-repository property.",
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "interpreter_dispatch_bijection_real_roster_witness_test.dag",
-    classification: FalsifierSelfHostWet,
-    reason: "R1 real-crate bijection wet receipt (gunbc#7825): cargo-integration witness (git clone, gunbc run main_wet, cold cargo build in clone) enrolled on falsifier_self_host_wet_template_entries; must not enter per-PR hermetic discovery. CADENCE STANDING (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): falsifier batch 2 no longer executes anything — falsifier.yml was deleted at 611fd02770/#8283 (2026-08-15); see falsifier_substrate_long_lane_note.",
-    dissolution: excl_behavioral_receipt_dissolve},
+    classification: LocalRepoWetLane,
+    reason: "REHOME from FalsifierSelfHostWet (dashboard node adhoc-cf84ab88-8dc; 2026-09-06): interpreter_dispatch_bijection_real_roster_witness_test.dag::interpreter_dispatch_bijection_real_roster_red_holds rehomed from the dead falsifier wet cadence to the live local-repo wet lane. Measured wet before scheduling: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag --functions interpreter_dispatch_bijection_real_roster_red_holds. Real host effects (git clone, gunbc run main_wet, cold cargo build in clone) confined to a temporary local repository — matches excl_local_repo_wet_reason's throwaway-repository property.",
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "self_host_logic_seed_unavailable_witness_test.dag",
     classification: LocalRepoWetLane,

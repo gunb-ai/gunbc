@@ -8,11 +8,12 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// R1 real-crate roster<->handler bijection evidence (gunbc#7825 / Lane D): falsifier_self_host_wet
-// enrollment for the two integration tests that clone the real workspace, perturb
-// gunbc.v1_interpreter_primitive_surface or src/v1/stage0/src/v1_interpreter.rs, run
-// dag/gunbc/instruments/generated_artifact_gate.dag main_wet, and require real cargo build refusal
-// (E0004 / macro expansion). Distinct from interpreter_dispatch_bijection_compile_red.rs (isolated
+// R1 real-crate roster<->handler bijection evidence (gunbc#7825 / Lane D): rehomed from
+// FalsifierSelfHostWet to the required floor's local-repo wet lane (LocalRepoWetLane) by
+// dashboard node adhoc-cf84ab88-8dc (2026-09-06). Enrolled in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; measured wet before scheduling.
+// Real host effects (git clone, gunbc run main_wet, cold cargo build in clone) confined to a
+// temporary local repository. Distinct from interpreter_dispatch_bijection_compile_red.rs (isolated
 // temp fixture, per-PR-local cargo test) and from
 // v1_interpreter_primitive_dispatch_authority_acceptance_test.dag (structural .dag contract).
 // Memory envelope prediction: tools.interpreter_dispatch_bijection_real_roster_transport

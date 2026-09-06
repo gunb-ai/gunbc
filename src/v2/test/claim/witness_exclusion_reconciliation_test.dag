@@ -190,16 +190,17 @@ test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Boo
 // specification-without-execution). These tests are the executing consumers:
 // population_matches_waiting_rows asserts the population is exactly the count of the same
 // waiting-rows list by construction;
-// dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds asserts R1 bijection
-// is on the falsifier template roster when the cadence is active (Lane D enrollment, separate from
-// per-PR bin-witness execution receipts).
+// dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds is a RED CONTROL
+// since 2026-09-06: the R1 bijection identity has been rehomed to LocalRepoWetLane, so it is no
+// longer enrolled on the falsifier template roster. The assertion was green because the cadence
+// was dead — it now correctly refuses.
 
 test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool {
   falsifier_self_host_wet_dark_lane_population() == falsifier_self_host_wet_dark_lane_waiting_rows().length()
 }
 
-test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool {
-  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
+test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_red_control() -> Bool {
+  !dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
 }
 
 // Re-homed here from gunbc.ci_layer_roots (this file is its only consumer, and it already

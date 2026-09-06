@@ -107,24 +107,24 @@ test fn witness_self_host_logic_local_repo_wet_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool {
+test fn witness_namespace_import_closure_local_repo_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
     function: "namespace_import_closure_receipt_holds",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    LocalRepoWetLane => true
     _ => false
   }
 }
 
-test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() -> Bool {
+test fn witness_dispatch_bijection_real_roster_local_repo_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
     function: "interpreter_dispatch_bijection_real_roster_red_holds",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    LocalRepoWetLane => true
     _ => false
   }
 }
