@@ -53,17 +53,17 @@ test fn malformed_verdicts_are_undecodable() -> Bool {
 // design; changes-requested fails the head naming its criterion, a cannot-judge blocks, a running
 // reviewer is active, an unstarted one is pending, and only all-approved completes.
 test fn the_reconciliation_orders_changes_over_blocks_over_running_over_pending_over_approved() -> Bool {
-  let a = present(key: "grounding", text: approve_text(summary: "fits"))
+  let a = present(key: "closed-grounded-substrate", text: approve_text(summary: "fits"))
   let b = present(key: "fail-closed", text: changes_text(path: "dag/x.dag", reason: "an arm widens"))
   let c = present(key: "single-authority", text: "{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"cannot_judge\",\"reason\":\"the check refused to start\"}")
-  let running = CriterionReviewEvidence { criterion_key: "redundancy", source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
+  let running = CriterionReviewEvidence { criterion_key: "minimize-redundancy", source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
   let waiting = CriterionReviewEvidence { criterion_key: "how-to-work", source: ReviewReceiptAbsent, process: WorkerProcessAbsent }
   let mixed = review_reconcile(evidence: [a, b, c, running, waiting])
   let blocked = review_reconcile(evidence: [a, c, running])
   let active = review_reconcile(evidence: [a, running, waiting])
   let pending = review_reconcile(evidence: [a, waiting])
   let green = review_reconcile(evidence: [a, present(key: "fail-closed", text: approve_text(summary: "no arm widens"))])
-  (match mixed.state { WorkflowSegmentFailed => true  _ => false }) && string_contains(s: mixed.detail, pattern: "fail-closed: changes requested") && !string_contains(s: mixed.detail, pattern: "grounding: approved")
+  (match mixed.state { WorkflowSegmentFailed => true  _ => false }) && string_contains(s: mixed.detail, pattern: "fail-closed: changes requested") && !string_contains(s: mixed.detail, pattern: "closed-grounded: approved")
     && (match blocked.state { WorkflowSegmentRefused => true  _ => false }) && string_contains(s: blocked.detail, pattern: "single-authority: cannot judge")
     && (match active.state { WorkflowSegmentActive => true  _ => false })
     && (match pending.state { WorkflowSegmentPending => true  _ => false })

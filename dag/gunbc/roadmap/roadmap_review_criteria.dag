@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_review_criteria
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, Int, List }
 import std.syllogism { Proposition }
-import gunbc.design_argument { design_propositions }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -30,71 +30,34 @@ type ReviewCriterion {
   tells: List<String>
 }
 
-data review_criteria: List<ReviewCriterion> = [
-  ReviewCriterion {
-    key: "redundancy",
-    ground: GroundedOnDesignProposition { proposition_id: "s2.minimize-redundancy" },
-    question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
-    tells: [
-      "a new type or function whose shape matches an existing one under another name",
-      "a hand-written projection of something the model could generate",
-      "a quadratic fold or a copied list where a single fold would do",
-    ],
-  },
-  ReviewCriterion {
-    key: "single-authority",
-    ground: GroundedOnDesignProposition { proposition_id: "s3.single-authority" },
-    question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
-    tells: [
-      "a new enum or record for a concept an extdeps or std module already owns",
-      "a literal string where a modeled value exists",
-      "a file:line citation in prose or a row where a module and symbol could be named",
-      "the same fact now answerable from two carriers with no relation stated between them",
-    ],
-  },
-  ReviewCriterion {
-    key: "grounding",
-    ground: GroundedOnDesignProposition { proposition_id: "s4.closed-grounded-substrate" },
-    question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
-    tells: [
-      "a String field carrying structure a record could name",
-      "a threshold or guess standing where the richer source exists",
-      "a // annotation inside a fn or type body rather than above a module-scope declaration",
-    ],
-  },
-  ReviewCriterion {
-    key: "fail-closed",
-    ground: GroundedOnDesignProposition { proposition_id: "s5.fail-closed" },
-    question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
-    tells: [
-      "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
-      "an Option or wildcard that collapses two states with different remedies",
-      "a toggle, env var or flag whose only effect is to skip a refusal",
-      "a validator for a state the model could have made unwritable",
-    ],
-  },
-  ReviewCriterion {
-    key: "extdeps-placement",
-    ground: GroundedOnDesignProposition { proposition_id: "s1.grounding-intersubjective" },
-    question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at that shared authority, or does it put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
-    tells: [
-      "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
-      "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
-      "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
-      "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream",
-    ],
-  },
-  ReviewCriterion {
-    key: "how-to-work",
-    ground: GroundedOnDesignProposition { proposition_id: "s6.how-to-work" },
-    question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
-    tells: [
-      "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
-      "a second path beside an existing modeled route",
-      "a change that routes around a substrate refusal instead of naming it",
-    ],
-  },
-]
+// THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per design row that carries a review reading
+// (gunbc.design_argument DesignRow.review), keyed by the proposition id with its section prefix
+// removed. There is no second list to keep in step with DESIGN: a criterion is added, changed or
+// retired by editing the proposition's own row in the design argument.
+fn review_criterion_key_of(proposition_id: String) -> String {
+  let parts = proposition_id.split(sep: ".")
+  if count(parts) < 2 {
+    proposition_id
+  } else {
+    join(fold(parts, init: KeyWalk { at: 0, kept: [] }, f: (acc, part) =>
+      KeyWalk { at: acc.at + 1, kept: if acc.at == 0 { acc.kept } else { concat(acc.kept, [part]) } }).kept, ".")
+  }
+}
+
+type KeyWalk {
+  at: Int
+  kept: List<String>
+}
+
+data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r.review {
+  Present { value: v } => [ReviewCriterion {
+    key: review_criterion_key_of(proposition_id: r.proposition.id),
+    ground: GroundedOnDesignProposition { proposition_id: r.proposition.id },
+    question: v.question,
+    tells: v.tells,
+  }]
+  Absent => []
+})
 
 fn review_criterion_proposition_ids() -> List<String> {
   fold(review_criteria, init: [], f: (acc, c) => match c.ground {

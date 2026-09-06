@@ -34,7 +34,7 @@ fn cannot(key: String) -> CriterionReviewEvidence {
 test fn the_criteria_are_exclusive_parts_and_include_extdeps_placement() -> Bool {
   review_criteria_are_exclusive_parts()
     && count(review_criteria) >= 6
-    && (match review_criterion_by_key(key: "extdeps-placement") {
+    && (match review_criterion_by_key(key: "grounding-intersubjective") {
       Present { value: c } => match c.ground { GroundedOnDesignProposition { proposition_id } => proposition_id == "s1.grounding-intersubjective"  GroundedOnTheNodeContract => false }
       Absent => false
     })
@@ -60,8 +60,8 @@ test fn the_aggregate_regroups_by_file_counts_the_overlap_and_keeps_the_belt_ver
     changes(key: "fail-closed", path: "dag/x.dag", reason: "an arm widens"),
     changes(key: "single-authority", path: "dag/x.dag", reason: "a second name for one concept"),
     changes(key: "fail-closed", path: "dag/x.dag", reason: "an arm widens"),
-    changes(key: "redundancy", path: "dag/y.dag", reason: "a copied fold"),
-    approve(key: "grounding"),
+    changes(key: "minimize-redundancy", path: "dag/y.dag", reason: "a copied fold"),
+    approve(key: "closed-grounded-substrate"),
     cannot(key: "how-to-work"),
   ]
   let report = review_aggregate(evidence: evidence)
@@ -71,11 +71,11 @@ test fn the_aggregate_regroups_by_file_counts_the_overlap_and_keeps_the_belt_ver
     && count(f.must_fix) == 2
     && f.overlap_count == 1
     && (match f.must_fix.first() { Present { value: g } => g.path == "dag/x.dag" && count(g.findings) == 2  Absent => false })
-    && f.approved == ["grounding"]
+    && f.approved == ["closed-grounded-substrate"]
     && count(f.could_not_judge) == 1
-    && string_contains(s: text, pattern: "Fix, by file: dag/x.dag — fail-closed: changes requested — an arm widens; single-authority: changes requested — a second name for one concept · dag/y.dag — redundancy: changes requested — a copied fold")
+    && string_contains(s: text, pattern: "Fix, by file: dag/x.dag — fail-closed: changes requested — an arm widens; single-authority: changes requested — a second name for one concept · dag/y.dag — minimize-redundancy: changes requested — a copied fold")
     && string_contains(s: text, pattern: "1 file(s) were named by more than one criterion")
     && string_contains(s: text, pattern: "Not reviewed (fix before claiming done): how-to-work: the check refused to start")
-    && !string_contains(s: text, pattern: "grounding")
+    && !string_contains(s: text, pattern: "closed-grounded")
     && report.reconciliation.detail == text
 }
