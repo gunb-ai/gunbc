@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_engine_incarnation }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.pair_serving_launch_receipt {
   LaunchTerminal, LaunchServing, LaunchExited, LaunchKilled, LaunchReadinessTimedOut, LaunchTerminalUnobserved,
   launch_terminal_from_exit, launch_terminal_wire,
