@@ -10,7 +10,7 @@ import product.cable_leg_observation {
   CableLegObservation, SecondaryNotObserved, SecondaryObserved, cable_leg_observation,
 }
 import product.cable_plant_converge {
-  CablePlant, CableLegReading, LegNeverRead, LegReadingTaken,
+  CablePlant, cable_plant, CableLegReading, LegNeverRead, LegReadingTaken,
   CablePlantObserved, CablePlantReceipt, CableLegOutcome,
   PlantLegNeverRead, PlantHoldsNoLegs, PlantCodingCannotBeActuatedHere,
   WorldConverged, WorldNotConverged,
@@ -41,38 +41,38 @@ data correctly_coded_leg: CableLegObservation = cable_leg_observation(
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
 
-data installed_plant: CablePlant = CablePlant {
+data installed_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
   readings: [
     LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: delivered_fs_leg },
     LegReadingTaken { endpoint: "qsfp56-dd-1-3" as NonEmptyStr, observation: delivered_fs_leg },
   ],
-}
+)
 
-data repaired_plant: CablePlant = CablePlant {
+data repaired_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
   readings: [
     LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: correctly_coded_leg },
     LegReadingTaken { endpoint: "qsfp56-dd-1-3" as NonEmptyStr, observation: correctly_coded_leg },
   ],
-}
+)
 
-data partially_read_plant: CablePlant = CablePlant {
+data partially_read_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
   readings: [
     LegReadingTaken { endpoint: "qsfp56-dd-1-1" as NonEmptyStr, observation: correctly_coded_leg },
     LegNeverRead { endpoint: "qsfp56-dd-1-3" as NonEmptyStr },
   ],
-}
+)
 
-data empty_plant: CablePlant = CablePlant {
+data empty_plant: CablePlant = cable_plant(
   plant: "a rack nobody has cabled yet" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
   readings: [],
-}
+)
 
 // THE CENTRAL WITNESS: the fabric as it stands does not converge, and the refusal names the legs.
 test fn the_installed_plant_does_not_converge() -> Bool {

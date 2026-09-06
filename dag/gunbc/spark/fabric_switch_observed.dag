@@ -13,7 +13,7 @@ import product.cable_leg_observation {
   CableLegObservation, SecondaryNotObserved, cable_leg_observation,
 }
 import product.cable_plant_converge {
-  CablePlant, CableLegReading, LegReadingTaken, CablePlantConvergence,
+  CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantConvergence,
   converge_cable_plant,
 }
 import gunbc.fleet_intent_network {
@@ -158,14 +158,13 @@ data srv10_fabric_link_observed: Bool = true
 //
 // The required mode is the rail's, not the cable's: 100GBASE-CR2 is what a two-lane leg must attest
 // for this fabric to run at the speed it was bought for.
-data fabric_cable_plant: CablePlant = CablePlant {
+data fabric_cable_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
   readings: map(fabric_lane_observations, o => LegReadingTaken {
     endpoint: fabric_lane_interface(o: o),
     observation: fabric_leg_cable_observed.coding,
-  }),
-}
+  }))
 
 fn fabric_cable_plant_convergence() -> CablePlantConvergence {
   converge_cable_plant(subject: fabric_cable_plant)

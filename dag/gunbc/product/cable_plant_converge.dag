@@ -65,6 +65,14 @@ type CablePlant sole_constructor {
   readings: List<CableLegReading>
 }
 
+fn cable_plant(
+  plant: NonEmptyStr,
+  required_mode: LinkMode,
+  readings: List<CableLegReading>,
+) -> CablePlant {
+  CablePlant { plant: plant, required_mode: required_mode, readings: readings }
+}
+
 type ObservedLeg sole_constructor {
   endpoint: NonEmptyStr
   observation: CableLegObservation
