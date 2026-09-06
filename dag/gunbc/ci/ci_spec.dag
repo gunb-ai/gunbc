@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
@@ -8,7 +9,11 @@ import extdeps.github.org_admin_auth {
   github_app_jwt_backdate_seconds,
   github_app_jwt_lifetime_seconds,
 }
-import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref,
+  spark_administrator_credential_roster,
+  spark_administrator_password_secret_ref_at_version,
+}
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
@@ -75,10 +80,14 @@ import v2.std.orchestration {
   EnvSet,
   EnvUnset,
   EscalationLevel,
+  Exit,
   FailFast,
+  If,
+  IntNe,
   LogMatches,
   Pipeline,
   PipelineStep,
+  Predicate,
   Retry,
   Run
 }
@@ -736,6 +745,45 @@ data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "org_actions_converge_wet",
 }
 
+// THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
+// this repository's ordering law is what keeps them apart: an observation reports a host's standing
+// and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
+// runs on. Fusing them behind one mode would mean there was no way to ask a host what it holds
+// without also changing what it holds.
+data gunbc_ci_runner_guest_image_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_observe_wet",
+}
+
+// THE BOOT PROBE IS ITS OWN TARGET, NOT A THIRD MODE OF THE IMAGE BUILD. It answers a different
+// question about a different subject: the build asks whether an image can be PRODUCED on this host,
+// the probe asks whether the image that exists BOOTS. Fusing them would mean no way to re-ask the
+// second without redoing the first, and a boot failure would be reported by a step named for a build.
+// THE HOST-READINESS CONVERGE HAD NO ACTUATION ROUTE UNTIL NOW. gunbc.runner_microvm_host_ready
+// landed in #10525 with an observe and a converge and nothing that invoked either, so srv2 was
+// assumed converged on the strength of a module existing. The boot probe read the host and reported
+// firecracker=absent at the executor-owned path (fleet-converge run 33986199807).
+//
+// WHAT THAT OBSERVATION DOES AND DOES NOT SAY, because the first version of this note overreached.
+// It says srv2 holds no Firecracker AT THE PATH THIS MODULE OWNS. It does NOT say the fleet has never
+// had one: #9578 reports an MVP proven by execution on srv4 at this same cited version, so a binary
+// existed there, placed outside the modeled path. One host's absence is not a fleet's history, and
+// the modeled path's emptiness is not the same fact as the binary's non-existence.
+data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_host_ready.dag",
+  function: "runner_microvm_host_converge_wet",
+}
+
+data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
+  function: "runner_microvm_boot_probe_wet",
+}
+
+data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_guest_image.dag",
+  function: "runner_guest_image_converge_wet",
+}
+
 data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/serving_reboot_probe.dag",
   function: "spark_serving_reboot_ci_wet",
@@ -749,6 +797,11 @@ data gunbc_ci_spark_serving_durability_target: GunbcRunStepTarget = GunbcRunStep
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
+}
+
+data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/managed_access_apply.dag",
+  function: "spark_managed_access_bootstrap_ci_wet",
 }
 
 data gunbc_ci_spark_serving_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -867,7 +920,7 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 26 declarations, 26 entries. That equality is the thing nothing checks.
+// Counted at authoring: 27 declarations, 27 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
@@ -878,9 +931,14 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_converge_target,
+    gunbc_ci_runner_guest_image_observe_target,
+    gunbc_ci_runner_guest_image_converge_target,
+    gunbc_ci_runner_microvm_host_converge_target,
+    gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
+    gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_observe_target,
     gunbc_ci_spark_serving_converge_slice_target,
     gunbc_ci_collect_fleet_convergence_target,
@@ -1189,6 +1247,26 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // credential to the grant-install invocation within its own process tree: one trap (armed for the
 // whole script, never disarmed, since nothing needs the file past this script's exit), one
 // CRED_FILE, a shell-local export instead of GITHUB_ENV so the path never crosses a step boundary.
+// THE ADMINISTRATOR PASSWORD VERSION FOLLOWS THE TARGET HOST. The prelude used to fetch one fixed
+// version, which was right while every Spark shared one password and wrong the day the second batch
+// arrived with another. The version is a fact of the host (gunbc.spark.credential_workflow
+// spark_administrator_credential_roster), and SPARK_CONVERGE_TARGET is a run-time input, so the
+// generated script carries one exact URL per enrolled host and refuses an unrosterd target before
+// any fetch -- no shell variable is ever spliced into a modeled URL.
+fn gunbc_ci_spark_administrator_credential_target_case() -> String {
+  join([
+    "case \"$\{SPARK_CONVERGE_TARGET:-}\" in ",
+    join(map(spark_administrator_credential_roster, r => join([
+      r.host as String, ") SM_URL=\"",
+      secret_ref_access_url(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
+      "\"; SM_RES=\"",
+      secret_ref_version_resource(ref: spark_administrator_password_secret_ref_at_version(version: r.version)),
+      "\" ;; ",
+    ], "")), ""),
+    "*) echo \"SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='$\{SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host\" >&2; exit 1 ;; esac",
+  ], "")
+}
+
 fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -1198,20 +1276,17 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/spark-administrator-auth-header\"") },
     Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\" \"$HDR_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
+    Do { run: ci_retry_body_run(command: gunbc_ci_spark_administrator_credential_target_case()) },
     Do {
       run: ci_retry_body_run(
-        command: join([
-          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-          secret_ref_access_url(ref: spark_administrator_password_secret_ref),
-          "\" || echo 000)\""
-        ], "")
+        command: "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"$SM_URL\" || echo 000)\""
       )
     },
     Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " answered 403 to ", spark_bootstrap_cloud_principal_member(),
           ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
@@ -1221,7 +1296,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
@@ -1230,7 +1305,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           "; contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
@@ -1242,7 +1317,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
         ], "")
       )
@@ -1256,7 +1331,7 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "echo \"spark-admin-credential: materialized from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "$SM_RES",
           " to a 0600 run-local file, consumed and removed within this one step\""
         ], "")
       )
@@ -1486,6 +1561,130 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
   ]
 }
 
+// THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
+// GET /app/hook/config authenticate as the APP; the installation access token that
+// gunbc_ci_org_admin_app_token_prelude exports reaches NEITHER, and that prelude wipes both
+// the key and the JWT the instant it has its installation token.
+//
+// The alternative considered was retaining that prelude's JWT across its whole step. It was
+// rejected on exposure, not on diff size: the App JWT can mint installation tokens for every
+// installation of the App, so it is strictly more powerful than the installation token beside
+// it, and keeping it resident for a whole step widens the window on the strongest credential
+// in the system to save one Secret Manager read. This prelude instead re-reads the key,
+// signs a JWT bounded by github_app_jwt_lifetime_seconds, and wipes the key immediately.
+//
+// ONLY THE PATH IS EXPORTED. GUNBC_APP_JWT_HEADER_FILE names a 0600 file holding the
+// Authorization header; the token never enters an argv (where /proc would expose it to every
+// process on the runner) and never enters the converge process's own environment. The trap
+// wipes the file whether the step succeeds, fails, or is cancelled.
+// THE KEY-UNREADABLE GUARD, AS A MODELED BRANCH RATHER THAN AN OPAQUE SHELL STRING (review 60996).
+// The first cut wrote `if [ "$APP_SM_CODE" != 200 ]; then ...; exit 1; fi` inside a Run command, so
+// the branch, its body and its exit were three shell facts the substrate could not see -- a
+// pipeline reader could not tell this step branches at all. std.orchestration already models
+// exactly this: Predicate.IntNe is the integer test, If carries the arms, and Exit carries the
+// status, with bash emission in v2.extdeps.languages.bash_orch_if and operand-alphabet refusal in
+// 05_emit_orchestration (^orch_emit_int_ne_operand_invalid), so metachar injection is unwritable at
+// emit rather than trusted. The remaining Run commands here are single non-branching invocations,
+// which Do is the modeled carrier for; the control flow is what had to stop being a string.
+fn app_jwt_key_unreadable_message() -> String {
+  join([
+    "AppJwtKeyUnreadable: Secret Manager answered HTTP $APP_SM_CODE for ",
+    secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+    " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor. Minting NO App JWT."
+  ], "")
+}
+
+fn app_jwt_key_unreadable_guard() -> PipelineStep {
+  If {
+    cond: IntNe { lhs: "\"$APP_SM_CODE\"", rhs: "200" },
+    then_: Pipeline {
+      steps: [
+        Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
+        Do { run: ci_retry_body_run(command: join(["echo \"", app_jwt_key_unreadable_message(), "\" >&2"], "")) },
+        Exit { status: "1" }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn gunbc_ci_app_jwt_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "APP_KEY_FILE=\"$RUNNER_TEMP/app-jwt-key\"") },
+    Do { run: ci_retry_body_run(command: "APP_SM_HDR=\"$RUNNER_TEMP/app-jwt-sm-header\"") },
+    Do { run: ci_retry_body_run(command: "APP_SM_BODY=\"$RUNNER_TEMP/app-jwt-sm-body\"") },
+    Do { run: ci_retry_body_run(command: "GUNBC_APP_JWT_HEADER_FILE=\"$RUNNER_TEMP/app-jwt-header\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "app_jwt_cleanup() { rm -f \"$APP_KEY_FILE\" \"$APP_SM_HDR\" \"$APP_SM_BODY\" \"$GUNBC_APP_JWT_HEADER_FILE\"; unset GUNBC_APP_JWT_HEADER_FILE; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap app_jwt_cleanup EXIT") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$APP_SM_HDR\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "APP_SM_CODE=\"$(curl -sS -o \"$APP_SM_BODY\" -w '%\{http_code}' -H @\"$APP_SM_HDR\" \"",
+          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          "\")\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_HDR\"") },
+    app_jwt_key_unreadable_guard(),
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$APP_SM_BODY\" > \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_SM_BODY\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "APP_NOW=$(date +%s)") },
+    Do { run: ci_retry_body_run(command: "app_b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
+    Do { run: ci_retry_body_run(command: "APP_JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | app_b64url)") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "APP_JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((APP_NOW-",
+          to_string(github_app_jwt_backdate_seconds),
+          "))\" \"$((APP_NOW+",
+          to_string(github_app_jwt_lifetime_seconds),
+          "))\" \"",
+          to_string(gunbai_ci_declared.app_id.value),
+          "\" | app_b64url)"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "APP_JWT_SIG=$(printf '%s.%s' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$APP_KEY_FILE\" | app_b64url)") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$APP_KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$APP_JWT_HEADER\" \"$APP_JWT_PAYLOAD\" \"$APP_JWT_SIG\" > \"$GUNBC_APP_JWT_HEADER_FILE\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$GUNBC_APP_JWT_HEADER_FILE\"") },
+    Do { run: ci_retry_body_run(command: "unset APP_JWT_HEADER APP_JWT_PAYLOAD APP_JWT_SIG") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_APP_JWT_HEADER_FILE") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"app-control-plane: short-lived App JWT minted in-run for app ",
+          gunbai_ci_declared.slug as String,
+          " (",
+          to_string(github_app_jwt_lifetime_seconds),
+          "s lifetime; key wiped; header file 0600, path exported, contents never in argv or environment)\""
+        ], "")
+      )
+    }
+  ]
+}
+
+fn gunbc_ci_app_control_plane_converge_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_app_jwt_prelude(),
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/fleet/app_control_plane_converge.dag",
+    function: "app_control_plane_converge_wet",
+    claim_run: false,
+    receipt_rel: Present { value: "target/app-control-plane-observation-receipt.txt" }
+  )
+}
+
 fn gunbc_ci_org_actions_converge_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
@@ -1494,6 +1693,46 @@ fn gunbc_ci_org_actions_converge_invoke() -> String {
     function: gunbc_ci_org_actions_converge_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_runner_guest_image_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_observe_target.entry,
+    function: gunbc_ci_runner_guest_image_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_host_converge_target.entry,
+    function: gunbc_ci_runner_microvm_host_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-host-standing.txt"
+  )
+}
+
+fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_microvm_boot_probe_target.entry,
+    function: gunbc_ci_runner_microvm_boot_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-microvm-boot-probe.txt"
+  )
+}
+
+fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_guest_image_converge_target.entry,
+    function: gunbc_ci_runner_guest_image_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-guest-image-standing.txt"
   )
 }
 
@@ -1514,6 +1753,20 @@ fn gunbc_ci_spark_serving_durability_invoke() -> String {
     function: gunbc_ci_spark_serving_durability_target.function,
     claim_run: false,
     receipt_rel: "target/spark-serving-durability-receipt.txt"
+  )
+}
+
+// The bootstrap shares the grant-install prelude: same fleet-key agent from the job, same per-target
+// administrator credential materialized to the same file, so the two cannot drift on how a Spark
+// is reached or authenticated.
+fn gunbc_ci_spark_bootstrap_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_bootstrap_target.entry,
+    function: gunbc_ci_spark_bootstrap_target.function,
+    claim_run: false,
+    receipt_rel: spark_apply_receipt_path
   )
 }
 

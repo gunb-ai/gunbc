@@ -2,7 +2,9 @@ module gunbc.guarantee_stall.gitattributes_committed_emit_drift_stall
 
 import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
+import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
+import gunbc.roadmap_model { RoadmapNodeId }
 
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
 // The direct byte-equality witness and its aggregate both returned false: one underlying fact,
@@ -16,5 +18,8 @@ data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds", tail: Cons { head: "test.claim.gitattributes_emit_witness.witness_holds", tail: Empty {} } } },
-  next_rung_trigger: "node://adhoc-16f7520a-85f lands: identify the authority edit that introduced the drift, regenerate .gitattributes from that authority, and restore a required generated-artifact drift gate so later authority/artifact disagreement refuses"
+  next_rung_trigger: climbs_when_awaiting(
+    capability: "the authority edit that introduced the drift is identified, .gitattributes is regenerated from that authority, and a required generated-artifact drift gate is restored so later authority/artifact disagreement refuses",
+    awaiting: [dashboard_work_item_referent(node: "adhoc-16f7520a-85f" as RoadmapNodeId)],
+  )
 }

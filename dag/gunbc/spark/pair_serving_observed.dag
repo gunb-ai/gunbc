@@ -1,0 +1,324 @@
+module gunbc.spark.pair_serving_observed
+
+import std.types { String, Bool, List, NonEmptyStr, Port }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, TokenCount, token_count }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.fabric_link_desired { SparkFabricPair, Srv5Srv6 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+
+// THE FIRST PAIR AS IT ACTUALLY RUNS, READ ON 2026-09-05 FROM THE HOSTS, NOT FROM THE DESIRED ROW.
+// Head 192.168.1.225 (srv6, spark-3bd5) serves DeepSeek V4 Flash at tensor-parallel 2 with worker
+// 192.168.1.226 (srv5, spark-a3ee), inside a docker container on each host. Everything below is an
+// OBSERVATION with its source named: a process list, a unit list, the engine's own environ, the
+// captured stdout, and the two launch scripts on disk. Nothing here is desired state; the render
+// slice that turns gunbc.spark.pair_serving_desired into units consumes these rows as the
+// realization facts it must reproduce or deliberately replace, and the drift rows at the bottom are
+// the disagreements the observation itself surfaced.
+
+type PairServingObservationProvenance {
+  observed_on: NonEmptyStr
+  observed_by: NonEmptyStr
+  sources: List<NonEmptyStr>
+}
+
+data first_pair_observation_provenance: PairServingObservationProvenance = PairServingObservationProvenance {
+  observed_on: "2026-09-05" as NonEmptyStr,
+  observed_by: "operator lane witty-seal-144, relayed by the operator" as NonEmptyStr,
+  sources: [
+    "ps -eo user,args on 192.168.1.225 and 192.168.1.226" as NonEmptyStr,
+    "systemctl list-units --all on both hosts" as NonEmptyStr,
+    "/proc/<engine pid>/environ on 192.168.1.225" as NonEmptyStr,
+    "docker exec dsv4 cat /root/prod_a.log on 192.168.1.225" as NonEmptyStr,
+    "/usr/local/bin/spark-vllm-head.sh and /root/launch_prod_pair.sh on 192.168.1.225" as NonEmptyStr,
+  ],
+}
+
+// THE RUNTIME IS A CONTAINER, NOT A HOST INSTALL, AND ITS CLOSURE IS REPRODUCIBLE. `which vllm`
+// finds nothing on the host; the engine is /opt/env/bin/vllm inside container dsv4. The local tag
+// dsv4-ray:local is a docker commit on top of a PUBLIC base image,
+// aidendle94/sparkrun-vllm-ds4-gb10:production-ready (image id b2eb4e6ee5cc, 2026-05-31), whose
+// history carries the whole build (overlay/vllm into site-packages, b12x pip install, CUDA env);
+// the local layer is only `CMD sleep infinity` plus the JIT caches (207M under /cache) and the
+// launch script, and it differs per host (377dd4d0b0f9 on srv6, 0256d9df625d on srv5, both
+// committed 2026-09-03T04:53Z). So the runtime identity convergence should carry is the base
+// image's registry digest plus a rendered container spec; the local commits are drift, not a
+// build. The JIT caches live in the container's writable layer, so a recreated container rebuilds
+// them on first start.
+type ContainerRuntimeObserved {
+  container_name: NonEmptyStr
+  image_tag: NonEmptyStr
+  base_image: NonEmptyStr
+  base_image_id: NonEmptyStr
+  local_image_id_srv6: NonEmptyStr
+  local_image_id_srv5: NonEmptyStr
+  vllm_self_reported_version: NonEmptyStr
+  python_executable: NonEmptyStr
+  weights_mount: NonEmptyStr
+  jit_cache_root_in_container: NonEmptyStr
+}
+
+data first_pair_container_runtime: ContainerRuntimeObserved = ContainerRuntimeObserved {
+  container_name: "dsv4" as NonEmptyStr,
+  image_tag: "dsv4-ray:local" as NonEmptyStr,
+  base_image: "aidendle94/sparkrun-vllm-ds4-gb10:production-ready" as NonEmptyStr,
+  base_image_id: "b2eb4e6ee5cc" as NonEmptyStr,
+  local_image_id_srv6: "sha256:377dd4d0b0f91c2436292d4c2d254358e4aebab28b282e1de6d34774a056b496" as NonEmptyStr,
+  local_image_id_srv5: "sha256:0256d9df625d0ca3f1b6804a83adcc77be9aace35e66957a40973b5cf64a8b89" as NonEmptyStr,
+  vllm_self_reported_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
+  python_executable: "/opt/env/bin/python3" as NonEmptyStr,
+  weights_mount: "/weights" as NonEmptyStr,
+  jit_cache_root_in_container: "/cache/huggingface" as NonEmptyStr,
+}
+
+// The container's docker run configuration, read from docker inspect on both hosts (identical).
+// This is what the container bring-up in convergence must reproduce.
+type ContainerRunConfigObserved {
+  network_mode: NonEmptyStr
+  ipc_mode: NonEmptyStr
+  shm_size_bytes: Nat
+  memlock_unlimited: Bool
+  gpu_device_request_all: Bool
+  devices: List<NonEmptyStr>
+  cap_add: List<NonEmptyStr>
+  restart_policy: NonEmptyStr
+  bind_mounts: List<NonEmptyStr>
+  command: NonEmptyStr
+}
+
+data first_pair_container_run_config: ContainerRunConfigObserved = ContainerRunConfigObserved {
+  network_mode: "host" as NonEmptyStr,
+  ipc_mode: "host" as NonEmptyStr,
+  shm_size_bytes: 10737418240,
+  memlock_unlimited: true,
+  gpu_device_request_all: true,
+  devices: ["/dev/infiniband:/dev/infiniband:rwm" as NonEmptyStr],
+  cap_add: ["CAP_IPC_LOCK" as NonEmptyStr],
+  restart_policy: "unless-stopped" as NonEmptyStr,
+  bind_mounts: ["/home/briansrls/.cache/huggingface/hub -> /weights (read-only)" as NonEmptyStr],
+  command: "sleep infinity" as NonEmptyStr,
+}
+
+// The model on disk, mounted into the container at the weights mount.
+type ModelSnapshotObserved {
+  hub_repository: NonEmptyStr
+  snapshot_revision: NonEmptyStr
+  host_path: NonEmptyStr
+  size_on_disk: NonEmptyStr
+}
+
+data first_pair_model_snapshot: ModelSnapshotObserved = ModelSnapshotObserved {
+  hub_repository: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr,
+  snapshot_revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+  host_path: "/home/briansrls/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+  size_on_disk: "158G (du -sh)" as NonEmptyStr,
+}
+
+// The engine invocation as the process list shows it, field by field.
+type VllmServeObserved {
+  served_model_name: NonEmptyStr
+  bind_host: NonEmptyStr
+  port: Port
+  tensor_parallel_size: Nat
+  distributed_executor_backend: NonEmptyStr
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  kv_cache_dtype: NonEmptyStr
+  gpu_memory_utilization_wire: NonEmptyStr
+  enable_prefix_caching: Bool
+  enable_auto_tool_choice: Bool
+  tool_call_parser: NonEmptyStr
+}
+
+data first_pair_vllm_serve: VllmServeObserved = VllmServeObserved {
+  served_model_name: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+  bind_host: "0.0.0.0" as NonEmptyStr,
+  port: 30000,
+  tensor_parallel_size: 2,
+  distributed_executor_backend: "ray" as NonEmptyStr,
+  max_model_len: token_count(count: 1048576),
+  max_num_seqs: 32,
+  kv_cache_dtype: "fp8_ds_mla" as NonEmptyStr,
+  gpu_memory_utilization_wire: "0.82" as NonEmptyStr,
+  enable_prefix_caching: true,
+  enable_auto_tool_choice: true,
+  tool_call_parser: "deepseek_v4" as NonEmptyStr,
+}
+
+// The Ray head as spark-vllm-head.sh starts it inside the container. The node address is the
+// head's endpoint on the first pair's rail 0 (gunbc.spark.fabric_link_desired first_pair_fabric_rail0,
+// srv6 at 192.168.102.10); the worker joins that address. A zero monitor refresh is set and
+// documented in the script as load-bearing: Ray's threshold monitor SIGKILLed rank 0 on a ~395 MB
+// overshoot because on GB10 the device reservation is system memory.
+type RayHeadObserved {
+  node_ip: Ipv4Address
+  gcs_port: Port
+  num_cpus: Nat
+  num_gpus: Nat
+  object_store_memory_bytes: Nat
+  memory_monitor_refresh: Millisecond
+}
+
+data first_pair_ray_head: RayHeadObserved = RayHeadObserved {
+  node_ip: ipv4_address(octet1: 192, octet2: 168, octet3: 102, octet4: 10),
+  gcs_port: 6379,
+  num_cpus: 20,
+  num_gpus: 1,
+  object_store_memory_bytes: 38867934412,
+  memory_monitor_refresh: millisecond(count: 0),
+}
+
+// The engine's live environment, from /proc/<pid>/environ, which is the CONTAINER'S baked
+// environment (docker inspect .Config.Env): the launch script's exports reach only the shell that
+// starts Ray, and the ranks inherit those through the raylet, while the API server is started by a
+// second docker exec that inherits the container env. That env carries three values foreign to
+// these hosts, baked at docker run on whatever machine first ran the image: NODE_IP=192.168.50.58,
+// MN_IF_NAME=enP7s7 and TP_SOCKET_IFNAME=enP7s7 (enP7s7 is the no-carrier RJ45 port on both units).
+type CollectiveTransportEnvObserved {
+  vllm_host_ip: Ipv4Address
+  nccl_net: NonEmptyStr
+  nccl_ib_hca: NonEmptyStr
+  nccl_ib_gid_index: Nat
+  nccl_socket_ifname: NonEmptyStr
+  gloo_socket_ifname: NonEmptyStr
+  tp_socket_ifname: NonEmptyStr
+  vllm_allow_long_max_model_len: Bool
+  vllm_cache_root: NonEmptyStr
+}
+
+data first_pair_collective_env_live: CollectiveTransportEnvObserved = CollectiveTransportEnvObserved {
+  vllm_host_ip: ipv4_address(octet1: 192, octet2: 168, octet3: 102, octet4: 10),
+  nccl_net: "IB" as NonEmptyStr,
+  nccl_ib_hca: "rocep1s0f0,roceP2p1s0f0" as NonEmptyStr,
+  nccl_ib_gid_index: 3,
+  nccl_socket_ifname: "enp1s0f0np0,enP2p1s0f0np0" as NonEmptyStr,
+  gloo_socket_ifname: "enp1s0f0np0" as NonEmptyStr,
+  tp_socket_ifname: "enP7s7" as NonEmptyStr,
+  vllm_allow_long_max_model_len: true,
+  vllm_cache_root: "/cache/huggingface/vllm-cache" as NonEmptyStr,
+}
+
+// What the launch script exports for the same variable. The live engine disagreed (see drift).
+data first_pair_script_tp_socket_ifname: NonEmptyStr = "enp1s0f0np0" as NonEmptyStr
+data first_pair_container_baked_node_ip: NonEmptyStr = "192.168.50.58 (foreign to every fleet segment)" as NonEmptyStr
+
+// Units on each host and their observed activity. The head's unit is a boot-time bring-up that is
+// inactive while the container it started 36 hours earlier keeps running; the engine itself was
+// launched by nohup from launch_prod_pair.sh with stdout captured inside the container.
+type UnitObserved {
+  host: HostIdentity
+  unit: NonEmptyStr
+  scope: NonEmptyStr
+  active_state: NonEmptyStr
+  role: NonEmptyStr
+}
+
+data first_pair_units: List<UnitObserved> = [
+  UnitObserved { host: operator_host_srv6, unit: "spark-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "boot-time bring-up of the head container; the container outlived it" as NonEmptyStr },
+  UnitObserved { host: operator_host_srv5, unit: "spark-ray-worker.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "active (running)" as NonEmptyStr, role: "runs /usr/local/bin/spark-ray-worker.sh: ray worker only, no vllm serve" as NonEmptyStr },
+  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "inactive (dead)" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
+  UnitObserved { host: operator_host_srv5, unit: "gunbc-vllm-verify.service" as NonEmptyStr, scope: "system" as NonEmptyStr, active_state: "failed" as NonEmptyStr, role: "leftover of the abandoned earlier gunbc deployment; loaded with no unit file on disk, not in any wants directory" as NonEmptyStr },
+]
+
+data first_pair_stdout_capture: NonEmptyStr = "/root/prod_a.log inside container dsv4 on 192.168.1.225 (nohup $LAUNCH > $LOG 2>&1)" as NonEmptyStr
+
+// THE POOL, FROM THE ENGINE'S OWN STARTUP LINE. The earlier figure derived from num_gpu_blocks x
+// block_size (343,088) was wrong on this MLA/fp8_ds_mla build, and kv_cache_usage_perc counts
+// retained prefix-cache blocks, so it is not a saturation signal (96.5% with zero requests running).
+// The concurrency limiter in practice is max-num-seqs, not the pool.
+type KvPoolObserved {
+  pool_tokens: Nat
+  max_concurrency_at_max_model_len_wire: NonEmptyStr
+  rank0_available_kv_wire: NonEmptyStr
+  rank1_available_kv_wire: NonEmptyStr
+  source_line: NonEmptyStr
+}
+
+data first_pair_kv_pool: KvPoolObserved = KvPoolObserved {
+  pool_tokens: 4632182,
+  max_concurrency_at_max_model_len_wire: "4.42x for 1,048,576 tokens per request" as NonEmptyStr,
+  rank0_available_kv_wire: "24.04 GiB (Worker_TP0, 192.168.1.225)" as NonEmptyStr,
+  rank1_available_kv_wire: "21.01 GiB (Worker_TP1, 192.168.1.226)" as NonEmptyStr,
+  source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 4,632,182 tokens" as NonEmptyStr,
+}
+
+// EACH GROUP'S OWN LAUNCH LINE, read from its head's captured stdout after the roster promoted it.
+// A group's admission count is sized from its own pool; the first pair's pool above is history.
+type GroupKvPoolObserved {
+  group: FabricGroup
+  pool_tokens: Nat
+  max_concurrency_at_max_model_len_wire: NonEmptyStr
+  probed_at: NonEmptyStr
+  source_line: NonEmptyStr
+}
+
+data group_kv_pools_observed: List<GroupKvPoolObserved> = [
+  GroupKvPoolObserved {
+    group: FabricGroupA,
+    pool_tokens: 11767856,
+    max_concurrency_at_max_model_len_wire: "11.22x for 1,048,576 tokens per request" as NonEmptyStr,
+    probed_at: "2026-09-05T20:44Z" as NonEmptyStr,
+    source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+  },
+  GroupKvPoolObserved {
+    group: FabricGroupB,
+    pool_tokens: 11952124,
+    max_concurrency_at_max_model_len_wire: "11.40x for 1,048,576 tokens per request" as NonEmptyStr,
+    probed_at: "2026-09-05T21:20:37Z" as NonEmptyStr,
+    source_line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,952,124 tokens" as NonEmptyStr,
+  },
+]
+
+fn fabric_group_same(a: FabricGroup, b: FabricGroup) -> Bool {
+  match a {
+    FabricGroupA => match b { FabricGroupA => true  FabricGroupB => false }
+    FabricGroupB => match b { FabricGroupA => false  FabricGroupB => true }
+  }
+}
+
+fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
+  first(filter(group_kv_pools_observed, r => fabric_group_same(a: r.group, b: group)))
+}
+
+// The head host of the first pair as observed: the unit and the serve process are on srv6, and the
+// Ray node address is srv6's rail-0 endpoint.
+data first_pair_observed_head: HostIdentity = operator_host_srv6
+data first_pair_observed_pair: SparkFabricPair = Srv5Srv6
+
+// DRIFT THE OBSERVATION SURFACED. Each row is a disagreement between two sources for one fact; the
+// render slice must resolve each explicitly rather than pick a side by accident.
+type PairServingObservedDrift {
+  subject: NonEmptyStr
+  first_source: NonEmptyStr
+  second_source: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+data first_pair_observed_drift: List<PairServingObservedDrift> = [
+  PairServingObservedDrift {
+    subject: "TP_SOCKET_IFNAME" as NonEmptyStr,
+    first_source: "spark-vllm-head.sh exports enp1s0f0np0" as NonEmptyStr,
+    second_source: "the live engine environ carries enP7s7" as NonEmptyStr,
+    consequence: "the API server ran with the container's baked value while the ranks ran with the script's; the head script was patched on 2026-09-05 (backup spark-vllm-head.sh.bak-20260905) so the engine launch carries the same exports as the Ray start, and the running engine keeps the old value until its next restart" as NonEmptyStr,
+  },
+  PairServingObservedDrift {
+    subject: "runtime image identity" as NonEmptyStr,
+    first_source: "srv6 dsv4-ray:local is 377dd4d0b0f9" as NonEmptyStr,
+    second_source: "srv5 dsv4-ray:local is 0256d9df625d" as NonEmptyStr,
+    consequence: "one tag names two images; both are commits of the same public base b2eb4e6ee5cc, so convergence carries the base image and a rendered container spec, never the local tag" as NonEmptyStr,
+  },
+  PairServingObservedDrift {
+    subject: "who owns the head engine" as NonEmptyStr,
+    first_source: "spark-vllm.service is the declared bring-up and is inactive" as NonEmptyStr,
+    second_source: "the engine was launched by nohup from launch_prod_pair.sh and has run 36 hours" as NonEmptyStr,
+    consequence: "no supervisor restarts the engine on failure; the unit is not the authority for what runs" as NonEmptyStr,
+  },
+  PairServingObservedDrift {
+    subject: "max_model_len" as NonEmptyStr,
+    first_source: "the 2026-09-03 front-door readback reported 262144" as NonEmptyStr,
+    second_source: "the running engine is launched with 1048576" as NonEmptyStr,
+    consequence: "gunbc.spark.vllm_observed's readback is a superseded configuration, not the current one" as NonEmptyStr,
+  },
+]

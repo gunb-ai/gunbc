@@ -44,12 +44,15 @@ import gunbc.runner_microvm {
   RunnerMicroVmSizing,
   MicroVmSized,
   MicroVmSizeUnresolved,
-  runner_microvm_sizing,
+  runner_microvm_size_decision,
+  gunbc_runner_microvm_declared_size,
+  RunnerMicroVmNetworking,
+  GuestNetworkTap,
+  GuestNetworkAbsent,
   JitCredentialTransport,
   JitConfigOnReadOnlyDrive,
   JitConfigInSharedSlotDirectory,
   RunnerMicroVmSize,
-  runner_microvm_mvp_size,
   runner_microvm_admission,
   runner_microvm_vm_config,
   runner_microvm_provides_dedicated_kernel,
@@ -57,7 +60,7 @@ import gunbc.runner_microvm {
   gunbc_runner_guest_image,
 }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import std.measure { hardware_thread_count_value, byte_size }
+import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size }
 import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
 
 
@@ -67,9 +70,8 @@ fn mvp_sized_config() -> FirecrackerVmConfig {
     rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
     jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
     kernel_path: "/var/tmp/fcmvp/vmlinux",
-    tap_device: "fcmvp0",
-    guest_mac: "06:00:AC:10:00:02",
-    size: runner_microvm_mvp_size,
+    net: GuestNetworkTap { device: "fcmvp0", guest_mac: "06:00:AC:10:00:02" },
+    size: gunbc_runner_microvm_declared_size,
     transport: gunbc_runner_jit_transport,
   )
 }
@@ -552,35 +554,50 @@ test fn the_cell_grants_no_absolute_cpu_entitlement() -> Bool {
 // cause NAMES the missing footprint. That has an authorable red -- a cause that stops naming the
 // footprint fails it -- where "an unresolved config cannot be admitted" has none.
 
-// ARM ONE OF THE PAIR: an unresolved core count refuses on the CORE axis, carrying the upstream
-// cause forward rather than replacing it.
-test fn an_unresolved_core_count_refuses_naming_the_core_count() -> Bool {
-  match runner_microvm_sizing(
-    cores: CoresPerSlotUnresolved { cause: "no surveyed memory-per-core figure" },
-    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
-    reserve: witness_reserve,
-  ) {
-    MicroVmSized { size: _ } => false
-    MicroVmSizeUnresolved { cause: c } => cause_mentions(cause: c, needle: "core count is unresolved")
+// THE POSITIVE CONTROL FOR THE DECLARED SIZE: while the cell grants only a relative CPU share --
+// which is the fact that FORCED the declaration -- the decision resolves, and it resolves to the
+// declared row rather than to some derived approximation of it.
+test fn a_relative_only_entitlement_resolves_to_the_declared_size() -> Bool {
+  match runner_microvm_size_decision(cpu: gunbc_runner_microvm_cell_cpu_entitlement()) {
+    MicroVmSizeUnresolved { cause: _ } => false
+    MicroVmSized { size: sz } =>
+      hardware_thread_count_value(t: sz.vcpu_count)
+        == hardware_thread_count_value(t: gunbc_runner_microvm_declared_size.vcpu_count)
   }
 }
 
-// ARM TWO, AND THE ONE THAT MAKES THE PAIR DISCRIMINATING: a RESOLVED core count reaches a
-// DIFFERENT cause -- the cell's relative-only CPU entitlement, which is the NEXT obstacle once the
-// core count is in hand. Both arms refuse; a uniform refusal and a reporting one are
-// indistinguishable without this comparison, so the two causes are asserted to differ rather than
-// merely to exist.
-test fn a_resolved_core_count_refuses_naming_the_relative_cpu_entitlement() -> Bool {
-  match runner_microvm_sizing(
-    cores: gunbc_runner_cores_per_slot(),
-    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
-    reserve: witness_reserve,
+// THE DISCRIMINATING RED, AND THE ONE THAT KEEPS THE DECLARATION FROM BECOMING AN ABSORBING ANSWER.
+// The day the cell grants an ABSOLUTE entitlement, the declared size is a stale answer to a question
+// that has become derivable -- and a stale answer that keeps returning successfully is what would
+// stop anyone from ever noticing the repair is available. So that arm refuses, and the refusal names
+// the repair. An implementation that returned the declaration on BOTH arms passes the control above
+// and reds here, which is exactly the pair's job.
+test fn an_absolute_entitlement_withdraws_the_declared_size_and_names_the_repair() -> Bool {
+  match runner_microvm_size_decision(
+    cpu: CpuEntitlementAbsolute { threads: hardware_thread_count(count: 8) },
   ) {
     MicroVmSized { size: _ } => false
     MicroVmSizeUnresolved { cause: c } =>
-      cause_mentions(cause: c, needle: "CPUWeight")
-        && !cause_mentions(cause: c, needle: "core count is unresolved")
+      cause_mentions(cause: c, needle: "derivable")
+        && cause_mentions(cause: c, needle: "stale")
   }
+}
+
+// A GUEST WITH NO INTERFACE IS EXPRESSIBLE, AND A GUEST WITH ONE STILL CARRIES IT. The boot smoke
+// has no tap because the per-slot network is a later slice; before this coproduct the only way to
+// express that guest was to name a device that does not exist. Both arms are driven so the empty
+// list is a MODELED absence rather than a builder that quietly dropped an interface.
+test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> Bool {
+  let without = runner_microvm_vm_config(
+    rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
+    jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
+    kernel_path: "/var/tmp/fcmvp/vmlinux",
+    net: GuestNetworkAbsent { cause: "the boot smoke has no per-slot tap; this guest cannot register" },
+    size: gunbc_runner_microvm_declared_size,
+    transport: gunbc_runner_jit_transport,
+  )
+  count(without.network_interfaces) == 0
+    && count(mvp_sized_config().network_interfaces) == 1
 }
 
 // THE CORE COUNT RESOLVES AND IS STILL NOT ENOUGH, WHICH IS THE POINT. An earlier revision of this

@@ -201,12 +201,93 @@ type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
   = SourceToEmittedTextHonestyOnly
   | EmittedCrateMeaningDiscriminator
 
-// THE ROUTE OWNER IS REPOINTED BECAUSE THE ONE NAMED HERE WAS CLOSED, WHICH MADE
-// THE TRIGGER UNRETIRABLE. node://adhoc-da8c65c0-b3b reached status DONE on
-// 2026-09-01 without the capability it owed existing, so this row named a next-rung
-// trigger nobody was accountable for -- the untracked stall DESIGN 4b(2) forbids,
-// wearing the shape of a tracked one. A trigger is retired BY ITS TRIGGER AND BY
-// NOTHING ELSE, and a trigger whose owner cannot act is retired by nothing at all.
+// RESPONSIBILITY FOR AN OUTSTANDING OBLIGATION MUST SURVIVE CLOSURE OF ITS CURRENT
+// OWNER, THROUGH DISCHARGE OR VALID TRANSFER. This row first named
+// node://adhoc-da8c65c0-b3b, which reached DONE on 2026-09-01 without the capability
+// it owed existing -- a next-rung trigger nobody was accountable for, the untracked
+// stall DESIGN 4b(2) forbids wearing the shape of a tracked one. It was then
+// repointed to node://adhoc-f044ad97-222, and THAT WAS THE SAME DEFECT WITH A LONGER
+// FUSE: adhoc-f044ad97-222 is the work item of the lane that authored the repair, so
+// it closes when that lane finishes -- possibly the same morning. The defect in both
+// was allowing ACTIVE RESPONSIBILITY to end while the obligation remained
+// undischarged and untransferred, with nothing in this file changing at the moment it
+// became false; the closed owner can remain a perfectly valid HISTORICAL reference.
+//
+// AN EARLIER REVISION OPENED "THE OWNER MUST OUTLIVE EVERY SESSION, AND A NODE
+// IDENTITY CANNOT", and concluded that a citation whose referent has a lifecycle dies
+// when that lifecycle ends. Both are withdrawn on the same ground as the paragraph
+// below: outliving is not the requirement, surviving responsibility is, and an owner
+// that discharges or transfers before closing satisfies it. They are named because
+// this repair had already corrected the test below while leaving the RULE that
+// introduced it standing -- a framing sentence is precisely what the search terms of
+// a fix cannot contain.
+//
+// THE TEST THIS FIELD MUST PASS, stated so the next repoint is decidable rather than
+// a matter of who is awake: AFTER THE LIFECYCLE TRANSITION, DOES EVERY STILL-
+// UNDISCHARGED OBLIGATION RETAIN AN ACCOUNTABLE OWNER OR A VALID TRANSFER? A
+// session's or work item's CURRENT `in_progress` STATUS DOES NOT ESTABLISH THAT
+// PROPERTY, and its closure is safe for this obligation only when the obligation is
+// discharged or responsibility validly transferred. The first repoint was ratified
+// on the status check, which answers a different question.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID A LANE SESSION AND THE MANAGER SESSION FAIL
+// THE TEST BY CONSTRUCTION, AND THAT NO LONGER FOLLOWS: an owner that discharges the
+// obligation before closing, or transfers it to a successor that accepts it, ends
+// cleanly. The failure is closure WITHOUT discharge or valid transfer -- not being a
+// session, and not being closable. A closed owner remains a perfectly valid
+// HISTORICAL reference; only ACTIVE RESPONSIBILITY is at risk when a lifecycle ends.
+//
+// SO THE OWNER IS A STANDING AUTHORITY THAT NAMES THE CAPABILITY, NOT A NODE.
+// `gunbc.emitted_closure_compile_seed_growth` is the seed-growth authority for the
+// route this trigger is waiting on -- it enumerates that host's declarations and
+// owns their growth obligations. A trigger is retired BY ITS TRIGGER AND BY NOTHING
+// ELSE, and a trigger whose owner has ceased to exist WITHOUT DISCHARGING OR
+// TRANSFERRING IT is retired by nothing at all.
+//
+// AND THAT SYMBOL HAS ITS OWN RETIREMENT CONDITION, WHICH IS WHY NAMING IT WAS NOT
+// BY ITSELF ENOUGH. An earlier revision of this block said the owner is accountable
+// "for as long as the route exists". THAT WAS FALSE AS WRITTEN: the owner is a
+// SeedGrowthJustification whose trigger retires the host once the emission and cargo
+// effects are modeled, and which expressly admits a PARTIAL migration -- so
+// "host effects migrate -> the owner retires -> this discriminator is owned by
+// nobody" was reachable. THIS IS THE SECOND TIME THIS FIELD HAS NAMED AN OWNER THAT
+// COULD END BEFORE THE OBLIGATION: first a session lifetime (`node://adhoc-...`,
+// which reached DONE with the capability unbuilt), then an ARTIFACT lifetime here.
+// The defect moved rather than being fixed, which is why the repair is not a third
+// spelling of the owner.
+//
+// EXISTING SYMBOL, RELEVANT SUBJECT AND DURABLE RESPONSIBILITY ARE THREE DIFFERENT
+// FACTS. Naming a symbol in a `NonEmptyStr` establishes the first two and cannot
+// establish the third, because a citation does not transfer an obligation and a
+// module split does not carry one automatically. The third fact has to be taken on
+// IN THE OWNER'S OWN TEXT, so it now is: that justification's trigger carries an
+// explicit clause stating it may not retire -- in whole, or in the partial shape it
+// invites -- while this discriminator obligation is undischarged and untransferred,
+// and requiring either discharge or a named successor. The forbidden outcome it
+// names is silent retirement.
+//
+// WHAT THAT CLAUSE DELIBERATELY DOES NOT LICENSE: keeping an obsolete host alive so
+// that an owner string stays resolvable. If the host dissolves and nobody has taken
+// the obligation, the obligation moves. Preserving dead Rust to anchor a citation
+// would be the worst reading of this repair and is refused in both files.
+//
+// THE SYMBOL IS CITED RATHER THAN THE MODULE, per DESIGN section 3. A module
+// citation is durable against closure but not against the module being split or its
+// obligations restructured, so this field names
+// `emitted_closure_compile_seed_growth_justification` -- the single declaration in
+// that module, and the one carrying the growth obligation for this route's host. If
+// that module is ever split, the citation follows the obligation rather than the
+// filename.
+//
+// AND THE OWNER'S PROSE INSTABILITY IS NOT AN OWNERSHIP OBJECTION, said out loud
+// because a reader who knows that file will otherwise wonder. That module's
+// CI-shape paragraph has turned over four times in five days, which is why this
+// change repairs a stale sentence in it rather than adding a fifth turnover note.
+// That is instability of an EXPLANATION about a CI job. Ownership of the route is a
+// different property, and it has not moved: the module names the fixture-closure
+// route throughout and carries its growth obligations. An unstable explanation
+// inside an authority does not make the authority the wrong owner; it makes that
+// paragraph a failure-mode instance, which is where it is now filed.
 type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
 
 type PhantomMarkerMeaningDiscriminatorCeiling {
@@ -220,5 +301,5 @@ data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscr
   standing: MeaningDiscriminatorExecutedNotEnrolled,
   enrolled_boundary: SourceToEmittedTextHonestyOnly,
   next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
-  route_owner: "node://adhoc-f044ad97-222" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+  route_owner: "gunbc.emitted_closure_compile_seed_growth emitted_closure_compile_seed_growth_justification" as PhantomMarkerMeaningDiscriminatorRouteOwner,
 }

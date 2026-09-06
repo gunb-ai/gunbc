@@ -11,12 +11,18 @@ type WorkflowSegmentKind
   | ReviewWorkflowSegment
   | GoalAuditWorkflowSegment
 
+// STOPPED IS A THIRD TERMINAL BESIDE COMPLETE AND FAILED. An agent segment is Stopped when the harness
+// ended the turn at its round budget: the segment is over, nothing failed, and the downstream
+// obligations proceed on whatever the rounds produced. It is not Complete, because the worker did not
+// declare itself done, and not Failed, because the stop is the harness's own construction. Only the
+// agent segment inhabits it today; the other segments have no budget to spend.
 type WorkflowSegmentState
   = WorkflowSegmentPending
   | WorkflowSegmentActive
   | WorkflowSegmentComplete
   | WorkflowSegmentFailed
   | WorkflowSegmentRefused
+  | WorkflowSegmentStopped
 
 type WorkflowSegment {
   kind: WorkflowSegmentKind
@@ -99,5 +105,6 @@ fn workflow_segment_state_key(state: WorkflowSegmentState) -> String {
     WorkflowSegmentComplete => "complete"
     WorkflowSegmentFailed => "failed"
     WorkflowSegmentRefused => "refused"
+    WorkflowSegmentStopped => "stopped"
   }
 }

@@ -1,0 +1,107 @@
+module gunbc.spark.fabric_rail_apply
+
+import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { shell_quote }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
+import gunbc.spark.pair_serving_apply {
+  SparkPairHostApplyPlan, SparkPairHostApplyOutcome, spark_pair_privileged_leg, spark_pair_host_apply_outcome_line, spark_pair_host_applied,
+}
+import gunbc.spark.fabric_rail_desired { FabricRailDesired, fabric_rail_desired, fabric_rail_netplan_path, fabric_rail_connection_name }
+
+// APPLY THE RAIL ADDRESSING TO EVERY HOST ON THE FABRIC, over the administrator password session,
+// one privileged script per host made of the desired row: write the rendered netplan document whole,
+// generate and apply it, and read the address back off the leg. The same leg shape as the pair
+// apply, reused rather than re-authored.
+
+data fabric_rail_apply_receipt_path: String = "target/fabric-rail-apply-receipt.txt"
+data fabric_rail_apply_attempt_raw: String = "fabric-rail-apply"
+
+fn fabric_rail_host_script(d: FabricRailDesired) -> String {
+  join([
+    "set -e\n",
+    "install -d -m 755 /etc/netplan\n",
+    "printf '%s' ", shell_quote(arg: d.netplan_text), " > ", fabric_rail_netplan_path(), "\n",
+    "chmod 600 ", fabric_rail_netplan_path(), "\n",
+    "netplan generate\n",
+    "netplan apply\n",
+    "sleep 3\n",
+    "ip -br addr show ", d.netdev as String, "\n",
+  ], "")
+}
+
+fn fabric_rail_host_plan(d: FabricRailDesired) -> SparkPairHostApplyPlan {
+  SparkPairHostApplyPlan { host: d.host, unit_name: fabric_rail_connection_name, script: fabric_rail_host_script(d: d) }
+}
+
+fn fabric_rail_apply_plans() -> List<SparkPairHostApplyPlan> {
+  map(fabric_rail_desired, d => fabric_rail_host_plan(d: d))
+}
+
+fn fabric_rail_receipt_body(at: String, outcomes: List<SparkPairHostApplyOutcome>) -> String {
+  join([
+    "fabric rail apply at=", at, "\n",
+    join(map(outcomes, o => join([spark_pair_host_apply_outcome_line(o: o), "\n"], "")), ""),
+  ], "")
+}
+
+fn fabric_rail_all_applied(outcomes: List<SparkPairHostApplyOutcome>) -> Bool {
+  all(outcomes, o => spark_pair_host_applied(o: o))
+}
+
+fn fabric_rail_apply_legs(trust: FleetOpenSshTrustPolicy, plans: List<SparkPairHostApplyPlan>, administrator: Secret, file: NonEmptyStr) -> List<SparkPairHostApplyOutcome> {
+  map(plans, p => spark_pair_privileged_leg(trust: trust, plan: p, admin_credential: administrator, admin_credential_file: file))
+}
+
+func fabric_rail_apply_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let plans = fabric_rail_apply_plans()
+  if length(plans) == 0 {
+    exit_failure(reason: "fabric_rail_apply: no host is observed on the fabric")
+  } else {
+    match read_bootstrap_credential() {
+      BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+      BootstrapCredentialReady { secret: administrator } =>
+        match fleet_ssh_attempt_identity(raw: fabric_rail_apply_attempt_raw) {
+          Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+          Present { value: attempt } => {
+            let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+            match fleet_openssh_trust_policy_of(outcome: materialization) {
+              Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+              Present { value: trust } =>
+                match with_materialized_ssh_key_file(
+                  identity_file_name: "gunbc-fabric-rail-apply-admin-password" as NonEmptyStr,
+                  secret_bytes: administrator as Secret,
+                  use: fn(file) { fabric_rail_apply_legs(trust: trust, plans: plans, administrator: administrator as Secret, file: file) },
+                ) {
+                  MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                  MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
+                    let body = fabric_rail_receipt_body(at: probed_at_word(reading: now) as String, outcomes: outcomes)
+                    let wr = Filesystem.Write(path: fabric_rail_apply_receipt_path, content: body)
+                    if !wr.success {
+                      exit_failure(reason: join(["fabric rail receipt write failed: ", wr.error], ""))
+                    } else if fabric_rail_all_applied(outcomes: outcomes) {
+                      ExitSuccess
+                    } else {
+                      exit_failure(reason: join(["fabric rail apply did not converge:\n", body], ""))
+                    }
+                  }
+                }
+            }
+          }
+        }
+    }
+  }
+}

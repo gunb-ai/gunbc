@@ -1174,6 +1174,19 @@ pub fn packet_rate_count(r: PacketRate) -> Nat {
     measure_count(r.clone())
 }
 
+pub type SymbolRate = Rc<Measure<Frequency, One, i64>>;
+
+pub fn symbol_rate(count: Nat) -> SymbolRate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn symbol_rate_count(r: SymbolRate) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type Nanosecond = Rc<Measure<Time, Nano, i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {

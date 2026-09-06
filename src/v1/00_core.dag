@@ -114,11 +114,29 @@ fn has_inferred(n: Node) -> Bool {
   n.inferred != none
 }
 
+// ServiceValueBinding IS THE ANSWER TO "IS THIS A SERVICE", DECIDED WHERE THE REGISTRY IS AND
+// CARRIED, and it exists for exactly the reason the note below this type gives for
+// CallTargetIdentity: resolution holds the answer, and every mechanism that re-derives it later is
+// answering at a grain where the facts that decided it are gone.
+//
+// service_spine_projection is the only producer. It resolves a whole dotted occurrence against the
+// service registry and stamps this kind on the result, so a consumer asks the resolution rather
+// than the spelling. The emitters need it because they cannot reach the registry: 371 functions
+// across the emit files thread `source_indices`, and adding a parallel `services` parameter beside
+// it would duplicate that plumbing rather than remove the guess.
+//
+// THREE SHAPES WERE TRIED HERE BEFORE THIS ONE AND EACH GUESSED. A field access rooted in a
+// variable with an uppercase leaf admitted `x.inner.User`. Any name equal to its own resolved type
+// name admitted single-segment `Filesystem`, deleting the fail-closed "unrealized host seam"
+// refusal that a service op in a pure fn is supposed to produce, and admitted bare namespace roots
+// like `cargo` besides. Requiring a dot reproduced the prior behaviour exactly but still inferred a
+// semantic fact from a character. A carried decision cannot be wrong about a name it did not read.
 type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
   | VariantValueBinding { parent_enum: String }
   | MatchBoundBinding
+  | ServiceValueBinding
 
 // WHAT A CALL ACTUALLY TARGETS, DECIDED ONCE WHERE THE LEXICAL SCOPE IS AVAILABLE.
 //
@@ -2099,12 +2117,14 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
-    || name == transport_auth_basic_key || name == transport_tls_key
+    || name == transport_auth_basic_key 
+    || name == transport_tls_key
 }
 
 fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
 }
+
 
 fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {

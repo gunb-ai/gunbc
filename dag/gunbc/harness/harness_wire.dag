@@ -1,0 +1,580 @@
+module gunbc.harness.harness_wire
+
+import std.measure { TokenCount, token_count }
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  json_kv, json_string, json_int, json_array, json_object, serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  parse_json_document, json_object_unique_member, json_document_gap_text,
+}
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_chat_reasoning_field, deepseek_v4_chat_reasoning_field_vllm_alias }
+import extdeps.llm.anthropic_messages_api {
+  AnthropicToolDefinition,
+  AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
+  ModelContextWindowExceeded,
+}
+import extdeps.ollama.api { ollama_default_port }
+import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint }
+
+// THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
+//
+// extdeps.llm.anthropic_messages_api owns WHAT a messages request and response ARE; it carries no
+// codec, so nothing in the corpus could yet turn one of its values into bytes or bytes into one of
+// its values. This module is that codec and nothing else: no policy, no endpoint choice, no loop.
+//
+// It is authored HERE rather than in extdeps because a codec is a realization of the shape and the
+// shape is the specification -- the same split gunbc.provider_interface_binding already draws
+// between an interface and its transport. A second implementation of the same wire (the Anthropic
+// service itself, or a different local server) reuses this codec unchanged, which is the property
+// that makes the shared-standard modelling worth having.
+//
+// WHAT IS DELIBERATELY NOT HERE. Streaming is not decoded: DCH's own hypothesis list records that a
+// streaming request may terminate a response early where an otherwise identical non-streaming
+// request returns it complete, and that hypothesis has NO observation behind it yet. Encoding a
+// stream decoder before that isolating run would be building on an unmeasured claim, so the codec
+// speaks the non-streaming form only and a stream field is not emitted at all.
+
+// A WIRE STOP REASON IS DECODED TOTALLY OR REFUSED, never defaulted.
+//
+// The tempting arm is `_ => EndTurn`, and it is the absorbing fallback in its most expensive
+// position: an unrecognized stop reason would become the one value the harness reads as "the model
+// finished", so a NEW upstream terminal state would present as successful completion. The refusal
+// carries the unrecognized lexeme so the gap is nameable rather than silent.
+type HarnessStopReasonRead
+  = StopReasonRead { reason: AnthropicStopReason }
+  | StopReasonUnrecognized { wire: String }
+
+fn harness_decode_stop_reason(wire: String) -> HarnessStopReasonRead {
+  if wire == "end_turn" {
+    StopReasonRead { reason: EndTurn }
+  } else if wire == "tool_use" {
+    StopReasonRead { reason: ToolUse }
+  } else if wire == "max_tokens" {
+    StopReasonRead { reason: MaxTokens }
+  } else if wire == "stop_sequence" {
+    StopReasonRead { reason: StopSequence }
+  } else if wire == "pause_turn" {
+    StopReasonRead { reason: PauseTurn }
+  } else if wire == "refusal" {
+    StopReasonRead { reason: Refusal }
+  } else if wire == "model_context_window_exceeded" {
+    StopReasonRead { reason: ModelContextWindowExceeded }
+  } else {
+    StopReasonUnrecognized { wire: wire }
+  }
+}
+
+fn harness_stop_reason_wire(reason: AnthropicStopReason) -> String {
+  match reason {
+    EndTurn => "end_turn"
+    ToolUse => "tool_use"
+    MaxTokens => "max_tokens"
+    StopSequence => "stop_sequence"
+    PauseTurn => "pause_turn"
+    Refusal => "refusal"
+    ModelContextWindowExceeded => "model_context_window_exceeded"
+  }
+}
+
+// REQUEST ENCODING ------------------------------------------------------------------------
+//
+// THE TYPED MESSAGE ENCODER THAT SAT HERE IS DELETED, and the deletion is the point rather than
+// tidiness. It was a SECOND encoder for one fact -- an assistant message projected to wire JSON --
+// beside the live one in gunbc.harness.harness_turn, with no caller anywhere in the corpus. The
+// fork was also the LOSSY half: its tool_use arm wrote `input` as an empty object, so a history
+// replayed through it would have shown the model its own prior commands with the commands removed,
+// and a worker that cannot see what it already ran re-runs it. Nothing was reaching that arm, which
+// is exactly why it survived: a dead fork is invisible until someone repoints at the tidier-looking
+// surface. Per DESIGN section 3 the live path is the single authority; per section 6 an artifact
+// with no consumer is a dead scaffold. Both say delete rather than annotate.
+
+fn harness_tool_result_block(tool_use_id: String, text: String, is_error: Bool) -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "tool_result")),
+    json_kv(key: "tool_use_id", value: json_string(s: tool_use_id)),
+    json_kv(key: "content", value: json_string(s: text)),
+    json_kv(key: "is_error", value: JsonBool { value: is_error }),
+  ])
+}
+
+fn harness_encode_tool(tool: AnthropicToolDefinition, schema: JsonValue) -> JsonValue {
+  json_object([
+    json_kv(key: "name", value: json_string(s: tool.name)),
+    json_kv(key: "description", value: json_string(s: tool.description)),
+    json_kv(key: "input_schema", value: schema),
+  ])
+}
+
+// RESPONSE DECODING ------------------------------------------------------------------------
+
+type HarnessWireBlock
+  = WireTextBlock { text: String }
+  | WireThinkingBlock { thinking: String }
+  | WireToolUseBlock { id: String, name: String, input: JsonValue }
+
+type HarnessResponseRead
+  = HarnessResponseParsed {
+      blocks: List<HarnessWireBlock>
+      stop_reason: AnthropicStopReason
+      input_tokens: Int
+      output_tokens: Int
+    }
+  | HarnessResponseUnreadable { cause: String }
+
+fn harness_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => Present { value: s }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn harness_member_int(doc: JsonValue, key: String) -> Int {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: lex } => string_to_int_or_zero(s: lex as String)
+        _ => 0
+      }
+    _ => 0
+  }
+}
+
+fn string_to_int_or_zero(s: String) -> Int {
+  match parse_int(s: s) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn harness_decode_block(v: JsonValue) -> HarnessWireBlock? {
+  match harness_member_string(doc: v, key: "type") {
+    Absent => none
+    Present { value: kind } =>
+      if kind == "text" {
+        match harness_member_string(doc: v, key: "text") {
+          Present { value: t } => Present { value: WireTextBlock { text: t } }
+          Absent => none
+        }
+      } else if kind == "thinking" {
+        match harness_member_string(doc: v, key: "thinking") {
+          Present { value: t } => Present { value: WireThinkingBlock { thinking: t } }
+          Absent => none
+        }
+      } else if kind == "tool_use" {
+        match harness_member_string(doc: v, key: "id") {
+          Absent => none
+          Present { value: id } =>
+            match harness_member_string(doc: v, key: "name") {
+              Absent => none
+              Present { value: name } =>
+                Present {
+                  value: WireToolUseBlock {
+                    id: id,
+                    name: name,
+                    input: match json_object_unique_member(v: v, key: "input") {
+                      JsonMemberFound { value: iv } => iv
+                      _ => json_object([])
+                    },
+                  },
+                }
+            }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn harness_decode_blocks(v: JsonValue) -> List<HarnessWireBlock> {
+  match v {
+    JsonArray { elements: els } =>
+      els |> flat_map(e => match harness_decode_block(v: e) {
+        Present { value: b } => [b]
+        Absent => []
+      })
+    _ => []
+  }
+}
+
+// THE RESPONSE IS DECODED OR REFUSED, and every refusal names which member failed.
+//
+// The arms that matter are the ones a fabricating decoder would collapse: a body that is not JSON
+// at all, a body that is JSON but carries no stop_reason, and a stop_reason whose lexeme this
+// version does not know. All three are DIFFERENT failures with different remedies -- a transport
+// problem, a schema disagreement, and an upstream that has grown a state we do not model -- and a
+// decoder that answered `EndTurn` for any of them would report a completed turn for all three.
+fn harness_decode_response(body: String) -> HarnessResponseRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      HarnessResponseUnreadable {
+        cause: join(["response body is not readable as JSON: ", json_document_gap_text(gap: g)], ""),
+      }
+    JsonDocumentParsed { value: doc } =>
+      match harness_member_string(doc: doc, key: "stop_reason") {
+        Absent =>
+          HarnessResponseUnreadable {
+            cause: "response carries no string stop_reason member; the turn's terminal state is unknown",
+          }
+        Present { value: wire } =>
+          match harness_decode_stop_reason(wire: wire) {
+            StopReasonUnrecognized { wire: w } =>
+              HarnessResponseUnreadable {
+                cause: join([
+                  "response carries an unrecognized stop_reason '", w,
+                  "'; refusing rather than reading an unmodelled terminal state as completion",
+                ], ""),
+              }
+            StopReasonRead { reason: r } =>
+              HarnessResponseParsed {
+                blocks: match json_object_unique_member(v: doc, key: "content") {
+                  JsonMemberFound { value: c } => harness_decode_blocks(v: c)
+                  _ => []
+                },
+                stop_reason: r,
+                input_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "input_tokens")
+                  _ => 0
+                },
+                output_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "output_tokens")
+                  _ => 0
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE BACKEND ENDPOINT, cited rather than spelled.
+//
+// The address comes from the enrolled fleet endpoint row DCH-0 authored, the port from
+// extdeps.ollama.api, and the path from the messages specification. Writing "192.168.1.225:11434"
+// here would be three literals standing where three authorities already answer, and each would rot
+// independently -- the address when the operator re-reserves it, which has already happened once
+// when both units moved to the wireless SSID.
+// THE WIRE SHAPE IS A REALIZATION OF ONE INTERFACE. Both shapes decode to the same HarnessWireBlock
+// list and the same HarnessResponseRead, and both are encoded from them; what differs is transport
+// vocabulary. The choice is a config fact because it is a property of the serving fleet, measured:
+// on this fleet vLLM's Anthropic-shaped endpoint accepts a replayed thinking block and renders none
+// of it, while the chat completions shape renders a replayed reasoning_content (extdeps.deepseek
+// deepseek_v4_replay_rendering_*). A tool-using harness that wants the encoder's retention rule
+// therefore speaks the chat shape here.
+type HarnessWireShape = AnthropicMessagesShape | OpenAiChatCompletionsShape
+
+data harness_messages_path: String = "/v1/messages"
+// The path extdeps.llm.openai_rest ChatCompletion declares; spelled here as the route this harness
+// posts to, cited rather than derived because that operation's path lives inside its transport row.
+data harness_chat_completions_path: String = "/v1/chat/completions"
+
+fn harness_backend_path(shape: HarnessWireShape) -> String {
+  match shape {
+    AnthropicMessagesShape => harness_messages_path
+    OpenAiChatCompletionsShape => harness_chat_completions_path
+  }
+}
+
+fn harness_backend_url_on_port(address: String, port: Int, shape: HarnessWireShape) -> String {
+  join(["http://", address, ":", to_string(value: port), harness_backend_path(shape: shape)], "")
+}
+
+fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
+  harness_backend_url_on_port(address: address, port: ollama_default_port, shape: shape)
+}
+
+
+
+// THE SECOND PAIR, AS ADDRESSES RATHER THAN HOST IDENTITIES, and the distinction is the whole
+// reason these rows are here instead of in fleet_intent_network.
+//
+// FOUR HOSTS WERE SURVEYED ON 2026-09-02 AND NO TWO ARE ALIKE. Recorded as a measurement because
+// the differences are what select the row below, and every one of them is invisible to the corpus:
+//
+//   .232  reachable, ZERO models -- /api/tags returns an empty list, /v1/models a null data member
+//   .233  held the desired model, then went unreachable within the same minute
+//   .225  unreachable (operator: out of memory, expected to return)
+//   .226  reachable, eight models including the desired one, stable across the whole session
+//
+// TWO INDEPENDENT GAPS PRODUCE THAT TABLE, and neither is this module's to close.
+//
+// Residency (DCH-0b): spark_serving_desired_manifest governs exactly one member, so "which models
+// this host holds" is representable nowhere. A harness choosing a backend from one authority and a
+// model from another produces a pairing only the wire can refuse -- which is exactly what happened,
+// as a not_found_error naming the model, on the first request to .232.
+//
+// Liveness: nothing observes whether a chosen backend is serving before it is chosen. The hosts
+// that HOLD models are the ones dropping out, which is consistent with memory pressure under load
+// rather than with configuration alone, so the failure is expected to recur rather than to have
+// been a one-off.
+//
+// The row below therefore names the host measured to be both reachable and holding the model, and
+// says outright that this is an observation with a shelf life. Selecting a backend from observed
+// serving standing is DCH-0's subject and dissolves all of these functions when it lands.
+//
+// WHY NOT AN ENDPOINT ROW BESIDE srv5/srv6. In gunbc.fleet_intent_network, membership in
+// `endpoints` IS enrollment -- that module says so about itself -- and enrolling srv7/srv8 needs a
+// fact that does not exist in data: WHICH unit takes which slot. The second pair is described in
+// prose there as spark-c2b1 at .232 and spark-ac79 at .233, but unlike srv5/srv6 -- whose
+// assignment was decided under an explicit operator delegation on a recorded ascending-address
+// basis, precisely so the tie-break would be attributable -- no such decision exists for this pair.
+// Authoring `srv7_host_lan_endpoint` would therefore invent the mapping, which is the exact failure
+// that module's own note records a lane committing once already.
+//
+// So these rows name ADDRESSES and assert nothing about identity. That is also the more honest
+// layer: which backend the harness sends inference to is sense TWO of "provider" in
+// gunbc.provider_interface_binding's homonym note -- a backend selection, not a fact about fleet
+// membership -- and the earlier srv5/srv6 helpers above borrow a fleet row for it only because one
+// happened to exist. Selecting a backend from OBSERVED serving standing is DCH-0's subject and
+// dissolves all four of these functions when it lands.
+
+
+
+
+// THE HARNESS TALKS TO THE ENGINE DIRECTLY. OPERATOR RULING 2026-09-04: gunbc must not depend on
+// ctrl's session-dashboard router (192.168.1.188:3738), which is co-tenanted with that dashboard's
+// process and closed every in-flight request on each rollout restart (curl exit 52; five runs lost
+// in one morning, the long Think Max steps preferentially). There is nothing to route: one model,
+// served by two vLLM replicas that each answer the OpenAI surface on port 30000, measured
+// 2026-09-04 (/v1/models 200 on both, advertising harness_engine_model). A replica is chosen per
+// worker from a seed (the worktree path) so concurrent attempts spread across both machines
+// without a process in the middle; a transport refusal stays a typed turn failure, never a widen.
+// .225 is srv6's LAN address (gunbc.fleet_intent_network); .232 is the second serving NIC on the
+// other Spark, which the fleet model does not yet carry as a row -- it is declared here beside the
+// port for the same reason the model is, and moves to the fleet when that row exists.
+data harness_engine_port: Int = 30000
+
+data harness_engine_replica_addresses: List<String> = [srv6_host_lan_endpoint.address, "192.168.1.232"]
+
+fn harness_engine_replica_index(seed: String) -> Int {
+  let n = list_length(items: harness_engine_replica_addresses)
+  let sum = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp)
+  sum % n
+}
+
+fn harness_engine_replica_address(seed: String) -> String {
+  harness_replica_pick(seed: seed, replicas: harness_engine_replica_addresses)
+}
+
+// THE PICK OVER AN ARBITRARY ROSTER, so an attempt binds to a replica chosen from the ones OBSERVED
+// SERVING (gunbc.harness.harness_backend harness_serving_backend_url) rather than from the declared
+// list. A declared replica that is down is a typed, counted decline there; here it is simply not in
+// the roster handed in, so the seed spreads attempts over the machines that can take them. Callers
+// hand in a non-empty roster (the serving arm carries at least one address by construction).
+fn harness_replica_pick(seed: String, replicas: List<String>) -> String {
+  let want = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp) % list_length(items: replicas)
+  let picked = fold(replicas, init: ReplicaPick { at: 0, chosen: "" }, f: (acc, a) =>
+    ReplicaPick { at: acc.at + 1, chosen: if acc.at == want { a } else { acc.chosen } })
+  picked.chosen
+}
+
+fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> String {
+  harness_backend_url_on_port(address: address, port: harness_engine_port, shape: shape)
+}
+
+type ReplicaPick {
+  at: Int
+  chosen: String
+}
+
+fn harness_engine_backend_url(shape: HarnessWireShape, seed: String) -> String {
+  harness_backend_url_on_port(address: harness_engine_replica_address(seed: seed), port: harness_engine_port, shape: shape)
+}
+
+// THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
+// assumes, and the difference is worth stating because it invalidated four probes before it was
+// found.
+//
+// Everything above reaches an OLLAMA daemon on its default port and asks Ollama-shaped questions.
+// .232 and .233 answer there too -- same version string, same 200s -- with an EMPTY store, because
+// on those two hosts Ollama is not what serves: a llama-server pair sits behind a router on
+// .188:3738, holding deepseek-v4-flash split across both machines. So the Ollama surface on those
+// hosts is live, truthful and completely beside the point, which is the worst shape a wrong probe
+// can have -- it answers, so nothing refuses, and the emptiness reads as "no models" rather than as
+// "you are asking the wrong daemon".
+//
+// TWO CONSEQUENCES FOR THE MODEL. The router's model identity is deepseek-v4-flash:iq3s-split and
+// it is NOT gunbc.spark.serving_desired's desired model: that authority governs the Ollama serving
+// unit's single converged member, and this is a different serving realization with its own
+// identity, its own residency and its own lifecycle. Citing the spark desired row here would be a
+// meaning fork -- one name over two serving stacks -- so the router's model is declared beside the
+// router, and the earlier ollama_model_ref_wire citation stays correct for the surface it names.
+//
+// The port is a parameter now for the same reason the address was: 11434 is Ollama's, 3738 is this
+// router's, and a helper that could only spell one of them made the second stack unreachable
+// without an edit rather than a row.
+//
+// Measured 2026-09-03: /v1/models advertises exactly this id, /props answers 200, and a
+// /v1/messages request returns Anthropic-shaped content blocks -- a thinking block, a stop_reason
+// and a usage object -- so this codec speaks to it unchanged. That last fact is what DCH-1's
+// shared-standard modelling bought: a second implementation of the same wire reused the decoder
+// with no second decoder written.
+
+data harness_engine_model: String = "deepseek-v4-flash:iq3s-split"
+
+// THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
+// gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
+// roster ceiling -- the value the Ollama serving units are launched with. The harness does not talk
+// to those units; it talks to the llama-server pair behind this router. Binding the harness window
+// to the Ollama row would be the same meaning fork this module already refused for the model: one
+// name over two serving stacks.
+//
+// THE TWO NUMBERS ARE EQUAL TODAY AND THAT IS NOT A REASON TO SHARE A ROW. Both read 1048576, which
+// is exactly what makes the fork cheap to write and expensive to find -- a derivation from the
+// wrong authority is invisible while the values agree and silently wrong the moment they do not.
+// The engine's cap is being changed independently of the Ollama roster, so they are free to diverge
+// on any restart.
+//
+// WHAT THIS IS NOT: a claim that 1M is verified on this router. It is the admission ceiling the
+// harness will not exceed, which is a different fact from a window a request has completed at. The
+// harness refuses at this bound rather than letting the engine reject a request mid-run with the
+// turn's work already spent.
+//
+// DISSOLVES ON: fabric serving. When the pair is served through the compute fabric rather than a
+// hand-run router, the window becomes a property of the served work contract and this row's
+// consumer moves with it -- the sparks are not stable enough for that today, which is why the
+// router exists at all.
+// THE ENGINE'S ADMISSION CAP AND THE HARNESS'S WORKING WINDOW ARE TWO NUMBERS, NOT ONE, and this
+// row is the second. The serving side admits up to 1,048,576 tokens deliberately; that ceiling is a
+// LIMIT, not an allowance, and a client that adopts it as its working window is not respecting the
+// cap -- it is spending the whole pool. The KV pool holds roughly 4.1M tokens, so four sessions at
+// the cap exhaust it exactly and every further request queues on capacity rather than on compute.
+// That queueing is the pathology behind this deployment's slow-token measurements: rounds whose
+// duration tracked router occupancy instead of request size, a 17 KB request taking 480s while a
+// 50 KB one took 60s.
+//
+// 200k IS THE OPERATOR'S NUMBER (router owner, 2026-09-04), from a stated 100k-250k band. It is not
+// derived here from pool-divided-by-slots, and deliberately so: that arithmetic would give ~1M and
+// would be wrong, because the pool is shared with everything else the engine is doing and the
+// divisor is not a constant this module can see.
+// THE ENGINE'S ADMISSION CEILING, carried so the working window above can be checked against it.
+// This is the number the serving side actually enforces; the row above is what this client chooses
+// to spend. They are recorded separately because they answer different questions and move for
+// different reasons -- the cap moves when the engine is reconfigured, the window moves when this
+// harness decides how much of a shared pool it is entitled to. A single row would have made the
+// client's choice indistinguishable from the server's limit, which is precisely the confusion that
+// put 1,048,576 in the window field in the first place.
+data harness_engine_admission_cap: TokenCount = token_count(count: 1048576)
+
+data harness_engine_context_window: TokenCount = token_count(count: 200000)
+
+// THE CHAT COMPLETIONS DECODER, to the same carrier the messages decoder fills. finish_reason maps
+// onto the stop vocabulary the harness already consumes: stop is an end of turn, tool_calls is a
+// tool use, length is the token ceiling, content_filter is a refusal. Reasoning is read from the
+// guide's field and vLLM's alias; content may still carry the inline closer when the server has no
+// reasoning parser, and the turn loop's split handles that after decode exactly as it does for the
+// messages shape. Tool-call arguments arrive as a JSON STRING and are parsed here into the same
+// JsonValue input the messages shape delivers, so the tool dispatcher sees one shape.
+fn harness_chat_finish_reason(wire: String) -> HarnessStopReasonRead {
+  if wire == "stop" {
+    StopReasonRead { reason: EndTurn }
+  } else if wire == "tool_calls" {
+    StopReasonRead { reason: ToolUse }
+  } else if wire == "length" {
+    StopReasonRead { reason: MaxTokens }
+  } else if wire == "content_filter" {
+    StopReasonRead { reason: Refusal }
+  } else {
+    StopReasonUnrecognized { wire: wire }
+  }
+}
+
+fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
+  match json_object_unique_member(v: v, key: "function") {
+    JsonMemberFound { value: f } =>
+      match harness_member_string(doc: f, key: "name") {
+        Absent => none
+        Present { value: name } =>
+          Present { value: WireToolUseBlock {
+            id: match harness_member_string(doc: v, key: "id") { Present { value: i } => i  Absent => "" },
+            name: name,
+            input: match harness_member_string(doc: f, key: "arguments") {
+              Absent => json_object([])
+              Present { value: args } =>
+                match parse_json_document(s: args) {
+                  JsonDocumentParsed { value: a } => a
+                  JsonDocumentUnreadable { gap: _ } => json_object([])
+                }
+            },
+          } }
+      }
+    _ => none
+  }
+}
+
+fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
+  let reasoning = match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field as String) {
+    Present { value: r } => [WireThinkingBlock { thinking: r }]
+    Absent =>
+      match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field_vllm_alias as String) {
+        Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
+        Absent => []
+      }
+  }
+  let text = match harness_member_string(doc: msg, key: "content") {
+    Present { value: c } => if c == "" { [] } else { [WireTextBlock { text: c }] }
+    Absent => []
+  }
+  let calls = match json_object_unique_member(v: msg, key: "tool_calls") {
+    JsonMemberFound { value: tc } =>
+      match tc {
+        JsonArray { elements: es } => flat_map(es, e => match harness_chat_tool_call_block(v: e) { Present { value: b } => [b]  Absent => [] })
+        _ => []
+      }
+    _ => []
+  }
+  concat(concat(reasoning, text), calls)
+}
+
+fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } =>
+      HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "choices") {
+        JsonMemberFound { value: JsonArray { elements: choices } } =>
+          match choices.first() {
+            Absent => HarnessResponseUnreadable { cause: "chat completion carries no choices" }
+            Present { value: choice } =>
+              match harness_member_string(doc: choice, key: "finish_reason") {
+                Absent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
+                Present { value: fr } =>
+                  match harness_chat_finish_reason(wire: fr) {
+                    StopReasonUnrecognized { wire: w } =>
+                      HarnessResponseUnreadable { cause: join(["chat completion carries an unrecognized finish_reason '", w, "'"], "") }
+                    StopReasonRead { reason: r } =>
+                      HarnessResponseParsed {
+                        blocks: match json_object_unique_member(v: choice, key: "message") {
+                          JsonMemberFound { value: m } => harness_chat_message_blocks(msg: m)
+                          _ => []
+                        },
+                        stop_reason: r,
+                        input_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "prompt_tokens")
+                          _ => 0
+                        },
+                        output_tokens: match json_object_unique_member(v: doc, key: "usage") {
+                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "completion_tokens")
+                          _ => 0
+                        },
+                      }
+                  }
+              }
+          }
+        _ => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
+      }
+  }
+}
+
+fn harness_decode_for_shape(shape: HarnessWireShape, body: String) -> HarnessResponseRead {
+  match shape {
+    AnthropicMessagesShape => harness_decode_response(body: body)
+    OpenAiChatCompletionsShape => harness_decode_chat_completion(body: body)
+  }
+}

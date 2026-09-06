@@ -21,6 +21,13 @@ data installation_auth_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data app_webhook_config_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/webhooks"
+  }
+}
+
 data private_key_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -401,6 +408,166 @@ fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFin
   }
 }
 
+// THE APP'S OWN WEBHOOK CONFIGURATION - a property of the App REGISTRATION, not of any
+// installation, and reachable only with an App JWT (GET/PATCH /app/hook/config). It is
+// modeled here rather than in a module of its own because ExternalModelScope admits ONE
+// subject per module and this is the same subject the registration above declares; a
+// second module naming GitHubAppRegistration would be the fork DESIGN §3 forbids.
+//
+// Which URL our App SHOULD point at, and which events it should subscribe to, are fleet
+// policy facts and live in gunbc.fleet - never here.
+
+// GitHub MASKS the secret on readback: the response carries a fixed asterisk run, never
+// the configured value. Modeling this as a String would make "configured == desired" a
+// WRITABLE comparison that is permanently unanswerable - a check satisfied by editing the
+// declaration while the realization lies (DESIGN §5). Presence is the only fact a readback
+// establishes, so presence is the only fact this carrier can express; binding is proven
+// downstream by a delivery the receiver validates, never by this readback.
+type GitHubAppHookSecretReadback
+  = HookSecretConfigured
+  | HookSecretAbsent
+
+type GitHubAppHookContentType
+  = HookContentTypeJson
+  | HookContentTypeForm
+
+// insecure_ssl arrives as the string "0" or "1" (upstream sends a string, not a bool, on
+// this endpoint), so the decode is total over exactly those two and refuses anything else.
+type GitHubAppHookTlsVerification
+  = HookTlsVerified
+  | HookTlsVerificationDisabled
+
+type GitHubAppHookConfig {
+  url: Uri
+  content_type: GitHubAppHookContentType
+  secret: GitHubAppHookSecretReadback
+  tls: GitHubAppHookTlsVerification
+}
+
+fn hook_content_type_wire_name(t: GitHubAppHookContentType) -> NonEmptyStr {
+  match t {
+    HookContentTypeJson => "json"
+    HookContentTypeForm => "form"
+  }
+}
+
+fn hook_content_type_from_wire(name: NonEmptyStr) -> GitHubAppHookContentType? {
+  if name == "json" {
+    Present { value: HookContentTypeJson }
+  } else if name == "form" {
+    Present { value: HookContentTypeForm }
+  } else {
+    none
+  }
+}
+
+fn hook_tls_wire_name(t: GitHubAppHookTlsVerification) -> NonEmptyStr {
+  match t {
+    HookTlsVerified => "0"
+    HookTlsVerificationDisabled => "1"
+  }
+}
+
+fn hook_tls_from_wire(value: NonEmptyStr) -> GitHubAppHookTlsVerification? {
+  if value == "0" {
+    Present { value: HookTlsVerified }
+  } else if value == "1" {
+    Present { value: HookTlsVerificationDisabled }
+  } else {
+    none
+  }
+}
+
+fn hook_content_type_eq(a: GitHubAppHookContentType, b: GitHubAppHookContentType) -> Bool {
+  hook_content_type_wire_name(t: a) == hook_content_type_wire_name(t: b)
+}
+
+fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification) -> Bool {
+  hook_tls_wire_name(t: a) == hook_tls_wire_name(t: b)
+}
+
+// THE APP-JWT TRANSPORT, one of N realizations and not a fact about the dependency (the
+// extdeps.github.org_actions github.CliOrgRunnerGroups precedent). Both operations are
+// App-level: GET /app and GET /app/hook/config authenticate as the APP, with a JWT signed
+// by the App's private key - an installation access token reaches NEITHER, which is why
+// these cannot ride the `gh api` transport the org-actions reads use.
+//
+// The credential is an INPUT carrying the path of a file holding the Authorization header,
+// following extdeps.bmc.http's --netrc-file precedent: the caller decides which principal
+// and how long it lives. Reading it from the ambient environment would put a policy fact
+// (which credential, whose lifetime) inside the dependency's interface, which DESIGN §3
+// places in the workflow layer. `-H @file` keeps the token off the process argument list,
+// where it would otherwise be world-readable in /proc.
+//
+// GetAppHookDeliveriesJson carries the AUTHORITATIVE REACHABILITY FACT, and it belongs to the
+// delivering party rather than to us: GitHub records the status code IT received for each delivery
+// it made, so that endpoint answers "did our receiver take the event" without us guessing from a
+// liveness probe of our own. A probe would have to assume a path and a method the receiver never
+// promised -- one answering POST /hook and 404ing GET / is correct, and a probe would convict it.
+// Deliveries are retained for a bounded window upstream, so an EMPTY list is an absence of evidence
+// and never evidence of health; preserving that distinction is the consumer's duty.
+service github.CliAppRegistration {
+  operation GetAppRegistrationJson {
+    input {
+      jwt_header_file: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl", "--fail-with-body", "-sS",
+        "-H", "@{jwt_header_file}",
+        "-H", "Accept: application/vnd.github+json",
+        "https://api.github.com/app"
+      ]
+    }
+  }
+
+  operation GetAppHookDeliveriesJson {
+    input {
+      jwt_header_file: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl", "--fail-with-body", "-sS",
+        "-H", "@{jwt_header_file}",
+        "-H", "Accept: application/vnd.github+json",
+        "https://api.github.com/app/hook/deliveries"
+      ]
+    }
+  }
+
+  operation GetAppHookConfigJson {
+    input {
+      jwt_header_file: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl", "--fail-with-body", "-sS",
+        "-H", "@{jwt_header_file}",
+        "-H", "Accept: application/vnd.github+json",
+        "https://api.github.com/app/hook/config"
+      ]
+    }
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -412,6 +579,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps.github.app.extdeps_external_authority_anchor,
   further_citations: [
     extdeps.github.app.installation_auth_citation,
-    extdeps.github.app.private_key_citation
+    extdeps.github.app.private_key_citation,
+    extdeps.github.app.app_webhook_config_citation
   ]
 }

@@ -147,6 +147,15 @@ one, so the language got **narrower**, and holding a tag while the language shri
 false claim as holding it while it grows. `gunbc-scm-commit-closure-v4`, `gunbc-scm-repository-v3`
 and `scm-object-identity-v2` are what shipped.
 
+> **Superseded in part.** The repository tag is now `gunbc-scm-repository-v4`: gunbc#10560 moved
+> `RepositoryCommit.root` from a semantic node to a corpus manifest, so the member spelled `root`
+> designates a different population while keeping its name — which is precisely why the tag had to
+> move. `gunbc-scm-repository-v3` is refused BY NAME as retired rather than folded into unrecognized,
+> and there is deliberately no v3 reader. The other two tags are unchanged, and that is the point of
+> versioning them on separate axes: the closure format has its own subject, and the identity rule did
+> not move because hashing did not. Read the tags from `gunbc.scm.repository_envelope`, not from this
+> sentence — a transcribed tag rots without anyone touching either end.
+
 The cut is neither of the two arms above. `commit_closure_json_v2` already declared the obligation
 this change discharges: every record the store holds is serialized, which it states is correct
 *while nothing produces unreachable objects*. `CorpusManifestObject` is exactly the event that makes

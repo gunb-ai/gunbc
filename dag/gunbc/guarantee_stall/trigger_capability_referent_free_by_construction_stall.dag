@@ -1,0 +1,28 @@
+module gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// THE STALL THE TRIGGER WALL LEAVES BEHIND, declared by the change that built the wall rather than
+// discovered later. `stall_trigger_admission` refuses a `NextRungTrigger` whose capability spells
+// the declared dashboard-node URI scheme, and that refusal is VALIDATION: the invalid state stays
+// perfectly writable, and safety depends on the fold running and staying enrolled. DESIGN section 5
+// gives the tell that construction was available, and it applies here exactly -- the check can be
+// satisfied by editing the row while the field type still permits the same text tomorrow.
+//
+// THE CEILING IS DERIVED AND NOT ASPIRATIONAL. Membership is decidable: "this text contains the
+// scheme this repository declares" is a predicate over one owned spelling, not a judgement about
+// prose. A where-refinement over the capability field's type would make the state unauthorable at
+// every literal site, which is the construction wall PR #7438 already established for
+// `non_empty`, `gt_zero` and `range`. Rung 4 is NOT claimed: a capability assembled at runtime
+// from parts is still spellable, so the refusal remains a check for computed values even after
+// literals are walled.
+data trigger_capability_referent_free_by_construction_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a next-rung trigger's capability may still be authored resting on a lifecycle-bounded referent",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.guarantee_stall_witness_test.every_live_stall_trigger_is_admitted", tail: Cons { head: "test.claim.guarantee_stall_witness_test.a_trigger_resting_on_a_lifecycle_bounded_referent_refuses_by_cause", tail: Empty {} } } },
+  next_rung_trigger: climbs_when(capability: "the where-refinement vocabulary carries a decidable does-not-contain predicate over a declared spelling, and NextRungTrigger.capability is refined by it, SUFFICIENT FOR a capability naming a dashboard-node URI at a literal site to fail to compile rather than to be refused by a fold at witness time. A wider fold, a second consumer, or a lint over the same text does not fire this trigger: each is another validator, and the state stays writable")
+}

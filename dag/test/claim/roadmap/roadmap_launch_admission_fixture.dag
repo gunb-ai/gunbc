@@ -6,10 +6,10 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardActuating, DashboardObserveOnly }
 import gunbc.deploy_transition { ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { FleetRevisionStanding, RevisionConverged, RevisionDrifted, RevisionUnobserved }
+import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_from_untagged_hex }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, CodexDispatchProvider, dispatch_provider_instance_for }
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, CodexDispatchProvider, dispatch_provider_instance_for_kind }
 import gunbc.worker_lifecycle { WorkerProcessEvidence, worker_observation_without_provider_probe_for_process }
 import std.upsert_decision { Converged }
 import gunbc.roadmap_belt { SpawnMode, ManualReady, BeltCapacity }
@@ -17,46 +17,38 @@ import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchHostObserved, LaunchHostUnobserved,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   LaunchCause, LaunchIdentity,
-  launch_host_halt_transition, launch_host_stage_revision, HostRevisionHalted, HostRevisionConverged,
+  launch_host_halt_transition, launch_host_stage_revision, HostRevisionHalted, HostRevisionObserved,
 }
 
 // Synthetic HOST facts for the launch-admission witnesses (RLM-1). The admission is pure over
 // LaunchHostStanding, so a witness fabricates exactly the host it wants -- an actuating instance, a
-// clear transition, a converged (or drifted, or unobserved) revision, a chosen live-session set, a
+// clear transition, an observed (or unobserved) revision, a chosen live-session set, a
 // capacity and a spawn mode -- and the graph it wants, and asks the same decision production asks.
-// Nothing here touches a host; the two object ids are literal hex pinned by the fixture, never read
+// Nothing here touches a host; the object id is literal hex pinned by the fixture, never read
 // from git.
 
 fn launch_fixture_instance_id() -> NonEmptyStr { "fixture-actuating-instance" as NonEmptyStr }
 
 data launch_fixture_desired_hex: String = "1111111111111111111111111111111111111111"
-data launch_fixture_local_hex: String = "2222222222222222222222222222222222222222"
 
 fn launch_fixture_oid(hex: String) -> GitObjectId? {
   git_object_id_from_untagged_hex(hex: hex)
 }
 
-fn launch_fixture_revision_converged() -> FleetRevisionStanding {
+fn launch_fixture_revision_observed() -> LocalTreeRevision {
   match launch_fixture_oid(hex: launch_fixture_desired_hex) {
-    Present { value: oid } => RevisionConverged { revision: oid }
-    Absent => RevisionUnobserved { cause: "fixture object id did not decode" }
+    Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
+    Absent => LocalTreeRevisionUnobserved { cause: "fixture object id did not decode" }
   }
 }
 
-fn launch_fixture_revision_drifted() -> FleetRevisionStanding {
-  match launch_fixture_oid(hex: launch_fixture_desired_hex) {
-    Present { value: d } =>
-      match launch_fixture_oid(hex: launch_fixture_local_hex) {
-        Present { value: l } => RevisionDrifted { desired: d, local: l }
-        Absent => RevisionUnobserved { cause: "fixture local object id did not decode" }
-      }
-    Absent => RevisionUnobserved { cause: "fixture desired object id did not decode" }
-  }
+fn launch_fixture_revision_unobserved() -> LocalTreeRevision {
+  LocalTreeRevisionUnobserved { cause: "fixture: HEAD undecodable" }
 }
 
 fn launch_fixture_standing(
   mode: SpawnMode,
-  revision: FleetRevisionStanding,
+  revision: LocalTreeRevision,
   live: List<DispatchLiveSession>,
   max_concurrent: Int,
 ) -> LaunchHostStanding {
@@ -72,7 +64,7 @@ fn launch_fixture_standing(
 }
 
 fn launch_fixture_standing_clear(mode: SpawnMode) -> LaunchHostStanding {
-  launch_fixture_standing(mode: mode, revision: launch_fixture_revision_converged(), live: [], max_concurrent: 3)
+  launch_fixture_standing(mode: mode, revision: launch_fixture_revision_observed(), live: [], max_concurrent: 3)
 }
 
 fn launch_fixture_standing_observe_only() -> LaunchHostStanding {
@@ -80,7 +72,7 @@ fn launch_fixture_standing_observe_only() -> LaunchHostStanding {
     instance_id: launch_fixture_instance_id(),
     actuation: DashboardObserveOnly,
     transition: ActuationAdmitted,
-    revision: launch_fixture_revision_converged(),
+    revision: launch_fixture_revision_observed(),
     sessions: LaunchSessionsObserved { live: [] },
     capacity: BeltCapacity { max_concurrent: 3 },
     mode: ManualReady,
@@ -92,7 +84,7 @@ fn launch_fixture_standing_transition_inhibited() -> LaunchHostStanding {
     instance_id: launch_fixture_instance_id(),
     actuation: DashboardActuating,
     transition: ActuationRefused { reason: "fixture: deployment transition in force" },
-    revision: launch_fixture_revision_converged(),
+    revision: launch_fixture_revision_observed(),
     sessions: LaunchSessionsObserved { live: [] },
     capacity: BeltCapacity { max_concurrent: 3 },
     mode: ManualReady,
@@ -106,7 +98,7 @@ fn launch_fixture_session(node_id: String, process: WorkerProcessEvidence) -> Di
     windows: 1,
     lease_verdict: Converged,
     worker: worker_observation_without_provider_probe_for_process(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+      instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
       process: process,
     ),
   }
@@ -158,10 +150,10 @@ fn launch_fixture_standing_halt_transition() -> LaunchHostStanding {
   launch_host_halt_transition(instance_id: launch_fixture_instance_id(), reason: "fixture: deployment transition in force")
 }
 
-fn launch_fixture_standing_halt_drift() -> LaunchHostStanding {
-  match launch_host_stage_revision(instance_id: launch_fixture_instance_id(), revision: launch_fixture_revision_drifted()) {
+fn launch_fixture_standing_halt_unobserved() -> LaunchHostStanding {
+  match launch_host_stage_revision(instance_id: launch_fixture_instance_id(), revision: launch_fixture_revision_unobserved()) {
     HostRevisionHalted { standing } => standing
-    HostRevisionConverged { revision: _ } => LaunchHostUnobserved { reason: "fixture: a drifted revision was staged as converged" }
+    HostRevisionObserved { revision: _ } => LaunchHostUnobserved { reason: "fixture: an unreadable revision was staged as observed" }
   }
 }
 
@@ -170,7 +162,7 @@ fn launch_fixture_standing_sessions_unobserved(mode: SpawnMode) -> LaunchHostSta
     instance_id: launch_fixture_instance_id(),
     actuation: DashboardActuating,
     transition: ActuationAdmitted,
-    revision: launch_fixture_revision_converged(),
+    revision: launch_fixture_revision_observed(),
     sessions: LaunchSessionsUnobserved { reason: "fixture: tmux ls refused" },
     capacity: BeltCapacity { max_concurrent: 3 },
     mode: mode,
@@ -196,7 +188,7 @@ fn launch_fixture_standing_pending(mode: SpawnMode) -> LaunchHostStanding {
     instance_id: launch_fixture_instance_id(),
     actuation: DashboardActuating,
     transition: ActuationAdmitted,
-    revision: launch_fixture_revision_converged(),
+    revision: launch_fixture_revision_observed(),
     sessions: LaunchSessionsPending,
     capacity: BeltCapacity { max_concurrent: 3 },
     mode: mode,
