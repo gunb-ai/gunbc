@@ -5,6 +5,10 @@ module test.claim.self_host_logic_seed_unavailable_check_fixture
 // input that goes red when the check is wrong). Operates on synthetic file contents
 // via the REAL transport function over a temp directory, not a re-implementation.
 // Hermetic -- no gunbc emit or cargo build required.
+//
+// passes writes_ok: true as a literal because the writes are a deployment guarantee
+// tested by the wet lane, not by the fixture. The fixture CANNOT detect an ordering
+// regression — that is deliberate and the wet lane covers it.
 
 import std.logic { Bool }
 import extdeps.shell

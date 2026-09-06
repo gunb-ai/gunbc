@@ -54,13 +54,19 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // enumeration root -- no wider than necessary given the available primitives, and a
 // suffix test would be a tighter rung if the registration arrives.
 //
-// writes_ok enforces structural ordering: the check must run AFTER the Cargo.toml and
-// main.rs writes, because what it scans must be the tree that cargo builds (not an
-// intermediate emit-only tree). By consuming cargo_toml.success && main_rs.success,
-// the scan cannot be evaluated until both writes have completed -- reordering the block
-// so the scan precedes either write would need a variable that is not yet bound at that
-// point (a compile-time refusal in this substrate, since let bindings are evaluated in
-// declaration order and a forward reference is unbound).
+// writes_ok enforces structural ORDERING, not an error signal. It is a conjunct in the final
+// return expression, making the scan impossible to evaluate before the writes have produced their
+// values. If the writes fail, writes_ok is false and the receipt returns false — but the write
+// failure is separately typed as slb_stage_incomplete through the `staged` conjunction, so the
+// conflation is unreachable on the real path: writes_ok is a sequencing dependency, not a second
+// error arm. The scan must run AFTER the Cargo.toml and main.rs writes because what it scans must
+// be the tree that cargo builds (not an intermediate emit-only tree). By consuming cargo_toml.success
+// && main_rs.success, the scan cannot be evaluated until both writes have completed -- reordering
+// the block so the scan precedes either write would need a variable that is not yet bound at that
+// point (a compile-time refusal in this substrate, since let bindings are evaluated in declaration
+// order and a forward reference is unbound). The fixture passes writes_ok: true as a literal
+// because the writes are a deployment guarantee tested by the wet lane, not by the fixture —
+// the fixture CANNOT detect an ordering regression, which is deliberate.
 fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   let ok = found.success
