@@ -849,8 +849,8 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
 // identities were observed executing and holding on the wet lane by the same required-floor run
 // that produced their route gaps. The sixth (self_host_logic_seed_unavailable_receipt_holds)
 // and seventh through ninth (the three self_host_logic_seed_unavailable_check_fixture identities)
-// are enrolled beside their own WetScheduledClaim rows, all observed passing in run 34050705404
-// (be79b78158). Anyone adding a tenth owns this sentence:
+// are enrolled beside their own WetScheduledClaim rows, all observed passing wet.
+// Anyone adding a tenth owns this sentence:
 // an annotation that describes a population is invalidated by the edit that changes the population,
 // and nothing in the substrate will ever red to tell you so.
 //

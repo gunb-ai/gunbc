@@ -56,7 +56,7 @@ test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
   let dir = shell.Mktemp.Dir()
   let rt_file = Filesystem.Write(
     path: concat(dir.path, "/v1_rt.rs"),
-    content: "pub fn lookup<K: Eq + Hash>(key: K, map: ...) -> ... { unimplemented!() }\n"
+    content: "// Mirrors the seed crate's v1_compiler::lookup interface.\npub fn lookup(key: String) -> String { unimplemented!() }\n"
   )
   let clean_subject = Filesystem.Write(
     path: concat(dir.path, "/std_logic.rs"),
