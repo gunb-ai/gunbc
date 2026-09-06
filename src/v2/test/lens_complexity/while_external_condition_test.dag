@@ -34,7 +34,7 @@ data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   expected_cost: UnknownCost {
     diagnostic: while_external_condition_loop_bound_diagnostic
   },
-  expected_complexity: unknown_complexity_with_diagnostic(
+  expected_complexity: incomplete_complexity_with_diagnostic(
     diagnostic: while_external_condition_loop_bound_diagnostic
   ),
   falsification: while_external_condition_loop_bound_diagnostic

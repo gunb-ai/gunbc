@@ -7,7 +7,7 @@ import v2.lens.complexity {
   Incomplete,
   ConstantComplexity,
   linear_complexity,
-  unknown_complexity,
+  incomplete_complexity,
   established_complexity
 }
 import v2.lens.cost { SizeVariable }
@@ -53,7 +53,7 @@ fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityAssessment {
           size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
         )
       )
-    Violates { diagnostic: _ } => unknown_complexity()
+    Violates { diagnostic: _ } => incomplete_complexity()
   }
 }
 

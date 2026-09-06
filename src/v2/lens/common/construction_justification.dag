@@ -5,17 +5,19 @@ import std.disposition { ConstructionMechanism }
 import std.decl_ref {
   DeclarationRef,
   WholeDeclaration,
-  declaration_ref_eq,
-  declaration_ref_in_list
+  declaration_ref_eq
 }
 
 import v2.std.collection { List }
+import v2.std.algebra { length }
+import v2.std.decl_index { DeclFact, logical_qualified_name_from_module }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
-// DESIGN section 4b column beside the ladder. The field that matters is a REQUIRED CAPABILITY
-// joined against the inventory named by capability_inventory_authority: subject needs X; that
-// inventory I does not provide X; therefore the subject is outside the guarantee I represents.
-// If X later appears in THAT I, the classification becomes false and the corpus reds.
-// Joining a grounding stamp against the cost inventory cannot red: X was never a candidate there.
+// DESIGN section 4b column beside the ladder. OutsideModeledGuarantee is an identity join
+// against the declaration population: subject needs X; X has no DeclFact row. If X is later
+// authored, the same join reds. capability_inventory_authority names the producer of that
+// population (`v2.std.decl_index.decl_facts`); it is not an authored subset of capabilities.
+// This module does not call decl_facts — callers pass the facts they already acquired.
 // boundary_kind is explanatory; each arm still carries the authority, capability, or domain
 // whose standing is checked.
 type GuaranteeBoundaryKind
@@ -44,22 +46,9 @@ type ConstructionJustification {
   class: ConstructionClass
 }
 
-data modeled_guarantee_capability_inventory: List<DeclarationRef> = [
-  DeclarationRef {
-    module_path: "v2.lens.cost",
-    decl_name: "cost_lens",
-    field: WholeDeclaration
-  },
-  DeclarationRef {
-    module_path: "v2.lens.complexity",
-    decl_name: "asymptotic_projection",
-    field: WholeDeclaration
-  }
-]
-
-data modeled_guarantee_capability_inventory_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.lens.common.construction_justification",
-  decl_name: "modeled_guarantee_capability_inventory",
+data decl_facts_inventory_authority: DeclarationRef = DeclarationRef {
+  module_path: "v2.std.decl_index",
+  decl_name: "decl_facts",
   field: WholeDeclaration
 }
 
@@ -78,30 +67,22 @@ fn modeled_outside_boundary(
 }
 
 fn guarantee_boundary_inventory_authority_is_closed(authority: DeclarationRef) -> Bool {
-  declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref)
+  declaration_ref_eq(a: authority, b: decl_facts_inventory_authority)
 }
 
-fn guarantee_boundary_inventory_rows(authority: DeclarationRef) -> List<DeclarationRef> {
-  if declaration_ref_eq(a: authority, b: modeled_guarantee_capability_inventory_ref) {
-    modeled_guarantee_capability_inventory
-  } else {
-    []
-  }
+fn required_capability_qualified_name(boundary: GuaranteeBoundary) -> String {
+  logical_qualified_name_from_module(
+    module_name: boundary.required_capability.module_path as String,
+    name: boundary.required_capability.decl_name as String
+  )
 }
 
-fn guarantee_boundary_capability_absent_from(
-  capability: DeclarationRef,
-  rows: List<DeclarationRef>
-) -> Bool {
-  !declaration_ref_in_list(target: capability, refs: rows)
-}
-
-fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary) -> Bool {
+fn guarantee_boundary_still_outside(boundary: GuaranteeBoundary, facts: List<DeclFact>) -> Bool {
   guarantee_boundary_inventory_authority_is_closed(authority: boundary.capability_inventory_authority)
-    && guarantee_boundary_capability_absent_from(
-      capability: boundary.required_capability,
-      rows: guarantee_boundary_inventory_rows(authority: boundary.capability_inventory_authority)
-    )
+    && (length(xs: decl_facts_matching_qualified_name(
+      qn: required_capability_qualified_name(boundary: boundary),
+      facts: facts
+    )) == 0)
 }
 
 fn guarantee_boundary_required_is_not_subject(boundary: GuaranteeBoundary) -> Bool {

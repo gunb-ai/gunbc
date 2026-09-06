@@ -6,7 +6,7 @@ import v2.lens.complexity {
   Incomplete,
   complexity_assessment_dominates,
   complexity_lens,
-  unknown_complexity
+  incomplete_complexity
 }
 import v2.std.algebra { fold_list, is_empty, list_append }
 import v2.std.collection { List }
@@ -37,7 +37,7 @@ fn complexity_declared_budget_is_established(budget: ComplexityAssessment) -> Bo
 data complexity_budget_row_unrated_declared_budget_semantic_red: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
   subject_producer: table_fixture_add_arrow_with_body,
   declared_budget: fn(body) {
-    unknown_complexity()
+    incomplete_complexity()
   }
 }
 

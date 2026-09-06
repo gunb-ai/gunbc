@@ -107,14 +107,6 @@ fn incomplete_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityAs
   Incomplete { diagnostic: diagnostic }
 }
 
-fn unknown_complexity() -> ComplexityAssessment {
-  incomplete_complexity()
-}
-
-fn unknown_complexity_with_diagnostic(diagnostic: Diagnostic) -> ComplexityAssessment {
-  incomplete_complexity_with_diagnostic(diagnostic: diagnostic)
-}
-
 fn single_complexity_variable(size_var: SizeVariable) -> ComplexityVariables {
   [size_var]
 }

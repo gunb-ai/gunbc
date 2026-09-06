@@ -8,8 +8,7 @@ import v2.lens.common.construction_justification {
   CapabilityNotRepresented,
   PolicyJudgmentRequired,
   modeled_outside_boundary,
-  modeled_guarantee_capability_inventory,
-  modeled_guarantee_capability_inventory_ref,
+  decl_facts_inventory_authority,
   guarantee_boundary_still_outside,
   guarantee_boundary_required_is_not_subject,
   wall_now_total_projection_forbids_outside_modeled_guarantee
@@ -18,7 +17,12 @@ import v2.lens.enforcement.complexity_contract_subject {
   complexity_derived_kernel_boundary,
   complexity_optimality_boundary
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_in_list }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn cost_lens_ref() -> DeclarationRef {
   DeclarationRef {
@@ -28,16 +32,36 @@ fn cost_lens_ref() -> DeclarationRef {
   }
 }
 
-fn planted_outside_requiring_cost_lens_boundary() -> GuaranteeBoundary {
+fn synthesis_lens_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.lens.synthesis",
+    decl_name: "synthesis_lens",
+    field: WholeDeclaration
+  }
+}
+
+fn nonexistent_capability_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.lens.cost",
+    decl_name: "capability_absent_from_decl_facts",
+    field: WholeDeclaration
+  }
+}
+
+fn lens_decl_facts() -> List<DeclFact> {
+  decl_facts(pool_roots: ["src/v2/lens"])
+}
+
+fn planted_outside_requiring(required: DeclarationRef) -> GuaranteeBoundary {
   modeled_outside_boundary(
     subject: DeclarationRef {
       module_path: "v2.lens.complexity",
       decl_name: "asymptotic_projection",
       field: WholeDeclaration
     },
-    required_capability: cost_lens_ref(),
-    capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
-    boundary_kind: CapabilityNotRepresented { required: cost_lens_ref() }
+    required_capability: required,
+    capability_inventory_authority: decl_facts_inventory_authority,
+    boundary_kind: CapabilityNotRepresented { required: required }
   )
 }
 
@@ -53,13 +77,20 @@ fn planted_subject_as_required_capability_boundary() -> GuaranteeBoundary {
   modeled_outside_boundary(
     subject: grounding_verdict_ref(),
     required_capability: grounding_verdict_ref(),
-    capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
+    capability_inventory_authority: decl_facts_inventory_authority,
     boundary_kind: PolicyJudgmentRequired { judgment: grounding_verdict_ref() }
   )
 }
 
 fn planted_outside_requiring_cost_lens() -> ConstructionClass {
-  OutsideModeledGuarantee { boundary: planted_outside_requiring_cost_lens_boundary() }
+  OutsideModeledGuarantee { boundary: planted_outside_requiring(required: cost_lens_ref()) }
+}
+
+fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
+  match class {
+    WallAfterGrounding { dissolves_to: _ } => true
+    _ => false
+  }
 }
 
 test fn cost_wall_now_projected_complexity_forbids_outside_modeled_guarantee_holds() -> Bool {
@@ -84,11 +115,14 @@ test fn complexity_module_aligns_derived_kernel_contract_holds() -> Bool {
   }
 }
 
-test fn planted_outside_for_inventory_member_reds() -> Bool {
-  !guarantee_boundary_still_outside(boundary: planted_outside_requiring_cost_lens_boundary())
-    && declaration_ref_in_list(
-      target: cost_lens_ref(),
-      refs: modeled_guarantee_capability_inventory
+test fn planted_outside_for_existing_decl_reds() -> Bool {
+  !guarantee_boundary_still_outside(
+    boundary: planted_outside_requiring(required: cost_lens_ref()),
+    facts: lens_decl_facts()
+  )
+    && !guarantee_boundary_still_outside(
+      boundary: planted_outside_requiring(required: synthesis_lens_ref()),
+      facts: lens_decl_facts()
     )
 }
 
@@ -96,40 +130,11 @@ test fn planted_subject_as_required_capability_reds() -> Bool {
   !guarantee_boundary_required_is_not_subject(boundary: planted_subject_as_required_capability_boundary())
 }
 
-fn synthesis_lens_ref() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "v2.lens.synthesis",
-    decl_name: "synthesis_lens",
-    field: WholeDeclaration
-  }
-}
-
-fn planted_outside_requiring_absent_capability_boundary() -> GuaranteeBoundary {
-  modeled_outside_boundary(
-    subject: DeclarationRef {
-      module_path: "v2.lens.complexity",
-      decl_name: "asymptotic_projection",
-      field: WholeDeclaration
-    },
-    required_capability: synthesis_lens_ref(),
-    capability_inventory_authority: modeled_guarantee_capability_inventory_ref,
-    boundary_kind: CapabilityNotRepresented { required: synthesis_lens_ref() }
+test fn planted_absent_decl_still_outside_holds() -> Bool {
+  guarantee_boundary_still_outside(
+    boundary: planted_outside_requiring(required: nonexistent_capability_ref()),
+    facts: lens_decl_facts()
   )
-}
-
-fn class_is_wall_after_grounding(class: ConstructionClass) -> Bool {
-  match class {
-    WallAfterGrounding { dissolves_to: _ } => true
-    _ => false
-  }
-}
-
-test fn planted_absent_capability_still_outside_holds() -> Bool {
-  guarantee_boundary_still_outside(boundary: planted_outside_requiring_absent_capability_boundary())
-    && !declaration_ref_in_list(
-      target: synthesis_lens_ref(),
-      refs: modeled_guarantee_capability_inventory
-    )
 }
 
 test fn live_reclassified_stamps_are_on_ladder_not_outside() -> Bool {
