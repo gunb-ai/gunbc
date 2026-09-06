@@ -93,8 +93,24 @@ fn ftps_default_port(negotiation: FtpsNegotiation) -> Nat {
 // against a passive listener and remains fully open to an active one on the same LAN. Climbing it
 // means pinning the device's certificate or its public key -- a scoped pin, verified -- which is a
 // real construction rather than a rename, and is the trigger this arm is waiting on.
+// MEASURED CORRECTION, 2026-09-05. This enum first read DeviceSelfSignedCertificateOnTrustedLan,
+// which turned out to be FALSE about the actual devices. A TLS handshake against both printers on
+// the operator segment returns a certificate issued by `C=CN, O=BBL Technologies Co., Ltd, CN=BBL
+// CA` -- a vendor CA chain, not a self-signed leaf. The excuse was authored from an expectation
+// about consumer hardware and no one had looked; the model was carrying a reason that the first
+// measurement contradicted.
+//
+// WHAT ACTUALLY DEFEATS VERIFICATION HERE IS THE SUBJECT, NOT THE CHAIN. The certificate's CN is the
+// machine's SERIAL (0300CA652201400), not the address a client dials, so hostname verification
+// cannot succeed against an IP however the chain is trusted -- and curl's -k disables BOTH checks
+// together, which is why the arm is named for the loss rather than for the certificate.
+//
+// THAT MAKES THE CLIMB CONCRETE RATHER THAN ASPIRATIONAL, which is the point of recording the
+// measurement: pinning the BBL CA with --cacert recovers chain verification, leaving only the
+// name-mismatch to be waived deliberately and narrowly. That is a real construction and it is now
+// the named trigger for this arm, replacing "pin the certificate somehow".
 type UnverifiablePeerClass
-  = | DeviceSelfSignedCertificateOnTrustedLan
+  = | DeviceCertificateSubjectIsSerialNotAddress
 
 type FtpsPeerVerification
   = FtpsVerifyPeer

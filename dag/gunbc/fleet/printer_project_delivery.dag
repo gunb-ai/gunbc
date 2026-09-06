@@ -11,7 +11,7 @@ import extdeps.tools.curl { curl_ftps_upload_command }
 import extdeps.ietf.ftps {
   FtpsEndpoint, FtpsNegotiation, FtpsExplicit, FtpsImplicit,
   FtpsPeerVerification, FtpsVerifyPeer, FtpsPeerVerificationDisabled,
-  UnverifiablePeerClass, DeviceSelfSignedCertificateOnTrustedLan,
+  UnverifiablePeerClass, DeviceCertificateSubjectIsSerialNotAddress,
   ftps_default_port, ftps_verifies_peer,
 }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -34,6 +34,11 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.fleet.printer_lan_endpoint {
+  PrinterLanEndpoint, PrinterEndpointLookup, PrinterEndpointFound,
+  PrinterEndpointUnknown, PrinterEndpointConflict, printer_lan_endpoint,
+}
 import gunbc.fleet_printer_access {
   PrinterAccessCodeLocus, PrinterAccessCodeLocusLookup, PrinterAccessCodeLocusFound,
   PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
@@ -208,7 +213,7 @@ fn bambu_lan_endpoint(host: NonEmptyStr) -> FtpsEndpoint {
     port: ftps_default_port(negotiation: FtpsImplicit),
     negotiation: FtpsImplicit,
     verification: FtpsPeerVerificationDisabled {
-      peer: DeviceSelfSignedCertificateOnTrustedLan,
+      peer: DeviceCertificateSubjectIsSerialNotAddress,
     },
   }
 }
@@ -308,13 +313,24 @@ fn delivered_receipt(
 
 func deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
-  host: NonEmptyStr,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,
   transport: CommandTransport,
 ) -> ProjectDelivery
   uses net: Network
 {
+  match printer_lan_endpoint(printer: printer) {
+    PrinterEndpointUnknown { printer: p } =>
+      ProjectDeliveryUnattempted {
+        printer: p,
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet.printer_lan_endpoint",
+      }
+    PrinterEndpointConflict { printer: p, matches: _ } =>
+      ProjectDeliveryUnattempted {
+        printer: p,
+        cause: "more than one LAN endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order",
+      }
+    PrinterEndpointFound { endpoint: lan } =>
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: p } =>
       ProjectDeliveryUnattempted {
@@ -341,7 +357,7 @@ func deliver_project_to_printer(
         SecretCredentialFetchRefused { reason: reason } =>
           ProjectDeliveryUnattempted { printer: printer, cause: reason }
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
-          endpoint = bambu_lan_endpoint(host: host)
+          endpoint = bambu_lan_endpoint(host: render_ipv4_address(addr: lan.address))
           match place_netrc_binding(
             path: printer_netrc_path,
             machine: endpoint.host,
@@ -373,6 +389,7 @@ func deliver_project_to_printer(
           }
         }
       }
+  }
   }
   }
 }

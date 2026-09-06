@@ -6,7 +6,7 @@ import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.ietf.ftps {
   FtpsEndpoint, FtpsExplicit, FtpsImplicit, FtpsVerifyPeer,
-  FtpsPeerVerificationDisabled, DeviceSelfSignedCertificateOnTrustedLan,
+  FtpsPeerVerificationDisabled, DeviceCertificateSubjectIsSerialNotAddress,
   ftps_default_port, ftps_verifies_peer,
 }
 import gunbc.fleet.printer_project_delivery {
@@ -35,7 +35,7 @@ test fn w_the_ftps_port_follows_the_negotiation_in_both_directions() -> Bool {
 test fn w_peer_verification_is_waived_only_by_the_enumerated_peer_class() -> Bool {
   ftps_verifies_peer(v: FtpsVerifyPeer)
   && ftps_verifies_peer(
-       v: FtpsPeerVerificationDisabled { peer: DeviceSelfSignedCertificateOnTrustedLan }
+       v: FtpsPeerVerificationDisabled { peer: DeviceCertificateSubjectIsSerialNotAddress }
      ) == false
 }
 
