@@ -10,6 +10,7 @@ import extdeps.virtualization.firecracker {
   firecracker_release_binary_path_in_tarball, firecracker_release_aarch64_tarball_sha256, firecracker_version_line,
 }
 import gunbc.runner_microvm_host_ready {
+  FootprintInstrumentStanding,
   KvmDeviceStanding, KvmDeviceWritable, KvmDevicePresentNotWritable, KvmDeviceAbsent,
   FirecrackerBinaryStanding, FirecrackerInstalled, FirecrackerVersionMismatch, FirecrackerBinaryAbsent,
   FirecrackerHostStanding,
@@ -30,10 +31,15 @@ test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool 
 
 // The standing folds two facts; readiness needs both, and each refusal names what it lacks.
 test fn readiness_needs_a_writable_kvm_device_and_the_modeled_version() -> Bool {
-  let ready = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" } }
-  let no_kvm = FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: ready.binary }
-  let unwritable = FirecrackerHostStanding { kvm: KvmDevicePresentNotWritable, binary: ready.binary }
-  let absent = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" } }
+  let instruments = FootprintInstrumentStanding {
+    gnu_time_present: false,
+    cgroup_memory_peak_present: false,
+    systemd_version_line: "",
+  }
+  let ready = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }, footprint_instruments: instruments }
+  let no_kvm = FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: ready.binary, footprint_instruments: instruments }
+  let unwritable = FirecrackerHostStanding { kvm: KvmDevicePresentNotWritable, binary: ready.binary, footprint_instruments: instruments }
+  let absent = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerBinaryAbsent { binary: "/x/firecracker" }, footprint_instruments: instruments }
   firecracker_host_ready(standing: ready)
     && !firecracker_host_ready(standing: no_kvm)
     && !firecracker_host_ready(standing: unwritable)
@@ -91,4 +97,45 @@ test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
       EnsureSupplementaryGroupMembership { login: l, group: g } => (l as String) == (job as String) && (g as String) == "kvm"
       _ => false
     })) == 1
+}
+
+// READINESS MUST NOT MOVE WITH THE INSTRUMENTS. A host that can boot a guest but carries no way to
+// measure the VMM's footprint is still ready to SERVE -- the instruments decide whether the reserve
+// can be retired, which is a different question. Wiring them into firecracker_host_ready would have
+// made every host not-ready the moment this field landed, taking the fleet down to answer a
+// measurement question.
+test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
+  let bare = FootprintInstrumentStanding {
+    gnu_time_present: false,
+    cgroup_memory_peak_present: false,
+    systemd_version_line: "",
+  }
+  let equipped = FootprintInstrumentStanding {
+    gnu_time_present: true,
+    cgroup_memory_peak_present: true,
+    systemd_version_line: "systemd 255 (255.4-1ubuntu8)",
+  }
+  let installed = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
+  firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: bare })
+    && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: equipped })
+    && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: installed, footprint_instruments: equipped })
+}
+
+// THE RECEIPT MUST SAY WHICH INSTRUMENTS EXIST, because the whole point of the observation is that a
+// human reads it and decides what can measure the reserve. A standing that carried the field but
+// never rendered it would be an observation nobody receives.
+test fn the_standing_text_reports_the_instruments() -> Bool {
+  let equipped = FirecrackerHostStanding {
+    kvm: KvmDeviceWritable,
+    binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" },
+    footprint_instruments: FootprintInstrumentStanding {
+      gnu_time_present: true,
+      cgroup_memory_peak_present: false,
+      systemd_version_line: "systemd 255 (255.4-1ubuntu8)",
+    },
+  }
+  let text = firecracker_host_standing_text(s: equipped)
+  string_contains(s: text, pattern: "gnu_time=present")
+    && string_contains(s: text, pattern: "cgroup_memory_peak=absent")
+    && string_contains(s: text, pattern: "systemd 255")
 }

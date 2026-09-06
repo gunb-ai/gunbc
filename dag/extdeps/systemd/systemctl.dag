@@ -45,6 +45,14 @@ fn systemctl_reboot_command() -> NonEmptyStr {
 // because a privilege grant needs the absolute and bare renderings to be derived from one authority;
 // converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
 
+// THE VERSION IS READ, NOT ASSUMED, because systemd's own property vocabulary is version-gated:
+// MemoryPeak arrives in v254, so whether a host can report a scope's peak memory is a fact about
+// the systemd it runs rather than about systemd. A consumer that needs that property must observe
+// the version instead of inferring it from the distribution.
+fn systemctl_version_command() -> ArgvCommand {
+  argv_command(program: systemctl_binary_path(), arguments: ["--version"])
+}
+
 fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }

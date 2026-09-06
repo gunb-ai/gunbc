@@ -61,9 +61,48 @@ type FirecrackerBinaryStanding
   | FirecrackerVersionMismatch { binary: String, observed: String }
   | FirecrackerBinaryAbsent { binary: String }
 
+// WHETHER THIS HOST CAN BE MEASURED IS PART OF WHETHER IT CAN SERVE, and that is why this sits in
+// the host standing rather than in a probe of its own.
+//
+// gunbc.runner_microvm admits no guest today: its realization reserve is ReserveUnmodeled, because
+// no VMM resident footprint is a cited quantity and inventing one would be a fabricated plausible
+// output. The quantity has to be OBSERVED on a host before it can be declared, so the instrument
+// that could observe it is a readiness fact exactly like /dev/kvm is -- a host that can boot a guest
+// but cannot report what the VMM cost is a host that cannot retire the reserve.
+//
+// THE INSTRUMENTS ARE NAMED RATHER THAN RANKED, and nothing here picks one. Each reports the same
+// quantity exactly, and which is available is a property of the host's systemd and kernel, so
+// selecting among them is realization that belongs with the measurement -- not a fact this
+// observation may decide. GNU time reports a process's own maximum resident set after it exits;
+// systemd's MemoryPeak and cgroup v2's memory.peak report a cgroup's peak, which for a scope holding
+// only the VMM is the same subject. Sampling /proc/<pid>/status VmHWM is deliberately NOT among
+// them: it requires the process to still exist, so a guest that powers itself off can be missed
+// entirely, and a missed sample under-reports -- the wrong direction for a value that will become a
+// safety reserve.
+type FootprintInstrumentStanding {
+  gnu_time_present: Bool
+  cgroup_memory_peak_present: Bool
+  systemd_version_line: String
+}
+
 type FirecrackerHostStanding {
   kvm: KvmDeviceStanding
   binary: FirecrackerBinaryStanding
+  footprint_instruments: FootprintInstrumentStanding
+}
+
+data gnu_time_binary_path: String = "/usr/bin/time"
+
+// The ROOT cgroup's file, whose presence is a kernel-support fact rather than a statement about any
+// particular scope. cgroup v2 gained memory.peak in Linux 5.19.
+data cgroup_v2_memory_peak_path: String = "/sys/fs/cgroup/memory.peak"
+
+fn footprint_instrument_text(f: FootprintInstrumentStanding) -> String {
+  join([
+    "footprint-instruments: gnu_time=", if f.gnu_time_present { "present" } else { "absent" },
+    " cgroup_memory_peak=", if f.cgroup_memory_peak_present { "present" } else { "absent" },
+    " systemd=", if trim(s: f.systemd_version_line) == "" { "unreadable" } else { trim(s: f.systemd_version_line) },
+  ], "")
 }
 
 data runner_microvm_host_standing_receipt_dir: String = "target"
@@ -125,6 +164,7 @@ fn binary_standing_text(b: FirecrackerBinaryStanding) -> String {
 
 fn firecracker_host_standing_text(s: FirecrackerHostStanding) -> String {
   join([kvm_standing_text(k: s.kvm), "\n", binary_standing_text(b: s.binary), "\n",
+        footprint_instrument_text(f: s.footprint_instruments), "\n",
         if firecracker_host_ready(standing: s) { "standing=ready" } else { "standing=not-ready" }], "")
 }
 
@@ -174,9 +214,22 @@ func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStand
       _ => ""
     }
   } else { "" }
+  let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_binary_path), transport: LocalExec))
+  let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path), transport: LocalExec))
+  let systemd_version = match run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
+    ProcessOutputAbsent => ""
+    _ => ""
+  }
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
     binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
+    footprint_instruments: FootprintInstrumentStanding {
+      gnu_time_present: gnu_time,
+      cgroup_memory_peak_present: cgroup_peak,
+      systemd_version_line: systemd_version,
+    },
   }
 }
 
