@@ -158,12 +158,18 @@ pub use crate::v1_compiler_infer_resolve::{
     preserve_nominal_brand_on_resolve, resolve_generic_use_decl, resolve_item_types, resolve_node,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
-pub use crate::v1_compiler_infer_service::{
-    check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
-    collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
-    is_typed_service_call_receiver, service_op_entry,
+use crate::v1_compiler_infer_service::EffectIncompleteness::{
+    ExpansionBudgetExhausted, UnresolvedCalleeEdge,
 };
-pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
+use crate::v1_compiler_infer_service::ServiceEffectAnalysis::{EffectsComplete, EffectsIncomplete};
+pub use crate::v1_compiler_infer_service::{
+    check_service_field_access_node, check_service_method_call_node, collect_typed_service_calls,
+    expand_transitive_services, extract_typed_service_name, is_typed_service_call_receiver,
+    service_op_entry,
+};
+pub use crate::v1_compiler_infer_service::{
+    EffectIncompleteness, OpEntry, ServiceEffectAnalysis, ServiceMethodResult, UniqueAccum,
+};
 use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
 use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
@@ -262,24 +268,25 @@ use crate::v1_std_core::VarBindingKind::{
 pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
-    build_newline_index, cast_expr, cast_target, container_expected_arity, decl_ref_coords_label,
-    default_ident_span, diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table,
-    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
-    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
-    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
-    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
-    is_child_accessor_in_model, is_compiler_error, is_container_type, is_error_diagnostic,
-    is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
-    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
-    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
-    method_arg_nodes, method_receiver, module_imports, module_items, module_node, no_span,
-    node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
+    build_newline_index, callable_identity, cast_expr, cast_target, container_expected_arity,
+    decl_ref_coords_label, default_ident_span, diagnostic_frontier_occurrence_key,
+    diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
+    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property_string, float_type, fn_admit_callers, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
@@ -292,11 +299,11 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
-    Connective, DeclRefCoords, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
-    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
-    VarBindingKind,
+    Connective, DeclRefCoords, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary,
+    FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal, ServiceConfigField,
+    StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -23733,6 +23740,20 @@ pub fn analyze_item(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc
     }
 }
 
+pub fn insert_item_by_identity(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    info: Rc<ItemInfo>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    v1_rt::rc_map_insert(
+        registry.clone(),
+        crate::v1_std_core::callable_identity(Rc::new(DeclaredCallableIdentity {
+            owner_module_path: info.module_name.clone(),
+            decl_name: info.name.clone(),
+        })),
+        info.clone(),
+    )
+}
+
 pub fn fold_module_contributions(
     mut remaining: Rc<Vec<Rc<ItemContribution>>>,
     mut resolved_items: Rc<Vec<Rc<Node>>>,
@@ -23795,11 +23816,8 @@ pub fn fold_module_contributions(
                     let __tco_2 = next_func_sigs.clone();
                     let __tco_3 = next_svc_registry.clone();
                     let __tco_4 = next_svc_locals.clone();
-                    let __tco_5 = v1_rt::rc_map_insert(
-                        item_registry,
-                        contribution.item_info.clone().name.clone(),
-                        contribution.item_info.clone(),
-                    );
+                    let __tco_5 =
+                        insert_item_by_identity(item_registry, contribution.item_info.clone());
                     let __tco_6 =
                         v1_rt::rc_list_push(diag_chunks, contribution.resolve_diagnostics.clone());
                     remaining = __tco_0;
@@ -25257,6 +25275,56 @@ pub fn build_enum_variant_shape_sets(
     )
 }
 
+pub fn build_item_leaf_owner_modules(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, String>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, tm: _| {
+            let owning_module = crate::v1_std_core::authored_name_at(
+                tm.type_env.clone().source_indices.clone(),
+                tm.module.clone(),
+            );
+            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
+                .iter()
+                .cloned()
+                .fold(
+                    acc,
+                    |acc2: Rc<HashMap<String, String>>, key: String| match v1_rt::map_get(
+                        &tm.item_registry.clone(),
+                        key.clone(),
+                    ) {
+                        Some(info) => {
+                            if (info.module_name.clone() != owning_module.clone()) {
+                                acc2.clone()
+                            } else {
+                                match v1_rt::map_get(&acc2, info.name.clone()) {
+                                    Some(prior) => {
+                                        if (prior.clone() == info.module_name.clone()) {
+                                            acc2.clone()
+                                        } else {
+                                            v1_rt::rc_map_insert(
+                                                acc2.clone(),
+                                                info.name.clone(),
+                                                "".to_string(),
+                                            )
+                                        }
+                                    }
+                                    std::option::Option::None => v1_rt::rc_map_insert(
+                                        acc2.clone(),
+                                        info.name.clone(),
+                                        info.module_name.clone(),
+                                    ),
+                                }
+                            }
+                        }
+                        std::option::Option::None => acc2.clone(),
+                    },
+                )
+        },
+    )
+}
+
 pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -25318,6 +25386,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             built.type_summaries.clone(),
         );
         Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: build_item_leaf_owner_modules(modules.clone()),
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             fn_decl_items: built.fn_decl_items.clone(),
@@ -25479,21 +25548,44 @@ pub fn typecheck_with_census_extra(
             }
             __result
         });
-        let expanded_registry = crate::v1_compiler_infer_service::expand_transitive_services(
+        let analysis = crate::v1_compiler_infer_service::expand_transitive_services(
             modules.clone(),
             state.item_registry.clone(),
             5,
         );
+        let analysed_registry = match (*analysis.clone()).clone() {
+            ServiceEffectAnalysis::EffectsComplete {
+                registry: registry, ..
+            } => registry.clone(),
+            ServiceEffectAnalysis::EffectsIncomplete { partial, .. } => partial.clone(),
+        };
+        let incompleteness_causes = match (*analysis.clone()).clone() {
+            ServiceEffectAnalysis::EffectsComplete { registry: _, .. } => Rc::new(vec![]),
+            ServiceEffectAnalysis::EffectsIncomplete { causes, .. } => causes.clone(),
+        };
+        let incompleteness_diagnostics = Rc::new({
+            let mut __result = Vec::new();
+            for reason in incompleteness_causes.iter().cloned() {
+                __result.push(match (*reason.clone()).clone() {
+    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), crate::v1_std_core::no_span(), item_identity.owner_module_path.clone()),
+    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
+});
+            }
+            __result
+        });
         Rc::new(TypedGraph {
             modules: modules.clone(),
-            item_registry: expanded_registry.clone(),
-            diagnostics: Rc::new({
-                let mut __result = Vec::new();
-                for c in diag_chunks.iter().cloned() {
-                    __result.extend((*c.clone()).iter().cloned());
-                }
-                __result
-            }),
+            item_registry: analysed_registry.clone(),
+            diagnostics: v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in diag_chunks.iter().cloned() {
+                        __result.extend((*c.clone()).iter().cloned());
+                    }
+                    __result
+                }),
+                incompleteness_diagnostics.clone(),
+            ),
         })
     }
 }
