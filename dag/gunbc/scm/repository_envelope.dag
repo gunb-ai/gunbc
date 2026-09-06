@@ -867,7 +867,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
         ManifestLocatorIsSemanticNode { root: root } =>
           RepositoryEncodeRefused { cause: RepositoryEncodeCommitRootIsSemanticNode { root: root } }
         ManifestLocatorResolved =>
-          match stage_standing(acc: acc, staged: repo.staged) {
+          match staged_locator_standing(acc: acc, staged: repo.staged) {
             ManifestLocatorAbsent { root: staged } =>
               RepositoryEncodeRefused { cause: RepositoryEncodeStagedNotInStore { staged: staged } }
             ManifestLocatorIsAuthoredSource { root: staged } =>
@@ -979,7 +979,7 @@ fn manifest_locator_standing(acc: EncodeAcc, root: ObjectId) -> ManifestLocatorS
 // case whose only content is "the question did not arise", and the caller cannot construct a refusal
 // for it without inventing a digest to name. That was the first shape written here and it required
 // exactly that fabrication, which is how the collapse was found to be the honest one.
-fn stage_standing(acc: EncodeAcc, staged: CorpusManifestObjectRef?) -> ManifestLocatorStanding {
+fn staged_locator_standing(acc: EncodeAcc, staged: CorpusManifestObjectRef?) -> ManifestLocatorStanding {
   match staged {
     Absent => ManifestLocatorResolved
     Present { value: reference } => manifest_locator_standing(acc: acc, root: reference.locator)

@@ -292,8 +292,11 @@ fn scm_env_commit_count(outcome: RepositoryDecodeOutcome) -> Int {
 // the producer returned.
 //
 // AND THE RETURNED REFERENCE HAS TO BE ESTABLISHED AS THE REQUESTED COMMIT BEFORE ITS PARENT MEANS
-// ANYTHING. C already descends from B in this specimen -- it has to, to make C the last existing
-// commit while B is the supplied parent -- so an implementation that returned C UNCHANGED, having
+// ANYTHING. C is CHOSEN to descend from B here, and that is a property of this specimen rather than
+// a consequence of its shape: commit position does not require any particular ancestry, and C could
+// equally have descended from A while still being the last existing commit. It is built this way so
+// that an existing commit CAN satisfy the parent assertion -- which is the case worth defending
+// against. So an implementation that returned C UNCHANGED, having
 // minted nothing at all, satisfies "the returned reference resolves", "it descends from B" and "the
 // selection is still A". Every one of those is true of C. So the claim first requires that the
 // returned reference did NOT exist in the input population, and that the commit it names freezes the
