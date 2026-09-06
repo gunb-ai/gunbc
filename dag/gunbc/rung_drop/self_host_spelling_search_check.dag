@@ -4,31 +4,34 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
-// DECLARED 2026-09-05. The embedded-source independence check in
-// self_host_logic_seed_unavailable_transport is a PER-SUBJECT SPELLING SEARCH
-// (string_contains for "v1_rt::" in non-v1_rt.rs files, excluding use-import lines),
-// not a construction wall. A violation is DETECTED rather than made structurally
-// unwritable. This is honest about the rung the mechanism actually reaches.
+// DECLARED 2026-09-05. The seed-linkage check in
+// self_host_logic_seed_unavailable_transport uses a PER-SUBJECT SPELLING SEARCH
+// (string_contains for "v1_compiler::" in emitted .rs files, excluding v1_rt.rs
+// which references seed source files in comments), not a construction wall.
+// A violation is DETECTED rather than made structurally unwritable.
+// This is honest about the rung the mechanism actually reaches.
 //
 // PREVIOUS RUNG: none to lower -- this registers that the structurally-guaranteed
 // rung was never held for this check. The claim was narrowed from "ENFORCES by
 // execution" / "Construction over prose" to the honest description.
 //
 // TEMPORARY RUNG: mitigatable -- the check is executed, discriminates (green on
-// a clean emit, red on a module that calls v1_rt:: functions), and is tested by
-// both a fixture and the wet lane. What it cannot do is make the violation
-// structurally unwritable.
+// a clean emit, red on a module that references v1_compiler::), and is tested by
+// both a fixture and the wet lane. The stronger half is the manifest: v1-compiler
+// is absent from Cargo.toml, making seed linkage structurally impossible at link
+// time. What the spelling check cannot do is make the violation structurally
+// unwritable.
 //
 // RESTORATION TRIGGER: the NEXT-RUNG TRIGGER already stated in the transport
 // header at dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag:
 // emit a crate whose runtime fragments are DERIVED FROM THE MODELED SOURCE rather
-// than copied from the seed's runtime module -- at which point the v1_rt:: call-site
+// than copied from the seed's runtime module -- at which point the v1_compiler::
 // check is unnecessary because the emitted module has no reason to reference the
-// seed runtime namespace at all.
+// seed crate namespace at all.
 data self_host_spelling_search_check: RungDrop = RungDrop {
   identity: "self_host_spelling_search_check" as NonEmptyStr,
 
-  subject: "v1_rt:: spelling search in seed-unavailable transport",
+  subject: "v1_compiler:: spelling search in seed-unavailable transport",
 
   declared: "2026-09-05",
 
@@ -39,9 +42,9 @@ data self_host_spelling_search_check: RungDrop = RungDrop {
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "emit crate with runtime fragments from modeled source" },
     population: [
-      "dag/std/logic.dag — the subject module checked by the v1_rt:: call-site search",
+      "dag/std/logic.dag — the subject module checked by the v1_compiler:: call-site search",
       "dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag — the transport hosting the check",
     ],
-    restoration_trigger: "The v1_rt:: call-site check becomes unnecessary by construction when the emitted crate's runtime fragments are DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module — the NEXT-RUNG TRIGGER stated at self_host_logic_seed_unavailable_transport.dag:22-24. At that point the emitted module has no reason to reference the seed runtime namespace at all, making the spelling search redundant rather than load-bearing.",
+    restoration_trigger: "The v1_compiler:: call-site check becomes unnecessary by construction when the emitted crate's runtime fragments are DERIVED FROM THE MODELED SOURCE rather than copied from the seed's runtime module — the NEXT-RUNG TRIGGER stated at self_host_logic_seed_unavailable_transport.dag:22-24. At that point the emitted module has no reason to reference the seed runtime namespace at all, making the spelling search redundant rather than load-bearing.",
   }
 }

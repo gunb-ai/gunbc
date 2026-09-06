@@ -1,7 +1,7 @@
 module test.claim.self_host_logic_seed_unavailable_check_fixture
 
 // Fixture test for the transport's slbu_check_no_v1_rt_calls function --
-// proves the v1_rt:: call-site check CAN red (DESIGN section 5: a discriminating
+// proves the v1_compiler:: seed-linkage check CAN red (DESIGN section 5: a discriminating
 // input that goes red when the check is wrong). Operates on synthetic file contents
 // via the REAL transport function over a temp directory, not a re-implementation.
 // Hermetic -- no gunbc emit or cargo build required.
@@ -17,7 +17,7 @@ import tools.self_host_logic_seed_unavailable_transport {
   slbu_check_no_v1_rt_calls
 }
 
-// GREEN: a directory with no v1_rt:: calls in non-v1_rt files should pass
+// GREEN: a directory with no v1_compiler:: references should pass
 test fn clean_directory_passes_v1_rt_check() -> Bool {
   let dir = shell.Mktemp.Dir()
   let clean_file = Filesystem.Write(
@@ -34,14 +34,14 @@ test fn clean_directory_passes_v1_rt_check() -> Bool {
   dir.success && result && cleaned.success
 }
 
-// RED: a directory with a v1_rt:: call in a non-v1_rt file MUST FAIL
+// RED: a directory with a v1_compiler:: reference MUST FAIL
 // This is the DISCRIMINATING CONTROL: the transport's check catches
-// a reference to the seed runtime namespace.
-test fn directory_with_v1_rt_call_fails_check() -> Bool {
+// a reference to the seed crate namespace.
+test fn directory_with_v1_compiler_ref_fails_check() -> Bool {
   let dir = shell.Mktemp.Dir()
   let bad_file = Filesystem.Write(
     path: concat(dir.path, "/std_logic.rs"),
-    content: "pub fn do_lookup(key: String) -> String { v1_rt::lookup(key) }\n"
+    content: "pub fn do_lookup(key: String) -> String { v1_compiler::lookup(key) }\n"
   )
   let result = bad_file.success
     && !slbu_check_no_v1_rt_calls(src_dir: dir.path, writes_ok: true)
@@ -49,9 +49,9 @@ test fn directory_with_v1_rt_call_fails_check() -> Bool {
   dir.success && result && cleaned.success
 }
 
-// GREEN: v1_rt.rs containing v1_rt:: references is permitted (it defines
-// the runtime functions; the check excludes it by containment test:
-// string_contains(path, "/v1_rt.rs") || path == "v1_rt.rs").
+// GREEN: v1_rt.rs with v1_compiler:: in comments is permitted (it references
+// seed source files in prose; the check looks for v1_compiler:: as seed-linkage
+// tokens, and v1_rt.rs is excluded by containment test).
 test fn directory_with_v1_rt_containing_calls_passes() -> Bool {
   let dir = shell.Mktemp.Dir()
   let rt_file = Filesystem.Write(

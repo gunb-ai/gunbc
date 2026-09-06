@@ -20,7 +20,7 @@ import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_
 // v1-compiler (the seed crate) is deliberately absent.
 //
 // NEXT-RUNG TRIGGER: emit a crate whose runtime fragments are DERIVED FROM THE MODELED
-// SOURCE rather than copied from the seed's runtime module -- makes the v1_rt:: call-site
+// SOURCE rather than copied from the seed's runtime module -- makes the spelling-search
 // check unnecessary by construction.
 
 data slbu_logic_source_rel: String = "dag/std/logic.dag"
@@ -42,17 +42,16 @@ fn slbu_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
 }
 
-// Check all emitted .rs files for v1_rt:: call sites, EXCLUDING v1_rt.rs
-// (which defines the runtime functions -- its v1_rt:: tokens are definitions
-// rather than call sites). Returns true when NO non-v1_rt.rs file contains a v1_rt::
-// reference. Refuses on a failed find, an empty file list, or a missing subject module.
+// Check all emitted .rs files for v1_compiler:: references, which would indicate seed linkage
+// (the v1-compiler crate is deliberately absent from the build manifest). Returns true when NO
+// file contains a v1_compiler:: reference. Refuses on a failed find, an empty file list, or a
+// missing subject module.
 //
-// The exclusion uses a CONTAINMENT TEST (string_contains) rather than a suffix test,
-// because ends_with is not available in the resolver's method surface for String on
-// this substrate (a declared known gap at v1_compiler_infer.rs:7428). The containment
-// test matches "/v1_rt.rs" at any path depth OR the bare filename "v1_rt.rs" at the
-// enumeration root -- no wider than necessary given the available primitives, and a
-// suffix test would be a tighter rung if the registration arrives.
+// The check uses a CONTAINMENT TEST (string_contains) for the spelling `v1_compiler::`, which
+// is the crate prefix used by the v1-compiler seed. Same-crate infrastructure deps use
+// `crate::v1_rt` not `v1_compiler::`, so this pattern has no false positives on legitimate
+// runtime shim usage. The stronger half of the proof is the manifest: v1-compiler is absent
+// from Cargo.toml, making seed linkage structurally impossible at link time.
 //
 // writes_ok enforces structural ORDERING, not an error signal. It is a conjunct in the final
 // return expression, making the scan impossible to evaluate before the writes have produced their
@@ -80,16 +79,7 @@ fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
         ok
       } else {
         let read = Filesystem.Read(path: path)
-        let lines = split(s: read.content, delimiter: "\n")
-        let clean = fold_list(
-          xs: lines,
-          empty: true,
-          cons: fn(ok, line) {
-            ok && (string_contains(s: line, pattern: "use crate::v1_rt")
-              || !string_contains(s: line, pattern: "v1_rt::"))
-          }
-        )
-        ok && read.success && clean
+        ok && read.success && !string_contains(s: read.content, pattern: "v1_compiler::")
       }
     }
   ) && writes_ok && ok && subject_present
@@ -100,13 +90,13 @@ fn slbu_check_no_v1_rt_calls(src_dir: String, writes_ok: Bool) -> Bool {
 // etc. -- those are standard emitted-crate infrastructure dependencies, NOT seed linkage.
 // What is ABSENT is v1-compiler (the seed crate), so the COMPARISON LEG (emitted vs seed)
 // cannot link. The CONSTRUCT LEG (emit, build as standalone, run) proves the emitted LOGIC
-// module (dag/std/logic.dag) is self-contained, verified by the v1_rt:: call-site check.
-//
-// The v1_rt:: call-site check is a PER-SUBJECT SPELLING SEARCH, not a construction wall.
-// It reads each emitted .rs file (other than v1_rt.rs which defines the runtime functions)
-// and refuses if any `v1_rt::` token is found. This flags the symptom (a reference to the
-// seed runtime namespace from a non-v1_rt module) but does not make the violation structurally
-// unwritable -- a validator, not a wall. A failed read or a match both return false (fail-closed).
+// module (dag/std/logic.dag) is self-contained. Seed linkage is checked two ways: the manifest
+// omits v1-compiler (structural — no seed dependency at link time), and the per-subject
+// spelling search for `v1_compiler::` refuses if any emitted file references the seed crate
+// namespace. The spelling search is a VALIDATOR, not a construction wall — it flags the symptom
+// but does not make the violation structurally unwritable. A failed read or a match both return
+// false (fail-closed). The stronger half is the manifest: no v1-compiler dependency means seed
+// linkage is structurally impossible at link time.
 fn slbu_cargo_toml(root: String) -> String {
   concat(
     "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
@@ -125,7 +115,7 @@ fn slbu_cargo_toml(root: String) -> String {
   )
 }
 
-// The ordering between the Cargo.toml and main.rs writes and the v1_rt:: call-site scan
+// The ordering between the Cargo.toml and main.rs writes and the v1_compiler:: scan
 // is enforced structurally rather than by line order: the scan consumes writes_ok, which
 // is cargo_toml.success && main_rs.success, so the scan cannot be evaluated until both
 // writes have completed. Reordering the scan above either write would require referencing

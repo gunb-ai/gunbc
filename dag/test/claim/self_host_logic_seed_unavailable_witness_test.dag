@@ -17,7 +17,9 @@ import tools.self_host_logic_seed_unavailable_transport {
 //   (3) FALLBACK: no runtime fallback to v1-compiler
 //   (4) EMBEDDED SOURCE: v1_rt.rs present (unconditional emitter behavior) -- the
 //       transport checks via per-subject spelling search: emitted .rs files are read
-//       and checked for `v1_rt::` tokens; a match refuses the receipt (validator, not construction).
+//       and checked for `v1_compiler::` tokens (seed crate namespace); a match refuses the
+//       receipt (validator, not construction; the structural proof is the absent v1-compiler
+//       dependency in the manifest).
 //
 // THIS IS NOT A SUBSTITUTE FOR CONTROL (a). Control (b) tests whether the candidate
 // depends on the seed; control (a) tests whether the comparison discriminates. Neither
