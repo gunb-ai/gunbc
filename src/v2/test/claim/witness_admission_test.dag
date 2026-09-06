@@ -97,7 +97,7 @@ test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
     function: "self_host_logic_behavioral_receipt_holds",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    LocalRepoWetLane => true
     _ => false
   }
 }
