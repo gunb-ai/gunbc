@@ -13294,7 +13294,19 @@ type TypecheckModuleResult {
 //
 // This projection is the transitional half. It exists because parents are still realized as whole
 // TypedModules upstream; when phase 1a produces the interface map itself, this fold is deleted and
-// the map arrives already at interface grain. ModuleInterface is not minted here -- it is the
+// the map arrives already at interface grain.
+//
+// DELETION CONDITION, ATTACHED HERE RATHER THAN REMEMBERED. This fold is the SUBJECT of the
+// enrolled discriminating red `interface_index_projects_interface_grain_not_body_grain`
+// (infer_semantics_witness), which constructs a parent whose BODY cache carries a variant local
+// and whose INTERFACE cache has had it stripped, and asserts the projected row carries interface
+// grain. Deleting this fold therefore deletes that witness's subject. Under DESIGN section 4b(4)
+// a climb deletes the redundant PRODUCTION machinery and the discriminating red REMAINS ENROLLED:
+// so when this fold goes, THE WITNESS MOVES to whatever then produces the interface map -- same
+// fixture, same positive control, new producer -- and the mutation sourcing that producer from
+// body grain must still make it fail. Retiring the witness with the fold, or leaving it compiling
+// against something that no longer sits on the phase boundary, both look like progress and both
+// end the executed evidence for this boundary. ModuleInterface is not minted here -- it is the
 // carrier 04_items.dag already declares, and moving the cross-module type boundary onto it
 // ADVANCES typed_module_interface_body_dual_field_dissolution_trigger. It does not discharge it:
 // ResolvedFuncEnv is still a sibling field on TypedModule and CallableOwnerIndex is still a
