@@ -159,6 +159,8 @@ import gunbc.recurring_failure_mode.claim_edit_changes_execution_policy_outside_
 import gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector { preparation_membership_derived_from_the_execution_selector }
 import gunbc.recurring_failure_mode.required_lane_green_over_a_population_it_never_offered { required_lane_green_over_a_population_it_never_offered }
 
+import gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup { binder_renaming_changes_variant_field_lookup }
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
@@ -307,4 +309,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   claim_edit_changes_execution_policy_outside_reported_cost_delta,
   preparation_membership_derived_from_the_execution_selector,
   required_lane_green_over_a_population_it_never_offered,
+  binder_renaming_changes_variant_field_lookup,
 ]
