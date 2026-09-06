@@ -12,6 +12,7 @@ module gunbc.guarantee_stall.roster
 import std.types { List, Bool }
 import v2.std.algebra { fold_list }
 import gunbc.guarantee_stall { GuaranteeStall }
+import gunbc.guarantee_stall.emission_append_operation_contract_stall { emission_append_operation_contract_stall }
 import gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall { pre_resolve_entry_closure_module_identity_stall }
 import gunbc.guarantee_stall.merge_admission_terminal_verdict_stall { merge_admission_terminal_verdict_stall }
 import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { generated_artifact_registry_membership_stall }
@@ -153,6 +154,7 @@ import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_bas
 // rows to make a set difference work would be the tidiness the section 3 citation rule refuses.
 // Their absence is what the declared-versus-rostered join first refused; nothing else had reported it.
 data all_guarantee_stalls: List<GuaranteeStall> = [
+  emission_append_operation_contract_stall,
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
   generated_artifact_registry_membership_stall,
