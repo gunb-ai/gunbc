@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_review_criteria
 
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
-import gunbc.design_argument { design_propositions }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -30,60 +30,19 @@ type ReviewCriterion {
   tells: List<String>
 }
 
-data review_criteria: List<ReviewCriterion> = [
-  ReviewCriterion {
-    key: "redundancy",
-    ground: GroundedOnDesignProposition { proposition_id: "s2.minimize-redundancy" },
-    question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
-    tells: [
-      "a new type or function whose shape matches an existing one under another name",
-      "a hand-written projection of something the model could generate",
-      "a quadratic fold or a copied list where a single fold would do",
-    ],
-  },
-  ReviewCriterion {
-    key: "single-authority",
-    ground: GroundedOnDesignProposition { proposition_id: "s3.single-authority" },
-    question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
-    tells: [
-      "a new enum or record for a concept an extdeps or std module already owns",
-      "a literal string where a modeled value exists",
-      "a file:line citation in prose or a row where a module and symbol could be named",
-      "the same fact now answerable from two carriers with no relation stated between them",
-    ],
-  },
-  ReviewCriterion {
-    key: "grounding",
-    ground: GroundedOnDesignProposition { proposition_id: "s4.closed-grounded-substrate" },
-    question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
-    tells: [
-      "a String field carrying structure a record could name",
-      "a threshold or guess standing where the richer source exists",
-      "a // annotation inside a fn or type body rather than above a module-scope declaration",
-    ],
-  },
-  ReviewCriterion {
-    key: "fail-closed",
-    ground: GroundedOnDesignProposition { proposition_id: "s5.fail-closed" },
-    question: "Does any failure arm in the change widen, default, or fall silent instead of refusing with a typed, located reason; and does any check stand where a construction was available?",
-    tells: [
-      "an arm that returns a superset, an empty value, or 'proceed' when it could not compute its answer",
-      "an Option or wildcard that collapses two states with different remedies",
-      "a toggle, env var or flag whose only effect is to skip a refusal",
-      "a validator for a state the model could have made unwritable",
-    ],
-  },
-  ReviewCriterion {
-    key: "how-to-work",
-    ground: GroundedOnDesignProposition { proposition_id: "s6.how-to-work" },
-    question: "Does the change land temporary work, a workaround, or an unmarked scaffold without an operator's verdict, or a proven cost-shape defect left in place?",
-    tells: [
-      "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
-      "a second path beside an existing modeled route",
-      "a change that routes around a substrate refusal instead of naming it",
-    ],
-  },
-]
+// THE ROSTER IS DERIVED, NOT AUTHORED: one criterion per review PART of every design row that is
+// reviewable on a change (gunbc.design_argument DesignRow.review), keyed by the part's own name. There
+// is no second list to keep in step with DESIGN: a criterion is added, changed or retired by editing
+// the proposition's own row in the design argument, and a proposition that mints no reviewer says why.
+data review_criteria: List<ReviewCriterion> = flat_map(design_rows, r => match r.review {
+  ReviewableOnChange { parts } => map(parts, part => ReviewCriterion {
+    key: part.part,
+    ground: GroundedOnDesignProposition { proposition_id: r.proposition.id },
+    question: part.question,
+    tells: part.tells,
+  })
+  NotReviewableOnChange { reason: _ } => []
+})
 
 fn review_criterion_proposition_ids() -> List<String> {
   fold(review_criteria, init: [], f: (acc, c) => match c.ground {
@@ -96,6 +55,21 @@ fn review_criterion_proposition_ids() -> List<String> {
 // entailment the roster claims, checked against the argument rather than asserted beside it.
 fn review_criteria_grounded_in_the_argument() -> Bool {
   all(review_criterion_proposition_ids(), id => any(design_propositions, p => p.id == id))
+}
+
+// IDENTITIES ARE UNIQUE; THAT IS ALL THIS PROVES. No two criteria share a key, so every verdict names
+// one criterion and the plan's calls are a set. It does NOT prove the questions are semantically
+// disjoint (review 5125854144: distinct ids are not a partition proof; several questions visibly
+// overlap on literals, duplicated types and parallel paths). Semantic exclusivity would need a closed
+// concern vocabulary each finding is tagged with; until then two criteria may legitimately report the
+// same defect from two perspectives, and the worker feedback groups by file for presentation only.
+fn review_criterion_identities_are_unique() -> Bool {
+  let keys = review_criterion_keys()
+  count(keys) == count(distinct_strings(xs: keys))
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold(xs, init: [], f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
 }
 
 fn review_criterion_keys() -> List<String> {
