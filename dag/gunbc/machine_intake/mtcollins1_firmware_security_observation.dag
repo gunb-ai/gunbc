@@ -1,0 +1,57 @@
+module gunbc.machine_intake_mtcollins1_firmware_security_observation
+
+import std.types { List, NonEmptyStr }
+
+// SECURE BOOT STATE, MEASURED FROM FIRMWARE. Extracted from
+// gunbc.runner.runner_host_hardware_observation during the R5 split (bmc cleanup):
+// the Secure Boot standing is an observation of firmware security state, not a derived
+// platform requirement. It lives here in the machine-intake side where it keys to
+// UnitKey x FirmwareManifestDigest in the subject model (machine-intake ruling
+// 2026-08-29 §1), so a BIOS update produces a new FirmwareManifestDigest and the old
+// Secure Boot observation is correctly stale — invalidation by structural subject
+// mismatch rather than by date.
+//
+// THE OBSERVATION AND THE DERIVED REQUIREMENT ARE SEPARATED. This module says what
+// firmware answered. RunnerHostPlatformRequirements in the runner layer says what
+// the host image needs. Mixing them would make an inference indistinguishable from
+// a reading.
+
+// ── Secure Boot standing ────────────────────────────────────────────────────────────────────────
+
+// What the firmware reported. Three states: disabled (no enforcement), enabled
+// (signed images required), or unreadable (measurement failed, typed cause).
+// THE NEGATIVE IS EVIDENCE: SecureBootDisabled is a measured state, not a default.
+// An unreadable Secure Boot standing is authorable as SecureBootUnreadable and
+// produces SignedEfiRequired in efi_signature_requirement — the same consequence
+// as SecureBootEnabled, so a failed Secure Boot probe never silently permits
+// unsigned images.
+type SecureBootStanding
+  = SecureBootDisabled
+  | SecureBootEnabled { signatures: List<NonEmptyStr> }
+  | SecureBootUnreadable { cause: NonEmptyStr }
+
+// OBSERVED FROM UEFI VARIABLE. Read via the UEFI Interactive Shell's dmpstore
+// command over IPMI SOL. The EFI variable SecureBoot at GlobalVariable namespace
+// returned data size 1, value 0x00 — Secure Boot disabled. This is corroborated
+// by the firmware setup menu (checked via serial during the same session).
+// Evidence file: artifacts/bmc/mtcollins1-uefi-hardware.json, secure_boot key.
+data mtcollins1_secure_boot_standing: SecureBootStanding = SecureBootDisabled
+
+// ── EFI signature requirement (derived from standing) ────────────────────────────────────────────
+
+// What the observation means for image delivery. SecureBootDisabled permits
+// unsigned EFI; SecureBootEnabled or SecureBootUnreadable requires signed EFI.
+// This is still an observation-layer function because it maps a reading to a
+// consequence WITHOUT adding kernel policy — kernel policy lives in the runner
+// layer's RunnerHostPlatformRequirements.
+type EfiSignatureRequirement
+  = UnsignedEfiPermittedWhileSecureBootDisabled
+  | SignedEfiRequired
+
+fn efi_signature_requirement(standing: SecureBootStanding) -> EfiSignatureRequirement {
+  match standing {
+    SecureBootDisabled => UnsignedEfiPermittedWhileSecureBootDisabled
+    SecureBootEnabled => SignedEfiRequired
+    SecureBootUnreadable { cause: _ } => SignedEfiRequired
+  }
+}

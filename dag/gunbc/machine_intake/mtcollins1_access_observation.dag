@@ -1,6 +1,5 @@
 module gunbc.machine_intake_mtcollins1_access_observation
-
-import std.types { EpochMs, Int, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
@@ -24,7 +23,16 @@ import extdeps.bmc.access_profile {
   SurfaceOemRestRemoteMedia,
   SurfaceSystemInventory,
 }
-
+import gunbc.machine_intake_subject {
+  BoardSerialObservation,
+  BmcFru,
+  UnitIdentityInputs,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyStanding,
+  bind_unit_key,
+}
 // THE FIRST LANDED BmcAccessObservation IN THE REPOSITORY, and that is a fact about the corpus
 // rather than about this unit: extdeps.bmc.access_profile has carried BmcAccessObservation, the
 // route vocabulary and the catalog lookup since the machine-intake rulings, and gunbc.machine_intake_access
@@ -52,7 +60,38 @@ import extdeps.bmc.access_profile {
 data mtcollins1_endpoint: BmcControllerEndpoint = BmcControllerEndpoint {
   host: "192.168.1.228",
 }
-
+// BOARD SERIAL, PROMOTED FROM PROSE TO TYPED DATA. The IPMI FRU print
+// (artifacts/bmc/mtcollins1-intake-ipmi.json) reports Board Serial 02030A800TEXFT02L,
+// Board Mfg FOXCONN, Board Product "Mt. Collins". This was previously stated only in
+// the prose comment on what the endpoint said it is. Promoting it to typed data means
+// it feeds bind_unit_key, so the observation subject is UnitKey (durable board identity)
+// rather than BmcEndpoint (movable label). A BMC IP or MAC change under the same board
+// produces the same UnitKey; a motherboard replacement produces a different one.
+data mtcollins1_board_serial: NonEmptyStr = "02030A800TEXFT02L"
+data mtcollins1_board_serial_observations: List<BoardSerialObservation> = [
+  BoardSerialObservation { source: BmcFru, serial: mtcollins1_board_serial },
+]
+data mtcollins1_unit_identity_inputs: UnitIdentityInputs = UnitIdentityInputs {
+  bmc_endpoint: mtcollins1_endpoint,
+  board_serial_observations: mtcollins1_board_serial_observations,
+}
+// UNIT KEY STANDING, BOUND FROM OBSERVED BOARD SERIAL. The BMC endpoint is the evidence
+// channel, not the subject — this key outlives any IP or MAC change by construction,
+// because bind_unit_key reads BoardSerialSource not BmcEndpoint (the non-dependence is
+// structural, not promised). Consumers match on UnitKeyBound to extract the key and
+// handle UnitKeyRefused as a typed refusal; this module does not paper over the refusal
+// because the data declaration preserves the full coproduct.
+//
+// FAIL-CLOSED DESIGN: if mtcollins1_board_serial_observations were empty (BoardSerialAbsent),
+// contained contradictory serials (BoardSerialContradictory), or matched an already-bound
+// unit (BoardSerialDuplicatedAcrossUnits), bind_unit_key returns the matching refusal.
+// In this module there is exactly one observation from one source and no other_units, so
+// the key always binds — but the type preserves the refusal path so a future change that
+// makes the serial ambiguous produces a structural refusal rather than a silent fallback.
+data mtcollins1_unit_key_standing: UnitKeyStanding = bind_unit_key(
+  inputs: mtcollins1_unit_identity_inputs,
+  other_units: [] as List<UnitKey>,
+)
 // THE CAPTURED BYTES. sha256 over artifacts/bmc/mtcollins1-intake-ipmi.json, 3227 bytes, which is
 // the single blob every field below was read from. It is carried as a Sha256Hash rather than the
 // structural Fnv1a64 arm because it digests FILE BYTES and not a Node tree — the two are different
@@ -61,11 +100,8 @@ data mtcollins1_endpoint: BmcControllerEndpoint = BmcControllerEndpoint {
 data mtcollins1_intake_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "3c358eb4110742287a5adce6fd772fe85ab08e9357e6edef629745bce07eaaa5",
 })
-
 data mtcollins1_intake_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-intake-ipmi.json"
-
 data mtcollins1_intake_capture_byte_count: Int = 3227
-
 // THE WRITE-EXERCISE BYTES, a second blob because it answers a second question. The capture above
 // records what the controller SAID; this one records what it DID when driven. Two blobs rather than
 // one appended file because the read pass stands on its own — it was taken before any write and is
@@ -73,18 +109,13 @@ data mtcollins1_intake_capture_byte_count: Int = 3227
 data mtcollins1_write_exercise_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "e5a4c7288c629126406240153e4845c178872a75cf781e53453b78579ac414e4",
 })
-
 data mtcollins1_write_exercise_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-intake-write-exercise.json"
-
 data mtcollins1_write_exercise_byte_count: Int = 1844
-
 data mtcollins1_observed_at: EpochMs = 1788592988469
-
 // THE WRITE EXERCISE HAS ITS OWN TIME because it is a separate attempt against the same unit. Using
 // the read pass's timestamp for a write that happened afterwards would place an effect before its
 // own evidence.
 data mtcollins1_write_exercise_observed_at: EpochMs = 1788593400000
-
 // FIRMWARE, READ FROM THE CONTROLLER ITSELF. `ipmitool mc info` reports Firmware Revision 0.32 and
 // IPMI Version 2.0. The raw string is carried verbatim and the semantic version is Absent: 0.32 is
 // two components, the wire parser wants three, and inventing a patch component to make it parse
@@ -101,17 +132,16 @@ data mtcollins1_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentit
 }
 
 // WHAT THE ENDPOINT SAID IT IS. Board and chassis come from `ipmitool fru print 0`: Board Product
-// and Product Name both read "Mt. Collins", Board Mfg FOXCONN, board serial 02030A800TEXFT02L,
-// chassis part number 1A624RA00-600-G. `Board Extra: 28C13C8AD64C` is the controller's own MAC and
-// matches the DHCP reservation the operator authored, so the address, the MAC and the FRU identity
-// all join on one physical box — that join is what makes this an observation OF A UNIT rather than
-// of an address.
-data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
+// and Product Name both read "Mt. Collins", Board Mfg FOXCONN, chassis part number 1A624RA00-600-G.
+// `Board Extra: 28C13C8AD64C` is the controller's own MAC and matches the DHCP reservation the
+// operator authored. THE BOARD SERIAL IS A TYPED DATA DECLARATION (mtcollins1_board_serial
+// above) AND NOT REPEATED IN PROSE — this comment describes identity; the data declaration is
+// the identity. The UnitKey derived from it is the durable subject that outlives any endpoint
+// label change.
   baseboard: AmpereMtCollins,
   chassis_part_number: Present { value: "1A624RA00-600-G" },
   firmware: mtcollins1_firmware,
 }
-
 // THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
 // than a refinement. It previously named the intake capture alone, while the observation's own
 // fields made claims that capture does not contain: the SEL read behind SurfaceEventLog, the clock
@@ -132,7 +162,6 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
 data mtcollins1_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "df87eb85817628e6901402d4f8d7c7898d9717b867b89c2a4f3553fc0dcfff3b",
 })
-
 // BOOT CONTROL, OBSERVED OVER IPMI LANPLUS, READ AND WRITE. `chassis bootparam get 5` first
 // answered valid/unlocked with Boot Device Selector "No override". `chassis bootdev pxe` was then
 // accepted and the SAME parameter read back "Force PXE" with "Options apply to only next boot" —
@@ -144,7 +173,6 @@ data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootCont
   raw_response: mtcollins1_write_exercise_digest,
   observed_at: mtcollins1_write_exercise_observed_at,
 }
-
 // THE OBSERVATION. redfish_virtual_media_probe is Absent, and that is the modeled meaning of the
 // arm rather than a gap: the type's own comment says the probe "is Absent on a controller that
 // serves no Redfish, rather than a ladder arm pretending to describe a member that does not exist".
@@ -185,11 +213,9 @@ data mtcollins1_access_observation: BmcAccessObservation = BmcAccessObservation 
   raw_response: mtcollins1_evidence_manifest_digest,
   observed_at: mtcollins1_observed_at,
 }
-
 data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserved {
   observation: mtcollins1_access_observation,
 }
-
 // THE CAPABILITY ROW, AND EVERY MEMBER OF IT IS A WRITE THAT WAS ACTUALLY PERFORMED. BmcCapability
 // has no read-only arms: CapabilityPowerControl and CapabilityBootSourceOverride are both claims
 // about driving the controller, so a row authored from successful READS would assert exactly what

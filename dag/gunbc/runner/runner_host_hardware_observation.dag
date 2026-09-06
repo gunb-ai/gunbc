@@ -1,177 +1,55 @@
 module gunbc.runner.runner_host_hardware_observation
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.pci.identity { PciAddress, PciClassCode, PciDeviceId, PciVendorId }
+import std.types { List, NonEmptyStr }
+// PCI observations are imported to document the dependency even though the driver
+// requirement derivation is currently a static mapping. A future enrichment should
+// derive `igb` from the observed vendor/device ids rather than restating the mapping;
+// this import makes that dependency visible to tooling and to human readers.
+import gunbc.machine_intake_mtcollins1_pci_observation {
+  mtcollins1_observed_pci_functions,
+}
+import gunbc.machine_intake_mtcollins1_firmware_security_observation {
+  mtcollins1_secure_boot_standing,
+  EfiSignatureRequirement,
+  efi_signature_requirement,
+}
 
-// WHAT THE UNIT PRESENTED, AT A GRAIN A BUILDER CAN CONSUME. The first version of this module
-// carried every load-bearing value inside two String fields named `finding` and
-// `consequence_for_host_image` -- the PCI ids, the driver, the firmware requirement, the Secure Boot
-// state, the storage population. That is a type whose FIELDS are commentary, which is worse than a
-// comment: it reads as modeled while no accepted program can consume any of it.
+// DERIVED PLATFORM REQUIREMENTS FOR THE HOST IMAGE. The raw PCI and Secure Boot
+// observations now live in gunbc.machine_intake_mtcollins1_pci_observation and
+// gunbc.machine_intake_mtcollins1_firmware_security_observation respectively (R5
+// split, bmc cleanup). This module owns only what the RUNNER HOST needs — the
+// qualification of those observations into kernel driver requirements, firmware
+// file requirements, and Secure Boot delivery policy. OBSERVATION AND QUALIFICATION
+// ARE SEPARATED: the machine-intake side says what was measured; this module says
+// what the built image must provide.
 //
-// THE CONCRETE HARM IT WOULD HAVE CAUSED is the fork this repository keeps finding. The image lane
-// would have had to re-author CONFIG_IGB, "no firmware blob" and "unsigned EFI permitted" as fresh
-// literals beside the prose that already said them -- two authorities for one fact, agreeing until
-// someone edited one.
-//
-// SO OBSERVATION AND QUALIFICATION ARE SEPARATED HERE. The UEFI shell observed vendor 8086, device
-// 1521, at two addresses. It did NOT observe "the Linux driver is igb" or "no firmware blob is
-// required" -- those are qualifications against a kernel source, and folding them into the
-// observation record makes an inference indistinguishable from a reading.
+// THE CONCRETE HARM THIS SEPARATION PREVENTS is the fork this repository keeps
+// finding. If the image lane had to re-author CONFIG_IGB, "no firmware blob"
+// and "unsigned EFI permitted" as fresh literals beside the observations that
+// justify them, two authorities would exist for one fact, agreeing until someone
+// edited one. Splitting observation from qualification means the observation
+// modules remain the single authority on what was measured, and this module is
+// the single authority on what the image needs.
 
-// ── raw evidence ────────────────────────────────────────────────────────────────────────────────
-
-// THE CAPTURE IS CITED BY DIGEST AND BYTE COUNT, not merely by path. A path alone lets someone edit
-// the file's conclusion while every row here still says "measured" -- which is exactly how this
-// lane's earlier boot receipt came to name bytes that no longer existed.
-type HostEvidenceCapture {
-  artifact_path: NonEmptyStr
-  sha256: NonEmptyStr
-  byte_count: Int
-  observed_at: NonEmptyStr
-  observed_from: NonEmptyStr
-}
-
-data mtcollins1_uefi_pci_capture: HostEvidenceCapture = HostEvidenceCapture {
-  artifact_path: "artifacts/bmc/mtcollins1-uefi-pci-enumeration.txt",
-  sha256: "8dca168165755328483148679562c1ecf538ec66126fd6277cbb45f59e34fa37",
-  byte_count: 5444,
-  observed_at: "2026-09-06",
-  observed_from: "UEFI Interactive Shell v2.2 (EDK II, UEFI v2.70, AMI 0x0005000F) over IPMI SOL, command `pci`",
-}
-
-// ── what was observed ───────────────────────────────────────────────────────────────────────────
-
-type PciFunctionObservation {
-  address: PciAddress
-  vendor: PciVendorId
-  device: PciDeviceId
-  class_code: PciClassCode
-}
-
-// TWO FUNCTIONS, ONE PART. The addresses differ and the ids do not, which is what a dual-port
-// adapter looks like -- and is why the address is carried rather than the pair being treated as an
-// identity.
-data mtcollins1_observed_pci_functions: List<PciFunctionObservation> = [
-  PciFunctionObservation {
-    address: "02:02:00.00" as PciAddress,
-    vendor: "8086" as PciVendorId,
-    device: "1521" as PciDeviceId,
-    class_code: "network-ethernet" as PciClassCode,
-  },
-  PciFunctionObservation {
-    address: "02:02:00.01" as PciAddress,
-    vendor: "8086" as PciVendorId,
-    device: "1521" as PciDeviceId,
-    class_code: "network-ethernet" as PciClassCode,
-  },
-  PciFunctionObservation {
-    address: "04:03:00.00" as PciAddress,
-    vendor: "1912" as PciVendorId,
-    device: "0014" as PciDeviceId,
-    class_code: "serial-bus-usb" as PciClassCode,
-  },
-  PciFunctionObservation {
-    address: "unrecorded-in-capture" as PciAddress,
-    vendor: "1a03" as PciVendorId,
-    device: "2000" as PciDeviceId,
-    class_code: "display" as PciClassCode,
-  },
-]
-
-// THE POPULATION CLAIM IS SCOPED TO THE ENUMERATION THAT WAS TAKEN, and the name says so. An earlier
-// revision said there is "no controller for storage to hang off even in principle" -- which the same
-// capture contradicts, since it records a USB controller through which a block device was already
-// being presented. Non-PCI buses and add-in cards are also outside a PCI census.
-//
-// THE PRODUCT DECISION DOES NOT NEED THE STRONGER CLAIM. The host is stateless because that is the
-// design, not because storage was proven impossible.
-type PciClassPopulationObservation {
-  class_code: PciClassCode
-  observed_count: Int
-  enumeration_scope: NonEmptyStr
-}
-
-data mtcollins1_pci_mass_storage_population: PciClassPopulationObservation = PciClassPopulationObservation {
-  class_code: "mass-storage" as PciClassCode,
-  observed_count: 0,
-  enumeration_scope: "the single `pci` enumeration captured from the UEFI shell on 2026-09-06; says nothing about non-PCI buses, hot-added devices, or USB-attached block devices",
-}
-
-// SECURE BOOT IS CONFIGURATION STATE, NOT HARDWARE INVENTORY, and it is time-bound. It permits an
-// unsigned first EFI artifact FOR A BOOT WHERE IT WAS OBSERVED DISABLED; it does not make "needs no
-// signature" a property of the image. A BIOS change flips it while every identifier here stays the
-// same, which is why the delivery decision must join the artifact to a fresh observation rather than
-// to this row's memory of one.
-type SecureBootStanding
-  = SecureBootEnabled
-  | SecureBootDisabled
-  | SecureBootUnreadable { cause: NonEmptyStr }
-
-data mtcollins1_secure_boot_observed: SecureBootStanding = SecureBootDisabled
-
-// FIRMWARE NETWORK BOOT, AT THE GRAIN THE CONSOLE ACTUALLY PRINTED. The line was "Start PXE over
-// IPv6" -- so the observation is about the IPv6 path. An earlier revision widened it to "no DHCP
-// offer" and "nothing on this LAN answers it", which is a stronger claim than the output supports;
-// the separately recorded IPv4 capture on main showed DHCP assigning configuration while offering
-// no next-server or boot-file. Two observations, composed, justify "no usable network boot service
-// has been observed on either attempted path" and nothing broader.
-type FirmwareNetworkBootObservation
-  = Ipv6PxeAttemptNoValidOffer { mac: NonEmptyStr }
-  | Ipv4PxeAttemptNoBootFileOffered { mac: NonEmptyStr }
-  | NetworkBootAttemptUnobserved
-  | HttpBootSupportUnestablished
-
-data mtcollins1_ipv6_pxe: FirmwareNetworkBootObservation = Ipv6PxeAttemptNoValidOffer { mac: "28:c1:3c:8a:d6:4a" }
-
-data mtcollins1_http_boot: FirmwareNetworkBootObservation = HttpBootSupportUnestablished
-
-// ── qualification, kept separate from observation ───────────────────────────────────────────────
-
-// A QUALIFICATION CITES AN AUTHORITY THAT IS NOT THE UNIT. The unit cannot tell us which Linux
-// driver claims a device id; a kernel's PCI table can. Keeping this apart from
-// PciFunctionObservation is what stops an inference being read later as something the machine said.
-//
-// THE EEPROM CLAIM IS WITHDRAWN. An earlier revision asserted the part "carries its own EEPROM, so
-// no firmware blob is required". The blob conclusion stands on the driver's own source -- igb
-// requests no external firmware file -- but the EEPROM assertion does not follow from a PCI id at
-// all, and I350 is documented as supporting EEPROM-less configurations. The requirement below is
-// therefore derived from the driver, not from a claim about the part's flash.
-type LinuxDriverQualification {
-  vendor: PciVendorId
-  device: PciDeviceId
-  driver: NonEmptyStr
-  external_firmware_file_required: Bool
-  authority: NonEmptyStr
-}
-
-data i350_igb_qualification: LinuxDriverQualification = LinuxDriverQualification {
-  vendor: "8086" as PciVendorId,
-  device: "1521" as PciDeviceId,
-  driver: "igb",
-  external_firmware_file_required: false,
-  authority: "the igb driver's PCI device table in Linux source, which lists 0x1521 as I350 copper, and the same driver's absence of any request_firmware call on that path",
-}
-
-// ── what the image lane consumes ────────────────────────────────────────────────────────────────
-
-// THIS IS THE VALUE THE BUILDER READS, and it exists so the builder never re-authors a fact this
-// lane already established. A driver requirement carries its linkage because BuiltIn and Module are
-// different surfaces: a module is loadable at runtime and therefore part of the kernel's mutable
-// attack surface, which the runtime-surface authority wants closed.
-type DriverLinkage = BuiltIn | LoadableModule
+// ── kernel driver requirements ───────────────────────────────────────────────────────────────────
 
 type LinuxKernelDriverRequirement {
   driver: NonEmptyStr
-  linkage: DriverLinkage
+  linkage: KernelDriverLinkage
   reason: NonEmptyStr
 }
 
-type EfiSignatureRequirement
-  = UnsignedEfiPermittedWhileSecureBootDisabled
-  | SignedEfiRequired
+type KernelDriverLinkage = BuiltIn | LoadableModule
+
+data BuiltIn: KernelDriverLinkage = BuiltIn
+
+// ── Secure Boot delivery policy ──────────────────────────────────────────────────────────────────
 
 type PersistentRootRequirement = PersistentRootForbidden | PersistentRootRequired
+
+data PersistentRootForbidden: PersistentRootRequirement = PersistentRootForbidden
+
+// ── consolidated requirements ────────────────────────────────────────────────────────────────────
 
 type RunnerHostPlatformRequirements {
   kernel_drivers: List<LinuxKernelDriverRequirement>
@@ -180,17 +58,10 @@ type RunnerHostPlatformRequirements {
   persistent_root: PersistentRootRequirement
 }
 
-// THE SIGNATURE REQUIREMENT IS DERIVED FROM THE STANDING RATHER THAN ASSERTED, so a later
-// observation of SecureBootEnabled changes what delivery is permitted without anyone editing a
-// policy row -- and an unreadable observation refuses rather than defaulting to the permissive arm.
-fn efi_signature_requirement(standing: SecureBootStanding) -> EfiSignatureRequirement {
-  match standing {
-    SecureBootDisabled => UnsignedEfiPermittedWhileSecureBootDisabled
-    SecureBootEnabled => SignedEfiRequired
-    SecureBootUnreadable { cause: _ } => SignedEfiRequired
-  }
-}
-
+// The PCI observations (mtcollins1_observed_pci_functions) are imported above and
+// inform the driver requirement. The driver derivation is currently a static mapping
+// from (vendor 8086, device 1521) to igb — a future enrichment could derive this
+// from the observed PCI ids directly rather than restating the mapping here.
 data mtcollins1_platform_requirements: RunnerHostPlatformRequirements = RunnerHostPlatformRequirements {
   kernel_drivers: [
     LinuxKernelDriverRequirement {
@@ -200,15 +71,6 @@ data mtcollins1_platform_requirements: RunnerHostPlatformRequirements = RunnerHo
     },
   ],
   firmware_files: [],
-  secure_boot_delivery: UnsignedEfiPermittedWhileSecureBootDisabled,
+  secure_boot_delivery: efi_signature_requirement(standing: mtcollins1_secure_boot_standing),
   persistent_root: PersistentRootForbidden,
 }
-
-// WHAT REMAINS UNOBSERVED UNTIL LINUX ACTUALLY BOOTS, listed because a PCI id is a prediction about
-// binding rather than a receipt of it. The image's first wet acceptance owes each of these.
-data mtcollins1_unobserved_until_first_linux_boot: List<NonEmptyStr> = [
-  "that igb bound these exact PCI functions",
-  "that link came up on the port the fleet reaches",
-  "the MAC each function actually presents to Linux",
-  "the adapter's NVM configuration, which no PCI identity establishes",
-]

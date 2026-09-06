@@ -4,9 +4,11 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.pci.identity { PciAddress }
 
 // THE FIRST BOOT OF AN IMAGE THIS REPOSITORY BUILT, on the Mt. Collins unit, 2026-09-06. It matters
-// as a receipt rather than as news because it DISCHARGES the four things
-// gunbc.runner.runner_host_hardware_observation listed as unobserved until Linux ran. A PCI id is a
-// prediction about which driver will bind; this is the binding.
+// as a receipt rather than as news because it DISCHARGES the four things that
+// gunbc.machine_intake_mtcollins1_pci_observation listed as unobserved until Linux ran.
+// (The PCI observations were moved from runner_host_hardware_observation to the machine-intake
+// side during the R5 split — bmc cleanup.) A PCI id is a prediction about which driver will
+// bind; this is the binding.
 //
 // WHAT WAS DELIVERED AND HOW: an aarch64 EFI-stub Linux 6.12.108 with its initramfs built in,
 // wrapped in an ISO carrying the loader both as an El Torito no-emulation ESP and at the

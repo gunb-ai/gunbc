@@ -1,0 +1,62 @@
+module gunbc.machine_intake_mtcollins1_pci_observation
+
+import std.types { Int, List, NonEmptyStr }
+import extdeps.pci.identity { PciAddress, PciClassCode, PciDeviceId, PciVendorId }
+
+// WHAT THE UNIT PRESENTED, AT A GRAIN A BUILDER CAN CONSUME. Extracted from
+// gunbc.runner.runner_host_hardware_observation during the R5 split (bmc cleanup):
+// PCI inventory is a raw observation of hardware, not a derived platform requirement.
+// It lives here in the machine-intake side where it keys to UnitKey (machine-intake
+// ruling 2026-08-29 §1), so a PCIe card replacement produces a new observation with
+// the same UnitKey and the old one is correctly stale.
+//
+// This module holds only what was MEASURED. "The Linux driver is igb" and "no
+// firmware blob is required" are qualifications against a kernel source — they
+// belong in the runner layer's RunnerHostPlatformRequirements derivation, not here.
+
+// ── raw evidence ────────────────────────────────────────────────────────────────────────────────
+
+// THE CAPTURE IS CITED BY DIGEST AND BYTE COUNT, not merely by path. A path alone lets someone edit
+// the file's conclusion while every row here still says "measured".
+type HostEvidenceCapture {
+  artifact_path: NonEmptyStr
+  sha256: NonEmptyStr
+  byte_count: Int
+  observed_at: NonEmptyStr
+  observed_from: NonEmptyStr
+}
+
+data mtcollins1_uefi_pci_capture: HostEvidenceCapture = HostEvidenceCapture {
+  artifact_path: "artifacts/bmc/mtcollins1-uefi-pci-enumeration.txt",
+  sha256: "8dca168165755328483148679562c1ecf538ec66126fd6277cbb45f59e34fa37",
+  byte_count: 5444,
+  observed_at: "2026-09-06",
+  observed_from: "UEFI Interactive Shell v2.2 (EDK II, UEFI v2.70, AMI 0x0005000F) over IPMI SOL, command `pci`",
+}
+
+// ── what was observed ───────────────────────────────────────────────────────────────────────────
+
+type PciFunctionObservation {
+  address: PciAddress
+  vendor: PciVendorId
+  device: PciDeviceId
+  class_code: PciClassCode
+}
+
+// TWO FUNCTIONS, ONE PART. The addresses differ and the ids do not, which is what a dual-port
+// adapter looks like — and is why the address is carried rather than the pair being treated as an
+// identity.
+data mtcollins1_observed_pci_functions: List<PciFunctionObservation> = [
+  PciFunctionObservation {
+    address: "02:02:00.00" as PciAddress,
+    vendor: "8086" as PciVendorId,
+    device: "1521" as PciDeviceId,
+    class_code: "02" as PciClassCode,
+  },
+  PciFunctionObservation {
+    address: "02:02:00.01" as PciAddress,
+    vendor: "8086" as PciVendorId,
+    device: "1521" as PciDeviceId,
+    class_code: "02" as PciClassCode,
+  },
+]
