@@ -325,6 +325,12 @@ type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
 
 type HardwareThreadCount = Measure<Count, One, Nat>
 
+// A PHYSICAL core is not a hardware thread, and the two must not share a carrier: on an SMT part
+// the same package reports 6 cores and 12 threads, so one alias standing for both would be a
+// section 3 meaning fork - one name whose obligations change silently with the part. Same axis
+// (a count of one unit), different thing counted, therefore its own alias.
+type PhysicalCoreCount = Measure<Count, One, Nat>
+
 type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
@@ -992,6 +998,14 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   measure_count(t)
+}
+
+fn physical_core_count(count: Nat) -> PhysicalCoreCount {
+  Measure { count: count }
+}
+
+fn physical_core_count_value(c: PhysicalCoreCount) -> Nat {
+  measure_count(c)
 }
 
 // A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same
