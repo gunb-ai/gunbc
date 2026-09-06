@@ -4,9 +4,9 @@ import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash }
-import gunbc.spark.vllm_engine_incarnation {
-  VllmEngineIncarnation, IncarnationJoin, SameIncarnation, same_incarnation, join_is_admissible,
-  incarnation_join_wire, incarnation_wire,
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, LaunchJoin, SameLaunch, same_launch, join_is_admissible,
+  launch_join_wire, launch_wire,
 }
 import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent }
 
@@ -70,7 +70,7 @@ fn launch_terminal_wire(t: LaunchTerminal) -> String {
 // receipt is optional because a launch that never reached readiness has no layout to read, and an
 // absent receipt is a different fact from an inconsistent one.
 type PairServingLaunchAttempt {
-  incarnation: VllmEngineIncarnation
+  incarnation: VllmServingLaunch
   desired_digest: ContentHash
   attempt_number: Nat
   started_at: EpochSecs
@@ -83,7 +83,7 @@ type PairServingLaunchAttempt {
 // The evidence that promotes a SIGKILL to an OOM kill lives outside the process's own exit status:
 // a kernel ring-buffer line, a cgroup memory event counter, or systemd's own OOM result. Each names
 // a process; joining it to this attempt is what makes it about THIS launch, and the join goes
-// through same_incarnation for the same reason every other join does.
+// through same_launch for the same reason every other join does.
 type OomEvidenceSource
   = KernelRingBuffer
   | CgroupMemoryEvent
@@ -98,7 +98,7 @@ fn oom_evidence_source_wire(s: OomEvidenceSource) -> String {
 }
 
 type OomObservation {
-  incarnation: VllmEngineIncarnation
+  incarnation: VllmServingLaunch
   source: OomEvidenceSource
   detail: NonEmptyStr
 }
@@ -117,12 +117,12 @@ fn attribute_oom(attempt: PairServingLaunchAttempt, observation: OomObservation?
         Absent =>
           OomUnattributed { cause: "the attempt was killed by a signal, but no kernel, cgroup or systemd OOM observation was joined to it; a signal kill is equally a forced teardown, a stop-timeout escalation or an operator" as NonEmptyStr }
         Present { value: o } => {
-          let verdict = same_incarnation(a: o.incarnation, b: attempt.incarnation)
+          let verdict = same_launch(a: o.incarnation, b: attempt.incarnation)
           if join_is_admissible(j: verdict) {
             KilledByOom { source: o.source, detail: o.detail }
           } else {
             OomUnattributed {
-              cause: join(["an OOM observation was offered but it describes another launch: ", incarnation_join_wire(j: verdict)], "") as NonEmptyStr,
+              cause: join(["an OOM observation was offered but it describes another launch: ", launch_join_wire(j: verdict)], "") as NonEmptyStr,
             }
           }
         }
@@ -140,8 +140,8 @@ fn attribute_oom(attempt: PairServingLaunchAttempt, observation: OomObservation?
 // one state: a unit that came up first time and a unit that came up on the ninth try are different
 // facts about the same host, and only the second one says the bring-up is unstable.
 type ServingStanding
-  = ServingOnFirstAttempt { incarnation: VllmEngineIncarnation }
-  | ServingRecoveredAfterFailures { incarnation: VllmEngineIncarnation, failed_attempts: Nat, terminals: List<String> }
+  = ServingOnFirstAttempt { incarnation: VllmServingLaunch }
+  | ServingRecoveredAfterFailures { incarnation: VllmServingLaunch, failed_attempts: Nat, terminals: List<String> }
   | NotServing { failed_attempts: Nat, terminals: List<String> }
   | ServingStandingUnobserved { cause: NonEmptyStr }
 
@@ -177,9 +177,9 @@ fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding
 
 fn serving_standing_wire(s: ServingStanding) -> String {
   match s {
-    ServingOnFirstAttempt { incarnation: i } => join(["serving on first attempt: ", incarnation_wire(i: i)], "")
+    ServingOnFirstAttempt { incarnation: i } => join(["serving on first attempt: ", launch_wire(i: i)], "")
     ServingRecoveredAfterFailures { incarnation: i, failed_attempts: n, terminals: ts } =>
-      join(["serving after ", to_string(n), " failed attempt(s): ", incarnation_wire(i: i), " [", join(ts, ", "), "]"], "")
+      join(["serving after ", to_string(n), " failed attempt(s): ", launch_wire(i: i), " [", join(ts, ", "), "]"], "")
     NotServing { failed_attempts: n, terminals: ts } =>
       join(["not serving after ", to_string(n), " attempt(s): [", join(ts, ", "), "]"], "")
     ServingStandingUnobserved { cause: c } => join(["serving standing unobserved: ", c as String], "")
