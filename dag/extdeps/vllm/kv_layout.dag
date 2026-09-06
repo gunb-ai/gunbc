@@ -3,7 +3,7 @@ module extdeps.vllm.kv_layout
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, ByteSize, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -64,16 +64,24 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // invent an answer for a layout that cannot exist; refining the field removes the state instead
 // (DESIGN section 4b: construction over validation).
 type KvBlockSize = Int where range(min: 1, max: 1048576)
+type KvLayerCount = Int where range(min: 1, max: 4096)
 
+// THE WINDOW LIVES IN THE VARIANT THAT HAS ONE. It was a separate optional field beside the kind,
+// which made two states writable that the engine cannot produce: a windowed group with no window,
+// and a full-attention group carrying one. The first was the dangerous one -- the cost function met
+// it and silently charged full-attention cost, so a malformed layout produced a plausible number
+// instead of a refusal, and that number would then have been reproduced against the printed lines
+// and possibly agreed. Moving the window into the arm deletes both states rather than checking for
+// them (DESIGN section 4b: construction over validation).
 type KvGroupKind
   = FullAttention
-  | SlidingWindowAttention
+  | SlidingWindowAttention { window: TokenCount }
   | MambaState
 
 fn kv_group_kind_wire(k: KvGroupKind) -> String {
   match k {
     FullAttention => "full-attention"
-    SlidingWindowAttention => "sliding-window"
+    SlidingWindowAttention { window: _ } => "sliding-window"
     MambaState => "mamba-state"
   }
 }
@@ -81,12 +89,18 @@ fn kv_group_kind_wire(k: KvGroupKind) -> String {
 // One resolved cache group. `block_size` is THIS GROUP's, which the global scheduler block_size is
 // only the minimum of; `sliding_window` is present exactly on the windowed kind and is what caps
 // that group's per-request cost.
+// A GROUP WITH NO LAYERS IS NOT A GROUP EITHER, so the count is refined the way the block size is:
+// a zero-layer group contributes zero blocks to every cost, which is a layout that silently makes
+// requests look free.
+//
+// page_size_bytes IS DELIBERATELY ABSENT. It was carried here and read by nothing -- the recorded
+// field that no operation consumes, which reads as coverage of a byte-level accounting that does
+// not exist. It returns when the unified-memory admission needs bytes rather than blocks, and it
+// returns with the consumer that reads it.
 type KvGroupLayout {
   kind: KvGroupKind
-  layer_count: Nat
+  layer_count: KvLayerCount
   block_size: KvBlockSize
-  page_size_bytes: ByteSize
-  sliding_window: TokenCount?
 }
 
 // THE RESOLVED LAYOUT OF ONE ENGINE. It carries no incarnation: this is the upstream SHAPE, and
@@ -263,12 +277,8 @@ fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat {
     MambaState => group.layer_count
     FullAttention =>
       ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * group.layer_count
-    SlidingWindowAttention =>
-      match group.sliding_window {
-        Absent => ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * group.layer_count
-        Present { value: w } =>
-          ceil_div(numerator: min_nat(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * group.layer_count
-      }
+    SlidingWindowAttention { window: w } =>
+      ceil_div(numerator: min_nat(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * group.layer_count
   }
 }
 
@@ -293,10 +303,25 @@ type AllocatorUsage sole_constructor {
   allocator_blocks: Nat
 }
 
-fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> AllocatorUsage {
-  AllocatorUsage {
-    referenced_or_retained_blocks: layout.allocator_blocks - min_nat(a: free_blocks, b: layout.allocator_blocks),
-    allocator_blocks: layout.allocator_blocks,
+// A FREE COUNT LARGER THAN THE INVENTORY IS NOT A FULL POOL, IT IS TWO ENGINES. The previous shape
+// clamped it with a min, so an impossible reading reported "nothing free" -- the most alarming
+// possible answer, arrived at by fabrication, and indistinguishable from a genuinely saturated
+// engine. That is the absorbing fallback section 5 forbids: the widen destroys the only signal that
+// the inventory and the free count came from different launches.
+type UsageReading
+  = UsageRead { usage: AllocatorUsage }
+  | FreeCountImpossible { free_blocks: Nat, allocator_blocks: Nat }
+
+fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
+  if free_blocks > layout.allocator_blocks {
+    FreeCountImpossible { free_blocks: free_blocks, allocator_blocks: layout.allocator_blocks }
+  } else {
+    UsageRead {
+      usage: AllocatorUsage {
+        referenced_or_retained_blocks: layout.allocator_blocks - free_blocks,
+        allocator_blocks: layout.allocator_blocks,
+      },
+    }
   }
 }
 
