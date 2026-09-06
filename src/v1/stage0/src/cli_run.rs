@@ -13875,7 +13875,9 @@ pub struct ResolveStageNanos {
     pub normalize: u128,
     /// Genuine `typecheck_module` computes inside reconcile (typed-cache misses only).
     pub typecheck_compute: u128,
-    /// `collect_parent_envs` calls inside reconcile (every module, cache hit or miss).
+    /// `collect_parent_envs` calls inside reconcile. MISSES ONLY: the call sits in the
+    /// `else` arm of a `was_cache_hit` branch, so a cache hit contributes no time here and
+    /// is not counted. Reading this as a per-module cost overstates it by the hit rate.
     pub parent_envs: u128,
     /// Reconcile total minus the rows above and the assembly sub-rows below: the
     /// unattributed whole-closure assembly residue that reruns per entry even at
