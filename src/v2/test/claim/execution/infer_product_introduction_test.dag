@@ -41,13 +41,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DerivedGrounding derives, its evidence the same shape re-formed over the children's grounding
 // evidence. The specimen is the direct-rust-door fixture's ingest -- the corpus's smallest
 // real-ingest dag module. The census pins that the witness actually saw the population: four
-// Conj nodes (three fully-evidenced, one -- the grammar-projection root -- with a frontier child)
-// and one bodied Arrow. The evidence control pins the composed evidence's SHAPE on the parameter
-// conj: a Conj whose named children target the dag authority's Int inhabitant, never the source
-// node (the self-evidence wall). The two boundary controls pin the refusal edge: a conj with a
-// frontier child stays frontier, and a childless conj -- no evidence to compose -- stays frontier.
-// Deleting the rule reddens the census and evidence controls; widening it to partially-evidenced
-// or childless products reddens the boundary controls.
+// Conj nodes, all derived (the grammar-projection root included -- it cascaded once the atom
+// rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
+// composed evidence's SHAPE on the parameter conj: a Conj whose named children target the dag
+// authority's Int inhabitant, never the source node (the self-evidence wall). The two boundary
+// controls pin the refusal edge on hand-built trees: a conj with a frontier child stays frontier,
+// and a childless conj -- no evidence to compose -- stays frontier. Deleting the rule reddens the
+// census and evidence controls; widening it to partially-evidenced or childless products reddens
+// the boundary controls.
 
 type ProductIntroductionCensus {
   conjs: Int
@@ -198,7 +199,7 @@ test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let census = product_introduction_census(inferred: inferred)
-      (census.conjs == 4) && (census.conjs_derived == 3)
+      (census.conjs == 4) && (census.conjs_derived == 4)
         && (census.arrows == 1) && (census.arrows_derived == 1)
   }
 }
@@ -229,4 +230,39 @@ test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bo
           }
       }
   }
+}
+
+fn product_introduction_hand_tree_grounding(tree: Node, n: Node) -> Int {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => 2
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(n) {
+        Absent => 2
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => 1
+            DerivedGrounding { grounding: _ } => 0
+          }
+      }
+  }
+}
+
+test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_holds() -> Bool {
+  let frontier_child = Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  let derived_child = dag_int_inhabitant_node()
+  let partial = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^derived_field }, target: derived_child },
+      Edge { label: Named { name: ^frontier_field }, target: frontier_child }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  (product_introduction_hand_tree_grounding(tree: partial, n: derived_child) == 0)
+    && (product_introduction_hand_tree_grounding(tree: partial, n: frontier_child) == 1)
+    && (product_introduction_hand_tree_grounding(tree: partial, n: partial) == 1)
 }

@@ -1,0 +1,158 @@
+module v2.test.execution.infer_atom_grounding_rules
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  infer
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest
+}
+import v2.extdeps.languages.dag {
+  dag_grammar_productions_roster_root,
+  dag_language_model
+}
+import v2.std.algebra { fold_list }
+import v2.std.compilers.target_model { target_model_canonical_operations_roster_root }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Named,
+  Node,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.optional { Absent, optional_present, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED CONTROLS FOR THE ATOM-GROUNDING ROSTER DERIVATIONS (`v2.compiler.infer`
+// infer_node_facts): each is a lookup into a declared authority, never an invention.
+//   - canonical-operations roster: the resolver canonicalizes surface operators to the
+//     target-model authority's declared operations; the wire atoms (the AlgebraPrimitive
+//     discriminant and its ring_field_add field) are members of the authority's roster, and
+//     derive with the roster root as evidence.
+//   - grammar-productions roster: the bridge projects a production's parse into (identity atom,
+//     captured content); the identity atom (dag_surface_module) is the production's declared
+//     emitted atom, and derives with the grammar roster root as evidence.
+// The specimen is the direct-rust-door fixture's ingest. Each control pins BOTH the derivation
+// and the evidence identity, and the census pins that the witness saw the population. The
+// boundary control pins that a bare atom with no authority membership stays on the frontier, and
+// the closing control pins the specimen state after these two rules: exactly two frontier nodes
+// of fifteen (the operand atoms, grounded by the binding-reference rule in a later change).
+// Deleting a rule reddens its control; widening a rule to non-members reddens the boundary
+// control.
+
+fn atom_grounding_specimen_inferred() -> Outcome<InferredTree> {
+  match assemble_program_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn atom_grounding_node_evidence(inferred: InferredTree, n: Node) -> Optional<Node> {
+  match inferred.facts.lookup(n) {
+    Absent => Absent
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => Absent
+        DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
+      }
+  }
+}
+
+fn atom_grounding_count_evidence(
+  inferred: InferredTree,
+  wanted: Node,
+  acc: Int,
+  n: Node
+) -> Int {
+  match atom_grounding_node_evidence(inferred: inferred, n: n) {
+    Absent => acc
+    Present { value: evidence } =>
+      if evidence == wanted { acc + 1 } else { acc }
+  }
+}
+
+fn atom_grounding_census_frontier(inferred: InferredTree) -> Int {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: 0,
+    cons: fn(acc, n) {
+      match inferred.facts.lookup(n) {
+        Absent => acc
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => acc + 1
+            DerivedGrounding { grounding: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
+  match atom_grounding_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let roster = target_model_canonical_operations_roster_root()
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: roster, acc: acc, n: n) }
+      ) == 2
+  }
+}
+
+test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
+  match atom_grounding_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      let roster = dag_grammar_productions_roster_root()
+      fold_list(
+        xs: node_subtree_nodes(root: inferred.root),
+        empty: 0,
+        cons: fn(acc, n) { atom_grounding_count_evidence(inferred: inferred, wanted: roster, acc: acc, n: n) }
+      ) == 1
+  }
+}
+
+test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
+  let unbound = Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer(tree: unbound) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(unbound) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => true
+            DerivedGrounding { grounding: _ } => false
+          }
+      }
+  }
+}
+
+test fn atom_rules_leave_only_operand_atoms_on_the_door_frontier_holds() -> Bool {
+  match atom_grounding_specimen_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      atom_grounding_census_frontier(inferred: inferred) == 2
+  }
+}

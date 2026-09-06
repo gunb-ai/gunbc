@@ -1608,6 +1608,89 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
   }
 }
 
+// THE DECLARED CANONICAL-OPERATION ROSTER, AS A NODE. Every CanonicalOperation this authority
+// declares, rendered by target_model_canonical_operation_wire_node and gathered under one Conj
+// root. This is the single authority an inference membership rule consults to ground canonical-
+// operation wire atoms by lookup (the same frame as the dag authority's declared-inhabitants
+// roster): the roster root is the evidence, and it is never structurally equal to any member, so
+// the self-evidence wall holds by construction. Adding an operation to this authority means adding
+// its row here -- the roster is closed over exactly the operations declared above.
+
+fn target_model_canonical_operation_roster_edge(
+  name: Symbol,
+  operation: CanonicalOperation
+) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target_model_canonical_operation_wire_node(operation: operation)
+  }
+}
+
+fn target_model_canonical_operations_roster_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_add,
+        operation: canonical_operation_op_add()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_mul,
+        operation: canonical_operation_op_mul()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_negate,
+        operation: canonical_operation_op_negate()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_and,
+        operation: canonical_operation_op_and()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_or,
+        operation: canonical_operation_op_or()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_not,
+        operation: canonical_operation_op_not()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_sub,
+        operation: canonical_operation_op_sub()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_div,
+        operation: canonical_operation_op_div()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_lt,
+        operation: canonical_operation_op_lt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_le,
+        operation: canonical_operation_op_le()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_gt,
+        operation: canonical_operation_op_gt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ge,
+        operation: canonical_operation_op_ge()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_eq,
+        operation: canonical_operation_op_eq()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ne,
+        operation: canonical_operation_op_ne()
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn canonical_operation_equal(
   left: CanonicalOperation,
   right: CanonicalOperation
