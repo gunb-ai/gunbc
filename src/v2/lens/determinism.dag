@@ -237,7 +237,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // PROGRESS. The trigger is a CAPABILITY -- a consumer whose declared substrate and cadence
 // truthfully match the inputs it reads, WHOSE FAILURE REACHES THE REQUIRED PR FLOOR, and which
 // cannot predict-skip. v2.test.claim.enforcement.determinism_transitive_witness
-// determinism_transitive_live_closure_holds meets three of those four. It declares ReadsLiveTree in
+// determinism_live_intra_holds (renamed from determinism_transitive_live_closure_holds when
+// corpus_dependency_view was deleted — see gunbc.rung_drop.determinism_transitive_reachability)
+// met three of those four at the time of the rename. It declares ReadsLiveTree in
 // its own entry file, which is both the substrate declaration and what makes it unskippable by
 // affected-set selection; it reads exactly the roots it names, since fn_arrow_decl_facts_live now
 // takes pool_roots and the same roots bind the closure it walks; and it is an ordinary
@@ -245,7 +247,9 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // floor -- WAS UNMET FOR THE STRONGEST POSSIBLE REASON UNTIL gunbc#10282: through this substrate it
 // could not fail at all, and a consumer that cannot fail does not discharge a clause about where
 // its failure lands. That reason is gone; what remains open is stated two paragraphs down and is a
-// reachability question rather than a representation one.
+// reachability question rather than a representation one. NOTE: after gunbc#10643 the witness
+// checks intra-declaration determinism only — transitive callee-edge traversal is dropped per
+// the rung drop above, so clause 2's reachability dimension is no longer met.
 //
 // THE MECHANISM THAT MADE IT UNFAILABLE, named at the symbols, AND THE REPAIR THAT CLOSED IT.
 // `v1_compiler.coproduct_reflection` `marshal_skeleton` returned `conj_record` at both of its
