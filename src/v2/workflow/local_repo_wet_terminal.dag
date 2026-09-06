@@ -323,6 +323,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_check_fixture", function: "clean_directory_passes_v1_rt_check" },
+      entry: "dag/test/claim/self_host_logic_seed_unavailable_check_fixture_test.dag",
+      function: "clean_directory_passes_v1_rt_check",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_check_fixture", function: "directory_with_v1_compiler_ref_fails_check" },
+      entry: "dag/test/claim/self_host_logic_seed_unavailable_check_fixture_test.dag",
+      function: "directory_with_v1_compiler_ref_fails_check",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_check_fixture", function: "directory_with_v1_rt_containing_calls_passes" },
+      entry: "dag/test/claim/self_host_logic_seed_unavailable_check_fixture_test.dag",
+      function: "directory_with_v1_rt_containing_calls_passes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.self_host_logic_seed_unavailable_witness", function: "self_host_logic_seed_unavailable_receipt_holds" },
       entry: "dag/test/claim/self_host_logic_seed_unavailable_witness_test.dag",
       function: "self_host_logic_seed_unavailable_receipt_holds",
