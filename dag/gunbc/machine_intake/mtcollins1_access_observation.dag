@@ -90,7 +90,7 @@ data mtcollins1_unit_identity_inputs: UnitIdentityInputs = UnitIdentityInputs {
 // makes the serial ambiguous produces a structural refusal rather than a silent fallback.
 data mtcollins1_unit_key_standing: UnitKeyStanding = bind_unit_key(
   inputs: mtcollins1_unit_identity_inputs,
-  other_units: [] as List<UnitKey>,
+  other_units: [],
 )
 // THE CAPTURED BYTES. sha256 over artifacts/bmc/mtcollins1-intake-ipmi.json, 3227 bytes, which is
 // the single blob every field below was read from. It is carried as a Sha256Hash rather than the
@@ -138,6 +138,7 @@ data mtcollins1_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIdentit
 // above) AND NOT REPEATED IN PROSE — this comment describes identity; the data declaration is
 // the identity. The UnitKey derived from it is the durable subject that outlives any endpoint
 // label change.
+data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
   baseboard: AmpereMtCollins,
   chassis_part_number: Present { value: "1A624RA00-600-G" },
   firmware: mtcollins1_firmware,
