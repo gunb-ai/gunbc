@@ -270,10 +270,15 @@ fn guest_memory_fits(
 // here enforces that -- with the declared guest inside the cell there is materially more real slack
 // than this floor claims.
 //
-// WITHOUT IT NOTHING IS ADMISSIBLE, WHICH IS THE WHOLE REASON THIS ROW EXISTS. guest_memory_fits
-// returns MemoryFitUnresolved on an unmodeled reserve, so gunbc_runner_microvm_admission refused
-// EVERY configuration: production could reach a SIZED guest and still never an ADMITTED one. The
-// reserve was the last quantity between the two.
+// WITHOUT IT THE MEMORY-FIT LEG CANNOT BE DECIDED, WHICH IS THE WHOLE REASON THIS ROW EXISTS.
+// guest_memory_fits returns MemoryFitUnresolved on an unmodeled reserve, so
+// gunbc_runner_microvm_admission refused EVERY configuration on that leg alone: the fleet's own size
+// and reserve binding could never satisfy it, whatever else was true. The reserve was the last
+// MEMORY-FIT quantity standing between the declared size and an admissible configuration.
+//
+// IT IS NOT THE LAST PRODUCTION-LAUNCH PREREQUISITE, AND THIS ROW DOES NOT CLAIM TO BE. Nothing in
+// production calls gunbc_runner_microvm_admission and no production binding selects a
+// VmmProcessTopology, so a launch path remains separate, unbuilt work.
 //
 // THE CELL'S CPU AXIS IS DELIBERATELY UNTOUCHED HERE. The cell still grants only CPUWeight, so the
 // entitlement stays relative-only and the declared product size still answers -- which is exactly

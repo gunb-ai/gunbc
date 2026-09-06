@@ -529,16 +529,27 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
   }
 }
 
-// THE PRODUCTION CONFIGURATION REACHES MICROVM ADMISSION, AND THIS IS THE CLAIM THE CHANGE EXISTS
-// TO MAKE. It judges MODEL admission -- whether the fleet's own row is one this repository would
-// accept -- and boots nothing; no Firecracker process is involved at any step.
+// THE PRODUCTION RESERVE LETS THE DECLARED CONFIGURATION REACH ADMISSION, AND THE NAME IS THIS LONG
+// BECAUSE THE SHORTER ONES ALL CLAIMED MORE THAN THIS ROW EXECUTES.
 //
-// Every other admitted-arm control here drives a FIXTURE: a synthetic config and the witness_reserve
-// declared above. That was deliberate while production refused -- the reserve is a parameter
-// precisely so the accept arm stayed executed -- but it means none of them could tell whether
-// PRODUCTION could reach the arm, and until this change it could not: sizing resolved and admission
-// then refused on an unmodeled reserve. This substitutes nothing at any step.
-test fn the_production_configuration_now_reaches_microvm_admission() -> Bool {
+// WHAT IS PRODUCTION HERE: the sizing policy behind gunbc_runner_microvm_vm_config, and the reserve
+// gunbc_runner_microvm_admission injects. Those are the fleet's own rows, and the reserve is the
+// subject of this change. Every other admitted-arm control in this file substitutes witness_reserve
+// for that -- deliberate, since the reserve is a parameter precisely so the accept arm stays
+// executed while production refused -- so none of them could say whether the FLEET's reserve reaches
+// the arm. Until this change it did not: sizing resolved, then admission refused on an unmodeled
+// reserve.
+//
+// WHAT IS AUTHORED HERE, STATED PLAINLY BECAUSE AN EARLIER REVISION OF THIS COMMENT CLAIMED IT
+// SUBSTITUTED NOTHING, WHICH WAS FALSE BY INSPECTION: the three image paths, the absent guest
+// network, and the VMM topology are all authored by this row. They are not read from a fleet row,
+// because none exists to read -- no production binding selects a VmmProcessTopology and nothing in
+// production calls gunbc_runner_microvm_admission at all. A launch binding that does is separate
+// work, and this row must not be read as evidence that one exists.
+//
+// It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
+// nothing; no Firecracker process is involved at any step.
+test fn the_production_reserve_lets_the_declared_configuration_reach_admission_under_authored_topology() -> Bool {
   match gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
@@ -552,8 +563,11 @@ test fn the_production_configuration_now_reaches_microvm_admission() -> Bool {
 }
 
 // THE DECLARED GUEST PLUS ITS ALLOWANCE SITS UNDER THE CELL'S THROTTLE POINT, not merely under its
-// ceiling. MemoryMax is the hard limit but MemoryHigh is where reclaim begins, so a guest admitted
-// against the ceiling alone could be throttled from its first instant while still reporting success.
+// ceiling. MemoryMax is the hard limit but MemoryHigh is where reclaim begins, so a sum that clears
+// the ceiling and not the throttle point puts the cell under reclaim pressure at its declared size
+// rather than only when something goes wrong. It does not follow that such a guest is throttled
+// from its first instant -- reclaim responds to actual usage, and neither the guest nor the VMM
+// touches its whole allocation on arrival.
 test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool {
   let guest = byte_size_count(b: mebibyte_to_byte_size(m: gunbc_runner_microvm_declared_size.memory))
   let allowance = byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
