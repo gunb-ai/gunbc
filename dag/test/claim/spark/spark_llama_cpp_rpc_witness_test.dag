@@ -9,7 +9,8 @@ import std.measure {
   byte_size_count,
 }
 import extdeps.network.ipv4 { ipv4_address, render_ipv4_address }
-import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network {
+  operator_host_srv5, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.spark.fabric_link_desired {
   fabric_rail0, fabric_endpoint_on,
@@ -30,6 +31,7 @@ import gunbc.spark.llama_cpp_rpc_observed {
   llama_cpp_rpc_host_is_weights_peer,
   llama_cpp_rpc_undischarged_peer_reservation_hosts,
   llama_cpp_rpc_host_holds_undischarged_reservation,
+  llama_cpp_rpc_minted_peer_reservations, llama_cpp_rpc_host_has_release_receipt, llama_cpp_rpc_release_receipts,
   ArtifactIdentityBound,
   ArtifactIdentityUnobserved,
   llama_cpp_rpc_observed_artifact,
@@ -244,9 +246,21 @@ test fn an_inverted_throughput_band_refuses() -> Bool {
 // true, so the disjointness half alone goes GREEN when no reservation exists -- a wall reporting that
 // nothing collides because nothing is reserved.
 test fn no_serving_cell_uses_an_undischarged_llama_cpp_rpc_peer_reservation() -> Bool {
-  length(llama_cpp_rpc_undischarged_peer_reservation_hosts()) > 0
+  length(llama_cpp_rpc_minted_peer_reservations()) > 0
+    && all(llama_cpp_rpc_minted_peer_reservations(), r => llama_cpp_rpc_host_has_release_receipt(host: r.host))
+    && length(llama_cpp_rpc_undischarged_peer_reservation_hosts()) == 0
     && !any(spark_serving_cell_hosts(), h =>
          llama_cpp_rpc_host_holds_undischarged_reservation(host: h))
+}
+
+// THE RELEASE IS A RECEIPT WITH THE NAMED EVIDENCE, NOT A FLAG: the reserved host's receipt states
+// its process population, supervisor units, listeners and memory, each non-empty, and the receipt
+// clears exactly that host.
+test fn the_release_receipt_names_its_evidence_and_clears_only_its_host() -> Bool {
+  length(llama_cpp_rpc_release_receipts) == 2
+    && any(llama_cpp_rpc_release_receipts, r => host_identity_eq(a: r.host, b: operator_host_srv8) && string_contains(s: r.rpc_server_processes as String, pattern: "none") && string_contains(s: r.memory_state as String, pattern: "GB used"))
+    && llama_cpp_rpc_host_has_release_receipt(host: operator_host_srv8)
+    && !llama_cpp_rpc_host_has_release_receipt(host: operator_host_srv5)
 }
 
 
