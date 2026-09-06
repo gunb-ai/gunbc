@@ -1,6 +1,13 @@
 module v2.lens.synthesis
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.construction_justification {
+  ConstructionJustification,
+  WallAfterGrounding,
+  OutsideModeledGuarantee,
+  EquivalenceRelationNotRepresented,
+  modeled_outside_boundary,
+  decl_facts_inventory_authority
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 
@@ -208,4 +215,31 @@ data synthesis_climbs_when: DeclarationRef = DeclarationRef {
   module_path: "v2.lens.synthesis",
   decl_name: "synthesis_lens",
   field: WholeDeclaration
+}
+
+// PARTITION (DESIGN 4b / C0(c)): Established-bound vs declared technique is WallAfterGrounding above.
+// Rice-complete "ANY cheaper equivalent" is off the ladder until that decision procedure is authored.
+data synthesis_rice_residual_boundary: ConstructionJustification = ConstructionJustification {
+  class: OutsideModeledGuarantee {
+    boundary: modeled_outside_boundary(
+      subject: DeclarationRef {
+        module_path: "v2.lens.synthesis",
+        decl_name: "synthesis_lens",
+        field: WholeDeclaration
+      },
+      required_capability: DeclarationRef {
+        module_path: "v2.lens.synthesis",
+        decl_name: "unrestricted_cheaper_equivalent",
+        field: WholeDeclaration
+      },
+      capability_inventory_authority: decl_facts_inventory_authority,
+      boundary_kind: EquivalenceRelationNotRepresented {
+        relation: DeclarationRef {
+          module_path: "v2.lens.synthesis",
+          decl_name: "unrestricted_cheaper_equivalent",
+          field: WholeDeclaration
+        }
+      }
+    )
+  }
 }

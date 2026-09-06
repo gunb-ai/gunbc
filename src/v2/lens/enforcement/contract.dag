@@ -299,6 +299,8 @@ data lens_contract_fn_family: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+// EXTRACT only (name_coincides / closed-set comparison). Name-only judge residual:
+// v2.lens.grounding.grounding_name_only_residual_boundary (OutsideModeledGuarantee).
 data lens_contract_grounding: LensContract = {
   entry: lens_registry_v0_grounding,
   mode: AuditOnly,
@@ -482,6 +484,8 @@ data lens_contract_subsumption: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+// Established-bound vs declared technique. Rice residue:
+// v2.lens.synthesis.synthesis_rice_residual_boundary (OutsideModeledGuarantee).
 data lens_contract_synthesis: LensContract = {
   entry: lens_registry_v0_synthesis,
   mode: AuditOnly,

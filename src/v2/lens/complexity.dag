@@ -291,7 +291,7 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 // asymptotic_projection is AsymptoticCostProjection on ComplexityDerivedKernelClaim — DerivedKernel,
 // paired by v2.lens.enforcement.complexity_contract_subject with WallAfterGrounding / SingleAuthority.
 // Incomplete carries the cost fold's Violates diagnostic — a modeling gap that cannot enter
-// complexity_bound_dominates. OptimalityResidue is WallAfterGrounding on complexity_optimality_boundary.
+// complexity_bound_dominates. OptimalityResidue is OutsideModeledGuarantee on complexity_optimality_boundary.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
